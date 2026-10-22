@@ -17,9 +17,9 @@ import { BRAND_ASSET_PATHS, DEVELOPMENT_PUBLIC_ICON_OVERRIDES } from "./lib/bran
 import { encodePngIco, readPngDimensions, WINDOWS_ICON_SIZES } from "./lib/icon-export.ts";
 
 const DESIGN_GENERATION = 26;
-// Sizes drawn from each channel's small project: the mark redrawn so the pivot's ring
-// gap survives at device size, rather than the master shrunk.
-const SMALL_ICON_SIZES: ReadonlySet<number> = new Set([16, 24]);
+// Sizes drawn from each channel's small project: the brand draws any mark 48px or smaller with
+// the monogram's small drawing (wider needle tips, a larger pivot), rather than the master shrunk.
+const SMALL_ICON_MAX_SIZE = 48;
 const ICON_COMPOSER_EXECUTABLE_PARTS = [
   "Contents",
   "Applications",
@@ -586,7 +586,7 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
     if (cached) return cached;
 
     const outputPath = path.join(temporaryDirectory, `${variant.label}-${platform}-${size}.png`);
-    const source = SMALL_ICON_SIZES.has(size) ? smallSourcePath : sourcePath;
+    const source = size <= SMALL_ICON_MAX_SIZE ? smallSourcePath : sourcePath;
     const contents = yield* renderIcon(toolPath, source, outputPath, platform, size);
     renditionCache.set(cacheKey, contents);
     return contents;

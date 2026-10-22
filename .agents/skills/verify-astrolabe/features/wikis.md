@@ -12,8 +12,8 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   (combobox, named `Filter documents by wiki: <wiki>` once one is picked, kept in
   `astrolabe:wiki-scope:v1`: All wikis, each wiki with a settings gear, **Add a
   folder**, **New wiki**) and **New document**. With no wikis, the sidebar's empty
-  state has its own **Add a folder** and **New wiki**. Change requests moved to Change
-  Requests (pull-requests.md): with any open, a first row **Open changes · N →** sets the
+  state has its own **Add a folder** and **New wiki**. Change requests moved to Changes
+  (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis section's own choice and goes there. Documents (newest first) use the settled threads'
   slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
@@ -68,6 +68,20 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   with `note=` reads the note inside it.
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Threads as the way back. Splits stay at every width.
+- **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
+  (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
+  `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open
+  changes · N" but is named `button "N open changes"` ("1 open change"); it narrows Change
+  requests to wikis and this filter's wiki, then switches there. Documents follow as
+  `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
+  view; its header has `Edit the document`/`Stop editing` (not on read-only skill maps), and
+  once edited `Save to a change request` and `Document actions` › Discard edits. Save opens
+  the "Save to change request" sheet: New change request or an open one, `Change request
+title`, `What changed`, then Save (`Save when the turn ends` while the agent works). A
+  change request (route `WikiChangeRequest`, from the Changes tab) has `Change
+request actions` (Merge into main, Close/Reopen, Open thread), "Amendments (N)" with
+  `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
+  stays on the computer. Walk it on an iPhone with test-t3-mobile.
 
 ## How to get to it (user POV)
 
@@ -82,17 +96,28 @@ must be registered first (the filter's **Add a folder**).
 preview_click     role=navigation[name='Sections'] >> role=button[name='Wikis']
 preview_click     role=button[name='<document>, <wiki>']        # replaces the tab in front
 preview_evaluate  dispatch a click with altKey on a row          # new tab
-preview_evaluate  dispatch a click with metaKey on a row         # opens beside
-preview_click     role=button[name='Back']                      # the focused tab's history
+preview_evaluate  dispatch a click with metaKey on a row         # selects it (data-selected), opens nothing
+preview_click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
 preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
 preview_click     role=combobox[name='Filter documents by wiki']
 preview_click     role=button[name='Find or create a document']  # in an empty tab
 ```
 
 **Proof:** read the arrangement from the DOM
-(`[data-pane-id]` → its `[data-pane-tab]` labels, `aria-selected`), and the lit row
-(`[data-testid^=wiki-sidebar-row][aria-current=page]`); `location.reload()` keeps the
-arrangement and the histories (`JSON.parse(localStorage['astrolabe:wiki-tab-history:v1'])`). Save a screenshot of the section.
+(`[data-pane-id]` → its `[data-pane-tab]` labels, `aria-selected`) or from
+`JSON.parse(localStorage['astrolabe:wiki-panes:v1'])` (written within 150 ms; absent while
+the arrangement is the starting one), and the lit row
+(`[data-testid^=wiki-sidebar-row][aria-current=page]`). A change group's tabs here (its wiki
+change requests, its threads' chats, its pull requests, and the `change-group:` tab from the
+label's right-click **Open the group**) sit behind a `[data-tab-group]` label; while the group
+is collapsed (`aria-expanded="false"`) only its front tab has a `[data-pane-tab]`, so click
+the label to expand it before counting. Prove it paints: `document.elementFromPoint` at the
+centre of the front note's title (the `h2` in `[data-pane-id][data-focused]` with a non-zero
+rect; tabs behind it are `display: none`) returns that `h2`, and at the lit row's centre
+returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row.
+`location.reload()` keeps the arrangement and the histories
+(`JSON.parse(localStorage['astrolabe:wiki-tab-history:v1'])`) and expands every group. Save
+a screenshot of the section.
 
 ## Gotchas
 
@@ -114,5 +139,10 @@ arrangement and the histories (`JSON.parse(localStorage['astrolabe:wiki-tab-hist
 ## Owns
 
 `apps/web/src/components/wiki/`, `routes/_chat.wikis*.tsx`, `components/sidebar/SidebarCard.tsx`,
-`panes/panesHost.ts`, `panes/rightPanelPaneTabs.tsx`, the Wikis branches in
-`AppSidebarLayout.tsx` and `sidebar/mainAppLocation.ts`.
+`components/sidebar/SidebarTabHistory.tsx` (Back/Forward), `panes/panesHost.ts`,
+`panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
+`NEW_TAB_CLICK`, the tab-history ops; shared with Threads, chat tabs, Repositories and
+Changes), `components/projects/storedChoice.ts` (behind `astrolabe:wiki-scope:v1`; shared
+with Repositories and the project filter), the Wikis branches in `AppSidebarLayout.tsx` and
+`sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
+`WikiChangesSection.tsx` is pull-requests.md's).

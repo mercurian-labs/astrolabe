@@ -39,18 +39,17 @@ panes.md).
   glyph shows only while no provider resolves (e.g. before the environment's
   config loads). No instance badge: at tab size it would cover the glyph.
 - **Switch**: clicking a tab navigates to its thread, or to its draft.
-- **Close**: the ✕ on hover or keyboard focus, or a middle-click. Closing the tab
-  in front shows the tab after it, else the one before it, else `/` (also when the
-  neighbour's route is not known yet). Clicking a tab whose thread is gone closes
-  it.
+- **Close**: the always-shown ✕ at the tab's end (`Close <title>`), or a
+  middle-click. Closing the tab in front shows the tab after it, else the one
+  before it, else `/` (also when the neighbour's route is not known yet). Clicking
+  a tab whose thread is gone closes it.
 - **Reorder**: dragging a tab along the strip.
 - **Drag from the sidebar**: a thread row dragged past the sidebar onto the strip shows the
   insertion line and opens there as a tab, in front (`chatTabs/threadTabDrop.ts`, fed by the
   sidebar's drag past its list, as the composer's context drop is). A Cmd/Shift selection
   that includes the row opens together, in sidebar order; one already open moves to the line;
   the pin order is untouched. Only rows the sidebar lets you drag (pin-reorderable servers, not
-  the Working shelf). The rows use pointer events, not HTML5 drag: walk it with CDP
-  `Input.dispatchMouseEvent` press/moves/release (`preview_drag` sends HTML5 drags).
+  the Working shelf). The rows use a pointer sensor, not HTML5 drag; Gotchas has how to walk it.
 - **Persistence**: the list, the tab in front and the histories survive a reload,
   per device (`localStorage['t3code:chat-tabs:v1']`, `state.keys`, `state.active`,
   `state.histories`); a stored value with only `keys` (older builds) still loads.
@@ -87,9 +86,14 @@ preview_click  [data-testid=sidebar-row-card] >> nth=1          # a sidebar row
 preview_wait_for  locator=role=tab[name='<title>'][selected]
 preview_click  role=tab[name='<other title>']
 preview_click  role=button[name='Close <title>']
-preview_click  [data-testid=sidebar-row-card] >> nth=2  modifiers=["Alt"]   # new tab
-preview_click  role=button[name='Back']                 # the tab in front's history
-preview_click  role=button[name='Forward']
+preview_click  [data-testid=sidebar-row-card] >> nth=2  button="middle"   # new tab
+# preview_click sends no modifiers, so Option-click is Alt+Enter on the focused row:
+# preview_evaluate document.querySelectorAll('[data-testid=sidebar-row-card]')[2].focus()
+# preview_press  key=Enter  modifiers=["Alt"]
+# or button="right", then preview_click role=button[name='Open in new tab']
+preview_click  [data-tab-history] >> role=button[name='Back']      # the tab in front's history
+preview_click  [data-tab-history] >> role=button[name='Forward']
+# unscoped, a Browser tab in the right panel's own Back/Forward makes it ambiguous
 ```
 
 Read the strip (`*` marks the tab in front):
@@ -105,6 +109,10 @@ After `location.reload()` and `preview_wait_for role=tab[name='<title>']`, the
 same read returns the same tabs. For layout, measure rather than eyeball:
 `[data-chat-tab-strip]` spans only the chat column while the panel is open,
 and the panel (`[data-preview-panel-mode]`) starts at the top of the window.
+Tabs in the accessibility tree do not prove the strip paints. Hit-test the tab in
+front: with `t = document.querySelector('[data-chat-tab][aria-selected=true]')` and
+its rect `r`, `document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('[data-chat-tab]') === t`
+must be true. Then `preview_snapshot save:true` with the strip in view.
 
 ## Gotchas
 
@@ -121,8 +129,17 @@ and the panel (`[data-preview-panel-mode]`) starts at the top of the window.
 - The stored value is zustand's wrapper: read
   `JSON.parse(localStorage['t3code:chat-tabs:v1']).state` (`keys`, `active`,
   `histories[<key in front>]`).
-- Middle-click needs a real `auxclick` (button 1); if `preview_click` cannot send
-  one, dispatch `new MouseEvent('auxclick', {button: 1, bubbles: true})` on the row.
+- Middle-click is `preview_click button="middle"` (server browser tabs only), which
+  fires the row's or tab's `auxclick` (button 1). Elsewhere, dispatch
+  `new MouseEvent('auxclick', {button: 1, bubbles: true})` on it. Option-click cannot
+  be sent (`preview_click` takes no modifiers): use Alt+Enter on the focused row.
+- Drag from the sidebar: the rows' pointer sensor accepts synthetic events, and the
+  preview tools send no raw CDP input. From `preview_evaluate`, on the row card (not an
+  action button) dispatch a `pointerdown` with `{pointerId: 1, isPrimary: true,
+button: 0, buttons: 1, clientX, clientY, bubbles: true}`. Then dispatch several
+  `pointermove`s with the same pointerId, `buttons: 1` and coordinates, more than 6px
+  in total, ending at a point inside `[data-chat-tab-strip]` and outside the sidebar's
+  thread list. Finish with a `pointerup` there. A move with `buttons: 0` ends the drag.
 - The tab in front's curves are visual: screenshot the strip, and
   read `getComputedStyle(tab, '::before').backgroundImage` for the gradient.
 - Opening a chat focuses its composer. Keys sent "to the page" afterwards type into

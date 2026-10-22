@@ -13,7 +13,10 @@ import {
  * a coordinator's children (`subagent`) and of a thread's forks (`fork`), each rule as the
  * environment's settings allow. Titles that share an issue key (`M-123`) join too. What people
  * decided on top (`ChangeGroupDecisions`) moves members in and out: a change request is in one
- * group at a time. The server and every client derive the same groups from the same data.
+ * group at a time. A group's threads are the ones working on the effort: those that opened its
+ * change requests, their family, threads on its pull requests' branches, threads naming its issue
+ * key, and those people or agents added; a thread can be in several groups. The server and every
+ * client derive the same groups from the same data.
  */
 
 export interface ChangeGroupThread {
@@ -24,6 +27,8 @@ export interface ChangeGroupThread {
     readonly relationshipToParent: "fork" | "subagent" | null;
   };
   readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
+  /** The branch the thread works on, if any. */
+  readonly branch: string | null;
 }
 
 export interface ChangeGroupWikiChange {
@@ -51,6 +56,46 @@ export interface ChangeGroupMember {
   readonly url: string | null;
   readonly threadId: string | null;
   readonly updatedAt: string | null;
+  /** A pull request's head and base branches; null for documentation or before a host sync. */
+  readonly branch: string | null;
+  readonly baseBranch: string | null;
+}
+
+/** Why a thread is in a group. */
+export type ChangeGroupThreadReason =
+  /** The thread the group started from. */
+  | "root"
+  /** It opened one of the group's change requests. */
+  | "opened"
+  /** A fork of one of the group's threads. */
+  | "fork"
+  /** A coordinator's child of one of the group's threads. */
+  | "coordinator"
+  /** It works on a member pull request's branch. */
+  | "same-branch"
+  /** Its title or branch names the group's issue key. */
+  | "reference"
+  | "manual"
+  | "suggested";
+
+export const CHANGE_GROUP_THREAD_REASON_LABELS: Readonly<Record<ChangeGroupThreadReason, string>> =
+  {
+    root: "Started the group",
+    opened: "Opened a change request",
+    fork: "A fork",
+    coordinator: "A coordinator's child",
+    "same-branch": "Same branch",
+    reference: "Names the issue",
+    manual: "Added",
+    suggested: "Suggested",
+  };
+
+export interface ChangeGroupThreadEntry {
+  readonly threadId: string;
+  readonly title: string;
+  readonly reason: ChangeGroupThreadReason;
+  /** What an agent said, for a suggested thread. */
+  readonly note: string;
 }
 
 /** The group's state in one word, for its card and its tab. */
@@ -72,7 +117,9 @@ export const CHANGE_GROUP_STATE_LABELS: Readonly<Record<ChangeGroupState, string
 export interface ChangeGroup {
   readonly groupId: string;
   readonly title: string;
-  /** The threads whose change requests the rules gathered, the group's own first. */
+  /** The threads working on the effort, the group's own first. */
+  readonly threads: ReadonlyArray<ChangeGroupThreadEntry>;
+  /** Their ids, in the same order. */
   readonly threadIds: ReadonlyArray<string>;
   readonly members: ReadonlyArray<ChangeGroupMember>;
   readonly state: ChangeGroupState;
@@ -82,6 +129,9 @@ export interface ChangeGroup {
 
 const ISSUE_KEY = /\b[A-Z][A-Z0-9]*-\d+\b/g;
 const issueKeys = (title: string) => new Set(title.match(ISSUE_KEY) ?? []);
+/** A thread's issue keys: its title's, and its branch's, which are usually lower case. */
+const threadIssueKeys = (thread: ChangeGroupThread) =>
+  new Set([...issueKeys(thread.title), ...issueKeys((thread.branch ?? "").toUpperCase())]);
 
 function pullRequestMember(
   link: ThreadPullRequestLink,
@@ -113,6 +163,8 @@ function pullRequestMember(
     url: link.url,
     threadId,
     updatedAt: snapshot?.updatedAt ?? null,
+    branch: snapshot?.headBranch ?? null,
+    baseBranch: snapshot?.baseBranch ?? null,
   };
 }
 
@@ -139,6 +191,8 @@ function wikiMember(
     url: null,
     threadId: changeRequest.threadId,
     updatedAt: changeRequest.updatedAt,
+    branch: null,
+    baseBranch: null,
   };
 }
 
@@ -219,6 +273,8 @@ export function deriveChangeGroups(input: {
   >();
   for (const decision of input.decisions) {
     for (const entry of decision.added) {
+      // Threads are not change requests: they join groups below, and can join several.
+      if (entry.member.kind === "thread") continue;
       added.set(changeGroupMemberKey(entry.member), {
         groupId: decision.groupId,
         reason: entry.reason,
@@ -313,10 +369,20 @@ export function deriveChangeGroups(input: {
   for (const [groupId, list] of members) {
     const decision = decisions.get(groupId);
     if (list.length < 2 && decision === undefined) continue;
+    const groupThreads = groupThreadsOf({
+      groupId,
+      openers: threadIds.get(groupId) ?? [groupId],
+      members: list,
+      title: decision?.title ?? null,
+      decision,
+      threads,
+      settings,
+    });
     groups.push({
       groupId,
       title: decision?.title ?? threads.get(groupId)?.title ?? list[0]?.title ?? "Change group",
-      threadIds: threadIds.get(groupId) ?? [groupId],
+      threads: groupThreads,
+      threadIds: groupThreads.map((entry) => entry.threadId),
       members: list,
       state: changeGroupState(list, settings),
       armed: decision?.armed ?? settings.armByDefault,
@@ -328,6 +394,103 @@ export function deriveChangeGroups(input: {
       newest(a.members.map((m) => m.updatedAt)) ?? "",
     ),
   );
+}
+
+/** Branches too common to say two threads work on the same thing. */
+const SHARED_BRANCHES = new Set(["main", "master", "develop", "trunk"]);
+
+/**
+ * A group's threads: the one it started from, those that opened its change requests, their
+ * forks and coordinator's children, threads on its pull requests' branches and threads naming
+ * its issue key (each as the settings allow), then those people or agents added; minus those
+ * taken out of this group.
+ */
+function groupThreadsOf(input: {
+  readonly groupId: string;
+  /** The threads whose change requests the rules placed here, the group's own first. */
+  readonly openers: ReadonlyArray<string>;
+  readonly members: ReadonlyArray<ChangeGroupMember>;
+  readonly title: string | null;
+  readonly decision: ChangeGroupDecisions | undefined;
+  readonly threads: ReadonlyMap<string, ChangeGroupThread>;
+  readonly settings: ChangeGroupGroupingSettings;
+}): ReadonlyArray<ChangeGroupThreadEntry> {
+  const { threads, settings, decision } = input;
+  const removed = new Set(decision?.removed ?? []);
+  const entries = new Map<string, { reason: ChangeGroupThreadReason; note: string }>();
+  const add = (threadId: string, reason: ChangeGroupThreadReason, note = "") => {
+    if (!threads.has(threadId) || entries.has(threadId)) return;
+    if (removed.has(changeGroupMemberKey({ kind: "thread", threadId }))) return;
+    entries.set(threadId, { reason, note });
+  };
+
+  const openedBy = new Set(
+    input.members.flatMap((member) => (member.threadId === null ? [] : [member.threadId])),
+  );
+  add(input.groupId, openedBy.has(input.groupId) ? "opened" : "root");
+  for (const threadId of input.openers) add(threadId, "opened");
+  for (const threadId of openedBy) add(threadId, "opened");
+
+  // The family of the threads so far: forks and coordinator's children, all the way down.
+  const children = new Map<string, ChangeGroupThread[]>();
+  for (const thread of threads.values()) {
+    const parent = thread.lineage.parentThreadId;
+    if (parent === null) continue;
+    const list = children.get(parent) ?? [];
+    list.push(thread);
+    children.set(parent, list);
+  }
+  const queue = [...entries.keys()];
+  for (let index = 0; index < queue.length; index++) {
+    for (const child of children.get(queue[index]!) ?? []) {
+      const relationship = child.lineage.relationshipToParent;
+      const follows =
+        (relationship === "fork" && settings.lineage) ||
+        (relationship === "subagent" && settings.coordinator);
+      if (!follows || entries.has(child.id)) continue;
+      add(child.id, relationship === "fork" ? "fork" : "coordinator");
+      if (entries.has(child.id)) queue.push(child.id);
+    }
+  }
+
+  if (settings.sameBranch) {
+    const branches = new Set(
+      input.members.flatMap((member) =>
+        member.side === "code" &&
+        member.branch !== null &&
+        member.branch !== member.baseBranch &&
+        !SHARED_BRANCHES.has(member.branch)
+          ? [member.branch]
+          : [],
+      ),
+    );
+    for (const thread of threads.values()) {
+      if (thread.branch !== null && branches.has(thread.branch)) add(thread.id, "same-branch");
+    }
+  }
+
+  if (settings.references) {
+    const keys = new Set([
+      ...issueKeys(input.title ?? ""),
+      ...input.members.flatMap((member) => [...issueKeys(member.title)]),
+    ]);
+    if (keys.size > 0) {
+      for (const thread of threads.values()) {
+        if ([...threadIssueKeys(thread)].some((key) => keys.has(key))) add(thread.id, "reference");
+      }
+    }
+  }
+
+  for (const entry of decision?.added ?? []) {
+    if (entry.member.kind === "thread") add(entry.member.threadId, entry.reason, entry.note);
+  }
+
+  return [...entries].map(([threadId, entry]) => ({
+    threadId,
+    title: threads.get(threadId)?.title ?? threadId,
+    reason: entry.reason,
+    note: entry.note,
+  }));
 }
 
 /** The latest of some ISO timestamps, if any. */

@@ -61,6 +61,11 @@ export function ChangeGroupsSection({ query }: { readonly query: string }) {
                 : `${member.title} · ${member.place}`}
             </Text>
           ))}
+          {group.threads.length > 0 ? (
+            <Text className="pl-4.5 text-xs text-foreground-muted" numberOfLines={1}>
+              {group.threads.length === 1 ? "1 thread" : `${group.threads.length} threads`}
+            </Text>
+          ) : null}
         </Pressable>
       ))}
     </View>

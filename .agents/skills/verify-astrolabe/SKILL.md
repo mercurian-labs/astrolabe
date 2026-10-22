@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, Wikis, Vim mode, the which-key keyboard menu, Mercurian theme and branding) by driving the web app in T3's Browser panel. Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme and branding) by driving the web app in T3's Browser panel (the phone app through test-t3-mobile). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -10,8 +10,11 @@ Browser panel work exactly as in [test-t3-app](../test-t3-app/SKILL.md); read
 it first. This skill adds the map of Astrolabe's own features in
 [features/](features/README.md), which upstream's skill cannot know about.
 
-If the Browser panel tools are absent or report unavailable, report the
-blocker and stop. Do not switch to another automation system.
+A feature file's **Mobile** entries walk the phone app through
+[test-t3-mobile](../test-t3-mobile/SKILL.md) (its Device panel and AgentDevice);
+everything else walks in the Browser panel. If the tools a walk needs are absent
+or report unavailable, report the blocker and stop that walk. Do not switch to
+another automation system.
 
 ## Launch
 
@@ -91,10 +94,14 @@ which becomes `'<title>, <status>, <project>'` while a status shows). Then:
   Tools take Playwright selectors: a bare CSS descendant selector
   (`[data-x] input`) is rejected; chain with `>>` or use roles.
 - `preview_press` sends modifiers (`modifiers: ["Meta"]` for Cmd+K) and one key per
-  call; `preview_click` sends none. Keyboard flows (Vim, the keyboard menu) are
-  driven with `preview_press`.
+  call; `preview_click` sends none, but takes `button: "middle"` or `"right"`.
+  Keyboard flows (Vim, the keyboard menu) are driven with `preview_press`.
 - Opening a chat focuses its composer, so keys "to the page" type into the draft.
-  Move focus first (click a sidebar heading, or `document.activeElement.blur()`).
+  Clicking a heading or `document.activeElement.blur()` is not enough: focus lands on
+  the page and type-to-focus sends the next printable key (Space too) into the composer.
+  Open the keyboard menu with Cmd+K, which works from the composer, or move focus to a
+  row first with Cmd+K `h`. `preview_press` names the space bar `Space` (a literal
+  space is rejected).
 - `preview_snapshot` returns a very large tree. Use `preview_wait_for` to
   settle and `preview_evaluate` for targeted reads (tab lists, localStorage),
   and take a snapshot only to look or to save evidence. If a snapshot times out,
@@ -115,6 +122,13 @@ each claim, capture the action and the resulting state: a targeted
 `preview_evaluate` read plus `preview_snapshot` with `save: true`. Saved PNGs
 land in the host's `browser-artifacts` directory and outlive the run. Name
 their paths in your reply. Use `preview_recording_start`/`_stop` for motion.
+
+A node in the accessibility tree or the DOM is not proof that it paints. Prove
+rendering with `document.elementFromPoint` at the element's centre (for a
+shadow-DOM widget such as @pierre/trees,
+`document.querySelector('file-tree-container').shadowRoot.elementFromPoint`) or
+a screenshot: the Repositories Tree once had rows in the accessibility tree that
+painted nothing, and a DOM-only walk passed it.
 
 ## Cleanup
 

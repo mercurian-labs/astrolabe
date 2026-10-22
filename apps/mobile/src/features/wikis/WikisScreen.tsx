@@ -147,7 +147,7 @@ export function WikisScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${item.count} open ${item.count === 1 ? "change" : "changes"}`}
-              accessibilityHint="Shows them in Change requests."
+              accessibilityHint="Shows them in Changes."
               onPress={openChanges}
               className="flex-row items-center gap-2 px-4 py-3 active:opacity-60"
             >

@@ -233,7 +233,7 @@ function RepositoryList({
           />
           <LinkRow
             icon={PullRequestGlyph.pullRequest}
-            label="Change requests"
+            label="Changes"
             onPress={() => {
               setChangeRequestKind("repositories");
               workspace.dispatch({ type: "select", tab: "pullRequests" });

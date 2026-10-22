@@ -25,7 +25,7 @@ const memberOf = (memberKey: string) =>
     if (member === null) {
       return yield* new OrchestratorMcpFailure({
         code: "invalid_request",
-        message: `"${memberKey}" names no change request; use a key t3_change_groups shows.`,
+        message: `"${memberKey}" names no change request or thread; use a key t3_change_groups shows.`,
       });
     }
     return member;

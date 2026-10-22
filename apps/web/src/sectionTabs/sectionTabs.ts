@@ -18,7 +18,7 @@ export const SECTION_LABELS: Readonly<Record<SectionId, string>> = {
   threads: "Threads",
   wikis: "Wikis",
   repositories: "Repositories",
-  "change-requests": "Change Requests",
+  "change-requests": "Changes",
 };
 
 const CHAT_PREFIX = "chat:";

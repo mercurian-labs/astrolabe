@@ -47,6 +47,7 @@ function groupInputs(input: {
         title: thread.title,
         lineage: thread.lineage,
         pullRequests: thread.pullRequests,
+        branch: thread.branch,
       })),
     wikiChanges: input.overviews
       .filter((overview) => overview.environmentId === environmentId)

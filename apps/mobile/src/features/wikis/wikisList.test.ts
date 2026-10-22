@@ -118,7 +118,7 @@ describe("the Wikis list", () => {
   });
 });
 
-describe("the Change requests tab's wiki group", () => {
+describe("the Changes tab's wiki group", () => {
   it("lists the open changes under a label, then the merged and closed shelf", () => {
     const items = buildWikiChangeItems(wikiListEntries(overviews, null), {
       settledExpanded: false,

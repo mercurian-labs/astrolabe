@@ -51,8 +51,7 @@ export function CompactBrandTitle(
         props.fit && { flexShrink: 0 },
       ]}
     >
-      {/* Below the 18px cap-height minimum, so the A takes the monogram's small drawing. */}
-      <AstrolabeWordmark small height={Math.round(18 * scale)} />
+      <AstrolabeWordmark height={Math.round(21 * scale)} />
       {showStage ? (
         <View
           className="rounded-full bg-subtle px-1.5 py-0.5"

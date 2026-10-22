@@ -1,8 +1,8 @@
 # Vim mode
 
-The composer and wiki notes can edit with Vim, behind one device setting that is
-off by default. Turning it on asks you to type `:q` first, to show you know the
-way out. In Vim's normal mode `:` opens the Command Palette (see
+The composer, wiki notes and Repositories file tabs can edit with Vim, behind one
+device setting that is off by default. Turning it on asks you to type `:q` first, to
+show you know the way out. In Vim's normal mode `:` opens the Command Palette (see
 [which-key.md](which-key.md)), and the leader key (Space by default) opens the keyboard menu.
 
 ## Sub-features
@@ -29,8 +29,14 @@ way out. In Vim's normal mode `:` opens the Command Palette (see
 - **Notes**: wiki notes start in normal mode, with no mode panel: like the composer,
   the text reads in the code font (`--font-mono`, the Monospace font setting)
   outside insert mode.
-- **Visual mode** (both editors): `v`, `V` paint the selection
-  (`.cm-selectionLayer .cm-selectionBackground`), in a theme colour.
+- **Repository files**: a Repositories file tab ([repositories.md](repositories.md)) starts
+  in normal mode with no mode panel and follows the switch live. Space opens the keyboard
+  menu and `:` the palette. Files save on their own, so `:w` is the disabled "Nothing to
+  write here". A Markdown file switches to the code font outside insert mode; a code file
+  (`.cm-editor.cm-code`) is monospace already, so only the block cursor shows the mode.
+- **Visual mode** (every Vim editor): `v`, `V` paint the selection in a theme colour
+  (CodeMirror's `.cm-selectionLayer`); prove it with a screenshot, since the layer's
+  elements are not always there to count.
 - **Ex commands** (through the Command Palette; the app's are aliases, keybinding
   rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the composer's draft, or opens a note's
   **Save to change request** ("No edits to save" on a clean note; "Nothing to write
@@ -50,7 +56,9 @@ way out. In Vim's normal mode `:` opens the Command Palette (see
   lines; comments and lines Settings does not show stay. A hand edit applies live;
   lines Vim cannot apply come back as a warning toast ("Vim configuration has lines
   it cannot apply", "Line 3: Not supported here: let", **Open vimrc**), once per set
-  of issues. Applied to every Vim editor on the page; a change undoes the old
+  of issues. Every other reload, Settings' own Add, Edit, Remove and option changes
+  included, shows a success toast ("Vim configuration updated", "The vimrc reloaded."),
+  at most one per 2 s. Applied to every Vim editor on the page; a change undoes the old
   mappings.
 - **Formatting keys** are keybinding commands that fire while an editor has focus
   (`when: editorFocus`): `markdown.bold` (Cmd+B), italic (Cmd+I), code (Cmd+E),
@@ -79,6 +87,7 @@ preview_wait_for  [data-testid=composer-editor]              # in a chat
 preview_press     Escape                                     # normal mode
 preview_press     :                                          # palette as ex line
 preview_type      role=dialog[name='Search'] >> role=combobox   text=s/hello/bye/
+preview_wait_for  text=Run in the editor                     # the row settles after typing
 preview_press     Enter                                      # runs in the editor
 ```
 
@@ -98,6 +107,7 @@ Read the composer's state:
 
 A note's mode: `document.querySelector('[data-pane-id] [data-vim-mode]').dataset.vimMode`
 and its font `getComputedStyle(document.querySelector('[data-pane-id] .cm-content')).fontFamily`.
+A Repositories file tab reads the same way.
 
 ## Flows
 
@@ -113,19 +123,21 @@ Walk these end to end; each crosses into another feature.
    "hello world".
 3. **Ex line round trip.** In normal mode `:` → Command Palette open (chevron,
    empty field) listing every command (Search, New thread, Close tab, Send the
-   draft or save the note, Split down, Split right, Clear search highlight, …) →
-   type `s/hello/bye/` → first row **Run in the editor** → Enter → palette gone,
-   draft "bye world", mode `normal`, focus in the composer.
+   draft, Split down, Split right, Clear search highlight, …; from a note the write
+   row reads Save to change request) → type `s/hello/bye/` → first row **Run in the
+   editor** → Enter → palette gone, draft "bye world", mode `normal`, focus in the
+   composer.
 4. **Note.** Open a wiki document (wikis.md) → click into it → mode `normal`, code
    font, no `--NORMAL--` panel → `v` `e` → a selection drawn → Escape → `:w` Enter → "No edits to save" → `A`, `x`, Escape, `:w` Enter →
    **Save to change request** dialog → Escape, **Discard edits**.
 5. **Vim configuration.** Settings › Keybindings › Vim → **Add** → Mode Insert, Keys
-   `jk`, Does `<Esc>` → Save → a row `Insert jk → <Esc>`, and `inoremap jk <Esc>` in
-   `$home/userdata/vimrc` → append `let mapleader = ','` to the file by hand → a
-   warning toast names line N → the row's `⋯` Edit → Recursive on → Save → the
-   line reads `imap jk <Esc>` and the `let` line is still there → Search patterns
-   → Vim → `set nopcre` in the file → a chat: insert text, `j` `k` → mode
-   `normal`, no "jk" typed → back in settings, remove the row and reset Search
+   `jk`, Does `<Esc>` → Save → a row `Insert jk → <Esc>`, a "Vim configuration
+   updated" toast, and `inoremap jk <Esc>` in `$home/userdata/vimrc` → append
+   `let mapleader = ','` to the file by hand → a warning toast names line N → the
+   row's `⋯` Edit → Recursive on → Save → a "Vim configuration updated" toast, not a
+   second warning → the line reads `imap jk <Esc>` and the `let` line is still there
+   → Search patterns → Vim → `set nopcre` in the file → a chat: insert text, `j` `k`
+   → mode `normal`, no "jk" typed → back in settings, remove the row and reset Search
    patterns → only the hand-written lines remain.
 6. **Formatting keys.** In the composer, select a word in visual mode (`v` `b`) →
    Cmd+B → `**word**`, the sidebar still open → `u` → Cmd+Shift+K → `[word]()`
@@ -134,13 +146,18 @@ Walk these end to end; each crosses into another feature.
    value, Escape leaves it.
 
 **Proof:** each flow's reads above, plus saved screenshots of the gate, the
-composer in normal mode (code font) and the ex palette.
+composer in normal mode (code font) and the ex palette. A `[data-vim-mode]` value is
+not proof the editor paints: `document.elementFromPoint` at the centre of the gate's
+and the composer's `.cm-editor` must land inside it, and `.cm-fat-cursor` must have a
+non-zero rect. The visual-mode selection needs the screenshot, since its layer draws
+under the text and a hit-test lands on the text.
 
 ## Gotchas
 
 - Opening a thread focuses its composer **in insert mode**, so a Space or letter
-  sent "to the page" types into the draft. Press Escape (normal mode) or click a
-  non-focusable element outside the composer first, and clear any stray text.
+  sent "to the page" types into the draft. Press Escape (normal mode, where Space is
+  the leader) or open the menu with Cmd+K; a click outside leaves focus on the page,
+  where type-to-focus sends the key into the composer. Clear any stray text.
 - Do not send from the composer on a seeded home unless a provider is configured:
   `:w` and Enter in insert mode start a real turn.
 - Locators for `preview_type` must be Playwright selectors; a bare CSS descendant
@@ -170,6 +187,9 @@ composer in normal mode (code font) and the ex palette.
 `ComposerPromptEditorCodeMirror.tsx`), `components/settings/VimModeSetting.tsx`,
 `components/settings/vimQuitGate.ts`, the This device section of
 `components/settings/KeybindingsDeviceSettings.tsx`, `apps/web/src/editorKeybindings.ts`,
-`appVimKeys` in `whichKey/doors.ts`, `components/wiki/WikiNoteEditor.tsx` and
-`WikiNoteView.tsx` (`:w`), the `markdown.*` defaults in `packages/shared/src/keybindings.ts`,
-and `vimModeEnabled` in `packages/contracts/src/settings.ts`.
+`apps/web/src/vimScreenLines.ts` (`useVimScreenLines`, which applies Move by screen line to
+every Vim editor on the page), `appVimKeys` in `whichKey/doors.ts`,
+`components/wiki/WikiNoteEditor.tsx` and `WikiNoteView.tsx` (`:w`), the Vim compartment in
+`components/repositories/RepositoryFileView.tsx`, the `markdown.*` defaults in
+`packages/shared/src/keybindings.ts`, and `vimModeEnabled` and `vimScreenLinesEnabled` in
+`packages/contracts/src/settings.ts`.

@@ -190,12 +190,16 @@ export const make = Effect.gen(function* () {
 
   const groups: ChangeGroupService["Service"]["groups"] = Effect.gen(function* () {
     const snapshot = yield* projections.getShellSnapshot().pipe(Effect.mapError(storeError));
-    const threads: ChangeGroupThread[] = snapshot.threads.map((thread) => ({
-      id: thread.id,
-      title: thread.title,
-      lineage: thread.lineage,
-      pullRequests: thread.pullRequests ?? [],
-    }));
+    // Archived threads leave their groups, as the clients' do.
+    const threads: ChangeGroupThread[] = snapshot.threads
+      .filter((thread) => thread.archivedAt === null)
+      .map((thread) => ({
+        id: thread.id,
+        title: thread.title,
+        lineage: thread.lineage,
+        pullRequests: thread.pullRequests ?? [],
+        branch: thread.branch,
+      }));
     const { wikis: summaries } = yield* wikis.list.pipe(Effect.mapError(storeError));
     const names = new Map(summaries.map((wiki) => [wiki.wikiId as string, wiki.name]));
     const { changeRequests } = yield* wikis

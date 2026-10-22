@@ -64,7 +64,7 @@ function DuotoneMark({
 /**
  * The full "Astrolabe." wordmark, which is also the product's horizontal lockup. Set its height
  * with the className; the width follows the canvas. `small` draws its A with the monogram's small
- * drawing, for use below the wordmark's 18px cap-height minimum, so its pivot matches the small
+ * drawing, which the brand uses for any wordmark 48px tall or less, so its pivot matches the small
  * monogram's.
  */
 export function AstrolabeWordmark({
@@ -76,22 +76,22 @@ export function AstrolabeWordmark({
     <DuotoneMark
       inkUrl={small ? wordmarkSmallInkUrl : wordmarkInkUrl}
       dotsUrl={small ? wordmarkSmallDotsUrl : wordmarkDotsUrl}
-      className={cn("aspect-[373.52/59.74]", className)}
+      className={cn("aspect-[373.52/68.78]", className)}
       {...props}
     />
   );
 }
 
 /**
- * The monogram's small drawing, made for 16 and 24px icons where the full symbol would lose its
- * pivot ring. Size it with the className, as an icon.
+ * The monogram's small drawing, which the brand uses for any mark 48px tall or less: wider needle
+ * tips and a larger pivot, so both survive at icon sizes. Size it with the className, as an icon.
  */
 export function AstrolabeMarkSmall({ className, ...props }: MarkProps) {
   return (
     <DuotoneMark
       inkUrl={markSmallInkUrl}
       dotsUrl={markSmallDotsUrl}
-      className={cn("aspect-[627/702]", className)}
+      className={cn("aspect-[280.27/362]", className)}
       {...props}
     />
   );

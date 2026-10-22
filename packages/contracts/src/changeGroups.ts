@@ -6,13 +6,17 @@ import { WikiChangeRequestId, WikiId } from "./wiki.ts";
 
 /**
  * Astrolabe: change groups. A change group is a set of change requests in different projects
- * that are one effort, such as a pull request and the wiki change request documenting it. Rules
- * add members on their own (a thread's, its coordinator's children's, its forks'); what people
- * decide on top (members added or removed, suggestions dismissed, merging together) is kept by
- * the environment, under the group's id: the thread the group started from.
+ * that are one effort, such as a pull request and the wiki change request documenting it, and
+ * the threads working on it. Rules add members and threads on their own (a thread's, its
+ * coordinator's children's, its forks'); what people decide on top (members or threads added or
+ * removed, suggestions dismissed, merging together) is kept by the environment, under the
+ * group's id: the thread the group started from.
  */
 
-/** A member of a group: a pull request on its git host, or a wiki's change request. */
+/**
+ * What a group holds: a pull request on its git host, a wiki's change request, or a thread
+ * working on the effort. A change request is in one group at a time; a thread can be in several.
+ */
 export const ChangeGroupMemberRef = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("pull-request"),
@@ -25,14 +29,20 @@ export const ChangeGroupMemberRef = Schema.Union([
     wikiId: WikiId,
     changeRequestId: WikiChangeRequestId,
   }),
+  Schema.Struct({ kind: Schema.Literal("thread"), threadId: TrimmedNonEmptyString }),
 ]);
 export type ChangeGroupMemberRef = typeof ChangeGroupMemberRef.Type;
 
 /** A member's identity, the same wherever it is seen. */
 export function changeGroupMemberKey(ref: ChangeGroupMemberRef): string {
-  return ref.kind === "pull-request"
-    ? `pr:${ref.host}/${ref.repository}#${ref.number}`
-    : `wiki:${ref.wikiId}/${ref.changeRequestId}`;
+  switch (ref.kind) {
+    case "pull-request":
+      return `pr:${ref.host}/${ref.repository}#${ref.number}`;
+    case "wiki-change-request":
+      return `wiki:${ref.wikiId}/${ref.changeRequestId}`;
+    case "thread":
+      return `thread:${ref.threadId}`;
+  }
 }
 
 /** The member a key names (`changeGroupMemberKey`); null for a key of no member. */
@@ -42,6 +52,8 @@ export function changeGroupMemberRefOfKey(key: string): ChangeGroupMemberRef | n
     const [, host, repository, number] = pullRequest as unknown as [string, string, string, string];
     return { kind: "pull-request", host, repository, number: Number(number) };
   }
+  const thread = /^thread:(.+)$/.exec(key);
+  if (thread) return { kind: "thread", threadId: thread[1]! };
   const wiki = /^wiki:([^/]+)\/(.+)$/.exec(key);
   if (wiki) {
     const [, wikiId, changeRequestId] = wiki as unknown as [string, string, string];
@@ -103,6 +115,8 @@ export const ChangeGroupGroupingSettings = Schema.Struct({
   coordinator: on,
   lineage: on,
   references: on,
+  /** A thread on a member pull request's branch joins the group. */
+  sameBranch: on,
   agentSuggestions: on,
   flagDocsBehind: on,
   offerDocDrafts: off,
@@ -119,6 +133,7 @@ export const ChangeGroupGroupingSettingsPatch = Schema.Struct({
   coordinator: Schema.optionalKey(Schema.Boolean),
   lineage: Schema.optionalKey(Schema.Boolean),
   references: Schema.optionalKey(Schema.Boolean),
+  sameBranch: Schema.optionalKey(Schema.Boolean),
   agentSuggestions: Schema.optionalKey(Schema.Boolean),
   flagDocsBehind: Schema.optionalKey(Schema.Boolean),
   offerDocDrafts: Schema.optionalKey(Schema.Boolean),

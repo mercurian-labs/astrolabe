@@ -2,7 +2,7 @@ import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroup
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { CHANGE_GROUP_STATE_LABELS, type ChangeGroupMember } from "@t3tools/shared/changeGroups";
-import { BookOpenIcon } from "lucide-react";
+import { BookOpenIcon, MessagesSquareIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -165,6 +165,21 @@ function GroupCard({
               </li>
             );
           })}
+          {group.threads.length > 0 ? (
+            <li className="list-none">
+              <button
+                type="button"
+                aria-label={`${group.threads.length} threads in ${group.title}`}
+                onClick={() => showChangeRequestTab(key, "replace")}
+                className="flex w-full cursor-pointer items-center gap-1.5 py-0.5 text-left text-xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
+              >
+                <MessagesSquareIcon aria-hidden className="size-3 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">
+                  {group.threads.length === 1 ? "1 thread" : `${group.threads.length} threads`}
+                </span>
+              </button>
+            </li>
+          ) : null}
         </ul>
       </div>
     </li>

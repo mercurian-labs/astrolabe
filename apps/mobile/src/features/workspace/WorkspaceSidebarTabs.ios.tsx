@@ -13,7 +13,7 @@ export function WorkspaceSidebarTabs() {
         role="tab"
         options={[
           { value: "threads", label: "Threads" },
-          { value: "pullRequests", label: "Change requests" },
+          { value: "pullRequests", label: "Changes" },
         ]}
         selected={workspace.state.selectedTab}
         onSelect={(tab: WorkspaceTab) => selectTab(tab)}

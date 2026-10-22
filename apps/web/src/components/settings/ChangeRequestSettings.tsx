@@ -20,23 +20,29 @@ const GROUPING_ROWS: ReadonlyArray<{
   {
     key: "coordinator",
     title: "Same coordinator",
-    description: "What a coordinator's child threads open joins the coordinator's group.",
+    description: "A coordinator's child threads, and what they open, join the coordinator's group.",
   },
   {
     key: "lineage",
     title: "Thread lineage",
-    description: "A fork's change requests join the group of the thread it came from.",
+    description: "A fork, and its change requests, join the group of the thread it came from.",
   },
   {
     key: "references",
     title: "References",
-    description: "A change request in no group joins one whose titles share its issue key.",
+    description:
+      "A change request in no group joins one whose titles share its issue key, and threads naming the key join it.",
+  },
+  {
+    key: "sameBranch",
+    title: "Same branch",
+    description: "A thread working on a group's pull request branch joins the group.",
   },
   {
     key: "agentSuggestions",
     title: "Agent suggestions",
     description:
-      "An agent can suggest members, each with its reason, for you to accept or dismiss.",
+      "An agent can suggest change requests and threads, each with its reason, for you to accept or dismiss.",
   },
   {
     key: "flagDocsBehind",

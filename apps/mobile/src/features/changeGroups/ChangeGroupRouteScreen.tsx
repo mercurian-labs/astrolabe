@@ -1,5 +1,11 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { CHANGE_GROUP_STATE_LABELS, type ChangeGroupMember } from "@t3tools/shared/changeGroups";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
+import {
+  CHANGE_GROUP_STATE_LABELS,
+  CHANGE_GROUP_THREAD_REASON_LABELS,
+  type ChangeGroupMember,
+  type ChangeGroupThreadEntry,
+} from "@t3tools/shared/changeGroups";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { Pressable, ScrollView, View } from "react-native";
 
@@ -16,9 +22,10 @@ import { changeGroupColorClass, changeGroupReasonLabel } from "./changeGroupPres
 type Props = StaticScreenProps<{ readonly environmentId: string; readonly groupId: string }>;
 
 /**
- * Astrolabe: a change group on the phone: its state, Merge with the code, and its members by
- * side with why each is there; a tap opens a member's own screen, where it is reviewed and
- * merged. Taking a member out is one tap. Adding members and asking agents stay on web for now.
+ * Astrolabe: a change group on the phone: its state, Merge with the code, its members by side
+ * and the threads working on it, each with why it is there; a tap opens a member's own screen,
+ * where it is reviewed and merged, or a thread. Taking one out is one tap. Adding members or
+ * threads and asking agents stay on web for now.
  */
 export function ChangeGroupRouteScreen(props: Props) {
   const navigation = useNavigation();
@@ -47,6 +54,14 @@ export function ChangeGroupRouteScreen(props: Props) {
     { label: "Code", members: group.members.filter((member) => member.side === "code") },
     { label: "Documentation", members: group.members.filter((member) => member.side === "docs") },
   ];
+  const activityOf = (threadId: string): string => {
+    const shell = threads.find(
+      (candidate) => candidate.environmentId === environmentId && candidate.id === threadId,
+    );
+    if (threadRuntimeIsActive(shell?.runtime)) return "Working";
+    return shell?.settledAt ? "Settled" : "Idle";
+  };
+
   const openMember = (member: ChangeGroupMember) => {
     const { ref } = member;
     if (ref.kind === "wiki-change-request") {
@@ -62,7 +77,7 @@ export function ChangeGroupRouteScreen(props: Props) {
     const thread = threads.find(
       (candidate) => candidate.environmentId === environmentId && candidate.id === member.threadId,
     );
-    if (!thread) return;
+    if (!thread || ref.kind !== "pull-request") return;
     navigation.dispatch(
       StackActions.push("PullRequest", {
         environmentId: String(environmentId),
@@ -114,8 +129,76 @@ export function ChangeGroupRouteScreen(props: Props) {
             </View>
           ),
         )}
+        {group.threads.length > 0 ? (
+          <View className="gap-1">
+            <Text className="text-xs font-t3-medium text-foreground-muted">Threads</Text>
+            {group.threads.map((entry) => (
+              <ThreadRow
+                key={entry.threadId}
+                entry={entry}
+                activity={activityOf(entry.threadId)}
+                onOpen={() =>
+                  navigation.dispatch(
+                    StackActions.push("Thread", {
+                      environmentId: String(environmentId),
+                      threadId: entry.threadId,
+                    }),
+                  )
+                }
+                onRemove={() =>
+                  void decide({ type: "remove", memberKey: `thread:${entry.threadId}` })
+                }
+              />
+            ))}
+          </View>
+        ) : null}
       </View>
     </ScrollView>
+  );
+}
+
+function ThreadRow(props: {
+  readonly entry: ChangeGroupThreadEntry;
+  readonly activity: string;
+  readonly onOpen: () => void;
+  readonly onRemove: () => void;
+}) {
+  const { entry } = props;
+  const why =
+    entry.reason === "suggested" && entry.note
+      ? `Suggested: ${entry.note}`
+      : CHANGE_GROUP_THREAD_REASON_LABELS[entry.reason];
+  return (
+    <View className="flex-row items-center gap-2">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={entry.title}
+        onPress={props.onOpen}
+        className="flex-1 flex-row items-center gap-3 py-2 active:opacity-60"
+      >
+        <SymbolView
+          name="bubble.left.and.bubble.right"
+          size={16}
+          tintColorClassName="accent-icon"
+        />
+        <View className="min-w-0 flex-1">
+          <Text className="text-[15px] text-foreground" numberOfLines={2}>
+            {entry.title}
+          </Text>
+          <Text className="text-xs text-foreground-muted" numberOfLines={2}>
+            {`${why} · ${props.activity}`}
+          </Text>
+        </View>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Take ${entry.title} out of the group`}
+        onPress={props.onRemove}
+        className="p-2 active:opacity-60"
+      >
+        <SymbolView name="xmark" size={13} tintColorClassName="accent-icon" />
+      </Pressable>
+    </View>
   );
 }
 

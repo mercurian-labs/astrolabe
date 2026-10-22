@@ -8,7 +8,9 @@ The Icon Composer projects are the source of truth for full application icons. E
 
 They draw Astrolabe's approved channel tiles from the branding repository's icon package: the alidade A monogram (`mark.svg`) with its rust pivot (`pivot.svg`) on the channel's ground. Production is a warm alabaster gradient and nightly a deep charcoal gradient, both set as the project fill; development is the olive/stone terrain crop (`terrain.png`). The ring around the pivot severs the monogram's lower-left foot on purpose. Grounds stay the same in light and dark appearances, and the layers are flat, with glass, shadow, and translucency off.
 
-`app-icon-small.icon` is the small drawing, which enlarges the pivot and re-cuts its ring so the gap survives at device size. The exporter uses it for the 16 and 24 px renditions (the 16 px favicon and the 16 and 24 px ICO frames) and the main project for everything from 32 px up. Change both projects together.
+`app-icon-small.icon` is the small drawing, with wider needle tips and a larger pivot whose ring is re-cut so the gap survives at device size. The brand draws any mark 48 px or smaller with it, so the exporter uses it for the 16 and 32 px favicons and the 16 to 48 px ICO frames, and the main project from 64 px up. Change both projects together.
+
+The projects' layers come from the branding repository. After the branding package changes, run `node scripts/sync-brand-marks.ts <branding-repo>` and then `vp fmt apps/mobile/src/components/brand/astrolabeMarkLayers.ts`. The script rewrites each project's `mark.svg` and `pivot.svg` from the package's square tiles, and the in-app marks the same way: the web masks in `apps/web/src/assets/brand`, the boot screen's loading wordmark in `apps/web/public/brand`, and the mobile app's layers. Then run the exports below.
 
 Run `vp run icons:export` from the repository root to regenerate the tracked iOS, Linux, Windows, and web assets. The development web exports are also copied to `apps/web/public` for the browser favicon and splash screen. Run `vp run icons:check` to verify that the generated assets and public copies match their sources without changing files.
 
@@ -34,7 +36,8 @@ their rounded-square silhouette gets framed again and the monogram is cropped. T
 is instead rendered from the main Icon Composer projects by `vp run icons:export:android`:
 
 - `apps/mobile/assets/android-icon-foreground.png` and `-foreground-nightly.png`: the transparent
-  monogram and pivot at two thirds of the tile, inside the safe zone. Development and production
+  monogram and pivot at two thirds of the tile, or smaller where the needle's tips would leave the
+  66dp safe circle (their farthest ink sits 2px inside it at 432px, as in the branding package). Development and production
   share the dark ink; nightly draws the light ink.
 - `apps/mobile/assets/android-icon-background-dev.png`, `-nightly.png`, and `-prod.png`: the
   full-bleed ground (the development terrain, or the project's gradient fill).

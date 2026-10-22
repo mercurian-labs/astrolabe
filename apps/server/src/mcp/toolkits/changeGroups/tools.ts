@@ -22,14 +22,14 @@ const shared = {
 };
 
 const RULES =
-  "A change group is the change requests in different projects that are one effort: a repository's pull requests and the wiki change requests documenting them. A thread's own change requests, a coordinator's children's, and a fork's join its group on their own; people add, take out, and accept suggestions on top. Each member is reviewed and merged in its own place.";
+  "A change group is the change requests in different projects that are one effort: a repository's pull requests and the wiki change requests documenting them, plus the threads working on it. A thread's own change requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A change request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
 
 const groupId = TrimmedNonEmptyString.annotate({
   description: "The group's id, as t3_change_groups shows it: the thread the group started from.",
 });
 const memberKey = TrimmedNonEmptyString.annotate({
   description:
-    "A change request's key, as t3_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>` or `wiki:<wikiId>/<changeRequestId>`.",
+    "A change request's or a thread's key, as t3_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
 });
 
 export const ChangeGroupSummary = Schema.Struct({
@@ -38,6 +38,23 @@ export const ChangeGroupSummary = Schema.Struct({
   state: Schema.Literals(["in-sync", "docs-behind", "waiting-on-code", "docs-missing", "merged"]),
   armed: Schema.Boolean,
   threadIds: Schema.Array(Schema.String),
+  threads: Schema.Array(
+    Schema.Struct({
+      threadId: Schema.String,
+      title: Schema.String,
+      reason: Schema.Literals([
+        "root",
+        "opened",
+        "fork",
+        "coordinator",
+        "same-branch",
+        "reference",
+        "manual",
+        "suggested",
+      ]),
+      note: Schema.String,
+    }),
+  ),
   members: Schema.Array(
     Schema.Struct({
       key: Schema.String,
@@ -54,7 +71,7 @@ export const ChangeGroupSummary = Schema.Struct({
 
 const ChangeGroupsTool = Tool.make("t3_change_groups", {
   ...shared,
-  description: `List this environment's change groups: each group's members (code and documentation, with why each is there), its state, and whether its documentation merges with its code. ${RULES}`,
+  description: `List this environment's change groups: each group's members (code and documentation, with why each is there), the threads working on it (with why each is there), its state, and whether its documentation merges with its code. ${RULES}`,
   success: Schema.Struct({ groups: Schema.Array(ChangeGroupSummary) }),
 })
   .annotate(Tool.Readonly, true)
@@ -63,7 +80,7 @@ const ChangeGroupsTool = Tool.make("t3_change_groups", {
 const ChangeGroupSuggestTool = Tool.make("t3_change_group_suggest", {
   ...shared,
   description:
-    "Suggest a change request for a group, with one sentence on why it is part of the same effort. A person accepts or dismisses it; a dismissed suggestion is not suggested again.",
+    "Suggest a change request or a thread for a group, with one sentence on why it is part of the same effort. A person accepts or dismisses it; a dismissed suggestion is not suggested again.",
   parameters: Schema.Struct({
     groupId,
     memberKey,
@@ -77,7 +94,7 @@ const ChangeGroupSuggestTool = Tool.make("t3_change_group_suggest", {
 const ChangeGroupUpdateTool = Tool.make("t3_change_group_update", {
   ...shared,
   description:
-    "Add a change request to a group, or take one out, as a coordinator builds its group on purpose. Prefer t3_change_group_suggest when the person should decide.",
+    "Add a change request or a thread to a group, or take one out, as a coordinator builds its group on purpose. Prefer t3_change_group_suggest when the person should decide.",
   parameters: Schema.Struct({
     groupId,
     action: Schema.Literals(["add", "remove"]),

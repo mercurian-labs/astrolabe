@@ -114,20 +114,20 @@ have pressed show at the top, Backspace goes back a level, and Escape or a click
 elsewhere closes it. A key with nothing bound says so. The menu waits as long as
 you need.
 
-| Key                     | Does                                                      |
-| ----------------------- | --------------------------------------------------------- |
-| `:`                     | Command Palette                                           |
-| `/`                     | Search threads, wiki documents, projects, and settings    |
-| `n`                     | New thread, or new document on Wikis                      |
-| `f`                     | Find a file in the current project                        |
-| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right      |
-| `d` `u`                 | [Scroll](#scrolling) down or up half a page               |
-| `g`                     | Go to Threads, Wikis, Change Requests, Usage, or Settings |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward        |
-| `p`                     | Panes: split, close, maximize, full screen, right panel   |
-| `s` `s`                 | Show or hide the sidebar                                  |
-| `w`                     | Open Wikis, or find or create a document                  |
-| `,`                     | Settings                                                  |
+| Key                     | Does                                                            |
+| ----------------------- | --------------------------------------------------------------- |
+| `:`                     | Command Palette                                                 |
+| `/`                     | Search threads, wiki documents, projects, and settings          |
+| `n`                     | New thread, or new document on Wikis                            |
+| `f`                     | Find a file in the current project                              |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right            |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page                     |
+| `g`                     | Go to Threads, Wikis, Repositories, Changes, Usage, or Settings |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward              |
+| `p`                     | Panes: split, close, maximize, full screen, right panel         |
+| `s` `s`                 | Show or hide the sidebar                                        |
+| `w`                     | Open Wikis, or find or create a document                        |
+| `,`                     | Settings                                                        |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`

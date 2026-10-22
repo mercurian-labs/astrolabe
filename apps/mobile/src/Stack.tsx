@@ -280,7 +280,7 @@ const SettingsContentStack = createV5SheetStackNavigator({
     SettingsChangeRequests: createNativeStackScreen({
       screen: SettingsChangeRequestsRouteScreen,
       linking: "change-request-preferences",
-      options: { title: "Change requests" },
+      options: { title: "Changes" },
     }),
     SettingsAbout: createNativeStackScreen({
       screen: SettingsAboutRouteScreen,

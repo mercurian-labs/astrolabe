@@ -414,7 +414,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
                 : isOnRepositories
                   ? "Repositories"
                   : isOnPullRequests
-                    ? "Change requests"
+                    ? "Changes"
                     : "Threads"
           }
           resizable={{

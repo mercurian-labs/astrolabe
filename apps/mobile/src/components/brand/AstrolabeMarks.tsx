@@ -18,8 +18,10 @@ const ThemedPath = withUniwind(Path);
 /** Brand rust: the pivot and full stop keep it in every theme, as the marks guideline requires. */
 export const BRAND_RUST = "#a0492a";
 
-const WORDMARK_ASPECT_RATIO = 373.52 / 59.74;
-const MARK_SMALL_ASPECT_RATIO = 627 / 702;
+const WORDMARK_ASPECT_RATIO = 373.52 / 68.78;
+const MARK_SMALL_ASPECT_RATIO = 280.27 / 362;
+// The brand draws any mark this tall or less with the monogram's small drawing.
+const SMALL_DRAWING_MAX_HEIGHT = 48;
 
 interface MarkProps {
   readonly height: number;
@@ -99,13 +101,11 @@ function DuotoneMark(
 
 /**
  * The full "Astrolabe." wordmark, the product's horizontal lockup. Width follows the canvas.
- * `small` draws its A with the monogram's small drawing, for use below the wordmark's 18px
- * cap-height minimum (roughly 24px tall), so its pivot matches the small monogram's.
+ * At 48px tall or less its A takes the monogram's small drawing, as the brand requires, so its
+ * pivot matches the small monogram's.
  */
-export const AstrolabeWordmark = memo(function AstrolabeWordmark(
-  props: MarkProps & { readonly small?: boolean },
-) {
-  const small = props.small ?? false;
+export const AstrolabeWordmark = memo(function AstrolabeWordmark(props: MarkProps) {
+  const small = props.height <= SMALL_DRAWING_MAX_HEIGHT;
   return (
     <DuotoneMark
       {...props}
@@ -117,8 +117,8 @@ export const AstrolabeWordmark = memo(function AstrolabeWordmark(
 });
 
 /**
- * The monogram's small drawing, made for 16 and 24px icons where the full symbol would lose its
- * pivot ring.
+ * The monogram's small drawing, which the brand uses for any mark 48px tall or less: wider needle
+ * tips and a larger pivot, so both survive at icon sizes.
  */
 export const AstrolabeMarkSmall = memo(function AstrolabeMarkSmall(props: MarkProps) {
   return (

@@ -28,7 +28,7 @@ export const WORKSPACE_TAB_LABELS: Readonly<
 > = {
   threads: { title: "Threads", search: "Search threads" },
   // Astrolabe: pull requests and the wikis' change requests, as web's Change Requests section.
-  pullRequests: { title: "Change requests", search: "Search change requests" },
+  pullRequests: { title: "Changes", search: "Search changes" },
   wikis: { title: "Wikis", search: "Search wikis" },
   repositories: { title: "Repositories", search: "Search files" },
 };

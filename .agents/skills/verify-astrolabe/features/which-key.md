@@ -3,8 +3,9 @@
 Cmd+K (Ctrl+K off Apple) opens a which-key menu of the app's commands, hanging
 from the main area's top-right corner. The device's leader key (Space by default)
 opens it too, when you are not typing and in Vim's normal mode. The palette is one
-key further: **Search** is the menu's `/` or Cmd+K again, the **Command Palette**
-its `:` (or Cmd+P anywhere). The menu, the Command Palette and shortcuts run the
+key further: **Search** is the menu's `/`, Cmd+K again, or Cmd+/ (Ctrl+/ off Apple)
+anywhere but the terminal; the **Command Palette** is its `:` (or Cmd+P anywhere).
+The menu, the Command Palette and shortcuts run the
 same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live in
 `keybindings.json`.
 
@@ -26,28 +27,32 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   with nothing to act on here shows faint, **Not available here** (e.g. `g p` where
   Pull Requests is unsupported). Cmd+K shows it at once; the leader after ~300 ms,
   so a fast `Space g w` runs without it flashing.
-- **Top level** (defaults): `:` Command palette, `/` Search (always enabled),
-  `n` New thread or document, `f` Find file (upstream's file picker), `g` Go to,
-  `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows read `← | h`;
-  repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll down and `u`
-  Scroll up (repeatable), `t` Tabs, `p` Panes, `s` Sidebar, `w` Wikis, `,` Settings. `n`'s
+- **Top level** (defaults, sixteen rows in this order): `:` Command palette, `/`
+  Search (always enabled), `n` New thread or document, `f` Find file (upstream's
+  file picker), `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows
+  read `← | h`; repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll
+  down and `u` Scroll up (repeatable), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
+  `w` Wikis, `,` Settings. `n`'s
   label follows the section (on Wikis: "New document").
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Threads, w Wikis, p Change Requests, u Usage, s
-  Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
+- **Groups** (defaults): `g` t Threads, w Wikis, r Repositories, p Changes,
+  u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
   browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
-  `navigation.back`/`forward` through their shortcuts: in Threads and Wikis they walk
-  the tab in front's history and are faint at either end; elsewhere the route
-  history). `p` `v` split right, `s` split down, `c` close pane, `m`
+  `navigation.back`/`forward` through their shortcuts: in Threads, Wikis, Repositories
+  and Changes they walk the tab in front's history and are faint at either
+  end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
-  right panel (faint with no chat on screen) (the focus moves left Panes for the root).
+  right panel (faint with no chat on screen); the focus moves are root keys now, not in Panes.
   `s` `s` toggle sidebar. `w` `w` open
   Wikis, `f` find or create a document.
-- **Search** (the palette's plain mode, dialog name `Search`): empty, it lists
+- **Search** (Cmd+/, the menu's `/`, Cmd+K again; the palette's plain mode, dialog
+  name `Search`): empty, it lists
   Recent Threads only; upstream's Actions are the Command Palette's. A query finds
   Projects, Settings, Threads and every wiki's Documents (a document opens as a
   Wikis tab from anywhere). Typing `>` or `:` first switches to the Command Palette
-  (the character is consumed).
+  (the character is consumed). On a Mac, Ctrl+N/Ctrl+P in the field move the
+  highlighted row as ArrowDown/ArrowUp do, in every dialog on the palette's field
+  (Search, the Command Palette, the file picker, content search, the wiki finder).
 - **Command Palette** (Cmd+P, the menu's `:`, Vim's `:`): a chevron
   (`ChevronRightIcon`) replaces the search icon and the field holds only what
   follows the query's internal colon; Backspace in the empty field goes back to
@@ -68,7 +73,9 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   `localStorage['t3code:client-settings:v1']` (unset reads the old
   `spaceLeaderEnabled`). It fires when focus is not in a text field, a control
   (`tabindex>=0`) or a dialog, not with Shift or a held key, and in a Vim editor's
-  normal/visual mode. Cmd+K always works; in the terminal Cmd+K stays the
+  normal/visual mode. It also fires on a focused sidebar row, icon-rail button, or
+  pane or chat tab (`[data-pane-tab]`, `[data-chat-tab]`), where Space would
+  otherwise press it. Cmd+K always works; in the terminal Cmd+K stays the
   terminal's (`when: !terminalFocus`). Its description reads "Another way to open
   the keyboard menu, besides ⌘K. …".
 - **Triggers in `keybindings.json`**: one rule shape `{key, command, when?}`. `key`
@@ -80,10 +87,12 @@ close`) whose hints are buttons that do what they say. A row shows every key tha
   skipped with a server warning and a keybindings toast, as upstream reports bad
   shortcuts (`Invalid menu keys "…"`, `Invalid alias "…"`). `leader …` is not a
   kind: it fails as a shortcut.
-- **Keybindings table** (Settings › Keybindings): one row per command
-  (`#keybinding-<command>`), with Shortcut, Menu keys (header hint "after ⌘K") and
-  Alias columns; several bindings of one kind share a cell joined by `|`, an empty
-  cell shows `—`. A filter select (`aria-label="Kinds of keybinding shown"`: All,
+- **Keybindings table** (Settings › Keybindings): one row per command, with
+  Shortcut, Menu keys (header hint "after ⌘K") and Alias columns. A row's id is
+  `keybinding-<command>`, and command ids contain a dot, so select it with
+  `[id='keybinding-chatTab.next']` or `document.getElementById(...)`
+  (`#keybinding-chatTab.next` matches nothing). Several bindings of one kind share
+  a cell joined by `|`, an empty cell shows `—`. A filter select (`aria-label="Kinds of keybinding shown"`: All,
   Shortcuts, Menu keys, Aliases) narrows the columns and drops rows with nothing
   of that kind; the search box matches labels and keys (`t ]`, `menu t ]`, `⌘W`,
   `mod+w`). A shortcut's keycaps (`aria-label="Edit shortcut for …"`) open a
@@ -113,11 +122,14 @@ Command Palette. Rebind everything in Settings › Keybindings.
 preview_press     key=k modifiers=["Meta"]                 # opens the menu
 preview_press     g                                        # into Go to
 preview_press     w                                        # runs: /wikis
-preview_click     role=heading[name='Wikis']               # move focus off text fields
+preview_click     role=heading[name='Wikis']               # Wikis only (no composer); on a chat use Cmd+K h
 preview_press     Space                                    # leader (wait 300 ms+)
 ```
 
-Read the menu: `document.querySelector('[data-which-key]')?.innerText`. Read the
+Read the menu: `document.querySelector('[data-which-key]')?.innerText`. Prove it
+paints where it should (rows in the DOM are not proof):
+`const m=document.querySelector('[data-which-key]').getBoundingClientRect(), i=document.querySelector("[data-slot='sidebar-inset']").getBoundingClientRect(); [m.height>0, document.elementFromPoint(m.left+m.width/2, m.top+m.height/2)?.closest('[data-which-key]')!=null, Math.abs(i.right-12-m.right)<4]`
+should be all true (it hangs 12px in from the main area's right edge). Read the
 palette: `document.querySelector('[data-command-palette] input')?.value` and its
 rows `[...document.querySelectorAll('[data-command-palette] [data-slot=command-item]')].map(r => r.innerText)`.
 The field shows no `:` in the Command Palette (a chevron leads it instead); the
@@ -131,10 +143,13 @@ and copy the backup back when done. The server picks changes up live.
 
 ## Flows
 
-1. **Menu basics.** On a chat: Cmd+K → menu at the top right with the fourteen top-level
-   rows (Search's row shows only `/`), `Esc close` footer → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g`
-   (or click Go to) → heading `Menu › Go to` → click **Backspace back** → heading `Menu` → `g` → `z` → "Not bound", still open →
-   click Threads, or `w` → the URL changes, menu closed.
+1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
+   with the sixteen top-level rows (Search's row shows only `/`), `Esc close` footer
+   → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
+   `Menu › Go to`, rows Threads, Wikis, Repositories, Changes (a faint row
+   where pull requests are unsupported), Usage, Settings → click **Backspace back**
+   → heading `Menu` → `g` → `z` → "Not bound", still open → click Threads, or `w`,
+   or `r` (`/repositories`) → the URL changes, menu closed.
 2. **Leader across sections.** On Wikis, click the heading → Space → menu after the
    delay, heading `Menu`, rows say "Search"/"New document" → `w` `f` →
    the finder (`[data-testid=wiki-finder]`) open with focus in its field.
@@ -145,8 +160,12 @@ and copy the backup back when done. The server picks changes up live.
 5. **Panes.** Open the right panel with two surfaces in one pane; focus a non-terminal
    tab → Cmd+K `p` `v` → two panes, focus in the new right pane → Cmd+K `:` `q`
    Enter → one pane, chat strip unchanged (panes.md read).
-6. **Palette.** Cmd+K Cmd+K → Search, empty query, Recent Threads only; type a
-   document's name from Threads → a Documents row → Enter → `/wikis` with it as a
+6. **Palette.** Cmd+K Cmd+K → Search, empty query, Recent Threads only; Escape,
+   then Cmd+/ → Search again. On a Mac, Ctrl+N, Ctrl+N, Ctrl+P move the highlighted
+   row (`[data-command-palette] [data-slot=command-item][data-active]`) down, down,
+   up, as the arrows do. Type a
+   document's name from Threads → a Documents row → move the highlight onto it (Threads
+   rows arriving late can take it; check `[data-active]`) → Enter → `/wikis` with it as a
    tab. Cmd+K `:` → chevron, empty field, command rows; type `q` → one row,
    Close tab; Backspace twice → Search; type `>` → Command Palette again, field
    empty; Escape, then Cmd+P → Command Palette; Cmd+P again → closed. Cmd+K `f` →
@@ -159,28 +178,35 @@ and copy the backup back when done. The server picks changes up live.
    → Cmd+K shows an `x` `+1` row, `t` has no `]` row, and the dev log has
    "ignoring invalid keybinding entry" for `menu gx` (`Invalid menu keys`) →
    restore the file.
-9. **Keybindings table.** Settings › Keybindings, search `t ]` → the Chat Tab: Next
-   row, `⌘⇧]`-style shortcut and `t ]` in Menu keys. Search `Section: Wikis` → one
+9. **Keybindings table.** Settings › Keybindings, search `t ]` (field
+   `aria-label="Search keybindings"`) → the Chat Tab: Next row
+   (`[id='keybinding-chatTab.next']`), `t ]` in Menu keys and `—` in Shortcut (it
+   has no default shortcut; ⌘⇧] is Thread: Next's). Search `Section: Wikis` → one
    row, Menu keys `g w | w w`, Alias `—` → `⋯` Remove g w → `g w` struck through and
    `{"key":"menu g w","command":"-section.wikis"}` in the file → `⋯` Restore default
-   g w → the rule is gone → click `g w`, press `g` `x`, Save → the file holds both
+   g w → the rule is gone → click `button "Edit menu keys for Section: Wikis: g w"` (the
+   field starts with `g w` and appends each key, so press Backspace twice), press `g` `x`,
+   Save → the file holds both
    `menu w w` and `menu g x` → hover the Alias cell, `+`, type `wk`, Save → the file
    holds `:wk` → filter Aliases → only commands with aliases, one column → restore
    the file. Narrow the window under 44rem → each row stacks Shortcut / Menu keys /
    Alias lines.
 
-**Proof:** the menu and palette reads at each step, the URL or strip reads after a
+**Proof:** the menu and palette reads at each step, the menu's paint read in flow 1,
+the URL or strip reads after a
 command runs, the `keybindings.json` reads for flows 8 and 9, and saved screenshots
 of the root menu, a group and the Command Palette.
 
 ## Gotchas
 
-- Put focus on the page before Space: click a sidebar heading
-  (`role=heading[name='Threads']`), or `preview_evaluate document.activeElement.blur()`
-  where there is none. After opening a chat, focus is in its composer, where Space
-  types; on a focused switch or button, Space presses it (correctly, not a leader).
+- Put focus on a row before Space (Cmd+K `h`), or open the menu with Cmd+K: clicking a
+  sidebar heading or `document.activeElement.blur()` leaves focus on the page, where
+  type-to-focus sends Space into the composer. After opening a chat, focus is in its composer, where Space
+  types. A focused sidebar row, rail button or pane/chat tab opens the menu; on any
+  other focused switch or button, Space presses it (correctly, not a leader).
 - Inside the terminal, Cmd+K clears the terminal instead (by design).
 - Cmd+K opens the menu from a wiki note too; the editor's link key is Cmd+Shift+K.
+  Cmd+/ in a note opens Search, not a comment toggle.
 - Cmd+K while the palette is open closes it.
 - The table shows menu keys alone (`g w`), whatever the leader key; the file says
   `menu g w`. The Command Palette's list prefixes them with the leader's label.

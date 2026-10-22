@@ -131,7 +131,7 @@ function WorkLogIcon(props: {
   if (props.icon === "t3-code") {
     return (
       <AstrolabeMarkSmall
-        height={12}
+        height={14}
         {...(colorClassName ? { colorClassName } : { color: props.color })}
       />
     );

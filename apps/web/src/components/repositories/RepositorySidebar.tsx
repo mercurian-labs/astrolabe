@@ -409,7 +409,7 @@ function RepositoryList({
       ) : null}
       {heading && !expanded ? null : (
         <>
-          <LinkRow icon={FolderGit2Icon} label="Change requests" onClick={openChangeRequests} />
+          <LinkRow icon={FolderGit2Icon} label="Changes" onClick={openChangeRequests} />
           {showStatus && uncommitted.length > 0 ? (
             <>
               <SectionLabel>{`Uncommitted · ${uncommitted.length}`}</SectionLabel>

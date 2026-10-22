@@ -15,16 +15,20 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useOrchestrationCommand } from "~/state/use-orchestration-command";
 import { toastManager } from "../../ui/toast";
 import { wikiTabKey } from "../../wiki/wikiTabs";
+import { chatTabKey } from "~/sectionTabs/sectionTabs";
 
 /**
  * The tab a member opens in: a pull request's (named by the project of the thread that linked
- * it) or a wiki change request's. Null for a pull request whose thread is gone.
+ * it), a wiki change request's, or a thread's chat. Null for a pull request whose thread is gone.
  */
 export function changeGroupMemberTabKey(
   environmentId: EnvironmentId,
   member: ChangeGroupMember,
 ): string | null {
   const { ref } = member;
+  if (ref.kind === "thread") {
+    return chatTabKey(scopeThreadRef(environmentId, ThreadId.make(ref.threadId)));
+  }
   if (ref.kind === "wiki-change-request") {
     return wikiTabKey({
       kind: "change-request",

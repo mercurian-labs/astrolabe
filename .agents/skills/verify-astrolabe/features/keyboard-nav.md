@@ -3,10 +3,10 @@
 Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
-leftmost), the sidebar on screen (Threads, Wikis, Repositories or Change Requests), the chat
-column, and each pane (the right panel's, the Wikis area's, the Pull Requests
-area's). Never anything inside one (no stop for a tab strip, the timeline or the
-composer).
+leftmost), the sidebar on screen (Threads, Wikis, Repositories or Changes), the chat
+column, and each pane (the right panel's, the Wikis area's, the Repositories area's,
+the Changes area's). Never anything inside one (no stop for a tab strip, the
+timeline or the composer).
 
 ## Sub-features
 
@@ -57,9 +57,9 @@ composer).
   `sidebar-draft-row`, `wiki-sidebar-row[-slim]` outside search results, a PR row's
   button under `[data-pull-request-key]`, the legacy sidebar's `thread-row-*`):
   `j`/`k`/ArrowDown/ArrowUp step, `gg`/`G`/ Home/End jump, folded and hidden rows
-  skipped; Enter clicks the row and keeps focus on it (Threads: the opened thread's
-  composer does not take focus, `keepsListFocus`; a click still hands it focus),
-  Enter shows it in the tab in front, Alt+Enter clicks with Alt (opens it in a new
+  skipped; Enter clicks the row, showing it in the tab in front, and keeps focus on it
+  (Threads: the opened thread's composer does not take focus, `keepsListFocus`; a click
+  still hands it focus), Alt+Enter clicks with Alt (opens it in a new
   tab; any other Alt chord stays the page's), Mod+Enter Mod-clicks it (Threads:
   toggles selection, in Wikis and PRs too); `/` opens the sidebar's search; Escape focuses the place to the right;
   Space opens the keyboard menu. Keys act only with the row itself focused, not a
@@ -67,14 +67,18 @@ composer).
   (`gg`, `G`). The reached row shows the rows' light keyboard ring (`:focus-visible`:
   a 1px `--ring` inset edge and a 3px `--ring`/24% band, as inputs have), apart from
   the current row's fill. Rows are a roving tab stop: after a row has focus, only it
-  keeps `tabindex=0`.
-- **Rail list** (focus on a rail button, `[data-app-rail] [data-slot=sidebar-menu-button]`:
-  the sections, then **Toggle main sidebar** last at the foot):
-  the same keys as the sidebar list, minus `/`; Enter opens the section (or toggles
-  the sidebar) and keeps
-  focus on the button; Escape goes to the sidebar (or the main area, collapsed). The
-  buttons are their own roving tab stop and show the same light ring
-  (`focusRing="light"` on `SidebarMenuButton`).
+  keeps `tabindex=0`. The Repositories sidebar's rows are not list rows yet (a known
+  gap, not a regression): the list keys do nothing there, and focus moving in lands on
+  its first focusable control, not the current file.
+- **Rail list** (focus on a rail button, `[data-app-rail] [data-sidebar=menu-button]`;
+  each is a tooltip trigger, so its `data-slot` reads `tooltip-trigger`): the sections,
+  the desktop app's update control when shown, then **Settings** at the foot.
+  **Toggle main sidebar** sits above the rail in the title bar's cell
+  (`[data-app-rail-toggle]`), outside the list, so the list keys never reach it. The
+  same keys as the sidebar list, minus `/`; Enter opens the section and keeps focus on
+  the button; Escape goes to the sidebar (or the main area, collapsed). The buttons
+  are their own roving tab stop and show the same light ring (`focusRing="light"` on
+  `SidebarMenuButton`).
 - **Scrolling** `scroll.down` / `scroll.up` (menu "Scroll down/up", table "Scroll
   Down/Up", palette rows with double-chevron icons): half the scroll area's height,
   instant, on the main scroll area of the place keys act from: the largest element in
@@ -87,14 +91,15 @@ composer).
 
 ## How to get to it (user POV)
 
-Click a sidebar row or the chat, then Ctrl+H/J/K/L, or Space `l` (or →), then `l`
-again within half a second. In the composer with Vim on, Escape, then Ctrl+W `l`.
+Focus a sidebar row (Cmd+K `h`) or click the chat's title, then Ctrl+H/J/K/L, or Cmd+K
+`l` (or →), then `l` again within half a second. In the composer with Vim on, Escape, then Ctrl+W `l`.
 Space `d` scrolls the place half a page.
 
 ## Driving it with the Browser panel
 
 ```
-preview_click     [data-testid=sidebar-row-card] >> nth=0     # focus a row
+preview_press     key=k modifiers=["Meta"]                    # Cmd+K, then
+preview_press     key=h                                       # h focuses a row (a click hands focus to the composer)
 preview_press     key=l modifiers=["Control"]                 # to the main area
 preview_press     key=h modifiers=["Control"]                 # back to the sidebar
 preview_press     j                                           # next row
@@ -124,12 +129,19 @@ Read where focus is, by place and element:
             : (el?.getAttribute("data-slot") ?? null);
   const marked = document.querySelector("[data-focused-place]");
   const bar = marked?.querySelector(":is([data-pane-tab], [data-chat-tab])[aria-selected=true]");
+  // What paints at an element's horizontal centre, `dy` px below its top (else its centre).
+  const at = (el, dy) => {
+    const r = el.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + (dy ?? r.height / 2));
+  };
   return {
     place: name(place),
     element: a?.getAttribute("aria-label") ?? a?.getAttribute("data-testid") ?? a?.tagName,
     marked: name(marked),
-    bar: bar ? getComputedStyle(bar, "::after").backgroundColor : null,
-    ringed: a?.matches(":focus-visible") ?? false,
+    bar: bar ? getComputedStyle(bar).backgroundImage : null,
+    barHit: bar ? at(bar, 1)?.closest(":is([data-pane-tab], [data-chat-tab])") === bar : null,
+    ringed: !!a?.matches(":focus-visible") && getComputedStyle(a).boxShadow !== "none",
+    hit: a ? a.contains(at(a)) : false,
   };
 })();
 ```
@@ -167,27 +179,29 @@ Read the scroll position of the place keys act from, as `scroll.ts` picks its ar
 ```
 
 **Proof:** after each key the read names the expected place and element, `marked`
-equals `place`, `bar` is the focus colour on a pane or the chat (null on the
-sidebar and the rail), and a row or rail button reached by the list keys reads
-`ringed: true`. After Space `d`, `scrollTop` grows by half of `clientHeight` (less at
-the end). Screenshot the tab bars once in light and once in dark: only one pill
-carries the bar.
+equals `place`, `bar` is a `linear-gradient` in the focus bar colour (`--focus-bar`)
+with `barHit: true` on a pane or the chat (both null on the sidebar and the rail), a
+row or rail button reached by the list keys reads `ringed: true`, and `hit` is true
+(the focused element paints at its centre). After Space `d`, `scrollTop` grows by half
+of `clientHeight` (less at the end). Screenshot the tab bars once in light and once in
+dark: only one pill carries the bar.
 
 ## Flows
 
 1. **Sidebar to chat to panes.** On a chat with the right panel open and split right:
-   click a sidebar row → Ctrl+L → place `chat`, element `composer-editor`, the chat
+   Cmd+K `h` to a sidebar row (a click on a row already focuses the composer) → Ctrl+L →
+   place `chat`, element `composer-editor`, the chat
    tab's bar → click the chat's title (focus on the page) → Ctrl+L → the left pane, its
    active pill, the bar moved to that pill → Ctrl+L → the right pane → Ctrl+L →
    unchanged (no wrap) → Ctrl+H twice → `chat` → Ctrl+H → sidebar, the row clicked
    first, no bar anywhere.
-2. **Repeat window.** From the sidebar: Space `l` → `chat` (the composer: the window
-   ends here, so an `l` now types) → click the chat's title, Space `l` → the left pane
-   → `l` within half a second → the right pane → wait 1 s → `l` → nothing moves (the
-   window passed; with focus on a pill, `l` is no key of its). Space → (the arrow) from
+2. **Repeat window.** From the sidebar: Space `l` → `chat` (the composer; the window
+   outlives the landing) → `l` within half a second → the left pane, nothing typed in
+   the composer → `l` → the right pane → wait 1 s → `l` → nothing moves (the window
+   passed; with focus on a pill, `l` is no key of its). Space → (the arrow) from
    a pane → the pane to its right, `→` again repeats. From a pane: Space `h` `h` →
    sidebar → `j` at once → the next row (the list's, not a spent focus move). From the
-   chat: Space `h` → sidebar → Escape → `h` → unchanged (a row has no `h`). Set Repeat
+   chat: Cmd+K `h` → sidebar → Escape → `h` → unchanged (a row has no `h`). Set Repeat
    window to 0 → Space `l` `l` → one move. Reset restores 500.
 3. **Remembered focus.** In the left pane click a control inside the content (not the
    pill) → Ctrl+H → chat → Ctrl+L → that same control, not the pill.
@@ -200,28 +214,29 @@ carries the bar.
    on: Escape, Ctrl+W `l` → the right panel's pane, then plain `h` → no move (Vim's
    keys never arm); Ctrl+H in normal mode → stays in the composer.
 6. **Mouse marks too.** Click inside the right pane's content → the bar on its active
-   pill; click the composer → the bar on the chat tab; click a sidebar row → no bar.
+   pill; click the composer → the bar on the chat tab; Cmd+K `h` to a sidebar row → no bar.
 7. **Sidebar list.** Focus a thread row → `j` `j` → two rows down, the light ring on it,
    the active thread keeps its fill → `G` → last row, `gg` → first (also with an empty
    right-panel tab showing the launcher: Graph does not open) → Enter → that thread
-   opens and focus stays on the row → ArrowDown → the next row → Escape → the composer
+   opens and focus stays on the row → ArrowDown → the next row → Escape → the chat
+   (what last had focus there, the composer if nothing did)
    → Ctrl+H, `/` → the search field focused → Escape, click a row, Escape → focus in
-   the main area. On Wikis: `j` to a document → Mod+Enter → it joins the selection. On Change Requests, fold "Wiki changes" → `j` passes over its rows. On Change Requests: ArrowDown,
-   `j`, Enter → that PR in a pane, focus still on the row → `k` → the row above.
+   the main area. On Wikis: `j` to a document → Mod+Enter → it joins the selection. On
+   Changes: fold "Wiki changes" → `j` passes over its rows; ArrowDown, `j`, Enter →
+   that PR in a pane, focus still on the row → `k` → the row above.
 8. **Rebind in the vimrc.** Settings › Keybindings › Vim, add Normal `<C-h>` → `<C-w>h`
    (not recursive) → in the composer's normal mode Ctrl+H → the sidebar → remove the
    mapping → Ctrl+H stays in the composer, Ctrl+W `h` still moves.
 9. **Rail.** From a sidebar row: Ctrl+H → the rail, on the current section's button,
-   its light ring (`marked: rail`) → `j` → the next button → `G` → Settings → `gg` →
-   Threads → Enter → Threads opens, focus on the button → `G` → Toggle main sidebar →
-   Enter → the sidebar collapses, focus stays on the button → Enter → it opens again
+   its light ring (`marked: rail`) → `j` → the next button → `G` → Settings (never
+   Toggle main sidebar) → `gg` → Threads → Enter → Threads opens, focus on the button
    → Escape → the sidebar.
    Collapse the sidebar → Ctrl+H from the chat → the rail → Ctrl+L → the chat. Tab
    into the rail → only one button is a tab stop.
-10. **Scrolling.** On a long thread: click the chat's title → Space `d` → `scrollTop`
+10. **Scrolling.** On a long thread: click the chat's title → Cmd+K `d` → `scrollTop`
     of the timeline up by half its height → `d` `d` within half a second → two more →
     Space `u` → back up. Ctrl+D/Ctrl+U the same; in the composer Ctrl+D stays the
-    editor's. Space `l` to a pane with a long note (Wikis) or a diff → Ctrl+D scrolls
+    editor's. Cmd+K `l` to a pane with a long note (Wikis) or a diff → Ctrl+D scrolls
     that pane. At the top, Cmd+K shows `u` faint; on the rail both are faint. Ctrl+D on
     a sidebar row scrolls the list.
 
@@ -229,12 +244,13 @@ carries the bar.
 
 - `preview_press` sends `modifiers:["Control"]` for Ctrl+H; on a Mac host Meta is
   Cmd, which is not these keys.
-- Focus on the page first for the leader: a focused row takes Space as the leader
-  too, but a focused button elsewhere presses it.
+- For the leader, put focus on a row (Cmd+K `h`): a focused row takes Space as the
+  leader, a focused button elsewhere presses it, and focus on the bare page sends Space
+  into the composer through type-to-focus.
 - In the repeat window `h`/`l` are still focus moves: after Space `h` into the
   sidebar, `h` goes on to the rail. `j`/`k` there step the list at once.
-- Each `preview_press` is a round trip; two of them can straddle the 500 ms window on
-  a slow walk. Raise Repeat window for the walk if presses land late, and reset it
+- Each `preview_press` is a round trip, and two of them straddle the 500 ms window in
+  practice: set Repeat window to 3000 ms before walking it, and reset it
   after.
 - The server resolves the default menu keys and shortcuts: a server started before
   these defaults changed lacks the arrows, `d`/`u` and Ctrl+D/U until restarted.
@@ -255,9 +271,8 @@ carries the bar.
 
 `apps/web/src/keyboardNav/` (places in `regions.ts`, lists in `placeLists.ts`,
 scrolling in `scroll.ts`), the `focus.*` and `scroll.*` entries in
-`whichKey/commands.ts` and their `repeatable` flag, `takesTyping` in `whichKey/leader.ts`,
-the rail's `focusRing="light"` (`components/ui/sidebar.tsx`, `AppIconRail.tsx`),
-`keepsListFocus` in `ChatView.tsx`'s composer focus, the launcher guard in
+`whichKey/commands.ts` and their `repeatable` flag, the rail's `focusRing="light"`
+(`components/ui/sidebar.tsx`, `AppIconRail.tsx`), `keepsListFocus` in `ChatView.tsx`'s composer focus, the launcher guard in
 `RightPanelTabs.tsx`, the repeat window in `whichKey/menu.ts` (`pressRepeat`,
 `createWhichKeyMenu`'s arming) and `WhichKey.tsx`, `menuRepeatWindowMs` in
 `packages/contracts/src/settings.ts` and its row in `KeybindingsDeviceSettings.tsx`, the

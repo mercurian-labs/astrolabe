@@ -232,7 +232,7 @@ export function WelcomeWizard({
       >
         <WizardHeader
           title="Set up Astrolabe"
-          identity={<AstrolabeWordmark label="Astrolabe" className="h-5.25 shrink-0" />}
+          identity={<AstrolabeWordmark small label="Astrolabe" className="h-6 shrink-0" />}
         >
           <WizardSteps
             steps={ONBOARDING_STAGES}

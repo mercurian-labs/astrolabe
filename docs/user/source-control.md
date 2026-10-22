@@ -155,7 +155,7 @@ uses the project's instructions and recent commit subjects.
 
 ## Review and merge
 
-Open **Change Requests** in the icon rail to review changes and comments, request reviewers,
+Open **Changes** in the icon rail to review changes and comments, request reviewers,
 check out a branch, or merge. You can edit review titles and descriptions and your own comments
 where the host allows it. GitLab calls these merge requests.
 
@@ -167,7 +167,7 @@ tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side
 arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
 back after a restart.
 
-On mobile, **Change requests** lists reviews across your connected environments, with your
+On mobile, **Changes** lists reviews across your connected environments, with your
 wikis' change requests in a **Wiki changes** group above them. Open a review
 to read its description, activity, commits, and changed files. Line comments stay as drafts
 until you submit the review. **Work on PR** opens a chat with the review attached; sending
@@ -214,24 +214,30 @@ declined pull request.
 A change group is change requests in different projects that are one effort, such as a pull
 request and the wiki change request documenting it. A thread's own change requests form a group on
 their own, and so do a coordinator's children's and a fork's; a change request with no thread joins
-the group whose titles share its issue key (`M-123`). Groups lead the **Change Requests** list,
+the group whose titles share its issue key (`M-123`). Groups lead the **Changes** list,
 each with its state: **In sync**, **Docs behind**, **Waiting on code**, **Docs missing** or
 **Merged**. A thread in a group shows it beside its title.
 
+A group also lists the threads working on it: the thread it started from, the threads that opened
+its change requests, their forks and coordinator's children (including a fork that opened
+nothing), threads on one of its pull requests' branches, and threads whose title or branch names
+its issue key. A thread can be in more than one group.
+
 A group's tab lists its members and why each is there. **Merge with the code** merges the
 documentation the moment the code has; a merge the wiki refuses stays open for you. From the tab
-you can add a change request by hand or take one out, ask an agent for suggestions (you accept or
-dismiss each), and ask a thread to update documentation that fell behind or to draft missing
-documentation. **Open as a tab group** opens the group's thread, pull requests and documentation
-together: the label before them collapses them, and its menu merges the group with the code or
+you can add a change request or a thread by hand or take one out, ask an agent for suggestions of
+either (you accept or dismiss each), and ask a thread to update documentation that fell behind or to
+draft missing documentation. **Open as a tab group** opens the group's threads, pull requests and
+documentation together: the label before them collapses them, and its menu merges the group with the code or
 closes its tabs.
 
-Which rules group change requests, and what an agent may do, are under **Settings → Change
-Requests → Grouping**, for each environment. Turning a rule off keeps the members already grouped.
+Which rules group change requests and threads, including **Same branch**, and what an agent may do,
+are under **Settings → Changes → Grouping**, for each environment. Turning a rule off keeps the
+change requests already grouped.
 
-On your phone, groups lead the **Change requests** tab; a group shows its members, opens each,
+On your phone, groups lead the **Changes** tab; a group shows its members and threads, opens each,
 takes one out, and turns **Merge with the code** on or off. Grouping is under **Settings →
-Change requests**.
+Changes**.
 
 ### Review guides
 

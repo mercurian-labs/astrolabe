@@ -33,7 +33,7 @@ const ROWS: ReadonlyArray<{
   {
     key: "coordinator",
     label: "Same coordinator",
-    subtitle: "A coordinator's children join its group.",
+    subtitle: "A coordinator's children, and what they open, join its group.",
   },
   {
     key: "lineage",
@@ -43,12 +43,17 @@ const ROWS: ReadonlyArray<{
   {
     key: "references",
     label: "References",
-    subtitle: "Change requests sharing an issue key join.",
+    subtitle: "Change requests and threads sharing an issue key join.",
+  },
+  {
+    key: "sameBranch",
+    label: "Same branch",
+    subtitle: "A thread on a group's pull request branch joins.",
   },
   {
     key: "agentSuggestions",
     label: "Agent suggestions",
-    subtitle: "An agent suggests members for you to accept.",
+    subtitle: "An agent suggests change requests and threads for you to accept.",
   },
   {
     key: "flagDocsBehind",
@@ -95,7 +100,7 @@ export function SettingsChangeRequestsRouteScreen() {
   return (
     <>
       <SettingsEnvironmentFilterHeader />
-      <SettingsScreen title="Change requests" trailing={<AndroidSettingsEnvironmentFilter />}>
+      <SettingsScreen title="Changes" trailing={<AndroidSettingsEnvironmentFilter />}>
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}

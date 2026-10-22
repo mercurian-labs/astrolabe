@@ -95,7 +95,7 @@ export function useAppSections(): readonly AppSection[] {
       ? [
           {
             id: "pull-requests" as const,
-            label: "Change Requests",
+            label: "Changes",
             icon: <PullRequestGlyph.pullRequest />,
             active: onPullRequests,
             open: () =>
@@ -219,7 +219,7 @@ function RailMark() {
       data-app-rail-mark=""
       className="flex size-8 items-center justify-center rounded-md border border-border bg-background shadow-xs/5"
     >
-      <AstrolabeMarkSmall className="h-4.5" />
+      <AstrolabeMarkSmall className="h-5" />
     </span>
   );
 }

@@ -30,7 +30,7 @@ export function PullRequestsSidebar() {
     <>
       <SidebarChromeHeader isElectron={isElectron} />
       <div className="flex shrink-0 items-center gap-1 px-2 pt-2 pb-1">
-        <SidebarSectionTitle>Change requests</SidebarSectionTitle>
+        <SidebarSectionTitle>Changes</SidebarSectionTitle>
         <div
           ref={(element) => {
             titleActions = element;
