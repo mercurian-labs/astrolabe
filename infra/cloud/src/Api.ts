@@ -72,15 +72,13 @@ export default Api.make(
     const app = yield* makeCloudApp({
       page,
       sendMail: (mail) =>
-        Effect.gen(function* () {
-          yield* sendEmail({
-            FromEmailAddress: mailFrom,
-            Destination: { ToAddresses: [mail.to] },
-            Content: {
-              Simple: { Subject: { Data: mail.subject }, Body: { Text: { Data: mail.text } } },
-            },
-          });
-        }),
+        sendEmail({
+          FromEmailAddress: mailFrom,
+          Destination: { ToAddresses: [mail.to] },
+          Content: {
+            Simple: { Subject: { Data: mail.subject }, Body: { Text: { Data: mail.text } } },
+          },
+        }).pipe(Effect.asVoid),
     });
 
     // Connects on first query, so construction at plan time never dials out.

@@ -86,17 +86,16 @@ export function createThreadLineageAtomFamily<R, E>(
     // Each open revalidates; the kept value draws while it does.
     staleTimeMs: 0,
     refreshTrigger: options.refreshTrigger,
-    execute: (threadId: ThreadId) =>
-      Effect.gen(function* () {
-        const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-        const loader = yield* ThreadLineageLoader;
-        const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-        if (Option.isNone(prepared)) {
-          return yield* new ThreadLineageConnectionNotReadyError({
-            message: "The environment HTTP connection is not ready.",
-          });
-        }
-        return yield* loader.load(prepared.value, threadId);
-      }),
+    execute: Effect.fn("ThreadLineage.load")(function* (threadId: ThreadId) {
+      const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+      const loader = yield* ThreadLineageLoader;
+      const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+      if (Option.isNone(prepared)) {
+        return yield* new ThreadLineageConnectionNotReadyError({
+          message: "The environment HTTP connection is not ready.",
+        });
+      }
+      return yield* loader.load(prepared.value, threadId);
+    }),
   });
 }

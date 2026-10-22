@@ -14,25 +14,24 @@ const Environments = Schema.Struct({
  * relay's own API, which tears down their tunnels and DNS; push
  * registrations have nothing outside the database and are deleted directly.
  */
-export const removeRelayData = (input: {
+export const removeRelayData = Effect.fn("RelayAccount.removeRelayData")(function* (input: {
   readonly relayUrl: string;
   readonly userId: string;
   /** A relay token for the user, minted by the account issuer. */
   readonly token: string;
-}) =>
-  Effect.gen(function* () {
-    const client = (yield* HttpClient.HttpClient).pipe(
-      HttpClient.mapRequest(HttpClientRequest.bearerToken(input.token)),
-      HttpClient.filterStatusOk,
-    );
-    const url = (path: string) => new URL(path, input.relayUrl).toString();
-    const { environments } = yield* client
-      .get(url("/v1/environments"))
-      .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Environments)));
-    for (const { environmentId } of environments) {
-      yield* client.del(url(`/v1/client/environment-links/${encodeURIComponent(environmentId)}`));
-    }
-  });
+}) {
+  const client = (yield* HttpClient.HttpClient).pipe(
+    HttpClient.mapRequest(HttpClientRequest.bearerToken(input.token)),
+    HttpClient.filterStatusOk,
+  );
+  const url = (path: string) => new URL(path, input.relayUrl).toString();
+  const { environments } = yield* client
+    .get(url("/v1/environments"))
+    .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Environments)));
+  for (const { environmentId } of environments) {
+    yield* client.del(url(`/v1/client/environment-links/${encodeURIComponent(environmentId)}`));
+  }
+});
 
 export const deletePushRegistrations = (pool: Pool, userId: string) =>
   Effect.acquireUseRelease(

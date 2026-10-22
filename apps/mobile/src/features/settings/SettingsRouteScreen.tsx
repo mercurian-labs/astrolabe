@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useCloudAccount } from "../cloud/account";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
+import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
@@ -184,7 +185,11 @@ function SettingsIndexSections() {
         ) : null}
         <SettingsRow icon="folder" label="Organization" target="SettingsOrganization" />
         <SettingsRow icon="text.bubble" label="Thread behavior" target="SettingsThreads" />
-        <SettingsRow icon="arrow.triangle.pull" label="Changes" target="SettingsChangeRequests" />
+        <SettingsRow
+          icon={PullRequestGlyph.pullRequest}
+          label="Changes"
+          target="SettingsChangeRequests"
+        />
         <SettingsRow icon="arrow.turn.left.up" label="Follow-ups" target="SettingsFollowUp" />
         <SettingsRow icon="archivebox" label="Archived Threads" target="SettingsArchive" />
       </SettingsSection>
