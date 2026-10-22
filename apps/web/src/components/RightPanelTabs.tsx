@@ -274,6 +274,21 @@ export function surfaceShortcutActionForKey<
 }
 
 /**
+ * Astrolabe: whether a surface launcher on screen would take `key` as one of its letters. The
+ * chat's type-to-focus listener can be registered before a launcher's (the launcher mounts when
+ * the right panel opens), so the chat asks first rather than typing the letter into the composer.
+ */
+export function surfaceLauncherClaimsKey(key: string): boolean {
+  if (key.length !== 1 || document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return false;
+  const letter = key.toLowerCase();
+  return [...document.querySelectorAll<HTMLElement>("[data-surface-launcher-keys]")].some(
+    (launcher) =>
+      launcher.offsetParent !== null &&
+      (launcher.dataset.surfaceLauncherKeys ?? "").toLowerCase().includes(letter),
+  );
+}
+
+/**
  * The `:not` clause lets `closest` see past non-editable islands
  * (`contenteditable="false"`) to an editable host around them, matching
  * ComposerPendingUserInputPanel's typing guard.

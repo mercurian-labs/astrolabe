@@ -262,7 +262,7 @@ import {
   usePreviewMiniPlayerStore,
 } from "../previewMiniPlayerStore";
 import { threadPullRequestPanelTarget } from "./pullRequest/pullRequestDetail.logic";
-import { RightPanelTabs } from "./RightPanelTabs";
+import { RightPanelTabs, surfaceLauncherClaimsKey } from "./RightPanelTabs";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { useDeviceState } from "~/state/device";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
@@ -5827,7 +5827,9 @@ export default function ChatView(props: ChatViewProps) {
     scriptKeybindings,
     getShortcutContext: getShortcutContextStable,
     threadFindActive: isThreadFindActive,
-    typeIntoComposer: (key) => composerRef.current?.insertTextAtEnd(key) === true,
+    // Astrolabe: an open surface launcher keeps its letters (`surfaceLauncherClaimsKey`).
+    typeIntoComposer: (key) =>
+      !surfaceLauncherClaimsKey(key) && composerRef.current?.insertTextAtEnd(key) === true,
     closeThreadFind: () => {
       closeThreadFindStable();
       focusComposerStable();
