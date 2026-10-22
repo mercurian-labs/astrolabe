@@ -90,7 +90,6 @@
     "expo-application": "~58.1.2",
     "expo-asset": "~58.0.16",
     "expo-audio": "58.0.9",
-    "expo-auth-session": "~58.0.13",
     "expo-blur": "58.0.4",
     "expo-build-properties": "~58.0.11",
     "expo-camera": "~58.0.10",
