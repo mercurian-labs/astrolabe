@@ -53,10 +53,11 @@ describe("layoutUniverse", () => {
     expect(depths.some((z) => Math.abs(z) > 1)).toBe(true);
   });
 
-  it("lays out a 600-note memory in budget, with no two drawn nodes overlapping at rest", () => {
+  // The solve runs a fixed number of ticks, so its time is not asserted: four package suites at
+  // once, as CI runs them, made a ~1.6 s solve take up to 10 s. The test timeout is the ceiling.
+  it("lays out a 600-note memory with no two drawn nodes overlapping at rest", () => {
     const large = buildUniverse("synthetic", syntheticMemory());
     const spatial = layoutUniverse(large, DEFAULT_SETTINGS, 3);
-    expect(spatial.ms).toBeLessThan(4000);
     const flat = layoutUniverse(large, DEFAULT_SETTINGS, 2, spatial);
     for (const layout of [spatial, flat]) {
       expect(layoutUnit(layout)).toBeLessThanOrEqual(MAX_LAYOUT_UNIT);
