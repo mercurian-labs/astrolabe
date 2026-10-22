@@ -16,15 +16,20 @@ vp run --filter @mercurian/landing typecheck # astro check
   `src/layouts/Layout.astro` holds the head, the icon sprite and the page frame.
 - `src/styles/drafting.css` is the page's stylesheet, global and unchanged apart from asset paths.
 - `src/scripts/` holds the page's vanilla modules. `drafting.js` runs the page's motion (loaded by the
-  layout); `relight.js` and `instrument.js` run the closing astrolabe and its relit ground (loaded by
-  `Close.astro`, in that order, because the ground listens for the instrument's `astrolabe:time` events).
-  `sky.js`, `places.js` and `twilight.js` are the maths they import. `footer.js` prints the footer's
-  night band and runs its naming lens (loaded by `Footer.astro`).
+  layout); `relight.js` and `instrument.js` run the working astrolabe in [02] and its relit ground
+  (loaded by `Value.astro`, in that order, because the ground listens for the instrument's
+  `astrolabe:time` events). `sky.js`, `places.js` and `twilight.js` are the maths they import.
+  `footer.js` prints the footer's night band and runs its naming lens (loaded by `Footer.astro`).
+- The astrolabe is the page's light switch: `twilight.js` sets the whole page's palette (and the drawn
+  app's light or dark theme) from its sun. `sky-boot.js` sets it for the real sky before the first
+  paint; the layout inlines it with the three maths modules. `node scripts/twilight-contrast.mjs`
+  reports the text's contrast at every quarter degree.
 - `src/pages/relight-test.astro` is the closing section's test bench (`/relight-test/`).
 - Everything in `public/` is copied from astrolabe-site under the same names, so a new render drops in
   by copying the file over.
 
-The instrument takes `?t=2026-10-21T21:30&tz=America/New_York` to fix the moment and place. The bench
+The page takes `?t=2026-10-21T21:30&tz=America/New_York` to fix the moment and place, and with them
+its light. The bench
 also takes `?gl=0` to show the static print that stands in without WebGL.
 
 ## Where the art comes from
