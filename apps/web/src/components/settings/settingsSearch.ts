@@ -28,6 +28,7 @@ export type SettingsPath =
   | "/settings/change-requests"
   | "/settings/storage"
   | "/settings/connections"
+  | "/settings/workspaces"
   | "/settings/archived";
 
 export type SettingsSearchScope =
@@ -87,6 +88,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/change-requests": "Changes",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
+  "/settings/workspaces": "Workspaces",
   "/settings/archived": "Archive",
 };
 
@@ -998,7 +1000,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "t3-connect",
     localEnvironmentOnly: true,
-    title: "T3 Connect",
+    title: "Remote access",
     to: "/settings/connections",
     targetId: "connections-environment",
     searchTerms: ["managed tunnel cloud other devices remote"],
@@ -1053,6 +1055,48 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["pull request trusted environments shared credentials permissions read actions"],
   },
   {
+    id: "workspace",
+    title: "Workspace",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["organization org company account name address rename"],
+  },
+  {
+    id: "workspace-people",
+    title: "People",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["invite members admins owner roles remove invitations revoke seats"],
+  },
+  {
+    id: "workspace-teams",
+    title: "Teams",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["new team create join leave owners rename delete"],
+  },
+  {
+    id: "workspace-invite-policy",
+    title: "Who can invite people",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["policy invitations admins only everyone"],
+  },
+  {
+    id: "workspace-team-policy",
+    title: "Who can create teams",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["policy team creation admins only everyone"],
+  },
+  {
+    id: "workspace-leave",
+    title: "Leave, hand over or delete a workspace",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["transfer ownership owner delete workspace leave"],
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1077,6 +1121,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/change-requests": "environment-defaults",
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
+  "/settings/workspaces": null,
   "/settings/scheduled-tasks": null,
   "/settings/archived": "project-defaults",
 };

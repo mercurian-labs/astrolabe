@@ -24,6 +24,7 @@ import { clearConnectOnboardingRequest, requestConnectOnboarding } from "./conne
 import { readCloudRelayToken, useCloudAccount, useCloudAccountRefresh } from "./account";
 import { resolveCloudPublicConfig } from "./publicConfig";
 import { removeCloudEnvironments } from "./cloud-drafts";
+import { useWorkspaceDataCleanup } from "../workspaces/workspaceSync";
 
 function resetManagedRelayTokenCache() {
   return settleAsyncResult(() =>
@@ -174,6 +175,7 @@ function CloudAuthBridge(props: { readonly children: ReactNode }) {
   }, [isLoaded, isSignedIn, removeRelayEnvironments, userId]);
 
   useCloudAccountRefresh();
+  useWorkspaceDataCleanup();
 
   useEffect(
     () => () => {

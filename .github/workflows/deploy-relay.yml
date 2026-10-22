@@ -1,4 +1,4 @@
-name: Deploy T3 Connect relay
+name: Deploy remote access relay
 
 on:
   push:

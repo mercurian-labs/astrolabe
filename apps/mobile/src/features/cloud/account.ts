@@ -1,6 +1,7 @@
 import {
   type CloudAccountClient,
   type CloudAccountState,
+  type CloudConnection,
   createCloudAccountClient,
 } from "@t3tools/shared/mercurianAccount";
 import * as SecureStore from "expo-secure-store";
@@ -38,6 +39,11 @@ function accountClient(): CloudAccountClient | null {
     },
   });
   return client;
+}
+
+/** How the workspace client reaches the cloud as the signed-in account. */
+export function cloudConnection(): CloudConnection | null {
+  return accountClient()?.connection ?? null;
 }
 
 export function refreshCloudAccount(): Promise<void> {

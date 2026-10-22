@@ -1799,7 +1799,7 @@ function CloudLinkSwitch({
   disabled,
   disabledReason,
   onCheckedChange,
-  ariaLabel = "Enable T3 Connect",
+  ariaLabel = "Turn on remote access",
 }: {
   readonly checked: boolean;
   readonly disabled: boolean;
@@ -1842,9 +1842,9 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
   const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
 
   const disabledReason = !isSignedIn
-    ? "Sign in to T3 Connect to manage this environment."
+    ? "Sign in to manage this environment."
     : !canManageRelay
-      ? "Your session does not have permission to manage T3 Connect access."
+      ? "Your session does not have permission to manage remote access."
       : null;
   const isBusy = isUpdating || isUpdatingPreference;
   const refreshLinkState = useEffectEvent(primaryCloudLinkState.refresh);
@@ -1886,15 +1886,15 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       toastManager.add({
         type: "success",
         title: enabled
-          ? "T3 Connect linked"
+          ? "Remote access on"
           : publishAgentActivity
-            ? "T3 Connect tunnel disabled"
-            : "T3 Connect unlinked",
+            ? "Remote access tunnel off"
+            : "Remote access off",
         description: enabled
-          ? "This environment is available through T3 Connect."
+          ? "This environment is reachable from your other devices."
           : publishAgentActivity
-            ? "The managed tunnel was removed. Agent activity publishing stays on."
-            : "This environment is no longer available through T3 Connect.",
+            ? "The remote access tunnel was removed. Agent activity publishing stays on."
+            : "This environment is no longer reachable from your other devices.",
       });
     }
     setIsUpdating(false);
@@ -1932,7 +1932,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
         type: "success",
         title: enabled ? "Webhooks held while offline" : "Webhooks no longer held",
         description: enabled
-          ? "T3 Connect keeps webhook requests for up to 24 hours while this environment is offline."
+          ? "Remote access keeps webhook requests for up to 24 hours while this environment is offline."
           : "Requests to an offline environment now fail. Anything already held is still delivered.",
       });
     }
@@ -1946,16 +1946,16 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
           title={searchableSetting("t3-connect").title}
           description={
             linkRevoked
-              ? "This environment was removed from T3 Connect. Turn it on to link it again."
+              ? "Remote access for this environment was removed. Turn it on to link it again."
               : managedTunnelActive
                 ? reachability?.status === "unreachable"
-                  ? "T3 Connect is on, but other devices cannot reach this environment."
+                  ? "Remote access is on, but other devices cannot reach this environment."
                   : reachability?.status === "reachable"
-                    ? "This environment is available to your other devices through T3 Connect."
-                    : "T3 Connect is on. Reachability has not been checked yet."
+                    ? "This environment is reachable from your other devices."
+                    : "Remote access is on. Reachability has not been checked yet."
                 : managedTunnelOutOfSync
-                  ? "T3 Connect is out of sync. This environment is linked only to publish agent activity, so other devices cannot connect. Turn T3 Connect on to repair it."
-                  : "Make this environment available to your other devices through T3 Connect."
+                  ? "Remote access is out of sync. This environment is linked only to publish agent activity, so other devices cannot connect. Turn remote access on to repair it."
+                  : "Make this environment reachable from your other devices."
           }
           status={operationError ?? primaryCloudLinkState.error ?? reachabilityStatus}
           control={
@@ -1976,12 +1976,12 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       ) : linkRevoked ? (
         <SettingsRow
           title={searchableSetting("t3-connect").title}
-          description="This environment was removed from T3 Connect. Run `astrolabe connect link` on the host to link it again."
+          description="Remote access for this environment was removed. Run `astrolabe connect link` on the host to link it again."
         />
       ) : null}
       <SettingsRow
         title={searchableSetting("publish-agent-activity").title}
-        description="Send activity to mobile notifications and Live Activities without T3 Connect."
+        description="Send activity to mobile notifications and Live Activities without remote access."
         control={
           <CloudLinkSwitch
             ariaLabel="Publish agent activity to mobile clients"
@@ -2001,7 +2001,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       {managedTunnelActive ? (
         <SettingsRow
           title={searchableSetting("hold-webhooks-while-offline").title}
-          description="Keep webhook requests for up to 24 hours while this environment is offline, then deliver them. Off: T3 Connect only forwards requests and stores nothing."
+          description="Keep webhook requests for up to 24 hours while this environment is offline, then deliver them. Off: remote access only forwards requests and stores nothing."
           control={
             <CloudLinkSwitch
               ariaLabel="Hold webhook requests while this environment is offline"
@@ -2028,8 +2028,8 @@ function CloudLinkRow({
   if (!canReadRelay) {
     return (
       <SettingsRow
-        title="T3 Connect"
-        description="To edit these settings, pair this connection with both View relay and Manage relay permissions."
+        title="Remote access"
+        description="To edit these settings, pair this connection with the “View remote access” and “Manage remote access” permissions."
       />
     );
   }
@@ -2046,7 +2046,7 @@ function EmptyRemoteEnvironments({ cloudEnabled = true }: { readonly cloudEnable
         <EmptyTitle>No saved remote environments</EmptyTitle>
         <EmptyDescription>
           {cloudEnabled
-            ? "Click “Add environment” to pair another environment, or connect one from T3 Connect."
+            ? "Click “Add environment” to pair another environment, or connect one through remote access."
             : "Click “Add environment” to pair another environment."}
         </EmptyDescription>
       </EmptyHeader>
@@ -2912,7 +2912,7 @@ export function ConnectionsSettings() {
     toastManager.add({
       type: "success",
       title: "Route added",
-      description: `${routeTarget.label} falls back to T3 Connect when its other routes are unreachable.`,
+      description: `${routeTarget.label} falls back to remote access when its other routes are unreachable.`,
     });
   };
   const renderRemoteModeBody = () => (
@@ -2920,7 +2920,7 @@ export function ConnectionsSettings() {
       {relayRouteOffer !== null ? (
         <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
           <p className="text-xs text-muted-foreground">
-            This machine is on your T3 Connect account. Use it as a fallback route.
+            This machine is on your Astrolabe account. Use it as a fallback route.
           </p>
           <Button
             size="xs"
@@ -2928,7 +2928,7 @@ export function ConnectionsSettings() {
             disabled={isAddingSavedBackend}
             onClick={() => void addRelayRoute()}
           >
-            Add T3 Connect
+            Add remote access
           </Button>
         </div>
       ) : null}
@@ -3651,7 +3651,7 @@ export function ConnectionsSettings() {
                 <AlertDialogDescription>
                   {pendingDesktopServerExposureMode === "network-accessible"
                     ? "Let your other devices connect to Astrolabe over the network. Pair devices to give them access. Astrolabe will restart."
-                    : "Devices connected over your local network will disconnect. Existing tunnels, such as T3 Connect or Tailscale HTTPS, keep working. Astrolabe will restart."}
+                    : "Devices connected over your local network will disconnect. Existing tunnels, such as remote access or Tailscale HTTPS, keep working. Astrolabe will restart."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

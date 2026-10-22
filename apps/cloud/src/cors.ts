@@ -1,5 +1,5 @@
 /**
- * CORS for `/api/auth/*`. Every origin may call with a bearer token:
+ * CORS for `/api/auth/*` and `/api/workspaces/*`. Every origin may call with a bearer token:
  * self-hosted pages (localhost, LAN, Tailscale) and the desktop renderer
  * (`astrolabe://app`) run on origins nobody can list, and without a cookie
  * a caller can only act with a token it already holds. Only trusted origins
@@ -7,8 +7,16 @@
  * session cookie cross-origin to nobody else.
  */
 const ALLOW_HEADERS = "content-type, authorization";
-// The bearer plugin returns new session tokens in this header.
-const EXPOSE_HEADERS = "set-auth-token";
+// The bearer plugin returns new session tokens in set-auth-token; the
+// Electric client resumes shapes from the electric-* headers.
+const EXPOSE_HEADERS = [
+  "set-auth-token",
+  "electric-offset",
+  "electric-handle",
+  "electric-schema",
+  "electric-cursor",
+  "electric-up-to-date",
+].join(", ");
 
 export interface CorsRequest {
   readonly method: string;

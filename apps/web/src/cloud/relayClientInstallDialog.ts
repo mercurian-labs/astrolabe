@@ -15,7 +15,7 @@ export class RelayClientInstallConfirmationConflictError extends Schema.TaggedEr
   },
 ) {
   override get message(): string {
-    return `Cannot confirm relay client installation ${this.requestedVersion}; installation ${this.activeVersion} has dialog status ${this.activeDialogStatus}.`;
+    return `Cannot confirm remote access client installation ${this.requestedVersion}; installation ${this.activeVersion} has dialog status ${this.activeDialogStatus}.`;
   }
 }
 

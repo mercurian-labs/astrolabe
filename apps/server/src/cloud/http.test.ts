@@ -212,7 +212,9 @@ describe("link proof over a non-loopback desktop transport", () => {
       };
       const rejected = await post("/api/connect/link-proof", payload, headers);
       expect(rejected.status).toBe(400);
-      expect(await rejected.json()).toMatchObject({ message: "Invalid managed endpoint origin." });
+      expect(await rejected.json()).toMatchObject({
+        message: "Invalid remote access tunnel origin.",
+      });
       const loopback = await post(
         "/api/connect/link-proof",
         proofRequest,
@@ -252,7 +254,9 @@ describe("link proof over a non-loopback desktop transport", () => {
         { ...headers, authorization: `Bearer ${token}` },
       );
       expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ message: "Invalid managed endpoint origin." });
+      expect(await response.json()).toMatchObject({
+        message: "Invalid remote access tunnel origin.",
+      });
     }),
   );
 

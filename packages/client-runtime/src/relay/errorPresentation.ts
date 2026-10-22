@@ -27,56 +27,59 @@ export function relayProtectedErrorMessage(error: RelayProtectedError): string {
       switch (error.reason) {
         case "missing_bearer":
         case "invalid_bearer":
-          return "Relay rejected the cloud session token.";
+          return "Remote access rejected your Astrolabe session.";
         case "invalid_dpop":
-          return dpopFailureMessage("Relay rejected the DPoP proof.", error.dpopFailureReason);
+          return dpopFailureMessage(
+            "Remote access rejected the request signature.",
+            error.dpopFailureReason,
+          );
         case "not_authorized":
-          return "Relay rejected the authenticated request.";
+          return "Remote access rejected the request.";
       }
     case "RelayEnvironmentLinkProofExpiredError":
-      return "Relay rejected an expired environment link proof.";
+      return "Remote access rejected an expired environment link proof.";
     case "RelayEnvironmentLinkProofInvalidError":
-      return `Relay rejected the environment link proof (${error.reason}).`;
+      return `Remote access rejected the environment link proof (${error.reason}).`;
     case "RelayEnvironmentConnectNotAuthorizedError":
       // "Not authorized" covers non-auth causes too; surface the reason so a
       // missing link does not read as a credential problem.
       if (error.reason === "environment_link_not_found") {
-        return "Relay has no active link for this environment. If it was deregistered from T3 Connect, link it again on that machine.";
+        return "Remote access has no active link for this environment. If it was removed from your account, link it again on that machine.";
       }
       if (error.reason === "managed_endpoint_allocation_not_ready") {
-        return "The environment's T3 Connect tunnel is still being set up.";
+        return "The environment's remote access tunnel is still being set up.";
       }
       if (error.reason === "endpoint_provider_not_managed") {
-        return "This environment is linked only to publish agent activity, so it cannot accept connections. On that computer, open Settings > Connections and turn T3 Connect on.";
+        return "This environment is linked only to publish agent activity, so it cannot accept connections. On that computer, open Settings > Connections and turn remote access on.";
       }
       return error.reason
-        ? `Relay rejected the environment connection request (${error.reason}).`
-        : "Relay rejected the environment connection request.";
+        ? `Remote access rejected the connection request (${error.reason}).`
+        : "Remote access rejected the connection request.";
     case "RelayEnvironmentEndpointUnavailableError":
-      return `Relay could not reach the environment endpoint (${error.reason}).`;
+      return `Remote access could not reach the environment (${error.reason}).`;
     case "RelayEnvironmentEndpointTimedOutError":
-      return "Relay timed out while contacting the environment endpoint.";
+      return "Remote access timed out while contacting the environment.";
     case "RelayEnvironmentLinkFailedError":
-      return `Relay could not link the environment (${error.reason}).`;
+      return `Could not turn on remote access for this environment (${error.reason}).`;
     case "RelayEnvironmentLinkUnavailableError":
-      return `Relay cannot provision the managed endpoint (${error.reason}).${
+      return `Could not set up the remote access tunnel (${error.reason}).${
         error.provisioningStage ? ` Failed stage: ${error.provisioningStage}.` : ""
       }`;
     case "RelayEnvironmentLinkLimitExceededError":
-      return `Relay refused the link: this account already has its maximum of ${error.maxTunnels} managed tunnels. Unlink an environment to free one up.`;
+      return `Could not turn on remote access: this account already has its maximum of ${error.maxTunnels} remote access tunnels. Turn off remote access for another environment to free one up.`;
     case "RelayAgentActivityPublishProofExpiredError":
-      return "Relay rejected an expired agent activity publish proof.";
+      return "Remote access rejected an expired agent activity proof.";
     case "RelayAgentActivityPublishProofInvalidError":
-      return `Relay rejected the agent activity publish proof (${error.reason}).`;
+      return `Remote access rejected the agent activity proof (${error.reason}).`;
     case "RelayInternalError":
-      return `Relay encountered an internal error (${error.reason}).`;
+      return `Remote access encountered an internal error (${error.reason}).`;
   }
 }
 
 // The relay cuts off a request it cannot finish in time with a 504 that no
 // endpoint declares, so the client sees only the status.
 export const RELAY_GATEWAY_TIMEOUT_MESSAGE =
-  "Relay timed out before it finished the request (HTTP 504). Try again in a few minutes. If it keeps failing, copy the trace ID when you report it.";
+  "Remote access timed out before it finished the request (HTTP 504). Try again in a few minutes. If it keeps failing, copy the trace ID when you report it.";
 
 export function relayRequestFailureDetail(error: {
   readonly relayError?: RelayProtectedError | undefined;
@@ -84,12 +87,13 @@ export function relayRequestFailureDetail(error: {
 }): string | null {
   if (error.relayError) return relayProtectedErrorMessage(error.relayError);
   if (error.status === 504) return RELAY_GATEWAY_TIMEOUT_MESSAGE;
-  if (error.status !== undefined) return `Relay returned an unexpected HTTP ${error.status}.`;
+  if (error.status !== undefined)
+    return `Remote access returned an unexpected HTTP ${error.status}.`;
   return null;
 }
 
 export const RELAY_TUNNEL_RELEASED_MESSAGE =
-  "Offline for a while, so its T3 Connect tunnel was removed. Start Astrolabe on that computer and update it to the latest version to reconnect.";
+  "Offline for a while, so its remote access tunnel was removed. Start Astrolabe on that computer and update it to the latest version to reconnect.";
 
 export function relayOfflineReasonMessage(
   status: Pick<RelayEnvironmentStatusResponse, "offlineReason">,

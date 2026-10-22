@@ -370,7 +370,7 @@ jobs:
         run: vp run --filter t3 test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
   relay_public_config:
-    name: Resolve T3 Connect public config
+    name: Resolve remote access public config
     # Consumes only the release commit, not preflight's resolved version, so it
     # runs alongside preflight instead of after it. The condition mirrors preflight's.
     needs: [resolve_commit]

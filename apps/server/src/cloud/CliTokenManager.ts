@@ -90,7 +90,7 @@ export class CloudCliCredentialRemovalError extends Schema.TaggedError<CloudCliC
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not remove the stored T3 Connect CLI credential.";
+    return "Could not remove the stored remote access sign-in.";
   }
 }
 
@@ -111,8 +111,8 @@ export class CloudCliCredentialRefreshError extends Schema.TaggedError<CloudCliC
 
   override get message(): string {
     return this.requiresLogin
-      ? "Could not refresh the T3 Connect CLI credential. Run `astrolabe connect login` to authorize again."
-      : "Could not refresh the T3 Connect CLI credential.";
+      ? "Could not refresh the stored remote access sign-in. Run `astrolabe connect login` to sign in again."
+      : "Could not refresh the stored remote access sign-in.";
   }
 }
 
@@ -123,7 +123,7 @@ export class CloudCliCredentialReadError extends Schema.TaggedError<CloudCliCred
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not read the stored T3 Connect CLI credential.";
+    return "Could not read the stored remote access sign-in.";
   }
 }
 
@@ -132,7 +132,7 @@ export class CloudCliAuthorizationError extends Schema.TaggedError<CloudCliAutho
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not authorize the T3 Connect CLI.";
+    return "Could not complete remote access authorization.";
   }
 }
 
@@ -141,7 +141,7 @@ export class CloudCliAuthorizationTimeoutError extends Schema.TaggedError<CloudC
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Timed out waiting for T3 Connect authorization.";
+    return "Timed out waiting for remote access authorization.";
   }
 }
 
@@ -150,7 +150,7 @@ export class CloudCliAuthorizationDeniedError extends Schema.TaggedError<CloudCl
   {},
 ) {
   override get message(): string {
-    return "T3 Connect authorization was denied in the browser.";
+    return "Remote access authorization was denied in the browser.";
   }
 }
 

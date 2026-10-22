@@ -31,7 +31,7 @@ describe("mapManagedRelayError", () => {
     );
     expect(mapped).toMatchObject({
       reason: "timeout",
-      detail: "Relay timed out while contacting the environment endpoint.",
+      detail: "Remote access timed out while contacting the environment.",
       traceId: "trace-server-timeout",
     });
   });
@@ -55,13 +55,13 @@ describe("mapManagedRelayError", () => {
     expect(mapConnectRefusal("managed_endpoint_allocation_not_ready")).toMatchObject({
       _tag: "ConnectionTransientError",
       reason: "endpoint-unavailable",
-      detail: "The environment's T3 Connect tunnel is still being set up.",
+      detail: "The environment's remote access tunnel is still being set up.",
       traceId: "trace-connect-refused",
     });
     expect(mapConnectRefusal("endpoint_provider_not_managed")).toMatchObject({
       _tag: "ConnectionBlockedError",
       reason: "permission",
-      detail: expect.stringContaining("turn T3 Connect on"),
+      detail: expect.stringContaining("turn remote access on"),
     });
     expect(mapConnectRefusal(undefined)).toMatchObject({
       _tag: "ConnectionBlockedError",
@@ -86,7 +86,7 @@ describe("mapManagedRelayError", () => {
     expect(mapped).toMatchObject({
       _tag: "ConnectionBlockedError",
       reason: "authentication",
-      detail: `Relay rejected the DPoP proof. ${DPOP_UNKNOWN_HINT}`,
+      detail: `Remote access rejected the request signature. ${DPOP_UNKNOWN_HINT}`,
       traceId: "trace-1",
     });
   });
@@ -105,7 +105,7 @@ describe("mapManagedRelayError", () => {
       }),
     );
 
-    expect(mapped.message).toBe(`Relay rejected the DPoP proof. ${DPOP_RETRY_HINT}`);
+    expect(mapped.message).toBe(`Remote access rejected the request signature. ${DPOP_RETRY_HINT}`);
   });
 });
 

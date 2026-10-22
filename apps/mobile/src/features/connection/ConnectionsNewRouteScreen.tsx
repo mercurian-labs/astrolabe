@@ -376,7 +376,7 @@ function T3ConnectSection() {
   return (
     <View collapsable={false} className="gap-2">
       <Text className="px-4 text-sm font-t3-medium text-foreground-muted">
-        Or use the managed relay
+        Or use remote access
       </Text>
       {isSignedIn ? (
         <CloudEnvironmentRows
@@ -387,7 +387,7 @@ function T3ConnectSection() {
         />
       ) : (
         <ListRow
-          label="Sign in to T3 Connect"
+          label="Sign in"
           description="Reach your machines from anywhere, no network setup."
           disabled={!isLoaded}
           onPress={() => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" })}

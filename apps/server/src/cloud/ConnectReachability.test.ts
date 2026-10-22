@@ -35,7 +35,7 @@ describe("classifyReachability", () => {
 
     expect(result.status === "unreachable" && formatReachabilityFailure(result)).toBe(
       [
-        "✕ T3 Connect is NOT reachable from other devices",
+        "✕ Remote access is NOT reachable from other devices",
         "  Cloudflare's tunnel port (7844) times out from this machine.",
         '  Tailscale exit node "home-pi" is on. Traffic to Cloudflare goes through it.',
         "  Fix: tailscale set --exit-node=   (or allow outbound 7844 on that network)",

@@ -1,4 +1,4 @@
-import { getCurrentAuthEndpointContext } from "@better-auth/core/context";
+import { getCurrentAdapter, getCurrentAuthEndpointContext } from "@better-auth/core/context";
 import type { BetterAuthPlugin } from "better-auth";
 import {
   APIError,
@@ -21,10 +21,12 @@ export const hasAccess = (access: unknown) => access === "approved" || access ==
 /** Owner plus four. Pending invitations hold a seat, so the invite form stops at the limit. */
 export const ORGANIZATION_SEATS = 5;
 
-const adapter = () => getCurrentAuthEndpointContext().context.adapter;
+// The current transaction's adapter when there is one, so a rule reads what
+// the write it guards can see, on the same connection.
+const adapter = () => getCurrentAdapter(getCurrentAuthEndpointContext().context.adapter);
 
 const ownedOrganizations = async (userId: string) =>
-  adapter().count({
+  (await adapter()).count({
     model: "member",
     where: [
       { field: "userId", value: userId },
@@ -39,7 +41,7 @@ export const organizationRules = {
     user.access === "approved" && (await ownedOrganizations(user.id)) === 0,
   organizationHooks: {
     beforeCreateInvitation: async ({ organization }: { organization: { id: string } }) => {
-      const db = adapter();
+      const db = await adapter();
       const members = await db.count({
         model: "member",
         where: [{ field: "organizationId", value: organization.id }],
@@ -57,7 +59,7 @@ export const organizationRules = {
       if (members + pending >= ORGANIZATION_SEATS) {
         throw APIError.from("FORBIDDEN", {
           code: "ORGANIZATION_FULL",
-          message: `An organization holds ${ORGANIZATION_SEATS} people, counting pending invitations.`,
+          message: `A workspace holds ${ORGANIZATION_SEATS} people, counting pending invitations.`,
         });
       }
     },
@@ -73,7 +75,7 @@ export const organizationRules = {
       if ((await ownedOrganizations(member.userId)) > 0) {
         throw APIError.from("FORBIDDEN", {
           code: "ALREADY_OWNS_ORGANIZATION",
-          message: "That person already owns an organization.",
+          message: "That person already owns a workspace.",
         });
       }
     },
@@ -114,7 +116,7 @@ export const accessPlugin = () =>
           if ((user as { access?: unknown }).access !== "member") {
             throw APIError.from("BAD_REQUEST", {
               code: "NOT_A_MEMBER",
-              message: "Only members waiting to own an organization can ask for one.",
+              message: "Only members waiting to own a workspace can ask for one.",
             });
           }
           await ctx.context.internalAdapter.updateUser(user.id, {

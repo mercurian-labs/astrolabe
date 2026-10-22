@@ -98,7 +98,7 @@ describe("CloudManagedEndpointRuntime", () => {
       ManagedEndpointRuntime.isRetryableManagedEndpointRuntimeStatus({
         status: "failed",
         failure: "not-installed",
-        reason: "The relay client is not installed.",
+        reason: "The remote access client is not installed.",
       }),
     ).toBe(true);
     expect(
@@ -112,7 +112,7 @@ describe("CloudManagedEndpointRuntime", () => {
       ManagedEndpointRuntime.isRetryableManagedEndpointRuntimeStatus({
         status: "failed",
         failure: "unsupported-platform",
-        reason: "Relay client is unsupported on linux-arm.",
+        reason: "The remote access client is unsupported on linux-arm.",
       }),
     ).toBe(false);
     expect(
@@ -1150,7 +1150,7 @@ describe("CloudManagedEndpointRuntime", () => {
         status: "failed",
         providerKind: "cloudflare_tunnel",
         failure: "not-installed",
-        reason: "The relay client is not installed.",
+        reason: "The remote access client is not installed.",
       });
       expect(spawn).not.toHaveBeenCalled();
     }),

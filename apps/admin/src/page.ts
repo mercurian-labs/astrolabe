@@ -69,7 +69,7 @@ export function renderWaitlist(input: {
     .map(
       (entry) => `<tr>
         <td><input type="checkbox" name="email" value="${escapeHtml(entry.email)}" aria-label="Select ${escapeHtml(entry.email)}"></td>
-        <td>${escapeHtml(entry.email)}<div class="muted">${escapeHtml(entry.name || "No name")}${entry.wantsOrganization ? " · member asking for their own organization" : ""}</div></td>
+        <td>${escapeHtml(entry.email)}<div class="muted">${escapeHtml(entry.name || "No name")}${entry.wantsOrganization ? " · member asking for their own workspace" : ""}</div></td>
         <td>${escapeHtml(methodsLabel(entry.methods))}</td>
         <td>${escapeHtml(formatDate(entry.joinedAt))}</td>
         <td class="actions">
@@ -102,7 +102,7 @@ export function renderWaitlist(input: {
         <td class="actions">${
           decision.canUndo
             ? `<button name="one" value="undo ${escapeHtml(decision.email)}">Back to waitlist</button>`
-            : `<span class="muted">In an organization</span>`
+            : `<span class="muted">In a workspace</span>`
         }</td>
       </tr>`,
     )

@@ -31,6 +31,7 @@ export const makeAuth = (
       "organization",
       "team",
       "teamMember",
+      "teamOwner",
       "member",
       "invitation",
       "rateLimit",

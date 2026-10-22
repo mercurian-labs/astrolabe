@@ -7,7 +7,8 @@
     "dev": "vp run --filter @mercurian/auth build && alchemy dev",
     "deploy": "alchemy deploy",
     "destroy": "alchemy destroy",
-    "typecheck": "tsc-rs --noEmit"
+    "typecheck": "tsc-rs --noEmit",
+    "test:integration": "test/integration.sh"
   },
   "dependencies": {
     "@distilled.cloud/aws": "1.0.0-rc.13",

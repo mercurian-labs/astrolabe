@@ -39,7 +39,7 @@ export class ManagedRelayTokenStoreError extends Schema.TaggedError<ManagedRelay
   },
 ) {
   override get message(): string {
-    return `Managed relay token store operation "${this.operation}" failed for key "${this.storageKey}".`;
+    return `Remote access token storage failed to ${this.operation} key "${this.storageKey}".`;
   }
 }
 

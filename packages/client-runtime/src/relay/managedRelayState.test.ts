@@ -392,7 +392,7 @@ describe("createManagedRelayQueryManager", () => {
     registry.get(atom);
     await vi.waitFor(() => {
       expect(readManagedRelaySnapshotState(registry.get(atom)).error).toBe(
-        "Relay returned status for a different environment.",
+        "Remote access returned status for a different environment.",
       );
     });
   });
@@ -414,7 +414,7 @@ describe("createManagedRelayQueryManager", () => {
     registry.get(atom);
     await vi.waitFor(() => {
       expect(readManagedRelaySnapshotState(registry.get(atom))).toMatchObject({
-        error: "Could not get relay environment status.",
+        error: "Could not check this environment's remote access status.",
         errorTraceId: "trace-status",
       });
     });
@@ -442,7 +442,7 @@ describe("createManagedRelayQueryManager", () => {
     registry.get(atom);
     await vi.waitFor(() => {
       expect(readManagedRelaySnapshotState(registry.get(atom)).error).toBe(
-        `Relay rejected the DPoP proof. ${DPOP_UNKNOWN_HINT}`,
+        `Remote access rejected the request signature. ${DPOP_UNKNOWN_HINT}`,
       );
     });
   });

@@ -179,6 +179,10 @@ export const Electric = Effect.gen(function* () {
       DATABASE_URL: yield* DatabaseUrl,
       // Only the API reaches Electric, so the shared secret stays server-side.
       ELECTRIC_INSECURE: "true",
+      // Live shape requests pass through the API, which runs on Bun; Bun closes
+      // a request idle for 10s, so Electric answers a quiet long-poll (20s by
+      // default) before then and the client simply polls again.
+      ELECTRIC_LONG_POLL_TIMEOUT: "8000",
     },
   });
 });

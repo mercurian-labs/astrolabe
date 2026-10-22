@@ -227,6 +227,10 @@
       "types": "./src/mercurianAccount.ts",
       "import": "./src/mercurianAccount.ts"
     },
+    "./mercurianWorkspaces": {
+      "types": "./src/mercurianWorkspaces.ts",
+      "import": "./src/mercurianWorkspaces.ts"
+    },
     "./symlink": {
       "types": "./src/symlink.ts",
       "import": "./src/symlink.ts"

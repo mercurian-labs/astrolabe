@@ -34,7 +34,7 @@ export function Account(props: { readonly user: AccountUser; readonly sessionTok
       <div className="flex flex-col gap-4">
         {onWaitlist ? (
           <Notice tone="warning">
-            You're on the waitlist. T3 Connect turns on once your account is approved, and we'll
+            You're on the waitlist. Remote access turns on once your account is approved, and we'll
             email you when it is.
           </Notice>
         ) : null}
@@ -489,7 +489,7 @@ function DangerZone(props: { readonly onWaitlist: boolean }) {
     if (error.code === "SESSION_EXPIRED") return setProblem("sign-in-again");
     if (error.code === "OWNS_SHARED_ORGANIZATION") {
       return setProblem(
-        "You own an organization with other members. Hand it over or remove them first.",
+        "You own a workspace with other people in it. Hand it over or remove them first.",
       );
     }
     setProblem(errorMessage(error, "Your account could not be deleted. Try again later."));
@@ -513,7 +513,7 @@ function DangerZone(props: { readonly onWaitlist: boolean }) {
           <p className="text-sm text-text">
             {props.onWaitlist
               ? "This deletes your account and gives up your place on the list."
-              : "This deletes your account, unlinks your machines from T3 Connect, and signs out every app. Organizations you own alone are deleted too. It can't be undone."}
+              : "This deletes your account, turns off remote access for your machines, and signs out every app. Workspaces you own alone are deleted too. It can't be undone."}
           </p>
           {problem === "sign-in-again" ? (
             <Notice tone="warning">

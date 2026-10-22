@@ -168,7 +168,7 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 
 ```
 preview_click  role=button[name='Toggle right panel']
-preview_click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher
+preview_click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
 preview_click  [data-pane-id] >> role=button[name='New tab']
 preview_click  role=menuitem[name=/^Files/]
 preview_click  [data-pane-id] >> role=button[name='Pane actions']

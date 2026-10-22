@@ -29,7 +29,7 @@ the version.
   - Pushing a `vX.Y.Z` tag by hand still works and builds exactly the tagged commit. Use it when
     the commit to ship is not the latest nightly, such as a cherry-picked fix on a release branch.
 - Runs lint, typecheck, and tests alongside artifact builds. Publishing waits for every check.
-- Reads the shared production T3 Connect relay URL and Astrolabe sign-in URL before packaging clients.
+- Reads the shared production relay URL and Astrolabe sign-in URL before packaging clients.
 - Builds the platform-independent JS (server bundle, web client, Electron main) once in the `build_bundle` job and hands it to every platform job as the `js-bundle` artifact; the platform jobs only package it, so no runner rebuilds it.
 - Builds six desktop artifacts in parallel for both channels, each as its own job (`desktop_<platform>_<arch>`, one call of `release-desktop.yml`), gated only on the bundle. Every target builds on hardware of its own architecture except Windows arm64: its runners have 4 vCPUs, so it builds and signs (with jsign) on a Linux runner, and a `windows-11-arm` job runs the packaged natives and the CLI archive (`verify_runner`). The Windows jobs embed the same-arch Linux CLI archive as the WSL runtime and wait for that artifact partway through, not for the whole Linux job:
   - macOS `arm64` DMG
@@ -59,7 +59,7 @@ the version.
 
 ## Pull request macOS previews
 
-Labeling a PR `preview:mac` publishes a signed, notarized Apple Silicon DMG with T3 Connect enabled
+Labeling a PR `preview:mac` publishes a signed, notarized Apple Silicon DMG with remote access enabled
 to the rolling `desktop-preview` prerelease, and works for fork PRs. The label is a one-shot request
 for the commit it is applied to: the trusted workflow removes it once the build is in hand, and later
 pushes do not build until a maintainer applies it again. Every signed preview is therefore a
@@ -74,7 +74,7 @@ split so the Developer ID certificate never shares a job with PR code:
   bot, a collaborator, or listed in `.github/VOUCHED.td` (read from the default branch, so a PR cannot vouch
   for itself). It then packages and signs the bundle through `release-desktop.yml` checked out at
   `main`, so packaging, native helpers, and the Electron/desktop dependencies come from `main`, not
-  the PR. Only the version and the public T3 Connect identifiers in `.env.example` are read from the
+  the PR. Only the version and the public remote access identifiers in `.env.example` are read from the
   PR commit, as data, so the packaged app points at the same deployment as the bundle. A PR that changes
   packaging must use the `channel=preview` release train above instead.
 
@@ -98,7 +98,7 @@ The finalize job uses them to commit and push aligned package versions to `main`
 GitHub Release publication uses the repository-scoped workflow token so it has a rate-limit quota
 independent from the shared Release App installation.
 
-## T3 Connect relay deployment
+## Relay deployment
 
 The relay is a shared control plane versioned separately from client releases. Stable and nightly
 client builds must point at the same relay so users see the same linked environments when switching
@@ -148,7 +148,7 @@ Required `production` environment secrets:
 
 - `APNS_PRIVATE_KEY`
 
-After changing a variable or secret, run the **Deploy T3 Connect relay** workflow manually from
+After changing a variable or secret, run the **Deploy remote access relay** workflow manually from
 `main` with **force** unchecked. Alchemy compares the values the Worker reads and redeploys it when
 one changed. Check **force** only to redeploy resources with no detected change: a forced run also
 replaces the Postgres runtime role and its password

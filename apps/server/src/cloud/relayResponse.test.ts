@@ -54,7 +54,7 @@ it.effect("reports the tunnel limit and relay trace instead of a generic 403", (
 
     expect(error).toMatchObject({ _tag: "RelayRequestError", rejection: "forbidden" });
     expect(error.message).toContain("at most 3 tunnels");
-    expect(error.message).toContain("Unlink an unused environment");
+    expect(error.message).toContain("Turn off remote access for an unused environment");
     expect(error.message).toContain("Trace ID: trace-limit");
   }),
 );

@@ -134,7 +134,7 @@ describe("ManagedRelayClient", () => {
       expect(error).toMatchObject({
         _tag: "ManagedRelayUrlInvalidError",
         relayUrl: "http://relay.example.test",
-        message: "Relay URL must be a secure absolute HTTPS origin.",
+        message: "Remote access URL must be a secure absolute HTTPS origin.",
       });
       expect(requestCount).toBe(0);
     }).pipe(Effect.provide(layerManagedRelayTest(fetchFn, "http://relay.example.test")));
@@ -535,7 +535,7 @@ describe("ManagedRelayClient", () => {
         _tag: "ManagedRelayRequestTimeoutError",
         activity: "Relay environment listing",
         timeoutMs: ManagedRelay.MANAGED_RELAY_REQUEST_TIMEOUT_MS,
-        message: `Relay environment listing timed out. ${NETWORK_BLOCKING_HINT}`,
+        message: `Listing your remote environments timed out. ${NETWORK_BLOCKING_HINT}`,
       });
     }).pipe(Effect.provide(Layer.merge(TestClock.layer(), layerManagedRelayTest(fetchFn))));
   });
@@ -551,7 +551,7 @@ describe("ManagedRelayClient", () => {
       expect(error).toMatchObject({
         _tag: "ManagedRelayRequestFailedError",
         transportFailed: true,
-        message: `Could not list relay-managed environments. ${NETWORK_BLOCKING_HINT}`,
+        message: `Could not list your remote environments. ${NETWORK_BLOCKING_HINT}`,
       });
       const encoded = yield* encodeRelayError(error);
       const decoded = yield* decodeRelayError(encoded);
@@ -569,7 +569,7 @@ describe("ManagedRelayClient", () => {
       const error = yield* relayClient
         .listEnvironments({ clerkToken: "clerk-token" })
         .pipe(Effect.flip);
-      expect(error.message).toBe("Could not list relay-managed environments.");
+      expect(error.message).toBe("Could not list your remote environments.");
     }).pipe(Effect.provide(layerManagedRelayTest(fetchFn)));
   });
 

@@ -102,6 +102,7 @@ import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsCl
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
 import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
+import { WorkspacesRouteScreen } from "./features/workspaces/WorkspacesRouteScreen";
 import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
 import { SettingsFollowUpRouteScreen } from "./features/settings/SettingsFollowUpRouteScreen";
@@ -449,6 +450,15 @@ const SettingsSheetStack = createV5SheetStackNavigator({
     SettingsAuth: createNativeStackScreen({
       screen: SettingsAuthRouteScreen,
       linking: "auth",
+    }),
+    SettingsWorkspaces: createNativeStackScreen({
+      screen: WorkspacesRouteScreen,
+      linking: "workspaces",
+    }),
+    // A workspace's address, /w/<short name>, as on the web.
+    SettingsWorkspace: createNativeStackScreen({
+      screen: WorkspacesRouteScreen,
+      linking: "w/:slug",
     }),
     SettingsWaitlist: createNativeStackScreen({
       screen: SettingsAuthRouteScreen,
@@ -988,7 +998,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
         // A root-level Android formSheet does not host the native stack bar;
         // the route renders an embedded AndroidSheetHeader instead.
         ...(Platform.OS === "android" ? { headerShown: false } : SHEET_SOLID_HEADER_OPTIONS),
-        title: "Set up T3 Connect",
+        title: "Set up remote access",
         gestureEnabled: true,
         ...FORM_SHEET_PRESENTATION_OPTIONS,
         sheetAllowedDetents: [0.6, 0.95],

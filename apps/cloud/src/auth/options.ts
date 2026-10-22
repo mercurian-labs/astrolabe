@@ -1,3 +1,4 @@
+import { queueAfterTransactionHook } from "@better-auth/core/context";
 import { electron } from "@better-auth/electron";
 import { expo } from "@better-auth/expo";
 import { passkey } from "@better-auth/passkey";
@@ -14,6 +15,13 @@ import { twoFactor } from "better-auth/plugins/two-factor";
 import type { Mail } from "../mail/Mailer.ts";
 import { accessGate, accessPlugin, ORGANIZATION_SEATS, organizationRules } from "./access.ts";
 import { beforeDeleteAccount } from "./deletion.ts";
+import {
+  workspaceAccess,
+  workspaceFields,
+  workspaceHooks,
+  workspaceRoles,
+  workspacesPlugin,
+} from "./workspaces.ts";
 import { codeMail, invitationMail } from "../mail/templates.ts";
 
 export interface OAuthCredentials {
@@ -54,6 +62,26 @@ export const APP_ORIGINS = ["astrolabe://", "astrolabe-dev://", "astrolabe-previ
 
 /** Device sign-in clients; self-hosted web adds its host, e.g. `astrolabe-web:192.168.1.20:3773`. */
 const DEVICE_CLIENTS = new Set(["astrolabe-cli", "astrolabe-desktop", "astrolabe-mobile"]);
+
+type Hook = (data: never) => Promise<unknown>;
+
+/** Runs each source's hook in turn; a `before` hook that throws stops the rest. */
+const composeHooks = <A extends Record<string, Hook>, B extends Record<string, Hook>>(
+  a: A,
+  b: B,
+): A & B => {
+  const hooks: Record<string, Hook> = { ...a, ...b };
+  for (const key of Object.keys(a)) {
+    if (!(key in b)) continue;
+    const first = a[key]!;
+    const second = b[key as keyof B]!;
+    hooks[key] = async (data: never) => {
+      await first(data);
+      await second(data);
+    };
+  }
+  return hooks as A & B;
+};
 
 const defined = <T>(entries: Record<string, T | undefined>): Record<string, T> =>
   Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined)) as Record<
@@ -160,6 +188,7 @@ export const authOptions = (config: AuthConfig, deps: AuthDeps) => {
     plugins: [
       bearer(),
       accessPlugin(),
+      workspacesPlugin(),
       // Desktop signs in through the system browser and returns on astrolabe://.
       electron(),
       // Mobile signs in through the in-app browser sheet.
@@ -187,17 +216,24 @@ export const authOptions = (config: AuthConfig, deps: AuthDeps) => {
           DEVICE_CLIENTS.has(clientId) || /^astrolabe-web:[^\s/]+$/u.test(clientId),
       }),
       organization({
-        ...organizationRules,
+        allowUserToCreateOrganization: organizationRules.allowUserToCreateOrganization,
+        organizationHooks: composeHooks(organizationRules.organizationHooks, workspaceHooks),
+        ac: workspaceAccess,
+        roles: workspaceRoles,
+        schema: { organization: { additionalFields: workspaceFields } },
         teams: { enabled: true },
         membershipLimit: ORGANIZATION_SEATS,
+        // Sent once the invitation commits, so a write that rolls back sends nothing.
         sendInvitationEmail: ({ email, id, organization, inviter }) =>
-          deps.sendMail(
-            invitationMail({
-              to: email,
-              inviterName: inviter.user.name || inviter.user.email,
-              organizationName: organization.name,
-              url: `${authUrl}/invite/${id}`,
-            }),
+          queueAfterTransactionHook(() =>
+            deps.sendMail(
+              invitationMail({
+                to: email,
+                inviterName: inviter.user.name || inviter.user.email,
+                organizationName: organization.name,
+                url: `${authUrl}/invite/${id}`,
+              }),
+            ),
           ),
       }),
       ...(config.turnstileSecret

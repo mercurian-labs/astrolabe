@@ -94,6 +94,28 @@ export const verification = authSchema.table(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const teamOwner = authSchema.table(
+  "team_owner",
+  {
+    id: text("id").primaryKey(),
+    teamMemberId: text("team_member_id")
+      .notNull()
+      .unique()
+      .references(() => teamMember.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull(),
+  },
+  (table) => [
+    index("teamOwner_teamId_idx").on(table.teamId),
+    index("teamOwner_userId_idx").on(table.userId),
+  ],
+);
+
 export const twoFactor = authSchema.table(
   "two_factor",
   {
@@ -175,6 +197,12 @@ export const organization = authSchema.table(
     logo: text("logo"),
     createdAt: timestamp("created_at").notNull(),
     metadata: text("metadata"),
+    invitePolicy: text("invite_policy", {
+      enum: ["members", "admins"],
+    }).default("admins"),
+    teamCreationPolicy: text("team_creation_policy", {
+      enum: ["members", "admins"],
+    }).default("members"),
   },
   (table) => [uniqueIndex("organization_slug_uidx").on(table.slug)],
 );
@@ -268,6 +296,7 @@ export const authRelations = defineRelationsPart(
     session,
     account,
     verification,
+    teamOwner,
     twoFactor,
     passkey,
     jwks,
@@ -288,6 +317,10 @@ export const authRelations = defineRelationsPart(
       accounts: r.many.account({
         from: r.user.id,
         to: r.account.userId,
+      }),
+      teamOwners: r.many.teamOwner({
+        from: r.user.id,
+        to: r.teamOwner.userId,
       }),
       twoFactors: r.many.twoFactor({
         from: r.user.id,
@@ -322,6 +355,20 @@ export const authRelations = defineRelationsPart(
         to: r.user.id,
       }),
     },
+    teamOwner: {
+      teamMember: r.one.teamMember({
+        from: r.teamOwner.teamMemberId,
+        to: r.teamMember.id,
+      }),
+      team: r.one.team({
+        from: r.teamOwner.teamId,
+        to: r.team.id,
+      }),
+      user: r.one.user({
+        from: r.teamOwner.userId,
+        to: r.user.id,
+      }),
+    },
     twoFactor: {
       user: r.one.user({
         from: r.twoFactor.userId,
@@ -353,6 +400,10 @@ export const authRelations = defineRelationsPart(
         from: r.team.organizationId,
         to: r.organization.id,
       }),
+      teamOwners: r.many.teamOwner({
+        from: r.team.id,
+        to: r.teamOwner.teamId,
+      }),
       teamMembers: r.many.teamMember({
         from: r.team.id,
         to: r.teamMember.teamId,
@@ -366,6 +417,10 @@ export const authRelations = defineRelationsPart(
       user: r.one.user({
         from: r.teamMember.userId,
         to: r.user.id,
+      }),
+      teamOwner: r.one.teamOwner({
+        from: r.teamMember.id,
+        to: r.teamOwner.teamMemberId,
       }),
     },
     member: {

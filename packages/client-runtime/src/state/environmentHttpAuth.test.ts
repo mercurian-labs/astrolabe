@@ -730,7 +730,7 @@ describe("authenticated environment HTTP requests", () => {
 
       expect(error).toMatchObject({
         _tag: "RemoteEnvironmentAuthFetchError",
-        message: "No relay authorization service is available for the environment request.",
+        message: "Remote access sign-in is not available for the environment request.",
       });
       expect(harness.calls).toEqual([]);
     }),

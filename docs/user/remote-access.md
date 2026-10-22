@@ -3,11 +3,11 @@
 Connect a phone, browser, or another desktop app to T3 Code running on a different
 machine. That machine must stay running and reachable while you work.
 
-## T3 Connect
+## Connect through your Astrolabe account
 
-T3 Connect makes an environment available to your other devices without setting
+Remote access makes an environment available to your other devices without setting
 up router forwarding. In the desktop app on the host, open **Settings →
-Connections**, sign in, and enable **T3 Connect** for that environment.
+Connections**, sign in, and turn on **Remote access** for that environment.
 
 For a command-line host, run:
 
@@ -20,14 +20,14 @@ Follow the sign-in instructions. Setup offers a
 server with `astrolabe serve`. Saving your sign-in alone does not make the machine
 reachable.
 
-On your other device, sign in to the same T3 Connect account and choose the
+On your other device, sign in to the same Astrolabe account and choose the
 environment. On the app.t3.codes home page with no computer added yet, signing
 in adds compatible computers linked to your account. Over SSH, the CLI prints a
 browser link and a short code. Open the link on any device, confirm the code
 matches, and approve. The CLI continues on its own, so you do not need to forward
 an OAuth callback port.
 
-T3 Connect renews access credentials when needed without disconnecting a healthy
+Remote access renews access credentials when needed without disconnecting a healthy
 connection. Pull request diffs and provider settings keep working after the
 previous credential expires. A failed renewal affects that request; it does not
 disconnect an otherwise healthy conversation.
@@ -67,17 +67,17 @@ another link to share.
 ### Reach one machine several ways
 
 A machine can have more than one route: LAN, Tailscale, another VPN, a public
-URL, SSH, or T3 Connect. Tailscale shares its `100.64.0.0/10` address range with
+URL, SSH, or remote access. Tailscale shares its `100.64.0.0/10` address range with
 other VPNs such as Cloudflare WARP, so an address in that range shows as VPN
 unless the machine confirms it is on Tailscale. To add a route, choose **Add
-route** in the machine's route list, or next to it in the T3 Connect list.
+route** in the machine's route list, or next to it in the **Remote access** list.
 Pairing the same machine again over another address also adds a route instead
 of a second machine. A new route is placed by speed, in that order, and you can
 reorder routes at any time.
 
-While connected through T3 Connect or a paired address, T3 Code also learns the
+While connected through remote access or a paired address, T3 Code also learns the
 machine's current LAN and Tailscale addresses and adds them as routes, so
-pairing once through T3 Connect is enough to use the LAN at home. When the
+pairing once through remote access is enough to use the LAN at home. When the
 machine's LAN address changes, for example after it joins another Wi-Fi network,
 the learned route follows it. The machine must allow network access for its LAN
 address to be learned. You can reorder a learned route, but not remove it; it
@@ -93,14 +93,14 @@ return to the app, and every minute, and moves back as soon as one works.
 On web and desktop, select the route count under the machine's name in
 **Settings → Connections** to see its routes. Drag a route to change the order,
 or remove it. On mobile, open the machine under **Settings → Environments** and
-choose **Edit**. Signing out of T3 Connect removes only that route; a machine
+choose **Edit**. Signing out of your Astrolabe account removes only the remote access route; a machine
 you can still reach another way stays saved.
 
 Open **Permissions** next to **Routes** in web or desktop, or **Your permissions**
 in the mobile route details, to see what your current connection can do on that
 environment. For a remote environment, this is in its route details. Permissions
 shown there apply only to the route marked **In use**; other routes are not
-checked. Direct pairing and T3 Connect have separate sessions and may grant
+checked. Direct pairing and remote access have separate sessions and may grant
 different permissions.
 
 ### Balance new threads across machines
@@ -265,7 +265,7 @@ npx @mercurian/astrolabe pair --scope orchestration:read --scope relay:read
 The selected scopes replace the default permissions. The same option works with
 `npx @mercurian/astrolabe auth pairing create` and `npx @mercurian/astrolabe auth session issue`; each command's
 `--help` lists the available scopes. Without `--scope`, pairing tokens and issued
-bearer sessions get every permission, including managing access and T3 Connect.
+bearer sessions get every permission, including managing access and remote access.
 A terminal or a full-access agent on the host can reach those as well, so a
 client that should not manage access also needs to go without `terminal:operate`
 and `orchestration:operate`.
@@ -288,7 +288,7 @@ worktree still creates that branch and worktree with `orchestration:operate`,
 and the agent it runs can use Git however the environment allows.
 
 Settings changes, provider management, environment maintenance, access
-management, and T3 Connect management can each be granted separately. New
+management, and remote access management can each be granted separately. New
 pairings without `--scope` include all of them. Existing clients keep the
 permissions they paired with and can stay connected after an update, but newly
 separated features may require pairing again with the permissions they need.
@@ -299,25 +299,25 @@ link to change a client's permissions.
 local changes. Add `filesystem:write` to allow editing files or saving plans to
 the workspace. These scopes control direct file access from the client.
 
-To remove an environment from T3 Connect, open your account menu's **T3 Connect**
-page, or **Settings → T3 Connect** on mobile, and choose **Deregister**. This
+To remove an environment from remote access, open your account menu's **Remote access**
+page, or **Settings → Remote access** on mobile, and choose **Deregister**. This
 revokes its cloud access and frees its host space even when the environment is
-offline or has been wiped. When T3 Connect rejects a host's link, the host
-shows that it was removed from T3 Connect. To link it again, turn on
-**T3 Connect** in **Settings → Connections** on a desktop host, or run
+offline or has been wiped. When remote access rejects a host's link, the host
+shows that its remote access was removed. To link it again, turn on
+**Remote access** in **Settings → Connections** on a desktop host, or run
 `astrolabe connect link` on a command-line host and then restart T3 Code there. A
 command-line host that released its tunnel when it last stopped may link itself
 again on its next start; run `astrolabe connect unlink` on that host to keep it off.
 Removing an environment from a device's connection settings only forgets it on
 that device; it stays registered to your account.
 
-When idle tunnel cleanup is enabled, T3 Connect removes a linked environment's
+When idle tunnel cleanup is enabled, remote access removes a linked environment's
 tunnel after it stays offline for several minutes. The environment stays linked
-and keeps the same address. When the host starts again or wakes, T3 Connect
+and keeps the same address. When the host starts again or wakes, remote access
 creates a replacement tunnel on its own. You do not need to pair again. Cleanup
 usually runs five to ten minutes after the tunnel goes down.
 
-T3 Connect also removes the tunnel of an environment running an older version of
+Remote access also removes the tunnel of an environment running an older version of
 T3 Code once it has been offline for seven days. That environment shows a message
 asking you to update. Start T3 Code on that computer and update it to the latest
 version; it reconnects at the same address without pairing again.
@@ -329,10 +329,10 @@ your login; `astrolabe connect logout` also clears that login. Background-servic
 Treat pairing URLs and authorization codes as passwords. Do not include them in
 screenshots, logs, or bug reports.
 
-## T3 Connect troubleshooting
+## Remote access troubleshooting
 
-When a T3 Connect connection fails, see
-[T3 Connect troubleshooting](./t3-connect-troubleshooting.md). It explains each
+When a remote access connection fails, see
+[Remote access troubleshooting](./t3-connect-troubleshooting.md). It explains each
 error, where the problem is, and how to fix it.
 
 ## Using the Desktop App as a Remote Only
@@ -341,7 +341,7 @@ If a computer should only drive work running elsewhere, turn off its local envir
 desktop app, open **Settings → Connections** and switch off **Local
 environment**. T3 Code restarts without a local server: no local agents or terminals run, WSL
 backends stay off, and other devices can no longer connect to this computer. Your projects,
-history, and saved connections are kept, and you keep working through pairing, T3 Connect, or SSH.
+history, and saved connections are kept, and you keep working through pairing, remote access, or SSH.
 
 Switch **Local environment** back on in the same place to restart with your previous local
 settings.

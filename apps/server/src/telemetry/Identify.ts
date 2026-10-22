@@ -316,7 +316,7 @@ export const getServerOwnersForHome = Effect.fn("getServerOwnersForHome")(functi
   const connectUser = yield* secrets.get(CLOUD_LINKED_USER_ID).pipe(
     Effect.map(Option.map((bytes) => new TextDecoder().decode(bytes))),
     Effect.catch((cause) =>
-      Effect.logWarning("Failed to read the linked T3 Connect account for telemetry", {
+      Effect.logWarning("Failed to read the linked remote access account for telemetry", {
         errorTag: cause._tag,
       }).pipe(Effect.as(Option.none<string>())),
     ),

@@ -89,7 +89,7 @@ describe("relay client install dialog coordinator", () => {
     });
     expect(error).not.toHaveProperty("cause");
     expect((error as Error).message).toBe(
-      "Cannot confirm relay client installation 2026.11.0; installation 2026.10.0 has dialog status installing.",
+      "Cannot confirm remote access client installation 2026.11.0; installation 2026.10.0 has dialog status installing.",
     );
   });
 });

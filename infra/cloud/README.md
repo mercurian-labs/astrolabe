@@ -29,6 +29,20 @@ To run a second copy beside yours, give it its own stage and port: `CLOUD_POSTGR
 
 The API serves Astrolabe sign-in at `/api/auth/*` from [`apps/cloud`](../../apps/cloud), using `@alchemy.run/better-auth`: Alchemy provisions Better Auth's secret, and mail goes out through the SES binding. Its load balancer is declared ahead of the service so the service knows its own public address (`AUTH_URL`); Better Auth needs a fixed origin, and the emulator's load balancer rewrites `Host`.
 
+## Integration tests
+
+`vp run test:integration` deploys this stack into a throwaway `it` stage (Postgres on 54391), runs
+[`test/stack.integ.test.ts`](test/stack.integ.test.ts) against it like a client would, and removes the
+stage. It takes about a minute and a half and needs Docker. The tests sign people in with real emailed
+codes, check who can see which workspace through Electric, and hold a quiet live request past Bun's
+idle timeout. `KEEP_STAGE=1` leaves the stage up afterwards.
+
+[`test/integration.sh`](test/integration.sh) owns the teardown, using the filtered nuke below. Alchemy's
+test harness can't do it: at the end of the file its destroy can't reach the sidecar that runs the local
+providers, and without the sidecar the stage is destroyed as soon as the deploy returns. Right after a
+deploy, Alchemy's dev mode rolls the API once more, so the suite waits until a quiet live request gets
+through before testing.
+
 ## Running the relay against it
 
 With this stack running, `vp run dev` in `infra/relay` starts the relay at http://localhost:8787 against the same Postgres, and writes `T3CODE_RELAY_URL` into this checkout's root `.env`. It needs no Cloudflare account. Tunnels, custom domains and tracing are cloud-only, so linking a managed endpoint reports "not configured" locally. [`infra/relay/dev.env`](../relay/dev.env) holds its placeholder settings; see [`src/local.ts`](../relay/src/local.ts).

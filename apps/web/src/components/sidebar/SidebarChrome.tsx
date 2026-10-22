@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { memo } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
+import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
@@ -31,6 +32,7 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { AccountMenu } from "./AccountMenu";
 import {
   isPullRequestsPath,
   isSidebarUtilityPage,
@@ -206,22 +208,35 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   // and the update control above Settings, so the footer has no utility row.
   if (!isMobile) return null;
 
+  // Where sign-in is set up, Settings is the account menu, and it stays beside Back so
+  // signing in or out is reachable from the utility pages too.
+  const accountMenu = hasCloudPublicConfig() ? (
+    <SidebarMenuItem className="shrink-0">
+      <AccountMenu side="top" onNavigate={closeMobileSidebar} />
+    </SidebarMenuItem>
+  ) : null;
+
   return (
     <SidebarMenu className="flex-row items-center">
       {isOnUtilityPage ? (
-        <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarMenuButton onClick={handleBackClick}>
-            <ArrowLeftIcon />
-            <span>Back</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <>
+          <SidebarMenuItem className="min-w-0 flex-1">
+            <SidebarMenuButton onClick={handleBackClick}>
+              <ArrowLeftIcon />
+              <span>Back</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {accountMenu}
+        </>
       ) : (
         <>
-          <SidebarUtilityItem
-            icon={<SettingsIcon />}
-            label="Settings"
-            onClick={handleSettingsClick}
-          />
+          {accountMenu ?? (
+            <SidebarUtilityItem
+              icon={<SettingsIcon />}
+              label="Settings"
+              onClick={handleSettingsClick}
+            />
+          )}
           {isOnWikis ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}

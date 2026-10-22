@@ -5,7 +5,10 @@ import { useKeyboardState } from "react-native-keyboard-controller";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CompactBrandTitle } from "../../components/CompactBrandTitle";
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import {
+  AndroidHeaderIconButton,
+  AndroidScreenHeader,
+} from "../../components/ui/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import {
@@ -13,6 +16,7 @@ import {
   useNativeColumnLayoutMetrics,
   useNativeLayoutMetrics,
 } from "../../native/native-layout-metrics";
+import { AccountMenuButton } from "../cloud/accountMenu";
 import { HomeRouteScreen } from "../home/HomeRouteScreen";
 import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { WorkspaceConnectionTitle } from "../home/WorkspaceConnectionTitle";
@@ -138,16 +142,12 @@ function WorkspaceRootContent() {
                   dispatchHardwareKeyboardCommand("focusSearch");
                 },
               },
-              {
-                accessibilityLabel: "Settings",
-                icon: "gearshape",
-                onPress: () =>
-                  navigation.navigate("SettingsSheet", {
-                    screen: "SettingsContent",
-                    params: { screen: "Settings" },
-                  }),
-              },
             ]}
+            trailing={
+              <AccountMenuButton
+                renderButton={(button) => <AndroidHeaderIconButton {...button} />}
+              />
+            }
           />
         )}
         {sidebarPicker ? <WorkspaceSidebarTabs /> : null}

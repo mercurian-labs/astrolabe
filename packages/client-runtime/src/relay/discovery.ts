@@ -62,7 +62,7 @@ function validateStatus(
     return Effect.fail(
       new ConnectionBlockedError({
         reason: "configuration",
-        detail: "Relay returned status for a different environment.",
+        detail: "Remote access returned status for a different environment.",
       }),
     );
   }
@@ -74,7 +74,7 @@ function validateStatus(
     return Effect.fail(
       new ConnectionBlockedError({
         reason: "configuration",
-        detail: "Relay returned status for a different environment endpoint.",
+        detail: "Remote access returned status for a different environment address.",
       }),
     );
   }
@@ -85,7 +85,7 @@ function validateStatus(
     return Effect.fail(
       new ConnectionBlockedError({
         reason: "configuration",
-        detail: "Relay returned a descriptor for a different environment.",
+        detail: "Remote access returned details for a different environment.",
       }),
     );
   }

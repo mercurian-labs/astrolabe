@@ -1,15 +1,15 @@
-# T3 Connect Relay
+# Remote access relay
 
 > [!NOTE]
-> Sign in to T3 Connect from the app under Settings > Connections.
+> Sign in for remote access from the app under Settings > Connections.
 
-The relay is the hosted control plane for T3 Connect. It helps clients discover and connect to
+The relay is the hosted control plane for remote access. It helps clients discover and connect to
 remote environments, manages the cloud-side records needed for those connections, and delivers
 optional mobile notifications and Live Activities.
 
 The relay is intentionally not in the hot path for normal T3 Code traffic. After a client connects,
 regular API and WebSocket traffic goes directly between that client and the selected environment.
-See the [T3 Connect architecture note](../../docs/internals/t3-connect.md) for the larger system
+See the [remote access architecture note](../../docs/internals/t3-connect.md) for the larger system
 design.
 
 ## Responsibilities
@@ -165,6 +165,6 @@ and hosted web builds.
 
 See:
 
-- [T3 Connect setup](../../docs/operations/connect-setup.md) for client configuration and sign-up restrictions.
+- [Remote access setup](../../docs/operations/connect-setup.md) for client configuration and sign-up restrictions.
 - [Relay Observability](../../docs/operations/relay-observability.md) for deployment tracing and diagnostics.
-- [T3 Connect architecture](../../docs/internals/t3-connect.md) for environment linking and trust boundaries.
+- [Remote access architecture](../../docs/internals/t3-connect.md) for environment linking and trust boundaries.

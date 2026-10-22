@@ -84,6 +84,14 @@ function ConfiguredSettingsRouteScreen() {
             disabled={!isLoaded}
             onPress={() => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" })}
           />
+          {isSignedIn ? (
+            <SettingsRow
+              icon="person.2"
+              label="Workspaces"
+              value="People and teams"
+              onPress={() => navigation.navigate("SettingsSheet", { screen: "SettingsWorkspaces" })}
+            />
+          ) : null}
           <SettingsRow
             icon="desktopcomputer"
             label="Environments"

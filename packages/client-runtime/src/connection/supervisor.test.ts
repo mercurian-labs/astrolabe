@@ -1876,7 +1876,7 @@ describe("EnvironmentSupervisor routes", () => {
           Effect.succeed(route.target._tag === "BearerConnectionTarget" ? "silent" : "unchecked"),
         prepare: (_attempt, target) =>
           target._tag === "RelayConnectionTarget"
-            ? Effect.fail(blocked("Sign in to T3 Connect."))
+            ? Effect.fail(blocked("Sign in."))
             : Effect.succeed(preparedFor(target)),
       });
       const supervisor = yield* EnvironmentSupervisor.make(LAN_THEN_RELAY_ENTRY, {
@@ -1896,7 +1896,7 @@ describe("EnvironmentSupervisor routes", () => {
         checkRoute: () => Effect.succeed("answered"),
         prepare: (_attempt, target) =>
           target._tag === "RelayConnectionTarget"
-            ? Effect.fail(blocked("Sign in to T3 Connect."))
+            ? Effect.fail(blocked("Sign in."))
             : Effect.fail(transient("LAN socket refused.")),
       });
       const supervisor = yield* EnvironmentSupervisor.make(LAN_THEN_RELAY_ENTRY, {

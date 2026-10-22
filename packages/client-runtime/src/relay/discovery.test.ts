@@ -311,7 +311,7 @@ describe("RelayEnvironmentDiscovery", () => {
         expect(Option.getOrThrow(state.error)).toMatchObject({
           _tag: "ConnectionTransientError",
           reason: "timeout",
-          message: `Relay environment listing timed out. ${NETWORK_BLOCKING_HINT}`,
+          message: `Listing your remote environments timed out. ${NETWORK_BLOCKING_HINT}`,
         });
       }).pipe(Effect.provide(layer));
     }),

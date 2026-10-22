@@ -54,6 +54,7 @@ import {
   getConnectionAwareBrandHeaderOptions,
   WorkspaceConnectionTitle,
 } from "../home/WorkspaceConnectionTitle";
+import { useAccountMenu } from "../cloud/accountMenu";
 import { SidebarHeaderActions } from "./sidebar-header-actions";
 import { ThreadListToolbar } from "../home/ThreadListToolbar";
 import { useToolbarLayout } from "../../components/ui/useToolbarLayout";
@@ -713,9 +714,11 @@ function ThreadNavigationSidebarPane(
     onEnvironmentChange: setSelectedEnvironmentId,
     onProjectChange: setSelectedProjectKey,
   });
+  const accountMenu = useAccountMenu();
   const nativeHeaderItems = createSidebarHeaderItems({
     filterIcon,
     filterMenu,
+    accountMenu,
     onOpenSettings: props.onOpenSettings,
   });
   const listEmpty = (

@@ -2,15 +2,18 @@
 
 A fresh install opens in the **Mercurian** theme, following the system
 appearance. Ink is the accent. Rust marks the brand, the composer's controls
-and the focus bar. The product's name and links read Astrolabe on client
-surfaces and in the server's runtime text (CLI output, provider status
-messages, errors, MCP tool descriptions, auth pages). Wire identifiers, provider
-client ids, git identities and T3 Connect keep T3 Code's spelling.
+and the focus bar. The product's name reads Astrolabe everywhere a person sees it,
+including server and provider messages, and the hosted relay service is called
+**Remote access**. The rules for what is renamed and what keeps upstream's
+spelling live in
+[docs/operations/astrolabe-identity.md](../../../../docs/operations/astrolabe-identity.md).
 
 ## Sub-features
 
 - Default theme `mercurian`, and the Mercurian card leads Settings → Appearance.
-  The `iris` theme is hidden from the picker.
+  The `iris` theme is hidden from the picker (left out of its maintainer list
+  in `ThemeSettings.tsx`; the command palette and mobile hide it through
+  `PICKER_HIDDEN_THEME_IDS`).
 - Light and dark halves of the theme follow `prefers-color-scheme` by default.
 - The composer's primary button draws Astrolabe's own Send, Queue, Steer and
   Stop icons (`components/brand/ComposerControlIcons.tsx`) on
@@ -27,10 +30,14 @@ client ids, git identities and T3 Connect keep T3 Code's spelling.
   The monogram also replaces T3's glyph in the chat timeline: on the plain "Created thread" row
   (`components/chat/V2LifecycleRow.tsx`) and as the `t3-code` work-log icon for thread-create
   tools and system notifications (`WorkEntryIcon` in `components/chat/MessagesTimeline.tsx`).
+- **Visible names**: client, server and provider text says Astrolabe, and the
+  relay service is Remote access. The allowed exceptions are the "T3 Code"
+  theme card and links to upstream's own app-store builds.
 
 ## How to get to it (user POV)
 
-Theme: **Settings** (icon rail, or the sidebar footer on narrow windows) →
+Theme: **Settings** (icon rail, or the sidebar footer on narrow windows; the account
+menu's Settings row where sign-in is configured) →
 **Appearance**, or the Command Palette's **Change theme** (Cmd+P, then type
 "theme"), which Cmd+Alt+A (`theme.select`) opens directly. Both lists lead with
 Mercurian, then T3 Code, and leave out Iris. Focus bar color: Appearance →
@@ -81,15 +88,19 @@ layer (`[data-app-rail-mark] > span > span:last-child`) has a `backgroundColor`
 of `rgb(160, 73, 42)` and a `maskImage` (in dev Vite inlines the small rust layer as a
 `data:image/svg+xml` URI, so don't match on its file name).
 `document.title` contains "Astrolabe".
+On Settings → Connections and the account dialog,
+`/T3 Connect|T3 Code settings/.test(document.body.innerText)` is `false`.
+
+For the source side of visible names, run the `git grep` under "After each
+sync" in the identity doc; don't copy it here, so there is one place to update.
 
 ## Gotchas
 
 - Use the `incognito` profile. The default profile may hold a theme the user
   picked, which hides the default.
-- Astrolabe's own server says Astrolabe in its messages ("Codex is disabled in
-  Astrolabe settings."), so "T3 Code settings" from it is a missed rename. Only a
-  stock T3 server, or a kept identifier (the Codex client name, the "T3 Code"
-  git author, T3 Connect), still says T3 Code.
+- Server and provider text (for example "Pi is disabled in Astrolabe
+  settings.") says Astrolabe too. "T3 Code" there is a missed rename unless it
+  comes from a stock T3 server you connected to.
 - The picker hides Iris by leaving it out of `ThemeSettings.tsx`'s list, not through
   `PICKER_HIDDEN_THEME_IDS` (which the command palette and mobile use). An
   ordering change has to hold in `ThemeSettings.tsx` and in the palette's

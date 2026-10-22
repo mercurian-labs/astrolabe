@@ -77,8 +77,8 @@ service is still installed and will start at the next login.
 
 Windows background services are not supported.
 
-T3 Connect can offer service installation during setup, but the two are managed
-separately. Signing out of T3 Connect does not stop or uninstall the service.
+Remote access setup can offer to install the service, but the two are managed
+separately. Signing out of your Astrolabe account does not stop or uninstall the service.
 
 ## Troubleshooting
 
@@ -117,7 +117,7 @@ Downloads, it may need Full Disk Access for the `astrolabe` executable listed in
 `ProgramArguments` in
 `~/Library/LaunchAgents/com.mercurian.astrolabe.service.plist`.
 
-For failures after signing in to T3 Connect, see
+For remote access failures after signing in, see
 [connection troubleshooting](./t3-connect-troubleshooting.md).
 
 ## Reclaim database space

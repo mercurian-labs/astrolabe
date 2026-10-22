@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { isElectron } from "~/env";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { shortcutLabelForCommand } from "~/keybindings";
@@ -28,6 +29,7 @@ import {
   useSidebarVisibility,
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { AccountMenu } from "./AccountMenu";
 import { isRepositoriesPath, isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
@@ -125,7 +127,8 @@ export function useAppSections(): readonly AppSection[] {
 
 /**
  * The far-left icon rail: the monogram, then the app's sections (Threads, Wikis, Repositories,
- * Change Requests and Usage), and Settings at the foot. It runs from below the title bar to the
+ * Change Requests and Usage), and Settings at the foot, which is the account menu wherever sign-in
+ * is set up. It runs from below the title bar to the
  * window's bottom edge and stays when the sidebar collapses; the sidebar opens beside it (see
  * `AppSidebarLayout`). The cell above it is the rail's part of the title bar, drawn as the rail,
  * and holds the sidebar's toggle, which so stays in reach while the sidebar is collapsed; in the
@@ -205,7 +208,19 @@ export function AppIconRail() {
         </SidebarMenu>
         <SidebarMenu className="mt-auto items-center">
           <SidebarUpdatePill inRail />
-          {sections.filter((section) => section.foot).map(item)}
+          {sections
+            .filter((section) => section.foot)
+            .map((section) =>
+              // Settings is the account menu wherever sign-in is set up.
+              section.id === "settings" && hasCloudPublicConfig() ? (
+                <SidebarMenuItem key={section.id} className="relative">
+                  {section.active ? <ActiveBar /> : null}
+                  <AccountMenu side="right" active={section.active} />
+                </SidebarMenuItem>
+              ) : (
+                item(section)
+              ),
+            )}
         </SidebarMenu>
       </nav>
     </>
@@ -268,12 +283,7 @@ function RailItem({
 }) {
   return (
     <SidebarMenuItem className="relative">
-      {active ? (
-        <span
-          aria-hidden
-          className="absolute inset-y-2 -start-1.5 w-0.5 rounded-full bg-sidebar-foreground"
-        />
-      ) : null}
+      {active ? <ActiveBar /> : null}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -294,5 +304,14 @@ function RailItem({
         <TooltipPopup side="right">{tooltip}</TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>
+  );
+}
+
+function ActiveBar() {
+  return (
+    <span
+      aria-hidden
+      className="absolute inset-y-2 -start-1.5 w-0.5 rounded-full bg-sidebar-foreground"
+    />
   );
 }

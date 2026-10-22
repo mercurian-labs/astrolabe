@@ -89,13 +89,13 @@ function headline(host: string, located: Located, failure: ConnectionAttemptErro
     case "clock_skew":
       return "This device's clock is off";
     case "not_linked":
-      return `${host} is not linked to your T3 Connect account`;
+      return `${host} is not linked to your Astrolabe account`;
     case "relay_error":
-      return "T3 Connect returned an error";
+      return "Remote access returned an error";
     case "tunnel_pending":
       return `${host}'s tunnel is still being set up`;
     case "tunnel_not_enabled":
-      return `T3 Connect is not turned on for ${host}`;
+      return `Remote access is not turned on for ${host}`;
     case "released":
     case "tunnel_down":
       return `${host}'s tunnel is offline`;
@@ -120,15 +120,15 @@ function headline(host: string, located: Located, failure: ConnectionAttemptErro
       return "This device could not prepare the connection";
     case "relay":
       return failure?.reason === "authentication"
-        ? "T3 Connect did not accept this device's sign-in"
-        : "This device can't reach T3 Connect";
+        ? "Remote access did not accept this device's sign-in"
+        : "This device can't reach remote access";
     case "tunnel":
       // The relay already reached the host when this device fails on its own (#17629).
       return failure?.reason === "network" ||
         failure?.reason === "transport" ||
         failure?.reason === "timeout"
         ? `This device can't reach ${host}'s tunnel`
-        : `T3 Connect could not reach ${host}'s tunnel`;
+        : `Remote access could not reach ${host}'s tunnel`;
     case "server":
       return failure?.reason === "authentication" || failure?.reason === "permission"
         ? `T3 Code on ${host} did not accept this device`
@@ -147,8 +147,8 @@ function steps(host: string, located: Located, failure: ConnectionAttemptError |
       return [`Turn on automatic date and time on this device and on ${host}, then retry.`];
     case "not_linked":
       return [
-        "Check that this device is signed in to the same T3 Connect account as the host.",
-        `On ${host}, open Settings > Connections and turn T3 Connect on.`,
+        "Check that this device is signed in to the same Astrolabe account as the host.",
+        `On ${host}, open Settings > Connections and turn remote access on.`,
       ];
     case "tunnel_pending":
       return ["Wait a minute. T3 Code retries on its own.", checkHost];
@@ -158,7 +158,7 @@ function steps(host: string, located: Located, failure: ConnectionAttemptError |
         "If it keeps failing, copy the diagnostics and report it.",
       ];
     case "tunnel_not_enabled":
-      return [`On ${host}, open Settings > Connections and turn T3 Connect on.`];
+      return [`On ${host}, open Settings > Connections and turn remote access on.`];
     case "released":
     case "tunnel_down":
       return [
@@ -187,10 +187,10 @@ function steps(host: string, located: Located, failure: ConnectionAttemptError |
       ];
     case "relay":
       return failure?.reason === "authentication"
-        ? ["Sign out of T3 Connect and sign in again."]
+        ? ["Sign out and sign in again."]
         : [
             "Check this device's internet connection.",
-            "A VPN, firewall, or ad blocker on this device can block T3 Connect.",
+            "A VPN, firewall, or ad blocker on this device can block remote access.",
           ];
     case "tunnel":
       return failure?.reason === "network" ||
@@ -271,7 +271,7 @@ function hopLabel(hop: ConnectionHop, host: string): string {
     case "device":
       return "This device";
     case "relay":
-      return "T3 Connect";
+      return "Remote access";
     case "tunnel":
       return `${host} tunnel`;
     case "server":
@@ -318,7 +318,7 @@ export function presentConnectionDiagnosis(
       ? null
       : DateTime.formatIso(DateTime.makeUnsafe(input.state.retryAt)),
   );
-  add("Route", relayPath ? "T3 Connect" : "Direct");
+  add("Route", relayPath ? "Remote access" : "Direct");
   add("App version", input.clientVersion);
   add("Host version", input.serverVersion);
   add("Error", failure?.detail);

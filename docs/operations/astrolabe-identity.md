@@ -28,22 +28,23 @@ Environment variables get both treatments: people set `ASTROLABE_*`, and the cod
 
 ## Names
 
-| Thing                      | T3 Code                                        | Astrolabe                                              |
-| -------------------------- | ---------------------------------------------- | ------------------------------------------------------ |
-| Product name               | T3 Code                                        | Astrolabe                                              |
-| Mobile app ids             | `com.t3tools.t3code{,.dev,.preview}`           | `com.mercurian.astrolabe{,.dev,.preview}`              |
-| Mobile link schemes        | `t3code{,-dev,-preview}://`                    | `astrolabe{,-dev,-preview}://`                         |
-| Desktop app id             | `com.t3tools.t3code{,.dev}`                    | `com.mercurian.astrolabe{,.dev}`                       |
-| Desktop schemes            | `t3code://app`, `t3code-dev://app`             | `astrolabe://app`, `astrolabe-dev://app`               |
-| Linux desktop entry        | `com.t3tools.T3Code{,.Development}`            | `com.mercurian.Astrolabe{,.Development}`               |
-| Linux executable, WM class | `t3code`                                       | `astrolabe`                                            |
-| Electron profile folder    | `t3code-v2`, `t3code-dev`                      | `astrolabe`, `astrolabe-dev`                           |
-| macOS keychain item        | `t3code Safe Storage`                          | `astrolabe Safe Storage`                               |
-| Background service         | `t3code.service`, `com.t3tools.t3code.service` | `astrolabe.service`, `com.mercurian.astrolabe.service` |
-| Home folder                | `~/.t3`                                        | `~/.astrolabe`                                         |
-| CLI command                | `t3`                                           | `astrolabe`                                            |
-| npm launcher               | `t3`                                           | `@mercurian/astrolabe`                                 |
-| Environment variables      | `T3CODE_*`                                     | `ASTROLABE_*` (mapped onto `T3CODE_*`)                 |
+| Thing                                | T3 Code                                        | Astrolabe                                              |
+| ------------------------------------ | ---------------------------------------------- | ------------------------------------------------------ |
+| Product name                         | T3 Code                                        | Astrolabe                                              |
+| Mobile app ids                       | `com.t3tools.t3code{,.dev,.preview}`           | `com.mercurian.astrolabe{,.dev,.preview}`              |
+| Mobile link schemes                  | `t3code{,-dev,-preview}://`                    | `astrolabe{,-dev,-preview}://`                         |
+| Desktop app id                       | `com.t3tools.t3code{,.dev}`                    | `com.mercurian.astrolabe{,.dev}`                       |
+| Desktop schemes                      | `t3code://app`, `t3code-dev://app`             | `astrolabe://app`, `astrolabe-dev://app`               |
+| Linux desktop entry                  | `com.t3tools.T3Code{,.Development}`            | `com.mercurian.Astrolabe{,.Development}`               |
+| Linux executable, WM class           | `t3code`                                       | `astrolabe`                                            |
+| Electron profile folder              | `t3code-v2`, `t3code-dev`                      | `astrolabe`, `astrolabe-dev`                           |
+| macOS keychain item                  | `t3code Safe Storage`                          | `astrolabe Safe Storage`                               |
+| Background service                   | `t3code.service`, `com.t3tools.t3code.service` | `astrolabe.service`, `com.mercurian.astrolabe.service` |
+| Home folder                          | `~/.t3`                                        | `~/.astrolabe`                                         |
+| CLI command                          | `t3`                                           | `astrolabe`                                            |
+| npm launcher                         | `t3`                                           | `@mercurian/astrolabe`                                 |
+| Environment variables                | `T3CODE_*`                                     | `ASTROLABE_*` (mapped onto `T3CODE_*`)                 |
+| Remote access service (visible name) | T3 Connect                                     | Remote access                                          |
 
 ## Conflict sites
 
@@ -181,12 +182,18 @@ Kept as "T3" on purpose:
 - **Triage:** it fetches upstream's playbook and files issues upstream.
 - **Upstream references:** the "T3 Code" theme label, which names upstream's palette.
 - **Not decided yet:**
-  - "T3 Connect" (about 160 lines across server, web, mobile and client-runtime);
   - "T3 thread" in MCP tool text, next to the `t3-code` MCP server id and `t3_thread_*` tools;
   - "T3 account" in mobile onboarding;
   - the installers' T3 ASCII logo.
 
 Upstream adds new "T3 Code" strings often. Change them in the merge commit.
+
+### Remote access wording
+
+- Upstream text that names "T3 Connect" says "Remote access" in UI, CLI output, logs, agent tool
+  descriptions and docs. Identifiers keep upstream's spelling: `T3ConnectUserProfilePage` and its
+  kin, the `astrolabe connect` command and trace span names. The `apps/marketing` legal pages and
+  AGENTS.md still say T3 Connect on purpose; the legal pages need a full rewrite, not a rename.
 
 ### Accounts and hosted services still upstream's
 
@@ -209,7 +216,7 @@ Run this from the repo root. Each hit is either a new upstream site to rename or
 exception from the lists above.
 
 ```sh
-git grep -nE 'com\.t3tools\.t3code|com\.t3tools\.T3Code|t3code(-dev|-preview)?://|"t3code(-dev)?:"|t3code-v2|t3code\.service|"\.t3"|\$HOME/\.t3\b|~/\.t3\b|npx t3\b|`t3 [a-z]|"t3(\.exe|\.cmd)?"|@t3code/|T3 Code' \
+git grep -nE 'com\.t3tools\.t3code|com\.t3tools\.T3Code|t3code(-dev|-preview)?://|"t3code(-dev)?:"|t3code-v2|t3code\.service|"\.t3"|\$HOME/\.t3\b|~/\.t3\b|npx t3\b|`t3 [a-z]|"t3(\.exe|\.cmd)?"|@t3code/|T3 Code|T3 Connect' \
   -- apps packages scripts ':!*.test.*' ':!apps/marketing' ':!.repos' \
   | grep -vE '^[^:]+:[0-9]+:\s*(//|\*|/\*|#)'
 ```

@@ -1,13 +1,13 @@
-# T3 Connect setup
+# Remote access setup
 
-Deployment and client configuration for T3 Connect. The [architecture note](../internals/t3-connect.md)
+Deployment and client configuration for remote access. The [architecture note](../internals/t3-connect.md)
 explains the trust boundaries; the [relay README](../../infra/relay/README.md#deployment) owns relay
 provisioning instructions, and the [cloud README](../../infra/cloud/README.md) owns the Sign in with
 Mercurian deployment.
 
 ## Public application configuration
 
-T3 Connect is disabled in a fresh clone. To build against the production deployment, copy the
+Remote access is disabled in a fresh clone. To build against the production deployment, copy the
 repository-root example:
 
 ```sh

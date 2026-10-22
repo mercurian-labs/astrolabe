@@ -81,6 +81,8 @@
     "@t3tools/provider-pi": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "@tabler/icons-react-native": "^3.44.0",
+    "@tanstack/expo-db-sqlite-persistence": "0.2.35",
+    "@tanstack/react-db": "0.5.10",
     "clsx": "^2.1.1",
     "diff": "8.0.3",
     "effect": "catalog:",

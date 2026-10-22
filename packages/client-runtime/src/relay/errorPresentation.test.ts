@@ -25,7 +25,7 @@ describe("relayProtectedErrorMessage", () => {
 
     expect(error.traceId).toBe("trace-1");
     expect(relayProtectedErrorMessage(error)).toBe(
-      "Relay cannot provision the managed endpoint (managed_endpoint_provisioning_failed).",
+      "Could not set up the remote access tunnel (managed_endpoint_provisioning_failed).",
     );
   });
 
@@ -37,7 +37,7 @@ describe("relayProtectedErrorMessage", () => {
     });
 
     expect(relayProtectedErrorMessage(error)).toBe(
-      `Relay rejected the DPoP proof. ${DPOP_UNKNOWN_HINT}`,
+      `Remote access rejected the request signature. ${DPOP_UNKNOWN_HINT}`,
     );
   });
 
@@ -61,7 +61,7 @@ describe("relayProtectedErrorMessage", () => {
     });
 
     expect(relayProtectedErrorMessage(error)).toBe(
-      `Relay rejected the DPoP proof. ${DPOP_RETRY_HINT}`,
+      `Remote access rejected the request signature. ${DPOP_RETRY_HINT}`,
     );
   });
 
@@ -72,6 +72,8 @@ describe("relayProtectedErrorMessage", () => {
       traceId: "trace-1",
     });
 
-    expect(relayProtectedErrorMessage(error)).toBe("Relay rejected the cloud session token.");
+    expect(relayProtectedErrorMessage(error)).toBe(
+      "Remote access rejected your Astrolabe session.",
+    );
   });
 });

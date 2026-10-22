@@ -1,6 +1,7 @@
 import {
   type CloudAccountClient,
   type CloudAccountState,
+  type CloudConnection,
   createCloudAccountClient,
 } from "@t3tools/shared/mercurianAccount";
 import { useSyncExternalStore } from "react";
@@ -37,6 +38,11 @@ function accountClient(): CloudAccountClient | null {
     },
   });
   return client;
+}
+
+/** How the workspace client reaches the cloud as the signed-in account; null when sign-in isn't configured. */
+export function cloudConnection(): CloudConnection | null {
+  return accountClient()?.connection ?? null;
 }
 
 export function refreshCloudAccount(): Promise<void> {

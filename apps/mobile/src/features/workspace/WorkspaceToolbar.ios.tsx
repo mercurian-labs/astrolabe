@@ -8,6 +8,7 @@ import type { SearchBarCommands } from "react-native-screens";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { NativeWorkspaceTabActivityContext } from "../../native/v5-workspace-context";
+import { useAccountMenu } from "../cloud/accountMenu";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
@@ -41,6 +42,7 @@ export function WorkspaceToolbar(props: {
   const searchRef = useRef<SearchBarCommands>(null);
   const tab = workspace.state.tabs[workspace.state.selectedTab];
   const selectedTab = workspace.state.selectedTab;
+  const accountMenu = useAccountMenu();
   const enterSearch = useCallback(() => {
     workspace.dispatch({
       type: "scroll",
@@ -114,16 +116,36 @@ export function WorkspaceToolbar(props: {
       />
       {/* UIKit lays trailing items out from the edge inward. */}
       <Toolbar placement="right">
-        <Toolbar.Button
-          accessibilityLabel="Settings"
-          icon="gearshape"
-          onPress={() =>
-            navigation.navigate("SettingsSheet", {
-              screen: "SettingsContent",
-              params: { screen: "Settings" },
-            })
-          }
-        />
+        {accountMenu ? (
+          <Toolbar.Menu
+            accessibilityLabel={accountMenu.accessibilityLabel}
+            icon={accountMenu.icon}
+            title={accountMenu.title}
+          >
+            {accountMenu.items.map((item) => (
+              <Toolbar.MenuAction
+                key={item.id}
+                icon={item.icon}
+                subtitle={item.subtitle}
+                destructive={item.destructive}
+                onPress={item.onPress}
+              >
+                <Toolbar.Label>{item.title}</Toolbar.Label>
+              </Toolbar.MenuAction>
+            ))}
+          </Toolbar.Menu>
+        ) : (
+          <Toolbar.Button
+            accessibilityLabel="Settings"
+            icon="gearshape"
+            onPress={() =>
+              navigation.navigate("SettingsSheet", {
+                screen: "SettingsContent",
+                params: { screen: "Settings" },
+              })
+            }
+          />
+        )}
         {NATIVE_LIQUID_GLASS_SUPPORTED ? null : (
           <Toolbar.Button
             accessibilityLabel={WORKSPACE_TAB_LABELS[selectedTab].search}

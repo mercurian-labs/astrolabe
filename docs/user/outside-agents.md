@@ -20,10 +20,10 @@ The copied URL uses the route this device is connected over, so an agent on the
 same device can reach it.
 
 - **An agent on your own computers** can use any address that computer reaches
-  the environment at: a LAN or Tailscale address, T3 Connect, or `localhost` on
+  the environment at: a LAN or Tailscale address, remote access, or `localhost` on
   the host. See [remote access](./remote-access.md).
 - **A hosted agent**, such as ChatGPT or a bot running in the cloud, must reach
-  the environment from the internet. Use the T3 Connect address. A Tailscale
+  the environment from the internet. Use the remote access address. A Tailscale
   address only works from your own tailnet.
 
 ## Approve a sign-in
@@ -76,8 +76,8 @@ codex mcp login t3
 Add the environment as a custom MCP app in ChatGPT's apps settings:
 
 1. Create a new app or plugin with a custom MCP server.
-2. Set the server URL to `https://<environment-address>/mcp`, using the T3
-   Connect address.
+2. Set the server URL to `https://<environment-address>/mcp`, using the remote
+   access address.
 3. Choose **OAuth** for authentication. ChatGPT discovers the rest; you do not
    need a client ID or secret.
 4. Create the app, then approve the sign-in page that opens.

@@ -620,8 +620,8 @@ export const make = Effect.gen(function* () {
         failure: executable.status === "unsupported" ? "unsupported-platform" : "not-installed",
         reason:
           executable.status === "unsupported"
-            ? `Relay client is unsupported on ${executable.platform}-${executable.arch}.`
-            : "The relay client is not installed.",
+            ? `The remote access client is unsupported on ${executable.platform}-${executable.arch}.`
+            : "The remote access client is not installed.",
         ...(config.tunnelId ? { tunnelId: config.tunnelId } : {}),
         ...(config.tunnelName ? { tunnelName: config.tunnelName } : {}),
       } satisfies CloudManagedEndpointRuntimeStatus;
@@ -722,7 +722,7 @@ export const make = Effect.gen(function* () {
       status: "failed",
       providerKind: "cloudflare_tunnel",
       failure: "spawn-failed",
-      reason: "Relay client did not start.",
+      reason: "The remote access client did not start.",
       ...(config.tunnelId ? { tunnelId: config.tunnelId } : {}),
       ...(config.tunnelName ? { tunnelName: config.tunnelName } : {}),
     } satisfies CloudManagedEndpointRuntimeStatus;

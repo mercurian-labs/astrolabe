@@ -49,8 +49,10 @@ actions at its right end.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
   (Threads, Wikis, Repositories, Changes when the server supports pull requests, Usage),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
-  (`Check for updates`, a rail list row) and Settings sit at the foot. The sidebar toggle is
-  not in the rail but above it (see Rail mark).
+  (`Check for updates`, a rail list row) and Settings sit at the foot. Where cloud sign-in is
+  configured, Settings is the account menu instead of a link (see
+  [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
+  Rail mark).
   Usage has no sidebar: there it shows collapsed and the toggle is gone (`mod+b` does
   nothing), and leaving Usage restores the open state. The rail's sections are the keyboard menu's Go to
   (`useAppSections`). Threads returns to the last chat. Repositories and Changes are
@@ -59,10 +61,11 @@ actions at its right end.
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
   monogram, is absent; the header row carries no brand at any width, and below 768px it starts
-  with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings, Wikis,
-  Repositories, Changes (when the server supports pull requests) and Usage; while on
-  Wikis, Repositories or Changes, that section's button reads Threads instead. On
-  Settings (legacy `/projects/…` links included) and Usage it shows only Back.
+  with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
+  account menu), Wikis, Repositories, Changes (when the server supports pull requests) and
+  Usage; while on Wikis, Repositories or Changes, that section's button reads Threads
+  instead. On Settings (legacy `/projects/…` links included) and Usage it shows only Back,
+  beside the account menu when there is one.
 - **Toggle main sidebar** is drawn over the rail's title-bar cell, above the monogram (same icon,
   tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while open; outside the rail's list,
   so `j`/`k` no longer reach it). On narrow windows (no rail) the toggle stays in the

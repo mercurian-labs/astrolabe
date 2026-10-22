@@ -149,7 +149,7 @@ function AccountPage({ user }: { readonly user: CloudAccountUser }) {
       <div className="flex flex-col gap-4">
         {onWaitlist ? (
           <p className="rounded-xl border border-border/70 bg-muted/35 p-3 text-sm text-muted-foreground">
-            You're on the waitlist. T3 Connect turns on once your account is approved, and we'll
+            You're on the waitlist. Remote access turns on once your account is approved, and we'll
             email you when it is.
           </p>
         ) : null}
@@ -217,7 +217,7 @@ function DeleteAccountDialog({
         return;
       case "OwnsSharedOrganization":
         setProblem(
-          "You own an organization with other members. Hand it over or remove them first.",
+          "You own a workspace with other people in it. Hand it over or remove them first.",
         );
         return;
       case "Failed":
@@ -244,7 +244,7 @@ function DeleteAccountDialog({
           <AlertDialogDescription>
             {onWaitlist
               ? "This deletes your account and gives up your place on the list."
-              : "This deletes your account, unlinks your machines from T3 Connect, and removes this account from your phones. Organizations you own alone are deleted too. It can't be undone."}
+              : "This deletes your account, turns off remote access for your machines, and removes this account from your phones. Workspaces you own alone are deleted too. It can't be undone."}
           </AlertDialogDescription>
           {problem === "sign-in-again" ? (
             <AlertDialogDescription>

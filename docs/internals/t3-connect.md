@@ -1,6 +1,6 @@
-# T3 Connect
+# Remote access
 
-T3 Connect uses Astrolabe accounts
+Remote access uses Astrolabe accounts
 ([`apps/cloud`](../../apps/cloud/src/auth/options.ts)) for cloud identity. The
 relay manages environment links, credentials for reaching environments, and
 managed tunnel allocations. After

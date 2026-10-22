@@ -60,7 +60,7 @@ export class ManagedRelayDpopKeyLoadError extends Schema.TaggedError<ManagedRela
   },
 ) {
   override get message(): string {
-    return "Could not load relay DPoP proof key.";
+    return "Could not load this device's remote access signing key.";
   }
 }
 
@@ -73,7 +73,7 @@ export class ManagedRelayDpopProofCreationError extends Schema.TaggedError<Manag
   },
 ) {
   override get message(): string {
-    return `Could not create the relay DPoP proof for ${this.method} ${this.url}.`;
+    return `Could not create the request signature for ${this.method} ${this.url}.`;
   }
 }
 
@@ -99,6 +99,21 @@ export const ManagedRelayRequestAction = Schema.Literals([
 ]);
 export type ManagedRelayRequestAction = typeof ManagedRelayRequestAction.Type;
 
+const requestActionDisplay: Record<ManagedRelayRequestAction, string> = {
+  "exchange relay DPoP access token": "sign in to remote access",
+  "list relay-managed environments": "list your remote environments",
+  "list relay client devices": "list your devices",
+  "create relay environment link challenge": "start turning on remote access",
+  "link relay environment": "turn on remote access for this environment",
+  "unlink relay environment": "turn off remote access for this environment",
+  "get relay environment status": "check this environment's remote access status",
+  "connect relay environment": "connect through remote access",
+  "register relay mobile device": "register this device for notifications",
+  "unregister relay mobile device": "unregister this device from notifications",
+  "register relay live activity": "register the Live Activity",
+  "read relay agent activity snapshot": "read agent activity",
+};
+
 export const ManagedRelayRequestActivity = Schema.Literals([
   "Relay DPoP access token exchange",
   "Relay environment listing",
@@ -115,6 +130,21 @@ export const ManagedRelayRequestActivity = Schema.Literals([
 ]);
 export type ManagedRelayRequestActivity = typeof ManagedRelayRequestActivity.Type;
 
+const requestActivityDisplay: Record<ManagedRelayRequestActivity, string> = {
+  "Relay DPoP access token exchange": "Signing in to remote access",
+  "Relay environment listing": "Listing your remote environments",
+  "Relay client device listing": "Listing your devices",
+  "Relay environment link challenge": "Starting remote access",
+  "Relay environment linking": "Turning on remote access",
+  "Relay environment unlinking": "Turning off remote access",
+  "Relay environment status request": "Checking remote access status",
+  "Relay environment connection": "Connecting through remote access",
+  "Relay mobile device registration": "Registering this device for notifications",
+  "Relay mobile device unregistration": "Unregistering this device from notifications",
+  "Relay Live Activity registration": "Registering the Live Activity",
+  "Relay agent activity snapshot": "Reading agent activity",
+};
+
 export class ManagedRelayRequestTimeoutError extends Schema.TaggedError<ManagedRelayRequestTimeoutError>()(
   "ManagedRelayRequestTimeoutError",
   {
@@ -124,7 +154,7 @@ export class ManagedRelayRequestTimeoutError extends Schema.TaggedError<ManagedR
   },
 ) {
   override get message(): string {
-    return `${this.activity} timed out. ${NETWORK_BLOCKING_HINT}`;
+    return `${requestActivityDisplay[this.activity]} timed out. ${NETWORK_BLOCKING_HINT}`;
   }
 }
 
@@ -135,7 +165,7 @@ export class ManagedRelayUrlInvalidError extends Schema.TaggedError<ManagedRelay
   },
 ) {
   override get message(): string {
-    return "Relay URL must be a secure absolute HTTPS origin.";
+    return "Remote access URL must be a secure absolute HTTPS origin.";
   }
 }
 
@@ -151,7 +181,7 @@ export class ManagedRelayRequestFailedError extends Schema.TaggedError<ManagedRe
   },
 ) {
   override get message(): string {
-    const message = `Could not ${this.action}.`;
+    const message = `Could not ${requestActionDisplay[this.action]}.`;
     return this.transportFailed ? `${message} ${NETWORK_BLOCKING_HINT}` : message;
   }
 }
@@ -164,7 +194,7 @@ export class ManagedRelayAccessTokenScopesUnexpectedError extends Schema.TaggedE
   },
 ) {
   override get message(): string {
-    return "Relay granted unexpected DPoP access token scopes.";
+    return "Remote access granted unexpected access token scopes.";
   }
 }
 
@@ -177,7 +207,7 @@ export class ManagedRelayTokenProofCreationError extends Schema.TaggedError<Mana
   },
 ) {
   override get message(): string {
-    return "Could not create relay token DPoP proof.";
+    return "Could not create the remote access sign-in signature.";
   }
 }
 
@@ -190,7 +220,7 @@ export class ManagedRelayRequestProofCreationError extends Schema.TaggedError<Ma
   },
 ) {
   override get message(): string {
-    return "Could not create relay request DPoP proof.";
+    return "Could not create the remote access request signature.";
   }
 }
 

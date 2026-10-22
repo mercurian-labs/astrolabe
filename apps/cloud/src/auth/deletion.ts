@@ -34,7 +34,7 @@ export const beforeDeleteAccount =
       if (members > 1) {
         throw APIError.from("BAD_REQUEST", {
           code: "OWNS_SHARED_ORGANIZATION",
-          message: "Hand over or empty the organizations you own before deleting your account.",
+          message: "Hand over or empty the workspaces you own before deleting your account.",
         });
       }
       soloOrganizations.push(organizationId);

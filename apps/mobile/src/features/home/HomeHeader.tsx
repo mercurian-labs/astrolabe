@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 import type { SearchBarCommands } from "react-native-screens";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { accountHeaderItem, useAccountMenu } from "../cloud/accountMenu";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { createNativeMailSearchToolbarItem } from "../layout/native-mail-search-toolbar";
@@ -59,6 +60,7 @@ export function HomeHeader(props: HomeHeaderProps) {
   }, [primaryColumn, panes.primarySidebarVisible, togglePrimarySidebar]);
   useHardwareKeyboardCommand("focusSearch", focusSearch);
   const filterMenu = buildHomeListFilterMenu(props);
+  const accountMenu = useAccountMenu();
 
   if (props.usesWorkspaceToolbar) {
     return deviceType === "duo-unfolded" ? (
@@ -79,7 +81,7 @@ export function HomeHeader(props: HomeHeaderProps) {
   return (
     <>
       <NativeStackScreenOptions
-        optionsVersion={[filterMenu.items, showsCompactCompose]}
+        optionsVersion={[filterMenu.items, showsCompactCompose, accountMenu]}
         options={{
           headerTintColor: iconColor,
           unstable_headerRightItems: () =>
@@ -90,6 +92,7 @@ export function HomeHeader(props: HomeHeaderProps) {
                       ? "line.3.horizontal.decrease.circle.fill"
                       : "line.3.horizontal.decrease.circle",
                     filterMenu,
+                    accountMenu,
                     onOpenSettings: props.onOpenSettings,
                   }),
                   ...(showsCompactCompose
@@ -106,16 +109,7 @@ export function HomeHeader(props: HomeHeaderProps) {
                       ]
                     : []),
                 ]
-              : [
-                  withNativeGlassHeaderItem({
-                    accessibilityLabel: "Open settings",
-                    icon: { name: "ellipsis", type: "sfSymbol" } as const,
-                    identifier: "home-settings",
-                    label: "",
-                    onPress: props.onOpenSettings,
-                    type: "button",
-                  }),
-                ],
+              : [accountHeaderItem(accountMenu, props.onOpenSettings)],
           // The keys below are set per-branch (not `undefined`) so a later
           // reapply cannot clobber options owned by Toolbar.
           ...(sidebarHeader

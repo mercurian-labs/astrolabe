@@ -130,9 +130,9 @@ export const CLOUD_REPLAY_MARKER_PREFIXES = [
 ] as const;
 const MANAGED_ENDPOINT_PROVISION_REQUEST_TIMEOUT = Duration.minutes(2);
 const RELAY_CONFIG_FIELD_MESSAGES = {
-  relayUrl: "Relay URL must be a secure absolute HTTPS URL.",
-  relayIssuer: "Relay issuer must be a secure absolute HTTPS URL.",
-  environmentCredential: "Relay environment credential is required.",
+  relayUrl: "Remote access URL must be a secure absolute HTTPS URL.",
+  relayIssuer: "Remote access issuer must be a secure absolute HTTPS URL.",
+  environmentCredential: "The environment's remote access credential is required.",
   cloudUserId: "Cloud user id is required.",
   cloudMintPublicKey: "Cloud mint public key must be a valid Ed25519 public key.",
 } as const;
@@ -160,7 +160,7 @@ export class CloudLinkOriginInvalidError extends Schema.TaggedError<CloudLinkOri
 ) {
   override get message(): string {
     return this.origin === "endpoint"
-      ? "Invalid managed endpoint origin."
+      ? "Invalid remote access tunnel origin."
       : "Could not resolve local environment origin.";
   }
 }
@@ -170,7 +170,7 @@ export class CloudLinkNotLinkedError extends Schema.TaggedError<CloudLinkNotLink
   {},
 ) {
   override get message(): string {
-    return "Link this environment to T3 Connect first.";
+    return "Turn on remote access for this environment first.";
   }
 }
 
@@ -179,7 +179,7 @@ export class CloudLinkAccountMismatchError extends Schema.TaggedError<CloudLinkA
   {},
 ) {
   override get message(): string {
-    return "This environment is already linked to a different cloud account. Unlink it before switching accounts.";
+    return "This environment already has remote access turned on for a different account. Turn off remote access before switching accounts.";
   }
 }
 
@@ -217,7 +217,7 @@ export class CloudLinkTunnelSupersededError extends Schema.TaggedError<CloudLink
   {},
 ) {
   override get message(): string {
-    return "The managed tunnel configuration changed during registration.";
+    return "The remote access tunnel configuration changed during registration.";
   }
 }
 
@@ -230,8 +230,8 @@ export class CloudLinkEndpointUnavailableError extends Schema.TaggedError<CloudL
 ) {
   override get message(): string {
     return this.reason === "runtime-not-started"
-      ? "Managed endpoint runtime could not be started."
-      : "Managed endpoint origin could not be confirmed.";
+      ? "The remote access tunnel could not be started."
+      : "The remote access tunnel origin could not be confirmed.";
   }
 }
 
@@ -239,17 +239,16 @@ const INTERNAL_OPERATION_MESSAGES = {
   "relay-url-unconfigured":
     "T3CODE_RELAY_URL must be configured as a secure absolute HTTPS origin.",
   "generate-link-proof": "Could not generate environment link proof.",
-  "persist-relay-config": "Could not persist environment relay configuration.",
-  "register-endpoint-origin": "Could not register the managed endpoint origin.",
+  "persist-relay-config": "Could not persist the environment's remote access configuration.",
+  "register-endpoint-origin": "Could not register the remote access tunnel origin.",
   "resolve-server-origin": "Could not resolve the local server origin.",
-  "persist-desired-link": "Could not persist desired T3 Connect link state.",
-  "sign-recovery-proof": "Could not sign the managed tunnel recovery request.",
-  "unsupported-recovered-tunnel":
-    "T3 Connect returned an unsupported managed tunnel configuration.",
-  "persist-recovered-tunnel": "Could not persist the recovered managed tunnel configuration.",
-  "read-relay-config": "Could not read environment relay configuration.",
-  "remove-relay-config": "Could not remove environment relay configuration.",
-  "update-webhook-settings": "Could not update T3 Connect webhook settings.",
+  "persist-desired-link": "Could not save the desired remote access link state.",
+  "sign-recovery-proof": "Could not sign the remote access tunnel recovery request.",
+  "unsupported-recovered-tunnel": "Remote access returned an unsupported tunnel configuration.",
+  "persist-recovered-tunnel": "Could not persist the recovered remote access tunnel configuration.",
+  "read-relay-config": "Could not read the environment's remote access configuration.",
+  "remove-relay-config": "Could not remove the environment's remote access configuration.",
+  "update-webhook-settings": "Could not update remote access webhook settings.",
   "read-preferences": "Could not read environment cloud preferences.",
   "persist-preferences": "Could not persist environment cloud preferences.",
   "answer-health": "Could not answer cloud health request.",
@@ -297,7 +296,7 @@ export const shouldRetryCloudLink = (error: unknown): boolean =>
   !(CliTokenManager.isCloudCliCredentialRefreshError(error) && error.requiresLogin);
 
 const rollbackFailed = (cause: unknown) =>
-  Effect.logWarning("Could not roll back a T3 Connect preference", { cause });
+  Effect.logWarning("Could not roll back a remote access preference", { cause });
 
 const requireRelayUrl = relayUrlConfig.pipe(
   Effect.mapError(
@@ -998,7 +997,7 @@ const make = Effect.gen(function* () {
           return false;
         }
         yield* Effect.logWarning(
-          "T3 Connect no longer accepts this environment's link. Link it again to restore remote access.",
+          "Remote access no longer accepts this environment's link. Link it again to restore remote access.",
           { cause },
         );
         yield* secrets.set(CLOUD_LINK_REVOKED, stringToBytes("true"));
@@ -1628,7 +1627,7 @@ const make = Effect.gen(function* () {
         scopes: AuthStandardClientScopes,
         subject: "cloud-connect",
         ttl: Duration.minutes(2),
-        label: "T3 Connect connect",
+        label: "Remote access",
         proofKeyThumbprint: proof.clientProofKeyThumbprint,
       });
       const responsePayload = {

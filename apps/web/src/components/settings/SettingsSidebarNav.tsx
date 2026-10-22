@@ -1,12 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useRef, useState, type ComponentType, type KeyboardEvent } from "react";
 import {
   ArchiveIcon,
   BlocksIcon,
@@ -22,6 +14,7 @@ import {
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
+  UsersIcon,
   XIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -62,18 +55,7 @@ const SnapShotIcon = createLucideIcon("snap-shot", [
   ["circle", { cx: "12", cy: "12", r: "1.5", key: "lens" }],
 ]);
 
-const T3ConnectSidebarSignIn = lazy(() =>
-  import("../clerk/T3ConnectSidebarSignIn").then((module) => ({
-    default: module.T3ConnectSidebarSignIn,
-  })),
-);
-const T3ConnectSidebarAvatar = lazy(() =>
-  import("../clerk/T3ConnectSidebarSignIn").then((module) => ({
-    default: module.T3ConnectSidebarAvatar,
-  })),
-);
-
-const SETTINGS_SECTION_ICONS: Readonly<
+export const SETTINGS_SECTION_ICONS: Readonly<
   Record<SettingsPath, ComponentType<{ className?: string }>>
 > = {
   "/settings/general": Settings2Icon,
@@ -89,6 +71,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/change-requests": GitPullRequestIcon,
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
+  "/settings/workspaces": UsersIcon,
   "/settings/archived": ArchiveIcon,
 };
 
@@ -357,17 +340,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <Suspense fallback={null}>
-          <T3ConnectSidebarSignIn />
-        </Suspense>
-        <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <SidebarUtilityMenu />
-          </div>
-          <Suspense fallback={null}>
-            <T3ConnectSidebarAvatar />
-          </Suspense>
-        </div>
+        <SidebarUtilityMenu />
       </SidebarFooter>
     </>
   );

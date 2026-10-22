@@ -67,7 +67,7 @@ export class NoRunningServerError extends Schema.TaggedError<NoRunningServerErro
     return [
       "No running Astrolabe server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start one with `npx @mercurian/astrolabe serve`, or connect this machine with T3 Connect: `npx @mercurian/astrolabe connect`.",
+      "Start one with `npx @mercurian/astrolabe serve`, or turn on remote access for this machine: `npx @mercurian/astrolabe connect`.",
     ].join("\n");
   }
 }

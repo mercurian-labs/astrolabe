@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme and branding) by driving the web app in T3's Browser panel (the phone app through test-t3-mobile). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -45,6 +45,61 @@ A clean home is not empty: the server adds the directory it runs in
 Chat tabs need at least two threads; seed them with `vp run migrate-dev-db`
 (server stopped) into the worktree's `.t3`, as AGENTS.md describes.
 
+## Checks before driving
+
+A walk proves what a person sees; it doesn't replace the checks underneath.
+For the features a change touches, run these first, scoped to those files
+(never the repo-wide suite):
+
+- **The feature's tests.** Each feature file names them; `vp test run <files>`
+  from the owning package, plus `vp exec tsc --noEmit -p .` there.
+- **The cloud stack.** For a change to `apps/cloud`, `infra/cloud` or the
+  workspace client, run `vp run test:integration` in `infra/cloud`: it
+  deploys the real stack into a throwaway local stage, checks sign-in, who can
+  see which workspace, and live requests, then removes the stage.
+- **Visible names.** After an upstream sync or any change to product text, run
+  the `git grep` under "After each sync" in
+  [docs/operations/astrolabe-identity.md](../../../docs/operations/astrolabe-identity.md)
+  and judge each hit against its rules.
+- **Code shared across runtimes.** `packages/client-runtime` and
+  `packages/shared` run in the browser, the desktop's Electron, Node (the
+  server and the tests) and the phone's JavaScript engine, and each lacks
+  things the others have. Tests run only on Node, so a change there that
+  mobile imports gets one device walk (a write and a live update on the
+  simulator via `test-t3-mobile`), and a change to mobile's dependencies needs
+  Metro to start cleanly, which is also where licence and bundling problems
+  surface.
+
+Then walk the features. The walk is where the joins between pieces (server
+timeouts, auth sessions, sync lifecycles, native navigation) fail, which unit
+tests mock away.
+
+## Cloud
+
+Account, workspace and remote-access features need the local cloud stack:
+`vp run dev` in `infra/cloud` (Postgres, Electric, the API and SES under
+Alchemy's local AWS emulator; see its README), with the worktree's gitignored
+`.env` holding `T3CODE_AUTH_URL=<the API URL it prints>` and
+`T3CODE_RELAY_URL=https://relay.invalid` (or a real local relay). Restart the dev
+server after changing `.env`.
+
+[`scripts/cloud-kit.sh`](scripts/cloud-kit.sh) replaces hand-written SQL and
+curl during walks. Set `CLOUD_API_URL` (and `CLOUD_POSTGRES_PORT` when the stack
+isn't on 54341), then:
+
+```bash
+k=.agents/skills/verify-astrolabe/scripts/cloud-kit.sh
+$k person ben@walk.test "Ben"                 # approved account; prints a bearer token
+$k approve <user-code> venkat@walk.test       # approve the code a client is showing
+$k approve-latest astrolabe-mobile venkat@walk.test
+$k mail ben@walk.test                         # invitations and sign-in codes sent
+$k invitations ben@walk.test                  # pending invitation ids for ben
+$k write ben@walk.test acceptInvitation '{"invitationId":"<id>"}'   # ben acts while you watch
+```
+
+Doctor the stack before driving: `curl -s $CLOUD_API_URL/health` answers, and
+`$k person doctor@walk.test` prints a token.
+
 ## Doctor
 
 Before driving, and whenever something looks off:
@@ -86,9 +141,9 @@ on `/pair` again. On a tab already at `/pair`, navigating to `…/pair#token=…
 only changes the hash and pairs nothing; type the token into
 `role=textbox[name='Pairing token']` and click **Continue** instead. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
 `role=tablist[name='Open chats']` before acting. It lands on a draft in the
-**server** project; click a sidebar row when the feature needs a real thread
-(`[data-testid=sidebar-row-card] >> nth=N`, or by name `role=button[name='<title>, <project>']`,
-which becomes `'<title>, <status>, <project>'` while a status shows). Then:
+**server** project; click a sidebar row (`role=button[name=/^<title>, /]`; the name is
+`<title>, [<status>, ]<project>`, or `[data-testid=sidebar-row-card] >> nth=N`)
+when the feature needs a real thread. Then:
 
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
   Tools take Playwright selectors: a bare CSS descendant selector

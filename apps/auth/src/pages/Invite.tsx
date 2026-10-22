@@ -78,7 +78,7 @@ export function Invite(props: { readonly invitationId: string; readonly email: s
   return (
     <>
       <Heading title={`Join ${invitation.organizationName}?`}>
-        {invitation.inviterEmail} invited {invitation.email} to their organization on Astrolabe.
+        {invitation.inviterEmail} invited {invitation.email} to their workspace on Astrolabe.
       </Heading>
       {error ? (
         <div className="mb-4">

@@ -55,6 +55,10 @@
       "types": "./src/scheduledTaskWebhook.ts",
       "default": "./src/scheduledTaskWebhook.ts"
     },
+    "./workspaces": {
+      "types": "./src/workspaces/index.ts",
+      "default": "./src/workspaces/index.ts"
+    },
     "./connection": {
       "types": "./src/connection/index.ts",
       "default": "./src/connection/index.ts"
@@ -461,6 +465,7 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@electric-sql/client": "1.5.28",
     "@pierre/diffs": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
@@ -471,6 +476,9 @@
     "@t3tools/source-control-gitcafe": "workspace:*",
     "@t3tools/source-control-github": "workspace:*",
     "@t3tools/source-control-gitlab": "workspace:*",
+    "@tanstack/db": "0.15.0",
+    "@tanstack/db-sqlite-persistence-core": "0.4.10",
+    "@tanstack/electric-db-collection": "0.6.1",
     "effect": "catalog:",
     "three": "0.180.0"
   },

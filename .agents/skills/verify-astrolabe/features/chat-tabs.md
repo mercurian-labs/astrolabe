@@ -72,7 +72,8 @@ panes.md).
   per device (`localStorage['t3code:chat-tabs:v1']`, `state.keys`, `state.active`,
   `state.histories`); a stored value with only `keys` (older builds) still loads.
 - **Pruning**: a tab whose thread was deleted or whose draft was discarded
-  closes once its environment's threads have loaded.
+  closes once its environment's threads have loaded. If that tab is in front,
+  the thread page redirects first and the tab closes after.
 - **The chat's controls end the strip**: Toggle thread details panel, then
   Toggle terminal drawer, plus Toggle right panel while the panel is closed.
   With the panel open (inline, viewport over 980px), only Maximize panel and
@@ -98,9 +99,8 @@ breadcrumb header is the row below.
 ## Driving it with the Browser panel
 
 ```
-preview_click  [data-testid=sidebar-row-card] >> nth=1          # a sidebar row
-# by name: role=button[name='<title>, <project>'], or '<title>, <status>, <project>'
-# when the thread shows a status (Working, Done, …)
+preview_click  role=button[name=/^<title>, /]                 # sidebar row: "<title>, [<status>, ]<project>"
+preview_click  [data-testid=sidebar-row-card] >> nth=1          # or by position
 preview_wait_for  locator=role=tab[name='<title>'][selected]
 preview_click  role=tab[name='<other title>']
 preview_click  role=button[name='Close <title>']

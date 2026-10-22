@@ -737,6 +737,14 @@
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2019-present Fabio Spampinato, Andrew Maney"]
       }
+    },
+    {
+      "name": "@rollup/rollup-darwin-arm64",
+      "version": "4.64.12",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2017 [these people]"]
+      }
     }
   ]
 }

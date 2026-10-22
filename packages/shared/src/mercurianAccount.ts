@@ -43,6 +43,18 @@ export interface CloudSessionTokenStorage {
   readonly write: (token: string | null) => Promise<void>;
 }
 
+/**
+ * How to reach the cloud as the signed-in account, for clients of its other
+ * APIs (workspaces): the hosted app sends its cookie, every other client the
+ * session token.
+ */
+export interface CloudConnection {
+  readonly origin: string;
+  readonly credentials: "include" | "omit";
+  /** The `Authorization` header value, or null when the cookie carries the session. */
+  readonly authorization: () => Promise<string | null>;
+}
+
 export interface CloudAccountClientOptions {
   /** app.astrolabe.sh's origin. */
   readonly authUrl: string;
@@ -282,7 +294,17 @@ export function createCloudAccountClient(options: CloudAccountClientOptions) {
     return { _tag: "Failed", message: `Your account could not be deleted (${response.status}).` };
   };
 
+  const connection: CloudConnection = {
+    origin: options.authUrl,
+    credentials: options.sessionCookie ? "include" : "omit",
+    authorization: async () => {
+      const token = await readToken();
+      return token ? `Bearer ${token}` : null;
+    },
+  };
+
   return {
+    connection,
     getState: () => state,
     subscribe: (listener: () => void) => {
       listeners.add(listener);

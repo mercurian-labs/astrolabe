@@ -50,7 +50,7 @@ function ConfiguredSettingsAuthRouteScreen() {
     return (
       <View collapsable={false} className="flex-1 bg-sheet">
         <AppBar
-          title="T3 Connect"
+          title="Remote access"
           sidebar={false}
           onBack={() => setShowT3Connect(false)}
           hideBottomBorder
@@ -93,7 +93,7 @@ function SignedOutSection(props: {
         <SettingsRow
           icon="person.badge.plus"
           label="Sign in"
-          value="Reach your machines from anywhere with T3 Connect."
+          value="Reach your machines from anywhere with remote access."
           onPress={startCloudSignIn}
         />
       </SettingsSection>
@@ -132,7 +132,7 @@ function SignedInSections(props: {
       onWaitlist ? "Leave the waitlist?" : "Delete your Astrolabe account?",
       onWaitlist
         ? "This deletes your account and gives up your place on the list."
-        : "This deletes your account, unlinks your machines from T3 Connect, and removes this account from your devices. Organizations you own alone are deleted too. It can't be undone.",
+        : "This deletes your account, turns off remote access for your machines, and removes this account from your devices. Workspaces you own alone are deleted too. It can't be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -171,7 +171,7 @@ function SignedInSections(props: {
       case "OwnsSharedOrganization":
         Dialog.alert(
           "Your account was not deleted",
-          "You own an organization with other members. Hand it over or remove them first.",
+          "You own a workspace with other people in it. Hand it over or remove them first.",
         );
         return;
       case "Failed":
@@ -185,11 +185,11 @@ function SignedInSections(props: {
       <SettingsSection title={user.name || user.email}>
         {onWaitlist ? (
           <Text className="px-4 py-3 text-sm text-foreground-muted">
-            You're on the waitlist. T3 Connect turns on once your account is approved, and we'll
+            You're on the waitlist. Remote access turns on once your account is approved, and we'll
             email you when it is.
           </Text>
         ) : null}
-        <SettingsRow icon="globe" label="T3 Connect" onPress={props.onOpenT3Connect} />
+        <SettingsRow icon="globe" label="Remote access" onPress={props.onOpenT3Connect} />
         <SettingsRow
           icon="person.crop.circle"
           label="Manage sign-in methods"
