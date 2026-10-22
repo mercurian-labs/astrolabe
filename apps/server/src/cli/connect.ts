@@ -17,6 +17,7 @@ import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Console from "effect/Console";
 import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -98,14 +99,23 @@ function formatDeviceAuthorizationPrompt(
   ].join("\n");
 }
 
-/** Opens the approval page each time Enter is pressed, until the caller's scope closes. */
+/**
+ * Opens the approval page each time Enter is pressed. Reading keys puts the
+ * terminal in raw mode, so Ctrl+C or Ctrl+D arrives as a key instead of
+ * SIGINT; it fails with `QuitError` so the caller stops waiting. Input that
+ * only ends, as a script's or an agent's shell does, stops the reading and
+ * leaves the code waiting for approval elsewhere.
+ */
 const openBrowserOnEnter = Effect.fn("cloud.cli.open_browser_on_enter")(function* (url: string) {
   const terminal = yield* Terminal.Terminal;
   const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
   const input = yield* terminal.readInput;
   while (true) {
-    const event = yield* Queue.take(input);
+    const event = yield* Queue.take(input).pipe(Effect.catch(() => Effect.never));
     const keyName = event.key.name.toLowerCase();
+    if (event.key.ctrl && (keyName === "c" || keyName === "d")) {
+      return yield* new Terminal.QuitError({});
+    }
     if (keyName !== "enter" && keyName !== "return") continue;
     yield* externalLauncher
       .launchBrowser(url)
@@ -117,7 +127,8 @@ const openBrowserOnEnter = Effect.fn("cloud.cli.open_browser_on_enter")(function
   }
 });
 
-const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
+/** Reuses the stored sign-in, or signs in with a device code and stores it. */
+export const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
   readonly headless: boolean;
 }) {
   const tokens = yield* CliTokenManager.CloudCliTokenManager;
@@ -133,22 +144,26 @@ const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
     return existing.value.identity ?? null;
   }
   const offerBrowser = !(options.headless || (yield* headlessSessionConfig));
-  const { token, identity } = yield* CliTokenManager.deviceAuthorizationLogin((prompt) =>
+  const approvalUrl = yield* Deferred.make<string>();
+  const login = CliTokenManager.deviceAuthorizationLogin((prompt) =>
     Console.log(formatDeviceAuthorizationPrompt(prompt, offerBrowser)).pipe(
       Effect.andThen(
-        offerBrowser
-          ? Effect.forkScoped(
-              openBrowserOnEnter(prompt.verificationUriComplete ?? prompt.verificationUri).pipe(
-                Effect.ignore,
-              ),
-            )
-          : Effect.void,
+        Deferred.succeed(approvalUrl, prompt.verificationUriComplete ?? prompt.verificationUri),
       ),
     ),
+  );
+  // Once the prompt shows, Enter opens the browser while the code is polled,
+  // and Ctrl+C's QuitError interrupts the poll and ends the command.
+  const { token, identity } = yield* (
+    offerBrowser
+      ? Effect.raceFirst(
+          login,
+          Deferred.await(approvalUrl).pipe(Effect.flatMap(openBrowserOnEnter), Effect.scoped),
+        )
+      : login
   ).pipe(
-    Effect.scoped,
     Effect.mapError((cause) =>
-      isCloudCliTokenManagerError(cause)
+      Terminal.isQuitError(cause) || isCloudCliTokenManagerError(cause)
         ? cause
         : new CliTokenManager.CloudCliAuthorizationError({ cause }),
     ),
