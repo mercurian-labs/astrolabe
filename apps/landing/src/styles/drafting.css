@@ -4123,6 +4123,9 @@ kbd {
   min-height: clamp(38rem, 54vw, 66rem);
   overflow: hidden;
   border-left: 1px solid var(--rule);
+  /* A drag anywhere in the field turns the rete (instrument.js). On a phone the field is full width,
+     so it keeps vertical swipes and pinches for the page; a drag that leads sideways turns the rete. */
+  touch-action: pan-y pinch-zoom;
 }
 /* The instrument stands between the labels at the top and a band kept for the reading. */
 .sky__art {
@@ -4312,12 +4315,23 @@ kbd {
   stroke: none;
   outline: none;
   pointer-events: all;
-  cursor: grab;
-  touch-action: none;
 }
-.is-turning,
-.is-turning * {
+.sky.can-turn {
+  cursor: grab;
+}
+.is-turning:not(.takes-cursor.is-sighting),
+.is-turning:not(.takes-cursor.is-sighting) * {
   cursor: grabbing !important;
+}
+.is-turning {
+  user-select: none;
+}
+/* With JavaScript and a fine pointer the sighting mark is the pointer (drafting.js): no system
+   cursor while the field sights, except on its controls. */
+.takes-cursor.is-sighting,
+.takes-cursor.is-sighting
+  :not(:is(a[href], button, input, select, textarea, label, summary), :is(a[href], button) *) {
+  cursor: none;
 }
 .m-handle:focus-visible {
   stroke: var(--ink);
@@ -4433,7 +4447,8 @@ kbd {
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-.sky.has-star .sight {
+/* On a star the tip reads it: the guides and readout step aside and the mark rings the star. */
+.sky.has-star .sight > :not(.sight__mark) {
   opacity: 0;
 }
 
@@ -4503,22 +4518,75 @@ html:not(.js) .hover-only {
   display: none;
 }
 
-/* The sighting: crosshair, ruler marks, the rule from the instrument's centre, and the readout. */
+/* The sighting: crosshair, ruler marks, the rule from the instrument's centre, and the readout,
+   which fade in; and the mark at the pointer, which is the pointer, so it shows and hides at once. */
 .sight {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.25s cubic-bezier(0.33, 1, 0.68, 1);
-}
-.is-sighting .sight {
-  opacity: 1;
 }
 .sight > * {
   position: absolute;
   left: 0;
   top: 0;
+  opacity: 0;
+  transition: opacity 0.25s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.is-sighting .sight > * {
+  opacity: 1;
+}
+.sight > .sight__mark {
+  display: none;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  overflow: visible;
+  transition: none;
+}
+.takes-cursor .sight > .sight__mark {
+  display: block;
+}
+.sight__mark * {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  transition:
+    transform 0.18s cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 0.18s ease;
+}
+.sight__mark .sight__pip {
+  fill: var(--rust);
+  stroke: none;
+}
+.sight__mark .sight__ticks {
+  stroke: var(--rust);
+}
+/* Turning: the ring gives way to two arcs that turn with the rete. */
+.sight__mark .sight__cue {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.sight__mark .sight__cue path {
+  stroke: var(--rust);
+  stroke-width: 1.4px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: none;
+}
+.is-turning .sight__mark .sight__cue {
+  opacity: 1;
+}
+.is-turning .sight__mark .sight__ring {
+  opacity: 0;
+}
+.has-star .sight__mark .sight__ring {
+  stroke: var(--rust);
+  transform: scale(2.4);
+}
+.has-star .sight__mark .sight__ticks {
+  opacity: 0;
 }
 .sight__h {
   width: 100%;

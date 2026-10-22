@@ -90,7 +90,13 @@ once($$("[data-draw]"), (el) => el.classList.add("is-drawn"), { threshold: 0.4 }
 
 /* ───────────────────────────── The astrolabe's sighting: a crosshair, rulers and a readout of the true altitude
    and azimuth under the pointer, which instrument.js reads back through the plate's projection
-   (window.astrolabeSight). Runs only while the pointer moves; stops when it settles or leaves. */
+   (window.astrolabeSight). With JavaScript and a fine pointer that hovers, the sighting mark is the
+   pointer: CSS hides the system cursor while the field is sighting (.takes-cursor.is-sighting), the
+   mark sits exactly on the pointer, and the guides and readout ease after it. Over the field's own
+   controls (the Now button) the field stops sighting and the system cursor comes back; so it does
+   when the pointer leaves, the window blurs or the tab hides. The instrument's hit areas (the rete's
+   handle, its stars) are the instrument itself, so they keep the mark. Runs one rAF per pointer
+   move while the guides settle, and nothing at rest. */
 
 const field = $("[data-sight]");
 if (field) {
@@ -102,13 +108,22 @@ if (field) {
     my: $(".sight__my", sight),
     line: $(".sight__rule line", sight),
     read: $(".sight__read", sight),
+    mark: $(".sight__mark", sight),
   };
+  const CONTROLS = "a[href], button, input, select, textarea, label, summary";
+  const fineQuery = matchMedia("(hover: hover) and (pointer: fine)");
+  const takeOver = () => field.classList.toggle("takes-cursor", fineQuery.matches && !!parts.mark);
+  takeOver();
+  fineQuery.addEventListener("change", takeOver);
+
   const target = { x: 0, y: 0 };
   const now = { x: 0, y: 0 };
+  const client = { x: 0, y: 0 };
   let box = null;
   let centre = null;
   let raf = 0;
   let lastText = "";
+  let sighting = false;
 
   const measure = () => {
     box = field.getBoundingClientRect();
@@ -126,6 +141,8 @@ if (field) {
     };
   };
   const write = () => {
+    // The mark is the pointer: exactly where it is, never eased.
+    if (parts.mark) parts.mark.style.transform = `translate(${target.x}px, ${target.y}px)`;
     const { x, y } = now;
     parts.h.style.transform = `translateY(${y}px)`;
     parts.v.style.transform = `translateX(${x}px)`;
@@ -155,7 +172,8 @@ if (field) {
   };
   const tick = () => {
     raf = 0;
-    const k = motion ? 0.3 : 1;
+    if (!sighting) return;
+    const k = motion ? 0.35 : 1;
     now.x += (target.x - now.x) * k;
     now.y += (target.y - now.y) * k;
     if (Math.abs(target.x - now.x) < 0.1 && Math.abs(target.y - now.y) < 0.1) {
@@ -164,29 +182,53 @@ if (field) {
     } else raf = requestAnimationFrame(tick);
     write();
   };
-  field.addEventListener("pointerenter", (event) => {
-    if (event.pointerType === "touch") return;
-    measure();
-    now.x = target.x = event.clientX - box.left;
-    now.y = target.y = event.clientY - box.top;
-    write();
-    field.classList.add("is-sighting");
-  });
-  field.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "touch") return;
-    if (!box) measure();
-    target.x = event.clientX - box.left;
-    target.y = event.clientY - box.top;
-    if (!field.classList.contains("is-sighting")) field.classList.add("is-sighting");
-    if (!raf) raf = requestAnimationFrame(tick);
-  });
-  field.addEventListener("pointerleave", () => {
+  const leave = () => {
+    sighting = false;
     field.classList.remove("is-sighting");
     cancelAnimationFrame(raf);
     raf = 0;
     box = null;
-  });
-  addEventListener("scroll", () => (box = null), { passive: true });
+  };
+  // A pointer at a client point: sight from it, or stop where it is off the field or on a control.
+  const place = (x, y, onControl) => {
+    client.x = x;
+    client.y = y;
+    if (!box) measure();
+    target.x = x - box.left;
+    target.y = y - box.top;
+    const inside = target.x >= 0 && target.y >= 0 && target.x < box.width && target.y < box.height;
+    if (!inside || onControl) return sighting && leave();
+    if (!sighting) {
+      // Arriving: the guides start on the pointer rather than easing in from where they last were.
+      sighting = true;
+      now.x = target.x;
+      now.y = target.y;
+      field.classList.add("is-sighting");
+    }
+    if (!raf) raf = requestAnimationFrame(tick);
+  };
+  const onPointer = (event) => {
+    if (event.pointerType === "touch") return;
+    // While the rete turns the field holds the pointer, so the target is the field itself.
+    place(event.clientX, event.clientY, !!event.target.closest?.(CONTROLS));
+  };
+  field.addEventListener("pointermove", onPointer);
+  field.addEventListener("pointerleave", (event) => event.pointerType !== "touch" && leave());
+  addEventListener("blur", leave);
+  document.addEventListener("visibilitychange", () => document.hidden && leave());
+  addEventListener("resize", () => (box = null));
+  // Scrolling carries the field under a resting pointer, which sends no move; follow it from there.
+  addEventListener(
+    "scroll",
+    () => {
+      box = null;
+      if (!sighting) return;
+      const under = document.elementFromPoint(client.x, client.y);
+      if (!under || !field.contains(under)) leave();
+      else place(client.x, client.y, !!under.closest(CONTROLS));
+    },
+    { passive: true },
+  );
 }
 
 /* ───────────────────────────── Manifesto: words darken from grey to ink as it scrolls through. */

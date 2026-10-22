@@ -6,8 +6,8 @@
 // The maths is in sky.js.
 //
 // Motion: one sweep of the rete into place on arrival, then a redraw at most once a minute and none
-// while the tab is hidden. Dragging the rete, the arrow keys and "Now" wind time; the pointer sights
-// true altitude and azimuth through the inverse projection. Parts turn as transforms on SVG groups;
+// while the tab is hidden. A drag anywhere in the field turns the rete; it, the arrow keys and "Now"
+// wind time; the pointer sights true altitude and azimuth through the inverse projection. Parts turn as transforms on SVG groups;
 // nothing repaints in a loop. With reduced motion it arrives set; without JavaScript the static
 // drawing in the page shows instead.
 
@@ -347,6 +347,7 @@ import Sky from "./sky.js";
   ]);
   const starsUp = STARS.map(() => null);
   art.classList.add("has-model");
+  field.classList.add("can-turn");
 
   /* ─────────── The page's readouts. */
 
@@ -443,6 +444,8 @@ import Sky from "./sky.js";
     const state = (current = stateAt(clock() + offset));
     const reteTurn = `rotate(${(hemi * state.lst).toFixed(3)})`;
     for (const g of turns.rete) g.setAttribute("transform", reteTurn);
+    // The sighting mark's turning cue turns with the rete.
+    if (dragging && cue) cue.setAttribute("transform", reteTurn);
     const ruleTurn = `rotate(${(hemi * state.sunHa).toFixed(3)})`;
     for (const g of turns.rule) g.setAttribute("transform", ruleTurn);
     const [sx, sy] = onRete(state.sun.ra, state.sun.dec);
@@ -533,7 +536,14 @@ import Sky from "./sky.js";
     scheduleMinute();
   });
 
-  /* ─────────── Dragging the rete. The angle swept around the centre winds sidereal time. */
+  /* ─────────── Turning the rete. A press anywhere in the field, except on its controls, grips the
+     disc: the angle the pointer sweeps around the centre winds sidereal time, so a clockwise drag
+     moves time forward (in the south, where the rete is mirrored, the disc still follows the hand).
+     Close to the pin that angle swings wildly, so inside a small dead zone horizontal movement turns
+     it instead. A mouse or pen grips at once. A touch waits to see which way it goes: the field is
+     touch-action: pan-y pinch-zoom (drafting.css), so the browser keeps vertical swipes and pinches
+     for the page and cancels the pointer, and a drag that leads sideways turns the rete. The field
+     is full width on a phone, so it must never trap the page's scroll. */
 
   const toLocal = (event) => {
     const m = svg.getScreenCTM();
@@ -542,53 +552,100 @@ import Sky from "./sky.js";
     return { x: p.x - CX, y: p.y - CY };
   };
   const angleOf = (p) => (Math.atan2(p.x, -p.y) * 180) / Math.PI;
+  const CONTROLS = "a[href], button, input, select, textarea, label, summary";
+  const SLOP = 10; // CSS px a touch travels before it counts as a drag
+  // The pointer around the centre, in CSS px, with the dead zone and the plate's radius at this size.
+  const grip = (event) => {
+    const m = svg.getScreenCTM();
+    if (!m) return null;
+    const c = new DOMPoint(CX, CY).matrixTransform(m);
+    const plate = PLATE * Math.hypot(m.a, m.b);
+    const x = event.clientX - c.x;
+    const y = event.clientY - c.y;
+    return { x, y, r: Math.hypot(x, y), dead: Math.max(24, plate * 0.1), plate };
+  };
+  const cue = field.querySelector(".sight__cue");
   let dragging = false;
-  let lastAngle = 0;
   let dragId = null;
+  let pending = null;
+  let lastAngle = null;
+  let lastX = 0;
 
-  function onDown(event) {
-    if (event.button > 0) return;
-    const p = toLocal(event);
-    if (!p || Math.hypot(p.x, p.y) > PLATE + 4 || Math.hypot(p.x, p.y) < 10) return;
+  function begin(event, from) {
     cancelAnimationFrame(tween);
     tween = 0;
     dragging = true;
     dragId = event.pointerId;
-    lastAngle = angleOf(p);
-    svg.setPointerCapture(event.pointerId);
+    const g = grip(from);
+    lastAngle = g && g.r >= g.dead ? angleOf(g) : null;
+    lastX = from.clientX;
+    try {
+      field.setPointerCapture(event.pointerId);
+    } catch {}
     field.classList.add("is-turning");
-    event.preventDefault();
+    if (tipStar !== null && document.activeElement !== starEls[tipStar]) hideStar();
+    render();
+  }
+  function onDown(event) {
+    if (dragging || pending || !event.isPrimary) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (event.target.closest(CONTROLS)) return;
+    if (event.pointerType === "touch") {
+      pending = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      return;
+    }
+    event.preventDefault(); // no text selection while the hand is on the disc
+    begin(event, event);
   }
   function onMove(event) {
+    if (pending && event.pointerId === pending.id) {
+      const dx = event.clientX - pending.x;
+      const dy = event.clientY - pending.y;
+      if (Math.hypot(dx, dy) < SLOP) return;
+      const start = { clientX: pending.x, clientY: pending.y };
+      pending = null;
+      if (Math.abs(dx) <= Math.abs(dy)) return; // a swipe up or down: the page scrolls
+      begin(event, start);
+    }
     if (!dragging || event.pointerId !== dragId) return;
-    const p = toLocal(event);
-    if (!p || Math.hypot(p.x, p.y) < 10) return;
-    const a = angleOf(p);
-    const da = wrap180(a - lastAngle);
-    lastAngle = a;
+    const g = grip(event);
+    if (!g) return;
+    let da;
+    if (g.r < g.dead) {
+      // Inside the dead zone: rightward is forward, at the rate of the plate's half radius.
+      da = ((event.clientX - lastX) * 180) / (Math.PI * g.plate * 0.5);
+      lastAngle = null;
+    } else {
+      const a = angleOf(g);
+      da = lastAngle === null ? 0 : wrap180(a - lastAngle);
+      lastAngle = a;
+    }
+    lastX = event.clientX;
+    if (!da) return;
     // The rete turns by hemi × sidereal time, so a turn of da degrees is hemi × da of sidereal time.
     offset += hemi * da * Sky.msPerSiderealDegree;
     requestRender();
   }
-  function onUp(event) {
-    if (event.pointerId !== dragId) return;
+  function end(event) {
+    if (pending && (event?.pointerId === undefined || event.pointerId === pending.id))
+      pending = null;
+    if (!dragging || (event?.pointerId !== undefined && event.pointerId !== dragId)) return;
+    const id = dragId;
     dragging = false;
     dragId = null;
+    lastAngle = null;
     field.classList.remove("is-turning");
+    if (field.hasPointerCapture(id)) field.releasePointerCapture(id);
   }
-  svg.addEventListener("pointerdown", onDown);
-  // A touch that starts on the plate turns the rete instead of scrolling; anywhere else still scrolls.
-  svg.addEventListener(
-    "touchstart",
-    (event) => {
-      const p = toLocal(event.touches[0]);
-      if (p && Math.hypot(p.x, p.y) <= PLATE + 4) event.preventDefault();
-    },
-    { passive: false },
-  );
-  svg.addEventListener("pointermove", onMove);
-  svg.addEventListener("pointerup", onUp);
-  svg.addEventListener("pointercancel", onUp);
+  field.addEventListener("pointerdown", onDown);
+  field.addEventListener("pointermove", onMove);
+  field.addEventListener("pointerup", end);
+  field.addEventListener("pointercancel", end);
+  // Capture moving to the field from where a touch landed is not the end of the turn.
+  field.addEventListener("lostpointercapture", (event) => event.target === field && end(event));
+  // A turn never outlives the window's focus or the tab.
+  addEventListener("blur", () => end());
+  document.addEventListener("visibilitychange", () => document.hidden && end());
 
   handle.addEventListener("keydown", (event) => {
     const step = event.shiftKey ? 3600000 : 600000;
@@ -776,6 +833,11 @@ import Sky from "./sky.js";
   /* ─────────── Sighting: the crosshair readout, through the inverse projection. */
 
   window.astrolabeSight = (clientX, clientY) => {
+    if (dragging) {
+      // While the rete turns, the readout is the moment it is turned to.
+      const date = new Date(clock() + offset);
+      return `${timeFmt.format(date)} ${zoneName(date)} · ${dateFmt.format(date)}`;
+    }
     if (tipStar !== null || !current) return null;
     const p = toLocal({ clientX, clientY });
     if (!p) return null;
