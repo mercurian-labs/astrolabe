@@ -26,10 +26,7 @@ import Sky from "./sky.js";
   /* ─────────── Where and when. `?t=2026-10-21T21:30` (a wall time in the zone) and `&tz=Area/City`
      fix both for testing; then "now" is that moment and the clock does not advance. */
 
-  const params = new URLSearchParams(location.search);
-  const place = Places.guess(params.get("tz") || undefined);
-  const zone = place.zone && !/^(UTC|GMT|Etc\/)/.test(place.zone) ? place.zone : "UTC";
-  const fixed = params.get("t") ? Places.wallToDate(params.get("t"), zone) : null;
+  const { place, zone, fixed } = Places.fromQuery(location.search);
   const clock = () => (fixed ? fixed.getTime() : Date.now());
   const lat = place.lat;
   const hemi = lat < 0 ? -1 : 1;
@@ -429,6 +426,9 @@ import Sky from "./sky.js";
 
   let offset = 0;
   let current = null;
+  // True while the opening sweep winds in from three hours back; any hand on the instrument, or the
+  // sweep's end, ends it.
+  let arriving = false;
 
   function stateAt(ms) {
     const date = new Date(ms);
@@ -436,7 +436,9 @@ import Sky from "./sky.js";
     const sun = Sky.sun(date);
     const sunHa = wrap360(lst - sun.ra);
     const { alt: sunAlt, az: sunAz } = Sky.altAz(sunHa, sun.dec, lat);
-    return { ms, date, lst, sun, sunHa, sunAlt, sunAz, lat };
+    // The real sky's altitude too, for the page's palette while the opening sweep plays (relight.js).
+    const nowAlt = offset ? Sky.sunAltitude(new Date(clock()), lat, place.lon) : sunAlt;
+    return { ms, date, lst, sun, sunHa, sunAlt, sunAz, lat, nowAlt, arriving };
   }
 
   let lastMinute = "";
@@ -495,6 +497,7 @@ import Sky from "./sky.js";
     tween = 0;
     if (reducedQuery.matches || duration <= 0) {
       offset = to;
+      arriving = false;
       render();
       return;
     }
@@ -504,6 +507,7 @@ import Sky from "./sky.js";
       const t = Math.min(1, (now - start) / duration);
       const k = 1 - Math.pow(1 - t, 3);
       offset = from + (to - from) * k;
+      if (t >= 1) arriving = false;
       render();
       tween = t < 1 ? requestAnimationFrame(step) : 0;
     };
@@ -574,6 +578,7 @@ import Sky from "./sky.js";
   function begin(event, from) {
     cancelAnimationFrame(tween);
     tween = 0;
+    arriving = false;
     dragging = true;
     dragId = event.pointerId;
     const g = grip(from);
@@ -666,6 +671,7 @@ import Sky from "./sky.js";
     event.preventDefault();
     cancelAnimationFrame(tween);
     tween = 0;
+    arriving = false;
     offset += keys[event.key];
     render();
   });
@@ -870,6 +876,7 @@ import Sky from "./sky.js";
     render();
   } else {
     offset = -3 * 3600000;
+    arriving = true;
     render();
     const arrival = new IntersectionObserver(
       (entries) => {

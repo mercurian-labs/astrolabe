@@ -1,26 +1,37 @@
 // Astrolabe · drafting · twilight
 //
-// The closing section's palette as a function of the sun's altitude at the instrument's represented
-// time. Above the horizon it is the page's paper and ink; through civil twilight (0° to −6°) the paper
-// warms and dims; through nautical (−6° to −12°) it falls toward the night and the inks turn over to
-// ivory; through astronomical (−12° to −18°) it deepens; below −18° it is the night band: ivory and
-// olive on charcoal. Colours are mixed in OKLab. The text inks are chosen for contrast, not mixed:
-// the ink is whichever of the two inks reads better on the paper, and the softer inks are that ink
-// moved toward the paper only as far as their day contrast allows, so every state stays legible.
+// The page's palette as a function of the sun's altitude at the instrument's represented time: the
+// working astrolabe in [02] is the page's light switch. Above the horizon it is the day paper and
+// ink; through civil twilight (0° to −6°) the paper warms and dims; through nautical (−6° to −12°) it
+// falls toward the night; through astronomical (−12° to −18°) it deepens; below −18° it is night:
+// ivory and olive on charcoal, a shade above the night bands' (the hero's print, the footer), so
+// they still stand apart on a dark page. Colours are mixed in OKLab.
+//
+// The inks turn over once, at FLIP: above it the paper stays light enough for the dark ink, below it
+// dark enough for the ivory, and it jumps across the middle greys where neither ink reads (the page
+// crossfades that one step). The softer inks are the ink moved toward the paper only as far as their
+// contrast allows, so every step keeps body text at 4.5:1 (scripts/twilight-contrast.mjs checks).
+//
+// The altitude is quantised to half degrees and the page is written only when the step changes, so
+// turning the rete restyles the page a few times a second at most, and never outside the bands.
 // `node` can import this file.
 
 const Twilight = (() => {
-  // alt° → paper. Day above the horizon, night below −18°.
-  const PAPER = [
+  const FLIP = -10;
+  const STEP = 0.5;
+  // alt° → paper, either side of the flip. Day above the horizon, night below −18°.
+  const DUSK = [
     [0, "#fbf9f4"],
     [-3, "#f4ead8"],
     [-6, "#e6d3b2"],
     [-8, "#c9b392"],
-    [-9.5, "#a59176"],
-    [-10.5, "#63574a"],
-    [-12, "#4a4138"],
-    [-15, "#2b2723"],
-    [-18, "#1e1c1a"],
+    [FLIP, "#ae987c"],
+  ];
+  const DARK_PAPER = [
+    [FLIP, "#564c42"],
+    [-12, "#433b34"],
+    [-15, "#2e2a26"],
+    [-18, "#24211e"],
   ];
   const DARK = "#292724"; // the page's ink
   const IVORY = "#eaddc7"; // the night band's ink
@@ -29,19 +40,18 @@ const Twilight = (() => {
     [-18, "#8d8455"],
   ];
   const RUST = "#a0492a";
-  // Contrast each softer ink keeps against the paper by day, and holds where it can. At the ends the
-  // page's own values take over: the paper's (DAY) above the horizon, the night band's (NIGHT) below
-  // −18°.
+  // Contrast each softer ink keeps against the paper, and holds where it can. At the ends the page's
+  // own values take over: the paper's (DAY) above the horizon, the night band's (NIGHT) below −18°.
   const SOFT = {
     "--ink-2": 7.4,
-    "--ink-3": 4.5,
+    "--ink-3": 4.6,
     "--ink-4": 1.85,
     "--rule": 1.6,
     "--rule-soft": 1.2,
   };
   const DAY = {
     "--ink-2": "#57514a",
-    "--ink-3": "#7d766b",
+    "--ink-3": "#756e63",
     "--ink-4": "#c3baaa",
     "--rule": "#cfc4b1",
     "--rule-soft": "#e6dfd2",
@@ -126,12 +136,12 @@ const Twilight = (() => {
 
   function rustText(ink, paper) {
     const rust = hex(RUST);
-    if (contrast(rust, paper) >= 4.5) return rust;
+    if (contrast(rust, paper) >= 4.6) return rust;
     let lo = 0;
     let hi = 1;
     for (let i = 0; i < 18; i++) {
       const t = (lo + hi) / 2;
-      if (contrast(mix(ink, rust, t), paper) >= 4.5) lo = t;
+      if (contrast(mix(ink, rust, t), paper) >= 4.6) lo = t;
       else hi = t;
     }
     return mix(ink, rust, lo);
@@ -145,10 +155,10 @@ const Twilight = (() => {
   /* ─────────── The palette. `night` runs 0 → 1 from −6° to −18°, for what only shows after dark. */
 
   function at(alt) {
-    const paper = along(PAPER, alt);
+    const inverted = alt < FLIP;
+    const paper = inverted ? along(DARK_PAPER, alt) : along(DUSK, alt);
     const dark = hex(DARK);
     const ivory = hex(IVORY);
-    const inverted = contrast(ivory, paper) > contrast(dark, paper);
     const ink = inverted ? ivory : dark;
     const vars = { "--paper": toHex(paper), "--ink": toHex(ink) };
     const day = smooth(-3, 0, alt);
@@ -182,28 +192,49 @@ const Twilight = (() => {
     };
   }
 
-  // Sets the palette on an element, skipping the work when nothing visible changed.
-  function apply(el, alt) {
-    const key = Math.round(alt * 20);
-    if (el._twilightKey === key) return el._twilight;
-    const state = at(alt);
-    for (const [name, value] of Object.entries(state.vars)) el.style.setProperty(name, value);
-    el.dataset.twilight =
-      alt > 0
-        ? "day"
-        : alt > -6
-          ? "civil"
-          : alt > -12
-            ? "nautical"
-            : alt > -18
-              ? "astronomical"
-              : "night";
-    el._twilightKey = key;
-    el._twilight = state;
+  // The step an altitude shows: half degrees through the bands, one state above the horizon and one
+  // below −18°.
+  const step = (alt) => Math.min(0, Math.max(-18, Math.round(alt / STEP) * STEP));
+  const band = (alt) =>
+    alt > 0
+      ? "day"
+      : alt > -6
+        ? "civil"
+        : alt > -12
+          ? "nautical"
+          : alt > -18
+            ? "astronomical"
+            : "night";
+
+  // Sets the page's palette on the root, with the browser's chrome to match, when the step changes.
+  // Crossing the flip turns `twilight-ease` on for a moment (drafting.css crossfades the palette
+  // under it, with motion allowed). Returns the palette shown.
+  let shown = null;
+  let easing = 0;
+  function page(alt, root = document.documentElement) {
+    const q = step(alt);
+    const stage = band(alt);
+    if (root.dataset.twilight !== stage) root.dataset.twilight = stage;
+    if (shown && shown.alt === q) return shown;
+    const state = at(q);
+    const theme = state.inverted ? "dark" : "light";
+    if (shown && shown.inverted !== state.inverted && root.classList.contains("motion")) {
+      root.classList.add("twilight-ease");
+      clearTimeout(easing);
+      easing = setTimeout(() => root.classList.remove("twilight-ease"), 420);
+    }
+    for (const [name, value] of Object.entries(state.vars)) root.style.setProperty(name, value);
+    root.dataset.theme = theme;
+    root.style.colorScheme = theme;
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", state.vars["--paper"]);
+    document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", theme);
+    shown = state;
     return state;
   }
 
-  return { at, apply, contrast, luminance, hex, toHex, mix };
+  return { FLIP, at, step, page, current: () => shown, contrast, luminance, hex, toHex, mix };
 })();
 
 export default Twilight;

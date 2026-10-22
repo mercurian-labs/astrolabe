@@ -103,6 +103,12 @@ const Sky = (() => {
   // Local sidereal time; `lon` east positive.
   const lst = (date, lon) => wrap360(gmst(date) + lon);
 
+  // The sun's altitude at `lat`, `lon` (east positive).
+  function sunAltitude(date, lat, lon) {
+    const { ra, dec } = sun(date);
+    return altAz(lst(date, lon) - ra, dec, lat).alt;
+  }
+
   const msPerSiderealDegree = 86400000 / SIDEREAL_DAY_DEG;
 
   return {
@@ -116,6 +122,7 @@ const Sky = (() => {
     gmst,
     lst,
     sun,
+    sunAltitude,
     obliquity,
     precess,
     altAz,

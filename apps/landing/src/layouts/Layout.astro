@@ -2,8 +2,21 @@
 import Sprite from "../components/Sprite.astro";
 import "../styles/drafting.css";
 import { description, headline } from "../site.js";
+import bootSource from "../scripts/sky-boot.js?raw";
+import placesSource from "../scripts/places.js?raw";
+import skySource from "../scripts/sky.js?raw";
+import twilightSource from "../scripts/twilight.js?raw";
 
 const title = `Astrolabe · ${headline}`;
+
+// The modules as one classic script for the head (scripts/sky-boot.js): imports, exports, comment
+// lines and indentation dropped, in a block so its names stay out of the page's scope.
+const classic = (source: string) =>
+  source
+    .replace(/^(import .*|export default \w+;)$/gm, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/^\s+/gm, "");
+const boot = `{\n${[skySource, placesSource, twilightSource, bootSource].map(classic).join("")}}`;
 ---
 
 <!doctype html>
@@ -33,6 +46,7 @@ const title = `Astrolabe · ${headline}`;
       document.documentElement.classList.add("js");
       if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("motion");
     </script>
+    <script is:inline set:html={boot} />
   </head>
   <body>
     <Sprite />

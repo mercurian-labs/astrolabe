@@ -66,9 +66,9 @@ import "../styles/drafting.css";
     </section>
     <script is:inline>
       const read = document.querySelector("[data-read]");
-      // Listening on the window, so the section's own handler (on the document) has set the stage.
+      // Listening on the window, so the page palette (set from the document) has its stage.
       addEventListener("astrolabe:time", ({ detail }) => {
-        const stage = document.querySelector("[data-relight]").dataset.twilight;
+        const stage = document.documentElement.dataset.twilight;
         read.textContent = `Sun ALT ${detail.sunAlt.toFixed(2)}° · AZ ${detail.sunAz.toFixed(1)}° · ${stage}`;
       });
     </script>

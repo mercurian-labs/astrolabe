@@ -2,7 +2,7 @@
 //
 // The instrument's field ([02]) stands on a close crop of Mercury (scripts/render-relight.py exports
 // its normals and height). Each time the working astrolabe's represented moment changes (it announces that with an
-// `astrolabe:time` event), the section takes its palette from the sun's altitude (twilight.js) and
+// `astrolabe:time` event), the page takes its palette from the sun's altitude (twilight.js) and
 // this shader prints the ground in the page's two-ink grain under that sun: the print's up is north,
 // so a sun at azimuth A and altitude h lights it along (cos h sin A, cos h cos A, sin h). Shadows are
 // cast by marching toward the sun through the height. The grain is thresholded against a fixed noise
@@ -56,14 +56,16 @@ import Twilight from "./twilight.js";
 
   const fallback = () => section.classList.add("relight--static");
 
-  /* ─────────── The palette follows the sun whether or not the ground can be drawn. */
+  /* ─────────── The page's palette follows the sun whether or not the ground can be drawn. While the
+     instrument sweeps in on arrival the page keeps the real sky (`nowAlt`), so it never flickers
+     through the three hours the sweep winds back. */
 
   document.addEventListener("astrolabe:time", (event) => {
-    const { sunAlt, sunAz } = event.detail;
+    const { sunAlt, sunAz, nowAlt, arriving } = event.detail;
     south = event.detail.lat < 0;
+    Twilight.page(arriving ? nowAlt : sunAlt);
     if (sun && Math.abs(sun.alt - sunAlt) < 0.004 && Math.abs(sun.az - sunAz) < 0.004) return;
     sun = { alt: sunAlt, az: sunAz };
-    Twilight.apply(section, sunAlt);
     dirty = true;
     paint();
   });
@@ -409,7 +411,8 @@ import Twilight from "./twilight.js";
 
   function render(meta) {
     const { alt, az } = sun;
-    const palette = Twilight.at(alt);
+    // The grain prints on the paper the page shows, which holds the real sky through the arrival.
+    const palette = Twilight.current() || Twilight.at(alt);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.uniform2f(u.u_res, canvas.width, canvas.height);
     gl.uniform1f(u.u_dpr, dpr);

@@ -167,7 +167,17 @@ const Places = (() => {
     return new Date(t);
   }
 
-  return { guess, wallToDate, offsetMinutes };
+  // Where and when a page address asks for: `?t=2026-10-21T21:30` (a wall time in the zone) and
+  // `&tz=Area/City` fix both for testing; without `t`, `fixed` is null and the moment is now.
+  function fromQuery(search) {
+    const params = new URLSearchParams(search);
+    const place = guess(params.get("tz") || undefined);
+    const zone = place.zone && !/^(UTC|GMT|Etc\/)/.test(place.zone) ? place.zone : "UTC";
+    const fixed = params.get("t") ? wallToDate(params.get("t"), zone) : null;
+    return { place, zone, fixed };
+  }
+
+  return { guess, wallToDate, offsetMinutes, fromQuery };
 })();
 
 export default Places;

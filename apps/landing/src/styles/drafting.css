@@ -30,17 +30,27 @@
   font-display: swap;
 }
 
-/* ───────────────────────────────────────── Tokens */
+/* ───────────────────────────────────────── Tokens
+
+   The page's palette is the day's. With script, twilight.js resets it on the root from the sun at
+   the working astrolabe's moment: the paper, the inks and rules follow it down through twilight,
+   and below the flip (data-theme="dark") the inks turn ivory. The two inks themselves, the rust and
+   the ink on rust never change. */
 
 :root {
   --paper: #fbf9f4;
   --ink: #292724;
   --ink-2: #57514a;
-  --ink-3: #7d766b;
+  --ink-3: #756e63;
   --ink-4: #c3baaa;
   --rule: #cfc4b1;
   --rule-soft: #e6dfd2;
+  --olive: #807948;
   --rust: #a0492a;
+  --rust-text: #a0492a;
+  --charcoal: #292724;
+  --ivory: #eaddc7;
+  --on-rust: #fbf9f4;
 
   --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
   --sans: "Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -80,10 +90,134 @@
   --app-del-bg: oklch(0.955 0.022 25);
   --app-agent: oklch(0.55 0.11 235);
   --app-agent-tint: oklch(0.55 0.11 235 / 0.11);
+  --app-lights: oklch(0.86 0 0);
+  --app-row-hover: oklch(0.925 0 0);
+  --app-warn-bg: oklch(0.95 0.045 80);
+  --app-info-bg: oklch(0.95 0.025 247);
+  --app-focus-bar: oklch(0.51156 0.12411 39.604);
   --syn-s: #448c27;
   --syn-n: #7a3e9d;
   --syn-c: #aa3731;
   --syn-d: #325cc0;
+}
+
+/* After the flip the drawn app wears its dark Mercurian theme (packages/shared/src/mercurianTheme.ts,
+   the dark variant; diff colours from apps/web, syntax from Alabaster Dark). */
+:root[data-theme="dark"] {
+  --app-canvas: oklch(0.185441 0.009432 208.772);
+  --app-sidebar: oklch(0.168126 0.008165 211.135);
+  --app-surface: oklch(0.214607 0.011919 205.732);
+  --app-text: oklch(0.851419 0 0);
+  --app-muted: oklch(0.67385 0.01832 201.293);
+  --app-faint: oklch(0.616555 0.03083 201.955);
+  --app-border: oklch(0.271895 0.014041 203.882);
+  --app-row-active: oklch(0.312195 0.013696 203.915);
+  --app-message: oklch(0.252061 0.012914 204.709);
+  --app-code: oklch(0.214607 0.011919 205.732);
+  --app-accent: oklch(0.902134 0.032641 80.987);
+  --app-accent-fg: oklch(0.185441 0.009432 208.772);
+  --app-info: oklch(0.729714 0.105337 248.651);
+  --app-warn: oklch(0.713435 0.113318 73.506);
+  --app-add: oklch(0.765 0.177 163.223);
+  --app-del: oklch(0.667655 0.146081 24.794);
+  --app-add-bg: oklch(0.262 0.04 163);
+  --app-del-bg: oklch(0.248551 0.022115 14.03);
+  --app-agent: oklch(0.72 0.11 235);
+  --app-agent-tint: oklch(0.72 0.11 235 / 0.16);
+  --app-lights: oklch(0.327121 0.014841 203.237);
+  --app-row-hover: oklch(0.234367 0.014383 203.852);
+  --app-warn-bg: oklch(0.257453 0.024255 77.447);
+  --app-info-bg: oklch(0.248803 0.028524 242.921);
+  --app-focus-bar: oklch(0.664604 0.128607 43.379);
+  --syn-s: #95cb82;
+  --syn-n: #cc8bc9;
+  --syn-c: #dfdf8e;
+  --syn-d: #71ade7;
+}
+
+/* Crossing the flip, the palette crossfades (twilight.js turns the class on for a moment). Every
+   other step lands at once: they are a half degree apart and read as one continuous dusk. */
+@property --paper {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #fbf9f4;
+}
+@property --ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #292724;
+}
+@property --ink-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #57514a;
+}
+@property --ink-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #756e63;
+}
+@property --ink-4 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #c3baaa;
+}
+@property --rule {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #cfc4b1;
+}
+@property --rule-soft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e6dfd2;
+}
+@property --rust-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #a0492a;
+}
+@property --app-canvas {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --app-sidebar {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --app-surface {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --app-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --app-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --app-border {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --app-message {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+html.twilight-ease {
+  transition-property:
+    --paper, --ink, --ink-2, --ink-3, --ink-4, --rule, --rule-soft, --rust-text, --app-canvas,
+    --app-sidebar, --app-surface, --app-text, --app-muted, --app-border, --app-message;
+  transition-duration: 0.36s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ───────────────────────────────────────── Base */
@@ -287,7 +421,7 @@ section {
 }
 .px--on-rust {
   --px-fill: var(--ink);
-  --px-fg: var(--paper);
+  --px-fg: var(--on-rust);
   background: var(--rust);
 }
 
@@ -451,8 +585,13 @@ section {
   border: 1px solid var(--rule);
   background: var(--paper) var(--noise);
 }
-.mast__brand {
+.mast__lead {
   grid-column: span 5;
+  display: flex;
+  min-width: 0;
+}
+.mast__brand {
+  flex: 1;
   display: flex;
   align-items: center;
   padding: 0 var(--pad);
@@ -460,6 +599,46 @@ section {
 .mast__brand img {
   width: 8.5rem;
   height: auto;
+}
+/* The wordmark in the ink the page is in. */
+.mast__mark--night,
+:root[data-theme="dark"] .mast__mark {
+  display: none;
+}
+:root[data-theme="dark"] .mast__mark--night {
+  display: block;
+}
+/* The sky glyph: the sun up, setting, or the moon, as the instrument's sun stands; a link to it. */
+.mast__sky {
+  display: none;
+  place-items: center;
+  width: var(--head);
+  border-left: 1px solid var(--rule);
+  color: var(--ink-2);
+  transition: color 0.2s;
+}
+:root[data-twilight] .mast__sky {
+  display: grid;
+}
+.mast__sky:hover {
+  color: var(--ink);
+}
+.mast__sky svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mast__sky g {
+  display: none;
+}
+:root[data-twilight="day"] .mast__day,
+:root:is([data-twilight="civil"], [data-twilight="nautical"]) .mast__dusk,
+:root:is([data-twilight="astronomical"], [data-twilight="night"]) .mast__night {
+  display: inline;
 }
 .mast__nav {
   grid-column: span 5;
@@ -499,7 +678,7 @@ section {
   .mast__bar {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .mast__brand {
+  .mast__lead {
     grid-column: auto;
   }
   .mast__nav,
@@ -567,7 +746,7 @@ section {
   }
   .menu .menu__cta {
     background: var(--rust);
-    color: var(--paper);
+    color: var(--on-rust);
     font: 500 0.875rem var(--mono);
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1512,7 +1691,7 @@ hidden, leaves the sticky stage working). */
   width: 0.8em;
   height: 0.8em;
   border-radius: 50%;
-  background: oklch(0.86 0 0);
+  background: var(--app-lights);
   box-shadow: inset 0 0 0 0.5px oklch(0 0 0 / 0.08);
 }
 
@@ -2093,9 +2272,10 @@ hidden, leaves the sticky stage working). */
   background: var(--app-surface);
   box-shadow: 0 1px 2px oklch(0 0 0 / 0.05);
 }
-.rail__mark img {
-  width: auto;
+.rail__mark svg {
+  width: 1.2em;
   height: 1.55em;
+  color: var(--app-text);
 }
 /* Where the sidebar meets the rail and the title bar, its corner rounds: the rail's colour
    outside the curve, the sidebar's within. */
@@ -2180,7 +2360,7 @@ hidden, leaves the sticky stage working). */
 
 .app--tour {
   --agent: #0ea5e9;
-  --focus-bar: oklch(0.51156 0.12411 39.604);
+  --focus-bar: var(--app-focus-bar);
 }
 .app--tour .tab.is-focus {
   box-shadow: inset 0 2px 0 var(--focus-bar);
@@ -2737,7 +2917,7 @@ hidden, leaves the sticky stage working). */
   color: var(--app-text);
 }
 .app--tour[data-state="exploring"] .card.is-on:hover {
-  background: oklch(0.925 0 0);
+  background: var(--app-row-hover);
 }
 
 /* The example prompts under the window, on the print: paper chips, the one playing marked. */
@@ -2797,7 +2977,7 @@ hidden, leaves the sticky stage working). */
 .tour__chip.tour__chip[aria-pressed="true"] {
   border-color: #eaddc7;
   background: #f3ead9;
-  color: var(--ink);
+  color: var(--charcoal);
 }
 .tour__chip:disabled {
   cursor: default;
@@ -2940,11 +3120,11 @@ hidden, leaves the sticky stage working). */
   white-space: nowrap;
 }
 .state--warn {
-  background: oklch(0.95 0.045 80);
+  background: var(--app-warn-bg);
   color: var(--app-warn);
 }
 .state--info {
-  background: oklch(0.95 0.025 247);
+  background: var(--app-info-bg);
   color: var(--app-info);
 }
 .state--done {
@@ -5159,25 +5339,11 @@ html:not(.js) .hover-only {
 /* ───────────────────────────────────────── [02] Value · the ground under the instrument's sun
 
    relight.js prints the ground of the instrument's field, a close crop of Mercury, under the sun at
-   the instrument's represented moment, and twilight.js sets the whole section's palette from the
-   sun's altitude (inline custom properties on the section, so its copy, rules and the instrument
-   follow, and nothing past its edges does). The ground is a plate set into the field below a ruled
-   edge at --ground-top, the instrument standing on it. Without WebGL, or without
-   JavaScript, a static print shows instead: shadow ink by day, a little lit grain at night. */
+   the instrument's represented moment (twilight.js sets the page's palette from the same sun). The
+   ground is a plate set into the field below a ruled edge at --ground-top, the instrument standing
+   on it. Without WebGL, or without JavaScript, a static print shows instead: shadow ink by day, a
+   little lit grain at night. */
 [data-relight] {
-  background: var(--paper) var(--noise);
-  color: var(--ink);
-}
-/* "Works with" is not part of the instrument's sky: it keeps the page's day palette at any hour, so
-   twilight stops at the strip's ruled top edge. */
-[data-relight] .works {
-  --paper: #fbf9f4;
-  --ink: #292724;
-  --ink-2: #57514a;
-  --ink-3: #7d766b;
-  --ink-4: #c3baaa;
-  --rule: #cfc4b1;
-  --rule-soft: #e6dfd2;
   background: var(--paper) var(--noise);
   color: var(--ink);
 }
@@ -5217,12 +5383,12 @@ html:not(.js) .relight__static,
 }
 .relight__dark {
   --m: url("/assets/art/close-relief-dark.webp");
-  background: #292724;
+  background: var(--charcoal);
   opacity: calc(0.9 * (1 - var(--night, 0)));
 }
 .relight__light {
   --m: url("/assets/art/close-relief-light.webp");
-  background: #eaddc7;
+  background: var(--ivory);
   opacity: calc(0.22 * var(--night, 0));
 }
 /* `?ground=hemisphere` (relight.js): Mercury's limb rises from the foot of the field instead, its top
@@ -5298,12 +5464,9 @@ html:not(.js) .relight__static,
     max-width: calc(100% - 9rem);
   }
 }
-/* Rust as text leans toward the ink when the paper darkens; the rust button keeps its own paper. */
+/* Rust as text leans toward the ink when the paper darkens. */
 [data-relight] .sky__clock {
-  color: var(--rust-text, var(--rust));
-}
-[data-relight] .px--on-rust {
-  --px-fg: #fbf9f4;
+  color: var(--rust-text);
 }
 /* At night the rete shows which of its stars are up: the others' pointers dim, and a hairline ring
    finds each risen star. By day (--night is 0) the rete is as made. */
