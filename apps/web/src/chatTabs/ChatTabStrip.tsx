@@ -48,7 +48,7 @@ import {
 } from "~/threadRoutes";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { insertIndex, insertionLineX, startTabDragPreview } from "../panes/drag";
-import { TabCloseButton, TabTitle } from "../panes/TabParts";
+import { preventTabMiddleButtonDefault, TabCloseButton, TabTitle } from "../panes/TabParts";
 import { historyTarget } from "~/tabNavigation.logic";
 import { chatTabsSlot, tabHistorySlot } from "../whichKey/handles";
 import { neighbourOf, useChatTabsStore } from "./chatTabsStore";
@@ -547,10 +547,9 @@ const ChatTab = memo(function ChatTab({
           if (!active) actions.open(tabKey, route);
         }
       }}
-      onMouseDown={(event) => {
-        // Middle-click closes; keep the browser from starting its autoscroll.
-        if (event.button === 1) event.preventDefault();
-      }}
+      // Middle-click closes.
+      onMouseDown={preventTabMiddleButtonDefault}
+      onMouseUp={preventTabMiddleButtonDefault}
       onAuxClick={(event) => {
         if (event.button === 1) actions.close(tabKey);
       }}

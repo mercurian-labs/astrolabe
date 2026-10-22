@@ -12,8 +12,10 @@ resize and maximize still drive the panel itself.
 - **Empty panel**: one "New tab" showing T3 Code's launcher ("Open a surface").
   Picking a surface replaces it.
 - **New tab menu** (`+` in every strip): the same surfaces. Items without a
-  source are disabled. Astrolabe adds **Document** (`O`), which opens the wiki
-  finder and puts the pick in that pane as a document tab.
+  source are disabled, and hovering one shows why ("Browser previews are only
+  available in the Astrolabe desktop app."). `mod+t` (`rightPanel.new`) opens the
+  focused pane's menu, with the panel open. Astrolabe adds **Document** (`O`), which
+  opens the wiki finder and puts the pick in that pane as a document tab.
 - **Lineage** (`I`, `components/lineage/`): the thread's fork family drawn left to
   right in `section[aria-label="Thread lineage"]`. The viewed thread runs along the
   centre lane, with one column per checkpoint across the family. Forks curve off the
@@ -112,11 +114,13 @@ back|not started> · <n> behind`. Quiet stretches fold into buttons named
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` with focus in the panes closes the focused pane's active tab, not the chat tab.
 - **Tab context menu** (right-click): Open in `<section>` (only for a tab outside its
-  section), Close, Close others, Close tabs to the right, Split right, Split down. A
-  lone tab cannot split. Right-clicking a tab inside a Cmd/Shift selection of several
-  shows **Close (N)**, **Split right (N)**, **Split down (N)** instead (no Open in);
-  each ends the selection. Escape clears a selection. A middle-click
-  (`preview_click button="middle"`) closes a tab, except a lone empty one.
+  section), then T3 Code's own items for the tab (**Rename** for a device, **Copy path**
+  for a workspace file, **Mute tab** / **Unmute tab** for a browser tab), Close, Close
+  others, Close tabs to the right, Split right, Split down. A lone tab cannot split.
+  Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
+  **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
+  Escape clears a selection. A middle-click (`preview_click button="middle"`) closes a
+  tab, except a lone empty one.
 - **Dividers**: between panes, a 1px line with a 3px `role=separator` handle
   (`aria-orientation` vertical for a side-by-side split, horizontal for a stacked one)
   that turns the primary colour on hover or drag (`data-active`). Dragging it rewrites
@@ -132,7 +136,11 @@ back|not started> · <n> behind`. Quiet stretches fold into buttons named
   both. In Wikis, Repositories and Changes it is maximizing the pane, faint for
   a lone pane.
 - **Chrome tabs**: tabs are drawn as Chrome's (`index.css`, `TabParts.tsx`): 240px
-  wide, shrinking together to 96px; the title fades out before an always-shown ✕. The
+  wide, shrinking together to 96px; the title fades out before an always-shown ✕.
+  As in T3 Code's panel, a browser tab playing audio has a speaker button
+  (`Mute <title>` / `Unmute <title>`), a file still saving has a dot on its icon, and
+  a device tab names its host and OS version on hover and renames on double-click
+  (`textbox "Rename <title>"`; Enter keeps, Escape cancels). The
   tab in front is outlined as Obsidian's: the content background (`--tab-join`), rounded
   top corners, no bottom edge over a break in the strip's bottom border, and outward
   curves with a border ring at its feet (`[data-pane-tab][aria-selected=true]::before/::after`). Other tabs are bare until hovered, with a 1px rule

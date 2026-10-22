@@ -171,7 +171,7 @@ export function shouldOpenDefaultBrowserProfileFromMenuClick(
   return pointerType !== "touch";
 }
 
-const SURFACE_DISABLED_REASONS = {
+export const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the Astrolabe desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
@@ -184,7 +184,7 @@ const SURFACE_DISABLED_REASONS = {
 } as const;
 
 // Closed keepMounted popups must stop blocking shortcuts once their exit transition ends.
-const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
+export const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
   "dialog-popup",
   "alert-dialog-popup",
   "command-dialog-popup",
@@ -225,7 +225,7 @@ function tabScrollViewport(root: HTMLDivElement | null): HTMLDivElement | null {
   return root?.querySelector<HTMLDivElement>('[data-slot="scroll-area-viewport"]') ?? null;
 }
 
-function previewTabIdOf(
+export function previewTabIdOf(
   surface: RightPanelSurface,
   sessions: Readonly<Record<string, PreviewSessionSnapshot>>,
 ): string | null {
@@ -251,7 +251,7 @@ export function tabMuteMenuItem(input: {
 
 type TabAudioState = "none" | "audible" | "muted";
 
-function tabAudioState(overlay: DesktopPreviewOverlay | null): TabAudioState {
+export function tabAudioState(overlay: DesktopPreviewOverlay | null): TabAudioState {
   if (!overlay?.audible) return "none";
   return overlay.audioMuted ? "muted" : "audible";
 }
@@ -311,7 +311,7 @@ function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement })
   );
 }
 
-function SurfaceMenuItem(props: {
+export function SurfaceMenuItem(props: {
   available: boolean;
   disabledReason?: string;
   shortcut: string;
@@ -1551,7 +1551,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   );
 }
 
-function DeviceTabTooltip(props: {
+export function DeviceTabTooltip(props: {
   surface: Extract<RightPanelSurface, { kind: "device" }>;
   environmentId: EnvironmentId | null;
   title: string;

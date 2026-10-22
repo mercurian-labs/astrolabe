@@ -68,7 +68,7 @@ import {
   useTabSelectionStore,
 } from "./tabSelection";
 import { noteTabGroupRuns, useTabGroupRelease } from "./tabGroupNumbers";
-import { TabCloseButton, TabTitle } from "./TabParts";
+import { preventTabMiddleButtonDefault, TabCloseButton, TabTitle, TabTitleInput } from "./TabParts";
 import { findLeaf, leaves, type Leaf } from "./tree";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -122,7 +122,8 @@ const TabPill = memo(function TabPill({
   draggableInTitlebar: boolean;
 }) {
   const { controller, tabs } = usePanesHost();
-  const { title, icon } = tabs.useLabel(tabKey);
+  const { title, icon, tooltip, accessory, rename } = tabs.useLabel(tabKey);
+  const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
   const dragging = useDragging(tabKey);
   // A lone pane's lone empty tab is what an empty panel shows; there is nothing to close.
@@ -170,6 +171,8 @@ const TabPill = memo(function TabPill({
     }
     type Action =
       | "open-elsewhere"
+      | "rename"
+      | `own:${number}`
       | "close"
       | "close-others"
       | "close-to-right"
@@ -177,8 +180,15 @@ const TabPill = memo(function TabPill({
       | "split-down";
     // Astrolabe: a tab outside its own section opens in it.
     const elsewhere = tabs.openElsewhere?.(tabKey) ?? null;
+    const own = tabs.menuItems?.(tabKey) ?? [];
     const items: ContextMenuItem<Action>[] = [
       ...(elsewhere ? [{ id: "open-elsewhere" as const, label: elsewhere.label }] : []),
+      ...(rename ? [{ id: "rename" as const, label: "Rename" }] : []),
+      ...own.map((item, index) => ({
+        id: `own:${index}` as const,
+        label: item.label,
+        ...(item.disabled ? { disabled: true } : {}),
+      })),
       { id: "close", label: "Close", disabled: !closable },
       { id: "close-others", label: "Close others", disabled: only },
       { id: "close-to-right", label: "Close tabs to the right", disabled: last },
@@ -188,9 +198,16 @@ const TabPill = memo(function TabPill({
     ];
     const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
     const snapshot = controller.getSnapshot();
+    if (action?.startsWith("own:")) {
+      own[Number(action.slice("own:".length))]?.run();
+      return;
+    }
     switch (action) {
       case "open-elsewhere":
         elsewhere?.run(navigate);
+        break;
+      case "rename":
+        setRenaming(true);
         break;
       case "close":
         tabs.close(tabKey);
@@ -223,7 +240,8 @@ const TabPill = memo(function TabPill({
       tabIndex={active ? 0 : -1}
       aria-selected={active}
       aria-label={title}
-      draggable
+      // Dragging inside the name being edited selects its text, rather than moving the tab.
+      draggable={!renaming}
       data-pane-tab
       data-key={tabKey}
       className={cn(
@@ -252,12 +270,16 @@ const TabPill = memo(function TabPill({
           activate();
         }
       }}
-      onMouseDown={(event) => {
-        // Middle-click closes; keep the browser from starting its autoscroll.
-        if (event.button === 1) event.preventDefault();
-      }}
+      // Middle-click closes.
+      onMouseDown={preventTabMiddleButtonDefault}
+      onMouseUp={preventTabMiddleButtonDefault}
       onAuxClick={(event) => {
         if (event.button === 1 && closable) tabs.close(tabKey);
+      }}
+      onDoubleClick={(event) => {
+        if (rename && !(event.target instanceof Element && event.target.closest("button"))) {
+          setRenaming(true);
+        }
       }}
       onContextMenu={(event) => void showContextMenu(event)}
       onDragStart={(event) => {
@@ -275,7 +297,19 @@ const TabPill = memo(function TabPill({
       >
         {icon}
       </span>
-      <TabTitle title={title} />
+      {accessory}
+      {renaming && rename ? (
+        <TabTitleInput
+          title={title}
+          label={`Rename ${title}`}
+          onDone={(next) => {
+            setRenaming(false);
+            if (next !== null) rename(next);
+          }}
+        />
+      ) : (
+        <TabTitle title={title} tooltip={tooltip} />
+      )}
       {closable ? (
         <TabCloseButton
           label={`Close ${title}`}

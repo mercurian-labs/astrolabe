@@ -12,17 +12,27 @@ import {
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Volume2, VolumeOff } from "lucide";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { MorphIcon } from "~/components/MorphIcon";
+import { previewBridge } from "~/components/preview/previewBridge";
 import {
+  DeviceTabTooltip,
+  LAUNCHER_SHORTCUT_BLOCKING_LAYERS,
   RightPanelEmptyState,
+  SURFACE_DISABLED_REASONS,
+  SurfaceMenuItem,
   previewFaviconOf,
+  previewTabIdOf,
   SurfaceIcon,
   surfaceShortcutActionForKey,
   surfaceTitle,
+  tabAudioState,
+  tabMuteMenuItem,
 } from "~/components/RightPanelTabs";
 import { Button } from "~/components/ui/button";
 import {
@@ -35,7 +45,9 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "~/components/ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useTheme } from "~/hooks/useTheme";
+import { resolveShortcutCommand } from "~/keybindings";
 import {
   selectThreadRightPanelState,
   useRightPanelStore,
@@ -62,8 +74,9 @@ import {
 } from "./arrangement";
 import { openTabGroupBesideThread } from "./GroupPanelRunsSync";
 import type { PanelProps, PanesController } from "./panesController";
-import type { PaneTabs } from "./panesHost";
+import type { PaneTabLabel, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import { useRightPanelHost, usePanesThreadRef, type RightPanelHost } from "./PaneSurfaceHost";
+import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
 
 /**
@@ -95,6 +108,7 @@ export function createRightPanelHost(controller: PanesController): RightPanelHos
   const close = (tabKey: string) => closeTabOf(controller, tabKey);
   const tabs: PaneTabs = {
     useLabel: useTabLabel,
+    menuItems: (tabKey) => surfaceMenuItems(controller, tabKey),
     close,
     NewTab: NewTabMenu,
     place: (slot, leaf, hosting) => {
@@ -135,19 +149,59 @@ export function createRightPanelHost(controller: PanesController): RightPanelHos
   };
 }
 
+/** The thread's surface a tab shows, as the record holds it now; null for any other tab. */
+function surfaceOfTab(controller: PanesController, tabKey: string): RightPanelSurface | null {
+  const ref = controller.threadRef();
+  const surfaceId = surfaceIdOf(tabKey);
+  if (ref === null || surfaceId === null) return null;
+  return (
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref).surfaces.find(
+      (entry) => entry.id === surfaceId,
+    ) ?? null
+  );
+}
+
+/**
+ * What a surface's tab menu offers of its own, as T3 Code's panel tabs do: a workspace file's
+ * Copy path, and a browser tab's Mute or Unmute. A device's Rename comes with its label.
+ */
+function surfaceMenuItems(controller: PanesController, tabKey: string): PaneTabMenuItem[] {
+  const surface = surfaceOfTab(controller, tabKey);
+  const panel = controller.getPanel();
+  if (!surface || !panel) return [];
+  if (surface.kind === "file" && surface.attachment === undefined) {
+    return [{ label: "Copy path", run: () => panel.onCopyFilePath(surface.relativePath) }];
+  }
+  if (surface.kind !== "preview") return [];
+  const previewTabId = previewTabIdOf(surface, panel.previewSessions);
+  const overlay = previewTabId ? (panel.desktopByTabId[previewTabId] ?? null) : null;
+  const item = tabMuteMenuItem({
+    overlay,
+    canResolveRuntimeTabId: panel.previewRuntimeTabId !== undefined,
+  });
+  return [
+    {
+      ...item,
+      run: () => {
+        const runtimeTabId =
+          previewTabId && overlay ? (panel.previewRuntimeTabId?.(previewTabId) ?? null) : null;
+        if (!runtimeTabId) return;
+        void previewBridge
+          ?.setAudioMuted(runtimeTabId, !(overlay?.audioMuted ?? false))
+          .catch(() => undefined);
+      },
+    },
+  ];
+}
+
 /**
  * Astrolabe: a pull request beside the thread, named in full to open in Change Requests; its key
  * leaves out the server, which is the thread's.
  */
 function pullRequestOfSurface(controller: PanesController, tabKey: string) {
   const ref = controller.threadRef();
-  const surfaceId = surfaceIdOf(tabKey);
-  if (ref === null || surfaceId === null) return null;
-  const surface = selectThreadRightPanelState(
-    useRightPanelStore.getState().byThreadKey,
-    ref,
-  ).surfaces.find((entry) => entry.id === surfaceId);
-  if (surface?.kind !== "pull-request") return null;
+  const surface = surfaceOfTab(controller, tabKey);
+  if (ref === null || surface?.kind !== "pull-request") return null;
   return {
     environmentId: surface.environmentId ?? ref.environmentId,
     projectId: surface.projectId,
@@ -224,8 +278,12 @@ function useSurface(surfaceId: string | null) {
   );
 }
 
-/** A tab's title and icon: an empty tab, a document, or one of T3 Code's surfaces. */
-function useTabLabel(tabKey: string): { title: string; icon: ReactNode } {
+/**
+ * A tab's label: an empty tab, a document, or one of T3 Code's surfaces, which draws as T3 Code's
+ * panel tab does. A file still saving shows a dot on its icon, a playing browser tab its speaker,
+ * and a device tab names its machine on hover and can be renamed.
+ */
+function useTabLabel(tabKey: string): PaneTabLabel {
   const { controller } = useRightPanelHost();
   const panel = usePanel(controller);
   const surface = useSurface(surfaceIdOf(tabKey));
@@ -233,28 +291,92 @@ function useTabLabel(tabKey: string): { title: string; icon: ReactNode } {
   const { resolvedTheme } = useTheme();
   if (!surface && surfaceIdOf(tabKey) === null && document !== null) return document;
   if (!surface) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
-  const favicon = previewFaviconOf(
-    surface,
-    panel?.previewSessions ?? {},
-    panel?.desktopByTabId ?? {},
-  );
+  const sessions = panel?.previewSessions ?? {};
+  const favicon = previewFaviconOf(surface, sessions, panel?.desktopByTabId ?? {});
+  const title = surfaceTitle(surface, sessions, panel?.terminalLabelsById ?? new Map());
+  const environmentId = panel?.environmentId ?? null;
+  const previewTabId = previewTabIdOf(surface, sessions);
+  const audio = tabAudioState(previewTabId ? (panel?.desktopByTabId[previewTabId] ?? null) : null);
   return {
-    title: surfaceTitle(
-      surface,
-      panel?.previewSessions ?? {},
-      panel?.terminalLabelsById ?? new Map(),
-    ),
+    title,
     icon: (
-      <SurfaceIcon
-        surface={surface}
-        previewUrl={favicon.url}
-        previewCapturedUrl={favicon.capturedUrl}
-        theme={resolvedTheme}
-        environmentId={panel?.environmentId ?? null}
-        pullRequestStatusSeed={panel?.pullRequestStatusSeeds?.[surface.id]}
-      />
+      <span className="relative flex">
+        <SurfaceIcon
+          surface={surface}
+          previewUrl={favicon.url}
+          previewCapturedUrl={favicon.capturedUrl}
+          theme={resolvedTheme}
+          environmentId={environmentId}
+          pullRequestStatusSeed={panel?.pullRequestStatusSeeds?.[surface.id]}
+        />
+        {panel?.pendingSurfaceIds.has(surface.id) ? (
+          <span
+            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+            aria-hidden
+          />
+        ) : null}
+      </span>
     ),
+    ...(previewTabId && audio !== "none" && panel?.previewRuntimeTabId
+      ? {
+          accessory: (
+            <TabAudioButton
+              controller={controller}
+              previewTabId={previewTabId}
+              muted={audio === "muted"}
+              title={title}
+            />
+          ),
+        }
+      : {}),
+    ...(surface.kind === "device"
+      ? {
+          tooltip: (
+            <DeviceTabTooltip surface={surface} environmentId={environmentId} title={title} />
+          ),
+          ...(panel?.onRenameDevice
+            ? {
+                rename: (next: string) => controller.getPanel()?.onRenameDevice?.(surface.id, next),
+              }
+            : {}),
+        }
+      : {}),
   };
+}
+
+/** Mutes or unmutes a playing browser tab, as T3 Code's panel tab's speaker does. */
+function TabAudioButton({
+  controller,
+  previewTabId,
+  muted,
+  title,
+}: {
+  controller: PanesController;
+  previewTabId: string;
+  muted: boolean;
+  title: string;
+}) {
+  const label = muted ? "Unmute tab" : "Mute tab";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <TabIconButton
+            label={muted ? `Unmute ${title}` : `Mute ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              const runtimeTabId = controller.getPanel()?.previewRuntimeTabId?.(previewTabId);
+              if (!runtimeTabId) return;
+              void previewBridge?.setAudioMuted(runtimeTabId, !muted).catch(() => undefined);
+            }}
+          />
+        }
+      >
+        <MorphIcon className="size-3" icon={muted ? VolumeOff : Volume2} />
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
+  );
 }
 
 /** Closes a tab: a surface through ChatView's own close, which may ask first. */
@@ -283,6 +405,8 @@ interface AddAction {
   readonly icon: LucideIcon;
   readonly shortcut: string;
   readonly available: boolean;
+  /** Why it is unavailable, shown on hovering it then. */
+  readonly disabledReason: string;
   /** The surface this opens when the record already holds it, which then moves here instead. */
   readonly singleton: RightPanelSurface["id"] | null;
   /** Adds the surface through ChatView, given its current panel props. */
@@ -298,6 +422,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: Globe2,
       shortcut: "B",
       available: panel.browserAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.browser,
       singleton: null,
       invoke: (current) => current.onAddBrowser(),
     },
@@ -306,6 +431,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: TerminalSquare,
       shortcut: "T",
       available: panel.terminalAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.terminal,
       singleton: null,
       invoke: (current) => current.onAddTerminal(),
     },
@@ -314,6 +440,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: Files,
       shortcut: "F",
       available: panel.filesAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.files,
       singleton: "files",
       invoke: (current) => current.onAddFiles(),
     },
@@ -322,6 +449,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: FileDiff,
       shortcut: "D",
       available: panel.diffAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.diff,
       singleton: "diff",
       invoke: (current) => current.onAddDiff(),
     },
@@ -330,6 +458,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: PullRequestGlyph.pullRequest,
       shortcut: "P",
       available: panel.pullRequestAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
       singleton: null,
       invoke: (current) => current.onAddPullRequest(),
     },
@@ -338,6 +467,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: PullRequestGlyph.link,
       shortcut: "L",
       available: panel.pullRequestsAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.pullRequests,
       singleton: "pull-requests",
       invoke: (current) => current.onAddPullRequests(),
     },
@@ -346,6 +476,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: Smartphone,
       shortcut: "M",
       available: panel.deviceAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.device,
       singleton: null,
       invoke: (current) => current.onAddDevice(),
     },
@@ -354,6 +485,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: Waypoints,
       shortcut: "G",
       available: panel.graphAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.graph,
       singleton: "graph",
       invoke: (current) => current.onAddGraph(),
     },
@@ -362,6 +494,7 @@ function addActions(panel: PanelProps | null): AddAction[] {
       icon: GitFork,
       shortcut: "I",
       available: panel.lineageAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.lineage,
       singleton: "lineage",
       invoke: (current) => current.onAddLineage(),
     },
@@ -391,9 +524,14 @@ function runAddAction(controller: PanesController, paneId: string, action: AddAc
   action.invoke(panel);
 }
 
+/**
+ * A pane's New tab menu, as T3 Code's panel's: its letters open a surface, and Mod+T
+ * (`rightPanel.new`) opens the focused pane's menu.
+ */
 function NewTabMenu({ paneId }: { paneId: string }) {
   const { controller } = useRightPanelHost();
   const panel = usePanel(controller);
+  const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [finding, setFinding] = useState(false);
   const profiles = useBrowserDefaults().profiles;
@@ -402,9 +540,34 @@ function NewTabMenu({ paneId }: { paneId: string }) {
     setOpen(false);
     runAddAction(controller, paneId, action);
   };
+  if (panel?.open === false && open) setOpen(false);
+  const onNewTabShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing) return;
+    const current = controller.getPanel();
+    const snapshot = controller.getSnapshot();
+    if (!current || current.open === false || !snapshot) return;
+    if (focusedPane(snapshot.arrangement).id !== paneId) return;
+    if (
+      resolveShortcutCommand(event, current.keybindings, {
+        context: { ...current.getShortcutContext(), rightPanelOpen: true },
+      }) !== "rightPanel.new"
+    )
+      return;
+    if (!open && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat) return;
+    trigger.current?.focus();
+    setOpen(true);
+  });
+  useEffect(() => {
+    document.addEventListener("keydown", onNewTabShortcut, true);
+    return () => document.removeEventListener("keydown", onNewTabShortcut, true);
+  }, []);
   return (
     <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger
+        ref={trigger}
         render={
           <Button aria-label="New tab" className="shrink-0" size="icon-sm" variant="ghost-muted" />
         }
@@ -465,11 +628,16 @@ function NewTabMenu({ paneId }: { paneId: string }) {
             );
           }
           return (
-            <MenuItem key={action.label} disabled={!action.available} onClick={() => run(action)}>
+            <SurfaceMenuItem
+              key={action.label}
+              available={action.available}
+              disabledReason={action.disabledReason}
+              shortcut={action.shortcut}
+              onClick={() => run(action)}
+            >
               <Icon />
               {action.label}
-              <MenuShortcut>{action.shortcut}</MenuShortcut>
-            </MenuItem>
+            </SurfaceMenuItem>
           );
         })}
         <MenuItem

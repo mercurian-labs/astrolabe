@@ -17,14 +17,35 @@ export interface PaneArrangementStore {
   subscribe(listener: () => void): () => void;
 }
 
+/** What a tab draws: its title and icon, and what some tabs add, as T3 Code's panel tabs do. */
+export interface PaneTabLabel {
+  readonly title: string;
+  readonly icon: ReactNode;
+  /** Shown on hovering the title in its place, as a device tab's machine and OS. */
+  readonly tooltip?: ReactNode;
+  /** Drawn between the icon and the title, as a playing browser tab's speaker. */
+  readonly accessory?: ReactNode;
+  /** Renames the tab; double-clicking its title, or its menu's Rename, edits it in place. */
+  readonly rename?: (title: string) => void;
+}
+
+/** One of a tab's own items in its right-click menu. */
+export interface PaneTabMenuItem {
+  readonly label: string;
+  readonly disabled?: boolean;
+  readonly run: () => void;
+}
+
 /**
  * What the tabs of a set of panes are, given by whoever mounts the panes: the right panel's
  * tabs are a thread's surfaces, the Wikis area's are documents. The panes themselves only
  * arrange keys.
  */
 export interface PaneTabs {
-  /** A tab's title and icon. A hook: it may subscribe to whatever the title comes from. */
-  readonly useLabel: (tabKey: string) => { readonly title: string; readonly icon: ReactNode };
+  /** A tab's label (see `PaneTabLabel`). A hook: it may subscribe to whatever the title comes from. */
+  readonly useLabel: (tabKey: string) => PaneTabLabel;
+  /** What a tab's menu offers of its own, ahead of closing and splitting it, as a file's Copy path. */
+  readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */
   readonly close: (tabKey: string) => void;
   /** The control after a pane's tabs that opens another tab there. */

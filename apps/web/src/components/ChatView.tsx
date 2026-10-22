@@ -8930,7 +8930,10 @@ export default function ChatView(props: ChatViewProps) {
             inlineSize={previewPanelInlineSize}
             layoutControls={
               rightPanelOpen ? (
-                <div className="mr-px flex items-center">{panelToggleControls}</div>
+                <div className="mr-px flex items-center">
+                  {/* Astrolabe: the sheet covers the chat's tab strip, so it keeps all three toggles. */}
+                  <PanelLayoutControls {...panelToggleControlProps} />
+                </div>
               ) : null
             }
             surfaces={renderedRightPanelSurfaces}

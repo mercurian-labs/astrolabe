@@ -224,6 +224,7 @@ export function createPanesController(storage: StorageLike | null): PanesControl
       panel = next;
       if (
         before &&
+        before.open === next.open &&
         before.previewSessions === next.previewSessions &&
         before.desktopByTabId === next.desktopByTabId &&
         before.terminalLabelsById === next.terminalLabelsById &&
