@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { EditorView } from "@codemirror/view";
@@ -22,6 +22,24 @@ import {
 } from "./vim.ts";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
+// Yjs groups undo steps by lib0's clock, which keeps the `Date.now` it finds when it loads, so
+// fake timers cannot move it. This runs before the imports and gives lib0 a clock the tests move
+// on with `yjsClock.elapse` instead of sleeping; until then it reads the real time.
+const yjsClock = vi.hoisted(() => {
+  const realNow = Date.now;
+  let offset = 0;
+  Date.now = () => realNow() + offset;
+  return {
+    elapse: (ms: number) => {
+      offset += ms;
+    },
+    restore: () => {
+      Date.now = realNow;
+    },
+  };
+});
+afterAll(yjsClock.restore);
 
 // Browsers queue `selectionchange` as a task; happy-dom fires it synchronously, inside the
 // update of a focused child (cell) editor. These tests drive selections through
@@ -501,9 +519,8 @@ describe("Vim mode", () => {
     const typeAtEnd = (insert: string) =>
       view.dispatch({ changes: { from: view.state.doc.length, insert }, userEvent: "input.type" });
 
-    // Yjs groups edits closer than 500 ms by its own clock, which a test cannot move.
     typeAtEnd("a");
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    yjsClock.elapse(650);
     typeAtEnd("b");
     press(view, "Mod-z");
 

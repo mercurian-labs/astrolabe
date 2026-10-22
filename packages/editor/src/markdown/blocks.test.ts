@@ -99,7 +99,8 @@ describe("block markers", () => {
     expect(view.state.doc.toString()).toBe("- [ ] a\n- [ ] b");
   });
 
-  it.todo("A17. `> q`: text x-position unchanged between hidden and revealed states (browser)");
+  // Needs a browser, so not tested here: A17. `> q`: text x-position unchanged between hidden and
+  // revealed states
 
   it("quote lines hide `>` behind a bar of the marker's own width", () => {
     const view = mount("> q");

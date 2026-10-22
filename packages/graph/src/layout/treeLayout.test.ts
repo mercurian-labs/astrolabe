@@ -99,7 +99,7 @@ describe("a containment tree's notes", () => {
 
 describe("the hierarchical home layout", () => {
   const universe = treeUniverse(tree, treeThread);
-  for (const dimensions of [2, 3] as const) {
+  describe.each([2, 3] as const)("%iD", (dimensions) => {
     const layout: GraphLayout = layoutOf(universe, dimensions);
     const leafRadius = (note: number) =>
       collisionRadius(
@@ -146,7 +146,7 @@ describe("the hierarchical home layout", () => {
       }
       expect(pairs).toBeGreaterThan(0);
     });
-  }
+  });
 });
 
 describe("regions", () => {
@@ -194,7 +194,7 @@ describe("regions", () => {
 
 describe("the gathered reading of a containment tree", () => {
   const universe = treeUniverse(tree, treeThread);
-  for (const dimensions of [2, 3] as const) {
+  describe.each([2, 3] as const)("%iD", (dimensions) => {
     const layout = layoutOf(universe, dimensions);
     const context: GatherContext = {
       memory: tree,
@@ -276,7 +276,7 @@ describe("the gathered reading of a containment tree", () => {
         }
       }
     });
-  }
+  });
 });
 
 describe("a codebase's edges", () => {
@@ -323,8 +323,9 @@ describe("a codebase's edges", () => {
 });
 
 describe("a level of the tree layout", () => {
-  for (const dimensions of [2, 3] as const) {
-    it(`holds two large linked containers their radii and the link gap apart (${dimensions}D)`, () => {
+  it.each([2, 3] as const)(
+    "holds two large linked containers their radii and the link gap apart (%iD)",
+    (dimensions) => {
       const radius = 100;
       const settled = settleLevel(
         [0, 1],
@@ -340,6 +341,6 @@ describe("a level of the tree layout", () => {
         Array.from(settled.places.subarray(3, 6)),
       );
       expect(apart).toBeGreaterThanOrEqual(2 * radius + 0.35 * DEFAULT_SETTINGS.linkDistance - 1);
-    });
-  }
+    },
+  );
 });

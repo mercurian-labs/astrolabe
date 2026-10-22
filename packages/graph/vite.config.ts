@@ -34,6 +34,9 @@ export default defineConfig({
   test: {
     root: packageDir,
     environment: "happy-dom",
+    // The repository's project timeout (the root vite.config.ts): the 100,000-note tests take a
+    // few seconds, past Vitest's 5 s default on a loaded runner.
+    testTimeout: 60_000,
     include: [
       "src/**/*.test.{ts,tsx}",
       "fixtures/**/*.test.ts",

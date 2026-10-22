@@ -918,9 +918,6 @@ export class FlatRenderer implements GraphRenderer {
     this.#graph = null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Targets
-
   #applyTargets(): void {
     const graph = this.#graph;
     const view = this.#view;
@@ -970,9 +967,6 @@ export class FlatRenderer implements GraphRenderer {
     }
     return gatheringOffset(this.#gathering, homes, graph.slots.nodeOf(slot));
   }
-
-  // ---------------------------------------------------------------------------
-  // Camera
 
   get #densitySpan(): number {
     const floor = 0.5 * (this.#settings?.linkDistance ?? 34);
@@ -1281,9 +1275,6 @@ export class FlatRenderer implements GraphRenderer {
     this.#pauseFollowing();
   }
 
-  // ---------------------------------------------------------------------------
-  // Pointer
-
   #local(event: PointerEvent | WheelEvent): { x: number; y: number } {
     const rect = this.#container.getBoundingClientRect();
     this.#pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -1500,9 +1491,6 @@ export class FlatRenderer implements GraphRenderer {
     if (resized && this.#following && this.#view !== null) this.#autoFrame(false);
     this.#scheduler.invalidate();
   }
-
-  // ---------------------------------------------------------------------------
-  // Drawing
 
   #render(): void {
     const graph = this.#graph;

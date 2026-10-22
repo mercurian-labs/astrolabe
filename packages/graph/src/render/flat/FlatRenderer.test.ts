@@ -444,52 +444,53 @@ describe("hover, pick, and play never move a note", () => {
     drawn: [...frame.state.snapshot()],
   });
 
-  for (const whole of [false, true]) {
-    it(`leaves every offset target and position alone in ${whole ? "the whole memory" : "a reading"}`, () => {
-      const { renderer, time, view, universe, layout, viewAt, gathering, frame } = setup(2.5, {
-        whole,
-        synced: true,
-      });
-      time.run();
-      const before = still(frame());
-      const driver = renderer.driver();
-      // A hover, held: the note and its links light, nothing moves, and the frames stop.
-      const hovered = view.risen[0] ?? 0;
-      const at = driver.screenOf(hovered);
-      expect(at).not.toBeNull();
-      driver.hover(at?.[0] ?? 0, at?.[1] ?? 0);
-      expect(driver.view().hovering).toBe(true);
-      const hoverFrames = time.run();
-      expect(time.pending).toBe(false);
-      // Settled within about half a second of 16 ms frames.
-      expect(hoverFrames).toBeLessThanOrEqual(40);
-      expect(still(frame())).toEqual(before);
-      driver.hover(-1, -1);
-      time.run();
-      expect(still(frame())).toEqual(before);
-      // A pick lights and grows its note; it rearranges nothing, even its neighbours.
-      const picked = universe.nodes[hovered]?.id ?? null;
-      const context = { layout, gathering, reading: !whole, thisTurnOnly: false };
-      renderer.setView(viewAt(0, picked), context);
-      time.run();
-      expect(frame().state.offsets.targets).toEqual(new Float32Array(before.targets));
-      expect([...frame().state.snapshot()]).toEqual(before.drawn);
-      renderer.setView(viewAt(0), context);
-      time.run();
-      // Each of the checkpoint's plays in turn, then none.
-      const turn = ATLAS_THREAD.turns[0];
-      for (let index = 0; index < (turn?.events.length ?? 0); index += 1) {
-        const play = turn === undefined ? null : playFocus(universe, turn, index);
-        renderer.setPlay(play);
-        time.run();
-        expect(still(frame())).toEqual(before);
-      }
-      renderer.setPlay(null);
-      time.run();
-      expect(still(frame())).toEqual(before);
-      renderer.dispose();
+  it.each([
+    { whole: false, scope: "a reading" },
+    { whole: true, scope: "the whole memory" },
+  ])("leaves every offset target and position alone in $scope", ({ whole }) => {
+    const { renderer, time, view, universe, layout, viewAt, gathering, frame } = setup(2.5, {
+      whole,
+      synced: true,
     });
-  }
+    time.run();
+    const before = still(frame());
+    const driver = renderer.driver();
+    // A hover, held: the note and its links light, nothing moves, and the frames stop.
+    const hovered = view.risen[0] ?? 0;
+    const at = driver.screenOf(hovered);
+    expect(at).not.toBeNull();
+    driver.hover(at?.[0] ?? 0, at?.[1] ?? 0);
+    expect(driver.view().hovering).toBe(true);
+    const hoverFrames = time.run();
+    expect(time.pending).toBe(false);
+    // Settled within about half a second of 16 ms frames.
+    expect(hoverFrames).toBeLessThanOrEqual(40);
+    expect(still(frame())).toEqual(before);
+    driver.hover(-1, -1);
+    time.run();
+    expect(still(frame())).toEqual(before);
+    // A pick lights and grows its note; it rearranges nothing, even its neighbours.
+    const picked = universe.nodes[hovered]?.id ?? null;
+    const context = { layout, gathering, reading: !whole, thisTurnOnly: false };
+    renderer.setView(viewAt(0, picked), context);
+    time.run();
+    expect(frame().state.offsets.targets).toEqual(new Float32Array(before.targets));
+    expect([...frame().state.snapshot()]).toEqual(before.drawn);
+    renderer.setView(viewAt(0), context);
+    time.run();
+    // Each of the checkpoint's plays in turn, then none.
+    const turn = ATLAS_THREAD.turns[0];
+    for (let index = 0; index < (turn?.events.length ?? 0); index += 1) {
+      const play = turn === undefined ? null : playFocus(universe, turn, index);
+      renderer.setPlay(play);
+      time.run();
+      expect(still(frame())).toEqual(before);
+    }
+    renderer.setPlay(null);
+    time.run();
+    expect(still(frame())).toEqual(before);
+    renderer.dispose();
+  });
 });
 
 describe("rest is exact", () => {
@@ -628,7 +629,7 @@ describe("the working set", () => {
       },
     };
 
-    it("holds slots for what shows and hovers at its cost", { timeout: 120_000 }, () => {
+    it("holds slots for what shows and hovers at its cost", () => {
       counts.project = 0;
       counts.allocated.length = 0;
       const { renderer, time, view } = setup(2.5, { memory, thread, counter, synced: true });
@@ -648,44 +649,40 @@ describe("the working set", () => {
       renderer.dispose();
     });
 
-    it(
-      "steps a checkpoint without allocating or walking anything the size of the memory",
-      { timeout: 120_000 },
-      () => {
-        counts.allocated.length = 0;
-        const reads = { count: 0 };
-        const { renderer, time, layout, viewAt, gatheringAt } = setup(2.5, {
-          memory,
-          thread,
-          counter,
-          synced: true,
-          observe: (universe) => countingReads(universe, reads),
-        });
-        time.run(5000);
-        counts.allocated.length = 0;
-        reads.count = 0;
-        const watch = watchForWholeMemory(50_000);
-        try {
-          for (const checkpoint of [1, 2, 3]) {
-            renderer.setView(viewAt(checkpoint), {
-              layout,
-              gathering: gatheringAt(checkpoint),
-              reading: true,
-              thisTurnOnly: false,
-            });
-            renderer.landLinks();
-            time.run(600);
-          }
-        } finally {
-          const seen = watch.stop();
-          expect(seen).toEqual([]);
+    it("steps a checkpoint without allocating or walking anything the size of the memory", () => {
+      counts.allocated.length = 0;
+      const reads = { count: 0 };
+      const { renderer, time, layout, viewAt, gatheringAt } = setup(2.5, {
+        memory,
+        thread,
+        counter,
+        synced: true,
+        observe: (universe) => countingReads(universe, reads),
+      });
+      time.run(5000);
+      counts.allocated.length = 0;
+      reads.count = 0;
+      const watch = watchForWholeMemory(50_000);
+      try {
+        for (const checkpoint of [1, 2, 3]) {
+          renderer.setView(viewAt(checkpoint), {
+            layout,
+            gathering: gatheringAt(checkpoint),
+            reading: true,
+            thisTurnOnly: false,
+          });
+          renderer.landLinks();
+          time.run(600);
         }
-        // What the step read of the universe is what shows and its links, not the memory.
-        expect(reads.count).toBeLessThan(20_000);
-        expect(counts.allocated.every((size) => size < 2000)).toBe(true);
-        renderer.dispose();
-      },
-    );
+      } finally {
+        const seen = watch.stop();
+        expect(seen).toEqual([]);
+      }
+      // What the step read of the universe is what shows and its links, not the memory.
+      expect(reads.count).toBeLessThan(20_000);
+      expect(counts.allocated.every((size) => size < 2000)).toBe(true);
+      renderer.dispose();
+    });
   });
 });
 
@@ -849,9 +846,8 @@ describe("framing at the reading density", () => {
   });
 });
 
-describe("the lean and pixi drawers", () => {
-  it.skip("construct only with WebGL, which happy-dom does not provide; walked in a browser instead", () => {});
-});
+// The lean and pixi drawers construct only with WebGL, which happy-dom does not provide, so they
+// are walked in a browser instead.
 
 describe("the agent's cursor tells a landing", () => {
   it("visits the turn's moves in play order, grows no story note, keeps quiet marks, and then sleeps", () => {

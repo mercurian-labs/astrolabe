@@ -96,5 +96,5 @@ describe("the procedural home layout", () => {
     expect(layout.positions.length).toBe(300_000);
     // A guard against quadratic work, not a benchmark: forces would take ~30 s here.
     expect(layout.ms).toBeLessThan(20_000);
-  }, 30_000);
+  });
 });

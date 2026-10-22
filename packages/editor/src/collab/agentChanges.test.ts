@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { EditorState, type Extension } from "@codemirror/state";
@@ -171,6 +171,9 @@ describe("agentChanges", () => {
     expect(highlighted(editor)).toEqual(["agent", "line"]);
   });
 });
+
+/** Where the hand-stepped clock in "agent change log" starts. */
+const MANUAL_EPOCH = Date.UTC(2026, 0, 1);
 
 describe("agent change log", () => {
   let view: EditorView | null = null;
@@ -1257,12 +1260,15 @@ describe("agent change log", () => {
   });
 
   /**
-   * A clock, frames, and timers the test steps by hand. The clock is the wall clock plus an
-   * offset the test moves on, since entries carry the wall-clock time they were written.
+   * A clock, frames, and timers the test steps by hand. Entries carry the `Date.now()` they were
+   * written at, which stays at the clock's start while the test moves the clock on, so an entry
+   * ages only as the test says.
    */
   function manualTime() {
     let offset = 0;
-    const now = () => Date.now() + offset;
+    const now = () => MANUAL_EPOCH + offset;
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(MANUAL_EPOCH);
+    cleanups.push(() => wallClock.mockRestore());
     let frames: (() => void)[] = [];
     let timers: { at: number; done: () => void }[] = [];
     return {
@@ -1532,9 +1538,9 @@ describe("agent change log", () => {
         agentAwareness.destroy();
         userAwareness.destroy();
       });
+      const time = manualTime();
       applyFileText(agent.text, "keep old words here\n", "keep here\n", { log: TURN });
       // The editor mounts `age` ms after the write was logged.
-      const time = manualTime();
       time.elapse(age);
       const mounted = new EditorView({
         parent: document.body,
@@ -1609,9 +1615,9 @@ describe("agent change log", () => {
     expect(user.text.toString()).toBe(text);
   });
 
-  it.todo(
-    "B14: in the playground, Run turn plays its tool calls while the user types, and the File panel changes only with the agent's writes and the turn's end (browser)",
-  );
+  // Needs a browser, so not tested here: B14: in the playground, Run turn plays its tool calls
+  // while the user types, and the File panel changes only with the agent's writes and the turn's
+  // end
 
   it("B15: the log never reaches the text", () => {
     const {

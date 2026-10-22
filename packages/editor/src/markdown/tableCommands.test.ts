@@ -1125,9 +1125,9 @@ describe("table structure commands", () => {
     expect(widget(view)?.classList.contains("cm-md-table-with-bars")).toBe(true);
   });
 
-  it.todo(
-    "A110. resting the pointer in the strip below the table shows only the bottom bar, in the strip to its right only the right bar, on the cells neither; moving away hides them; no bar at the top or left (browser)",
-  );
+  // Needs a browser, so not tested here: A110. resting the pointer in the strip below the table
+  // shows only the bottom bar, in the strip to its right only the right bar, on the cells neither;
+  // moving away hides them; no bar at the top or left
 
   it("A111. a handle click selects its row or column and activates its first cell; its right-click menu is flat; Escape, a click elsewhere, or typing collapses the selection", async () => {
     const doc = "| a | b | c |\n| - | - | - |\n| d | e | f |\n| g | h | i |\n\nafter";
@@ -1291,9 +1291,10 @@ describe("table structure commands", () => {
     expect(clipSpan(98, 200, 0, 100)).toBeNull();
   });
 
-  it.todo(
-    "A112. resting the pointer in the left gutter beside a row shows that row's grip only, in the top gutter that column's; dragging a body row's grip shows a drop indicator between body rows, never above the header, and releasing moves the row in one undo step; Escape cancels; a column grip drags with a vertical indicator (browser)",
-  );
+  // Needs a browser, so not tested here: A112. resting the pointer in the left gutter beside a row
+  // shows that row's grip only, in the top gutter that column's; dragging a body row's grip shows a
+  // drop indicator between body rows, never above the header, and releasing moves the row in one
+  // undo step; Escape cancels; a column grip drags with a vertical indicator
 
   it("moves a row to a position by cutting and inserting its line, bytes unchanged, in one undo step", () => {
     const doc = "| h | k |\n| - | - |\n| a  | 1 |\n| b | 2 |\n| c | 3 |\n| d\\|x | 4 |\n\nafter";
@@ -1754,7 +1755,6 @@ describe("table structure commands", () => {
     });
   });
 
-  it.todo(
-    "A98. the menu appears at the pointer, stays within the viewport near the window's edges, and is readable in both colour schemes (browser)",
-  );
+  // Needs a browser, so not tested here: A98. the menu appears at the pointer, stays within the
+  // viewport near the window's edges, and is readable in both colour schemes
 });

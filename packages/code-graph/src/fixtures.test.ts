@@ -20,8 +20,9 @@ describe("the committed story fixtures", () => {
     ]);
   });
 
-  for (const name of stories) {
-    it(`${name} says where it was read from, by commit, with each symbol's lines`, () => {
+  it.each(stories)(
+    "%s says where it was read from, by commit, with each symbol's lines",
+    (name) => {
       const story = JSON.parse(
         NodeFS.readFileSync(NodePath.join(fixturesDir, name), "utf8"),
       ) as CodeStory;
@@ -55,6 +56,6 @@ describe("the committed story fixtures", () => {
           expect(story.source.paths.some((root) => path.startsWith(`${root}/`))).toBe(true);
         }
       }
-    });
-  }
+    },
+  );
 });

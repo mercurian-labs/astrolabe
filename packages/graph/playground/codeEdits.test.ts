@@ -21,7 +21,7 @@ describe("the code view", () => {
       theme: "light",
     });
     // The write lands a microtask after the view attaches.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
     expect(code.view.state.doc.toString()).toBe(after);
     const highlighted = [...host.querySelectorAll(".atlas-agent-change")].map(
       (element) => element.textContent,

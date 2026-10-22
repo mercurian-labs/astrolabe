@@ -93,7 +93,8 @@ describe("text is never atomic", () => {
     }
   });
 
-  it.todo("A11. clicking the letter `o` in rendered `bold` puts the caret after `b` (browser)");
+  // Needs a browser, so not tested here: A11. clicking the letter `o` in rendered `bold` puts the
+  // caret after `b`
 
   it("A12. `abc**bold**def`, caret at 6: ArrowRight goes to 7, ArrowLeft returns to 6", () => {
     const view = mount("abc**bold**def", { focused: true, selection: [6] });

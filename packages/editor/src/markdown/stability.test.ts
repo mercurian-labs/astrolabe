@@ -63,7 +63,8 @@ describe("stability and performance", () => {
     expect(documentIndexBuilds()).toBe(before + 1);
   });
 
-  it.todo("A62. off-screen constructs have no decorations until scrolled into view (browser)");
+  // Needs a browser, so not tested here: A62. off-screen constructs have no decorations until
+  // scrolled into view
 
   it("A63. during a composition the previous set is mapped, so no hidden range covers new characters", () => {
     const view = mount("**bold** x");
@@ -101,5 +102,5 @@ describe("theming", () => {
     expect([...declared].filter((name) => !referenced.has(name))).toEqual([]);
   });
 
-  it.todo("A65. dark defaults switch under prefers-color-scheme: dark (browser)");
+  // Needs a browser, so not tested here: A65. dark defaults switch under prefers-color-scheme: dark
 });

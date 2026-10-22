@@ -1108,9 +1108,6 @@ export class AtlasRenderer implements GraphRenderer {
     releaseRenderer(this.#renderer);
   }
 
-  // ---------------------------------------------------------------------------
-  // Targets
-
   #applyTargets(): void {
     const graph = this.#graph;
     const view = this.#view;
@@ -1157,9 +1154,6 @@ export class AtlasRenderer implements GraphRenderer {
     if (graph === null || homes === undefined) return [0, 0, 0];
     return gatheringOffset(this.#gathering, homes, graph.slots.nodeOf(slot));
   }
-
-  // ---------------------------------------------------------------------------
-  // Camera
 
   #setFlat(flat: boolean): void {
     this.#flat = flat;
@@ -1414,9 +1408,6 @@ export class AtlasRenderer implements GraphRenderer {
     this.#scheduler.animate(this.#controlsDamping);
   };
 
-  // ---------------------------------------------------------------------------
-  // Pointer
-
   #localPointer(event: PointerEvent): Vector2 {
     const rect = this.#renderer.domElement.getBoundingClientRect();
     return this.#pointer.set(event.clientX - rect.left, event.clientY - rect.top);
@@ -1625,9 +1616,6 @@ export class AtlasRenderer implements GraphRenderer {
     if (resized && this.#following && this.#view !== null) this.#autoFrame(false);
     this.#scheduler.invalidate();
   }
-
-  // ---------------------------------------------------------------------------
-  // Drawing
 
   readonly #renderCall = () => {
     const renderer = this.#renderer;

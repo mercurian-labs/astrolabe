@@ -83,9 +83,8 @@ describe("links", () => {
     expect(img?.closest(".cm-md-link")?.getAttribute("data-href")).toBe("https://x");
   });
 
-  it.todo(
-    "A33. Mod-click on a link opens it once with noopener,noreferrer and adds no cursor; plain click opens nothing (browser)",
-  );
+  // Needs a browser, so not tested here: A33. Mod-click on a link opens it once with
+  // noopener,noreferrer and adds no cursor; plain click opens nothing
 
   it("A66. `[a](https://x)`, `<https://x>`, and `https://x` carry one external-link glyph off-range and none while revealed; `[a](notes/a.md)` carries none", () => {
     // GFM's bare-URL rule needs a dotted domain, so the bare case is `https://x.com`:

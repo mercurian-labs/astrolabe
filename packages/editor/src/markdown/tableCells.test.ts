@@ -506,7 +506,6 @@ describe("in-place cell editing", () => {
     expect(view.hasFocus).toBe(true);
   });
 
-  it.todo(
-    "A90. the caret is visible inside the active cell and a click on a character positions it there (browser)",
-  );
+  // Needs a browser, so not tested here: A90. the caret is visible inside the active cell and a
+  // click on a character positions it there
 });
