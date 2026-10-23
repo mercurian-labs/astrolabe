@@ -5400,7 +5400,7 @@ html:not(.js) .hover-only {
   outline-offset: 3px;
 }
 .foot__symbol {
-  grid-column: span 4;
+  grid-column: span 2;
   display: grid;
   place-items: center;
   padding: var(--pad);
@@ -5564,7 +5564,7 @@ html:not(.js) .hover-only {
   .foot__group {
     border-top: 1px solid var(--rule);
   }
-  .foot__group:first-of-type {
+  .foot__group:nth-of-type(odd) {
     border-left: 0;
   }
   .foot__stage {
