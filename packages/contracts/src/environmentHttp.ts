@@ -472,9 +472,20 @@ export const T3_CONNECT_TROUBLESHOOTING_SECTIONS = [
 ] as const;
 export type T3ConnectTroubleshootingSection = (typeof T3_CONNECT_TROUBLESHOOTING_SECTIONS)[number];
 
+/**
+ * Astrolabe: where docs/user/t3-connect-troubleshooting.md is published, or null
+ * while Astrolabe has no public docs. Never upstream's copy, which describes T3
+ * Connect. The "More info" links are left out while it is null.
+ */
+const REMOTE_ACCESS_TROUBLESHOOTING_URL = null as string | null;
+
 /** Clients, the CLI, and server logs link here as "More info". */
-export function t3ConnectTroubleshootingUrl(section: T3ConnectTroubleshootingSection): string {
-  return `https://github.com/pingdotgg/t3code/blob/main/docs/user/t3-connect-troubleshooting.md#${section}`;
+export function t3ConnectTroubleshootingUrl(
+  section: T3ConnectTroubleshootingSection,
+): string | null {
+  return REMOTE_ACCESS_TROUBLESHOOTING_URL === null
+    ? null
+    : `${REMOTE_ACCESS_TROUBLESHOOTING_URL}#${section}`;
 }
 
 const REACHABILITY_SECTION = {
@@ -489,7 +500,9 @@ const REACHABILITY_SECTION = {
   timeout: "the-t3-connect-address-does-not-resolve-or-answer",
 } satisfies Record<EnvironmentConnectReachabilityCause, T3ConnectTroubleshootingSection>;
 
-export function connectReachabilityHelpUrl(cause: EnvironmentConnectReachabilityCause): string {
+export function connectReachabilityHelpUrl(
+  cause: EnvironmentConnectReachabilityCause,
+): string | null {
   return t3ConnectTroubleshootingUrl(REACHABILITY_SECTION[cause]);
 }
 

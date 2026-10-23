@@ -153,12 +153,13 @@ export function classifyReachability(
 
 /** The loud diagnosis the CLI prints and the server logs. */
 export function formatReachabilityFailure(result: Unreachable): string {
+  const moreInfo = connectReachabilityHelpUrl(result.cause);
   return [
     "✕ Remote access is NOT reachable from other devices",
     `  ${result.reason}`,
     ...(result.hint ? [`  ${result.hint}`] : []),
     `  Fix: ${result.fix}`,
-    `  More info: ${connectReachabilityHelpUrl(result.cause)}`,
+    ...(moreInfo ? [`  More info: ${moreInfo}`] : []),
   ].join("\n");
 }
 

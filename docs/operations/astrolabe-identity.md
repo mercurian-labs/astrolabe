@@ -229,16 +229,17 @@ points at it. Where it doesn't yet, the value is unset, and the feature is off a
 someone sets it. When upstream adds a link to or a download from one of its services, route it
 through one of these values in the merge commit.
 
-| Concern               | Value                                                                                                                  | Astrolabe now                |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Hosted web app        | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`   |
-| Relay                 | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh` |
-| CLI releases          | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off         |
-| Mobile EAS project    | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | unset: OTA updates off       |
-| App Store Connect app | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | unset                        |
-| Store listings        | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden          |
-| Desktop download page | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | unset: links hidden          |
-| Triage repository     | `TRIAGE_REPOSITORY` in `apps/server/src/cli/triagePrompt.ts`                                                           | unset: triage off            |
+| Concern                             | Value                                                                                                                  | Astrolabe now                   |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Hosted web app                      | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`      |
+| Relay                               | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh`    |
+| CLI releases                        | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off            |
+| Mobile EAS project                  | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | unset: OTA updates off          |
+| App Store Connect app               | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | unset                           |
+| Store listings                      | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden             |
+| Desktop download page               | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | unset: links hidden             |
+| Triage repository                   | `TRIAGE_REPOSITORY` in `apps/server/src/cli/triagePrompt.ts`                                                           | unset: triage off               |
+| Remote-access troubleshooting guide | `REMOTE_ACCESS_TROUBLESHOOTING_URL` in `packages/contracts/src/environmentHttp.ts`                                     | unset: "More info" links hidden |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
@@ -274,6 +275,11 @@ through one of these values in the merge commit.
   source and filed issues on `pingdotgg/t3code`. It is unlisted and refuses to run while
   `TRIAGE_REPOSITORY` is unset. The playbook text (both copies) still names upstream's repository
   and T3 Code; turning triage on means pointing it at Astrolabe's first.
+- **Remote-access troubleshooting.** The "More info" links in the CLI's reachability diagnosis,
+  server logs, **Settings → Connections** and the client's connection diagnosis pointed at
+  upstream's copy of `docs/user/t3-connect-troubleshooting.md`, which describes T3 Connect. They
+  are left out until Astrolabe publishes its own. The GNOME extension's `metadata.json` names no
+  homepage, since upstream's linked to its repository.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
