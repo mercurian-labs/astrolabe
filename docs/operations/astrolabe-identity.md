@@ -140,9 +140,7 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   and onboarding surfaces, `packages/client-runtime`, the mobile pairing screen, and the docs.
   `.github/triage/PLAYBOOK.md` must stay byte-identical to `apps/server/src/cli/triagePrompt.ts`.
 - Release archives keep upstream's `t3-<version>-<platform>` names but contain `astrolabe`.
-  `CLI_RELEASE_REPOSITORY` (`packages/shared/src/cliRelease.ts`) and `repo=` in both install
-  scripts still point at `pingdotgg/t3code`. Upstream's archives contain `t3`, so self-update, the
-  pinned runtime, SSH, WSL and the install scripts need Astrolabe releases before they work.
+  Where they are downloaded from is in [Upstream services](#upstream-services).
 
 ### Environment variables
 
@@ -232,10 +230,11 @@ points at it. Where it doesn't yet, the value is unset, and the feature is off a
 someone sets it. When upstream adds a link to or a download from one of its services, route it
 through one of these values in the merge commit.
 
-| Concern        | Value                                                            | Astrolabe now                |
-| -------------- | ---------------------------------------------------------------- | ---------------------------- |
-| Hosted web app | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts` | `https://app.astrolabe.sh`   |
-| Relay          | `T3CODE_RELAY_URL` in `.env.example`                             | `https://relay.astrolabe.sh` |
+| Concern        | Value                                                                                                                  | Astrolabe now                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Hosted web app | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`   |
+| Relay          | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh` |
+| CLI releases   | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off         |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
@@ -246,6 +245,15 @@ through one of these values in the merge commit.
   release builds take it from the `RELAY_DOMAIN` repository variable. The relay dashboards in
   `infra/relay/src/monitoring.ts` match relay requests by path, not host, and their runbook links
   point at Astrolabe's repository.
+- **CLI releases.** Every runtime download derives from `CLI_RELEASE_REPOSITORY`: the npm launcher
+  (`scripts/build-npm-launcher.ts` stamps it into the package as `astrolabe.releaseRepository`),
+  `astrolabe update` (unlisted while it is unset), the background service and remote self-update
+  (`apps/server/src/cloud/pinnedRuntime.ts`), SSH installs (`packages/ssh/src/tunnel.ts`) and the
+  mobile app's update check, whose button is hidden while it is unset. Each says Astrolabe
+  publishes no releases yet instead of downloading. `ASTROLABE_RELEASE_BASE_URL` still points
+  downloads at a mirror. The install scripts run on their own, so they keep a copy;
+  `scripts/install-scripts.test.ts` fails when the copies drift. The desktop's release-notes links
+  follow its own update feed and link nowhere when the build names none.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
@@ -253,8 +261,8 @@ upstream's:
 - EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
   `apps/mobile/app.config.ts`, and the Firebase project. Push to `com.mercurian.astrolabe*` needs
   Astrolabe's own APNs key and Firebase app.
-- npm trusted publishing for `@mercurian/astrolabe`.
-- `t3.codes/install.sh|ps1` URLs in the docs, and the GitHub release repository.
+- npm trusted publishing for `@mercurian/astrolabe`, and the `repository` field in
+  `apps/server/package.json` that the npm package copies.
 
 ## After each sync
 

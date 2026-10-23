@@ -10,20 +10,10 @@ launch T3 Code and configure providers afterwards.
 
 ## Command line
 
-```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
-```
-
-This installs the `astrolabe` binary to `~/.local/bin`. If your shell reports `command not found`
-afterwards, that directory is not on your `PATH` yet; the installer prints the
-line to add. Set `ASTROLABE_CHANNEL=nightly` to install the nightly train, or
-`ASTROLABE_VERSION` to pin an exact version.
+Astrolabe doesn't publish release builds yet, so the install scripts,
+`npx @mercurian/astrolabe` and `astrolabe update` have nothing to download.
+[Build the server from source](#build-from-source) for now. Once it runs, these
+are the everyday commands:
 
 | Task                                             | Command                                                                        |
 | ------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -42,18 +32,13 @@ If `astrolabe` or `astrolabe start` reports an already running server, connect t
 instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
-To try T3 Code once without installing it, run `npx @mercurian/astrolabe@latest` instead (needs
-Node.js for `npx`).
+### Build from source
 
-### Intel Macs
-
-There is no `astrolabe` executable for Intel Macs (the desktop app is available). To
-run a server there, build it from source with Node.js 24 and `vp`
-([Install vp](https://github.com/pingdotgg/t3code#install-vp)):
+Build the server with Node.js 24 and `vp` ([Install vp](../../README.md#install-vp)):
 
 ```bash
-git clone https://github.com/pingdotgg/t3code
-cd t3code && vp i && vp run build:desktop
+git clone https://github.com/mercurian-labs/astrolabe
+cd astrolabe && vp i && vp run build:desktop
 node apps/server/dist/bin.mjs
 ```
 
@@ -62,20 +47,7 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Download a release from [GitHub Releases](https://github.com/pingdotgg/t3code/releases),
-or use a package manager:
-
-| Platform           | Install                            |
-| ------------------ | ---------------------------------- |
-| Windows            | `winget install T3Tools.T3Code`    |
-| macOS              | `brew install --cask t3-code`      |
-| Debian, Ubuntu     | `sudo apt install ./T3-Code-*.deb` |
-| Arch Linux         | `yay -S t3code-bin`                |
-| Arch Linux nightly | `yay -S t3code-nightly-bin`        |
-
-The `.deb` updates itself like the other desktop builds. It asks for your
-password to install each update. If your desktop has no password prompt, the
-update fails. Download the new `.deb` and install it the same way.
+Astrolabe doesn't publish desktop downloads yet.
 
 ### The `astrolabe` command
 
