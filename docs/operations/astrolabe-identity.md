@@ -210,15 +210,28 @@ If Astrolabe starts collecting to its own project, also change the onboarding no
 `WelcomeWizard.tsx`, the privacy row in `SettingsPanels.tsx` and `docs/user/telemetry.md`, which say
 it collects nothing.
 
-### Accounts and hosted services still upstream's
+### Upstream services
 
-Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. Nothing in the
-fork changes the rest yet. Astrolabe builds that need them won't work against upstream's accounts:
+Upstream's defaults send data, downloads and people to T3 Tools' own services. Astrolabe never
+falls back to them. Each concern is one value. Where Astrolabe has its own service, the value
+points at it. Where it doesn't yet, the value is unset, and the feature is off and hidden until
+someone sets it. When upstream adds a link to or a download from one of its services, route it
+through one of these values in the merge commit.
 
-- `app.t3.codes` (`packages/shared/src/connectAuth.ts`, `providerAuthReturnUrl.ts`,
-  `apps/web/vercel.ts`) and `relay.t3.codes` (`.env.example`). The hosted app's sign-in shares the
-  sign-in pages' session cookie, so it works only once the hosted app is served from
-  `app.astrolabe.sh`.
+| Concern        | Value                                                            | Astrolabe now              |
+| -------------- | ---------------------------------------------------------------- | -------------------------- |
+| Hosted web app | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts` | `https://app.astrolabe.sh` |
+
+- **Hosted web app.** Prompt links and hosted pairing links are built on it, and
+  `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
+  hosted-web defaults in `release.yml` carry the same host for the Vercel channel router. The hosted
+  app's sign-in shares the sign-in pages' session cookie, so it works only once the hosted app is
+  served from `app.astrolabe.sh`.
+
+Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
+upstream's:
+
+- `relay.t3.codes` (`.env.example`).
 - EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
   `apps/mobile/app.config.ts`, and the Firebase project. Push to `com.mercurian.astrolabe*` needs
   Astrolabe's own APNs key and Firebase app.

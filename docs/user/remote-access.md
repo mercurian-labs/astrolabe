@@ -21,7 +21,7 @@ server with `astrolabe serve`. Saving your sign-in alone does not make the machi
 reachable.
 
 On your other device, sign in to the same Astrolabe account and choose the
-environment. On the app.t3.codes home page with no computer added yet, signing
+environment. On the app.astrolabe.sh home page with no computer added yet, signing
 in adds compatible computers linked to your account. Over SSH, the CLI prints a
 browser link and a short code. Open the link on any device, confirm the code
 matches, and approve. The CLI continues on its own, so you do not need to forward
@@ -151,7 +151,7 @@ If that port is already in use, choose another with
 
 ### Hosted web app
 
-[app.t3.codes](https://app.t3.codes) needs an HTTPS endpoint. It connects directly
+[app.astrolabe.sh](https://app.astrolabe.sh) needs an HTTPS endpoint. It connects directly
 to your server; a hosted pairing link does not make an unreachable backend
 reachable or convert HTTP to HTTPS.
 

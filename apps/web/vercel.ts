@@ -1,9 +1,10 @@
 import { matchers, routes, type Transform, type VercelConfig } from "@vercel/config/v1";
 
-const ROUTER_HOST = "app.t3.codes";
+// Astrolabe's hosted app (DEFAULT_HOSTED_APP_URL in packages/shared/src/connectAuth.ts).
+const ROUTER_HOST = "app.astrolabe.sh";
 const HOSTED_WEB_CHANNEL_COOKIE = "t3code_web_channel";
-const LATEST_ORIGIN = "https://latest.app.t3.codes";
-const NIGHTLY_ORIGIN = "https://nightly.app.t3.codes";
+const LATEST_ORIGIN = "https://latest.app.astrolabe.sh";
+const NIGHTLY_ORIGIN = "https://nightly.app.astrolabe.sh";
 const CLEAN_CHANNEL_QUERY_TRANSFORMS = [
   {
     type: "request.query",
