@@ -340,6 +340,8 @@ jobs:
           name: cli-${{ inputs.platform }}-${{ inputs.arch }}
           path: release-cli/*
           if-no-files-found: error
+          # Astrolabe: read only within this run; the release keeps the published copy.
+          retention-days: 1
 
       - uses: ./.github/actions/setup-apt-mirrors
         if: inputs.platform == 'linux'
@@ -602,6 +604,9 @@ jobs:
           name: desktop-${{ inputs.platform }}-${{ inputs.arch }}
           path: release-publish/*
           if-no-files-found: error
+          # Astrolabe: about 1.5 GB per release; a private repo pays to store it for the
+          # 90-day default, and the release already publishes these files.
+          retention-days: 1
 
       - name: Upload resource monitor
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
