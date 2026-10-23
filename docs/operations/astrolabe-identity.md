@@ -186,6 +186,10 @@ Astrolabe in string literals only. Comments keep upstream's wording. Where this 
   OpenAI's terms ask an app to identify as itself. The backend tailors the Codex model catalog to
   the originator, so tiers it offers only to clients it recognises (Sol Ultrafast reaches "T3 Code"
   but not the plain CLI) are missing until OpenAI recognises "Astrolabe". Keep both on every sync.
+- **Git history:** stacked-PR rebases
+  (`packages/source-control-github/src/server/githubStackRebase.ts`) commit as
+  `Astrolabe <noreply@astrolabe.sh>` into the user's pushed branches. The checkpoint author below
+  stays "T3 Code" because checkpoint refs are never pushed.
 
 Kept as "T3" on purpose:
 
