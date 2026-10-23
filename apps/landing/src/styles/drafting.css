@@ -4302,7 +4302,9 @@ hidden, leaves the sticky stage working). */
     border-top: 1px solid var(--rule);
   }
 }
-/* ───────────────────────────────────────── [08] One window: a compact strip of four facts */
+/* ───────────────────────────────────────── [09] One window: [03]'s cards, drawing the answers
+   The cards and figures are [03]'s (.pcards, .pf-*). Glyphs are inlined sprite paths at 8 units,
+   held to the figures' hairlines. */
 
 .window-strip {
   display: grid;
@@ -4320,33 +4322,30 @@ hidden, leaves the sticky stage working). */
 .window-strip__head .h3 {
   font-size: clamp(1.5rem, 1rem + 1.1vw, 2.25rem);
 }
-.strip {
+.window-strip .pcards {
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 0;
 }
-.strip div {
-  padding: var(--pad);
+/* The titles are one line and the bodies differ in length: hang them from the figures, not the
+   card's foot, so the four titles share a line. */
+.window-strip .pcard__title {
+  margin-top: 0;
 }
-.strip div + div {
-  border-left: 1px solid var(--rule);
+.pf-i * {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.strip dt {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  font: 380 clamp(1.125rem, 0.95rem + 0.4vw, 1.5rem) / 1.15 var(--serif);
-  letter-spacing: -0.015em;
+.pf-i--ink * {
+  stroke: var(--ink);
 }
-.strip dt .tag {
-  color: var(--ink-3);
+.pf-i--faint * {
+  stroke: var(--ink-4);
 }
-.strip dd {
-  margin-top: 0.6rem;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-  color: var(--ink-2);
-  text-wrap: pretty;
+.pf-lbl.pf-typed {
+  fill: var(--ink);
 }
 kbd {
   padding: 0.05em 0.35em;
@@ -4359,24 +4358,6 @@ kbd {
   .window-strip__head {
     flex-direction: column;
     gap: 0.75rem;
-  }
-  .strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .strip div:nth-child(3) {
-    border-left: 0;
-  }
-  .strip div:nth-child(n + 3) {
-    border-top: 1px solid var(--rule);
-  }
-}
-@media (max-width: 520px) {
-  .strip {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .strip div + div {
-    border-left: 0;
-    border-top: 1px solid var(--rule);
   }
 }
 
