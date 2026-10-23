@@ -1,0 +1,880 @@
+---
+// The unfurl lab: each share card as the platforms show it, at their display sizes, crops, corner
+// radii and text layouts, in light and dark. The sizes are read off the current clients and are
+// approximate; the crops are the ones that matter. Linked from nowhere and kept out of search.
+// `?d=night|day|instrument|privacy-policy|terms-of-service|licenses` picks the card; `?safe=0` hides
+// the safe area.
+import { description, headline } from "../../site.js";
+
+const legal = {
+  "privacy-policy": [
+    "Privacy Policy",
+    "What Astrolabe and Mercurian's hosted services collect, where it goes, how long it stays, and what you control.",
+  ],
+  "terms-of-service": [
+    "Terms of Service",
+    "The terms for Mercurian's hosted services and the official Astrolabe builds, including AI providers, agents acting on your machine, and remote access.",
+  ],
+  licenses: [
+    "Licenses",
+    "Which license covers which part of Astrolabe, the third-party software inside it, and the sources of this website's art and fonts.",
+  ],
+};
+const cards = [
+  { id: "night", label: "A · Night plate", src: "/og/card-night.jpg", title: `Astrolabe · ${headline}`, description },
+  { id: "day", label: "B · Day plate", src: "/og/card-day.jpg", title: `Astrolabe · ${headline}`, description },
+  { id: "instrument", label: "C · Instrument", src: "/og/card-instrument.jpg", title: `Astrolabe · ${headline}`, description },
+  ...Object.entries(legal).map(([slug, [title, text]]) => ({
+    id: slug,
+    label: `Page · ${title}`,
+    src: `/og/page-${slug}.jpg`,
+    title: `${title} · Astrolabe`,
+    description: text,
+  })),
+];
+const first = cards[0];
+const domain = "astrolabe.sh";
+const icon = "/icons/apple-touch-icon.png";
+const themes = ["light", "dark"];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Astrolabe · lab · link cards</title>
+    <style is:global>
+      @font-face {
+        font-family: "Plex Mono";
+        src: url("/assets/fonts/plex-mono-500.woff2") format("woff2");
+        font-weight: 500;
+      }
+      @font-face {
+        font-family: "Fraunces";
+        src: url("/assets/fonts/fraunces.woff2") format("woff2");
+        font-weight: 100 900;
+      }
+      :root {
+        --paper: #fbf9f4;
+        --ink: #292724;
+        --ink-2: #57514a;
+        --ink-3: #756e63;
+        --rule: #cfc4b1;
+        --rust: #a0492a;
+        --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 32px 40px 64px;
+        background: var(--paper);
+        color: var(--ink);
+        font: 15px/1.45 var(--ui);
+      }
+      .tag {
+        margin: 0;
+        font: 500 12px/1.35 "Plex Mono", ui-monospace, monospace;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+      h1 {
+        margin: 8px 0 4px;
+        font: 380 40px/1.05 "Fraunces", Georgia, serif;
+        letter-spacing: -0.028em;
+        font-variation-settings: "opsz" 96, "SOFT" 30;
+      }
+      .lede {
+        max-width: 62em;
+        margin: 0 0 20px;
+        color: var(--ink-2);
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        align-items: center;
+        padding: 12px 0;
+        border-block: 1px solid var(--rule);
+        margin-bottom: 28px;
+      }
+      .controls label {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        cursor: pointer;
+        font: 500 12px/1 "Plex Mono", ui-monospace, monospace;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .controls input:checked + span {
+        color: var(--rust);
+      }
+
+      /* The card as rendered, with its crops marked. */
+      .master {
+        display: grid;
+        grid-template-columns: 600px 1fr;
+        gap: 32px;
+        align-items: start;
+        margin-bottom: 40px;
+      }
+      .legend {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .legend li {
+        display: grid;
+        grid-template-columns: 36px 1fr;
+        gap: 10px;
+      }
+      .legend i {
+        display: block;
+        height: 14px;
+        margin-top: 3px;
+        border: 2px dashed var(--rust);
+      }
+      .legend .band {
+        border-style: dotted;
+        border-color: #2d6fb5;
+      }
+      .legend .xlabel {
+        border: 0;
+        background: rgb(214 47 47 / 0.35);
+      }
+
+      /* One figure per platform, light and dark side by side. */
+      .platforms {
+        display: grid;
+        gap: 36px;
+      }
+      .platform {
+        margin: 0;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+      .pair {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .screen {
+        padding: 20px;
+        border: 1px solid var(--rule);
+      }
+      .note {
+        margin: 0;
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+
+      /* A cropped image with the safe area drawn over it in the same crop (the SVG slices as the image
+         covers). */
+      .shot {
+        position: relative;
+        display: block;
+        overflow: hidden;
+        background: #888;
+      }
+      .shot img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .safe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        fill: none;
+        vector-effect: non-scaling-stroke;
+      }
+      .safe * {
+        vector-effect: non-scaling-stroke;
+      }
+      .safe .sq {
+        stroke: var(--rust);
+        stroke-width: 1.5;
+        stroke-dasharray: 5 4;
+      }
+      .safe .band {
+        stroke: #2d6fb5;
+        stroke-width: 1.5;
+        stroke-dasharray: 1.5 3;
+      }
+      .safe .xlabel {
+        fill: rgb(214 47 47 / 0.35);
+      }
+      .no-safe .safe {
+        display: none;
+      }
+
+      /* iMessage (iOS) */
+      .im {
+        width: 340px;
+        font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+      }
+      .im[data-theme="light"] {
+        background: #fff;
+        --bubble: #e9e9eb;
+        --text: #000;
+        --muted: #8a8a8e;
+      }
+      .im[data-theme="dark"] {
+        background: #000;
+        --bubble: #262628;
+        --text: #fff;
+        --muted: #98989f;
+      }
+      .im__large {
+        width: 264px;
+        overflow: hidden;
+        border-radius: 18px;
+        background: var(--bubble);
+      }
+      .im__large .shot {
+        aspect-ratio: 1200 / 630;
+      }
+      .im__text {
+        padding: 8px 12px 10px;
+      }
+      .im__title {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.25;
+        color: var(--text);
+      }
+      .im__domain {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .im__compact {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        width: 264px;
+        margin-top: 14px;
+        padding: 8px 8px 8px 12px;
+        border-radius: 18px;
+        background: var(--bubble);
+      }
+      .im__compact > div {
+        flex: 1;
+        min-width: 0;
+      }
+      .im__compact .shot {
+        flex: none;
+        width: 52px;
+        height: 52px;
+        border-radius: 10px;
+      }
+
+      /* Slack (desktop) */
+      .sl {
+        width: 520px;
+        font-family: Lato, "Slack-Lato", -apple-system, system-ui, sans-serif;
+        font-size: 15px;
+      }
+      .sl[data-theme="light"] {
+        background: #fff;
+        --text: #1d1c1d;
+        --muted: #616061;
+        --link: #1264a3;
+        --bar: #dddddd;
+      }
+      .sl[data-theme="dark"] {
+        background: #1a1d21;
+        --text: #d1d2d3;
+        --muted: #ababad;
+        --link: #1d9bd1;
+        --bar: #35373b;
+      }
+      .sl__msg {
+        color: var(--text);
+      }
+      .sl__msg a {
+        color: var(--link);
+      }
+      .sl__unfurl {
+        margin-top: 6px;
+        padding-left: 12px;
+        border-left: 4px solid var(--bar);
+        border-radius: 2px;
+        color: var(--text);
+      }
+      .sl__site {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .sl__site img {
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+      }
+      .sl__title {
+        display: block;
+        font-weight: 700;
+        color: var(--link);
+      }
+      .sl__desc {
+        color: var(--text);
+      }
+      .sl .shot {
+        width: 360px;
+        margin-top: 8px;
+        aspect-ratio: 1200 / 630;
+        border-radius: 8px;
+      }
+
+      /* Discord */
+      .dc {
+        width: 500px;
+        font-family: "gg sans", "Noto Sans", -apple-system, system-ui, sans-serif;
+      }
+      .dc[data-theme="light"] {
+        background: #fff;
+        --embed: #f2f3f5;
+        --text: #313338;
+        --muted: #4e5058;
+        --link: #006ce7;
+      }
+      .dc[data-theme="dark"] {
+        background: #313338;
+        --embed: #2b2d31;
+        --text: #dbdee1;
+        --muted: #b5bac1;
+        --link: #00a8fc;
+      }
+      .dc__embed {
+        max-width: 432px;
+        padding: 8px 16px 16px 12px;
+        border-left: 4px solid #a0492a;
+        border-radius: 4px;
+        background: var(--embed);
+        color: var(--text);
+        font-size: 14px;
+      }
+      .dc__site {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dc__title {
+        display: block;
+        margin-top: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--link);
+      }
+      .dc__desc {
+        margin-top: 8px;
+      }
+      .dc .shot {
+        width: 400px;
+        margin-top: 16px;
+        aspect-ratio: 1200 / 630;
+        border-radius: 4px;
+      }
+
+      /* X */
+      .x {
+        width: 560px;
+        font-family: "Chirp", -apple-system, system-ui, sans-serif;
+      }
+      .x[data-theme="light"] {
+        background: #fff;
+        --border: #cfd9de;
+        --muted: #536471;
+      }
+      .x[data-theme="dark"] {
+        background: #000;
+        --border: #2f3336;
+        --muted: #71767b;
+      }
+      .x__card {
+        position: relative;
+        width: 506px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+      }
+      .x__card .shot {
+        aspect-ratio: 2 / 1;
+      }
+      .x__label {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        max-width: calc(100% - 24px);
+        overflow: hidden;
+        padding: 0 4px;
+        border-radius: 4px;
+        background: rgb(0 0 0 / 0.77);
+        color: #fff;
+        font-size: 13px;
+        line-height: 20px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .x__from {
+        margin-top: 4px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      /* LinkedIn */
+      .li {
+        width: 600px;
+        font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      }
+      .li[data-theme="light"] {
+        background: #f4f2ee;
+        --card: #fff;
+        --foot: #eef3f8;
+        --text: rgb(0 0 0 / 0.9);
+        --muted: rgb(0 0 0 / 0.6);
+      }
+      .li[data-theme="dark"] {
+        background: #000;
+        --card: #1b1f23;
+        --foot: #38434f;
+        --text: rgb(255 255 255 / 0.9);
+        --muted: rgb(255 255 255 / 0.6);
+      }
+      .li__card {
+        width: 555px;
+        overflow: hidden;
+        border-radius: 8px;
+        background: var(--card);
+      }
+      .li__card .shot {
+        aspect-ratio: 1.91 / 1;
+      }
+      .li__foot {
+        padding: 8px 12px;
+        background: var(--foot);
+      }
+      .li__title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .li__domain {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* Facebook */
+      .fb {
+        width: 540px;
+        font-family: Helvetica, Arial, -apple-system, system-ui, sans-serif;
+      }
+      .fb[data-theme="light"] {
+        background: #fff;
+        --foot: #f0f2f5;
+        --text: #050505;
+        --muted: #65676b;
+      }
+      .fb[data-theme="dark"] {
+        background: #242526;
+        --foot: #3a3b3c;
+        --text: #e4e6eb;
+        --muted: #b0b3b8;
+      }
+      .fb__card {
+        width: 500px;
+      }
+      .fb__card .shot {
+        aspect-ratio: 1.91 / 1;
+      }
+      .fb__foot {
+        padding: 10px 12px;
+        background: var(--foot);
+      }
+      .fb__domain {
+        font-size: 13px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .fb__title {
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: var(--text);
+      }
+      .fb__desc {
+        overflow: hidden;
+        font-size: 15px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        color: var(--muted);
+      }
+
+      /* WhatsApp */
+      .wa {
+        width: 380px;
+        font-family: -apple-system, "Segoe UI", Helvetica, system-ui, sans-serif;
+      }
+      .wa[data-theme="light"] {
+        background: #efeae2;
+        --bubble: #d9fdd3;
+        --preview: #d1f4cc;
+        --text: #111b21;
+        --muted: #667781;
+        --link: #027eb5;
+      }
+      .wa[data-theme="dark"] {
+        background: #0b141a;
+        --bubble: #005c4b;
+        --preview: #025144;
+        --text: #e9edef;
+        --muted: #8696a0;
+        --link: #53bdeb;
+      }
+      .wa__bubble {
+        width: 330px;
+        margin-left: auto;
+        padding: 3px 3px 6px;
+        border-radius: 8px;
+        background: var(--bubble);
+        color: var(--text);
+        font-size: 14px;
+      }
+      .wa__bubble + .wa__bubble {
+        margin-top: 14px;
+      }
+      .wa__preview {
+        overflow: hidden;
+        border-radius: 6px;
+        background: var(--preview);
+      }
+      .wa__preview .shot {
+        aspect-ratio: 1.91 / 1;
+      }
+      .wa__small {
+        display: flex;
+      }
+      .wa__small .shot {
+        flex: none;
+        width: 88px;
+        height: 88px;
+      }
+      .wa__text {
+        min-width: 0;
+        padding: 6px 10px;
+      }
+      .wa__title {
+        font-weight: 600;
+        font-size: 14px;
+        line-height: 1.25;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .wa__desc {
+        font-size: 12px;
+        color: var(--muted);
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .wa__domain {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .wa__msg {
+        padding: 4px 6px 0;
+      }
+      .wa__msg a {
+        color: var(--link);
+      }
+    </style>
+  </head>
+  <body>
+    <p class="tag">Lab · not linked from the site</p>
+    <h1>Link cards, as the platforms show them</h1>
+    <p class="lede">
+      Each platform at its display size, crop, corner radius and text layout, in light and dark. Sizes are read off the current clients and are
+      approximate; the crops are what to judge. The rust dashed square is the centre square every square crop keeps (WhatsApp's small preview,
+      iMessage's compact card); the blue dotted band is X's 2:1 crop.
+    </p>
+
+    <form class="controls" data-controls>
+      {
+        cards.map((c, i) => (
+          <label>
+            <input type="radio" name="d" value={c.id} checked={i === 0} />
+            <span>{c.label}</span>
+          </label>
+        ))
+      }
+      <label><input type="checkbox" name="safe" checked /><span>Safe area</span></label>
+    </form>
+
+    <section class="master">
+      <span class="shot" style="width:600px;aspect-ratio:1200/630">
+        <img data-src alt="" src={first.src} />
+        <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect class="sq" x="285" y="1" width="630" height="628" />
+          <rect class="band" x="1" y="15" width="1198" height="600" />
+          <rect class="xlabel" x="28" y="540" width="692" height="47" />
+        </svg>
+      </span>
+      <div>
+        <p class="tag">The card · 1200 × 630, shown at half size</p>
+        <p class="note" data-file>{first.src}</p>
+        <ul class="legend">
+          <li><i></i><span>Centre square, 630 × 630: everything the card says stays inside it.</span></li>
+          <li><i class="band"></i><span>X's 2:1 crop, 1200 × 600: fifteen pixels off the top and bottom.</span></li>
+          <li><i class="xlabel"></i><span>Where X lays the page title over the image (its width follows the title); nothing that matters sits there.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="platforms">
+      <figure class="platform">
+        <p class="tag">iMessage · iOS · large card 264 pt, compact card</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen im" data-theme={t}>
+                <div class="im__large">
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                    <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                      <rect class="sq" x="285" y="1" width="630" height="628" />
+                    </svg>
+                  </span>
+                  <div class="im__text">
+                    <div class="im__title" data-title>{first.title}</div>
+                    <div class="im__domain">{domain}</div>
+                  </div>
+                </div>
+                <div class="im__compact">
+                  <div>
+                    <div class="im__title" data-title>{first.title}</div>
+                    <div class="im__domain">{domain}</div>
+                  </div>
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                  </span>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        <p class="note">The compact card crops the centre square (or shows the apple-touch-icon instead).</p>
+      </figure>
+
+      <figure class="platform">
+        <p class="tag">WhatsApp · large preview, small preview 88 px square</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen wa" data-theme={t}>
+                <div class="wa__bubble">
+                  <div class="wa__preview">
+                    <span class="shot">
+                      <img data-src alt="" src={first.src} />
+                      <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                        <rect class="sq" x="285" y="1" width="630" height="628" />
+                      </svg>
+                    </span>
+                    <div class="wa__text">
+                      <div class="wa__title" data-title>{first.title}</div>
+                      <div class="wa__desc" data-desc>{first.description}</div>
+                      <div class="wa__domain">{domain}</div>
+                    </div>
+                  </div>
+                  <div class="wa__msg"><a href="#">https://{domain}</a></div>
+                </div>
+                <div class="wa__bubble">
+                  <div class="wa__preview wa__small">
+                    <span class="shot">
+                      <img data-src alt="" src={first.src} />
+                    </span>
+                    <div class="wa__text">
+                      <div class="wa__title" data-title>{first.title}</div>
+                      <div class="wa__desc" data-desc>{first.description}</div>
+                      <div class="wa__domain">{domain}</div>
+                    </div>
+                  </div>
+                  <div class="wa__msg"><a href="#">https://{domain}</a></div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        <p class="note">The large preview needs the file under about 300 KB; above it WhatsApp falls back to the small square.</p>
+      </figure>
+
+      <figure class="platform">
+        <p class="tag">Slack · desktop · image 360 px wide</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen sl" data-theme={t}>
+                <div class="sl__msg">
+                  Have a look: <a href="#">https://{domain}</a>
+                </div>
+                <div class="sl__unfurl">
+                  <div class="sl__site">
+                    <img src={icon} alt="" />
+                    Astrolabe
+                  </div>
+                  <a class="sl__title" href="#" data-title>{first.title}</a>
+                  <div class="sl__desc" data-desc>{first.description}</div>
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                    <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                      <rect class="sq" x="285" y="1" width="630" height="628" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </figure>
+
+      <figure class="platform">
+        <p class="tag">Discord · embed 432 px, image 400 px, strip from theme-color</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen dc" data-theme={t}>
+                <div class="dc__embed">
+                  <div class="dc__site">Astrolabe</div>
+                  <a class="dc__title" href="#" data-title>{first.title}</a>
+                  <div class="dc__desc" data-desc>{first.description}</div>
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                    <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                      <rect class="sq" x="285" y="1" width="630" height="628" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </figure>
+
+      <figure class="platform">
+        <p class="tag">X · summary_large_image · 506 px, cropped 2:1, title over the lower left</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen x" data-theme={t}>
+                <div class="x__card">
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                    <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                      <rect class="sq" x="285" y="1" width="630" height="628" />
+                      <rect class="band" x="1" y="15" width="1198" height="600" />
+                    </svg>
+                  </span>
+                  <span class="x__label" data-title>{first.title}</span>
+                </div>
+                <div class="x__from">From {domain}</div>
+              </div>
+            ))
+          }
+        </div>
+      </figure>
+
+      <figure class="platform">
+        <p class="tag">LinkedIn · feed · 555 px, 1.91:1</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen li" data-theme={t}>
+                <div class="li__card">
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                    <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                      <rect class="sq" x="285" y="1" width="630" height="628" />
+                    </svg>
+                  </span>
+                  <div class="li__foot">
+                    <div class="li__title" data-title>{first.title}</div>
+                    <div class="li__domain">{domain}</div>
+                  </div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </figure>
+
+      <figure class="platform">
+        <p class="tag">Facebook · feed · 500 px, 1.91:1</p>
+        <div class="pair">
+          {
+            themes.map((t) => (
+              <div class="screen fb" data-theme={t}>
+                <div class="fb__card">
+                  <span class="shot">
+                    <img data-src alt="" src={first.src} />
+                    <svg class="safe" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                      <rect class="sq" x="285" y="1" width="630" height="628" />
+                    </svg>
+                  </span>
+                  <div class="fb__foot">
+                    <div class="fb__domain">{domain}</div>
+                    <div class="fb__title" data-title>{first.title}</div>
+                    <div class="fb__desc" data-desc>{first.description}</div>
+                  </div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </figure>
+    </div>
+
+    <script type="application/json" id="cards" set:html={JSON.stringify(cards)} />
+    <script is:inline>
+      const cards = JSON.parse(document.getElementById("cards").textContent);
+      const form = document.querySelector("[data-controls]");
+      const params = new URLSearchParams(location.search);
+      const show = (id) => {
+        const card = cards.find((c) => c.id === id) ?? cards[0];
+        for (const img of document.querySelectorAll("[data-src]")) img.src = card.src;
+        for (const el of document.querySelectorAll("[data-title]")) el.textContent = card.title;
+        for (const el of document.querySelectorAll("[data-desc]")) el.textContent = card.description;
+        document.querySelector("[data-file]").textContent = card.src;
+        form.elements.d.value = card.id;
+      };
+      const safe = (on) => {
+        document.body.classList.toggle("no-safe", !on);
+        form.elements.safe.checked = on;
+      };
+      form.addEventListener("change", () => {
+        show(form.elements.d.value);
+        safe(form.elements.safe.checked);
+      });
+      show(params.get("d") ?? cards[0].id);
+      safe(params.get("safe") !== "0");
+    </script>
+  </body>
+</html>
