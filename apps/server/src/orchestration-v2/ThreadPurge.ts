@@ -427,17 +427,25 @@ const make = Effect.gen(function* () {
       );
       // No checkout left means the refs went with the repository.
       if (Option.isNone(cwd)) continue;
+      const checkout = cwd.value;
       yield* checkpointStore
-        .deleteCheckpointRefs({ cwd: cwd.value, checkpointRefs: group.refs })
-        .pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("Could not delete a deleted thread's checkpoint refs", {
-              cwd: cwd.value,
-              refs: group.refs,
-              cause,
-            }),
-          ),
-        );
+        .deleteCheckpointRefs({ cwd: checkout, checkpointRefs: group.refs })
+        .pipe(Effect.ignore);
+      // A failed `update-ref -d` still succeeds there, so name what survived.
+      const survivors = yield* Effect.filter(
+        group.refs,
+        (checkpointRef) =>
+          checkpointStore
+            .hasCheckpointRef({ cwd: checkout, checkpointRef })
+            .pipe(Effect.orElseSucceed(() => true)),
+        { concurrency: 4 },
+      );
+      if (survivors.length > 0) {
+        yield* Effect.logWarning("Could not delete a deleted thread's checkpoint refs", {
+          cwd: checkout,
+          refs: survivors,
+        });
+      }
     }
   });
 

@@ -40,6 +40,8 @@ function layerTest(deletedRefs: DeletedRefs, options: { readonly gitFails?: bool
     Layer.provideMerge(SqlitePersistence.layerMemory),
   );
   const checkpointStore = Layer.mock(CheckpointStore.CheckpointStore)({
+    // The refs a failed delete leaves behind are still there when checked.
+    hasCheckpointRef: () => Effect.succeed(options.gitFails === true),
     deleteCheckpointRefs: (input) =>
       Effect.suspend(() => {
         deletedRefs.push(input.checkpointRefs);
@@ -253,6 +255,29 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
     // Purging a live thread does nothing.
     yield* purge(keptId);
     yield* deleteThread(deletedId);
+    // Settled effect and receipt rows outlive the thread, without its text.
+    yield* sql`
+      INSERT INTO orchestration_v2_effect_outbox (
+        effect_id, command_id, thread_id, effect_type, payload_json, status, attempt_count,
+        available_at, created_at, updated_at, last_error
+      )
+      VALUES (
+        'effect:answered', 'command:answered', ${deletedId}, 'runtime-request.respond',
+        ${`{"type":"runtime-request.respond","providerSessionId":"session","requestId":"request","answers":{"q":"${SECRET}"}}`},
+        'failed', 5, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z',
+        '2026-10-01T00:00:00.000Z', ${`provider rejected ${SECRET}`}
+      )
+    `;
+    yield* sql`
+      INSERT INTO orchestration_command_receipts (
+        command_id, aggregate_kind, aggregate_id, command_type, accepted_at, result_sequence,
+        status, error
+      )
+      VALUES (
+        'command:rejected', 'thread', ${deletedId}, 'message.dispatch',
+        '2026-10-01T00:00:00.000Z', 0, 'rejected', ${`Cannot send ${SECRET}`}
+      )
+    `;
     // A provider event that lands after the deletion, as the newest event.
     yield* sink.write({ events: [message(deletedId, "message:late")] });
 
@@ -271,6 +296,16 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
     // Only the kept thread's two events still mention it.
     assert.equal(leaked[0]?.count, 2);
     for (const event of events) assert.notInclude(event.payload_json, SECRET);
+    const outbox = yield* sql<{ readonly payload_json: string; readonly last_error: string }>`
+      SELECT payload_json, last_error FROM orchestration_v2_effect_outbox
+      WHERE effect_id = 'effect:answered'
+    `;
+    assert.notInclude(outbox[0]?.payload_json, SECRET);
+    assert.notInclude(outbox[0]?.last_error, SECRET);
+    const receipts = yield* sql<{ readonly error: string }>`
+      SELECT error FROM orchestration_command_receipts WHERE command_id = 'command:rejected'
+    `;
+    assert.notInclude(receipts[0]?.error, SECRET);
 
     const tombstone = yield* projections.getThreadProjection(deletedId);
     assert.equal(tombstone.thread.title, DELETED_THREAD_TITLE);
