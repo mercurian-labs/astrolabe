@@ -168,9 +168,5 @@ body {
     "SOFT" 30,
     "WONK" 0;
   white-space: nowrap;
-  color: var(--line);
-  /* A wash under the line keeps it clear of the grain; it reads as the paper's own shadow. */
-  text-shadow:
-    0 0 18px var(--wash),
-    0 0 6px var(--wash);
+  visibility: hidden; /* the print draws it */
 }

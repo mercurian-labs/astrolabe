@@ -1,18 +1,22 @@
 // Astrolabe · share cards · the two-ink print
 //
-// The footer's print (src/scripts/footer.js), lifted out of the page so a card can be printed at an
+// The footer's ground (src/scripts/footer.js), lifted out of the page so a card can be printed at an
 // exact size: Beethoven basin's height (public/assets/footer/terrain.webp) under a low sun, ivory and
-// olive grain thresholded against the same seeded noise, and a mark (the wordmark or the monogram) as
-// a plate of brighter stock standing off the ground and casting its shadow on it. The shader is the
-// footer's, less the naming lens; keep the two in step when the print changes.
+// olive grain thresholded against the same seeded noise. Keep the ground in step with the footer's
+// shader when the print changes.
+//
+// What a card says is a second impression in the same ink and the same grain: the plate (the
+// wordmark, the line, the monogram) is flat, inked at one density and cut by the noise like the
+// ground, with the ground knocked out a few pixels round it so the letters keep their edge. Nothing
+// is lit, raised or shadowed.
 //
 // The day print is the same ground read the other way, as relight.js prints it by day: dark ink where
-// the ground is darker than the paper, so level ground stays paper and the shadows and away-facing
-// walls fill with ink; the plate is solid ink with its walls lit and shaded.
+// the ground is darker than the paper, so level ground stays paper and the walls turned from the sun
+// fill with ink.
 //
-// print(canvas, { ink: "night" | "day", mark?, sun?, ground? }) draws once and resolves when the
-// pixels are on the canvas. `mark` is { image, rect: [x, y, w, h] } in CSS px; `ground` is
-// { scale, offset } (CSS px per texel, and where the data's top left sits), defaulting to cover.
+// print(canvas, { ink: "night" | "day", plate, sun?, ground?, gain? }) draws once. `plate` is a canvas
+// the size of this one: red the ivory (or ink) cover, green the rust. `ground` is { scale, offset }
+// (CSS px per texel, and where the data's top left sits), defaulting to cover.
 
 const RAD = Math.PI / 180;
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
@@ -31,7 +35,7 @@ export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`could not load ${src}`));
+    image.onerror = () => reject(new Error(`could not load ${src.slice(0, 80)}`));
     image.src = src;
   });
 }
@@ -64,9 +68,7 @@ const fragment = `#version 300 es
   precision highp float;
   uniform sampler2D u_height;
   uniform sampler2D u_noise;   // 512 × 512 fixed thresholds: r ivory (or ink), g olive
-  uniform sampler2D u_mark;    // r letters, g rust, b the relief profile
-  uniform vec4 u_markRect;     // CSS px: x, y, width, height
-  uniform float u_rise;        // how far the plate stands off the ground, CSS px
+  uniform sampler2D u_plate;   // r ivory (or ink) cover, g rust cover, b the knockout round them
   uniform vec2 u_data;
   uniform vec2 u_res;
   uniform float u_dpr;
@@ -78,7 +80,8 @@ const fragment = `#version 300 es
   uniform float u_tanAlt;
   uniform float u_flat;
   uniform float u_day;         // 0 the night print, 1 the day print
-  uniform float u_gain;        // the ground's ink against the footer's (1): a lighter or heavier impression
+  uniform float u_gain;        // the ground's ink against the footer's (1)
+  uniform float u_density;     // the plate's ink: the share of grains that print
   uniform vec3 u_night;
   uniform vec3 u_ivory;
   uniform vec3 u_olive;
@@ -93,19 +96,12 @@ const fragment = `#version 300 es
   float H(vec2 uv) { return texture(u_height, uv).r; }
   vec2 toUV(vec2 css) { return (css - u_offset) / u_scale / u_data; }
 
-  vec4 markAt(vec2 css) {
-    vec2 uv = (css - u_markRect.xy) / u_markRect.zw;
-    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0);
-    return texture(u_mark, uv);
-  }
-  float letterH(vec2 css) { return smoothstep(0.08, 0.92, markAt(css).b) * u_rise; }
-
   float exposure(vec2 grad) {
     return max(dot(normalize(vec3(-grad, 1.0)), u_sun), 0.0) / u_flat * 0.225;
   }
   float curve(float lit) { return pow(clamp((lit - 0.14) / 0.86, 0.0, 1.0), 1.2); }
 
-  // The ground's light before the print's curve: 0.225 on level ground, 0 in shadow.
+  // The ground's light before the print's curve: 0.225 on level ground, 0 in shadow (footer.js).
   float light(vec2 uv) {
     vec2 e = 1.0 / u_data;
     vec2 grad = vec2(H(uv + vec2(e.x, 0.0)) - H(uv - vec2(e.x, 0.0)), H(uv - vec2(0.0, e.y)) - H(uv + vec2(0.0, e.y))) * 0.5 * u_relief;
@@ -125,19 +121,6 @@ const fragment = `#version 300 es
     return lit;
   }
 
-  float letterShadow(vec2 css) {
-    vec2 toward = normalize(u_sun.xy + 1e-6) * vec2(1.0, -1.0);
-    float reach = min(u_rise / max(u_tanAlt, 0.02), 200.0);
-    float stepPx = max(reach / 40.0, 1.0);
-    float s = 0.0;
-    for (int i = 1; i <= 40; i++) {
-      float d = stepPx * float(i);
-      if (d > reach + stepPx) break;
-      s = max(s, smoothstep(-0.6, 0.6, letterH(css + toward * d) - d * u_tanAlt));
-    }
-    return s;
-  }
-
   vec2 grain(float pA, float pOlive, vec2 dev) {
     vec2 cell = floor(dev) * u_sub;
     vec2 cover = vec2(0.0);
@@ -154,95 +137,35 @@ const fragment = `#version 300 es
   void main() {
     vec2 dev = vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y);
     vec2 css = dev / u_dpr;
-    vec4 mk = markAt(css);
-    float letter = smoothstep(0.35, 0.65, mk.b);
-    float rust = mk.g / max(mk.r + mk.g, 1e-3) * step(0.02, mk.r + mk.g);
+    vec3 pl = texture(u_plate, dev / u_res).rgb;
+    float letter = clamp(pl.r + pl.g, 0.0, 1.0);
+    float rust = pl.g / max(letter, 1e-3);
+    float clear = 1.0 - max(pl.b, letter); // the ground prints only clear of the plate
     float lit = light(toUV(css));
-    float olive = 0.42 * (1.0 - H(toUV(css + vec2(1.0, -1.5)))) + 0.03;
-    float wall = 0.0;  // the plate's walls: lit above 0.6, shaded below
-    if (letter > 0.0) {
-      vec2 g = vec2(letterH(css + vec2(1.0, 0.0)) - letterH(css - vec2(1.0, 0.0)),
-                    letterH(css - vec2(0.0, 1.0)) - letterH(css + vec2(0.0, 1.0))) * 0.5;
-      wall = clamp(0.6 + (exposure(g) - 0.225) * 1.5, 0.0, 1.0);
-      olive *= 1.0 - letter;
-    }
-    float shadow = letter < 1.0 ? letterShadow(css) * (1.0 - letter) : 0.0;
+    float olive = (0.42 * (1.0 - H(toUV(css + vec2(1.0, -1.5)))) + 0.03) * clear;
 
     vec3 color;
     if (u_day < 0.5) {
-      // The footer's night print, unchanged.
-      float t = mix(curve(lit) * u_gain, wall, letter);
-      t *= 1.0 - 0.96 * shadow;
-      olive *= 1.0 - 0.75 * shadow;
-      vec2 cover = grain(t, olive, dev);
-      vec3 ink = mix(u_ivory, u_rust * 1.22, rust * letter);
-      color = u_night * (1.0 - 0.3 * shadow);
+      // The footer's night ground, and the plate in the same ivory and grain.
+      vec2 cover = grain(curve(lit) * u_gain * clear, olive, dev);
+      color = u_night;
       color = mix(color, u_olive, cover.y * OLIVE_A);
-      color = mix(color, ink, cover.x * mix(IVORY_A, 0.94, letter));
+      color = mix(color, u_ivory, cover.x * IVORY_A);
+      float inked = grain(u_density * letter, 0.0, dev).x;
+      color = mix(color, mix(u_ivory, u_rust * 1.22, rust), inked * 0.94);
     } else {
-      // The day print: ink where the ground falls below the paper, as [02]'s ground prints by day:
-      // level ground a sparse stipple, walls turned from the sun fuller, the plate's shadow fuller still.
+      // The day print: ink where the ground falls below the paper, as [02]'s ground prints by day.
       float r = lit / 0.225;
-      float dark = (0.05 + 0.5 * pow(clamp(1.0 - r, 0.0, 1.0), 1.1)) * u_gain;
-      dark = mix(dark, 0.78, shadow);
-      // The plate: solid ink on top, its lit walls opening to the paper, its shaded walls fuller.
-      float plate = clamp(0.93 - (wall - 0.6) * 1.1, 0.0, 1.0);
-      dark = mix(dark, plate, letter);
-      olive *= (1.0 - 0.6 * shadow) * 0.85;
-      vec2 cover = grain(dark, olive, dev);
-      vec3 ink = mix(u_ink, u_rust, rust * letter);
+      float dark = (0.05 + 0.5 * pow(clamp(1.0 - r, 0.0, 1.0), 1.1)) * u_gain * clear;
+      vec2 cover = grain(dark, olive * 0.85, dev);
       color = u_paper;
       color = mix(color, u_olive, cover.y * 0.42);
-      color = mix(color, ink, cover.x * mix(0.86, 0.96, letter));
+      color = mix(color, u_ink, cover.x * 0.86);
+      float inked = grain(u_density * letter, 0.0, dev).x;
+      color = mix(color, mix(u_ink, u_rust, rust), inked * 0.96);
     }
     outColor = vec4(color, 1.0);
   }`;
-
-// The mark packed for the shader as footer.js packs it: red the letters, green the rust, blue the
-// relief profile (the letters blurred over about 3 CSS px).
-function packMark(image, rect, dpr) {
-  const pad = 6;
-  const r = [rect[0] - pad, rect[1] - pad, rect[2] + 2 * pad, rect[3] + 2 * pad];
-  const w = Math.max(1, Math.round(r[2] * dpr));
-  const h = Math.max(1, Math.round(r[3] * dpr));
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(image, pad * dpr, pad * dpr, rect[2] * dpr, rect[3] * dpr);
-  const own = ctx.getImageData(0, 0, w, h).data;
-  const profile = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) profile[i] = own[i * 4 + 3] / 255;
-  const k = Math.max(1, Math.round(0.9 * dpr));
-  const tmp = new Float32Array(w * h);
-  for (let pass = 0; pass < 3; pass++) {
-    for (let y = 0; y < h; y++) {
-      let acc = 0;
-      for (let x = -k; x <= k; x++) acc += profile[y * w + Math.min(w - 1, Math.max(0, x))];
-      for (let x = 0; x < w; x++) {
-        tmp[y * w + x] = acc / (2 * k + 1);
-        acc += profile[y * w + Math.min(w - 1, x + k + 1)] - profile[y * w + Math.max(0, x - k)];
-      }
-    }
-    for (let x = 0; x < w; x++) {
-      let acc = 0;
-      for (let y = -k; y <= k; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
-      for (let y = 0; y < h; y++) {
-        profile[y * w + x] = acc / (2 * k + 1);
-        acc += tmp[Math.min(h - 1, y + k + 1) * w + x] - tmp[Math.max(0, y - k) * w + x];
-      }
-    }
-  }
-  const packed = new Uint8Array(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    const a = own[i * 4 + 3];
-    const isRust = a > 40 && own[i * 4] - own[i * 4 + 1] > 48;
-    packed[i * 4] = isRust ? 0 : a;
-    packed[i * 4 + 1] = isRust ? a : 0;
-    packed[i * 4 + 2] = Math.round(profile[i] * 255);
-  }
-  return { packed, w, h, rect: r };
-}
 
 // The footer's noise, from the same seed, so the grain is the page's grain.
 function noise() {
@@ -258,15 +181,48 @@ function noise() {
   return data;
 }
 
+// The plate's pixels for the shader: red and green as drawn, blue the cover grown by `knock` device
+// px (a max over a disc, separable as a square is not), so the ground stops short of every letter.
+function packPlate(plate, knock) {
+  const { width: w, height: h } = plate;
+  const src = plate.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const out = new Uint8Array(w * h * 4);
+  const cover = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    out[i * 4] = src[i * 4];
+    out[i * 4 + 1] = src[i * 4 + 1];
+    cover[i] = Math.min(255, src[i * 4] + src[i * 4 + 1]);
+  }
+  const k = Math.ceil(knock);
+  const offsets = [];
+  for (let dy = -k; dy <= k; dy++)
+    for (let dx = -k; dx <= k; dx++)
+      if (dx * dx + dy * dy <= knock * knock) offsets.push(dy * w + dx, dx, dy);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let o = 0; o < offsets.length && m < 255; o += 3) {
+        const xx = x + offsets[o + 1];
+        const yy = y + offsets[o + 2];
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const v = cover[y * w + x + offsets[o]];
+        if (v > m) m = v;
+      }
+      out[(y * w + x) * 4 + 2] = m;
+    }
+  return out;
+}
+
 export async function print(
   canvas,
   {
     ink = "night",
-    mark = null,
+    plate,
     sun = { alt: 16, az: 292 },
     ground = null,
-    rise = null,
     gain = 1,
+    density = 0.82,
+    knock = 2.5,
   } = {},
 ) {
   const box = canvas.getBoundingClientRect();
@@ -319,39 +275,26 @@ export async function print(
 
   const t = await loadTerrain();
   const [w, h] = t.meta.size;
-  texture(0, gl.LINEAR, gl.CLAMP_TO_EDGE);
+  const linear = gl.getExtension("OES_texture_float_linear") ? gl.LINEAR : gl.NEAREST;
+  texture(0, linear, gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, w, h, 0, gl.RED, gl.FLOAT, t.height);
-  // R32F filters only with this extension; without it the shader reads nearest texels.
-  if (!gl.getExtension("OES_texture_float_linear")) {
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  }
   texture(1, gl.NEAREST, gl.REPEAT);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, noise());
-  texture(3, gl.LINEAR, gl.CLAMP_TO_EDGE);
-  if (mark) {
-    const m = packMark(mark.image, mark.rect, dpr);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, m.w, m.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, m.packed);
-    gl.uniform4f(u.u_markRect, ...m.rect);
-    gl.uniform1f(u.u_rise, rise ?? Math.max(4, mark.rect[3] * 0.045));
-  } else {
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA8,
-      1,
-      1,
-      0,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      new Uint8Array(4),
-    );
-    gl.uniform4f(u.u_markRect, -10, -10, 1, 1);
-    gl.uniform1f(u.u_rise, 0);
-  }
+  texture(2, gl.NEAREST, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA8,
+    canvas.width,
+    canvas.height,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    packPlate(plate, knock * dpr),
+  );
   gl.uniform1i(u.u_height, 0);
   gl.uniform1i(u.u_noise, 1);
-  gl.uniform1i(u.u_mark, 3);
+  gl.uniform1i(u.u_plate, 2);
 
   const ca = Math.cos(sun.alt * RAD);
   gl.uniform3f(
@@ -364,6 +307,7 @@ export async function print(
   gl.uniform1f(u.u_flat, Math.max(Math.sin(sun.alt * RAD), Math.sin(12 * RAD)));
   gl.uniform1f(u.u_day, ink === "day" ? 1 : 0);
   gl.uniform1f(u.u_gain, gain);
+  gl.uniform1f(u.u_density, density);
   gl.uniform3f(u.u_night, ...hex(INKS.night));
   gl.uniform3f(u.u_ivory, ...hex(INKS.ivory));
   gl.uniform3f(u.u_olive, ...hex(ink === "day" ? INKS.dayOlive : INKS.olive));
@@ -383,5 +327,4 @@ export async function print(
   gl.uniform1f(u.u_sub, dpr < 1.5 ? 2 : 1);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.finish();
-  return { meta: t.meta, scale, offset };
 }
