@@ -51,6 +51,8 @@ done(
       inked.push(line);
     }
     card.append(core);
+    // The header's frame sits inside LinkedIn's crop of it (about 4:1, a sixth off the top and bottom).
+    if (layout === "header") card.style.setProperty("--frame", "70px");
     if (!spec.monogram) frame(card);
 
     const terrain = await fetch("/assets/footer/terrain.json").then((res) => res.json());
