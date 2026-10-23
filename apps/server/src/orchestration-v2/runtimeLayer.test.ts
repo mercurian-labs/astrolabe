@@ -66,7 +66,6 @@ import * as EffectWorker from "./EffectWorker.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryService.ts";
-import * as EventStore from "./EventStore.ts";
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as PullRequestWatchReactor from "./PullRequestWatchReactor.ts";
@@ -78,6 +77,7 @@ import * as RuntimeLayer from "./runtimeLayer.ts";
 import { shellStreamItemFromThreadShell } from "./ShellStream.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import { DELETED_THREAD_TITLE } from "./ThreadDeletion.ts";
+import * as ThreadPurge from "./ThreadPurge.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -321,17 +321,17 @@ const layerScheduledTasksTest = ScheduledTaskService.layer.pipe(
     ),
   ),
 );
-const layerResourceCleanupTest = ResourceCleanupService.layer.pipe(
-  Layer.provideMerge(layerScheduledTasksTest),
-  Layer.provide(
-    Layer.mergeAll(
-      Layer.mock(PreviewManager.PreviewManager)({ close: () => Effect.void }),
-      Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
-      ProjectionMaintenance.layer.pipe(
-        Layer.provide(Layer.mergeAll(EventStore.layer, ProjectionStore.layer)),
+const layerResourceCleanupTest = Layer.merge(
+  ResourceCleanupService.layer.pipe(
+    Layer.provideMerge(layerScheduledTasksTest),
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(PreviewManager.PreviewManager)({ close: () => Effect.void }),
+        Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
       ),
     ),
   ),
+  ThreadPurge.layer,
 );
 
 const layerProjectDeletionTest = Layer.mergeAll(

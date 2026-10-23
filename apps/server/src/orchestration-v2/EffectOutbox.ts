@@ -1,5 +1,6 @@
 import {
   CheckpointId,
+  CheckpointRef,
   CheckpointScopeId,
   CommandId,
   MessageId,
@@ -108,6 +109,11 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("thread.purge"),
+    checkpointRefs: Schema.optional(
+      Schema.Array(
+        Schema.Struct({ cwds: Schema.Array(Schema.String), refs: Schema.Array(CheckpointRef) }),
+      ),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("thread-title.generate"),

@@ -454,15 +454,12 @@ const makeEventStore = Effect.gen(function* () {
               : encoded.type === "turn-item.updated" && encoded.payload.type === "subagent"
                 ? encoded.payload
                 : undefined;
-          // Scoped to the thread so an anchor never lives in another thread's
-          // stream, which a thread purge may delete.
-          const promptKey =
-            subagent === undefined ? undefined : `${event.threadId}:${event.type}:${subagent.id}`;
+          const promptKey = subagent && `${event.threadId}:${event.type}:${subagent.id}`;
           const hint = promptKey === undefined ? undefined : promptHints.get(promptKey);
           const payloadJson = yield* encodeJson(encoded.payload);
           // Progress ticks repeat an unchanged prompt, so store it once and point
-          // later rows at it. Compaction never deletes these anchor rows; only a
-          // purge of their own deleted thread does.
+          // later rows at it. ProjectionMaintenance never deletes these anchor
+          // rows.
           const storedPayload =
             hint !== undefined && subagent !== undefined
               ? sql`CASE WHEN EXISTS (
