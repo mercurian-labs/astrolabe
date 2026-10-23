@@ -53,6 +53,19 @@ const JOBS = [
     w: 1200,
     h: 630,
   },
+  // [11]'s Sphinx plate, at night with its lamps lit (and by day, to compare in the lab).
+  {
+    out: "public/og/card-sphinx.jpg",
+    page: `sphinx.html?${q({ ink: "night", line: headline })}`,
+    w: 1200,
+    h: 630,
+  },
+  {
+    out: "public/og/card-sphinx-day.jpg",
+    page: `sphinx.html?${q({ ink: "day", line: headline })}`,
+    w: 1200,
+    h: 630,
+  },
   // The page cards, for the legal pages (and later posts): the same plate, a title and a caption.
   ...[
     ["privacy-policy", "Privacy Policy"],
@@ -68,6 +81,12 @@ const JOBS = [
   {
     out: "share/github-social-preview.jpg",
     page: `plate.html?${q({ ink: "night", layout: "github", line: headline })}`,
+    w: 1280,
+    h: 640,
+  },
+  {
+    out: "share/github-social-preview-sphinx.jpg",
+    page: `sphinx.html?${q({ ink: "night", line: headline })}`,
     w: 1280,
     h: 640,
   },
