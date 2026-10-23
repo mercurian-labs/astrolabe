@@ -620,6 +620,102 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
     }),
   );
 
+  it.effect("deleting a thread deletes its subagent threads and erases them too", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const projectId = ProjectId.make("purge-subagent-project");
+      const parentId = ThreadId.make("purge-subagent-parent");
+      const childId = ThreadId.make("purge-subagent-child");
+      yield* projects.create({
+        commandId: CommandId.make("purge-subagent-project-create"),
+        projectId,
+        title: "Purge subagents",
+        workspaceRoot: "/work/purge-subagents",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("purge-subagent-parent-create"),
+        createdBy: "user",
+        creationSource: "web",
+        threadId: parentId,
+        projectId,
+        title: "Delegates work",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const parent = (yield* orchestrator.getThreadProjection(parentId)).thread;
+      const occurredAt = parent.createdAt;
+      // What a provider adapter writes for a subagent: a hidden child thread.
+      yield* eventSink.write({
+        events: [
+          {
+            id: EventId.make("purge-subagent-child-created"),
+            type: "thread.created",
+            threadId: childId,
+            providerInstanceId: parent.providerInstanceId,
+            occurredAt,
+            payload: {
+              ...parent,
+              id: childId,
+              title: "Read the logs",
+              creationSource: "provider",
+              lineage: {
+                parentThreadId: parentId,
+                relationshipToParent: "subagent",
+                rootThreadId: parentId,
+              },
+              forkedFrom: { type: "node", nodeId: NodeId.make("purge-subagent-node") },
+            },
+          },
+          {
+            id: EventId.make("purge-subagent-child-message"),
+            type: "message.updated",
+            threadId: childId,
+            providerInstanceId: parent.providerInstanceId,
+            occurredAt,
+            payload: {
+              createdBy: "agent",
+              creationSource: "provider",
+              id: MessageId.make("purge-subagent-child-message"),
+              threadId: childId,
+              runId: null,
+              nodeId: null,
+              role: "assistant",
+              text: "The logs show the leaked key",
+              attachments: [],
+              streaming: false,
+              createdAt: occurredAt,
+              updatedAt: occurredAt,
+            },
+          },
+        ],
+      });
+
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make("purge-subagent-parent-delete"),
+        threadId: parentId,
+      });
+      yield* worker.drain();
+      const child = yield* orchestrator.getThreadProjection(childId);
+      assert.isNotNull(child.thread.deletedAt);
+      assert.equal(child.thread.title, DELETED_THREAD_TITLE);
+      assert.lengthOf(child.messages, 0);
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(parentId)).thread.title,
+        DELETED_THREAD_TITLE,
+      );
+      assert.isTrue((yield* maintenance.verify).valid);
+    }),
+  );
+
   it.effect("waits for an in-flight thread update before planning deletion", () =>
     Effect.gen(function* () {
       const projects = yield* ProjectService.ProjectService;

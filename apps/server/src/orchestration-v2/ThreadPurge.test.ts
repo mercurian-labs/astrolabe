@@ -159,17 +159,20 @@ const deleteThread = Effect.fn("test.deleteThread")(function* (threadId: ThreadI
   yield* sink.write({ events: plan.events });
 });
 
-const deleteThreadCalls: Array<ThreadId> = [];
 const purge = Effect.fn("test.purge")(function* (
   threadId: ThreadId,
-  checkpointRefs: ThreadPurge.ThreadPurgeInput["checkpointRefs"] = [],
+  options: {
+    readonly checkpointRefs?: ThreadPurge.ThreadPurgeInput["checkpointRefs"];
+    /** Collects the subagent threads the purge asks orchestration to delete. */
+    readonly deleted?: Array<ThreadId>;
+  } = {},
 ) {
   const purges = yield* ThreadPurge.ThreadPurge;
   yield* purges.purge({
     effectId: `effect:test:${threadId}`,
     threadId,
-    checkpointRefs,
-    deleteThread: (childId) => Effect.sync(() => deleteThreadCalls.push(childId)),
+    checkpointRefs: options.checkpointRefs ?? [],
+    deleteThread: (childId) => Effect.sync(() => options.deleted?.push(childId)),
   });
 });
 
@@ -410,7 +413,7 @@ it.effect(
       assert.equal(request.type, "thread.purge");
       const recorded = request.type === "thread.purge" ? (request.checkpointRefs ?? []) : [];
       assert.deepEqual(recorded, [{ cwds: [CHECKOUT, "/work/purge"], refs: [ownRef] }]);
-      yield* purge(deletedId, recorded);
+      yield* purge(deletedId, { checkpointRefs: recorded });
       assert.lengthOf(deletedRefs, 2);
       assert.deepEqual(deletedRefs[1], [ownRef]);
       const shared = yield* sql`
@@ -541,5 +544,90 @@ it.effect("sweeps up deletions an older build only hid, staggered, and revives f
       assert.isNotNull(thread.deletedAt);
     }
     assert.lengthOf((yield* projections.getThreadProjection(liveId)).messages, 1);
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+const seedSubagentRow = Effect.fn("test.seedSubagentRow")(function* (
+  parentId: ThreadId,
+  childId: ThreadId,
+  status: string,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`
+    INSERT INTO orchestration_v2_projection_subagents (
+      subagent_id, thread_id, run_id, parent_node_id, provider, provider_thread_id,
+      child_thread_id, origin, status, started_at, completed_at, updated_at, payload_json,
+      driver, provider_instance_id
+    )
+    VALUES (
+      ${`subagent:${childId}`}, ${parentId}, NULL, ${`node:${parentId}`}, 'codex', NULL,
+      ${childId}, 'app_owned', ${status}, NULL, NULL, '2026-10-01T00:00:00.000Z', '{}',
+      'codex', 'codex'
+    )
+  `;
+});
+
+it.effect("goes with its subagent threads and never waits on them", () =>
+  Effect.gen(function* () {
+    const sink = yield* EventSink.EventSinkV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const parentId = ThreadId.make("thread:purge-subagent-parent");
+    const liveChildId = ThreadId.make("thread:purge-subagent-live");
+    const deletedChildId = ThreadId.make("thread:purge-subagent-deleted");
+    yield* sink.write({
+      events: [
+        created(makeThread(parentId)),
+        message(parentId, "message:subagent-parent"),
+        // A provider subagent: no sidebar row, and nothing deletes it on its own.
+        created({
+          ...makeThread(liveChildId, { threadId: parentId, relationship: "subagent" }),
+          creationSource: "provider",
+        }),
+        created(makeThread(deletedChildId, { threadId: parentId, relationship: "subagent" })),
+      ],
+    });
+    yield* deleteThread(deletedChildId);
+    yield* deleteThread(parentId);
+    const deleted: Array<ThreadId> = [];
+    yield* purge(parentId, { deleted });
+    assert.deepEqual(deleted, [liveChildId]);
+    assert.lengthOf((yield* projections.getThreadProjection(parentId)).messages, 0);
+    assert.deepEqual(
+      (yield* storedEvents(parentId)).map((event) => event.event_type),
+      ["thread.created", "thread.deleted"],
+    );
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("waits while a live parent still waits on its deleted subagent", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const sink = yield* EventSink.EventSinkV2;
+    const parentId = ThreadId.make("thread:purge-delegating-parent");
+    const childId = ThreadId.make("thread:purge-delegated-child");
+    yield* sink.write({
+      events: [
+        created(makeThread(parentId)),
+        created(makeThread(childId, { threadId: parentId, relationship: "subagent" })),
+        message(childId, "message:delegated"),
+      ],
+    });
+    yield* deleteThread(childId);
+    yield* seedSubagentRow(parentId, childId, "running");
+
+    const waiting = yield* purge(childId).pipe(Effect.flip);
+    assert.equal(waiting._tag, "ThreadPurgeAwaitingParentError");
+    assert.lengthOf(yield* storedEvents(childId), 3);
+
+    // The parent records the cancelled result, and the retry erases the thread.
+    yield* sql`
+      UPDATE orchestration_v2_projection_subagents SET status = 'cancelled'
+      WHERE child_thread_id = ${childId}
+    `;
+    yield* purge(childId);
+    assert.deepEqual(
+      (yield* storedEvents(childId)).map((event) => event.event_type),
+      ["thread.created", "thread.deleted"],
+    );
   }).pipe(Effect.provide(layerTest([]))),
 );
