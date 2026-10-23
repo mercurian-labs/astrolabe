@@ -210,6 +210,37 @@ If Astrolabe starts collecting to its own project, also change the onboarding no
 `WelcomeWizard.tsx`, the privacy row in `SettingsPanels.tsx` and `docs/user/telemetry.md`, which say
 it collects nothing.
 
+### Thread deletion
+
+Upstream only hides a deleted thread. Astrolabe erases it: a `thread.purge` effect queued by
+`planThreadDeletion` runs `apps/server/src/orchestration-v2/ThreadPurge.ts`, and that file has no
+upstream counterpart. Keep these smaller edits on every sync:
+
+- `ThreadDeletion.ts`: the tombstone on `thread.deleted` and the queued purge.
+- `EffectOutbox.ts`, `EffectWorker.ts`, `runtimeLayer.ts`: the `thread.purge` request, its case,
+  and the service with its sweep worker.
+- `OrchestrationEventStore.ts`: the prompt-hint key includes the thread id, so a subagent prompt
+  anchor never sits in another thread's stream.
+- `Orchestrator.ts`: a message drops a pending merge-back from a deleted fork.
+- `ThreadManagementService.ts`: a wait settles when its thread is deleted.
+- `ShellStream.ts` and the contract: `thread.removed` carries `deleted: true`, and
+  `packages/client-runtime/src/state/shell.ts` evicts the cached thread on it.
+- `packages/client-runtime/src/state/threadDeletion.ts`: the confirmation copy all clients show.
+
+A new upstream table that stores thread content belongs in `THREAD_CONTENT_TABLES` in
+`ThreadPurge.ts`. Backfills run from the purge's sweep, never as migrations: the migration ids are
+shared with upstream, and the migrator skips every id below the highest one applied.
+
+Deletion still leaves:
+
+- checkpoint refs from before V2 (`refs/t3/checkpoints/<thread>/turn/<n>`);
+- old page images in the database's write-ahead log, until a checkpoint reuses that space;
+- unsent drafts and per-thread panel state on other devices, and a cached transcript on a device
+  that reconnects through a full snapshot, until the thread is opened there;
+- the agent's own session files, such as `~/.codex` and `~/.claude`;
+- ids, statuses and timestamps in effect and receipt rows;
+- the pre-0.1.0 `state.sqlite`, until `astrolabe doctor` removes it.
+
 ### Accounts and hosted services still upstream's
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. Nothing in the

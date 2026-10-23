@@ -42,6 +42,7 @@ import {
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+import { threadDeletionDetail } from "@t3tools/client-runtime/state/threads";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
@@ -291,10 +292,7 @@ export function useThreadActionMenu(input: {
           if (confirmThreadDelete) {
             const confirmed = await settlePromise(() =>
               api.dialogs.confirm(
-                [
-                  `Delete thread "${thread.title}"?`,
-                  "This permanently deletes its conversation, attachments, checkpoints, and terminal history. Threads forked or delegated from it keep that history until they are deleted too.",
-                ].join("\n"),
+                [`Delete thread "${thread.title}"?`, threadDeletionDetail(1)].join("\n"),
                 { variant: "destructive" },
               ),
             );

@@ -191,16 +191,15 @@ already settled threads.
 
 Choose **Delete** from a thread's menu. This can't be undone; to put a thread away and keep it,
 archive it instead. Deleting removes the conversation, meaning its messages, reasoning, tool
-output and diffs, along with its attachments, HTML pages, terminal history, checkpoints and
-provider logs. What remains is a record of the thread's ids, dates, settings, branch and
-worktree path, so links to it show it as deleted. Your other devices drop their saved copy the
-next time they connect.
+output and diffs, along with its attachments, HTML pages, terminal history, checkpoints, provider
+logs and subagent threads. What remains is a record of the thread's ids, dates, settings, branch
+and worktree path, so links to it show it as deleted. Your other devices drop their saved copy
+when they hear of the deletion, or when you next open the thread there.
 
-If a thread was forked or delegated from it, that thread still shows or relies on its history,
-so the history stays on the machine until you delete those threads too. Threads deleted by
-earlier versions are removed a few minutes after the environment updates. A database kept from
-a version before 0.1.0 holds its own copy until you remove it; see
-[Reclaim database space](./background-service.md#reclaim-database-space).
+A fork still shows the history of the thread it came from, so that history stays on the machine
+until you delete the fork too. Threads deleted by earlier versions are removed a few minutes after
+the environment updates. A database kept from a version before 0.1.0 holds its own copy until you
+remove it; see [Reclaim database space](./background-service.md#reclaim-database-space).
 
 The thread's folder or worktree stays, and so do the files the agent changed. To remove
 worktrees with their threads, see [Storage cleanup](./project-settings.md#storage-cleanup).

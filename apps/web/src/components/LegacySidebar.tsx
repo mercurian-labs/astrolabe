@@ -68,6 +68,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
+import { threadDeletionDetail } from "@t3tools/client-runtime/state/threads";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -1888,10 +1889,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
     if (appSettingsConfirmThreadDelete) {
       const confirmed = await api.dialogs.confirm(
-        [
-          `Delete ${count} thread${count === 1 ? "" : "s"}?`,
-          "This permanently deletes their conversations, attachments, checkpoints, and terminal history. Threads forked or delegated from them keep that history until they are deleted too.",
-        ].join("\n"),
+        [`Delete ${count} thread${count === 1 ? "" : "s"}?`, threadDeletionDetail(count)].join(
+          "\n",
+        ),
         { variant: "destructive" },
       );
       if (!confirmed) return;
@@ -2242,10 +2242,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (!checkTaskPermission(threadRef.environmentId)) return;
       if (appSettingsConfirmThreadDelete) {
         const confirmed = await api.dialogs.confirm(
-          [
-            `Delete thread "${thread.title}"?`,
-            "This permanently deletes its conversation, attachments, checkpoints, and terminal history. Threads forked or delegated from it keep that history until they are deleted too.",
-          ].join("\n"),
+          [`Delete thread "${thread.title}"?`, threadDeletionDetail(1)].join("\n"),
           { variant: "destructive" },
         );
         if (!confirmed) {
