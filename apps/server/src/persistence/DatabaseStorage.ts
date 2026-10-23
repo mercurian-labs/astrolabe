@@ -109,6 +109,13 @@ const make = Effect.gen(function* () {
       Effect.logWarning("Orchestration history compaction failed", { cause }),
     ),
   );
+  // Threads deleted by builds that only hid them still hold their history.
+  const queueDeletedThreadPurges = maintenance.enqueueDeletedThreadPurges.pipe(
+    Effect.tap((queued) =>
+      queued > 0 ? Effect.logInfo("Queued purges for deleted threads", { queued }) : Effect.void,
+    ),
+    Effect.catch((cause) => Effect.logWarning("Queueing deleted thread purges failed", { cause })),
+  );
   const lastCompactedAt = yield* fs.readFileString(compactedAtPath).pipe(
     Effect.map(Number),
     Effect.orElseSucceed(() => Number.NaN),
@@ -128,6 +135,13 @@ const make = Effect.gen(function* () {
           Effect.andThen(publishStatus),
           Effect.repeat(Schedule.spaced(COMPACTION_INTERVAL)),
         ),
+      ),
+    ),
+  );
+  yield* forkParked(
+    Effect.sleep("1 minute").pipe(
+      Effect.andThen(
+        queueDeletedThreadPurges.pipe(Effect.repeat(Schedule.spaced(COMPACTION_INTERVAL))),
       ),
     ),
   );

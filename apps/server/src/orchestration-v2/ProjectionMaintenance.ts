@@ -1,15 +1,18 @@
-import { ThreadId } from "@t3tools/contracts";
+import { CheckpointRef, OrchestrationV2AppThreadJson, ThreadId } from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { OrchestrationEffectRequestV2 } from "./EffectOutbox.ts";
 import * as EventStore from "./EventStore.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { DELETED_THREAD_TITLE, threadTombstone } from "./ThreadDeletion.ts";
 
 export interface ProjectionVerificationV2 {
   readonly valid: boolean;
@@ -29,8 +32,31 @@ export class ProjectionMaintenanceError extends Schema.TaggedError<ProjectionMai
   },
 ) {}
 
+/** What purging a deleted thread removes outside the database. */
+export interface ThreadPurgePlan {
+  readonly parentThreadId: ThreadId | null;
+  /** Hidden checkpoint refs no other thread records, by the checkouts that hold them. */
+  readonly checkpointRefs: ReadonlyArray<{
+    readonly cwds: ReadonlyArray<string>;
+    readonly refs: ReadonlyArray<CheckpointRef>;
+  }>;
+}
+
 export interface ProjectionMaintenanceV2Shape {
   readonly verify: Effect.Effect<ProjectionVerificationV2, ProjectionMaintenanceError>;
+  /**
+   * None while the thread is live or a live thread descends from it: forks read
+   * their parent's history, and subagent threads their parent's records.
+   */
+  readonly readThreadPurge: (
+    threadId: ThreadId,
+  ) => Effect.Effect<Option.Option<ThreadPurgePlan>, ProjectionMaintenanceError>;
+  readonly purgeThread: (threadId: ThreadId) => Effect.Effect<void, ProjectionMaintenanceError>;
+  /**
+   * Queues a purge for each deleted thread that still holds content, such as
+   * one deleted by a build that only hid threads. Returns how many it queued.
+   */
+  readonly enqueueDeletedThreadPurges: Effect.Effect<number, ProjectionMaintenanceError>;
   readonly rebuild: Effect.Effect<ProjectionVerificationV2, ProjectionMaintenanceError>;
   readonly compactEventStore: Effect.Effect<
     {
@@ -51,6 +77,45 @@ type ProjectionMetadataRow = {
   readonly schema_version: number;
   readonly last_sequence: number;
 };
+
+const THREAD_PURGE_REQUEST_JSON = Schema.encodeSync(
+  Schema.fromJsonString(OrchestrationEffectRequestV2),
+)({ type: "thread.purge" });
+
+const decodeThreadJson = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationV2AppThreadJson),
+);
+const encodeThreadJson = Schema.encodeEffect(Schema.fromJsonString(OrchestrationV2AppThreadJson));
+
+// A deleted thread's rows in every table that holds thread content. The thread
+// row itself stays as the tombstone.
+const THREAD_CONTENT_TABLES = [
+  "orchestration_v2_projection_runs",
+  "orchestration_v2_projection_run_attempts",
+  "orchestration_v2_projection_nodes",
+  "orchestration_v2_projection_provider_turns",
+  "orchestration_v2_projection_provider_threads",
+  "orchestration_v2_projection_runtime_requests",
+  "orchestration_v2_projection_messages",
+  "orchestration_v2_projection_plans",
+  "orchestration_v2_projection_turn_items",
+  "orchestration_v2_projection_checkpoints",
+  "orchestration_v2_projection_checkpoint_scopes",
+  "orchestration_v2_projection_context_handoffs",
+  "orchestration_v2_projection_subagents",
+  "orchestration_v2_turn_item_positions",
+  "orchestration_v2_thread_launch_workflows",
+  "orchestration_v2_legacy_imports",
+  // The pre-cutover V2 log; its rows were copied into orchestration_events.
+  "orchestration_v2_events",
+  // V1 import sources. Removing them also stops a re-import.
+  "projection_threads",
+  "projection_thread_messages",
+  "projection_thread_pull_requests",
+  "projection_thread_sessions",
+  "provider_session_runtime",
+  "mcp_app_model_context",
+] as const;
 
 const encodeEntityKey = Schema.encodeSync(
   Schema.fromJsonString(Schema.Tuple([Schema.String, Schema.String, Schema.NullOr(Schema.String)])),
@@ -397,8 +462,253 @@ export const layer: Layer.Layer<
       return { deletedEventCount, deletedReceiptCount, reclaimableBytes };
     });
 
+    const readThreadPurge = Effect.fn("ProjectionMaintenance.readThreadPurge")(function* (
+      threadId: ThreadId,
+    ) {
+      const threads = yield* sql<{
+        readonly deleted_at: string | null;
+        readonly parent_thread_id: string | null;
+      }>`
+        SELECT deleted_at,
+          json_extract(payload_json, '$.lineage.parentThreadId') AS parent_thread_id
+        FROM orchestration_v2_projection_threads
+        WHERE thread_id = ${threadId}
+      `;
+      const thread = threads[0];
+      if (thread === undefined || thread.deleted_at === null) return Option.none();
+      const liveDescendants = yield* sql<{ readonly count: number }>`
+        WITH RECURSIVE descendants(thread_id, deleted_at) AS (
+          SELECT thread_id, deleted_at
+          FROM orchestration_v2_projection_threads
+          WHERE json_extract(payload_json, '$.lineage.parentThreadId') = ${threadId}
+          UNION
+          SELECT child.thread_id, child.deleted_at
+          FROM orchestration_v2_projection_threads AS child
+          JOIN descendants
+            ON json_extract(child.payload_json, '$.lineage.parentThreadId') = descendants.thread_id
+        )
+        SELECT COUNT(*) AS count FROM descendants WHERE deleted_at IS NULL
+      `;
+      if ((liveDescendants[0]?.count ?? 0) > 0) return Option.none();
+      const refs = yield* sql<{
+        readonly ref: string;
+        readonly scope_cwd: string | null;
+        readonly worktree_path: string | null;
+        readonly workspace_root: string | null;
+      }>`
+        SELECT DISTINCT
+          json_extract(checkpoint.payload_json, '$.ref') AS ref,
+          json_extract(scope.payload_json, '$.cwd') AS scope_cwd,
+          json_extract(thread.payload_json, '$.worktreePath') AS worktree_path,
+          project.workspace_root AS workspace_root
+        FROM orchestration_v2_projection_checkpoints AS checkpoint
+        JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = checkpoint.thread_id
+        LEFT JOIN orchestration_v2_projection_checkpoint_scopes AS scope
+          ON scope.scope_id = checkpoint.scope_id
+        LEFT JOIN projection_projects AS project ON project.project_id = thread.project_id
+        WHERE checkpoint.thread_id = ${threadId}
+          AND json_extract(checkpoint.payload_json, '$.ref') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_checkpoints AS other
+            WHERE other.thread_id != ${threadId}
+              AND json_extract(other.payload_json, '$.ref') =
+                json_extract(checkpoint.payload_json, '$.ref')
+          )
+      `;
+      // Linked worktrees share refs with their main checkout, so the project
+      // root still reaches them once the worktree is gone.
+      const byCheckout = new Map<string, { cwds: Array<string>; refs: Array<CheckpointRef> }>();
+      for (const row of refs) {
+        const cwds = [row.scope_cwd, row.worktree_path, row.workspace_root].filter(
+          (cwd): cwd is string => cwd !== null,
+        );
+        const key = cwds.join("\u0000");
+        const group = byCheckout.get(key) ?? { cwds, refs: [] };
+        group.refs.push(CheckpointRef.make(row.ref));
+        byCheckout.set(key, group);
+      }
+      return Option.some<ThreadPurgePlan>({
+        parentThreadId:
+          thread.parent_thread_id === null ? null : ThreadId.make(thread.parent_thread_id),
+        checkpointRefs: [...byCheckout.values()],
+      });
+    }, mapError("read thread purge"));
+
+    /**
+     * Keeps the thread row, its first thread.created and its last
+     * thread.deleted, all rewritten to the tombstone. Like compaction,
+     * every removed event is followed by the retained thread.deleted, so a
+     * client replaying from any cursor still ends with the thread deleted.
+     * Content goes with secure_delete on, so freed pages hold zeros, not text.
+     */
+    const purgeThread = Effect.fn("ProjectionMaintenance.purgeThread")(function* (
+      threadId: ThreadId,
+    ) {
+      const previous = yield* sql<{ readonly secure_delete: number }>`PRAGMA secure_delete`;
+      yield* sql`PRAGMA secure_delete = ON`;
+      yield* sql
+        .withTransaction(
+          Effect.gen(function* () {
+            const rows = yield* sql<{ readonly payload_json: string }>`
+              SELECT payload_json FROM orchestration_v2_projection_threads
+              WHERE thread_id = ${threadId}
+            `;
+            if (rows[0] === undefined) return;
+            const thread = yield* decodeThreadJson(rows[0].payload_json);
+            // Destructive, so it rechecks that the thread is deleted.
+            if (thread.deletedAt === null) return;
+            const tombstoneJson = yield* encodeThreadJson(threadTombstone(thread));
+            const anchors = yield* sql<{
+              readonly sequence: number;
+              readonly event_type: string;
+              readonly payload_json: string;
+            }>`
+              SELECT sequence, event_type, payload_json
+              FROM orchestration_events
+              WHERE aggregate_kind = 'thread'
+                AND stream_id = ${threadId}
+                AND application_event_version = 2
+                AND event_type IN ('thread.created', 'thread.deleted')
+              ORDER BY sequence ASC
+            `;
+            const created = anchors.find((row) => row.event_type === "thread.created");
+            const deleted = anchors.findLast((row) => row.event_type === "thread.deleted");
+            // verify expects a thread.created for every thread row.
+            if (created === undefined) return;
+            // A thread deleted before V2 was imported deleted, with no
+            // thread.deleted; its creation then carries the deleted state.
+            const createdJson =
+              deleted === undefined
+                ? tombstoneJson
+                : yield* encodeThreadJson(
+                    threadTombstone(yield* decodeThreadJson(created.payload_json)),
+                  );
+            const kept =
+              deleted === undefined ? [created.sequence] : [created.sequence, deleted.sequence];
+
+            yield* sql`
+              DELETE FROM orchestration_events
+              WHERE aggregate_kind = 'thread'
+                AND stream_id = ${threadId}
+                AND sequence NOT IN ${sql.in(kept)}
+            `;
+            yield* sql`
+              UPDATE orchestration_events SET payload_json = ${createdJson}
+              WHERE sequence = ${created.sequence}
+            `;
+            if (deleted !== undefined) {
+              yield* sql`
+                UPDATE orchestration_events SET payload_json = ${tombstoneJson}
+                WHERE sequence = ${deleted.sequence}
+              `;
+            }
+
+            for (const table of THREAD_CONTENT_TABLES) {
+              yield* sql`DELETE FROM ${sql(table)} WHERE thread_id = ${threadId}`;
+            }
+            // Transfers live in their target's stream; one this thread sent
+            // belongs to the thread that received it.
+            yield* sql`
+              DELETE FROM orchestration_v2_projection_context_transfers
+              WHERE target_thread_id = ${threadId}
+            `;
+            yield* sql`
+              DELETE FROM orchestration_v2_projection_provider_session_bindings
+              WHERE thread_id = ${threadId}
+            `;
+            yield* sql`
+              DELETE FROM orchestration_v2_projection_provider_sessions
+              WHERE thread_id = ${threadId}
+                AND NOT EXISTS (
+                  SELECT 1 FROM orchestration_v2_projection_provider_session_bindings AS binding
+                  WHERE binding.provider_session_id =
+                    orchestration_v2_projection_provider_sessions.provider_session_id
+                )
+            `;
+            yield* sql`
+              UPDATE orchestration_v2_projection_threads
+              SET title = ${DELETED_THREAD_TITLE}, payload_json = ${tombstoneJson}
+              WHERE thread_id = ${threadId}
+            `;
+            // Removing the newest events would leave projections ahead of the
+            // log, which verify reports as invalid.
+            yield* sql`
+              UPDATE orchestration_v2_projection_metadata
+              SET last_sequence = (
+                SELECT COALESCE(MAX(sequence), 0) FROM orchestration_events
+                WHERE application_event_version = 2 AND aggregate_kind = 'thread'
+              )
+              WHERE projection_name = 'thread-projections'
+                AND last_sequence > (
+                  SELECT COALESCE(MAX(sequence), 0) FROM orchestration_events
+                  WHERE application_event_version = 2 AND aggregate_kind = 'thread'
+                )
+            `;
+          }),
+        )
+        .pipe(
+          Effect.ensuring(
+            // PRAGMA takes no bound parameters; the value is SQLite's own 0, 1 or 2.
+            sql
+              .unsafe(`PRAGMA secure_delete = ${Number(previous[0]?.secure_delete ?? 0)}`)
+              .pipe(Effect.ignore),
+          ),
+        );
+    }, mapError("purge thread"));
+
+    const enqueueDeletedThreadPurges = Effect.gen(function* () {
+      const now = DateTime.formatIso(yield* DateTime.now);
+      const queued = yield* sql<{ readonly effect_id: string }>`
+        INSERT INTO orchestration_v2_effect_outbox (
+          effect_id,
+          command_id,
+          thread_id,
+          effect_type,
+          payload_json,
+          status,
+          attempt_count,
+          available_at,
+          created_at,
+          updated_at
+        )
+        SELECT
+          'effect:thread-purge-backfill:' || thread.thread_id,
+          'thread-purge-backfill:' || thread.thread_id,
+          thread.thread_id,
+          'thread.purge',
+          ${THREAD_PURGE_REQUEST_JSON},
+          'pending',
+          0,
+          ${now},
+          ${now},
+          ${now}
+        FROM orchestration_v2_projection_threads AS thread
+        WHERE thread.deleted_at IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM orchestration_events AS event
+            WHERE event.aggregate_kind = 'thread'
+              AND event.stream_id = thread.thread_id
+              AND event.event_type NOT IN ('thread.created', 'thread.deleted')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_v2_effect_outbox AS effect
+            WHERE effect.thread_id = thread.thread_id
+              AND effect.effect_type = 'thread.purge'
+              AND effect.status IN ('pending', 'running')
+          )
+        ON CONFLICT(effect_id) DO NOTHING
+        RETURNING effect_id
+      `;
+      return queued.length;
+    });
+
     return ProjectionMaintenanceV2.of({
       verify: mapError("verify")(verify),
+      readThreadPurge,
+      purgeThread,
+      enqueueDeletedThreadPurges: mapError("enqueue deleted thread purges")(
+        enqueueDeletedThreadPurges,
+      ),
       rebuild: mapError("rebuild")(rebuild),
       compactEventStore: mapError("compact event store")(compactEventStore),
     });

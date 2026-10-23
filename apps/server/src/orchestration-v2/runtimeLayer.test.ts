@@ -36,6 +36,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -45,6 +46,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
+import { toSafeThreadAttachmentSegment } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
@@ -64,6 +66,7 @@ import * as EffectWorker from "./EffectWorker.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderRuntimeRecoveryService from "./ProviderRuntimeRecoveryService.ts";
+import * as EventStore from "./EventStore.ts";
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as PullRequestWatchReactor from "./PullRequestWatchReactor.ts";
@@ -74,6 +77,7 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import { shellStreamItemFromThreadShell } from "./ShellStream.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
+import { DELETED_THREAD_TITLE } from "./ThreadDeletion.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -323,6 +327,9 @@ const layerResourceCleanupTest = ResourceCleanupService.layer.pipe(
     Layer.mergeAll(
       Layer.mock(PreviewManager.PreviewManager)({ close: () => Effect.void }),
       Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
+      ProjectionMaintenance.layer.pipe(
+        Layer.provide(Layer.mergeAll(EventStore.layer, ProjectionStore.layer)),
+      ),
     ),
   ),
 );
@@ -360,11 +367,11 @@ const layerProjectDeletionTest = Layer.mergeAll(
   Layer.provide(McpProviderSessions.layer),
   Layer.provide(SqlitePersistence.layerMemory),
   Layer.provide(layerCheckpointStoreTest),
-  Layer.provide(layerServerConfig),
+  Layer.provideMerge(layerServerConfig),
   Layer.provide(ServerSettings.layerTest()),
   Layer.provide(layerTestProviderInstanceRegistry),
   Layer.provide(layerGitWorkflowTest),
-  Layer.provide(layerPlatformTest),
+  Layer.provideMerge(layerPlatformTest),
 );
 
 it.layer(layerProjectDeletionTest)("project deletion during thread commands", (it) => {
@@ -491,6 +498,128 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
       }),
   );
 
+  it.effect("erases a deleted thread's history and logs once no fork still reads them", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const projectId = ProjectId.make("purge-project");
+      const parentId = ThreadId.make("purge-parent");
+      const forkId = ThreadId.make("purge-fork");
+      const secret = "sk-live-purge-me";
+      yield* projects.create({
+        commandId: CommandId.make("purge-project-create"),
+        projectId,
+        title: "Purge",
+        workspaceRoot: "/work/purge",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("purge-parent-create"),
+        createdBy: "user",
+        creationSource: "web",
+        threadId: parentId,
+        projectId,
+        title: `Rotate ${secret}`,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const parent = (yield* orchestrator.getThreadProjection(parentId)).thread;
+      const occurredAt = parent.createdAt;
+      yield* eventSink.write({
+        events: [
+          {
+            id: EventId.make("purge-parent-message"),
+            type: "message.updated",
+            threadId: parentId,
+            providerInstanceId: parent.providerInstanceId,
+            occurredAt,
+            payload: {
+              createdBy: "user",
+              creationSource: "web",
+              id: MessageId.make("purge-parent-message"),
+              threadId: parentId,
+              runId: null,
+              nodeId: null,
+              role: "user",
+              text: `Rotate ${secret} today`,
+              attachments: [],
+              streaming: false,
+              createdAt: occurredAt,
+              updatedAt: occurredAt,
+            },
+          },
+          {
+            id: EventId.make("purge-fork-created"),
+            type: "thread.created",
+            threadId: forkId,
+            providerInstanceId: parent.providerInstanceId,
+            occurredAt,
+            payload: {
+              ...parent,
+              id: forkId,
+              title: "Fork",
+              lineage: {
+                parentThreadId: parentId,
+                relationshipToParent: "fork",
+                rootThreadId: parentId,
+              },
+              forkedFrom: {
+                type: "run",
+                threadId: parentId,
+                runId: RunId.make("purge-parent-run"),
+              },
+            },
+          },
+        ],
+      });
+      const logDirectory = path.dirname(config.providerEventLogPath);
+      const logName = `${path.basename(config.providerEventLogPath, ".log")}.${toSafeThreadAttachmentSegment(parentId)}`;
+      const parentLogs = [`${logName}.log`, `${logName}.log.1`].map((name) =>
+        path.join(logDirectory, name),
+      );
+      const unrelatedLog = path.join(logDirectory, `${logName}-other.log`);
+      yield* fs.makeDirectory(logDirectory, { recursive: true });
+      for (const file of [...parentLogs, unrelatedLog]) {
+        yield* fs.writeFileString(file, `[2026-10-01T00:00:00.000Z] NTIVE: ${secret}\n`);
+      }
+
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make("purge-parent-delete"),
+        threadId: parentId,
+      });
+      yield* worker.drain();
+      // The fork still shows the parent's history, so nothing is erased yet.
+      const deferred = yield* orchestrator.getThreadProjection(parentId);
+      assert.isNotNull(deferred.thread.deletedAt);
+      assert.equal(deferred.thread.title, DELETED_THREAD_TITLE);
+      assert.lengthOf(deferred.messages, 1);
+      assert.isTrue(yield* fs.exists(parentLogs[0]!));
+
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make("purge-fork-delete"),
+        threadId: forkId,
+      });
+      yield* worker.drain();
+      const purged = yield* orchestrator.getThreadProjection(parentId);
+      assert.equal(purged.thread.title, DELETED_THREAD_TITLE);
+      assert.lengthOf(purged.messages, 0);
+      for (const file of parentLogs) assert.isFalse(yield* fs.exists(file));
+      assert.isTrue(yield* fs.exists(unrelatedLog));
+      assert.isTrue((yield* maintenance.verify).valid);
+    }),
+  );
+
   it.effect("waits for an in-flight thread update before planning deletion", () =>
     Effect.gen(function* () {
       const projects = yield* ProjectService.ProjectService;
@@ -553,7 +682,8 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
             type: "thread.metadata.update",
             commandId: updateCommandId,
             threadId,
-            title: "Updated before deletion",
+            // The deleted record keeps the branch, so it shows which update won.
+            branch: "updated-before-deletion",
           })
           .pipe(Effect.forkChild({ startImmediately: true }));
         yield* Effect.raceFirst(
@@ -581,7 +711,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
         const projection = yield* orchestrator.getThreadProjection(threadId);
         assert.isNotNull(deletedProject.deletedAt);
         assert.isNotNull(projection.thread.deletedAt);
-        assert.equal(projection.thread.title, "Updated before deletion");
+        assert.equal(projection.thread.branch, "updated-before-deletion");
       }).pipe(
         Effect.ensuring(
           Effect.sync(() => {
@@ -2018,7 +2148,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       );
 
       const projection = yield* orchestrator.getThreadProjection(threadId);
-      assert.equal(projection.thread.title, "Renamed lifecycle thread");
+      assert.equal(projection.thread.title, DELETED_THREAD_TITLE);
       assert.equal(projection.thread.branch, "feature/v2");
       assert.equal(projection.thread.worktreePath, "/tmp/t3-v2-worktree");
       assert.equal(projection.thread.runtimeMode, "approval-required");

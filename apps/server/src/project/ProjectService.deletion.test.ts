@@ -206,6 +206,7 @@ it.effect("retries a partial project deletion without repeating child events or 
           [firstThreadId, "preview.cleanup"],
           [firstThreadId, "scheduled-tasks.cleanup"],
           [firstThreadId, "terminal.cleanup"],
+          [firstThreadId, "thread.purge"],
         ],
       );
 
@@ -228,7 +229,7 @@ it.effect("retries a partial project deletion without repeating child events or 
       assert.deepEqual(finalEvents[0], partialEvents[0]);
       assert.equal(finalEvents[2]?.command_id, commandId);
       const finalCleanup = yield* readCleanup;
-      assert.lengthOf(finalCleanup, 6);
+      assert.lengthOf(finalCleanup, 8);
       assert.deepEqual(
         finalCleanup.filter((effect) => effect.thread_id === firstThreadId),
         partialCleanup,
@@ -255,6 +256,12 @@ it.effect("retries a partial project deletion without repeating child events or 
               thread_id: threadId,
               command_id: expectedCommandId,
               effect_type: "terminal.cleanup",
+            },
+            {
+              effect_id: `effect:${expectedCommandId}:thread.purge`,
+              thread_id: threadId,
+              command_id: expectedCommandId,
+              effect_type: "thread.purge",
             },
           ],
         );

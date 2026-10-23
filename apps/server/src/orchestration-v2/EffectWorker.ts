@@ -503,6 +503,17 @@ export const layerExecutor: Layer.Layer<
                   }),
               ),
             );
+          case "thread.purge":
+            return resourceCleanup.purgeThread(effect.threadId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
           case "thread-title.generate":
             return threadTitleRegeneration
               .execute({
