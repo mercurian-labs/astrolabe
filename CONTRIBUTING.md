@@ -166,3 +166,14 @@ incomplete retrieval, or an unfinished assessment are reasons to retry the asses
 If the proposed solution is declined but the report reveals a useful problem, preserve that problem
 for maintainer consideration. Feedback should be firm, specific, and free of insults or accusations
 about how the contribution was written.
+
+<a id="licensing"></a>
+
+## Licensing of contributions
+
+Most of this repository is MIT licensed (see [LICENSING.md](LICENSING.md)). By submitting a
+contribution to an MIT-licensed part, you agree that it is licensed under the same
+[MIT license](LICENSE), and you confirm you have the right to submit it.
+
+`apps/cloud`, `apps/auth`, `apps/admin` and `infra/cloud` are under FSL-1.1-MIT.
+[DECISION: CLA or no outside contributions for the cloud directories at first]
