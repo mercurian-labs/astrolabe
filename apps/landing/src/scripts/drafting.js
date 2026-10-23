@@ -16,7 +16,7 @@ reducedQuery.addEventListener("change", () => {
   motion = !reducedQuery.matches;
   root.classList.toggle("motion", motion);
   if (!motion) for (const a of document.getAnimations()) a.finish?.();
-  layoutStory();
+  layoutScrubs();
   requestFrame();
 });
 
@@ -266,45 +266,59 @@ if (manifesto && motion) {
   });
 }
 
-/* ───────────────────────────── The thread figure: progress across a 300vh runway, pinned on wide
-   screens with motion; a static stack otherwise. */
+/* ───────────────────────────── Scrubbed figures: scroll carries a figure's progress, written to --p on
+   its stage, and the CSS draws each mark in its own window of it (drafting.css, [05]). Only while the
+   figure is active (wide screens with motion; static otherwise, at --p 1) and near the window. */
+
+const scrubQuery = matchMedia("(min-width: 901px) and (min-height: 560px)");
+const scrubs = [];
+function scrub(host, box, stage, progress, onChange) {
+  const figure = { host, stage, last: -1 };
+  scrubs.push(figure);
+  jobs.push((vh) => {
+    if (!figure.on) return;
+    const rect = box.getBoundingClientRect();
+    if (rect.bottom < -vh || rect.top > vh * 1.5) return;
+    const p = Math.round(clamp(progress(rect, vh)) * 1000) / 1000;
+    if (p === figure.last) return;
+    figure.last = p;
+    stage.style.setProperty("--p", p);
+    onChange?.(p);
+  });
+}
+function layoutScrubs() {
+  const on = motion && scrubQuery.matches;
+  for (const figure of scrubs) {
+    figure.on = on;
+    figure.last = -1;
+    figure.host.classList.toggle("is-scrubbed", on);
+    if (!on) figure.stage.style.setProperty("--p", "1");
+  }
+  layoutStory();
+}
+scrubQuery.addEventListener("change", () => {
+  layoutScrubs();
+  requestFrame();
+});
+
+/* The thread figure: progress across a 300vh runway, pinned while it is scrubbed. */
 
 const story = $("[data-story]");
-const stage = story && $(".story__stage", story);
 const storyCount = story && $("[data-story-count]", story);
 const storySteps = story ? $$(".story__steps li", story) : [];
 let storyStep = -1;
-const pinQuery = matchMedia("(min-width: 901px) and (min-height: 560px)");
 const storyStages = [0.16, 0.32, 0.5, 0.66];
-let storyLast = -1;
 function layoutStory() {
   if (!story) return;
-  const pinned = motion && pinQuery.matches;
-  story.classList.toggle("is-pinned", pinned);
-  if (!pinned) stage.style.setProperty("--p", "1");
-  storyLast = -1;
+  story.classList.toggle("is-pinned", story.classList.contains("is-scrubbed"));
   storyStep = -1;
 }
-pinQuery.addEventListener("change", () => {
-  layoutStory();
-  requestFrame();
-});
-layoutStory();
 if (story) {
-  const runway = $(".story__runway", story);
-  jobs.push((vh) => {
-    if (!story.classList.contains("is-pinned")) return;
-    const rect = runway.getBoundingClientRect();
-    if (rect.bottom < -vh || rect.top > vh * 1.5) return;
-    // Starts as the stage rises into view, so it is never an empty field.
-    const lead = vh * 0.2;
-    const p = clamp((lead - rect.top) / (rect.height - vh + lead));
-    const rounded = Math.round(p * 1000) / 1000;
-    if (rounded === storyLast) return;
-    storyLast = rounded;
-    stage.style.setProperty("--p", rounded);
+  // Starts as the stage rises into view, so it is never an empty field.
+  const progress = (rect, vh) => (vh * 0.2 - rect.top) / (rect.height - vh + vh * 0.2);
+  scrub(story, $(".story__runway", story), $(".story__stage", story), progress, (p) => {
     // The counter and the caption change together, at one threshold; one caption is always shown.
-    const found = storyStages.findIndex((edge) => rounded < edge);
+    const found = storyStages.findIndex((edge) => p < edge);
     const step = found === -1 ? storyStages.length : found;
     if (step === storyStep) return;
     storyStep = step;
@@ -312,6 +326,22 @@ if (story) {
     storySteps.forEach((li, i) => li.classList.toggle("is-on", i === step));
   });
 }
+
+/* The automations' day: a playhead sweeps 00:00 to 24:00 as the figure's middle rises from 85% to
+   35% of the window, not pinned; its readout shows the time to ten minutes. */
+
+const day = $("[data-day]");
+if (day) {
+  const time = $("[data-day-time]", day);
+  const progress = (rect, vh) => (vh * 0.85 - (rect.top + rect.height / 2)) / (vh * 0.5);
+  scrub(day, day, day, progress, (p) => {
+    const minutes = Math.round((p * 24 * 60) / 10) * 10;
+    const text = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+    if (time.textContent !== text) time.textContent = text;
+  });
+}
+
+layoutScrubs();
 
 /* ───────────────────────────── Surfaces: an ink wipe from the line sketch to the finished window,
    scrubbed by scroll. The mask is noise-displaced, so its edge reads as ink, not a circle. Once the

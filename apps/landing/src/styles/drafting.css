@@ -1347,8 +1347,13 @@ path.pf-rs {
   overflow: visible;
 }
 .k-draw,
-.k-fade {
+.k-fade,
+.k-grow {
   --t: clamp(0, (var(--p) - var(--a)) / (var(--b) - var(--a)), 1);
+}
+/* A box drawn left to right: clipped rather than scaled, so a dotted fill keeps its spacing. */
+.k-grow {
+  clip-path: inset(0 calc(100% - var(--t) * 100%) 0 0);
 }
 .k-draw {
   stroke-dasharray: 1;
@@ -4014,7 +4019,11 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [08] Automations: one day, three ways an agent starts */
+/* ───────────────────────────────────────── [08] Automations: one weekday, three ways an agent starts
+   Each row is a trigger beside its lane on one shared day. A lane places its marks by time, as
+   fractions of the day: --x where it starts, --w where the pull request wakes it, --y where it ends.
+   Each mark draws in as the playhead (--p) passes, through the same windows as [05]. Static (no JS,
+   phones, a short window, reduced motion): --p is 1, every lane is complete and the playhead hides. */
 
 .auto {
   border-top: 1px solid var(--rule);
@@ -4022,78 +4031,275 @@ hidden, leaves the sticky stage working). */
 .auto > .head {
   border-top: 0;
 }
-.auto__fig {
-  padding: clamp(2rem, 4vw, 4rem) var(--pad);
+.day {
+  --p: 1;
+  --line: 1.75rem;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
   border-top: 1px solid var(--rule);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-.auto__fig::-webkit-scrollbar {
-  display: none;
+.day__rows {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--rule);
 }
-.wake {
-  display: block;
-  width: 100%;
-  min-width: 46rem;
-  max-width: 76rem;
-  height: auto;
-  margin-inline: auto;
-  overflow: visible;
+.day__row {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
 }
-.wake text {
-  font: 500 13px var(--mono);
+.day__row + .day__row {
+  border-top: 1px solid var(--rule-soft);
+}
+.day__label {
+  padding: var(--pad);
+  border-right: 1px solid var(--rule);
+}
+.day__title {
+  font: 380 clamp(1.25rem, 1rem + 0.5vw, 1.75rem) / 1.1 var(--serif);
+  letter-spacing: -0.02em;
+}
+.day__note {
+  max-width: 28em;
+  margin-top: 0.5rem;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+/* A lane: captions above the line at their marks, the agent's task below where its run starts, done
+   after the end. */
+.day__lane {
+  --s: var(--x);
+  position: relative;
+  align-self: center;
+  height: 3.9rem;
+  margin: var(--pad);
+}
+.day__lane--wake {
+  --s: var(--w);
+}
+.day__lane > * {
+  position: absolute;
+  font-style: normal;
+}
+.day__trig,
+.day__fail,
+.day__done {
+  font: 500 0.75rem/1.2 var(--mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  fill: var(--ink);
+  white-space: nowrap;
 }
-.wake .wake__hours text,
-.wake .wake__who,
-.wake .wake__end {
-  fill: var(--ink-3);
+/* A caption starts at its mark (--at), and gives way to the left just enough to stay in the lane. */
+.day__trig,
+.day__fail,
+.day__task {
+  inset-inline: 0;
+  display: flex;
+  white-space: nowrap;
 }
-.wake .wake__who {
-  font: 400 15px var(--sans);
-  letter-spacing: 0;
-  text-transform: none;
-  fill: var(--ink-2);
+:is(.day__trig, .day__fail, .day__task)::before {
+  content: "";
+  flex: 0 1 max(0px, calc(var(--at) * 100% - 0.3rem));
 }
-.wake .wake__rust {
-  fill: var(--rust);
+.day__trig,
+.day__fail {
+  bottom: calc(100% - var(--line) + 0.7rem);
 }
-/* Scaled strokes, so the wake's lines keep their weight against its wide viewBox. */
-.wake .dw {
-  vector-effect: none;
+.day__trig {
+  --at: var(--x);
+  --a: var(--x);
+  --b: calc(var(--x) + 0.02);
+  color: var(--ink);
 }
-.wake__n {
-  fill: var(--ink);
+.day__fail {
+  --at: var(--w);
+  --a: var(--w);
+  --b: calc(var(--w) + 0.02);
+  color: var(--rust-text);
 }
-.wake__fail {
-  fill: var(--paper);
-  stroke: var(--rust);
-  stroke-width: 2;
+.day__done {
+  --a: var(--y);
+  --b: calc(var(--y) + 0.02);
+  top: calc(var(--line) - 0.6em);
+  left: calc(var(--y) * 100% + 0.75rem);
+  color: var(--ink-3);
 }
-.wake__wait {
-  fill: none;
-  stroke: var(--ink-4);
-  stroke-width: 1.5;
-  stroke-dasharray: 1 7;
-  stroke-linecap: round;
+.day__task {
+  --at: var(--s);
+  --a: var(--s);
+  --b: calc(var(--s) + 0.03);
+  top: calc(var(--line) + 0.7rem);
+  font-size: 0.9375rem;
+  line-height: 1.3;
+  color: var(--ink-2);
 }
-.auto .spec {
-  border-top: 1px solid var(--rule);
+.day__run,
+.day__wait {
+  top: calc(var(--line) - 1px);
+  height: 2px;
 }
-.wake--tall {
+.day__run {
+  --a: var(--s);
+  --b: var(--y);
+  left: calc(var(--s) * 100%);
+  width: calc((var(--y) - var(--s)) * 100%);
+  background: var(--ink);
+}
+/* Waiting: a quiet dotted line until the wake. */
+.day__wait {
+  --a: var(--x);
+  --b: var(--w);
+  left: calc(var(--x) * 100%);
+  width: calc((var(--w) - var(--x)) * 100%);
+  background: radial-gradient(circle, var(--ink-3) 0.9px, transparent 1.4px) 0 50% / 7px 100%
+    repeat-x;
+}
+.day__dot {
+  top: var(--line);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink);
+  translate: -50% -50%;
+}
+.day__dot--start {
+  --a: var(--x);
+  --b: calc(var(--x) + 0.01);
+  left: calc(var(--x) * 100%);
+}
+.day__lane--wake .day__dot--start {
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+}
+.day__dot--end {
+  --a: var(--y);
+  --b: calc(var(--y) + 0.01);
+  left: calc(var(--y) * 100%);
+}
+/* The one accent: the checks fail and the agent wakes. */
+.day__dot--fail {
+  --a: var(--w);
+  --b: calc(var(--w) + 0.01);
+  left: calc(var(--w) * 100%);
+  width: 11px;
+  height: 11px;
+  background: var(--rust);
+}
+
+/* The day, under the lanes: a tick at every six hours. */
+.day__axis {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  height: 2.75rem;
+  margin-inline: var(--pad);
+  --tick: linear-gradient(var(--ink-4), var(--ink-4));
+  background: var(--tick), var(--tick), var(--tick), var(--tick), var(--tick);
+  background-size: 1px 6px;
+  background-repeat: no-repeat;
+  background-position:
+    0 0,
+    25% 0,
+    50% 0,
+    75% 0,
+    100% 0;
+}
+.day__axis span {
+  position: absolute;
+  top: 0.75rem;
+  left: calc(var(--x) * 100%);
+  translate: -50% 0;
+  font: 500 0.6875rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.day__axis span:first-child {
+  translate: none;
+}
+.day__axis span:last-child {
+  translate: -100% 0;
+}
+.day__cap {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+  border-right: 1px solid var(--rule);
+}
+.day__cap .tag {
+  color: var(--ink-3);
+}
+
+/* The playhead: one hairline across every lane, carried by --p over the lanes' width. */
+.day__head {
   display: none;
+  position: absolute;
+  inset: 0 var(--pad) 0 calc(100% / 3 + var(--pad));
+  container-type: inline-size;
+  pointer-events: none;
 }
-@media (max-width: 640px) {
-  .wake {
-    display: none;
+.day.is-scrubbed .day__head {
+  display: block;
+}
+/* It leaves as the day ends, so the finished figure stands alone. */
+.day__head i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1px;
+  background: var(--ink-3);
+  opacity: clamp(0, (1 - var(--p)) / 0.03, 1);
+  transform: translateX(calc(var(--p) * 100cqw));
+}
+/* On the axis, over the hour it passes. */
+.day__head span {
+  position: absolute;
+  bottom: 1.16rem;
+  left: 0;
+  padding: 0.15rem 0.35rem;
+  translate: -50% 0;
+  background: var(--paper);
+  font: 500 0.6875rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phones: each row stacks its trigger above its own lane. */
+@media (max-width: 900px) {
+  .day,
+  .day__row {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .wake.wake--tall {
-    display: block;
-    min-width: 0;
-    max-width: 24rem;
-    margin-inline: 0;
+  .day__label {
+    padding-bottom: 0;
+    border-right: 0;
+  }
+  .day__lane {
+    height: 5.5rem;
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+  }
+  /* The whole day under each lane, so a run reads by its place in it. */
+  .day__lane::before {
+    content: "";
+    position: absolute;
+    inset: calc(var(--line) - 0.5px) 0 auto;
+    height: 1px;
+    background: var(--rule-soft);
+  }
+  .day__axis {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .day__cap {
+    grid-row: 3;
+    padding-block: 1rem;
+    border-right: 0;
+    border-top: 1px solid var(--rule);
   }
 }
 /* ───────────────────────────────────────── [08] One window: a compact strip of four facts */
@@ -4201,23 +4407,6 @@ kbd {
    column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
 .reach__defs {
   position: absolute;
-}
-/* Line figures (the Automations wake): one weight, one ink, rust only on the mark that matters.
-   Static and complete at rest, like the problem figures. */
-.dw {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.25;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-.dw.lt {
-  stroke: var(--ink-4);
-}
-.dw.rs {
-  stroke: var(--rust);
-  stroke-width: 1.75;
 }
 .reach {
   display: block;
