@@ -416,6 +416,78 @@ describe("environment shell synchronization", () => {
     }),
   );
 
+  it.effect("drops the cached transcript of a thread the shell no longer lists", () =>
+    Effect.gen(function* () {
+      const thread = (id: string) => ({ ...v2ThreadShell, id: ThreadId.make(id) });
+      const cachedSnapshot: OrchestrationV2ShellSnapshot = {
+        ...v2ShellSnapshot,
+        snapshotSequence: 1,
+        threads: [thread("kept"), thread("archived-meanwhile"), thread("deleted-meanwhile")],
+        archivedThreads: [thread("deleted-from-archive")],
+      };
+      // What the server sends after this device was away.
+      const httpSnapshot: OrchestrationV2ShellSnapshot = {
+        ...v2ShellSnapshot,
+        snapshotSequence: 2,
+        threads: [thread("kept")],
+        archivedThreads: [thread("archived-meanwhile")],
+      };
+      const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
+      const removed = yield* Queue.unbounded<ThreadId>();
+      const client = {
+        [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () => Stream.fromQueue(events),
+      } as unknown as WsRpcProtocolClient;
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make(Option.some(session(client))),
+        prepared: yield* SubscriptionRef.make(Option.some(PREPARED)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+      const cache = Persistence.EnvironmentCacheStore.of({
+        loadShell: () => Effect.succeed(Option.some(cachedSnapshot)),
+        saveShell: () => Effect.void,
+        loadThread: () => Effect.succeed(Option.none()),
+        saveThread: () => Effect.void,
+        removeThread: (_environmentId, threadId) =>
+          Queue.offer(removed, threadId).pipe(Effect.asVoid),
+        loadServerConfig: () => Effect.succeed(Option.none()),
+        saveServerConfig: () => Effect.void,
+        loadVcsRefs: () => Effect.succeed(Option.none()),
+        saveVcsRefs: () => Effect.void,
+        removeVcsRefs: () => Effect.void,
+        clearVcsRefs: () => Effect.void,
+        clear: () => Effect.void,
+      });
+      yield* makeEnvironmentShellState().pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.provideService(Persistence.EnvironmentCacheStore, cache),
+        Effect.provideService(
+          ShellSnapshotLoader.ShellSnapshotLoader,
+          ShellSnapshotLoader.ShellSnapshotLoader.of({
+            load: () => Effect.succeed(Option.some(httpSnapshot)),
+          }),
+        ),
+      );
+
+      expect([yield* Queue.take(removed), yield* Queue.take(removed)]).toEqual([
+        "deleted-meanwhile",
+        "deleted-from-archive",
+      ]);
+
+      yield* Queue.offer(events, {
+        kind: "thread.removed",
+        sequence: 3,
+        location: "active",
+        threadId: ThreadId.make("kept"),
+      });
+      expect(yield* Queue.take(removed)).toBe("kept");
+      expect(yield* Queue.size(removed)).toBe(0);
+    }),
+  );
+
   it.effect("applies authoritative lower-sequence HTTP resets over client-ahead cache", () =>
     Effect.gen(function* () {
       const cachedSnapshot: OrchestrationV2ShellSnapshot = {
