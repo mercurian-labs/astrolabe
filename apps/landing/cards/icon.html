@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- Astrolabe · share cards · the app icon
+     The monogram in ink, its dot in rust, on a flat paper tile edge to edge (opaque: iOS and Android
+     round it themselves). `h` is the monogram's height as a share of the tile: 0.62 keeps it inside a
+     maskable icon's safe circle (80 % of the tile), 0.68 fills iOS's larger rounded square. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Astrolabe · icon</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #fbf9f4;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      svg {
+        display: block;
+        height: calc(var(--h) * 100vh);
+        width: auto;
+      }
+      path[fill="#171717"] {
+        fill: #292724;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import { done, params } from "./frame.js";
+
+      document.body.style.setProperty("--h", params.get("h") ?? "0.62");
+      done(
+        fetch("/assets/brand/monogram.svg")
+          .then((r) => r.text())
+          .then((svg) => document.body.insertAdjacentHTML("beforeend", svg)),
+      );
+    </script>
+  </body>
+</html>

@@ -84,9 +84,9 @@ const JOBS = [
     h: 400,
   },
   // Icons: the home-screen icon (opaque; iOS rounds it itself) and the manifest's maskable pair.
-  { out: "public/icons/apple-touch-icon.png", page: "icon.html?safe=0.86", w: 180, h: 180 },
-  { out: "public/icons/icon-192-maskable.png", page: "icon.html?safe=0.8", w: 192, h: 192 },
-  { out: "public/icons/icon-512-maskable.png", page: "icon.html?safe=0.8", w: 512, h: 512 },
+  { out: "public/icons/apple-touch-icon.png", page: "icon.html?h=0.68", w: 180, h: 180 },
+  { out: "public/icons/icon-192-maskable.png", page: "icon.html?h=0.62", w: 192, h: 192 },
+  { out: "public/icons/icon-512-maskable.png", page: "icon.html?h=0.62", w: 512, h: 512 },
 ];
 
 const TYPES = {
