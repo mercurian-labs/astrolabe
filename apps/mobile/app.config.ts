@@ -474,7 +474,7 @@ const config: ExpoConfig = {
       projectId: "917c2a7b-7979-4505-ab80-085cb0b4099d",
     },
   },
-  owner: "pingdotgg",
+  owner: "mercurian",
   experiments: {
     // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
     reactCompiler: true,
