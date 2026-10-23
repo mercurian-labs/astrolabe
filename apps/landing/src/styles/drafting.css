@@ -4422,65 +4422,6 @@ hidden, leaves the sticky stage working). */
     border-top: 1px solid var(--rule);
   }
 }
-/* ───────────────────────────────────────── [10] One window: [03]'s cards, drawing the answers
-   The cards and figures are [03]'s (.pcards, .pf-*). Glyphs are inlined sprite paths at 8 units,
-   held to the figures' hairlines. */
-
-.window-strip {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  border-top: 1px solid var(--rule);
-}
-.window-strip__head {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: baseline;
-  gap: 2rem;
-  padding: var(--pad);
-  border-bottom: 1px solid var(--rule);
-}
-.window-strip__head .h3 {
-  font-size: clamp(1.5rem, 1rem + 1.1vw, 2.25rem);
-}
-.window-strip .pcards {
-  grid-column: 1 / -1;
-  border-top: 0;
-}
-/* The titles are one line and the bodies differ in length: hang them from the figures, not the
-   card's foot, so the four titles share a line. */
-.window-strip .pcard__title {
-  margin-top: 0;
-}
-.pf-i * {
-  fill: none;
-  stroke: var(--ink-3);
-  stroke-width: 1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.pf-i--ink * {
-  stroke: var(--ink);
-}
-.pf-i--faint * {
-  stroke: var(--ink-4);
-}
-.pf-lbl.pf-typed {
-  fill: var(--ink);
-}
-kbd {
-  padding: 0.05em 0.35em;
-  border: 1px solid var(--rule);
-  border-bottom-width: 2px;
-  background: var(--paper);
-  font: 500 0.8125em var(--mono);
-}
-@media (max-width: 900px) {
-  .window-strip__head {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-}
-
 /* ───────────────────────────────────────── [11] Anywhere */
 
 .anywhere {
