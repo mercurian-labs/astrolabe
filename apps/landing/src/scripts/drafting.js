@@ -267,7 +267,7 @@ if (manifesto && motion) {
 }
 
 /* ───────────────────────────── Scrubbed figures: scroll carries a figure's progress, written to --p on
-   its stage, and the CSS draws each mark in its own window of it (drafting.css, [05]). Only while the
+   its stage, and the CSS draws each mark in its own window of it (drafting.css, [04]). Only while the
    figure is active (wide screens with motion; static otherwise, at --p 1) and near the window. */
 
 const scrubQuery = matchMedia("(min-width: 901px) and (min-height: 560px)");

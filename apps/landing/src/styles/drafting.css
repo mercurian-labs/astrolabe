@@ -1112,10 +1112,10 @@ section {
 .pcard__rail span:last-child {
   color: var(--ink-3);
 }
-/* Four figures on one field (240 × 160, an 8-unit grid): terminals and chats are framed windows
-   with a title rule, output is rows of rule, time runs along a thin axis. Three weights
-   (ink 1.5, secondary 1, construction 0.75) that hold at any size; rust marks the one thing that goes
-   wrong. The figures are complete at rest. */
+/* Four figures on one field (240 × 160, an 8-unit grid): panes and chats are framed windows with a
+   title rule, output is rows of rule, branches and checkpoints run along a thin line. Three weights
+   (ink 1.5, secondary 1, construction 0.75) that hold at any size; rust marks the one thing each
+   figure is about. The figures are complete at rest. */
 .pcard__fig {
   display: block;
   width: 100%;
@@ -1244,7 +1244,7 @@ path.pf-rs {
   }
 }
 
-/* ───────────────────────────────────────── [05] How the work moves, assembled while you scroll
+/* ───────────────────────────────────────── [04] How the work moves, assembled while you scroll
    One custom property, --p, runs 0 → 1 across the runway. Each mark has its own window (--a to --b)
    and reads its local progress --t from it. Static (no JS, narrow screens, reduced motion): --p is 1
    and the stages stack. */
@@ -3320,7 +3320,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [06] Wikis */
+/* ───────────────────────────────────────── [05] Wikis */
 
 .surface {
   display: grid;
@@ -3413,7 +3413,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [07] Repositories: a thread's checkout, as
+/* ───────────────────────────────────────── [06] Repositories: a thread's checkout, as
    RepositorySidebar and RepositoryFileView draw it. The sidebar's rows are the app's 32 px rows;
    the file's header is its 32 px bar, and its code the editor's code mode, Alabaster's colours. */
 
@@ -3587,7 +3587,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [08] Changes: a change group, and what its states mean */
+/* ───────────────────────────────────────── [07] Changes: a change group, and what its states mean */
 
 .changes__body {
   display: grid;
@@ -3649,10 +3649,10 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [09] Automations: one weekday, three ways an agent starts
+/* ───────────────────────────────────────── [08] Automations: one weekday, three ways an agent starts
    Each row is a trigger beside its lane on one shared day. A lane places its marks by time, as
    fractions of the day: --x where it starts, --w where the pull request wakes it, --y where it ends.
-   Each mark draws in as the playhead (--p) passes, through the same windows as [05]. Static (no JS,
+   Each mark draws in as the playhead (--p) passes, through the same windows as [04]. Static (no JS,
    phones, a short window, reduced motion): --p is 1, every lane is complete and the playhead hides. */
 
 .auto {
@@ -3932,7 +3932,7 @@ hidden, leaves the sticky stage working). */
     border-top: 1px solid var(--rule);
   }
 }
-/* ───────────────────────────────────────── [11] Anywhere */
+/* ───────────────────────────────────────── [09] Anywhere */
 
 .anywhere {
   display: grid;
@@ -3954,7 +3954,7 @@ hidden, leaves the sticky stage working). */
   border-left: 1px solid var(--rule);
   container-type: inline-size;
 }
-/* The reach figure ([11] Anywhere) is drawn in the problem figures' language: the devices are
+/* The reach figure ([09] Anywhere) is drawn in the [03] cards' figure language: the devices are
    <g> parts in .reach__defs, placed by two compositions, wide beside the copy and tall when the
    column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
 .reach__defs {
@@ -4057,7 +4057,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [12] Who it's for */
+/* ───────────────────────────────────────── [10] Who it's for */
 
 .who {
   display: grid;

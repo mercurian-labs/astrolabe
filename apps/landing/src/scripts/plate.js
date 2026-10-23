@@ -1,4 +1,4 @@
-// Astrolabe · drafting · the Sphinx's plate in [12], lit by the astrolabe's sun
+// Astrolabe · drafting · the Sphinx's plate in [10], lit by the astrolabe's sun
 //
 // The panel shows the Sphinx Observatory as a plate in the page's own print (made from Roy Egloff's
 // photograph by astrolabe-site's scripts/observatories/): a geometry texture whose red and green carry

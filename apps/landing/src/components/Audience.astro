@@ -5,7 +5,7 @@ import plate from "../data/sphinx-plate.json";
 const place = ([x, y, w, h]: number[]) => `left:${x / 10}%;top:${y / 10}%;width:${w / 10}%;height:${h / 10}%`;
 const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
 ---
-          <!-- ───────────────────────────────────────── [12] Who it's for -->
+          <!-- ───────────────────────────────────────── [10] Who it's for -->
           <section class="who" aria-labelledby="who-title" data-who>
             <div class="who__art">
               <figure class="plate" data-sphinx>
@@ -27,7 +27,7 @@ const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
               <span class="cross cross--br" aria-hidden="true"></span>
             </div>
             <div class="who__list">
-              <p class="tag">[12] Who it's for</p>
+              <p class="tag">[10] Who it's for</p>
               <h2 id="who-title" class="h2" data-reveal>For whoever is directing the agents.</h2>
               <ul class="acc">
                 <li class="acc__item is-open">
