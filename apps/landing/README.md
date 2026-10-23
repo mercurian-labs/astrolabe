@@ -36,6 +36,17 @@ The page takes `?t=2026-10-21T21:30&tz=America/New_York` to fix the moment and p
 its light. The bench
 also takes `?gl=0` to show the static print that stands in without WebGL.
 
+## Share cards
+
+The link-preview cards, the icons and the share assets are printed from the HTML templates in `cards/`
+by `node apps/landing/scripts/render-cards.mjs`, in Playwright's headless Chromium with software WebGL,
+so the grain comes out the same on every machine. It writes `public/og/`, `public/icons/`,
+`public/favicon.svg` and `share/` (uploaded by hand, see its README). Nothing renders at build time:
+run it after changing a template, the art or the headline in `src/site.js`, and commit what it writes.
+The plates print the footer's ground (`cards/print.js` copies its shader); the instrument card runs
+[02]'s own scripts. `Layout.astro` serves `/og/card-night.jpg` unless a page passes `image`, and
+`/lab/link-cards` shows every card as the platforms unfurl it.
+
 ## Where the art comes from
 
 `public/assets/art/CREDITS.md` records each picture's source and license, including the CC BY-SA

@@ -43,7 +43,12 @@ const html = (await doc.compiledContent())
 const contents = doc.getHeadings().filter((heading) => heading.depth === 2);
 ---
 
-<Layout title={`${title} (draft) · Astrolabe`} description={description} noindex>
+<Layout
+  title={`${title} (draft) · Astrolabe`}
+  description={description}
+  noindex
+  image={{ src: `/og/page-${here.slice(1)}.jpg`, alt: `${title}, Astrolabe, printed on a two-ink print of Mercury` }}
+>
   <Header />
 
   <main id="main" class="legal">
