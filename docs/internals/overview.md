@@ -70,6 +70,15 @@ Persisted events must remain decodable on replay. Changing a schema affects old 
 startup as well as live RPC traffic. Compatibility work must account for stored history, not just
 what the newest client sends.
 
+Deleting a thread erases it rather than hiding it. A `thread.purge` effect removes the thread's
+events, projection rows, checkpoint refs and provider logs, keeping its row, its first
+`thread.created` and its last `thread.deleted`, all rewritten to a content-free tombstone. As with
+compaction, every removed event is followed by that retained `thread.deleted`, so replay from any
+cursor still ends with the thread deleted. Forks read their parent's history and subagent threads
+their parent's records, so a thread is purged only once every thread descended from it is deleted.
+A new table that stores thread content must join the purge in
+[ProjectionMaintenance](../../apps/server/src/orchestration-v2/ProjectionMaintenance.ts).
+
 ## Turn completion and checkpoints
 
 A provider turn ending and its follow-up work settling are separate milestones. Orchestration

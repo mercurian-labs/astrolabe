@@ -87,7 +87,7 @@ const decodeThreadJson = Schema.decodeUnknownEffect(
 );
 const encodeThreadJson = Schema.encodeEffect(Schema.fromJsonString(OrchestrationV2AppThreadJson));
 
-// A deleted thread's rows in every table that holds thread content. The thread
+// Every table that holds a thread's content; a new one belongs here. The thread
 // row itself stays as the tombstone.
 const THREAD_CONTENT_TABLES = [
   "orchestration_v2_projection_runs",

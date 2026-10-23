@@ -212,7 +212,7 @@ function confirmThreadDeletion(
 ) {
   if (!checkThreadOperationPermission(thread, actionFailureTitle("delete"))) return;
   const title = "Delete thread?";
-  const message = `“${thread.title}” will be permanently deleted, including its terminal history.`;
+  const message = `“${thread.title}” and its conversation, attachments, checkpoints, and terminal history will be permanently deleted. Threads forked or delegated from it keep that history until they are deleted too.`;
   Dialog.confirm({
     title,
     message,

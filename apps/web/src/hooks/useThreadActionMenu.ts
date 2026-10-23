@@ -293,7 +293,7 @@ export function useThreadActionMenu(input: {
               api.dialogs.confirm(
                 [
                   `Delete thread "${thread.title}"?`,
-                  "This permanently clears conversation history for this thread.",
+                  "This permanently deletes its conversation, attachments, checkpoints, and terminal history. Threads forked or delegated from it keep that history until they are deleted too.",
                 ].join("\n"),
                 { variant: "destructive" },
               ),

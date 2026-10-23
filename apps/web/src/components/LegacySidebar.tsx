@@ -1890,7 +1890,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const confirmed = await api.dialogs.confirm(
         [
           `Delete ${count} thread${count === 1 ? "" : "s"}?`,
-          "This permanently clears conversation history for these threads.",
+          "This permanently deletes their conversations, attachments, checkpoints, and terminal history. Threads forked or delegated from them keep that history until they are deleted too.",
         ].join("\n"),
         { variant: "destructive" },
       );
@@ -2244,7 +2244,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         const confirmed = await api.dialogs.confirm(
           [
             `Delete thread "${thread.title}"?`,
-            "This permanently clears conversation history for this thread.",
+            "This permanently deletes its conversation, attachments, checkpoints, and terminal history. Threads forked or delegated from it keep that history until they are deleted too.",
           ].join("\n"),
           { variant: "destructive" },
         );
