@@ -27,7 +27,8 @@ const require = createRequire(
 );
 const { chromium } = require("playwright");
 
-const MAX_BYTES = 300 * 1024;
+// Under 300 KB however it is counted (WhatsApp drops to a small preview above about that).
+const MAX_BYTES = 290 * 1024;
 const q = (params) => new URLSearchParams(params).toString();
 
 // Every asset: where it goes, which template prints it, at what size and in what format.
@@ -54,8 +55,8 @@ const JOBS = [
   },
   // The page cards, for the legal pages (and later posts): the same plate, a title and a caption.
   ...[
-    ["privacy-policy", "Privacy policy"],
-    ["terms-of-service", "Terms of service"],
+    ["privacy-policy", "Privacy Policy"],
+    ["terms-of-service", "Terms of Service"],
     ["licenses", "Licenses"],
   ].map(([slug, title]) => ({
     out: `public/og/page-${slug}.jpg`,
