@@ -178,6 +178,8 @@ Astrolabe in string literals only. Comments keep upstream's wording. Where this 
 - **Providers:** the status and error messages in `packages/provider-*`.
 - **Desktop:** the GNOME extension `metadata.json` (name and description) and the snapshot setup messages.
 - **Installers:** the banner and progress lines in `scripts/install.sh` and `install.ps1`.
+- **Relay:** the Live Activity title in `infra/relay/src/agentActivity/agentActivityAggregate.ts`,
+  which Apple shows on the lock screen.
 
 Kept as "T3" on purpose:
 
