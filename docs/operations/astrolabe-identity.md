@@ -180,11 +180,17 @@ Astrolabe in string literals only. Comments keep upstream's wording. Where this 
 - **Installers:** the banner and progress lines in `scripts/install.sh` and `install.ps1`.
 - **Relay:** the Live Activity title in `infra/relay/src/agentActivity/agentActivityAggregate.ts`,
   which Apple shows on the lock screen.
+- **OpenAI:** `CODEX_CLIENT_NAME` in `apps/server/src/provider/CodexProvider.ts` (the Codex
+  `initialize` client name and the `originator` header on ChatGPT backend requests) and the
+  `agent_name_hint` in `CodexChatGptAuth.ts` (the app name on ChatGPT's sign-in consent screen).
+  OpenAI's terms ask an app to identify as itself. The backend tailors the Codex model catalog to
+  the originator, so tiers it offers only to clients it recognises (Sol Ultrafast reaches "T3 Code"
+  but not the plain CLI) are missing until OpenAI recognises "Astrolabe". Keep both on every sync.
 
 Kept as "T3" on purpose:
 
-- **External identifiers:** the Codex client name and originator, the `agent_name_hint` sent to
-  OpenAI, and the Muse `clientInfo`.
+- **External identifiers:** the Muse `clientInfo`, and the `t3-code` client names sent to
+  Antigravity and ACP agents.
 - **Persisted or ownership markers:** the desktop CLI shim `MARKER`, the "T3 environment" fallback
   label, and the git checkpoint author.
 - **Triage:** it fetches upstream's playbook and files issues upstream.
