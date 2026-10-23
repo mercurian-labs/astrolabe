@@ -303,6 +303,18 @@ git grep -nE 'com\.t3tools\.t3code|com\.t3tools\.T3Code|t3code(-dev|-preview)?:/
 The final `grep -v` drops comment lines. Run it again over `docs` without the filter after
 merging upstream doc changes.
 
+Then look for new links to upstream's services ([Upstream services](#upstream-services)):
+
+```sh
+git grep -nE 't3\.codes|pingdotgg|u\.expo\.dev|apps\.apple\.com|play\.google\.com' \
+  -- apps packages scripts infra .env.example ':!*.test.*' ':!**/fixtures/**' ':!apps/marketing' \
+  ':!.repos' | grep -vE '^[^:]+:[0-9]+:\s*(//|\*|/\*|#)'
+```
+
+Expected hits: the triage playbook text, the model manifest URL, the `t3.json` schema URL, the
+GNOME extension's `snap-shot@t3.codes` uuid, `apps/server/package.json`'s `repository`, the
+mobile `deps` README, and maintainer scripts that quote upstream's repository.
+
 Expected exceptions:
 
 - `migrate-dev-db`, `devHome`, `dev-runner`'s first-start seed and `setup-worktree`, which still use
