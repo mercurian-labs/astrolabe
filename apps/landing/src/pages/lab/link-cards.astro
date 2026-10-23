@@ -854,7 +854,7 @@ const themes = ["light", "dark"];
       </figure>
     </div>
 
-    <script type="application/json" id="cards" set:html={JSON.stringify(cards)} />
+    <script is:inline type="application/json" id="cards" set:html={JSON.stringify(cards)} />
     <script is:inline>
       const cards = JSON.parse(document.getElementById("cards").textContent);
       const form = document.querySelector("[data-controls]");
