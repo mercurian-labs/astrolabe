@@ -56,8 +56,8 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
 
 - `apps/mobile/app.config.ts`: `VARIANT_CONFIG` names, ids and schemes; permission prompts; widget
   descriptions. The `appleTeamId` is Mercurian's (`SC9Q89Q4B6`); keep it when upstream changes the
-  line. EAS `owner`/`projectId` and `slug` are still upstream's accounts and stay that way until
-  Astrolabe has its own.
+  line. The EAS `owner`, `projectId` and `slug` come from `EAS_PROJECT` (see
+  [Upstream services](#upstream-services)).
 - `apps/mobile/package.json`: the `--scheme` in the `dev:client*` and `showcase` scripts.
 - `apps/mobile/src/App.tsx`: linking `prefixes`.
 - `apps/mobile/src/lib/appLinking.ts`: the scheme regex.
@@ -230,11 +230,13 @@ points at it. Where it doesn't yet, the value is unset, and the feature is off a
 someone sets it. When upstream adds a link to or a download from one of its services, route it
 through one of these values in the merge commit.
 
-| Concern        | Value                                                                                                                  | Astrolabe now                |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Hosted web app | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`   |
-| Relay          | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh` |
-| CLI releases   | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off         |
+| Concern               | Value                                                                                                                  | Astrolabe now                |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Hosted web app        | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`   |
+| Relay                 | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh` |
+| CLI releases          | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off         |
+| Mobile EAS project    | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | unset: OTA updates off       |
+| App Store Connect app | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | unset                        |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
@@ -254,13 +256,17 @@ through one of these values in the merge commit.
   downloads at a mirror. The install scripts run on their own, so they keep a copy;
   `scripts/install-scripts.test.ts` fails when the copies drift. The desktop's release-notes links
   follow its own update feed and link nowhere when the build names none.
+- **Mobile EAS project.** Owner, project id and slug in one value. While it is unset the app has
+  no Expo update URL and over-the-air updates are off, so a launch sends Expo nothing, and the
+  in-app update check is hidden (it follows `Updates.isEnabled`). The slug is `astrolabe` until an
+  EAS project names its own. `eas submit` has no App Store Connect app either: upstream's
+  `ascAppId` would have submitted to T3 Code's listing.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
 
-- EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
-  `apps/mobile/app.config.ts`, and the Firebase project. Push to `com.mercurian.astrolabe*` needs
-  Astrolabe's own APNs key and Firebase app.
+- The Firebase project. Push to `com.mercurian.astrolabe*` needs Astrolabe's own APNs key and
+  Firebase app.
 - npm trusted publishing for `@mercurian/astrolabe`, and the `repository` field in
   `apps/server/package.json` that the npm package copies.
 
