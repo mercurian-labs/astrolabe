@@ -716,6 +716,186 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
     }),
   );
 
+  it.effect("a parent's next message drops a merge-back from a deleted fork", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const projectId = ProjectId.make("purge-merge-back-project");
+      const parentId = ThreadId.make("purge-merge-back-parent");
+      const forkId = ThreadId.make("purge-merge-back-fork");
+      const forkRunId = RunId.make("purge-merge-back-fork-run");
+      const forkProviderThreadId = ProviderThreadId.make("purge-merge-back-provider-thread");
+      yield* projects.create({
+        commandId: CommandId.make("purge-merge-back-project-create"),
+        projectId,
+        title: "Purge merge-back",
+        workspaceRoot: "/work/purge-merge-back",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("purge-merge-back-parent-create"),
+        threadId: parentId,
+        projectId,
+        title: "Merge target",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const parent = (yield* orchestrator.getThreadProjection(parentId)).thread;
+      yield* eventSink.write({
+        commandId: CommandId.make("purge-merge-back-seed"),
+        events: [
+          {
+            id: EventId.make("purge-merge-back-fork-created"),
+            type: "thread.created",
+            threadId: forkId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: {
+              ...parent,
+              id: forkId,
+              title: "Merge source",
+              lineage: {
+                parentThreadId: parentId,
+                relationshipToParent: "fork",
+                rootThreadId: parentId,
+              },
+              forkedFrom: {
+                type: "run",
+                threadId: parentId,
+                runId: RunId.make("purge-merge-back-base"),
+              },
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+          {
+            id: EventId.make("purge-merge-back-fork-transfer"),
+            type: "context-transfer.created",
+            threadId: forkId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: {
+              id: ContextTransferId.make("purge-merge-back-fork-transfer"),
+              type: "fork",
+              sourceThreadId: parentId,
+              targetThreadId: forkId,
+              sourcePoint: { threadId: parentId, runId: RunId.make("purge-merge-back-base") },
+              basePoint: null,
+              sourceProviderInstanceId: modelSelection.instanceId,
+              targetProviderInstanceId: modelSelection.instanceId,
+              targetRunId: null,
+              status: "consumed",
+              resolution: null,
+              createdBy: "user",
+              error: null,
+              createdAt: now,
+              updatedAt: now,
+              consumedAt: now,
+            },
+          },
+          {
+            id: EventId.make("purge-merge-back-provider-thread"),
+            type: "provider-thread.updated",
+            threadId: forkId,
+            driver,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: {
+              id: forkProviderThreadId,
+              driver,
+              providerInstanceId: modelSelection.instanceId,
+              providerSessionId: null,
+              appThreadId: forkId,
+              ownerNodeId: null,
+              nativeThreadRef: { driver, nativeId: "native-purge-merge-back", strength: "strong" },
+              nativeConversationHeadRef: null,
+              status: "idle",
+              firstRunOrdinal: 1,
+              lastRunOrdinal: 1,
+              handoffIds: [],
+              forkedFrom: null,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+          {
+            id: EventId.make("purge-merge-back-fork-run"),
+            type: "run.created",
+            threadId: forkId,
+            runId: forkRunId,
+            providerInstanceId: modelSelection.instanceId,
+            occurredAt: now,
+            payload: {
+              id: forkRunId,
+              threadId: forkId,
+              ordinal: 1,
+              providerInstanceId: modelSelection.instanceId,
+              modelSelection,
+              providerThreadId: forkProviderThreadId,
+              userMessageId: MessageId.make("purge-merge-back-fork-message"),
+              rootNodeId: null,
+              activeAttemptId: null,
+              status: "completed",
+              queuePosition: null,
+              requestedAt: now,
+              startedAt: now,
+              completedAt: now,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.merge_back",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("purge-merge-back-merge"),
+        sourceThreadId: forkId,
+        targetThreadId: parentId,
+        sourcePoint: { type: "run", runId: forkRunId },
+        createdAt: now,
+      });
+
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make("purge-merge-back-fork-delete"),
+        threadId: forkId,
+      });
+      yield* worker.drain();
+      // The pending merge-back still reads the fork's run.
+      assert.lengthOf((yield* orchestrator.getThreadProjection(forkId)).runs, 1);
+
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("purge-merge-back-parent-message"),
+        threadId: parentId,
+        messageId: MessageId.make("purge-merge-back-parent-message"),
+        text: "Carry on without the fork.",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+      });
+      const transfer = (yield* orchestrator.getThreadProjection(parentId)).contextTransfers.find(
+        (candidate) => candidate.type === "merge_back",
+      );
+      assert.equal(transfer?.status, "superseded");
+      yield* worker.drain();
+      const fork = yield* orchestrator.getThreadProjection(forkId);
+      assert.equal(fork.thread.title, DELETED_THREAD_TITLE);
+      assert.lengthOf(fork.runs, 0);
+    }),
+  );
+
   it.effect("waits for an in-flight thread update before planning deletion", () =>
     Effect.gen(function* () {
       const projects = yield* ProjectService.ProjectService;

@@ -631,3 +631,31 @@ it.effect("waits while a live parent still waits on its deleted subagent", () =>
     );
   }).pipe(Effect.provide(layerTest([]))),
 );
+
+it.effect("waits while a live thread still has a pending transfer from it", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const sink = yield* EventSink.EventSinkV2;
+    const parentId = ThreadId.make("thread:purge-merge-target");
+    const forkId = ThreadId.make("thread:purge-merge-source");
+    yield* sink.write({
+      events: [
+        created(makeThread(parentId)),
+        created(makeThread(forkId, { threadId: parentId, relationship: "fork" })),
+        message(forkId, "message:merge-source"),
+      ],
+    });
+    yield* deleteThread(forkId);
+    // The parent's next turn reads the fork's run for this merge-back.
+    yield* seedTransfer("transfer:merge-back", forkId, parentId, "pending");
+    yield* purge(forkId);
+    assert.lengthOf(yield* storedEvents(forkId), 3);
+
+    yield* sql`
+      UPDATE orchestration_v2_projection_context_transfers SET status = 'superseded'
+      WHERE context_transfer_id = 'transfer:merge-back'
+    `;
+    yield* purge(forkId);
+    assert.lengthOf(yield* storedEvents(forkId), 2);
+  }).pipe(Effect.provide(layerTest([]))),
+);
