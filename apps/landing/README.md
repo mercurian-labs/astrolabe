@@ -25,6 +25,10 @@ vp run --filter @mercurian/landing typecheck # astro check
   paint; the layout inlines it with the three maths modules. `node scripts/twilight-contrast.mjs`
   reports the text's contrast at every quarter degree.
 - `src/pages/relight-test.astro` is the closing section's test bench (`/relight-test/`).
+- `/privacy-policy`, `/terms-of-service` and `/licenses` are the paths the apps link to. Their text is
+  Markdown in `src/content/legal/`, kept plain so counsel can review it as text; `Legal.astro` renders
+  it with a contents list and the draft notice, and marks each `[DECISION: …]`, `[PENDING: …]` and
+  `[VERIFY: …]` it finds so they can be scanned. The pages are `noindex` while they are drafts.
 - Everything in `public/` is copied from astrolabe-site under the same names, so a new render drops in
   by copying the file over.
 
@@ -33,6 +37,9 @@ its light. The bench
 also takes `?gl=0` to show the static print that stands in without WebGL.
 
 ## Where the art comes from
+
+`public/assets/art/CREDITS.md` records each picture's source and license, including the CC BY-SA
+Sphinx prints; update it with any new asset.
 
 The rasters and the static instrument are rendered by Python scripts that stay in astrolabe-site
 (`scripts/`, with numpy, scipy, scikit-image, tifffile and Pillow, `cwebp` on the path, and the
