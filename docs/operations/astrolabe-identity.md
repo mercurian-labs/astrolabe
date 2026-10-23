@@ -197,7 +197,6 @@ Kept as "T3" on purpose:
   Antigravity and ACP agents.
 - **Persisted or ownership markers:** the desktop CLI shim `MARKER`, the "T3 environment" fallback
   label, and the git checkpoint author.
-- **Triage:** it fetches upstream's playbook and files issues upstream.
 - **Upstream references:** the "T3 Code" theme label, which names upstream's palette.
 - **Not decided yet:**
   - "T3 thread" in MCP tool text, next to the `t3-code` MCP server id and `t3_thread_*` tools;
@@ -239,6 +238,7 @@ through one of these values in the merge commit.
 | App Store Connect app | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | unset                        |
 | Store listings        | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden          |
 | Desktop download page | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | unset: links hidden          |
+| Triage repository     | `TRIAGE_REPOSITORY` in `apps/server/src/cli/triagePrompt.ts`                                                           | unset: triage off            |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
@@ -270,6 +270,10 @@ through one of these values in the merge commit.
   site, store links and legal pages included. Astrolabe never deploys it: `release.yml`'s
   marketing jobs look up a Vercel project named `t3code-marketing`, and Astrolabe's site is
   `apps/landing`. When the release pipeline moves to Astrolabe, drop those jobs.
+- **Triage.** `astrolabe triage` fetched and followed upstream's live playbook, cloned upstream's
+  source and filed issues on `pingdotgg/t3code`. It is unlisted and refuses to run while
+  `TRIAGE_REPOSITORY` is unset. The playbook text (both copies) still names upstream's repository
+  and T3 Code; turning triage on means pointing it at Astrolabe's first.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
