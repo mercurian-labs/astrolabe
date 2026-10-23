@@ -1391,6 +1391,11 @@ path.pf-rs {
   stroke: var(--ink);
   stroke-width: 2;
 }
+/* Chrome lays SVG text out at a size that includes ancestor transforms and can keep a stale one when
+   the pinned figure scales, scattering the labels; geometric precision lays it out in user units. */
+.tg text {
+  text-rendering: geometricPrecision;
+}
 .tg-chip rect {
   fill: var(--paper);
   stroke: var(--ink);
@@ -1519,8 +1524,11 @@ hidden, leaves the sticky stage working). */
 .story.is-pinned .tg {
   height: 100%;
 }
+/* An auto row would grow to the drawing's width-derived height and push it out of the stage; a
+   fixed track lets the SVG fill the box and letterbox itself, centred. */
 .story.is-pinned .story__fig {
   --c: clamp(0, (var(--p) - 0.84) / 0.1, 1);
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   transform-origin: 0 50%;
   transform: scale(calc(1 - 0.34 * var(--c)));
 }
