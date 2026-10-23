@@ -17,18 +17,7 @@ const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
                     <i class="plate__lines" style={art("lines")}></i>
                     <i class="plate__outline" style={art("outline")}></i>
                   </div>
-                  <svg class="plate__marks" viewBox="0 0 1000 1000" aria-hidden="true">
-                    {plate.callouts.map(({ at: [x, y], lx, ly, key }) => (
-                      <>
-                        <path class:list={["plate__leader", { plate__minor: !key }]} d={`M${x} ${y}L${lx - 26} ${ly}H${lx - 8}`} />
-                        <path class:list={["plate__dot", key ? "plate__dot--key" : "plate__minor"]} d={`M${x} ${y}h0.01`} />
-                      </>
-                    ))}
-                  </svg>
-                  {plate.callouts.map(({ label, lx, ly, key }) => (
-                    <span class:list={["plate__callout", { plate__minor: !key }]} style={`left:${lx / 10}%;top:${ly / 10}%`} aria-hidden="true">{label}</span>
-                  ))}
-                  <figcaption class="plate__fig">{plate.fig}<span class="plate__notes">{plate.notes}</span></figcaption>
+                  <figcaption class="plate__fig">{plate.fig}</figcaption>
                   <p class="plate__credit">
                     After a <a href={plate.source}>photograph by {plate.credit}</a>, inpainted and printed · <a href={plate.licenseUrl} rel="license">{plate.license}</a>
                   </p>

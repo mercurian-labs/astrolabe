@@ -19,7 +19,7 @@
 // Under the pointer an eyepiece opens onto the photograph itself in continuous tone (the duotone,
 // registered texel for texel with the plate), coloured here from the page's palette: paper through
 // olive to ink by day, charcoal through olive to ivory at night. It is drawn in the same pass; the
-// lines and callouts step out of it through CSS masks and a hairline ring frames it. With a fine
+// drawn lines step out of it through CSS masks and a hairline ring frames it. With a fine
 // pointer it opens like an iris on enter (0.45 s), follows the pointer exactly, closes on leave
 // (0.35 s) and takes the cursor, which comes back over the credit's links, on leave, blur and a hidden
 // tab. On touch a tap opens it there, a sideways drag moves it (vertical swipes scroll) and a tap
@@ -498,7 +498,6 @@ import plate from "../data/sphinx-plate.json";
       lens.r = r;
       sheet.classList.toggle("is-looking", r > 0.5);
       art.style.setProperty("--lens", `${lens.x}px ${lens.y}px`);
-      sheet.style.setProperty("--eye", `${at.x}px ${at.y}px`);
       sheet.style.setProperty("--lens-r", `${r}px`);
       // The ring is sized, not scaled, so its hairline stays a hairline through the iris.
       ring.style.width = ring.style.height = `${2 * r}px`;

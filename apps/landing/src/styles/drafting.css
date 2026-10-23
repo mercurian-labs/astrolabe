@@ -4332,8 +4332,8 @@ kbd {
 
 /* The Sphinx's plate (plate.js): a square drawing 1000 units across, standing as large as the panel
    allows. The art's box holds the static print (CSS masks, shown until the shader has painted), the
-   canvas, and the drawn lines; the callouts' leaders sit in an SVG on the same units, their labels and
-   the figure line in HTML. Its type scales with it, down to 9 px. */
+   canvas, and the drawn lines; the figure line and the credit are HTML. Its type scales with it, down
+   to 9 px. */
 .plate {
   position: absolute;
   inset: 0;
@@ -4388,43 +4388,6 @@ kbd {
   background: var(--ink);
   opacity: calc(0.95 - 0.2 * var(--night, 0));
 }
-.plate__marks {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-.plate__leader {
-  fill: none;
-  stroke: var(--ink-3);
-  stroke-width: 0.75px;
-  vector-effect: non-scaling-stroke;
-}
-.plate__dot {
-  stroke: var(--ink);
-  stroke-width: 5px;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-}
-.plate__dot--key {
-  stroke: var(--rust);
-}
-.plate__callout {
-  position: absolute;
-  transform: translate(0, -50%);
-  font: 500 var(--plate-type) / 1 var(--mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--ink-2);
-}
-@container (max-width: 520px) {
-  .plate__minor {
-    display: none;
-  }
-}
 .plate__fig,
 .plate__credit {
   position: absolute;
@@ -4438,10 +4401,6 @@ kbd {
   top: calc(var(--plate-inset) * 0.9);
   max-width: calc(100% - 2 * var(--plate-inset));
   color: var(--ink-2);
-}
-.plate__notes {
-  display: block;
-  color: var(--ink-3);
 }
 /* The attribution the licence asks for: the photographer, that it was changed, and the licence. */
 .plate__credit {
@@ -4463,9 +4422,9 @@ kbd {
   text-decoration-color: currentColor;
 }
 
-/* The eyepiece (plate.js): while it is open the drawn lines and the callouts' leaders step out of the
-   aperture, a hairline ring with two reticle ticks frames it, and with a fine pointer it is the cursor
-   (which comes back over the credit's links). */
+/* The eyepiece (plate.js): while it is open the drawn lines step out of the aperture, a hairline ring
+   with two reticle ticks frames it, and with a fine pointer it is the cursor (which comes back over the
+   credit's links). */
 .plate__sheet--eyepiece {
   touch-action: pan-y;
 }
@@ -4492,18 +4451,6 @@ kbd {
       #000 calc(var(--lens-r) + 0.5px)
     );
   mask-composite: intersect;
-}
-.is-looking > .plate__marks {
-  -webkit-mask: radial-gradient(
-    circle at var(--eye),
-    #0000 calc(var(--lens-r) - 0.5px),
-    #000 calc(var(--lens-r) + 0.5px)
-  );
-  mask: radial-gradient(
-    circle at var(--eye),
-    #0000 calc(var(--lens-r) - 0.5px),
-    #000 calc(var(--lens-r) + 0.5px)
-  );
 }
 .plate__eyepiece {
   position: absolute;
