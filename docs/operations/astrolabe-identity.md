@@ -218,20 +218,24 @@ points at it. Where it doesn't yet, the value is unset, and the feature is off a
 someone sets it. When upstream adds a link to or a download from one of its services, route it
 through one of these values in the merge commit.
 
-| Concern        | Value                                                            | Astrolabe now              |
-| -------------- | ---------------------------------------------------------------- | -------------------------- |
-| Hosted web app | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts` | `https://app.astrolabe.sh` |
+| Concern        | Value                                                            | Astrolabe now                |
+| -------------- | ---------------------------------------------------------------- | ---------------------------- |
+| Hosted web app | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts` | `https://app.astrolabe.sh`   |
+| Relay          | `T3CODE_RELAY_URL` in `.env.example`                             | `https://relay.astrolabe.sh` |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
   hosted-web defaults in `release.yml` carry the same host for the Vercel channel router. The hosted
   app's sign-in shares the sign-in pages' session cookie, so it works only once the hosted app is
   served from `app.astrolabe.sh`.
+- **Relay.** Source builds and the signed macOS PR previews take the relay from `.env.example`;
+  release builds take it from the `RELAY_DOMAIN` repository variable. The relay dashboards in
+  `infra/relay/src/monitoring.ts` match relay requests by path, not host, and their runbook links
+  point at Astrolabe's repository.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
 
-- `relay.t3.codes` (`.env.example`).
 - EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
   `apps/mobile/app.config.ts`, and the Firebase project. Push to `com.mercurian.astrolabe*` needs
   Astrolabe's own APNs key and Firebase app.

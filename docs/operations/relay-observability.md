@@ -145,7 +145,7 @@ when they are frequent enough to stall provisioning. Compare the call volume on 
 account limit.
 
 **Traffic dropped.** The Worker is down, a deploy broke it, or spans stopped reaching Axiom. Check
-`https://relay.t3.codes/health` first.
+`https://relay.astrolabe.sh/health` first.
 
 **Tunnel cleanup stopped / tunnel deletions failing.** Warnings for the five-minute reaper that deletes
 idle Cloudflare tunnels. "Stopped" counts sweeps that finished, so it also fires when every sweep
