@@ -32,9 +32,11 @@ import {
   ChevronRight,
   FileDiff,
   Files,
+  GitFork,
   Globe2,
   Plus,
   TerminalSquare,
+  Waypoints,
 } from "lucide-react";
 import { Volume2, VolumeOff } from "lucide";
 import {
@@ -92,8 +94,9 @@ import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
+import { takesListKey } from "~/keyboardNav/placeLists";
 
-interface RightPanelTabsProps {
+export interface RightPanelTabsProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
   open?: boolean;
@@ -137,6 +140,8 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
+  onAddGraph: () => void;
+  onAddLineage: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -144,6 +149,8 @@ interface RightPanelTabsProps {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
+  graphAvailable: boolean;
+  lineageAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   children: ReactNode;
 }
@@ -158,24 +165,24 @@ export interface PullRequestTabStatus {
 
 export type PullRequestTabStatusSeed = Pick<PullRequestTabStatus, "state" | "isDraft">;
 
-export function shouldOpenDefaultBrowserProfileFromMenuClick(
-  pointerType: string | undefined,
-): boolean {
+function shouldOpenDefaultBrowserProfileFromMenuClick(pointerType: string | undefined): boolean {
   return pointerType !== "touch";
 }
 
-const SURFACE_DISABLED_REASONS = {
-  browser: "Browser previews are only available in the T3 Code desktop app.",
+export const SURFACE_DISABLED_REASONS = {
+  browser: "Browser previews are only available in the Astrolabe desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   device: "Devices are only available from a thread.",
+  graph: "The graph is only available from a thread.",
+  lineage: "Lineage is only available for a thread that has started.",
 } as const;
 
 // Closed keepMounted popups must stop blocking shortcuts once their exit transition ends.
-const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
+export const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
   "dialog-popup",
   "alert-dialog-popup",
   "command-dialog-popup",
@@ -196,6 +203,8 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   device: "Available from a thread.",
+  graph: "Available from a thread.",
+  lineage: "Available once the thread has started.",
 } as const;
 
 type TabContextMenuAction =
@@ -214,7 +223,7 @@ function tabScrollViewport(root: HTMLDivElement | null): HTMLDivElement | null {
   return root?.querySelector<HTMLDivElement>('[data-slot="scroll-area-viewport"]') ?? null;
 }
 
-function previewTabIdOf(
+export function previewTabIdOf(
   surface: RightPanelSurface,
   sessions: Readonly<Record<string, PreviewSessionSnapshot>>,
 ): string | null {
@@ -240,7 +249,7 @@ export function tabMuteMenuItem(input: {
 
 type TabAudioState = "none" | "audible" | "muted";
 
-function tabAudioState(overlay: DesktopPreviewOverlay | null): TabAudioState {
+export function tabAudioState(overlay: DesktopPreviewOverlay | null): TabAudioState {
   if (!overlay?.audible) return "none";
   return overlay.audioMuted ? "muted" : "audible";
 }
@@ -259,6 +268,21 @@ export function surfaceShortcutActionForKey<
     actions.find(
       (action) => action.available && action.shortcut.toLowerCase() === event.key.toLowerCase(),
     ) ?? null
+  );
+}
+
+/**
+ * Astrolabe: whether a surface launcher on screen would take `key` as one of its letters. The
+ * chat's type-to-focus listener can be registered before a launcher's (the launcher mounts when
+ * the right panel opens), so the chat asks first rather than typing the letter into the composer.
+ */
+export function surfaceLauncherClaimsKey(key: string): boolean {
+  if (key.length !== 1 || document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return false;
+  const letter = key.toLowerCase();
+  return [...document.querySelectorAll<HTMLElement>("[data-surface-launcher-keys]")].some(
+    (launcher) =>
+      launcher.offsetParent !== null &&
+      (launcher.dataset.surfaceLauncherKeys ?? "").toLowerCase().includes(letter),
   );
 }
 
@@ -285,7 +309,7 @@ function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement })
   );
 }
 
-function SurfaceMenuItem(props: {
+export function SurfaceMenuItem(props: {
   available: boolean;
   disabledReason?: string;
   shortcut: string;
@@ -307,7 +331,7 @@ function SurfaceMenuItem(props: {
   return <DisabledReasonTooltip reason={props.disabledReason} trigger={item} />;
 }
 
-function RightPanelEmptyState(props: {
+export function RightPanelEmptyState(props: {
   onAddBrowser: () => void;
   onAddBrowserInProfile: (profileId: string) => void;
   browserProfiles: ReadonlyArray<{ readonly id: string; readonly name: string }>;
@@ -317,6 +341,8 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
+  onAddGraph: () => void;
+  onAddLineage: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -324,6 +350,8 @@ function RightPanelEmptyState(props: {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
+  graphAvailable: boolean;
+  lineageAvailable: boolean;
 }) {
   const [highlight, setHighlight] = useState(-1);
 
@@ -385,6 +413,22 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.device,
       onClick: props.onAddDevice,
     },
+    {
+      label: "Graph",
+      icon: Waypoints,
+      shortcut: "G",
+      available: props.graphAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.graph,
+      onClick: props.onAddGraph,
+    },
+    {
+      label: "Lineage",
+      icon: GitFork,
+      shortcut: "I",
+      available: props.lineageAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.lineage,
+      onClick: props.onAddLineage,
+    },
   ] as const;
 
   type SurfaceAction = (typeof actions)[number];
@@ -399,6 +443,8 @@ function RightPanelEmptyState(props: {
     if (document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
     const target = event.composedPath()[0] ?? event.target;
     if (target instanceof Element && surfaceShortcutTargetsTypingContext(target)) return;
+    // Astrolabe: a focused sidebar row or rail button keeps its list's keys (`gg`, `G`).
+    if (takesListKey(target, event.key)) return;
     event.preventDefault();
     event.stopPropagation();
     action.onClick();
@@ -544,7 +590,7 @@ function RightPanelEmptyState(props: {
   );
 }
 
-function surfaceTitle(
+export function surfaceTitle(
   surface: RightPanelSurface,
   sessions: Readonly<Record<string, PreviewSessionSnapshot>>,
   terminalLabelsById: ReadonlyMap<string, string>,
@@ -567,6 +613,10 @@ function surfaceTitle(
       return `#${surface.number}`;
     case "pull-requests":
       return "Pull requests";
+    case "graph":
+      return "Graph";
+    case "lineage":
+      return "Lineage";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -601,7 +651,7 @@ function sameOrigin(left: string, right: string): boolean {
   }
 }
 
-function previewFaviconOf(
+export function previewFaviconOf(
   surface: RightPanelSurface,
   sessions: Readonly<Record<string, PreviewSessionSnapshot>>,
   desktopByTabId: Readonly<Record<string, DesktopPreviewOverlay>>,
@@ -614,7 +664,7 @@ function previewFaviconOf(
   return { url, capturedUrl };
 }
 
-function SurfaceIcon({
+export function SurfaceIcon({
   surface,
   previewUrl,
   previewCapturedUrl,
@@ -657,6 +707,10 @@ function SurfaceIcon({
       );
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
+    case "graph":
+      return <Waypoints className="size-3 shrink-0" />;
+    case "lineage":
+      return <GitFork className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1086,6 +1140,22 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       disabledReason: SURFACE_DISABLED_REASONS.device,
       onClick: props.onAddDevice,
     },
+    {
+      label: "Graph",
+      icon: Waypoints,
+      shortcut: "G",
+      available: props.graphAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.graph,
+      onClick: props.onAddGraph,
+    },
+    {
+      label: "Lineage",
+      icon: GitFork,
+      shortcut: "I",
+      available: props.lineageAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.lineage,
+      onClick: props.onAddLineage,
+    },
   ] as const;
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1459,6 +1529,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
+            onAddGraph={props.onAddGraph}
+            onAddLineage={props.onAddLineage}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1466,6 +1538,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}
             deviceAvailable={props.deviceAvailable}
+            graphAvailable={props.graphAvailable}
+            lineageAvailable={props.lineageAvailable}
           />
         ) : (
           props.children
@@ -1475,7 +1549,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   );
 }
 
-function DeviceTabTooltip(props: {
+export function DeviceTabTooltip(props: {
   surface: Extract<RightPanelSurface, { kind: "device" }>;
   environmentId: EnvironmentId | null;
   title: string;

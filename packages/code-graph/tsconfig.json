@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        // A Node tool outside Effect: it spawns git, reads files, and prints counts.
+        "diagnosticSeverity": {
+          "nodeBuiltinImport": "off",
+          "globalDate": "off",
+          "globalConsole": "off",
+          "globalRandom": "off",
+          "globalTimers": "off",
+          "globalFetch": "off",
+          "preferSchemaOverJson": "off"
+        }
+      }
+    ]
+  },
+  "include": ["src", "vite.config.ts"]
+}

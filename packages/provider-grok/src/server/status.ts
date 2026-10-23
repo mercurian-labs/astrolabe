@@ -91,7 +91,7 @@ export const buildInitialGrokProviderSnapshot = Effect.fn(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Grok is disabled in T3 Code settings.",
+        message: "Grok is disabled in Astrolabe settings.",
       },
     });
   }
@@ -216,7 +216,7 @@ export function buildGrokModelCapabilities(model: EffectAcpSchema.ModelInfo): Mo
     : EMPTY_CAPABILITIES;
 }
 
-export function buildGrokModelsFromSessionModelState(
+function buildGrokModelsFromSessionModelState(
   modelState: EffectAcpSchema.SessionModelState | null | undefined,
 ): ReadonlyArray<ServerProviderModel> {
   if (!modelState || modelState.availableModels.length === 0) {
@@ -413,7 +413,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Grok is disabled in T3 Code settings.",
+        message: "Grok is disabled in Astrolabe settings.",
       },
     });
   }

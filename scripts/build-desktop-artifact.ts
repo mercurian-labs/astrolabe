@@ -17,7 +17,6 @@ import {
 
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
@@ -62,7 +61,7 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code";
+const DESKTOP_APP_ID = "com.mercurian.astrolabe";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -241,22 +240,6 @@ export class KeyringNativePackageMissingError extends Schema.TaggedError<Keyring
 ) {
   override get message(): string {
     return `Keyring native package is missing: ${this.packageName}`;
-  }
-}
-
-export class ClerkPasskeyNativePackageMissingError extends Schema.TaggedError<ClerkPasskeyNativePackageMissingError>()(
-  "ClerkPasskeyNativePackageMissingError",
-  {
-    packageName: Schema.String,
-    binaryFileName: Schema.String,
-    packageEntryPath: Schema.String,
-    platform: BuildPlatform,
-    arch: BuildArch,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Clerk passkey native package is missing: ${this.packageName}`;
   }
 }
 
@@ -1135,34 +1118,7 @@ export const LINUX_BROWSER_SECRET_EXTRA_RESOURCES = [
 export interface MacPasskeySigningConfiguration {
   readonly appId: string;
   readonly teamId: string;
-  readonly rpDomains: readonly string[];
   readonly provisioningProfilePath: string;
-}
-
-export const InvalidMacPasskeyRpDomainReason = Schema.Literals([
-  "empty",
-  "scheme-not-allowed",
-  "parse-failed",
-  "credentials-not-allowed",
-  "port-not-allowed",
-  "path-not-allowed",
-  "query-not-allowed",
-  "fragment-not-allowed",
-  "hostname-mismatch",
-]);
-export type InvalidMacPasskeyRpDomainReason = typeof InvalidMacPasskeyRpDomainReason.Type;
-
-export class InvalidMacPasskeyRpDomainError extends Schema.TaggedError<InvalidMacPasskeyRpDomainError>()(
-  "InvalidMacPasskeyRpDomainError",
-  {
-    reason: InvalidMacPasskeyRpDomainReason,
-    inputLength: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-    cause: Schema.optionalKey(Schema.Defect()),
-  },
-) {
-  override get message(): string {
-    return `Invalid passkey RP domain (${this.reason}).`;
-  }
 }
 
 export class InvalidAppleTeamIdError extends Schema.TaggedError<InvalidAppleTeamIdError>()(
@@ -1181,90 +1137,16 @@ export class MissingMacPasskeyProvisioningProfileError extends Schema.TaggedErro
   {},
 ) {
   override get message(): string {
-    return "T3CODE_MACOS_PROVISIONING_PROFILE must point to an Associated Domains provisioning profile.";
-  }
-}
-
-export class MissingMacPasskeyDomainConfigurationError extends Schema.TaggedError<MissingMacPasskeyDomainConfigurationError>()(
-  "MissingMacPasskeyDomainConfigurationError",
-  {},
-) {
-  override get message(): string {
-    return "T3CODE_CLERK_PUBLISHABLE_KEY or T3CODE_CLERK_PASSKEY_RP_DOMAINS is required for signed macOS passkey builds.";
-  }
-}
-
-export class InvalidMacPasskeyPublishableKeyError extends Schema.TaggedError<InvalidMacPasskeyPublishableKeyError>()(
-  "InvalidMacPasskeyPublishableKeyError",
-  {
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return "T3CODE_CLERK_PUBLISHABLE_KEY is invalid.";
-  }
-}
-
-export class MissingMacPasskeyRpDomainError extends Schema.TaggedError<MissingMacPasskeyRpDomainError>()(
-  "MissingMacPasskeyRpDomainError",
-  {},
-) {
-  override get message(): string {
-    return "At least one Clerk passkey RP domain is required.";
+    return "T3CODE_MACOS_PROVISIONING_PROFILE must point to the macOS provisioning profile for signed builds.";
   }
 }
 
 export const MacPasskeySigningConfigurationError = Schema.Union([
-  InvalidMacPasskeyRpDomainError,
   InvalidAppleTeamIdError,
   MissingMacPasskeyProvisioningProfileError,
-  MissingMacPasskeyDomainConfigurationError,
-  InvalidMacPasskeyPublishableKeyError,
-  MissingMacPasskeyRpDomainError,
 ]);
 export type MacPasskeySigningConfigurationError = typeof MacPasskeySigningConfigurationError.Type;
 export const isMacPasskeySigningConfigurationError = Schema.is(MacPasskeySigningConfigurationError);
-
-function normalizePasskeyRpDomain(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  const inputLength = value.length;
-  if (normalized.length === 0) {
-    throw new InvalidMacPasskeyRpDomainError({ reason: "empty", inputLength });
-  }
-  if (/^[a-z][a-z\d+.-]*:\/\//u.test(normalized)) {
-    throw new InvalidMacPasskeyRpDomainError({
-      reason: "scheme-not-allowed",
-      inputLength,
-    });
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(`https://${normalized}`);
-  } catch (cause) {
-    throw new InvalidMacPasskeyRpDomainError({ reason: "parse-failed", inputLength, cause });
-  }
-
-  let reason: InvalidMacPasskeyRpDomainReason | undefined;
-  if (parsed.username.length > 0 || parsed.password.length > 0) {
-    reason = "credentials-not-allowed";
-  } else if (parsed.port.length > 0) {
-    reason = "port-not-allowed";
-  } else if (parsed.pathname !== "/") {
-    reason = "path-not-allowed";
-  } else if (parsed.search.length > 0) {
-    reason = "query-not-allowed";
-  } else if (parsed.hash.length > 0) {
-    reason = "fragment-not-allowed";
-  } else if (parsed.host !== normalized) {
-    reason = "hostname-mismatch";
-  }
-  if (reason) {
-    throw new InvalidMacPasskeyRpDomainError({ reason, inputLength });
-  }
-
-  return parsed.hostname;
-}
 
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
@@ -1279,33 +1161,9 @@ export function resolveMacPasskeySigningConfiguration(
     throw new MissingMacPasskeyProvisioningProfileError();
   }
 
-  const configuredRpDomains = env.T3CODE_CLERK_PASSKEY_RP_DOMAINS?.trim();
-  let rpDomains: readonly string[];
-  if (configuredRpDomains) {
-    rpDomains = configuredRpDomains.split(",").map(normalizePasskeyRpDomain);
-  } else {
-    const publishableKey = env.T3CODE_CLERK_PUBLISHABLE_KEY?.trim();
-    if (!publishableKey) {
-      throw new MissingMacPasskeyDomainConfigurationError();
-    }
-    let hostname: string;
-    try {
-      hostname = clerkFrontendApiHostnameFromPublishableKey(publishableKey);
-    } catch (cause) {
-      throw new InvalidMacPasskeyPublishableKeyError({ cause });
-    }
-    rpDomains = [normalizePasskeyRpDomain(hostname)];
-  }
-
-  const uniqueRpDomains = [...new Set(rpDomains)];
-  if (uniqueRpDomains.length === 0) {
-    throw new MissingMacPasskeyRpDomainError();
-  }
-
   return {
     appId: DESKTOP_APP_ID,
     teamId,
-    rpDomains: uniqueRpDomains,
     provisioningProfilePath,
   };
 }
@@ -1372,9 +1230,6 @@ export function renderMacPasskeyEntitlements(
   configuration: MacPasskeySigningConfiguration,
   webAuthn: MacWebAuthnEntitlements,
 ): string {
-  const associatedDomains = configuration.rpDomains
-    .map((domain) => `      <string>webcredentials:${escapeXml(domain)}</string>`)
-    .join("\n");
   const keychainAccessGroups = webAuthn.touchIdKeychainAccessGroup
     ? `
     <key>keychain-access-groups</key>
@@ -1395,11 +1250,7 @@ export function renderMacPasskeyEntitlements(
     <key>com.apple.application-identifier</key>
     <string>${escapeXml(`${configuration.teamId}.${configuration.appId}`)}</string>
     <key>com.apple.developer.team-identifier</key>
-    <string>${escapeXml(configuration.teamId)}</string>
-    <key>com.apple.developer.associated-domains</key>
-    <array>
-${associatedDomains}
-    </array>${keychainAccessGroups}${browserPasskeys}
+    <string>${escapeXml(configuration.teamId)}</string>${keychainAccessGroups}${browserPasskeys}
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
@@ -1478,38 +1329,15 @@ export const stageCursorSdkPlatformPackages = Effect.fn("stageCursorSdkPlatformP
   },
 );
 
-export interface ClerkPasskeyNativeArtifact {
+export interface NativeAddonArtifact {
   readonly packageName: string;
   readonly binaryFileName: string;
-}
-
-export function resolveClerkPasskeyNativeArtifacts(
-  platform: typeof BuildPlatform.Type,
-  arch: typeof BuildArch.Type,
-): readonly ClerkPasskeyNativeArtifact[] {
-  const architectures = arch === "universal" ? (["arm64", "x64"] as const) : [arch];
-
-  if (platform === "mac") {
-    return architectures.map((architecture) => ({
-      packageName: `@clerk/electron-passkeys-darwin-${architecture}`,
-      binaryFileName: `electron-passkeys.darwin-${architecture}.node`,
-    }));
-  }
-
-  if (platform === "win") {
-    return architectures.map((architecture) => ({
-      packageName: `@clerk/electron-passkeys-win32-${architecture}-msvc`,
-      binaryFileName: `electron-passkeys.win32-${architecture}-msvc.node`,
-    }));
-  }
-
-  return [];
 }
 
 export function resolveKeyringNativeArtifacts(
   platform: typeof BuildPlatform.Type,
   arch: typeof BuildArch.Type,
-): readonly ClerkPasskeyNativeArtifact[] {
+): readonly NativeAddonArtifact[] {
   const architectures = arch === "universal" ? (["arm64", "x64"] as const) : [arch];
 
   if (platform === "mac") {
@@ -1533,11 +1361,10 @@ export function resolveKeyringNativeArtifacts(
 }
 
 /**
- * Same nesting problem as the Clerk passkey binaries: pnpm keeps the platform
- * package under `@napi-rs/keyring`, electron-builder only retains collected
- * top-level dependencies, and the generated loader checks for a sibling
- * `keyring.<platform>.node` before falling back to the package. Staging the
- * binary beside `index.js` lets that first branch win.
+ * pnpm nests the platform package under `@napi-rs/keyring`, electron-builder
+ * only retains collected top-level dependencies, and the generated loader
+ * checks for a sibling `keyring.<platform>.node` before falling back to the
+ * package. Staging the binary beside `index.js` lets that first branch win.
  */
 const stageKeyringNativeBinaries = Effect.fn("stageKeyringNativeBinaries")(function* (
   stageAppDir: string,
@@ -1557,39 +1384,6 @@ const stageKeyringNativeBinaries = Effect.fn("stageKeyringNativeBinaries")(funct
       try: () => packageRequire.resolve(`${artifact.packageName}/${artifact.binaryFileName}`),
       catch: (cause) =>
         new KeyringNativePackageMissingError({
-          packageName: artifact.packageName,
-          binaryFileName: artifact.binaryFileName,
-          packageEntryPath,
-          platform,
-          arch,
-          cause,
-        }),
-    });
-    yield* fs.copyFile(sourcePath, path.join(packageDir, artifact.binaryFileName));
-  }
-});
-
-// pnpm nests the architecture package under @clerk/electron-passkeys, while electron-builder only
-// retains collected top-level dependencies. The SDK loader checks beside index.js first, so stage
-// the binary there and let electron-builder's native-addon handling unpack it from the ASAR.
-const stageClerkPasskeyNativeBinaries = Effect.fn("stageClerkPasskeyNativeBinaries")(function* (
-  stageAppDir: string,
-  platform: typeof BuildPlatform.Type,
-  arch: typeof BuildArch.Type,
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const packageEntryPath = yield* fs.realPath(
-    path.join(stageAppDir, "node_modules", "@clerk", "electron-passkeys", "index.js"),
-  );
-  const packageDir = path.dirname(packageEntryPath);
-  const packageRequire = NodeModule.createRequire(packageEntryPath);
-
-  for (const artifact of resolveClerkPasskeyNativeArtifacts(platform, arch)) {
-    const sourcePath = yield* Effect.try({
-      try: () => packageRequire.resolve(artifact.packageName),
-      catch: (cause) =>
-        new ClerkPasskeyNativePackageMissingError({
           packageName: artifact.packageName,
           binaryFileName: artifact.binaryFileName,
           packageEntryPath,
@@ -2808,8 +2602,8 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "T3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "T3 Code");
+    ? "Astrolabe (Nightly)"
+    : (desktopPackageJson.productName ?? "Astrolabe");
 }
 
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -2831,7 +2625,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: "Astrolabe-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,
@@ -2888,13 +2682,13 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         // macOS 26 offers Messages/Mail codes in every text field unless opted out.
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
         NSLocalNetworkUsageDescription:
-          "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
+          "Astrolabe connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
         NSScreenCaptureUsageDescription:
-          "T3 Code captures the active window when you use the window capture shortcut.",
+          "Astrolabe captures the active window when you use the window capture shortcut.",
         NSCameraUsageDescription:
-          "T3 Code lets commands run by terminals and coding agents use the camera.",
+          "Astrolabe lets commands run by terminals and coding agents use the camera.",
         NSMicrophoneUsageDescription:
-          "T3 Code lets commands run by terminals and coding agents use the microphone.",
+          "Astrolabe lets commands run by terminals and coding agents use the microphone.",
         // macOS lists an app under Default web browser only when it opens web
         // pages as documents as well as http and https links (see protocols).
         CFBundleDocumentTypes: [
@@ -2908,8 +2702,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: "Astrolabe",
+          schemes: ["astrolabe", "astrolabe-dev"],
         },
         {
           name: "Web site URL",
@@ -2958,28 +2752,28 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     const repoRoot = yield* RepoRoot;
     buildConfig.linux = {
       target: target === "AppImage" ? [target, "deb"] : [target],
-      executableName: "t3code",
+      executableName: "astrolabe",
       icon: "icons",
       category: "Development",
       synopsis: "Desktop GUI for coding agents",
-      maintainer: "T3 Tools <hello@t3.codes>",
+      maintainer: "Mercurian <venk@mercurian.ai>",
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: "Astrolabe",
+          schemes: ["astrolabe", "astrolabe-dev"],
         },
       ],
       desktop: {
         entry: {
-          StartupWMClass: "t3code",
+          StartupWMClass: "astrolabe",
         },
       },
     };
     buildConfig.deb = {
       // FPM runs outside the staged app directory, so source paths must be absolute.
       fpm: [
-        `${path.join(repoRoot, "apps/desktop/resources/linux/com.t3tools.t3code.metainfo.xml")}=/usr/share/metainfo/com.t3tools.t3code.metainfo.xml`,
-        `${path.join(repoRoot, "LICENSE")}=/usr/share/doc/t3code/copyright`,
+        `${path.join(repoRoot, "apps/desktop/resources/linux/com.mercurian.astrolabe.metainfo.xml")}=/usr/share/metainfo/com.mercurian.astrolabe.metainfo.xml`,
+        `${path.join(repoRoot, "LICENSE")}=/usr/share/doc/astrolabe/copyright`,
       ],
       // Debian 13 and Ubuntu 24.04 renamed some for 64-bit time; the old name
       // is the fallback for older releases.
@@ -3547,7 +3341,7 @@ export const validateWindowsPackagedPayload = Effect.fn(
     }
     const members = parseWslRuntimeArchiveMembers(listing.stdout);
     // A release archive unpacks to one directory named after its stem; the
-    // desktop app's WSL install script relies on that layout to find `t3`.
+    // desktop app's WSL install script relies on that layout to find `astrolabe`.
     const stem = wslRuntimeArchiveStem(input.appVersion, input.targetArch);
     const topLevel = new Set(members.map((member) => member.split("/")[0]));
     if (topLevel.size !== 1 || !topLevel.has(stem)) {
@@ -3557,7 +3351,7 @@ export const validateWindowsPackagedPayload = Effect.fn(
         ),
       );
     }
-    const requiredMembers = [`${stem}/t3`, `${stem}/client`, `${stem}/node_modules`];
+    const requiredMembers = [`${stem}/astrolabe`, `${stem}/client`, `${stem}/node_modules`];
     const missingMembers = requiredMembers.filter((member) => !members.includes(member));
     const ptyCandidates = [
       `${stem}/node_modules/node-pty/build/Release/pty.node`,
@@ -3903,7 +3697,9 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       ? path.join(stageAppDir, WINDOWS_SERVER_RESOURCE_SOURCE_DIR, WINDOWS_SERVER_ASAR_RESOURCE)
       : undefined;
   const stagePackageJson: StagePackageJson = {
-    name: "t3code",
+    // The package name keys the macOS keychain item that holds safeStorage's key ("astrolabe
+    // Safe Storage"); renaming it would orphan every secret saved by earlier builds.
+    name: "astrolabe",
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
@@ -3911,11 +3707,10 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     ...(macWebAuthn ? { t3codeWebAuthn: macWebAuthn } : {}),
     private: true,
     packageManager: rootPackageJson.packageManager,
-    description:
-      "T3 Code is an open-source desktop app for coding agents. Work with your existing agent subscriptions, review code changes, and run commands in your projects. Connect from desktop, web, or mobile to continue working remotely.",
+    description: "Astrolabe desktop build",
     license: "MIT",
-    homepage: "https://t3.codes",
-    author: "T3 Tools",
+    homepage: "https://astrolabe.sh",
+    author: "Mercurian",
     main: "apps/desktop/dist-electron/boot.cjs",
     build: yield* createBuildConfig(
       options.platform,
@@ -3967,7 +3762,6 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     }),
     { label: "vp install --prod", verbose: options.verbose },
   );
-  yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
   yield* stageKeyringNativeBinaries(stageAppDir, options.platform, options.arch);
 
   if (options.platform === "win" && windowsServerAsarPath) {
@@ -4202,7 +3996,7 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
     Flag.optional,
   ),
 }).pipe(
-  Command.withDescription("Build a desktop artifact for T3 Code."),
+  Command.withDescription("Build a desktop artifact for Astrolabe."),
   Command.withHandler((input) => Effect.flatMap(resolveBuildOptions(input), buildDesktopArtifact)),
 );
 

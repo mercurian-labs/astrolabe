@@ -102,11 +102,11 @@ const FLASH_FRAME_INTERVAL_MS = 16;
 const FLASH_PEAK_OPACITY = 0.08;
 const MAC_SCREEN_CAPTURE_SETTINGS_URL = MAC_PERMISSION_SETTINGS_URLS["screen-recording"];
 const MAC_SCREEN_CAPTURE_PERMISSION_MESSAGE =
-  "Allow Screen Recording in System Settings, then restart T3 Code.";
+  "Allow Screen Recording in System Settings, then restart Astrolabe.";
 const MAC_ACCESSIBILITY_PERMISSION_MESSAGE =
-  "Allow Accessibility in System Settings, then restart T3 Code.";
+  "Allow Accessibility in System Settings, then restart Astrolabe.";
 const MAC_BOTH_PERMISSIONS_MESSAGE =
-  "Allow Accessibility and Screen Recording in System Settings, then restart T3 Code.";
+  "Allow Accessibility and Screen Recording in System Settings, then restart Astrolabe.";
 const MAC_PERMISSION_MESSAGES = new Set([
   MAC_SCREEN_CAPTURE_PERMISSION_MESSAGE,
   MAC_ACCESSIBILITY_PERMISSION_MESSAGE,
@@ -289,11 +289,11 @@ function captureMode(platform: NodeJS.Platform): DesktopSnapShotState["mode"] {
   return platform === "darwin" || platform === "win32" ? "direct" : "unavailable";
 }
 
-export function shouldAnimateSnapShot(settings: SnapShotSystemAnimationSettings): boolean {
+function shouldAnimateSnapShot(settings: SnapShotSystemAnimationSettings): boolean {
   return settings.shouldRenderRichAnimation && !settings.prefersReducedMotion;
 }
 
-export function snapShotThumbnailSize(active: ActiveWindow | undefined): Electron.Size {
+function snapShotThumbnailSize(active: ActiveWindow | undefined): Electron.Size {
   if (!active) return { width: 2_560, height: 1_600 };
   return {
     width: Math.min(Math.max(active.bounds.width, 1), MAX_CAPTURE_WIDTH),
@@ -301,7 +301,7 @@ export function snapShotThumbnailSize(active: ActiveWindow | undefined): Electro
   };
 }
 
-export function snapShotIconDataUrl(
+function snapShotIconDataUrl(
   ...icons: ReadonlyArray<Electron.NativeImage | null | undefined>
 ): string | undefined {
   const icon = icons.find((candidate): candidate is Electron.NativeImage =>
@@ -324,7 +324,7 @@ async function appFileIcon(
   return Electron.app.getFileIcon(path, { size: "normal" }).catch(() => undefined);
 }
 
-export async function iconDataUrl(
+async function iconDataUrl(
   source: { readonly appIcon?: Electron.NativeImage | null },
   active: ActiveWindow | undefined,
   platform: NodeJS.Platform,
@@ -665,7 +665,7 @@ export class SnapShotFlash {
   }
 }
 
-export function snapShotFlashBounds(
+function snapShotFlashBounds(
   active: ActiveWindow | undefined,
   platform: NodeJS.Platform,
 ): Electron.Rectangle {
@@ -935,7 +935,7 @@ export const make = Effect.gen(function* () {
       const capturedAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
       if (snapshot.linuxActivationFailure) {
         yield* Effect.logWarning(
-          "The compositor could not activate T3 Code after the snapshot",
+          "The compositor could not activate Astrolabe after the snapshot",
           snapshot.linuxActivationFailure.cause,
         );
       }
@@ -1054,7 +1054,7 @@ export const make = Effect.gen(function* () {
     if (mode === "portal" && niriSocketPath()) {
       return {
         available: false,
-        message: "Configure the capture shortcut in your Niri config, not in T3 Code.",
+        message: "Configure the capture shortcut in your Niri config, not in Astrolabe.",
       };
     }
     if (mode === "portal" && isHyprlandCaptureSession()) {
@@ -1204,7 +1204,7 @@ export const make = Effect.gen(function* () {
         const { startNiriCaptureShortcut } = await import("./NiriCaptureShortcut.ts");
         return startNiriCaptureShortcut(linuxAppId, onCurrentShortcut, () => {
           void runPromise(
-            setShortcutFailure("The Niri capture endpoint disconnected. Restart T3 Code."),
+            setShortcutFailure("The Niri capture endpoint disconnected. Restart Astrolabe."),
           ).catch(() => undefined);
         });
       }).pipe(
@@ -1226,7 +1226,7 @@ export const make = Effect.gen(function* () {
         shortcutActionRegistered: registered,
         shortcutMessage: registered
           ? "Set up the shortcut to add it to your Niri config."
-          : "Could not start the Niri capture endpoint. Another T3 Code instance may be using it.",
+          : "Could not start the Niri capture endpoint. Another Astrolabe instance may be using it.",
         message: null,
       });
       return;

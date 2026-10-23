@@ -1,89 +1,50 @@
 {
   "fill": {
-    "automatic-gradient": "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "linear-gradient": [
+      "srgb:0.25098,0.23922,0.21961,1.00000",
+      "srgb:0.12549,0.11765,0.10980,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1
+      }
+    }
   },
   "groups": [
     {
       "layers": [
         {
-          "glass": true,
-          "image-name": "text.svg",
-          "name": "Text",
+          "glass": false,
+          "image-name": "pivot.svg",
+          "name": "Pivot",
           "position": {
-            "scale": 8.5,
+            "scale": 1,
             "translation-in-points": [0, 0]
           }
         },
         {
           "glass": false,
-          "image-name": "cloud-upper-right.svg",
-          "name": "Cloud Upper Right",
-          "opacity": 1,
+          "image-name": "mark.svg",
+          "name": "Mark",
           "position": {
-            "scale": 15,
-            "translation-in-points": [387.9605131881942, -134.30064713259117]
-          }
-        },
-        {
-          "glass": false,
-          "image-name": "cloud-lower-left.svg",
-          "name": "Cloud Lower Left",
-          "position": {
-            "scale": 25,
-            "translation-in-points": [-309.63750000000005, 268.66077693836917]
-          }
-        },
-        {
-          "glass": true,
-          "hidden": false,
-          "image-name": "background.svg",
-          "name": "Background",
-          "position": {
-            "scale": 8.1,
-            "translation-in-points": [0, -2.171875]
+            "scale": 1,
+            "translation-in-points": [0, 0]
           }
         }
       ],
       "shadow": {
-        "kind": "neutral",
-        "opacity": 0.6
+        "kind": "none",
+        "opacity": 0
       },
+      "specular": false,
       "translucency": {
-        "enabled": true,
-        "value": 0.2
-      }
-    },
-    {
-      "layers": [],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.6
-      },
-      "translucency": {
-        "enabled": true,
-        "value": 0.2
-      }
-    },
-    {
-      "layers": [],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.6
-      },
-      "translucency": {
-        "enabled": true,
-        "value": 0.2
-      }
-    },
-    {
-      "layers": [],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.6
-      },
-      "translucency": {
-        "enabled": true,
-        "value": 0.2
+        "enabled": false,
+        "value": 0
       }
     }
   ],

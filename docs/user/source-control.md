@@ -81,15 +81,15 @@ If no credentials are saved, T3 Code falls back to these variables in the server
 Restart the server after changing them:
 
 ```bash
-export T3CODE_BITBUCKET_ACCESS_TOKEN="your-access-token"
+export ASTROLABE_BITBUCKET_ACCESS_TOKEN="your-access-token"
 # or
-export T3CODE_BITBUCKET_EMAIL="you@example.com"
-export T3CODE_BITBUCKET_API_TOKEN="your-token"
+export ASTROLABE_BITBUCKET_EMAIL="you@example.com"
+export ASTROLABE_BITBUCKET_API_TOKEN="your-token"
 ```
 
 For a background service, put these `KEY=VALUE` entries in
 [`service.env`](./background-service.md#configure-the-service-environment)
-under T3 home, then run `t3 service restart`. Service installation and updates
+under T3 home, then run `astrolabe service restart`. Service installation and updates
 preserve that file.
 
 ### Azure DevOps
@@ -116,25 +116,27 @@ kept in the server's secret store, applies right away, and is used before `CAFE_
 sent to `git.cafe`; `CAFE_TOKEN` follows `CAFE_HOST` if you set it. Repositories on
 `staging.git.cafe` need their own login with `--host https://staging.git.cafe/api`.
 
-Line comments, reviewer requests, and labels are not available for GitCafe pull requests yet.
+Line comments are not available for GitCafe pull requests yet.
 Merging a stack lands it through GitCafe, and updating a branch restacks the layers above it.
 
 ## Start, clone, or publish a project
 
-To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K`), or
+To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K` twice), or
 **New project** under **Add Project** on any client, and type a name. T3 Code makes a Git
-repository in `~/.t3/projects` (the `projects` folder of your T3 data directory) with a README,
+repository in `~/.astrolabe/projects` (the `projects` folder of your T3 data directory) with a README,
 an icon, and a first commit, then opens a new thread in it. Until the project has a thread, new
 threads work in its folder, even when your default is a new worktree. The folder is named after the project,
 like `pinball-stats` for "Pinball Stats". Turn on **Create private repository on GitHub** to also
 publish it. If Git has no name or email on that machine, the project is created without the
 first commit.
 
-Use **Add Project** in the command palette (`Cmd/Ctrl+K`) to clone a repository. Choose a hosting
+Use **Add Project** in the command palette (`Cmd/Ctrl+K` twice) to clone a repository. Choose a hosting
 provider or paste a Git URL, then choose where to save it. The project opens right away while the
 clone runs in the background: you can write your first prompt, and sending waits until the files
 are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the
-toast or from the banner above the composer.
+toast or from the banner above the composer. When the host refuses the machine's SSH key, Astrolabe
+clones over HTTPS with Git's credentials for that host instead, and the project's remote uses the
+HTTPS URL.
 
 For a local Git repository without a remote, **Publish Repository** creates a hosted repository,
 adds it as `origin`, and pushes your commits. If there are no commits yet, it creates the remote;
@@ -155,11 +157,20 @@ uses the project's instructions and recent commit subjects.
 
 ## Review and merge
 
-Open **Pull requests** to review changes and comments, request reviewers, check out a branch,
-or merge. You can edit review titles and descriptions and your own comments where the host allows it.
-GitLab calls these merge requests.
+Open **Changes** in the icon rail to review changes and comments, request reviewers,
+check out a branch, or merge. You can edit review titles and descriptions and your own comments
+where the host allows it. GitLab calls these merge requests.
 
-On mobile, **Pull requests** lists reviews across your connected environments. Open a review
+The sidebar lists reviews, with search, sort and filters above them, and your wikis' change
+requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The project filter beside the
+search picks every repository's pull requests or one repository's, every wiki's change requests
+or one wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
+tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side by side, and the
+arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
+back after a restart.
+
+On mobile, **Changes** lists reviews across your connected environments, with your
+wikis' change requests in a **Wiki changes** group above them. Open a review
 to read its description, activity, commits, and changed files. Line comments stay as drafts
 until you submit the review. **Work on PR** opens a chat with the review attached; sending
 the first message prepares a worktree from the review's branch.
@@ -199,6 +210,40 @@ PR creation from Git actions continue to use the project's environment.
 
 For Azure DevOps, use the host website to change comments. Bitbucket does not support reopening a
 declined pull request.
+
+### Change groups
+
+A change group is change requests in different projects that are one effort, such as a pull
+request and the wiki change request documenting it. A thread's own change requests form a group on
+their own, and so do a coordinator's children's and a fork's; a change request with no thread joins
+the group whose titles share its issue key (`M-123`). Groups lead the **Changes** list,
+each with its state: **In sync**, **Docs behind**, **Waiting on code**, **Docs missing** or
+**Merged**. A thread in a group shows it beside its title.
+
+A group also lists the threads working on it: the thread it started from, the threads that opened
+its change requests, their forks and coordinator's children (including a fork that opened
+nothing), threads on one of its pull requests' branches, and threads whose title or branch names
+its issue key. A thread can be in more than one group.
+
+A group's tab lists its members and why each is there. **Merge with the code** merges the
+documentation the moment the code has; a merge the wiki refuses stays open for you. From the tab
+you can add a change request or a thread by hand or take one out, ask an agent for suggestions of
+either (you accept or dismiss each), and ask a thread to update documentation that fell behind or to
+draft missing documentation. **Open as a tab group** opens the group's threads, pull requests and
+documentation together behind a numbered marker. Beside a thread, the group's threads open as chat
+tabs after the one you're in, and its other tabs open beside every thread in the group: open or close
+one of them beside any of those threads and it opens or closes beside all of them, while each thread
+keeps its own layout. Clicking the marker shows the group's tab (a marker in the chat tabs shows it
+in the right panel); its menu collapses the group, merges it with the code or closes its tabs.
+Dragging a tab away doesn't take it out of the group: it gets a marker of its own where it lands.
+
+Which rules group change requests and threads, including **Same branch**, and what an agent may do,
+are under **Settings → Changes → Grouping**, for each environment. Turning a rule off keeps the
+change requests already grouped.
+
+On your phone, groups lead the **Changes** tab; a group shows its members and threads, opens each,
+takes one out, and turns **Merge with the code** on or off. Grouping is under **Settings →
+Changes**.
 
 ### Review guides
 

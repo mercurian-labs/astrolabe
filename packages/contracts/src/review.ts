@@ -65,5 +65,30 @@ export const ReviewDiffPreviewResult = Schema.Struct({
 });
 export type ReviewDiffPreviewResult = typeof ReviewDiffPreviewResult.Type;
 
+/**
+ * Astrolabe: the files a checkout's commits changed most recently, newest first, each once, for
+ * the Repositories section's list.
+ */
+export const ReviewRecentFilesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  limit: Schema.optionalKey(Schema.Number),
+});
+export type ReviewRecentFilesInput = typeof ReviewRecentFilesInput.Type;
+
+export const ReviewRecentFile = Schema.Struct({
+  path: Schema.String,
+  /** When the newest commit touching the file was made, ISO 8601. */
+  changedAt: Schema.String,
+  /** That commit's subject line. */
+  subject: Schema.String,
+});
+export type ReviewRecentFile = typeof ReviewRecentFile.Type;
+
+export const ReviewRecentFilesResult = Schema.Struct({
+  cwd: Schema.String,
+  files: Schema.Array(ReviewRecentFile),
+});
+export type ReviewRecentFilesResult = typeof ReviewRecentFilesResult.Type;
+
 export const ReviewDiffPreviewError = Schema.Union([VcsError, GitCommandError]);
 export type ReviewDiffPreviewError = typeof ReviewDiffPreviewError.Type;

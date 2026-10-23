@@ -6,6 +6,7 @@ import "./index.css";
 
 import { prepareProviderAuthDelivery } from "./providerAuthDelivery";
 import { isElectron } from "./env";
+import { ManagedRelayAuthProvider } from "./cloud/managedAuth";
 import { hasCloudPublicConfig } from "./cloud/publicConfig";
 import { getRouter } from "./router";
 import {
@@ -27,8 +28,6 @@ if (isElectron) {
   syncDocumentWindowControlsOverlayClass();
 }
 
-const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
-
 // A failed split-chunk fetch usually means the hashed assets went stale under
 // a deploy; one guarded reload picks up the fresh index.html.
 let chunkLoadFailed = false;
@@ -43,32 +42,16 @@ window.addEventListener("vite:preloadError", (event) => {
 
 const app = <AppRoot router={router} />;
 
-// Loading only the selected runtime as a split chunk keeps every Clerk byte out
-// of the startup graph for local-mode users, and keeps the bundled clerk-js out
-// of the browser build entirely.
-const managedAuthShellModule =
-  clerkPublishableKey && hasCloudPublicConfig()
-    ? isElectron
-      ? import("./components/clerk/ElectronManagedAuthShell")
-      : import("./components/clerk/BrowserManagedAuthShell")
-    : null;
-
-export const startup = Promise.all([
-  managedAuthShellModule?.then((module) => module.default) ?? null,
-  router.load(),
-])
-  .then(([ManagedAuthShell]) => {
+export const startup = router
+  .load()
+  .then(() => {
     // A route chunk failure still resolves router.load(): the error is parked in
     // the lazy component and surfaces through the route error boundary.
     if (reloadScheduled) return;
     if (!chunkLoadFailed) clearChunkReloadGuard();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
-        {ManagedAuthShell && clerkPublishableKey ? (
-          <ManagedAuthShell publishableKey={clerkPublishableKey}>{app}</ManagedAuthShell>
-        ) : (
-          app
-        )}
+        {hasCloudPublicConfig() ? <ManagedRelayAuthProvider>{app}</ManagedRelayAuthProvider> : app}
       </React.StrictMode>,
     );
   })

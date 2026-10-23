@@ -96,7 +96,7 @@ const RELEASES: Readonly<Record<string, CodexReleaseAsset>> = {
     archiveBytes: 153839991,
   },
 };
-export const resolveCodexReleaseAsset = (platform: NodeJS.Platform, arch: string) =>
+const resolveCodexReleaseAsset = (platform: NodeJS.Platform, arch: string) =>
   RELEASES[`${platform}-${arch}`] ?? null;
 export class CodexInstallationError extends Schema.TaggedError<CodexInstallationError>()(
   "CodexInstallationError",
@@ -284,7 +284,7 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
       return executable;
     },
     Effect.mapError(
-      wrapFailure("resolve", "Codex is not installed in T3 Code. Install it to continue."),
+      wrapFailure("resolve", "Codex is not installed in Astrolabe. Install it to continue."),
     ),
   );
   const acquire = Effect.fn("CodexInstallation.acquire")(function* () {

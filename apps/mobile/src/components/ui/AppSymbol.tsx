@@ -9,6 +9,7 @@ import IconAlertCircle from "@tabler/icons-react-native/IconAlertCircle";
 import IconAlertTriangle from "@tabler/icons-react-native/IconAlertTriangle";
 import IconApps from "@tabler/icons-react-native/IconApps";
 import IconArchive from "@tabler/icons-react-native/IconArchive";
+import IconCalendarClock from "@tabler/icons-react-native/IconCalendarClock";
 import IconArrowBackUp from "@tabler/icons-react-native/IconArrowBackUp";
 import IconArrowDown from "@tabler/icons-react-native/IconArrowDown";
 import IconArrowForwardUp from "@tabler/icons-react-native/IconArrowForwardUp";
@@ -26,6 +27,7 @@ import IconArrowsMinimize from "@tabler/icons-react-native/IconArrowsMinimize";
 import IconBan from "@tabler/icons-react-native/IconBan";
 import IconBellRinging from "@tabler/icons-react-native/IconBellRinging";
 import IconBolt from "@tabler/icons-react-native/IconBolt";
+import IconBook from "@tabler/icons-react-native/IconBook";
 import IconBox from "@tabler/icons-react-native/IconBox";
 import IconBrain from "@tabler/icons-react-native/IconBrain";
 import IconCamera from "@tabler/icons-react-native/IconCamera";
@@ -166,6 +168,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "bell.badge": IconBellRinging,
   "bolt.circle": IconBolt,
   "bolt.horizontal.circle": IconBolt,
+  book: IconBook,
   brain: IconBrain,
   "cable.connector": IconPlug,
   camera: IconCamera,
@@ -178,6 +181,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "circle.dashed": IconCircleDashed,
   "circle.inset.filled": IconCircleDot,
   "circle.dashed.inset.filled": IconCircleDot,
+  "calendar.badge.clock": IconCalendarClock,
   clock: IconClock,
   timer: IconClock,
   ticket: IconTicket,

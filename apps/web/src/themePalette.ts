@@ -6,7 +6,6 @@ import {
   BUILT_IN_THEMES,
   EMBER_THEME,
   GROVE_THEME,
-  IRIS_THEME,
   OCEAN_THEME,
   T3_CHAT_THEME,
   T3_CODE_LIGHT_THEME_COLORS,
@@ -20,12 +19,12 @@ import {
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 
-export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
+export { EMBER_THEME, GROVE_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
-export const T3_CHAT_THEME_ID = "t3-chat" as const;
+const T3_CHAT_THEME_ID = "t3-chat" as const;
 const GROVE_THEME_ID = "grove" as const;
-export const OCEAN_THEME_ID = "ocean" as const;
+const OCEAN_THEME_ID = "ocean" as const;
 const EMBER_THEME_ID = "ember" as const;
 const IRIS_THEME_ID = "iris" as const;
 export const THEME_FILE_VERSION = 1 as const;
@@ -133,6 +132,8 @@ export function lenientThemeColorOverrides(
       overrides[role as ThemeColorRole] = normalized;
     }
   }
+  // Astrolabe: a theme from before the focus bar had its own role draws it in its focus color.
+  if (overrides.focus && !overrides.focusBar) overrides.focusBar = overrides.focus;
   return overrides;
 }
 
@@ -558,6 +559,25 @@ function solveOklchLightness(
   return { ...base, L: direction === "lighter" ? high : low };
 }
 
+/**
+ * Moves only the lightness, so a color that is too dim on `surface` keeps its
+ * hue instead of collapsing to black or white.
+ */
+export function readableThemeColorOn(color: string, surface: string, minContrast: number): string {
+  const parsedColor = parseThemeColor(color);
+  const parsedSurface = parseThemeColor(surface);
+  if (!parsedColor || !parsedSurface) return color;
+  const surfaceRgb = themeOklchToRgb(parsedSurface.color);
+  if (themeContrastRatio(themeOklchToRgb(parsedColor.color), surfaceRgb) >= minContrast) {
+    return color;
+  }
+  const direction = themeRelativeLuminance(surfaceRgb) < 0.179 ? "lighter" : "darker";
+  const solved = solveOklchLightness(parsedColor.color, surfaceRgb, minContrast, direction);
+  // Return the 8-bit color the solver measured: the unrounded OKLCH can round
+  // to a neighbor just under the target once it is stored and read back.
+  return themeRgbToHexColor(themeOklchToRgb(solved));
+}
+
 const STANDARD_STATUS_COLORS = {
   light: {
     error: "#fb2c36",
@@ -702,6 +722,7 @@ export function createVividThemeColors(
     border: themeColor(border),
     input: themeColor(input),
     focus: themeRgbToThemeColor(accentRgb),
+    focusBar: themeRgbToThemeColor(accentRgb),
     accent: themeRgbToThemeColor(accentRgb),
     accentForeground: themeRgbToThemeColor(accentForeground),
     secondary: themeColor(secondary),
@@ -1377,6 +1398,7 @@ const APP_THEME_VARIABLES: Readonly<Record<ThemeColorRole, string>> = {
   border: "--app-theme-border",
   input: "--app-theme-input",
   focus: "--app-theme-focus",
+  focusBar: "--app-theme-focus-bar",
   accent: "--app-theme-accent",
   accentForeground: "--app-theme-accent-foreground",
   secondary: "--app-theme-secondary",

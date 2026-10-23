@@ -1,16 +1,16 @@
-import { useAuth } from "@clerk/react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { CheckIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 import { APP_DISPLAY_NAME, DESKTOP_DOWNLOAD_URL } from "~/branding";
+import { useCloudAccount } from "~/cloud/account";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { isElectron } from "../env";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { useRelayEnvironmentDiscovery } from "../state/environments";
 import { CommandBlock } from "./CommandBlock";
-import { useT3ConnectAuthPrompt } from "./clerk/useT3ConnectAuthPrompt";
+import { t3ConnectAuthPrompt } from "./clerk/useT3ConnectAuthPrompt";
 import { CloudEnvironmentConnectRows } from "./cloud/CloudEnvironmentConnectList";
 import { Button } from "./ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
@@ -43,7 +43,7 @@ export function HostedEmptyState() {
                 ? "Turn it back on, or connect a different computer."
                 : cloudEnabled
                   ? "Your agents run on your computer."
-                  : "Your agents run on your computer. Start T3 Code there first."}
+                  : "Your agents run on your computer. Start Astrolabe there first."}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
@@ -63,9 +63,9 @@ export function HostedEmptyState() {
   );
 }
 
-export function T3ConnectSteps() {
-  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
-  const { openAuthPrompt } = useT3ConnectAuthPrompt();
+function T3ConnectSteps() {
+  const { isLoaded, isSignedIn } = useCloudAccount();
+  const { openAuthPrompt } = t3ConnectAuthPrompt();
   // Adding the first computer unmounts this screen. Wait for all health checks
   // so every compatible registration is queued before that happens.
   const [autoAddedComputers] = useState(() => new Set<EnvironmentId>());
@@ -88,7 +88,7 @@ export function T3ConnectSteps() {
         )}
       </SetupStep>
       <SetupStep number={2}>
-        <RunOnComputer command="npx t3 connect" />
+        <RunOnComputer command="npx @mercurian/astrolabe connect" />
         {isSignedIn ? (
           <div className="mt-4 space-y-1.5">
             <CloudEnvironmentConnectRows
@@ -119,7 +119,7 @@ function PairingSteps() {
   return (
     <>
       <SetupStep number={1}>
-        <RunOnComputer command="npx t3 pair" />
+        <RunOnComputer command="npx @mercurian/astrolabe pair" />
       </SetupStep>
       <SetupStep number={2}>
         <Button render={<Link to="/settings/connections" />} size="sm">

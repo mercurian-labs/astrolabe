@@ -197,20 +197,43 @@ export function keybindingConflictLabels(
   return [...new Set(conflicts)].toSorted();
 }
 
-export interface KeybindingGroup {
+export interface KeybindingGroup<
+  Row extends { readonly command: KeybindingCommand } = KeybindingRow,
+> {
   readonly id: string;
   readonly title: string;
-  readonly rows: ReadonlyArray<KeybindingRow>;
+  readonly rows: ReadonlyArray<Row>;
 }
 
 const KEYBINDING_GROUPS = [
   {
     id: "navigation",
     title: "Navigation",
-    prefixes: ["sidebar", "rightPanel", "commandPalette", "filePicker", "projectSearch", "editor"],
+    prefixes: [
+      "sidebar",
+      "rightPanel",
+      "commandPalette",
+      // Astrolabe: the keyboard menu, the Command Palette, and the commands they reach.
+      "whichKey",
+      "commandLine",
+      "section",
+      "chatTab",
+      "pane",
+      "tab",
+      "buffer",
+      "document",
+      "search",
+      "wiki",
+      "filePicker",
+      "projectSearch",
+      "editor",
+    ],
   },
   { id: "threads", title: "Threads", prefixes: ["thread", "chat", "pullRequest"] },
-  { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker"] },
+  // Astrolabe: `draft` is the command line's `:w`.
+  { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker", "draft"] },
+  // Astrolabe: the Markdown editors' formatting keys.
+  { id: "editor", title: "Editors", prefixes: ["markdown"] },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
   { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
@@ -226,10 +249,10 @@ function keybindingGroupFor(command: KeybindingCommand): { id: string; title: st
   );
 }
 
-export function groupKeybindingRows(
-  rows: ReadonlyArray<KeybindingRow>,
-): ReadonlyArray<KeybindingGroup> {
-  const rowsByGroup = new Map<string, Array<KeybindingRow>>();
+export function groupKeybindingRows<
+  Row extends { readonly command: KeybindingCommand } = KeybindingRow,
+>(rows: ReadonlyArray<Row>): ReadonlyArray<KeybindingGroup<Row>> {
+  const rowsByGroup = new Map<string, Array<Row>>();
   for (const row of rows) {
     const group = keybindingGroupFor(row.command);
     const bucket = rowsByGroup.get(group.id);
@@ -240,6 +263,19 @@ export function groupKeybindingRows(
     const groupRows = rowsByGroup.get(group.id);
     return groupRows ? [{ id: group.id, title: group.title, rows: groupRows }] : [];
   });
+}
+
+/**
+ * Astrolabe: shortcut rows and leader or ex rows in one order: by command as the page sorts
+ * them, a command's shortcuts first.
+ */
+export function mergeKeybindingRows<Other extends { readonly command: KeybindingCommand }>(
+  rows: ReadonlyArray<KeybindingRow>,
+  others: ReadonlyArray<Other>,
+): ReadonlyArray<KeybindingRow | Other> {
+  return [...rows, ...others].toSorted((left, right) =>
+    compareCommands(left.command, right.command, (command) => command),
+  );
 }
 
 export function buildKeybindingRows(
@@ -283,25 +319,6 @@ export function buildKeybindingRows(
   });
 
   return rowsWithConflicts;
-}
-
-// Filtering keeps the row objects so rows that stay visible while the query
-// changes receive the same props and skip rendering.
-export function filterKeybindingRows(
-  rows: ReadonlyArray<KeybindingRow>,
-  query: string,
-): ReadonlyArray<KeybindingRow> {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length === 0) return rows;
-  return rows.filter((row) => {
-    return (
-      row.command.toLowerCase().includes(normalizedQuery) ||
-      commandLabel(row.command).toLowerCase().includes(normalizedQuery) ||
-      row.key.toLowerCase().includes(normalizedQuery) ||
-      row.when.toLowerCase().includes(normalizedQuery) ||
-      row.source.toLowerCase().includes(normalizedQuery)
-    );
-  });
 }
 
 function collectWhenIdentifiersFromNode(
@@ -360,11 +377,30 @@ export function buildKeybindingCommandOptions(
   return [...commands].toSorted((left, right) => compareCommands(left, right, commandLabel));
 }
 
+/** Astrolabe: labels the command ids do not spell out well. */
+const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+  "commandPalette.toggle": "Search",
+  "commandLine.open": "Command Palette",
+  "section.new": "New Thread or Document",
+  "section.threads": "Section: Agents",
+  "section.pullRequests": "Section: Changes",
+  "tab.close": "Close Tab or Pane Tab",
+  "draft.write": "Send Draft or Save Note",
+  "buffer.open": "Switch to Thread",
+  "document.open": "Open Document",
+  "focus.left": "Focus Left",
+  "focus.down": "Focus Down",
+  "focus.up": "Focus Up",
+  "focus.right": "Focus Right",
+  "scroll.down": "Scroll Down",
+  "scroll.up": "Scroll Up",
+};
+
 export function commandLabel(command: KeybindingCommand): string {
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";
-  if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message as Steer";
+  if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
   if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
   if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread ID";
   const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);
@@ -372,6 +408,10 @@ export function commandLabel(command: KeybindingCommand): string {
   const usagePeriod = WINDOW_OPTIONS.find((option) => option.command === command);
   if (usagePeriod) return `Usage: Period: ${usagePeriod.label}`;
   if (command === "view.reopenClosed") return "Reopen Closed Tab";
+  // Astrolabe: the which-key menu, Search (upstream's palette), and the Command Palette.
+  if (command === "whichKey.open") return "Keyboard Menu: Open";
+  const astrolabeLabel = ASTROLABE_COMMAND_LABELS[command];
+  if (astrolabeLabel) return astrolabeLabel;
   if (command === "preview.focusUrl") return "Preview: Focus URL";
   const raw = String(command);
   if (raw.startsWith("script.") && raw.endsWith(".run")) {

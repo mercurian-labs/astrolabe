@@ -1,7 +1,6 @@
 import { ListRow } from "../../components/ui/ListRow";
 import * as Dialog from "../../components/ui/Dialog";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
-import { useAuth } from "@clerk/expo";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import {
@@ -29,6 +28,7 @@ import {
   useRemoteConnections,
 } from "../../state/use-remote-environment-registry";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { useCloudAccount } from "../cloud/account";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { CloudEnvironmentRows } from "./CloudEnvironmentRows";
 import { splitEnvironmentSections } from "./environmentSections";
@@ -356,7 +356,7 @@ function PairingScanCard(props: {
           )}
         </View>
         <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>
-          Scan the code from t3 pair or desktop Connections settings
+          Scan the code from astrolabe pair or desktop Connections settings
         </Text>
       </View>
     </Pressable>
@@ -364,7 +364,7 @@ function PairingScanCard(props: {
 }
 
 function T3ConnectSection() {
-  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
+  const { isLoaded, isSignedIn } = useCloudAccount();
   const navigation = useNavigation();
   const { connectedEnvironments, onSetEnvironmentEnabled, onRemoveEnvironmentPress } =
     useRemoteConnections();
@@ -376,7 +376,7 @@ function T3ConnectSection() {
   return (
     <View collapsable={false} className="gap-2">
       <Text className="px-4 text-sm font-t3-medium text-foreground-muted">
-        Or use the managed relay
+        Or use remote access
       </Text>
       {isSignedIn ? (
         <CloudEnvironmentRows
@@ -387,7 +387,7 @@ function T3ConnectSection() {
         />
       ) : (
         <ListRow
-          label="Sign in to T3 Connect"
+          label="Sign in"
           description="Reach your machines from anywhere, no network setup."
           disabled={!isLoaded}
           onPress={() => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" })}

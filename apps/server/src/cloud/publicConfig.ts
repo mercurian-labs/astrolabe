@@ -1,26 +1,19 @@
-import {
-  connectLoopbackRedirectUri,
-  CONNECT_OAUTH_SCOPES,
-  DEFAULT_HOSTED_APP_URL,
-} from "@t3tools/shared/connectAuth";
-import { clerkFrontendApiUrlFromPublishableKey } from "@t3tools/shared/relayAuth";
+import { normalizeAuthOrigin } from "@t3tools/shared/mercurianAccount";
 import { isRelayTracingEnabled } from "@t3tools/shared/otelEnvironment";
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
 import * as Config from "effect/Config";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 
 declare const __T3CODE_BUILD_RELAY_URL__: string | undefined;
-declare const __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
-declare const __T3CODE_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__: string | undefined;
+declare const __T3CODE_BUILD_AUTH_URL__: string | undefined;
 declare const __T3CODE_BUILD_RELAY_CLIENT_OTLP_TRACES_URL__: string | undefined;
 declare const __T3CODE_BUILD_RELAY_CLIENT_OTLP_TRACES_DATASET__: string | undefined;
 declare const __T3CODE_BUILD_RELAY_CLIENT_OTLP_TRACES_TOKEN__: string | undefined;
 
-const CLOUD_CLI_OAUTH_LOOPBACK_PORT = 34338;
-const CLOUD_CLI_OAUTH_SCOPES = CONNECT_OAUTH_SCOPES;
+/** Names the CLI on the device approval page. */
+const CLOUD_CLI_CLIENT_ID = "astrolabe-cli";
 
 function validateRelayUrl(value: string) {
   const relayUrl = normalizeSecureRelayUrl(value);
@@ -29,7 +22,7 @@ function validateRelayUrl(value: string) {
         new Config.ConfigError(
           new Schema.SchemaError(
             new SchemaIssue.InvalidValue({
-              message: "Relay URL must be a secure absolute HTTPS origin.",
+              message: "Remote access URL must be a secure absolute HTTPS origin.",
             }),
           ),
         ),
@@ -54,15 +47,8 @@ const buildTimeRelayUrl =
   typeof __T3CODE_BUILD_RELAY_URL__ === "undefined"
     ? ""
     : (normalizeSecureRelayUrl(__T3CODE_BUILD_RELAY_URL__) ?? "");
-const buildTimeClerkPublishableKey = readBuildTimeValue(
-  typeof __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__ === "undefined"
-    ? undefined
-    : __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__,
-);
-const buildTimeClerkCliOAuthClientId = readBuildTimeValue(
-  typeof __T3CODE_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__ === "undefined"
-    ? undefined
-    : __T3CODE_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__,
+const buildTimeAuthUrl = readBuildTimeValue(
+  typeof __T3CODE_BUILD_AUTH_URL__ === "undefined" ? undefined : __T3CODE_BUILD_AUTH_URL__,
 );
 const buildTimeRelayClientTracing = {
   tracesUrl: readBuildTimeValue(
@@ -109,37 +95,27 @@ export function makeRelayUrlConfig(fallback = buildTimeRelayUrl) {
 
 export const relayUrlConfig = makeRelayUrlConfig();
 
-export const hostedAppUrlConfig = makePublicValueConfig(
-  "T3CODE_HOSTED_APP_URL",
-  DEFAULT_HOSTED_APP_URL,
-).pipe(Config.mapEffect(validateHostedAppUrl));
+/**
+ * The sign-in pages' origin (app.astrolabe.sh). Overridable so a CLI
+ * can point at a local cloud stack, which serves plain HTTP on loopback.
+ */
+export function makeAuthUrlConfig(fallback = buildTimeAuthUrl) {
+  return makePublicValueConfig("T3CODE_AUTH_URL", fallback).pipe(Config.mapEffect(validateAuthUrl));
+}
 
-function validateHostedAppUrl(value: string) {
-  try {
-    const url = new URL(value);
-    const isLoopbackHttp =
-      url.protocol === "http:" &&
-      (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
-    if (
-      (url.protocol !== "https:" && !isLoopbackHttp) ||
-      url.pathname !== "/" ||
-      url.search !== "" ||
-      url.hash !== ""
-    ) {
-      throw new Error("invalid hosted app origin");
-    }
-    return Effect.succeed(url.origin);
-  } catch {
-    return Effect.fail(
-      new Config.ConfigError(
-        new Schema.SchemaError(
-          new SchemaIssue.InvalidValue({
-            message: "Hosted app URL must be an absolute HTTPS origin (or HTTP loopback origin).",
-          }),
+function validateAuthUrl(value: string) {
+  const origin = normalizeAuthOrigin(value);
+  return origin === null
+    ? Effect.fail(
+        new Config.ConfigError(
+          new Schema.SchemaError(
+            new SchemaIssue.InvalidValue({
+              message: "Auth URL must be an absolute HTTPS origin (or a local HTTP origin).",
+            }),
+          ),
         ),
-      ),
-    );
-  }
+      )
+    : Effect.succeed(origin);
 }
 
 function makePublicValueConfig(name: string, fallback: string) {
@@ -149,63 +125,35 @@ function makePublicValueConfig(name: string, fallback: string) {
   );
 }
 
-export interface CloudCliOAuthConfig {
-  readonly tokenEndpoint: string;
-  readonly deviceAuthorizationEndpoint: string;
+/**
+ * The CLI signs in with Better Auth's device authorization grant, whatever
+ * machine it runs on: the user approves a short code at app.astrolabe.sh/device
+ * from any browser. The grant returns a Better Auth session token, which the
+ * CLI trades at `/token` for the short-lived relay token every client uses.
+ */
+export interface CloudCliAuthConfig {
+  readonly deviceCodeEndpoint: string;
+  readonly deviceTokenEndpoint: string;
+  readonly sessionEndpoint: string;
+  readonly relayTokenEndpoint: string;
   readonly clientId: string;
-  readonly loopbackPort: number;
-  readonly redirectUri: string;
-  readonly scopes: typeof CLOUD_CLI_OAUTH_SCOPES;
 }
 
-export function makeCloudCliOAuthConfig({
-  clerkPublishableKeyFallback = buildTimeClerkPublishableKey,
-  clerkCliOAuthClientIdFallback = buildTimeClerkCliOAuthClientId,
-}: {
-  readonly clerkPublishableKeyFallback?: string;
-  readonly clerkCliOAuthClientIdFallback?: string;
-} = {}) {
-  return Config.all({
-    clerkPublishableKey: makePublicValueConfig(
-      "T3CODE_CLERK_PUBLISHABLE_KEY",
-      clerkPublishableKeyFallback,
-    ),
-    clientId: makePublicValueConfig(
-      "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID",
-      clerkCliOAuthClientIdFallback,
-    ),
-  }).pipe(
-    Config.mapEffect(({ clerkPublishableKey, clientId }) =>
-      Effect.try({
-        try: () => clerkFrontendApiUrlFromPublishableKey(clerkPublishableKey),
-        catch: (cause) =>
-          new Config.ConfigError(
-            new ConfigProvider.SourceError({
-              message: "Failed to derive Clerk Frontend API URL from the publishable key.",
-              cause,
-            }),
-          ),
-      }).pipe(
-        Effect.map(
-          (clerkFrontendApiUrl) =>
-            ({
-              tokenEndpoint: `${clerkFrontendApiUrl}/oauth/token`,
-              deviceAuthorizationEndpoint: `${clerkFrontendApiUrl}/oauth/device_authorization`,
-              clientId,
-              loopbackPort: CLOUD_CLI_OAUTH_LOOPBACK_PORT,
-              redirectUri: connectLoopbackRedirectUri(CLOUD_CLI_OAUTH_LOOPBACK_PORT),
-              scopes: CLOUD_CLI_OAUTH_SCOPES,
-            }) satisfies CloudCliOAuthConfig,
-        ),
-      ),
-    ),
+export function makeCloudCliAuthConfig(fallback = buildTimeAuthUrl) {
+  return makeAuthUrlConfig(fallback).pipe(
+    Config.map((authUrl): CloudCliAuthConfig => ({
+      deviceCodeEndpoint: `${authUrl}/api/auth/device/code`,
+      deviceTokenEndpoint: `${authUrl}/api/auth/device/token`,
+      sessionEndpoint: `${authUrl}/api/auth/get-session`,
+      relayTokenEndpoint: `${authUrl}/api/auth/token`,
+      clientId: CLOUD_CLI_CLIENT_ID,
+    })),
   );
 }
 
-export const cloudCliOAuthConfig = makeCloudCliOAuthConfig();
+export const cloudCliAuthConfig = makeCloudCliAuthConfig();
 
 export const hasCloudPublicConfig = Boolean(
   (normalizeSecureRelayUrl(process.env.T3CODE_RELAY_URL ?? "") ?? buildTimeRelayUrl) &&
-  (process.env.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() || buildTimeClerkPublishableKey) &&
-  (process.env.T3CODE_CLERK_CLI_OAUTH_CLIENT_ID?.trim() || buildTimeClerkCliOAuthClientId),
+  (process.env.T3CODE_AUTH_URL?.trim() || buildTimeAuthUrl),
 );

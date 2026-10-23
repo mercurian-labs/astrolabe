@@ -1,3 +1,5 @@
+import { uuidv4 } from "../../lib/uuid";
+import { ThreadUndoNotice } from "./ThreadUndoNotice";
 import { Toolbar } from "../../components/ui/Toolbar";
 import { use } from "react";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
@@ -26,8 +28,10 @@ import { HomeScreen } from "./HomeScreen";
 import { HomeHeader } from "./HomeHeader";
 import { useHomeListOptions } from "./home-list-options";
 import { useAtomValueWhileVisible, useHomeRouteVisible } from "./home-route-visibility";
-import { useHomeThreadSelection } from "./home-thread-navigation";
+import { useHomeThreadRouteSelection, useHomeThreadSelection } from "./home-thread-navigation";
 import { buildHomeProjectScopes } from "./homeThreadList";
+import { threadsProjectFilterOptions } from "../projects/threadsProjectFilter";
+import { useWikiCheckouts } from "../wikis/useWikiCheckouts";
 import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
 import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
@@ -39,7 +43,7 @@ export function HomeRouteScreen() {
   const columnMetrics = useNativeColumnLayoutMetrics();
   const deviceType = useDeviceType();
   const headerWidth = nativePrimaryColumn ? (columnMetrics?.width ?? windowWidth) : windowWidth;
-  const { layout, panes, primarySidebarSearchQuery, setPrimarySidebarSearchQuery } =
+  const { layout, panes, primarySidebarSearchQuery, setPrimarySidebarSearchQuery, startNewTask } =
     useAdaptiveWorkspaceLayout();
   const projects = useProjects();
   // Streaming turns rewrite thread shells many times a second. While a Thread
@@ -64,11 +68,12 @@ export function HomeRouteScreen() {
     else setLocalSearchQuery(query);
   };
   const handleSelectThread = useHomeThreadSelection();
+  const selectThreadRoute = useHomeThreadRouteSelection();
   const handleNewThreadOnBranch = useCallback(
     (thread: EnvironmentThreadShell) => {
-      navigation.navigate("NewTaskSheet", {
-        screen: "NewTaskDraft",
-        params: {
+      selectThreadRoute({
+        draft: {
+          requestId: uuidv4(),
           environmentId: String(thread.environmentId),
           projectId: String(thread.projectId),
           branch: thread.branch,
@@ -76,7 +81,7 @@ export function HomeRouteScreen() {
         },
       });
     },
-    [navigation],
+    [selectThreadRoute],
   );
 
   useEffect(() => {
@@ -136,17 +141,19 @@ export function HomeRouteScreen() {
       setSelectedProjectKey(resolvedProjectKey);
     }
   }, [projectScopeKey, resolvedProjectKey, setSelectedProjectKey]);
+  // Astrolabe: repositories, then wikis, each under a heading that picks them all.
+  const checkouts = useWikiCheckouts();
   const projectFilterOptions = useMemo(
     () =>
-      buildHomeProjectScopes({
-        projects,
-        environmentId: selectedEnvironmentId,
-        projectGroupingMode: listOptions.projectGroupingMode,
-      }).map((scope) => ({
-        key: scope.key,
-        label: scope.title,
-      })),
-    [listOptions.projectGroupingMode, projects, selectedEnvironmentId],
+      threadsProjectFilterOptions(
+        buildHomeProjectScopes({
+          projects,
+          environmentId: selectedEnvironmentId,
+          projectGroupingMode: listOptions.projectGroupingMode,
+        }),
+        checkouts,
+      ),
+    [checkouts, listOptions.projectGroupingMode, projects, selectedEnvironmentId],
   );
   const selectedProjectKey = projectFilterOptions.some(
     (project) => project.key === resolvedProjectKey,
@@ -176,11 +183,11 @@ export function HomeRouteScreen() {
             <Toolbar.Button
               accessibilityLabel="New task"
               icon="square.and.pencil"
-              onPress={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+              onPress={startNewTask}
             />
           </Toolbar>
         ) : null}
-        {Platform.OS === "android" ? <AndroidScreenHeader title="Threads" /> : null}
+        {Platform.OS === "android" ? <AndroidScreenHeader title="Agents" /> : null}
         <WorkspaceEmptyDetail
           onAddConnection={
             Platform.OS === "android" && !catalogState.hasConnections
@@ -192,9 +199,7 @@ export function HomeRouteScreen() {
               : undefined
           }
           onStartNewTask={
-            Platform.OS === "android" && panes.primarySidebarVisible
-              ? undefined
-              : () => navigation.navigate("NewTaskSheet", { screen: "NewTask" })
+            Platform.OS === "android" && panes.primarySidebarVisible ? undefined : startNewTask
           }
         />
       </>
@@ -204,7 +209,7 @@ export function HomeRouteScreen() {
   return (
     <AndroidHomeFabLayout
       disabled={workspace !== null && Platform.OS !== "android"}
-      onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+      onStartNewTask={startNewTask}
     >
       <>
         {/* Restore the header after leaving split view; screen options are
@@ -227,7 +232,6 @@ export function HomeRouteScreen() {
           />
         )}
         <HomeHeader
-          usesWorkspaceToolbar={workspace !== null}
           environments={environments}
           projects={projectFilterOptions}
           searchQuery={searchQuery}
@@ -248,7 +252,7 @@ export function HomeRouteScreen() {
             })
           }
           onSearchQueryChange={setSearchQuery}
-          onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+          onStartNewTask={startNewTask}
         />
 
         <HomeScreen
@@ -286,16 +290,16 @@ export function HomeRouteScreen() {
           onDeletePendingTask={confirmDeletePendingTask}
           onNewThreadOnBranch={handleNewThreadOnBranch}
           onNewThreadInProject={(project) => {
-            navigation.navigate("NewTaskSheet", {
-              screen: "NewTaskDraft",
-              params: {
+            selectThreadRoute({
+              draft: {
+                requestId: uuidv4(),
                 environmentId: String(project.environmentId),
                 projectId: String(project.id),
                 title: project.title,
               },
             });
           }}
-          onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+          onStartNewTask={startNewTask}
           pendingTasks={pendingTasks}
           projectGroupingMode={listOptions.projectGroupingMode}
           projects={projects}
@@ -306,6 +310,7 @@ export function HomeRouteScreen() {
           selectedProjectKey={selectedProjectKey}
           threads={threads}
         />
+        <ThreadUndoNotice visible={visible} />
       </>
     </AndroidHomeFabLayout>
   );

@@ -17,14 +17,17 @@ import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Console from "effect/Console";
 import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
+import * as Terminal from "effect/Terminal";
 import { Command, Flag, GlobalFlag, Prompt } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
@@ -61,68 +64,106 @@ const jsonFlag = Flag.Boolean("json").pipe(
 const isCloudCliTokenManagerError = Schema.is(CliTokenManager.CloudCliTokenManagerError);
 
 const headlessFlag = Flag.Boolean("headless").pipe(
-  Flag.withDescription("Authorize without a local browser using the OAuth device flow."),
+  Flag.withDescription("Authorize without opening a browser on this machine."),
   Flag.withDefault(false),
 );
 
 /**
- * Inside an SSH session there is no local browser to complete the loopback
- * OAuth callback, so the device authorization grant is the only flow that
- * can work.
+ * Inside an SSH session the browser that would open is on the wrong machine,
+ * so the CLI only prints the approval link.
  */
-export const headlessSessionConfig = Config.all({
+const headlessSessionConfig = Config.all({
   sshConnection: Config.String("SSH_CONNECTION").pipe(Config.option),
   sshTty: Config.String("SSH_TTY").pipe(Config.option),
 }).pipe(
   Config.map(({ sshConnection, sshTty }) => Option.isSome(sshConnection) || Option.isSome(sshTty)),
 );
 
-const showDeviceAuthorizationPrompt = (prompt: CliTokenManager.DeviceAuthorizationPrompt) =>
-  Console.log(formatDeviceAuthorizationPrompt(prompt));
+const boldTerminalText = (value: string): string => `\u001b[1m${value}\u001b[22m`;
 
 function formatDeviceAuthorizationPrompt(
   prompt: CliTokenManager.DeviceAuthorizationPrompt,
+  offerBrowser: boolean,
 ): string {
   const minutes = Math.max(1, Math.round(Duration.toMinutes(prompt.expiresIn)));
   return [
-    "Headless authorization",
-    "Open this URL on a device with a browser:",
+    offerBrowser
+      ? "Open this URL to sign in to Astrolabe:"
+      : "Open this URL on a device with a browser:",
     `  ${prompt.verificationUriComplete ?? prompt.verificationUri}`,
     "",
     `Confirm this code when asked: ${prompt.userCode}`,
     "",
+    ...(offerBrowser ? [`Press ${boldTerminalText("Enter")} to open it in your browser.`] : []),
     `Waiting for approval (expires in ${minutes} min). Press Ctrl+C to cancel.`,
   ].join("\n");
 }
 
-const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
+/**
+ * Opens the approval page each time Enter is pressed. Reading keys puts the
+ * terminal in raw mode, so Ctrl+C or Ctrl+D arrives as a key instead of
+ * SIGINT; it fails with `QuitError` so the caller stops waiting. Input that
+ * only ends, as a script's or an agent's shell does, stops the reading and
+ * leaves the code waiting for approval elsewhere.
+ */
+const openBrowserOnEnter = Effect.fn("cloud.cli.open_browser_on_enter")(function* (url: string) {
+  const terminal = yield* Terminal.Terminal;
+  const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
+  const input = yield* terminal.readInput;
+  while (true) {
+    const event = yield* Queue.take(input).pipe(Effect.catch(() => Effect.never));
+    const keyName = event.key.name.toLowerCase();
+    if (event.key.ctrl && (keyName === "c" || keyName === "d")) {
+      return yield* new Terminal.QuitError({});
+    }
+    if (keyName !== "enter" && keyName !== "return") continue;
+    yield* externalLauncher
+      .launchBrowser(url)
+      .pipe(
+        Effect.catch(() =>
+          Console.warn("Could not open a browser on this device. Open the URL above manually."),
+        ),
+      );
+  }
+});
+
+/** Reuses the stored sign-in, or signs in with a device code and stores it. */
+export const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
   readonly headless: boolean;
 }) {
   const tokens = yield* CliTokenManager.CloudCliTokenManager;
-  const useOutOfBandOAuth = options.headless || (yield* headlessSessionConfig);
-  if (!useOutOfBandOAuth) {
-    const authorization = yield* tokens.get;
-    if (authorization._tag === "Authorized") {
-      return authorization.token.identity ?? null;
-    }
-    yield* Console.log("\nHeadless mode enabled. A new authorization link is ready below.");
-  }
   const existing = yield* tokens.getExisting.pipe(
     Effect.catchTags({
       CloudCliCredentialRefreshError: () =>
-        Console.log(
-          "The stored T3 Connect credential could not be refreshed; signing in again.",
-        ).pipe(Effect.as(Option.none())),
+        Console.log("The stored remote access sign-in has ended; signing in again.").pipe(
+          Effect.as(Option.none()),
+        ),
     }),
   );
   if (Option.isSome(existing)) {
     return existing.value.identity ?? null;
   }
-  const { token, identity } = yield* CliTokenManager.deviceAuthorizationLogin(
-    showDeviceAuthorizationPrompt,
+  const offerBrowser = !(options.headless || (yield* headlessSessionConfig));
+  const approvalUrl = yield* Deferred.make<string>();
+  const login = CliTokenManager.deviceAuthorizationLogin((prompt) =>
+    Console.log(formatDeviceAuthorizationPrompt(prompt, offerBrowser)).pipe(
+      Effect.andThen(
+        Deferred.succeed(approvalUrl, prompt.verificationUriComplete ?? prompt.verificationUri),
+      ),
+    ),
+  );
+  // Once the prompt shows, Enter opens the browser while the code is polled,
+  // and Ctrl+C's QuitError interrupts the poll and ends the command.
+  const { token, identity } = yield* (
+    offerBrowser
+      ? Effect.raceFirst(
+          login,
+          Deferred.await(approvalUrl).pipe(Effect.flatMap(openBrowserOnEnter), Effect.scoped),
+        )
+      : login
   ).pipe(
     Effect.mapError((cause) =>
-      isCloudCliTokenManagerError(cause)
+      Terminal.isQuitError(cause) || isCloudCliTokenManagerError(cause)
         ? cause
         : new CliTokenManager.CloudCliAuthorizationError({ cause }),
     ),
@@ -163,16 +204,16 @@ function formatRelayClientStatus(executable: RelayClient.RelayClientStatus): Rea
             ? "managed install"
             : "configured override";
       return [
-        `  Relay client: available via ${source}`,
+        `  Remote access client: available via ${source}`,
         `    Path: ${executable.executablePath}`,
         `    Version: ${executable.version}`,
       ];
     }
     case "missing":
-      return ["  Relay client: not installed"];
+      return ["  Remote access client: not installed"];
     case "unsupported":
       return [
-        `  Relay client: unsupported on ${executable.platform}-${executable.arch}`,
+        `  Remote access client: unsupported on ${executable.platform}-${executable.arch}`,
         `    Managed version: ${executable.version}`,
       ];
   }
@@ -184,28 +225,28 @@ function formatCloudStatus(status: CloudCliStatus, options?: { readonly json?: b
   }
 
   const provisioned = status.revoked
-    ? "removed from T3 Connect"
+    ? "removed from remote access"
     : status.linked
       ? "provisioned"
       : status.desired && status.authenticated
         ? "pending server startup"
         : "not provisioned";
   const nextStep = !status.authenticated
-    ? "Run `t3 connect link` to authorize and enable T3 Connect."
+    ? "Run `astrolabe connect link` to sign in and turn on remote access."
     : status.revoked
-      ? "Run `t3 connect link` to link this environment again."
+      ? "Run `astrolabe connect link` to link this environment again."
       : !status.desired
-        ? "Run `t3 connect link` to enable T3 Connect."
+        ? "Run `astrolabe connect link` to turn on remote access."
         : !status.linked
-          ? "Start T3 to provision the environment link and launch its managed tunnel."
+          ? "Start Astrolabe to provision the environment link and launch its remote access tunnel."
           : undefined;
 
   return [
-    "T3 Connect",
+    "Remote access",
     `  Exposure: ${status.desired ? "enabled" : "disabled"}`,
     `  Authorization: ${status.authenticated ? "stored credential" : "missing"}`,
     `  Environment link: ${provisioned}`,
-    `  Relay: ${status.relayUrl ?? "not provisioned"}`,
+    `  Remote access URL: ${status.relayUrl ?? "not provisioned"}`,
     `  Publish agent activity: ${status.publishAgentActivity ? "enabled" : "disabled"}`,
     ...formatRelayClientStatus(status.relayClient),
     ...(!status.desired || status.linkMode !== "managed"
@@ -213,7 +254,7 @@ function formatCloudStatus(status: CloudCliStatus, options?: { readonly json?: b
       : status.reachability === null
         ? [
             "",
-            "No running server answered, so reachability was not checked. Check the background service with `t3 service status`.",
+            "No running server answered, so reachability was not checked. Check the background service with `astrolabe service status`.",
           ]
         : status.reachability.status === "reachable"
           ? [
@@ -230,7 +271,7 @@ const CLOUD_CLI_LIVE_SERVER_TIMEOUT = Duration.seconds(5);
 const confirmRelayClientInstall = (version: string) =>
   Prompt.run(
     Prompt.Confirm({
-      message: `The T3 relay client is required for T3 Connect. Download and install version ${version}?`,
+      message: `Remote access needs its client app. Download and install version ${version}?`,
       initial: false,
     }),
   );
@@ -256,7 +297,7 @@ function relayClientInstallProgressMessage(stage: RelayClientInstallProgressStag
 
 const reportRelayClientInstallProgress = (event: RelayClientInstallProgressEvent) =>
   event.type === "progress"
-    ? Console.log(`Relay client: ${relayClientInstallProgressMessage(event.stage)}...`)
+    ? Console.log(`Remote access client: ${relayClientInstallProgressMessage(event.stage)}...`)
     : Effect.void;
 
 export const acquireRelayClientForLink = Effect.fn("cloud.cli.acquire_relay_client_for_link")(
@@ -288,7 +329,7 @@ const withCloudCliSessionToken = <A, E, R>(
     environmentAuth.issueSession({
       scopes: [scope],
       subject: "cloud-cli",
-      label: "t3 connect cli",
+      label: "astrolabe connect cli",
     }),
     (issued) => run(issued.token),
     (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
@@ -382,7 +423,7 @@ const waitForReachability = Effect.fn("cloud.cli.wait_for_reachability")(functio
   yield* Console.error(
     formatAlertBox(
       last === null
-        ? "✕ Could not check T3 Connect\n  The T3 server on this machine did not answer.\n  Fix: run `t3 service status`, then `t3 connect status`."
+        ? "✕ Could not check remote access\n  The Astrolabe server on this machine did not answer.\n  Fix: run `astrolabe service status`, then `astrolabe connect status`."
         : formatReachabilityFailure(last),
     ),
   );
@@ -403,7 +444,7 @@ const logCloudDisconnectFailure = (
   clearAuthorization: boolean,
   cause: Cause.Cause<unknown>,
 ) =>
-  Effect.logWarning("T3 Connect disconnect operation failed.").pipe(
+  Effect.logWarning("Turning off remote access failed.").pipe(
     Effect.annotateLogs({
       operation,
       clearAuthorization,
@@ -441,7 +482,7 @@ const unlinkRelayEnvironment = Effect.fn("cloud.cli.unlink_relay_environment")(f
  * A missing CLI login or a failed relay DELETE leaves that record registered, so
  * those outcomes warn to deregister it from the T3 Connect account page.
  */
-export const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_results")(
+const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_results")(
   function* (input: {
     readonly clearAuthorization: boolean;
     readonly liveResult: LiveCloudActionResult;
@@ -454,10 +495,10 @@ export const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconne
         input.liveResult.cause,
       );
       yield* Console.warn(
-        "T3 Connect is disabled, but the running server could not stop its tunnel.\nRestart that server to stop the connector.",
+        "Remote access is off, but the running server could not stop its tunnel.\nRestart that server to stop the connector.",
       );
     } else {
-      yield* Console.log("T3 Connect is disabled locally.");
+      yield* Console.log("Remote access is off locally.");
     }
 
     if (Exit.isFailure(input.relayResult)) {
@@ -468,15 +509,15 @@ export const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconne
       );
       yield* Console.warn(
         input.clearAuthorization
-          ? "Could not revoke the relay-side environment record before signing out.\nThe stored CLI authorization was still removed locally."
-          : "Could not revoke the relay-side environment record yet.\nRun `t3 connect unlink` again when the relay is reachable, or deregister it from the T3 Connect page of your T3 account.",
+          ? "Could not turn off remote access for this environment before signing out.\nThe stored CLI authorization was still removed locally."
+          : "Could not turn off remote access for this environment yet.\nRun `astrolabe connect unlink` again when remote access is reachable, or remove it from the Remote access page of your Astrolabe account.",
       );
     } else if (input.relayResult.value.status === "not-authenticated") {
       yield* Console.warn(
-        "The relay-side environment record was not revoked.\nDeregister it from the T3 Connect page of your T3 account, or run `t3 connect login` and retry.",
+        "Remote access for this environment was not turned off.\nRemove it from the Remote access page of your Astrolabe account, or run `astrolabe connect login` and retry.",
       );
     } else if (input.relayResult.value.status === "revoked") {
-      yield* Console.log("Revoked the relay-side environment record.");
+      yield* Console.log("Turned off remote access for this environment.");
     }
   },
 );
@@ -502,7 +543,7 @@ const disconnectCloud = Effect.fn("cloud.cli.disconnect")(function* (options: {
 
   if (options.clearAuthorization) {
     yield* Console.log(
-      "Signed out of T3 Connect locally.\nThe background service is managed separately with `t3 service`.",
+      "Signed out locally.\nThe background service is managed separately with `astrolabe service`.",
     );
   }
 });
@@ -514,6 +555,7 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
     E,
     | ServerSecretStore.ServerSecretStore
     | CliTokenManager.CloudCliTokenManager
+    | ExternalLauncher.ExternalLauncher
     | RelayClient.RelayClient
     | EnvironmentAuth.EnvironmentAuth
     | BootService.BootService
@@ -533,10 +575,8 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
   const minimumLogLevel = options?.quietLogs ? "Error" : config.logLevel;
   const layerRuntime = Layer.mergeAll(
     ServerSecretStore.layer,
-    CliTokenManager.layer.pipe(
-      Layer.provide(ServerSecretStore.layer),
-      Layer.provide(ExternalLauncher.layer),
-    ),
+    CliTokenManager.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+    ExternalLauncher.layer,
     RelayClient.layerCloudflared({ baseDir: config.baseDir }),
     EnvironmentAuth.layerRuntime,
     CliService.layer(config),
@@ -552,7 +592,7 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
 const connectedAs = (identity: string | null): string => (identity ? ` as ${identity}` : "");
 
 function formatRelayClientReady(version: string): string {
-  return `✓ Relay client ready · cloudflared ${version}`;
+  return `✓ Remote access client ready · cloudflared ${version}`;
 }
 
 const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(function* (options: {
@@ -568,7 +608,9 @@ const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(functi
       reportRelayClientInstallProgress,
     );
     if (Option.isNone(installed)) {
-      yield* Console.log("T3 Connect setup cancelled. The relay client was not installed.");
+      yield* Console.log(
+        "Remote access setup cancelled. The remote access client was not installed.",
+      );
       return null;
     }
     yield* Console.log(formatRelayClientReady(installed.value.version));
@@ -578,7 +620,7 @@ const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(functi
   yield* CliState.setCliDesiredCloudLink(true, publishOnly ? "publish_only" : "managed");
   if (yield* CliState.dropRevokedCloudLink) {
     yield* Console.log(
-      "Removed the link T3 Connect no longer accepts. The next start links this environment again.",
+      "Removed the link remote access no longer accepts. The next start links this environment again.",
     );
   }
   if (publishOnly) {
@@ -592,12 +634,12 @@ const connectLoginCommand = Command.make("login", {
   ...projectLocationFlags,
   headless: headlessFlag,
 }).pipe(
-  Command.withDescription("Authorize the T3 Connect CLI without enabling remote access."),
+  Command.withDescription("Sign in for remote access without turning it on."),
   Command.withHandler((flags) =>
     runCloudCommand(
       flags,
       Effect.gen(function* () {
-        yield* Console.log("T3 Connect\n");
+        yield* Console.log("Remote access\n");
         const identity = yield* authorizeCli(flags);
         yield* Console.log(`✓ Signed in${connectedAs(identity)}`);
       }),
@@ -610,23 +652,23 @@ const connectLinkCommand = Command.make("link", {
   headless: headlessFlag,
   publishOnly: Flag.Boolean("publish-only").pipe(
     Flag.withDescription(
-      "Link to publish agent activity only — no managed tunnel. Reach this environment out of band (e.g. Tailscale).",
+      "Link to publish agent activity only — no remote access tunnel. Reach this environment out of band (e.g. Tailscale).",
     ),
     Flag.withDefault(false),
   ),
 }).pipe(
-  Command.withDescription("Authorize this environment for T3 Connect on next start."),
+  Command.withDescription("Turn on remote access for this environment on next start."),
   Command.withHandler((flags) =>
     runCloudCommand(
       flags,
       Effect.gen(function* () {
-        yield* Console.log("T3 Connect\n");
+        yield* Console.log("Remote access\n");
         const linked = yield* linkEnvironmentForConnect(flags);
         if (linked) {
           const serveCommand = yield* resolveCliCommand("serve");
           yield* Console.log(
             flags.publishOnly
-              ? `✓ Authorized${connectedAs(linked.identity)}\n\nNext\n  Start T3 to publish agent activity (no managed tunnel).`
+              ? `✓ Authorized${connectedAs(linked.identity)}\n\nNext\n  Start Astrolabe to publish agent activity (no remote access tunnel).`
               : `✓ Authorized${connectedAs(linked.identity)}\n\nNext\n  Start the server with \`${serveCommand}\` to make this machine reachable.`,
           );
         }
@@ -640,7 +682,7 @@ const connectStatusCommand = Command.make("status", {
   json: jsonFlag,
 }).pipe(
   Command.withDescription(
-    "Show T3 Connect setup and check that other devices can reach this machine.",
+    "Show remote access setup and check that other devices can reach this machine.",
   ),
   Command.withHandler((flags) =>
     runCloudCommand(
@@ -726,7 +768,7 @@ const connectPublishCommand = Command.make("publish", {
           const linkedNow = Option.isSome(yield* secrets.get(CLOUD_LINKED_USER_ID));
           if (!linkedNow && (yield* CliState.readCliDesiredLinkMode) === "publish_only") {
             yield* CliState.setCliDesiredCloudLink(false);
-            yield* Console.log("Cancelled the pending publish-only T3 Connect link.");
+            yield* Console.log("Cancelled the pending publish-only remote access link.");
           }
           yield* Console.log("Publishing agent activity disabled.");
           return;
@@ -740,7 +782,7 @@ const connectPublishCommand = Command.make("publish", {
 
         if (!(yield* tokens.hasCredential)) {
           yield* Console.log(
-            "Run `t3 connect login` first so this environment can be authorized to publish.",
+            "Run `astrolabe connect login` first so this environment can be authorized to publish.",
           );
           return;
         }
@@ -750,13 +792,13 @@ const connectPublishCommand = Command.make("publish", {
         // link is pending at all.
         if (yield* CliState.readCliDesiredCloudLink) {
           yield* Console.log(
-            "A T3 Connect link is already pending. Start T3 to finish provisioning it; publishing starts once it links.",
+            "A remote access link is already pending. Start Astrolabe to finish provisioning it; publishing starts once it links.",
           );
           return;
         }
         yield* CliState.setCliDesiredCloudLink(true, "publish_only");
         yield* Console.log(
-          "Restart T3 to finish authorizing this environment to publish (no managed tunnel is created).",
+          "Restart Astrolabe to finish authorizing this environment to publish (no remote access tunnel is created).",
         );
       }),
     ),
@@ -766,7 +808,7 @@ const connectPublishCommand = Command.make("publish", {
 const connectUnlinkCommand = Command.make("unlink", {
   ...projectLocationFlags,
 }).pipe(
-  Command.withDescription("Disable T3 Connect while retaining the stored authorization."),
+  Command.withDescription("Turn off remote access but keep the stored sign-in."),
   Command.withHandler((flags) =>
     runCloudCommand(flags, disconnectCloud({ clearAuthorization: false })),
   ),
@@ -775,46 +817,46 @@ const connectUnlinkCommand = Command.make("unlink", {
 const connectLogoutCommand = Command.make("logout", {
   ...projectLocationFlags,
 }).pipe(
-  Command.withDescription("Disable T3 Connect and clear the stored CLI authorization."),
+  Command.withDescription("Turn off remote access and clear the stored sign-in."),
   Command.withHandler((flags) =>
     runCloudCommand(flags, disconnectCloud({ clearAuthorization: true })),
   ),
 );
 
-export const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding")(
-  function* (outcome: CliService.ServiceOnboardingOutcome) {
-    if (outcome === "pending") {
-      yield* Console.log(
-        "\nBackground service restarting\n\nThe server establishes the T3 Connect link once it is back. Check the log above if it does not come back.",
-      );
-      return;
-    }
-    if (outcome === "ready") {
-      const platform = yield* HostProcess.Platform;
-      yield* Console.log(
-        platform === "darwin"
-          ? "\n✓ Background service ready\n\nT3 Code is set to run while you are logged in to this Mac. The server establishes the T3 Connect link on startup."
-          : "\n✓ Background service ready\n\nT3 Code is set to keep running after you log out. The server establishes the T3 Connect link on startup.",
-      );
-      return;
-    }
-    const serveCommand = yield* resolveCliCommand("serve");
+const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding")(function* (
+  outcome: CliService.ServiceOnboardingOutcome,
+) {
+  if (outcome === "pending") {
     yield* Console.log(
-      `\nNext\n  Start the server with \`${serveCommand}\` to make this machine reachable.\n  It checks that other devices can reach this machine when it starts.`,
+      "\nBackground service restarting\n\nThe server establishes the remote access link once it is back. Check the log above if it does not come back.",
     );
-  },
-);
+    return;
+  }
+  if (outcome === "ready") {
+    const platform = yield* HostProcess.Platform;
+    yield* Console.log(
+      platform === "darwin"
+        ? "\n✓ Background service ready\n\nAstrolabe is set to run while you are logged in to this Mac. The server establishes the remote access link on startup."
+        : "\n✓ Background service ready\n\nAstrolabe is set to keep running after you log out. The server establishes the remote access link on startup.",
+    );
+    return;
+  }
+  const serveCommand = yield* resolveCliCommand("serve");
+  yield* Console.log(
+    `\nNext\n  Start the server with \`${serveCommand}\` to make this machine reachable.\n  It checks that other devices can reach this machine when it starts.`,
+  );
+});
 
 export const connectCommand = Command.make("connect", {
   ...projectLocationFlags,
   headless: headlessFlag,
 }).pipe(
-  Command.withDescription("Set up T3 Connect for this machine."),
+  Command.withDescription("Set up remote access for this machine."),
   Command.withHandler((flags) =>
     runCloudCommand(
       flags,
       Effect.gen(function* () {
-        yield* Console.log("T3 Connect\n");
+        yield* Console.log("Remote access\n");
         const linked = yield* linkEnvironmentForConnect(flags);
         if (!linked) {
           return;

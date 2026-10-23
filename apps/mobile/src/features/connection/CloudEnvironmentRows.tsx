@@ -1,7 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ConnectionTraceId } from "./ConnectionTraceId";
-import { useAuth } from "@clerk/expo";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import {
   hasSavedBearerRoute,
@@ -26,6 +25,7 @@ import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-typ
 import { serverEnvironment } from "../../state/server";
 import { environmentPresentations } from "../../state/presentation";
 import { availableCloudEnvironmentPresentation } from "../cloud/cloudEnvironmentPresentation";
+import { useCloudAccount } from "../cloud/account";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { useConnectionDiagnosis } from "./ConnectionDiagnosisDetails";
@@ -43,13 +43,11 @@ interface CloudEnvironmentRowsProps {
 }
 
 export function CloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
-  // Showcase captures run without a Clerk publishable key, so `ClerkProvider`
-  // is never mounted and any `useAuth` call throws — the fixture states whether
-  // the rows are signed in instead of asking Clerk.
+  // Showcase captures run without cloud config, so the fixture states whether
+  // the rows are signed in instead of asking the account.
   if (props.showcaseSignedIn !== undefined) {
     return props.showcaseSignedIn ? <CloudEnvironmentRowsContent {...props} /> : null;
   }
-  // No cloud config means no `ClerkProvider` either, so `useAuth` would throw.
   if (!hasCloudPublicConfig()) {
     return <ConnectedOnlyCloudEnvironmentRows {...props} />;
   }
@@ -57,7 +55,7 @@ export function CloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
 }
 
 function SignedInCloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
-  const { isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
+  const { isSignedIn } = useCloudAccount();
   if (!isSignedIn) return <ConnectedOnlyCloudEnvironmentRows {...props} />;
   return <CloudEnvironmentRowsContent {...props} />;
 }
@@ -102,7 +100,9 @@ function CloudEnvironmentRowsContent(
     <View collapsable={false} className={cn("gap-3", showHeader && "mt-5")}>
       {showHeader ? (
         <View className="px-1">
-          <Text className="text-sm font-t3-bold uppercase text-foreground-muted">T3 Connect</Text>
+          <Text className="text-sm font-t3-bold uppercase text-foreground-muted">
+            Remote access
+          </Text>
         </View>
       ) : null}
 
@@ -157,7 +157,7 @@ function CloudEnvironmentRowsContent(
       !controller.relayDiscovery.isRefreshing ? (
         <View collapsable={false} className="gap-3 rounded-[24px] bg-grouped-card p-5">
           <Text className="text-base font-t3-bold text-foreground">
-            Could not load T3 Connect environments
+            Could not load your remote environments
           </Text>
           <Text className="text-sm text-foreground-muted">{controller.relayDiscovery.error}</Text>
           {controller.relayDiscovery.errorTraceId ? (

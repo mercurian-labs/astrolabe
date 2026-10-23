@@ -1,15 +1,15 @@
-# T3 Connect Relay
+# Remote access relay
 
 > [!NOTE]
-> Sign in to T3 Connect from the app under Settings > Connections.
+> Sign in for remote access from the app under Settings > Connections.
 
-The relay is the hosted control plane for T3 Connect. It helps clients discover and connect to
+The relay is the hosted control plane for remote access. It helps clients discover and connect to
 remote environments, manages the cloud-side records needed for those connections, and delivers
 optional mobile notifications and Live Activities.
 
 The relay is intentionally not in the hot path for normal T3 Code traffic. After a client connects,
 regular API and WebSocket traffic goes directly between that client and the selected environment.
-See the [T3 Connect architecture note](../../docs/internals/t3-connect.md) for the larger system
+See the [remote access architecture note](../../docs/internals/t3-connect.md) for the larger system
 design.
 
 ## Responsibilities
@@ -86,7 +86,7 @@ vp run --filter t3code-relay deploy
 The stack provisions the Cloudflare Worker and queues, managed endpoint resources, database
 connectivity, and relay tracing resources. Copy [`infra/relay/.env.example`](./.env.example) to
 `infra/relay/.env` and fill in the deployment-specific values before deploying. Alchemy loads that
-file from the relay directory. Runtime secrets include Clerk, APNs, and optional FCM credentials. Set
+file from the relay directory. Runtime secrets include APNs and optional FCM credentials. Set
 `APNS_ENABLED=false` for an Android-only development deployment without Apple credentials. Production adopts
 the configured API and tunnel DNS zones as retained Cloudflare resources. Personal stages reference
 the production-owned zones.
@@ -145,9 +145,8 @@ The `production` GitHub environment must define these Actions variables:
   creates no monitors or health dashboard. See
   [Relay alerts](../../docs/operations/relay-observability.md#alerts).
 - `RELAY_WARNING_NOTIFIER_ID`, optional, the Axiom notifier for relay warnings
-- `CLERK_PUBLISHABLE_KEY`
-- `CLERK_JWT_AUDIENCE`
-- `CLERK_JWT_TEMPLATE`
+- `ACCOUNT_JWT_ISSUER`, the Astrolabe sign-in origin (https://app.astrolabe.sh) whose tokens the relay accepts
+- `AUTH_URL`, the same origin, read only by the release workflow for client builds
 - `APNS_ENVIRONMENT`
 - `APNS_TEAM_ID`
 - `APNS_KEY_ID`
@@ -155,18 +154,17 @@ The `production` GitHub environment must define these Actions variables:
 
 The `production` GitHub environment must define these Actions secrets:
 
-- `CLERK_SECRET_KEY`
 - `APNS_PRIVATE_KEY`
 - `FCM_SERVICE_ACCOUNT` when Android push is enabled
 
 The account-scoped repository credentials are consumed by Alchemy while provisioning relay stages; they
 are not bound into the relay Worker. The production deployment uses an Axiom personal access token,
 so `AXIOM_ORG_ID` must accompany `AXIOM_TOKEN`. The release workflow reads the production relay's
-derived public URL and Clerk publishable key from the same environment for downstream desktop, CLI,
+derived public URL and `AUTH_URL` from the same environment for downstream desktop, CLI,
 and hosted web builds.
 
 See:
 
-- [T3 Connect setup](../../docs/operations/connect-setup.md) for Clerk keys, JWT templates, and sign-up restrictions.
+- [Remote access setup](../../docs/operations/connect-setup.md) for client configuration and sign-up restrictions.
 - [Relay Observability](../../docs/operations/relay-observability.md) for deployment tracing and diagnostics.
-- [T3 Connect architecture](../../docs/internals/t3-connect.md) for environment linking and trust boundaries.
+- [Remote access architecture](../../docs/internals/t3-connect.md) for environment linking and trust boundaries.

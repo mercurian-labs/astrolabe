@@ -523,7 +523,10 @@ export function PullRequestFiltersMenu({
           options={CHECKS_OPTIONS}
           onChange={(checks) => updateFilter("checks", checks)}
         />
-        {hostOptions.length > 2 ? (
+        {/* Astrolabe: a lone host shows too when it cannot be read, so the reason its pull
+            requests are missing is here, as T3 Code's always-shown host menu had it. */}
+        {hostOptions.length > 2 ||
+        hostOptions.some((option) => option.unavailable !== undefined) ? (
           <>
             <MenuSeparator />
             <PullRequestFilterRadioSubmenu

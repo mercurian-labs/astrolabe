@@ -87,7 +87,7 @@ function unexpectedPasswordPromptError(error: never): never {
   throw new Error(`Unhandled desktop SSH password prompt error: ${String(error)}`);
 }
 
-export function toSshPasswordPromptError(
+function toSshPasswordPromptError(
   cause: DesktopSshPasswordPrompts.DesktopSshPasswordPromptRequestError,
 ): SshPasswordPromptError {
   let message: string;
@@ -97,7 +97,7 @@ export function toSshPasswordPromptError(
       break;
     case "DesktopSshPromptWindowUnavailableError":
     case "DesktopSshPromptPresentationError":
-      message = "T3 Code window is not available for SSH authentication.";
+      message = "Astrolabe window is not available for SSH authentication.";
       break;
     case "DesktopSshPromptTimedOutError":
       message = `SSH authentication timed out for ${cause.destination}.`;

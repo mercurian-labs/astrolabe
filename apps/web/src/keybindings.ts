@@ -19,6 +19,7 @@ import {
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
+import { isEditorFocused } from "./lib/editorFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
 export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
@@ -32,6 +33,11 @@ export interface ShortcutMatchContext {
   isWeb: boolean;
   isDesktop: boolean;
   editableFocus?: boolean;
+  /**
+   * Astrolabe: an app text editor (composer, wiki note) has focus. Resolving a keypress reads it
+   * from the page when unset, so no listener has to pass it.
+   */
+  editorFocus?: boolean;
   [key: string]: boolean;
 }
 
@@ -87,6 +93,14 @@ function matchesWhenClause(
 ): boolean {
   if (!whenAst) return true;
   return evaluateWhenNode(whenAst, context);
+}
+
+/** Astrolabe: whether a binding's `when` holds in `options.context` (unset conditions false). */
+export function whenClauseHolds(
+  whenAst: KeybindingWhenNode | undefined,
+  options?: ShortcutMatchOptions,
+): boolean {
+  return matchesWhenClause(whenAst, resolveContext(options));
 }
 
 export function shortcutConflictKey(
@@ -177,7 +191,11 @@ export function resolveShortcutCommand(
   options?: ShortcutMatchOptions,
 ): KeybindingCommand | null {
   const platform = resolvePlatform(options);
-  const context = resolveContext(options);
+  const context = {
+    // Astrolabe
+    editorFocus: typeof document !== "undefined" && isEditorFocused(),
+    ...resolveContext(options),
+  };
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];

@@ -17,17 +17,15 @@ to keep a large paste editable in the composer instead.
 The composer writes Markdown and shows it styled as you type. Markers such as
 `**` stay in the text and show beside the styled words when your cursor is on
 them. Lines starting with `- `, `1. `, `- [ ] `, `> `, `# ` or `---` become lists,
-task lists, quotes, headings and rules; ` ``` ` followed by Enter opens a code
-block. What you typed is what the agent receives, markers and numbering
-included, and `#1234` without a space still looks up a pull request.
+task lists, quotes, headings and rules, and ` ``` ` opens a code block. Tables,
+math, footnotes, callouts and `[[wikilinks]]` render too. What you typed is what
+the agent receives, markers and numbering included, and `#1234` without a space
+still looks up a pull request.
 
 Enter sends. In a list or quote, **Shift+Enter** continues it, and Shift+Enter
-on an empty line leaves it; **Tab** nests a list item. In a code block, Enter
-starts a new line at the current indentation, **Tab** and **Shift+Tab** indent
-the selected lines, and a closing ` ``` ` followed by Enter, or two blank lines
-at the end, leave the block. **Backspace** at the start of a code block turns it
-back into plain lines. Choose the language in a code block's corner to change
-it. Very large code blocks are shown without syntax highlighting.
+on an empty item leaves it; **Tab** nests a list item. In a code block, Enter
+starts a new line at the current indentation, and **Tab** and **Shift+Tab**
+indent the selected lines.
 
 ## Attach files
 
@@ -81,7 +79,7 @@ keyboard. The button only offers Steer when the running agent supports it.
 
 Mobile keeps local copies of draft attachments, so you can preview them and queue
 messages while disconnected. Uploads resume when you reconnect. Drafts and queued
-messages survive app restarts. Signing out of T3 Connect keeps that work on your
+messages survive app restarts. Signing out of your Astrolabe account keeps that work on your
 device until you sign back into the same account.
 
 ## Custom models
@@ -198,10 +196,11 @@ transcription or cancellation; only the message text is sent when you submit.
 ## Queued messages
 
 On web and desktop, the composer shows **Interrupt** while the agent is working and the draft is
-empty. Adding text or attachments replaces it with a steer arrow. Click it to send a message into
-the active turn, or press `Enter` on desktop. Hold `Cmd` on macOS or `Ctrl` on Windows and Linux to
-switch the button to a queue icon. Click while holding that key, or press `Cmd+Enter` or
-`Ctrl+Enter` on desktop, to queue the message for after the active turn.
+empty. Adding text or attachments replaces it with a send button that shows your
+[Follow-up behavior](#send-while-the-agent-is-working): a queue icon for Queue or a steer arrow for
+Steer. Click it or press your send shortcut to use that action. Hold `Cmd` on macOS or `Ctrl` on
+Windows and Linux to switch the button to the opposite action, then click, or use the opposite-action
+shortcut described above.
 
 Queued messages appear above the composer. Rows show a thumbnail of any attached image alongside
 the text. Drag a row by its handle to reorder it, use the handle's arrow keys, promote the message
@@ -239,11 +238,8 @@ Provider commands must start the message to run. T3 Code commands such as
 Send `/compact` in an existing conversation to reduce context usage when the
 provider supports it. Web and desktop also offer compaction from the context meter.
 
-Enable **Compact idle Claude threads (beta)** in **Settings > General** to compact
-an idle Claude thread with at least 200,000 tokens of context shortly before its
-prompt cache expires, so coming back does not reprocess the whole conversation.
-The cache lasts 1 hour on Claude subscriptions and 5 minutes with an API key. The
-compaction appears in the thread as a `/compact` turn sent by T3 Code.
+Claude instances can also compact idle threads for you. See
+[compact long conversations](./providers-claude.md#compact-long-conversations).
 
 ## Goals
 

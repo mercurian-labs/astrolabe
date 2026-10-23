@@ -1,7 +1,9 @@
-# T3 Connect
+# Remote access
 
-T3 Connect uses Clerk for cloud identity. The relay manages environment links,
-credentials for reaching environments, and managed tunnel allocations. After
+Remote access uses Astrolabe accounts
+([`apps/cloud`](../../apps/cloud/src/auth/options.ts)) for cloud identity. The
+relay manages environment links, credentials for reaching environments, and
+managed tunnel allocations. After
 bootstrap, clients send application traffic through the environment's tunnel
 hostname; the relay Worker does not proxy their HTTP or WebSocket sessions.
 The one exception is automation webhooks: the relay forwards
@@ -29,7 +31,7 @@ read-once bodies of up to 1 MiB that need per-environment order, caps, and
 retry timing. Queues cap messages at 128 KB and cannot hold one environment's
 requests back while it is away.
 
-Clerk, deployment, and native authentication setup live in the
+Client and relay configuration live in the
 [Connect setup runbook](../operations/connect-setup.md).
 
 ## The relay is a trusted broker
@@ -155,22 +157,26 @@ while the pin installs. Every binary needs `CLOUDFLARED_MIN_VERSION`, the oldest
 release that accepts every flag the connector is started with. Raise it whenever
 a new flag is added.
 
-## OAuth traps
+## Sign-in traps
 
-Interactive clients and the headless CLI use the same Clerk application but
-different credentials. The relay accepts both session-template JWTs and CLI
-OAuth tokens; requiring a JWT template for the CLI would reject valid logins.
-The CLI is a public OAuth client using PKCE and stores no client secret.
+Only the hosted app signs in with a redirect: it is served from the same origin
+as the sign-in pages (`app.astrolabe.sh`), so it shares their session cookie. Every other client (self-hosted, LAN and Tailscale web origins,
+the desktop shell, mobile, and the CLI) uses Better Auth's device authorization
+grant and keeps the session token itself. A redirect cannot work for them. An
+arbitrary self-hosted origin cannot be allowlisted as a redirect target ahead of
+time, and it cannot receive that cookie. A device code needs
+neither, and also works over SSH, where the browser cannot reach a listener on
+the remote machine. See the
+[shared client](../../packages/shared/src/mercurianAccount.ts) and the
+[CLI](../../apps/server/src/cloud/CliTokenManager.ts).
 
-Loopback CLI authorization starts on the hosted `/connect` page so sign-in
-completes before entering Clerk's authorize endpoint. Sending a signed-out
-browser straight to that endpoint loses the authorize parameters during the
-sign-in redirect. The [shared flow](../../packages/shared/src/connectAuth.ts)
-preserves PKCE and state for the loopback callback.
+Relay tokens come only from `GET /api/auth/token`, which trades a session for a
+15-minute JWT. Session responses deliberately carry none. The waitlist gate
+lives on that endpoint ([access gate](../../apps/cloud/src/auth/access.ts)): a
+waitlisted account signs in normally but gets 403 `WAITLISTED` instead of a
+token. Clients treat that as an account state, not a failed sign-in.
 
-SSH and headless sessions use Clerk's OAuth device authorization grant because
-the browser cannot ordinarily reach a listener on the remote machine. The CLI
-polls Clerk's token endpoint directly while the user approves a short code on
-Clerk's hosted device page; the hosted app plays no part and there is no
-redirect URI or PKCE. The grant must be enabled on the CLI OAuth application
-or the device endpoint returns an error before any prompt is shown.
+The relay verifies those tokens against `ACCOUNT_JWT_ISSUER`'s
+`/api/auth/jwks` and requires its own origin as the audience. The cloud API
+sets the audience from its `RELAY_URL`, so one auth deployment serves exactly
+one relay ([verifier](../../infra/relay/src/auth/AccountTokens.ts)).

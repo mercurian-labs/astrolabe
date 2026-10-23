@@ -4,7 +4,10 @@ import {
   T3_CODE_LIGHT_THEME_COLORS,
   T3_CODE_DARK_THEME_COLORS,
   getThemeColorsForAppearance,
+  MERCURIAN_THEME,
+  MERCURIAN_THEME_ID,
   MOBILE_DEFAULT_THEME_ID,
+  PICKER_HIDDEN_THEME_IDS,
   MOBILE_THEME_IDS as SHARED_MOBILE_THEME_IDS,
   type MobileThemeId as SharedMobileThemeId,
   type ThemeAppearance,
@@ -26,9 +29,13 @@ export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   readonly id: MobileThemeId;
   readonly label: string;
 }> = [
+  // Mercurian leads, ahead of the standard T3 Code palette, as on web.
+  { id: MERCURIAN_THEME_ID, label: MERCURIAN_THEME.label },
   { id: DEFAULT_MOBILE_THEME_ID, label: "T3 Code" },
   { id: "material-you", label: "Material You" },
-  ...BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),
+  ...BUILT_IN_THEMES.filter(
+    (theme) => theme.id !== MERCURIAN_THEME_ID && !PICKER_HIDDEN_THEME_IDS.has(theme.id),
+  ).map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label })),
 ];
 
 export type MobileThemeVariable = keyof ReturnType<typeof createMobileThemeVariables>;
@@ -49,7 +56,11 @@ export function resolveMobileThemeIds(preferences: {
   readonly lightThemeId?: unknown;
   readonly darkThemeId?: unknown;
 }): MobileThemeIds {
-  const legacyThemeId = normalizeMobileThemeId(preferences.themeId);
+  // A fresh install opens in Astrolabe's own theme.
+  const legacyThemeId =
+    preferences.themeId === undefined
+      ? MERCURIAN_THEME_ID
+      : normalizeMobileThemeId(preferences.themeId);
   return {
     light:
       preferences.lightThemeId === undefined

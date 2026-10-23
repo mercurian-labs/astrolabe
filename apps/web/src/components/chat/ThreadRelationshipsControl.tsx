@@ -54,6 +54,7 @@ import {
 import { useState, type ReactNode } from "react";
 
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
+import { useRightPanelStore } from "../../rightPanelStore";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   useProjects,
@@ -80,7 +81,7 @@ import {
 const THREAD_LINEAGE_INITIAL_COUNT = 6;
 const THREAD_LINEAGE_PAGE_COUNT = 12;
 
-export function resolveThreadLineageWindow<Row>(
+function resolveThreadLineageWindow<Row>(
   rows: ReadonlyArray<Row>,
   visibleCount: number,
 ): { readonly visibleRows: ReadonlyArray<Row>; readonly hiddenCount: number } {
@@ -366,16 +367,13 @@ export function ThreadRelationshipsPanel(props: {
 
   const stopSubagent = async (
     childThreadId: ThreadId,
-    agent: Pick<OrchestrationV2Subagent, "id" | "origin" | "threadId">,
+    agent: Pick<OrchestrationV2Subagent, "id" | "threadId">,
   ) => {
     if (stoppingId !== null) return;
     setStoppingId(childThreadId);
     const result = await interruptTurn({
       environmentId: props.environmentId,
-      input:
-        agent.origin === "provider_native"
-          ? { threadId: agent.threadId, subagentId: agent.id }
-          : { threadId: childThreadId },
+      input: { threadId: agent.threadId, subagentId: agent.id },
     });
     setStoppingId(null);
     if (result._tag === "Failure") {
@@ -396,6 +394,8 @@ export function ThreadRelationshipsPanel(props: {
     }
   };
 
+  // The Lineage tab draws forks and merge-backs; subagents alone leave it a single line.
+  const showsForks = relationshipRows.some(({ edge }) => edge.kind !== "subagent");
   const parentTitle =
     mergeTargetThreadId === null
       ? null
@@ -407,29 +407,43 @@ export function ThreadRelationshipsPanel(props: {
       title={runningCount > 0 ? `Lineage · ${runningCount} running` : "Lineage"}
       data-thread-relationships-panel
       actions={
-        canDetach ? (
-          <Menu>
-            <MenuTrigger
-              render={
-                <ThreadDetailsControl
-                  size="icon-xs"
-                  variant="ghost"
-                  part="icon"
-                  aria-label="More thread actions"
-                  disabled={busyAction !== null}
-                />
-              }
+        <>
+          {showsForks ? (
+            <ThreadDetailsControl
+              type="button"
+              variant="ghost"
+              size="sm"
+              part="meta"
+              onClick={() => useRightPanelStore.getState().open(ref, "lineage")}
             >
-              <MoreHorizontalIcon className="size-3.5" />
-            </MenuTrigger>
-            <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
-              <MenuItem onClick={() => void detach()}>
-                <UnplugIcon className="size-3.5" />
-                Disconnect agent session
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
-        ) : null
+              <GitForkIcon aria-hidden className="size-3.5" />
+              Show lineage
+            </ThreadDetailsControl>
+          ) : null}
+          {canDetach ? (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <ThreadDetailsControl
+                    size="icon-xs"
+                    variant="ghost"
+                    part="icon"
+                    aria-label="More thread actions"
+                    disabled={busyAction !== null}
+                  />
+                }
+              >
+                <MoreHorizontalIcon className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
+                <MenuItem onClick={() => void detach()}>
+                  <UnplugIcon className="size-3.5" />
+                  Disconnect agent session
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+          ) : null}
+        </>
       }
     >
       {groups.map((group) => (

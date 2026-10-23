@@ -4,6 +4,8 @@
  * Both dispatch here before the full CLI module graph (seconds of evaluation) loads; everything
  * else defers to the real CLI in ./binCli.ts.
  */
+import { applyAstrolabeEnv } from "@t3tools/shared/astrolabeEnv";
+
 import { isEntrypoint } from "./entrypoint.ts";
 
 if (
@@ -13,6 +15,7 @@ if (
     runtimeMain: import.meta.main,
   })
 ) {
+  applyAstrolabeEnv(process.env);
   const command = process.argv[2];
   // Guard sockets before either dispatch path can load outbound-capable modules.
   const { ignoreMacosTypeOfServiceEinval } = await import("./outboundHttp.ts");

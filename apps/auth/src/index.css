@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/* The wordmarks' typeface, Fraunces at weight 600 (SIL OFL 1.1, assets/fonts/OFL.txt). */
+@font-face {
+  font-family: "Fraunces";
+  src: url("./assets/fonts/fraunces-variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Theme roles come from Astrolabe's Mercurian palette, set at runtime by theme.ts. */
+@theme inline {
+  --color-canvas: var(--m-canvas);
+  --color-surface: var(--m-surface);
+  --color-raised: var(--m-surfaceRaised);
+  --color-text: var(--m-text);
+  --color-muted: var(--m-textMuted);
+  --color-line: var(--m-border);
+  --color-input: var(--m-input);
+  --color-accent: var(--m-accent);
+  --color-on-accent: var(--m-accentForeground);
+  --color-focus: var(--m-focus);
+  --color-error: var(--m-errorForeground);
+  --color-error-surface: var(--m-errorSurface);
+  --color-warning: var(--m-warningForeground);
+  --color-warning-surface: var(--m-warningSurface);
+  --color-rust: #a0492a;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  background: var(--m-canvas, #f9f9f9);
+  color: var(--m-text, #000);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

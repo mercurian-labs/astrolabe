@@ -161,6 +161,7 @@ export function makeReplayServerConfig(
       stateDir,
       dbPath: path.join(stateDir, "state.sqlite"),
       keybindingsConfigPath: path.join(stateDir, "keybindings.json"),
+      vimrcConfigPath: path.join(stateDir, "vimrc"),
       settingsPath: path.join(stateDir, "settings.json"),
       providerStatusCacheDir,
       worktreesDir,

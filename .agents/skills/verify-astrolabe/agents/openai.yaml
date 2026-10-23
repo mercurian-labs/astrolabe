@@ -1,0 +1,4 @@
+interface:
+  display_name: "Astrolabe Verification"
+  short_description: "Walk Astrolabe's own features in T3's Browser panel"
+  default_prompt: "Use $verify-astrolabe to verify the affected Astrolabe feature through T3's Browser panel."

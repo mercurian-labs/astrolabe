@@ -169,7 +169,7 @@ export const ProjectCommandError = Schema.Union([
 ]);
 export type ProjectCommandError = typeof ProjectCommandError.Type;
 
-export function projectCommandErrorFromLiveServerRequest(cause: unknown): ProjectCommandError {
+function projectCommandErrorFromLiveServerRequest(cause: unknown): ProjectCommandError {
   if (isEnvironmentHttpCommonError(cause)) {
     return new ProjectLiveServerDeclaredResponseError({
       operation: "callLiveServer",
@@ -222,7 +222,7 @@ const withProjectCliSessionToken = <A, E, R>(
   Effect.acquireUseRelease(
     environmentAuth.issueSession({
       scopes: AuthStandardClientScopes,
-      label: "t3 project cli",
+      label: "astrolabe project cli",
     }),
     (issued) => run(issued.token),
     (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),

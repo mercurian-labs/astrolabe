@@ -7,6 +7,7 @@ import {
   MAX_KEYBINDINGS_COUNT,
   ResolvedKeybindingRule,
   ResolvedKeybindingsConfig,
+  type ResolvedKeybindingTriggers,
   type ServerRemoveKeybindingInput,
   type ServerUpsertKeybindingInput,
   type ServerConfigIssue,
@@ -37,11 +38,16 @@ import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
 import {
   DEFAULT_KEYBINDINGS,
-  mergeWithDefaultKeybindings,
   compileResolvedKeybindingRule,
   compileResolvedKeybindingsConfig,
   parseKeybindingShortcut,
 } from "@t3tools/shared/keybindings";
+// Astrolabe: menu keys, aliases, and `-command` removals.
+import {
+  keybindingRuleIssue,
+  resolveKeybindingRules,
+  shortcutRuleCommand,
+} from "@t3tools/shared/keybindingTriggers";
 
 export {
   DEFAULT_KEYBINDINGS,
@@ -115,7 +121,40 @@ const LATE_DEFAULT_KEYBINDINGS: ReadonlyArray<{
   },
 ];
 
+// Astrolabe: defaults that moved to another command. Startup swaps a config's untouched old
+// rule for the new one once per config (`id`), so an existing install follows the move; a
+// customized rule stays as the user set it.
+const MOVED_DEFAULT_KEYBINDINGS: ReadonlyArray<{
+  readonly id: string;
+  readonly from: KeybindingRule;
+  readonly to: KeybindingRule;
+}> = [
+  {
+    id: "astrolabe:mod+k:whichKey.open",
+    from: { key: "mod+k", command: "commandPalette.toggle", when: "!terminalFocus" },
+    to: { key: "mod+k", command: "whichKey.open", when: "!terminalFocus" },
+  },
+  // In an editor, mod+shift+k inserts a link (`markdown.link`) rather than copying the PR number.
+  {
+    id: "astrolabe:mod+shift+k:pullRequest.copyNumber:!editorFocus",
+    from: { key: "mod+shift+k", command: "pullRequest.copyNumber", when: "!terminalFocus" },
+    to: {
+      key: "mod+shift+k",
+      command: "pullRequest.copyNumber",
+      when: "!terminalFocus && !editorFocus",
+    },
+  },
+  // mod+p opens the Command Palette; the file picker moved to the keyboard menu's `f`.
+  {
+    id: "astrolabe:mod+p:commandLine.open",
+    from: { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
+    to: { key: "mod+p", command: "commandLine.open", when: "!terminalFocus" },
+  },
+];
+
 function keybindingShortcutContext(rule: KeybindingRule): string | null {
+  // Astrolabe: a menu or alias rule has no shortcut to collide with.
+  if (shortcutRuleCommand(rule) === null) return null;
   const parsed = parseKeybindingShortcut(rule.key);
   if (!parsed) return null;
   const encoded = encodeShortcut(parsed);
@@ -184,13 +223,12 @@ const encodeKeybindingsConfigPrettyJson = Schema.encodeEffect(KeybindingsConfigP
 
 export interface KeybindingsConfigState {
   readonly keybindings: ResolvedKeybindingsConfig;
+  // Astrolabe
+  readonly keybindingTriggers: ResolvedKeybindingTriggers;
   readonly issues: readonly ServerConfigIssue[];
 }
 
-export interface KeybindingsChangeEvent {
-  readonly keybindings: ResolvedKeybindingsConfig;
-  readonly issues: readonly ServerConfigIssue[];
-}
+export type KeybindingsChangeEvent = KeybindingsConfigState;
 
 function trimIssueMessage(message: string): string {
   const trimmed = message.trim();
@@ -315,6 +353,17 @@ const make = Effect.gen(function* () {
           });
           return null;
         }
+        // Astrolabe: menu, alias, and removal rules validate on their own.
+        const triggerIssue = keybindingRuleIssue(decodedRule.value);
+        if (triggerIssue !== undefined) {
+          if (triggerIssue === null) return decodedRule.value;
+          yield* Effect.logWarning("ignoring invalid keybinding entry", {
+            path: keybindingsConfigPath,
+            entry,
+            error: triggerIssue,
+          });
+          return null;
+        }
         const resolved = decodeResolvedKeybindingFromConfigExit(decodedRule.value);
         if (resolved._tag === "Failure") {
           yield* Effect.logWarning("ignoring invalid keybinding entry", {
@@ -363,6 +412,23 @@ const make = Effect.gen(function* () {
           entry,
           error: detail,
         });
+        continue;
+      }
+
+      // Astrolabe: menu, alias, and removal rules validate on their own.
+      const triggerIssue = keybindingRuleIssue(decodedRule.value);
+      if (triggerIssue !== undefined) {
+        if (triggerIssue === null) {
+          keybindings.push(decodedRule.value);
+        } else {
+          issues.push(invalidEntryIssue(index, triggerIssue));
+          yield* Effect.logWarning("ignoring invalid keybinding entry", {
+            path: keybindingsConfigPath,
+            index,
+            entry,
+            error: triggerIssue,
+          });
+        }
         continue;
       }
 
@@ -432,11 +498,9 @@ const make = Effect.gen(function* () {
     );
   };
 
+  // Astrolabe: every kind of rule, merged with its defaults (`resolveKeybindingRules`).
   const loadConfigStateFromDisk = loadRuntimeCustomKeybindingsConfig().pipe(
-    Effect.map(({ keybindings, issues }) => ({
-      keybindings: mergeWithDefaultKeybindings(compileResolvedKeybindingsConfig(keybindings)),
-      issues,
-    })),
+    Effect.map(({ keybindings, issues }) => ({ ...resolveKeybindingRules(keybindings), issues })),
   );
 
   const resolvedConfigCache = yield* Cache.makeWith<
@@ -464,13 +528,18 @@ const make = Effect.gen(function* () {
       const pendingLateDefaults = LATE_DEFAULT_KEYBINDINGS.filter(
         (late) => !appliedMigrationIds.has(late.id),
       );
+      // Astrolabe: moved defaults, applied like late ones.
+      const pendingMoves = MOVED_DEFAULT_KEYBINDINGS.filter(
+        (move) => !appliedMigrationIds.has(move.id),
+      );
       const configExists = yield* readConfigExists;
       if (!configExists) {
         yield* writeConfigAtomically(DEFAULT_KEYBINDINGS);
-        if (pendingLateDefaults.length > 0) {
+        if (pendingLateDefaults.length > 0 || pendingMoves.length > 0) {
           yield* recordAppliedMigrations([
             ...appliedMigrationIds,
             ...LATE_DEFAULT_KEYBINDINGS.map((late) => late.id),
+            ...MOVED_DEFAULT_KEYBINDINGS.map((move) => move.id),
           ]);
         }
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
@@ -489,8 +558,18 @@ const make = Effect.gen(function* () {
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
-      const customConfig = runtimeConfig.keybindings;
-      const existingCommands = new Set(customConfig.map((entry) => entry.command));
+      // Astrolabe: an untouched rule whose default moved becomes the new one.
+      const customConfig = runtimeConfig.keybindings.map(
+        (entry) => pendingMoves.find((move) => isSameKeybindingRule(entry, move.from))?.to ?? entry,
+      );
+      const movedAny = customConfig.some(
+        (entry, index) => entry !== runtimeConfig.keybindings[index],
+      );
+      // Astrolabe: only a command's shortcut rules (or shortcut removals) stop its default
+      // shortcuts from backfilling; menu and alias defaults are never written to the file.
+      const existingCommands = new Set<KeybindingRule["command"]>(
+        customConfig.flatMap((entry) => shortcutRuleCommand(entry) ?? []),
+      );
       const missingDefaults: KeybindingRule[] = [];
       const shortcutConflictWarnings: Array<{
         defaultCommand: KeybindingRule["command"];
@@ -560,16 +639,17 @@ const make = Effect.gen(function* () {
           commands: skippedDefaults.map((rule) => rule.command),
         });
       }
-      if (defaultsToAppend.length > 0) {
+      if (defaultsToAppend.length > 0 || movedAny) {
         yield* writeConfigAtomically([...defaultsToAppend, ...customConfig]);
       }
       const settledLateDefaults = pendingLateDefaults.filter(
         (late) => !skippedDefaults.includes(late.rule),
       );
-      if (settledLateDefaults.length > 0) {
+      if (settledLateDefaults.length > 0 || pendingMoves.length > 0) {
         yield* recordAppliedMigrations([
           ...appliedMigrationIds,
           ...settledLateDefaults.map((late) => late.id),
+          ...pendingMoves.map((move) => move.id),
         ]);
       }
       yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
@@ -677,18 +757,10 @@ const make = Effect.gen(function* () {
             });
           }
           yield* writeConfigAtomically(cappedConfig);
-          const nextResolved = mergeWithDefaultKeybindings(
-            compileResolvedKeybindingsConfig(cappedConfig),
-          );
-          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, {
-            keybindings: nextResolved,
-            issues: [],
-          });
-          yield* emitChange({
-            keybindings: nextResolved,
-            issues: [],
-          });
-          return nextResolved;
+          const nextState = { ...resolveKeybindingRules(cappedConfig), issues: [] };
+          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, nextState);
+          yield* emitChange(nextState);
+          return nextState.keybindings;
         }),
       ),
     removeKeybindingRule: (input) =>
@@ -698,18 +770,10 @@ const make = Effect.gen(function* () {
           const target = keybindingRuleFromRemoveInput(input);
           const nextConfig = customConfig.filter((entry) => !isSameKeybindingRule(entry, target));
           yield* writeConfigAtomically(nextConfig);
-          const nextResolved = mergeWithDefaultKeybindings(
-            compileResolvedKeybindingsConfig(nextConfig),
-          );
-          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, {
-            keybindings: nextResolved,
-            issues: [],
-          });
-          yield* emitChange({
-            keybindings: nextResolved,
-            issues: [],
-          });
-          return nextResolved;
+          const nextState = { ...resolveKeybindingRules(nextConfig), issues: [] };
+          yield* Cache.set(resolvedConfigCache, resolvedConfigCacheKey, nextState);
+          yield* emitChange(nextState);
+          return nextState.keybindings;
         }),
       ),
   } satisfies Keybindings["Service"];

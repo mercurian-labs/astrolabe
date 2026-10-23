@@ -54,7 +54,7 @@ export function activateWindowsForegroundWithApi(
   }
 }
 
-export function isWindowsShellHostedForegroundWithApi(api: WindowsForegroundApi): boolean {
+function isWindowsShellHostedForegroundWithApi(api: WindowsForegroundApi): boolean {
   const foregroundWindow = api.getForegroundWindow();
   return (
     foregroundWindow !== 0n &&
@@ -215,7 +215,7 @@ export function loadWindowsForegroundApi(): Promise<WindowsForegroundApi> {
 export async function activateWindowsForeground(handleBuffer: Buffer): Promise<void> {
   const api = await loadWindowsForegroundApi();
   if (activateWindowsForegroundWithApi(handleBuffer, api)) return;
-  throw new Error("Windows refused to activate the T3 Code window.");
+  throw new Error("Windows refused to activate the Astrolabe window.");
 }
 
 export async function isWindowsShellHostedForeground(): Promise<boolean> {

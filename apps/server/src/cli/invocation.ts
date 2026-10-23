@@ -10,6 +10,10 @@ import { isCommandAvailable } from "@t3tools/shared/shell";
 
 import packageJson from "../../package.json" with { type: "json" };
 
+/** The command this CLI installs as, and the npm launcher package that ships it. */
+export const CLI_COMMAND = "astrolabe";
+const CLI_PACKAGE = "@mercurian/astrolabe";
+
 export type CliRunner = "npx" | "pnpm dlx" | "bunx";
 
 /** Detection is best-effort; callers must fail closed to a plain `t3` command. */
@@ -34,7 +38,7 @@ function detectCliRunner(entryPath: string): CliRunner | null {
 const InstallManifest = Schema.Struct({
   name: Schema.String,
   version: Schema.String,
-  bin: Schema.optionalKey(Schema.Struct({ t3: Schema.String })),
+  bin: Schema.optionalKey(Schema.Struct({ astrolabe: Schema.String })),
 });
 const decodeInstallManifest = Schema.decodeUnknownEffect(Schema.fromJsonString(InstallManifest));
 
@@ -58,7 +62,7 @@ const resolveEntryPath = Effect.gen(function* () {
       .pipe(Effect.flatMap(decodeInstallManifest), Effect.option);
     if (
       Option.isSome(manifest) &&
-      manifest.value.name === "t3" &&
+      manifest.value.name === CLI_PACKAGE &&
       manifest.value.version === packageJson.version
     ) {
       return npmLauncher;
@@ -73,7 +77,10 @@ export const resolveServerInstallation = Effect.gen(function* () {
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
   const entry = yield* fs.realPath(yield* resolveEntryPath);
-  const match = /^(.*)\/lib\/node_modules\/t3\/(?:dist\/bin\.mjs|bin\/t3\.mjs)$/.exec(entry);
+  const match =
+    /^(.*)\/lib\/node_modules\/@mercurian\/astrolabe\/(?:dist\/bin\.mjs|bin\/astrolabe\.mjs)$/.exec(
+      entry,
+    );
   if (!match) {
     const runner = detectCliRunner(entry);
     return runner === null
@@ -89,13 +96,13 @@ export const resolveServerInstallation = Effect.gen(function* () {
   )
     return null;
 
-  const packageRoot = path.join(prefix, "lib/node_modules/t3");
+  const packageRoot = path.join(prefix, "lib/node_modules", CLI_PACKAGE);
   const manifest = yield* fs
     .readFileString(path.join(packageRoot, "package.json"))
     .pipe(Effect.flatMap(decodeInstallManifest));
-  if (manifest.name !== "t3" || !manifest.bin) return null;
-  const bin = yield* fs.realPath(path.join(packageRoot, manifest.bin.t3));
-  const globalBin = yield* fs.realPath(path.join(prefix, "bin/t3"));
+  if (manifest.name !== CLI_PACKAGE || !manifest.bin) return null;
+  const bin = yield* fs.realPath(path.join(packageRoot, manifest.bin.astrolabe));
+  const globalBin = yield* fs.realPath(path.join(prefix, "bin", CLI_COMMAND));
   if (globalBin !== bin || bin !== entry) return null;
   return { kind: "npm-global", prefix } satisfies ServerInstallation;
 }).pipe(Effect.orElseSucceed(() => null));
@@ -107,17 +114,17 @@ export const resolveServerInstallation = Effect.gen(function* () {
  */
 function suggestedPackageSpec(version: string): string {
   const channel = /^[^-+]+-(nightly|preview)\./.exec(version)?.[1];
-  return channel === undefined ? "t3" : `t3@${channel}`;
+  return channel === undefined ? CLI_PACKAGE : `${CLI_PACKAGE}@${channel}`;
 }
 
-export function formatCliCommand(input: {
+function formatCliCommand(input: {
   readonly subcommand: string;
   readonly entryPath: string;
   readonly version: string;
 }): string {
   const runner = detectCliRunner(input.entryPath);
   if (runner === null) {
-    return `t3 ${input.subcommand}`;
+    return `${CLI_COMMAND} ${input.subcommand}`;
   }
   return `${runner} ${suggestedPackageSpec(input.version)} ${input.subcommand}`;
 }
@@ -150,7 +157,7 @@ const hostShellWord = (platform: NodeJS.Platform, value: string) =>
  * The launcher a person can type to run this install when `t3` is not on
  * PATH: the desktop app's `t3` shim, which the app and the shim itself name in
  * `T3CODE_CLI_PATH`, or a standalone binary's own path. Script installs (a
- * repo checkout) have no single launcher and keep plain `t3`.
+ * repo checkout) have no single launcher and keep plain `astrolabe`.
  */
 const resolveInstallLauncher = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -178,8 +185,10 @@ export const resolveHostCliCommand = Effect.fn("invocation.resolveHostCliCommand
   const withArgs = (prefix: string) =>
     [prefix, ...args.map((arg) => hostShellWord(platform, arg))].join(" ");
   const command = yield* resolveCliCommand(subcommand);
-  if (command !== `t3 ${subcommand}`) return { command: withArgs(command), launcher: false };
-  if (yield* isCommandAvailable("t3")) return { command: withArgs(command), launcher: false };
+  if (command !== `${CLI_COMMAND} ${subcommand}`)
+    return { command: withArgs(command), launcher: false };
+  if (yield* isCommandAvailable(CLI_COMMAND))
+    return { command: withArgs(command), launcher: false };
   const launcher = yield* resolveInstallLauncher;
   if (Option.isNone(launcher)) return { command: withArgs(command), launcher: false };
   // PowerShell runs a quoted path only through the call operator.

@@ -51,6 +51,20 @@
         // Keep this small boot-time copy in sync with the built-in palettes so
         // the selected theme is visible before the app has mounted.
         const BUILT_IN_THEME_PALETTES = {
+          mercurian: {
+            light: {
+              background: "oklch(0.976139 0 0)",
+              foreground: "oklch(0 0 0)",
+              accent: "oklch(0.273776 0.006186 78.224)",
+              chrome: "oklch(0.976139 0 0)",
+            },
+            dark: {
+              background: "oklch(0.185441 0.009432 208.772)",
+              foreground: "oklch(0.851419 0 0)",
+              accent: "oklch(0.902134 0.032641 80.987)",
+              chrome: "oklch(0.185441 0.009432 208.772)",
+            },
+          },
           "t3-chat": {
             light: {
               background: "oklch(0.982446 0.010114 325.653)",
@@ -134,6 +148,7 @@
           "system",
           "light",
           "dark",
+          "mercurian",
           "t3-chat",
           "grove",
           "ocean",
@@ -216,8 +231,12 @@
           }
         };
 
+        // A fresh install opens in Astrolabe's own theme, following the
+        // system appearance. Mirrors the runtime's default preference.
+        const DEFAULT_THEME_ID = "mercurian";
+
         try {
-          const storedTheme = window.localStorage.getItem("t3code:theme");
+          const rawStoredTheme = window.localStorage.getItem("t3code:theme");
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           // Older builds stored the dark T3 Chat palette as its own theme id
           // and every maintainer theme under a t3- prefix; keep those
@@ -229,6 +248,18 @@
             "t3-ember": "ember",
             "t3-iris": "iris",
           };
+          // A fresh install, or a theme that no longer exists, opens in the
+          // default theme. Mirrors the runtime's readThemePreference.
+          const rawThemeId =
+            rawStoredTheme === null ? "" : (LEGACY_THEME_IDS[rawStoredTheme] ?? rawStoredTheme);
+          const storedTheme =
+            rawStoredTheme === "light" ||
+            rawStoredTheme === "dark" ||
+            rawStoredTheme === "system" ||
+            BUILT_IN_THEME_MODES[rawThemeId] ||
+            findCustomTheme(rawThemeId)
+              ? rawStoredTheme
+              : DEFAULT_THEME_ID;
           const isLegacyT3ChatDark = storedTheme === "t3-chat-dark";
           const themeId =
             storedTheme === null ? "" : (LEGACY_THEME_IDS[storedTheme] ?? storedTheme);
@@ -266,7 +297,7 @@
               ? "system"
               : storedFollowSystem === "false"
                 ? preferenceMode
-                : theme === "system"
+                : theme === "system" || theme === DEFAULT_THEME_ID
                   ? "system"
                   : preferenceMode;
           // A valid mix half for the wanted appearance takes over: it decides
@@ -385,19 +416,24 @@
           }
           setThemeColor(chromeColor);
         } catch {
-          // Mirror the runtime's storage-failure fallback: follow the OS.
+          // Mirror the runtime's storage-failure fallback: the default theme,
+          // following the OS appearance.
           let prefersDark = true;
           try {
             prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           } catch {
             // Keep the dark default when even matchMedia is unavailable.
           }
-          delete document.documentElement.dataset.themeId;
-          delete document.documentElement.dataset.themeSelected;
+          const defaultSplash =
+            BUILT_IN_THEME_PALETTES[DEFAULT_THEME_ID][prefersDark ? "dark" : "light"];
+          document.documentElement.dataset.themeId = DEFAULT_THEME_ID;
+          document.documentElement.dataset.themeSelected = "true";
           document.documentElement.classList.toggle("dark", prefersDark);
-          const fallbackColor = prefersDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
-          document.documentElement.style.backgroundColor = fallbackColor;
-          setThemeColor(fallbackColor);
+          document.documentElement.style.backgroundColor = defaultSplash.chrome;
+          for (const [name, value] of Object.entries(defaultSplash)) {
+            document.documentElement.style.setProperty(`--boot-${name}`, value);
+          }
+          setThemeColor(defaultSplash.chrome);
         }
       })();
     </script>
@@ -443,14 +479,70 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 96px;
-        height: 96px;
       }
 
-      #boot-shell-logo {
-        width: 64px;
-        height: 64px;
-        object-fit: contain;
+      /* The loading wordmark at the approved 224px, its full three-dot canvas reserved: masks
+         over one canvas, the lettering in the splash text color and the pivot and dots in brand rust,
+         which no theme recolors. Dots two and three keep the approved 1.6s rhythm, still under reduced
+         motion. */
+      .boot-shell-wordmark {
+        position: relative;
+        width: 224px;
+        aspect-ratio: 417.5245 / 68.7793;
+      }
+
+      .boot-shell-wordmark > span {
+        position: absolute;
+        inset: 0;
+        -webkit-mask: var(--boot-mask) center / contain no-repeat;
+        mask: var(--boot-mask) center / contain no-repeat;
+        background: #a0492a;
+      }
+
+      .boot-shell-wordmark > .boot-shell-wordmark-ink {
+        background: currentColor;
+      }
+
+      @keyframes boot-shell-dot-2 {
+        0%,
+        25% {
+          opacity: 0;
+        }
+        32.5%,
+        92.5% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      @keyframes boot-shell-dot-3 {
+        0%,
+        50% {
+          opacity: 0;
+        }
+        57.5%,
+        92.5% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      .boot-shell-wordmark-dot-2 {
+        animation: boot-shell-dot-2 1600ms linear infinite;
+      }
+
+      .boot-shell-wordmark-dot-3 {
+        animation: boot-shell-dot-3 1600ms linear infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-shell-wordmark > span {
+          animation: none;
+        }
       }
 
       #boot-error {
@@ -477,13 +569,27 @@
         cursor: pointer;
       }
     </style>
-    <title>T3 Code (Beta)</title>
+    <title>Astrolabe (Beta)</title>
   </head>
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" role="status" aria-label="Loading Astrolabe">
+          <div class="boot-shell-wordmark" aria-hidden="true">
+            <span
+              class="boot-shell-wordmark-ink"
+              style="--boot-mask: url(/brand/wordmark-loading-ink.svg)"
+            ></span>
+            <span style="--boot-mask: url(/brand/wordmark-loading-dots-1.svg)"></span>
+            <span
+              class="boot-shell-wordmark-dot-2"
+              style="--boot-mask: url(/brand/wordmark-loading-dot-2.svg)"
+            ></span>
+            <span
+              class="boot-shell-wordmark-dot-3"
+              style="--boot-mask: url(/brand/wordmark-loading-dot-3.svg)"
+            ></span>
+          </div>
         </div>
       </div>
     </div>

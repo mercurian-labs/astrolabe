@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    // The playground imports @mercurian/editor's sources, which need these as its own tsconfig has them.
+    "erasableSyntaxOnly": false,
+    "verbatimModuleSyntax": false,
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        // Diagnostic severities are deep-merged with tsconfig.base.json; this is browser code
+        // outside Effect, so the global Date/console/timers/fetch rules do not apply.
+        "diagnosticSeverity": {
+          "globalDate": "off",
+          "globalConsole": "off",
+          "globalRandom": "off",
+          "globalTimers": "off",
+          "globalFetch": "off"
+        }
+      }
+    ]
+  },
+  "include": ["src", "playground", "fixtures", "scripts", "bench", "vite.config.ts"]
+}

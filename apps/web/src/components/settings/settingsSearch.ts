@@ -6,6 +6,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { DEFAULT_TRIGGER_KEYBINDINGS } from "@t3tools/shared/keybindingTriggers";
 import { commandLabel } from "./KeybindingsSettings.logic";
 import {
   validateSettingsScopeSearch,
@@ -24,8 +25,10 @@ export type SettingsPath =
   | "/settings/integrations"
   | "/settings/scheduled-tasks"
   | "/settings/source-control"
+  | "/settings/change-requests"
   | "/settings/storage"
   | "/settings/connections"
+  | "/settings/workspaces"
   | "/settings/archived";
 
 export type SettingsSearchScope =
@@ -82,8 +85,10 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": "Integrations",
   "/settings/scheduled-tasks": "Scheduled Tasks",
   "/settings/source-control": "Source Control",
+  "/settings/change-requests": "Changes",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
+  "/settings/workspaces": "Workspaces",
   "/settings/archived": "Archive",
 };
 
@@ -91,19 +96,29 @@ export function keybindingSearchAnchorId<Command extends KeybindingCommand>(comm
   return `keybinding-${command}` as const;
 }
 
-const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted((left, right) =>
-  commandLabel(left).localeCompare(commandLabel(right)),
+const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted(
+  (left, right) =>
+    // Astrolabe: the editors' formatting keys share keys with app shortcuts (mod+b), so a key
+    // search lands on the app's command first.
+    Number(left.startsWith("markdown.")) - Number(right.startsWith("markdown.")) ||
+    commandLabel(left).localeCompare(commandLabel(right)),
 ).map((command) => {
   const defaultKeys = DEFAULT_KEYBINDINGS.filter((binding) => binding.command === command).map(
     (binding) => binding.key,
   );
+  // Astrolabe: menu keys and aliases are bindings too.
+  const defaultTriggers = DEFAULT_TRIGGER_KEYBINDINGS.filter(
+    (binding) => binding.command === command,
+  ).map((binding) => binding.key);
   return {
     id: keybindingSearchAnchorId(command),
     title: commandLabel(command),
     to: "/settings/keybindings" as const,
-    searchTerms: [command, ...defaultKeys],
+    searchTerms: [command, ...defaultKeys, ...defaultTriggers],
     secondary: true,
-    ...(defaultKeys.length === 0 ? { targetId: "keybindings" } : {}),
+    ...(defaultKeys.length === 0 && defaultTriggers.length === 0
+      ? { targetId: "keybindings" }
+      : {}),
   };
 });
 
@@ -253,7 +268,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "environment-identification",
     title: "Environment identification",
     to: "/settings/appearance",
-    searchTerms: ["dev nightly artwork pill label hide none"],
+    searchTerms: ["dev nightly pill label hide none"],
     targetId: "appearance-interface",
   },
   {
@@ -338,10 +353,10 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "compact-idle-threads",
-    title: "Compact idle Claude threads (beta)",
+    title: "Compact idle threads",
     to: "/settings/general",
     scope: "environment-defaults",
-    searchTerms: ["context compaction idle cache tokens usage summary beta experimental"],
+    searchTerms: ["claude context compaction idle cache tokens usage summary resume"],
   },
   {
     id: "auto-settle-merged-threads",
@@ -420,6 +435,42 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Rich text composer",
     to: "/settings/general",
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
+  },
+  // Astrolabe: Vim in the composer and wiki notes, the keyboard menu's leader key and repeat
+  // window, and the vimrc, on the Keybindings page.
+  {
+    id: "vim-mode",
+    title: "Vim keybindings",
+    to: "/settings/keybindings",
+    searchTerms: ["vim vi modal normal insert mode keys composer editor notes wiki"],
+  },
+  {
+    id: "vim-screen-lines",
+    title: "Move by screen line",
+    to: "/settings/keybindings",
+    searchTerms: ["vim j k gj gk wrap wrapped long lines display visual screen line motion"],
+  },
+  {
+    id: "leader-key",
+    title: "Leader key",
+    to: "/settings/keybindings",
+    searchTerms: ["leader space key which-key keyboard menu shortcuts lazyvim mapleader"],
+  },
+  {
+    id: "menu-repeat-window",
+    title: "Repeat window",
+    to: "/settings/keybindings",
+    searchTerms: [
+      "repeat window timeout repeat-time tmux keyboard menu focus move hjkl arrows scroll panes milliseconds",
+    ],
+  },
+  {
+    id: "vim-configuration",
+    title: "Vim configuration",
+    to: "/settings/keybindings",
+    searchTerms: [
+      "vimrc vim map nmap imap noremap mappings keys jk escape timeout pcre regex search patterns options configuration",
+    ],
   },
   {
     id: "composer-collapse",
@@ -539,7 +590,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "cli-command",
-    title: "t3 command",
+    title: "astrolabe command",
     to: "/settings/general",
     searchTerms: ["cli terminal shell path install command line"],
     desktopOnly: true,
@@ -766,7 +817,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "pull-request-links-open-in-app",
-    title: "Open pull requests in T3 Code",
+    title: "Open pull requests in Astrolabe",
     to: "/settings/integrations",
     searchTerms: ["pr links github browser external click default pull request view panel"],
   },
@@ -862,6 +913,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "project-defaults",
   },
   {
+    id: "change-group-grouping",
+    title: "Grouping",
+    to: "/settings/change-requests",
+    searchTerms: [
+      "change groups group wiki documentation docs sync same thread coordinator lineage fork references issue key agent suggestions merge with the code",
+    ],
+    environmentOnly: true,
+  },
+  {
     id: "review-guides",
     title: "Review guides (beta)",
     to: "/settings/source-control",
@@ -940,7 +1000,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "t3-connect",
     localEnvironmentOnly: true,
-    title: "T3 Connect",
+    title: "Remote access",
     to: "/settings/connections",
     targetId: "connections-environment",
     searchTerms: ["managed tunnel cloud other devices remote"],
@@ -995,6 +1055,48 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["pull request trusted environments shared credentials permissions read actions"],
   },
   {
+    id: "workspace",
+    title: "Workspace",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["organization org company account name address rename"],
+  },
+  {
+    id: "workspace-people",
+    title: "People",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["invite members admins owner roles remove invitations revoke seats"],
+  },
+  {
+    id: "workspace-teams",
+    title: "Teams",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["new team create join leave owners rename delete"],
+  },
+  {
+    id: "workspace-invite-policy",
+    title: "Who can invite people",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["policy invitations admins only everyone"],
+  },
+  {
+    id: "workspace-team-policy",
+    title: "Who can create teams",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["policy team creation admins only everyone"],
+  },
+  {
+    id: "workspace-leave",
+    title: "Leave, hand over or delete a workspace",
+    to: "/settings/workspaces",
+    cloudOnly: true,
+    searchTerms: ["transfer ownership owner delete workspace leave"],
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1016,8 +1118,10 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/providers": null,
   "/settings/integrations": null,
   "/settings/source-control": "environment-defaults",
+  "/settings/change-requests": "environment-defaults",
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
+  "/settings/workspaces": null,
   "/settings/scheduled-tasks": null,
   "/settings/archived": "project-defaults",
 };

@@ -1,0 +1,55 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "srgb:0.25098,0.23922,0.21961,1.00000",
+      "srgb:0.12549,0.11765,0.10980,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1
+      }
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": false,
+          "image-name": "pivot.svg",
+          "name": "Pivot",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [0, 0]
+          }
+        },
+        {
+          "glass": false,
+          "image-name": "mark.svg",
+          "name": "Mark",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [0, 0]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": ["watchOS"],
+    "squares": "shared"
+  }
+}

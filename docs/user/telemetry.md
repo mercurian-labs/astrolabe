@@ -1,24 +1,17 @@
 # Product usage data
 
-The T3 Code server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
-associated with a hashed account or installation identifier. To count how many installations one person
-uses, the server also sends hashed account identifiers: your T3 Connect account, your OpenAI and
-Claude accounts when you are signed in, and a random identifier for each device that connects. The endpoint keeps a copy of each
-event and forwards events to PostHog. Events include the provider, model, reasoning effort,
-permission mode, turn result, duration, release channel, and main-agent token totals when
-available.
+Astrolabe doesn't collect product usage data. The server sends no usage events, so nothing about
+your providers, models, turns or accounts leaves your machine for analytics.
 
-Events do not include prompts, responses, file contents, authentication tokens, conversation IDs,
-raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
+A build can include relay connection traces, which are sent to Axiom to diagnose remote access
+connections. They're off unless the build was configured with a trace destination.
 
-T3 Code also sends relay connection traces to Axiom to diagnose T3 Connect connectivity.
-
-To disable product events and relay tracing, set `T3CODE_TELEMETRY_ENABLED=false` in the server's
-environment before starting it. Relay tracing also stops when `T3CODE_OTEL_SDK_DISABLED` or
+To make sure relay tracing stays off, set `ASTROLABE_TELEMETRY_ENABLED=false` in the server's
+environment before starting it. Relay tracing also stops when `ASTROLABE_OTEL_SDK_DISABLED` or
 `OTEL_SDK_DISABLED` turns OpenTelemetry export off. The web app in a browser, including one the
-`t3` CLI opens, does not read these variables.
+`astrolabe` CLI opens, does not read these variables.
 
-The desktop app reads `T3CODE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
+The desktop app reads `ASTROLABE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 
 ## Export diagnostics to your own receiver
@@ -32,8 +25,8 @@ saved endpoints are checked when the section opens. Checks send authentication h
 the signal's currently running endpoint and do not follow redirects. To check a new endpoint
 that requires authentication, save it and restart the server first.
 
-`T3CODE_OTLP_*_URL` and standard `OTEL_EXPORTER_OTLP_*` environment variables override the saved
-settings. For endpoints saved here or set with `T3CODE_OTLP_*_URL`, set `T3CODE_OTLP_HEADERS` for
-receivers that need authentication and `T3CODE_OTLP_PROTOCOL=http/protobuf` for receivers that do
+`ASTROLABE_OTLP_*_URL` and standard `OTEL_EXPORTER_OTLP_*` environment variables override the saved
+settings. For endpoints saved here or set with `ASTROLABE_OTLP_*_URL`, set `ASTROLABE_OTLP_HEADERS` for
+receivers that need authentication and `ASTROLABE_OTLP_PROTOCOL=http/protobuf` for receivers that do
 not accept JSON. An endpoint set with `OTEL_EXPORTER_OTLP_*` takes its headers and protocol from
 `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_EXPORTER_OTLP_PROTOCOL` instead.

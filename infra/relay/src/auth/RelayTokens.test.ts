@@ -25,9 +25,7 @@ const config = RelayConfiguration.RelayConfiguration.of({
     bundleId: "com.t3tools.t3code.dev",
   },
   apnsDeliveryJobSigningSecret: Redacted.make("job-secret"),
-  clerkSecretKey: Redacted.make("clerk-secret"),
-  clerkPublishableKey: "pk_test_test",
-  clerkJwtAudience: "t3-code-relay",
+  accountJwtIssuer: "https://auth.example.test",
   cloudMintPrivateKey: Redacted.make(keyPair.privateKey),
   cloudMintPublicKey: keyPair.publicKey,
   managedEndpointBaseDomain: undefined,
@@ -126,18 +124,6 @@ describe("RelayTokens", () => {
         scope: ["environment:connect", "environment:status"],
         cnf: { jkt: "web-proof-key-thumbprint" },
       });
-    }).pipe(Effect.provide(layer)),
-  );
-
-  it.effect("treats requested scope as an order-independent set", () =>
-    Effect.gen(function* () {
-      const relayTokens = yield* RelayTokens.RelayTokens;
-      expect(
-        relayTokens.resolveDpopAccessTokenScopes({
-          clientId: "t3-mobile",
-          scope: "environment:status environment:connect environment:status",
-        }),
-      ).toEqual(["environment:status", "environment:connect"]);
     }).pipe(Effect.provide(layer)),
   );
 

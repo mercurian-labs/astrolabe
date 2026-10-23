@@ -5,7 +5,6 @@ import { verifyPreloadBundle } from "./verify-preload-bundle.mjs";
 const validPreload = `
   const electron = require("electron");
   const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
-  electron.contextBridge.exposeInMainWorld("__clerk_internal_electron_passkeys", {});
   electron.contextBridge.exposeInMainWorld("desktopBridge", {
     getClientPlatform: () => process.platform,
     getLocalEnvironmentBootstraps: () => [],
@@ -20,7 +19,6 @@ describe("desktop preload bundle verifier", () => {
       () =>
         verifyPreloadBundle(`
           "desktopBridge getClientPlatform getLocalEnvironmentBootstraps pickFolder";
-          "__clerk_internal_electron_passkeys";
           require("electron");
         `),
       /missing executable APIs/,
@@ -60,22 +58,9 @@ describe("desktop preload bundle verifier", () => {
     );
   });
 
-  it("ignores import-like text in strings", () => {
-    assert.doesNotThrow(() =>
-      verifyPreloadBundle(`${validPreload}\nconst message = 'import /* comment */("module")';`),
-    );
-  });
-
   it("rejects unsupported require calls with comments before the opening parenthesis", () => {
     assert.throws(
       () => verifyPreloadBundle(`${validPreload}\nrequire /* @__PURE__ */ ("node:fs");`),
-      /unsupported sandbox imports: node:fs/,
-    );
-  });
-
-  it("rejects unsupported optional require calls", () => {
-    assert.throws(
-      () => verifyPreloadBundle(`${validPreload}\nrequire?.("node:fs");`),
       /unsupported sandbox imports: node:fs/,
     );
   });

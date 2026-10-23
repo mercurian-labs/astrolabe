@@ -4,7 +4,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useEffect } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
-import { ThreadRouteView } from "../components/ThreadRouteView";
+import { ChatTabs } from "../chatTabs/ChatTabs";
 import { ThreadLinkPrompt } from "../components/promptLinks/ThreadLinkPrompt";
 import { useClientSettings, useLegacySidebarEnabled } from "../hooks/useSettings";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -22,7 +22,6 @@ import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isEditableFocused } from "../lib/editableFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
-import { undoLatestThreadAction } from "../hooks/showThreadUndoNotice";
 import { resolveShortcutCommand } from "../keybindings";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
@@ -83,15 +82,6 @@ function ChatRouteGlobalShortcuts() {
         return;
       }
 
-      if (command === "thread.undo") {
-        if (event.repeat || isModelPickerOpen()) return;
-        if (undoLatestThreadAction()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-        return;
-      }
-
       if (event.key === "Escape" && selectedThreadKeysSize > 0) {
         event.preventDefault();
         clearSelection();
@@ -146,7 +136,7 @@ function ChatRouteGlobalShortcuts() {
             stackedThreadToast({
               type: "info",
               title: "Preview is desktop-only",
-              description: "Open T3 Code in the desktop app to use the in-app preview.",
+              description: "Open Astrolabe in the desktop app to use the in-app preview.",
             }),
           );
           return;
@@ -215,7 +205,7 @@ function ChatRouteLayout() {
       {threadTarget?.kind === "server" ? (
         <ThreadLinkPrompt threadRef={threadTarget.threadRef} />
       ) : null}
-      {threadTarget ? <ThreadRouteView target={threadTarget} /> : <Outlet />}
+      {threadTarget ? <ChatTabs target={threadTarget} /> : <Outlet />}
     </>
   );
 }

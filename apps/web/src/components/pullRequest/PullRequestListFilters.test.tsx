@@ -1,9 +1,8 @@
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { CircleIcon } from "lucide-react";
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { PullRequestFiltersMenu, pullRequestProjectKey } from "./PullRequestListFilters";
+import { PullRequestFiltersMenu } from "./PullRequestListFilters";
 
 function findValueChange(
   node: ReactNode,
@@ -71,111 +70,21 @@ function menu(overrides: Partial<Parameters<typeof PullRequestFiltersMenu>[0]>) 
 }
 
 describe("pull request filters menu", () => {
-  it("does not emit a change when the selected state is chosen again", () => {
-    const onState = vi.fn();
-    const group = findValueChange(findLabeledGroup(menu({ onState }), "State"));
-    expect(group).toBeDefined();
+  it("offers a lone host only when it cannot be read, so its reason is in reach", () => {
+    const all = { value: "", label: "All", Icon: CircleIcon };
+    const gitHub = { value: "github.com", label: "GitHub", Icon: CircleIcon };
+    expect(findLabeledGroup(menu({ hostOptions: [all, gitHub] }), "Host")).toBeUndefined();
 
-    group?.props.onValueChange("open");
-    expect(onState).not.toHaveBeenCalled();
-
-    group?.props.onValueChange("closed");
-    expect(onState).toHaveBeenCalledOnce();
-    expect(onState).toHaveBeenCalledWith("closed");
-  });
-
-  it("names the chosen narrowing and leaves the others alone", () => {
-    const onFilters = vi.fn();
-    const group = findValueChange(
-      findLabeledGroup(menu({ filters: { review: "approved" }, onFilters }), "Draft"),
-    );
-    expect(group).toBeDefined();
-
-    group?.props.onValueChange("hide");
-    expect(onFilters).toHaveBeenCalledWith({ review: "approved", draft: "hide" });
-  });
-
-  it("drops a narrowing chosen back to all rather than sending it as undefined", () => {
-    const onFilters = vi.fn();
+    const onHost = vi.fn();
+    const unreadable = { ...gitHub, unavailable: "Sign in with `gh auth login`." };
     const group = findValueChange(
       findLabeledGroup(
-        menu({ filters: { review: "none", checks: "failing" }, onFilters }),
-        "Review",
+        menu({ hostOptions: [all, unreadable], host: "github.com", onHost }),
+        "Host",
       ),
     );
     expect(group).toBeDefined();
-
-    group?.props.onValueChange("all");
-    expect(onFilters).toHaveBeenCalledWith({ checks: "failing" });
-  });
-
-  it("does not emit a change when the selected project is chosen again", () => {
-    const projectId = "project-1" as ProjectId;
-    const environmentId = "env-1" as EnvironmentId;
-    const onProject = vi.fn();
-    const view = menu({
-      projects: [
-        {
-          id: projectId,
-          environmentId,
-          title: "T3 Code",
-          workspaceRoot: "/work/t3code",
-        },
-      ],
-      projectId,
-      projectEnvironmentId: environmentId,
-      onProject,
-    });
-    const radioGroup = findValueChange(findLabeledGroup(view, "Project"));
-    expect(radioGroup).toBeDefined();
-
-    radioGroup?.props.onValueChange(pullRequestProjectKey({ id: projectId, environmentId }));
-    expect(onProject).not.toHaveBeenCalled();
-
-    radioGroup?.props.onValueChange("all");
-    expect(onProject).toHaveBeenCalledWith(undefined, undefined);
-  });
-
-  it("passes the environment along so a duplicate project id on another server is told apart", () => {
-    const projectId = "project-1" as ProjectId;
-    const onProject = vi.fn();
-    const view = menu({
-      projects: [
-        {
-          id: projectId,
-          environmentId: "env-1" as EnvironmentId,
-          title: "T3 Code · one",
-          workspaceRoot: "/work/t3code-1",
-        },
-        {
-          id: projectId,
-          environmentId: "env-2" as EnvironmentId,
-          title: "T3 Code · two",
-          workspaceRoot: "/work/t3code-2",
-        },
-      ],
-      onProject,
-    });
-    const radioGroup = findValueChange(findLabeledGroup(view, "Project"));
-    expect(radioGroup).toBeDefined();
-
-    radioGroup?.props.onValueChange(
-      pullRequestProjectKey({ id: projectId, environmentId: "env-2" as EnvironmentId }),
-    );
-    expect(onProject).toHaveBeenCalledWith(projectId, "env-2");
-  });
-
-  it("does not collide when environment and project ids contain spaces", () => {
-    expect(
-      pullRequestProjectKey({
-        environmentId: "a b" as EnvironmentId,
-        id: "c" as ProjectId,
-      }),
-    ).not.toBe(
-      pullRequestProjectKey({
-        environmentId: "a" as EnvironmentId,
-        id: "b c" as ProjectId,
-      }),
-    );
+    group?.props.onValueChange("");
+    expect(onHost).toHaveBeenCalledWith(undefined);
   });
 });

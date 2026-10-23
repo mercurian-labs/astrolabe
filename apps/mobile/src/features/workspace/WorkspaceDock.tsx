@@ -3,8 +3,12 @@ import { Keyboard, Pressable, View } from "react-native";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
-import { WORKSPACE_DOCK } from "./workspace-tabs-state";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import {
+  WORKSPACE_DOCK,
+  WORKSPACE_TABS,
+  WORKSPACE_TAB_ICONS,
+  WORKSPACE_TAB_LABELS,
+} from "./workspace-tabs-state";
 
 export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
   const workspace = useWorkspaceTabs()!;
@@ -15,19 +19,19 @@ export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
     >
       <GlassSurface
         style={{
-          width: WORKSPACE_DOCK.tabsWidth,
+          width: WORKSPACE_DOCK.tabWidth * WORKSPACE_TABS.length,
           height: WORKSPACE_DOCK.height,
           borderRadius: WORKSPACE_DOCK.height / 2,
         }}
       >
         <View className="flex-1 flex-row p-1" accessibilityRole="tablist">
-          {(["threads", "pullRequests"] as const).map((tab) => {
+          {WORKSPACE_TABS.map((tab) => {
             const selected = workspace.state.selectedTab === tab;
             return (
               <Pressable
                 key={tab}
                 accessibilityRole="tab"
-                accessibilityLabel={tab === "threads" ? "Threads" : "Pull requests"}
+                accessibilityLabel={WORKSPACE_TAB_LABELS[tab].title}
                 accessibilityState={{ selected }}
                 onPress={() => {
                   if (selected) return;
@@ -41,7 +45,7 @@ export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
                 }
               >
                 <SymbolView
-                  name={tab === "threads" ? "text.bubble" : PullRequestGlyph.pullRequest}
+                  name={WORKSPACE_TAB_ICONS[tab]}
                   size={23}
                   tintColorClassName={selected ? "accent-focus" : "accent-icon"}
                 />

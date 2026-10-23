@@ -1,0 +1,5 @@
+/*
+ * KaTeX's stylesheet, for hosts that render math in the live preview. Import it next to
+ * theme.css; the KaTeX runtime itself loads only when a document shows math.
+ */
+@import "katex/dist/katex.min.css";

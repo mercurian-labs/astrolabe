@@ -35,13 +35,13 @@ export function availableCloudEnvironmentPresentation(input: {
       connectionError: null,
       connectionErrorTraceId: null,
       connectionState: "available",
-      statusText: "Available · Relay online",
+      statusText: "Available · Remote access online",
     };
   }
 
   if (input.status?.status === "offline") {
     const connectionError =
-      relayOfflineReasonMessage(input.status) ?? input.status.error ?? "Relay is offline.";
+      relayOfflineReasonMessage(input.status) ?? input.status.error ?? "Remote access is offline.";
     return {
       connectionError,
       connectionErrorTraceId: input.status.traceId ?? null,
@@ -64,7 +64,7 @@ export function availableCloudEnvironmentPresentation(input: {
     connectionErrorTraceId: null,
     connectionState: "available",
     statusText: input.isStatusPending
-      ? "Available · Checking relay status..."
-      : "Available · Relay status unknown",
+      ? "Available · Checking remote access status..."
+      : "Available · Remote access status unknown",
   };
 }

@@ -6,6 +6,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type Dispatch,
   type ReactNode,
 } from "react";
@@ -24,6 +25,9 @@ export const WorkspaceTabsContext = createContext<{
   readonly bottomClearance: number;
   readonly getScrollOffset: (tab: WorkspaceTab) => number;
   readonly recordScrollOffset: (tab: WorkspaceTab, offset: number) => void;
+  /** The wiki the Wikis list is filtered to, as `wikiScopeKey` names it; null for all. */
+  readonly wikiScope: string | null;
+  readonly setWikiScope: (scope: string | null) => void;
 } | null>(null);
 
 export function useWorkspaceTabs() {
@@ -37,7 +41,14 @@ export function WorkspaceTabsProvider(props: { readonly children: ReactNode }) {
     activeTab.current = state.selectedTab;
   }, [state.selectedTab]);
   const isTabActive = useCallback((tab: WorkspaceTab) => activeTab.current === tab, []);
-  const scrollOffsets = useRef({ threads: 0, pullRequests: 0 });
+  // Astrolabe: the wiki filter, one value shared by Wikis and Change requests.
+  const [wikiScope, setWikiScope] = useState<string | null>(null);
+  const scrollOffsets = useRef<Record<WorkspaceTab, number>>({
+    threads: 0,
+    pullRequests: 0,
+    wikis: 0,
+    repositories: 0,
+  });
   const getScrollOffset = useCallback((tab: WorkspaceTab) => scrollOffsets.current[tab], []);
   const recordScrollOffset = useCallback((tab: WorkspaceTab, offset: number) => {
     scrollOffsets.current[tab] = offset;
@@ -50,8 +61,10 @@ export function WorkspaceTabsProvider(props: { readonly children: ReactNode }) {
       bottomClearance: 0,
       getScrollOffset,
       recordScrollOffset,
+      wikiScope,
+      setWikiScope,
     }),
-    [state, isTabActive, getScrollOffset, recordScrollOffset],
+    [state, isTabActive, getScrollOffset, recordScrollOffset, wikiScope],
   );
   return <WorkspaceTabsContext value={context}>{props.children}</WorkspaceTabsContext>;
 }

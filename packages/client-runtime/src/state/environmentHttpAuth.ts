@@ -67,7 +67,7 @@ const buildEnvironmentAuthHeaders = Effect.fn("environmentHttpAuth.buildEnvironm
     }
     if (Option.isNone(signer)) {
       return yield* new RemoteEnvironmentAuthFetchError({
-        message: "No DPoP signer is available to authorize the environment request.",
+        message: "No signing key is available to authorize the environment request.",
         cause: authorization._tag,
       });
     }
@@ -148,7 +148,7 @@ const executeEnvironmentRequest = Effect.fnUntraced(function* <
         const remote = input.remoteAuthorization;
         if (remote === undefined || Option.isNone(remote)) {
           return yield* new RemoteEnvironmentAuthFetchError({
-            message: "No relay authorization service is available for the environment request.",
+            message: "Remote access sign-in is not available for the environment request.",
             cause: input.prepared.target._tag,
           });
         }

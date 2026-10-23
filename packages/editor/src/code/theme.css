@@ -1,0 +1,29 @@
+/* A code file's colours: the token colours of the notes' code blocks (markdown/theme.css). */
+.cm-code .tok-keyword {
+  color: var(--atlas-md-token-keyword);
+}
+.cm-code .tok-string,
+.cm-code .tok-string2 {
+  color: var(--atlas-md-token-string);
+}
+.cm-code .tok-number,
+.cm-code .tok-bool,
+.cm-code .tok-atom {
+  color: var(--atlas-md-token-number);
+}
+.cm-code .tok-comment {
+  color: var(--atlas-md-token-comment);
+}
+.cm-code .tok-typeName,
+.cm-code .tok-className {
+  color: var(--atlas-md-token-type);
+}
+.cm-code .tok-propertyName,
+.cm-code .tok-attributeName {
+  color: var(--atlas-md-token-property);
+}
+.cm-code .cm-gutters {
+  background: transparent;
+  border: none;
+  color: var(--atlas-md-syntax-color);
+}

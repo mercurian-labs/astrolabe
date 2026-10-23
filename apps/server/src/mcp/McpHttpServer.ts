@@ -63,6 +63,10 @@ import * as WorktreeHandlers from "./toolkits/worktree/handlers.ts";
 import { WorktreeToolkit } from "./toolkits/worktree/tools.ts";
 import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
+import * as WikiHandlers from "./toolkits/wiki/handlers.ts";
+import * as ChangeGroupHandlers from "./toolkits/changeGroups/handlers.ts";
+import { ChangeGroupToolkit } from "./toolkits/changeGroups/tools.ts";
+import { WikiToolkit } from "./toolkits/wiki/tools.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
 import {
@@ -103,7 +107,7 @@ const unauthorized = (input: {
   return HttpServerResponse.jsonUnsafe(
     {
       error: "invalid_mcp_credential",
-      message: "A valid T3 Code MCP credential is required.",
+      message: "A valid Astrolabe MCP credential is required.",
     },
     {
       status: 401,
@@ -138,7 +142,7 @@ type McpAuthMiddleware = (
   HttpServerRequest.HttpServerRequest
 >;
 
-export const normalizeMcpHttpResponse = (
+const normalizeMcpHttpResponse = (
   response: HttpServerResponse.HttpServerResponse,
 ): HttpServerResponse.HttpServerResponse => {
   const bodyIsEmpty =
@@ -1025,7 +1029,7 @@ const layerPreviewControlsRegistration = toolkitRegistration(
   PreviewControlsHandlers.layer,
 );
 
-export const layerEnvironmentToolkit = toolkitRegistration(
+const layerEnvironmentToolkit = toolkitRegistration(
   EnvironmentToolkit,
   EnvironmentHandlers.layer,
 ).pipe(Layer.provide(ThreadCommandExecutor.layer));
@@ -1041,6 +1045,9 @@ export const layerPullRequestsToolkit = toolkitRegistration(
   PullRequestsToolkit,
   PullRequestsHandlers.layer,
 );
+
+const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
+const layerChangeGroupToolkit = toolkitRegistration(ChangeGroupToolkit, ChangeGroupHandlers.layer);
 
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,
@@ -1058,7 +1065,7 @@ export const layerDeviceToolkit = Layer.mergeAll(
 );
 
 export const layerMcpTransport = McpServer.layerHttp({
-  name: "T3 Code",
+  name: "Astrolabe",
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],
@@ -1075,6 +1082,8 @@ export const layer = Layer.mergeAll(
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,
+  layerWikiToolkit,
+  layerChangeGroupToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
 ).pipe(Layer.provideMerge(layerMcpTransport));

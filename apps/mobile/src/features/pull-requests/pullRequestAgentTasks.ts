@@ -21,7 +21,7 @@ export function pullRequestAgentPrompt(task: PullRequestAgentTask): string {
     case "conflicts":
       return "Resolve this pull request's conflicts with its base branch. First confirm this thread is on the PR's branch; if it isn't, prepare the PR in its own worktree. Bring it up to date using this repository's convention, preserve the intent of both sides, and run the relevant checks before pushing.";
     case "watch":
-      return "Watch this pull request for check results, new feedback, and conflicts using T3's pull request watch. End the turn once the watch is armed. When it wakes you, assess what changed and report what needs attention.";
+      return "Watch this pull request for check results, new feedback, and conflicts using Astrolabe's pull request watch. End the turn once the watch is armed. When it wakes you, assess what changed and report what needs attention.";
   }
 }
 

@@ -1,11 +1,11 @@
-import { createClerkBridge } from "@clerk/electron";
+// Upstream's name: this owned the Clerk bridge. Astrolabe signs in through
+// app.astrolabe.sh instead (see apps/web/src/cloud/account.ts), and what
+// remains is the single-instance lock and the deep links it forwards.
 import * as NodeURL from "node:url";
-import { storage } from "@clerk/electron/storage";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import { codexAuthDeliveryUrl, readCodexAuthHandoff } from "@t3tools/shared/codexAuthHandoff";
@@ -14,41 +14,12 @@ import * as ElectronShell from "../electron/ElectronShell.ts";
 import { providerAuthReturnUrl } from "@t3tools/shared/providerAuthReturnUrl";
 import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
-
-declare const __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
-
-export class DesktopClerkBridgeInitializationError extends Schema.TaggedError<DesktopClerkBridgeInitializationError>()(
-  "DesktopClerkBridgeInitializationError",
-  {
-    stateDir: Schema.String,
-    isDevelopment: Schema.Boolean,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to initialize the desktop Clerk bridge for state directory "${this.stateDir}" (development: ${this.isDevelopment}).`;
-  }
-}
-
-export class DesktopClerkBridgeCleanupError extends Schema.TaggedError<DesktopClerkBridgeCleanupError>()(
-  "DesktopClerkBridgeCleanupError",
-  {
-    stateDir: Schema.String,
-    isDevelopment: Schema.Boolean,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to clean up the desktop Clerk bridge for state directory "${this.stateDir}" (development: ${this.isDevelopment}).`;
-  }
-}
 
 export class DesktopClerk extends Context.Service<
   DesktopClerk,
@@ -64,48 +35,18 @@ export class DesktopClerk extends Context.Service<
   }
 >()("@t3tools/desktop/app/DesktopClerk") {}
 
-function resolveDesktopClerkFrontendApiHostname(
-  publishableKey: string | undefined,
-): string | undefined {
-  const normalizedKey = publishableKey?.trim();
-  if (!normalizedKey) return undefined;
-
-  try {
-    return clerkFrontendApiHostnameFromPublishableKey(normalizedKey);
-  } catch {
-    return undefined;
-  }
-}
-
-export const desktopClerkFrontendApiHostname = resolveDesktopClerkFrontendApiHostname(
-  typeof __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__ === "undefined"
-    ? undefined
-    : __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__,
-);
-
-function createDesktopClerkBridge(stateDir: string, isDevelopment: boolean) {
-  return createClerkBridge({
-    storage: storage({ path: stateDir }),
-    manageSingleInstanceLock: false,
-    passkeys: true,
-    renderer: {
-      scheme: ElectronProtocol.getDesktopScheme(isDevelopment),
-      host: ElectronProtocol.DESKTOP_HOST,
-    },
-  });
-}
-
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const electronApp = yield* ElectronApp.ElectronApp;
   const shell = yield* ElectronShell.ElectronShell;
 
-  // Must not yield: the bridge registers a scheme Electron rejects once ready.
+  // The single-instance lock is profile-scoped and lives in (and creates)
+  // the userData directory, so the real path must be set first.
   const userDataPath = yield* DesktopUserData.resolveUserDataPath(environment);
   yield* electronApp.setPath("userData", userDataPath);
 
-  // T3 owns the profile-scoped lock on every platform; Clerk skips it on macOS.
+  // T3 owns the profile-scoped lock on every platform.
   // Quit is asynchronous, so interrupt before the application runtime is built.
   if (!(yield* electronApp.requestSingleInstanceLock)) {
     yield* electronApp.quit;
@@ -121,26 +62,10 @@ export const make = Effect.gen(function* () {
     handleSecondInstance(argv);
   });
 
-  yield* Effect.acquireRelease(
-    Effect.try({
-      try: () => createDesktopClerkBridge(environment.stateDir, environment.isDevelopment),
-      catch: (cause) =>
-        new DesktopClerkBridgeInitializationError({
-          stateDir: environment.stateDir,
-          isDevelopment: environment.isDevelopment,
-          cause,
-        }),
-    }),
-    (bridge) =>
-      Effect.try({
-        try: () => bridge.cleanup(),
-        catch: (cause) =>
-          new DesktopClerkBridgeCleanupError({
-            stateDir: environment.stateDir,
-            isDevelopment: environment.isDevelopment,
-            cause,
-          }),
-      }).pipe(Effect.orDie),
+  // Packaged builds declare the scheme in their bundle; unpackaged runs only
+  // receive astrolabe:// links once registered here.
+  yield* electronApp.setAsDefaultProtocolClient(
+    ElectronProtocol.getDesktopScheme(environment.isDevelopment),
   );
 
   return DesktopClerk.of({

@@ -5,25 +5,32 @@
 #   curl -fsSL https://t3.codes/install.sh | sh
 #
 # Environment:
-#   T3CODE_CHANNEL           release train to follow: stable, nightly, or preview
-#                            (default: stable; preview is a maintainers' test train)
-#   T3CODE_VERSION           exact version to install (overrides T3CODE_CHANNEL)
-#   T3CODE_HOME              T3 home directory (default: ~/.t3)
-#   T3CODE_INSTALL_BIN_DIR   where the `t3` symlink goes (default: ~/.local/bin)
-#   T3CODE_RELEASE_BASE_URL  mirror for releases/download (default: GitHub)
+#   ASTROLABE_CHANNEL           release train to follow: stable, nightly, or preview
+#                               (default: stable; preview is a maintainers' test train)
+#   ASTROLABE_VERSION           exact version to install (overrides ASTROLABE_CHANNEL)
+#   ASTROLABE_HOME              Astrolabe home directory (default: ~/.astrolabe)
+#   ASTROLABE_INSTALL_BIN_DIR   where the `astrolabe` symlink goes (default: ~/.local/bin)
+#   ASTROLABE_RELEASE_BASE_URL  mirror for releases/download (default: GitHub)
 #
-# The archive is unpacked into $T3CODE_HOME/runtime/versions/<version>, the
-# same layout `t3 service install` uses, so the service reuses this download
+# The archive is unpacked into $ASTROLABE_HOME/runtime/versions/<version>, the
+# same layout `astrolabe service install` uses, so the service reuses this download
 # instead of fetching the release again.
 set -eu
 
+# The rest of the script keeps upstream's T3CODE_* names. A home inherited from T3 Code is ignored.
+T3CODE_CHANNEL="${ASTROLABE_CHANNEL:-${T3CODE_CHANNEL:-}}"
+T3CODE_VERSION="${ASTROLABE_VERSION:-${T3CODE_VERSION:-}}"
+T3CODE_HOME="${ASTROLABE_HOME:-}"
+T3CODE_INSTALL_BIN_DIR="${ASTROLABE_INSTALL_BIN_DIR:-${T3CODE_INSTALL_BIN_DIR:-}}"
+T3CODE_RELEASE_BASE_URL="${ASTROLABE_RELEASE_BASE_URL:-${T3CODE_RELEASE_BASE_URL:-}}"
+
 repo="pingdotgg/t3code"
 base_url="${T3CODE_RELEASE_BASE_URL:-https://github.com/${repo}/releases/download}"
-t3_home="${T3CODE_HOME:-$HOME/.t3}"
+t3_home="${T3CODE_HOME:-$HOME/.astrolabe}"
 bin_dir="${T3CODE_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 
 fail() {
-  printf '\nt3 install: %s\n' "$1" >&2
+  printf '\nastrolabe install: %s\n' "$1" >&2
   exit 1
 }
 
@@ -42,7 +49,7 @@ step() {
 if "$interactive"; then
   printf '\n%s' "$bold" >&2
   printf '  %s\n' '██████████ ████████ ' >&2
-  printf '  %s\n' '    ███       ▄██▀       T3 Code' >&2
+  printf '  %s\n' '    ███       ▄██▀       Astrolabe' >&2
   printf '  %s%s     %sCLI installer%s\n' '    ███       ████▄ ' "$reset" "$muted" "$reset$bold" >&2
   printf '  %s\n' '    ███    ▄     ███' >&2
   printf '  %s\n' '    ███    ███████▀ ' >&2
@@ -151,21 +158,21 @@ if [ -z "$version" ]; then
   case "$channel" in
     stable) tag_pattern='v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)' ;;
     nightly | preview) tag_pattern="v\([0-9][^\"]*-${channel}\.[0-9]*\.[0-9]*\)" ;;
-    *) fail "T3CODE_CHANNEL must be stable, nightly, or preview" ;;
+    *) fail "ASTROLABE_CHANNEL must be stable, nightly, or preview" ;;
   esac
   tmp_index="$(mktemp)"
   fetch "https://api.github.com/repos/${repo}/releases?per_page=100" "$tmp_index"
   version="$(sed -n "s/.*\"tag_name\": *\"${tag_pattern}\".*/\1/p" "$tmp_index" | head -n 1)"
   rm -f "$tmp_index"
-  [ -n "$version" ] || fail "could not find a ${channel} release; set T3CODE_VERSION"
+  [ -n "$version" ] || fail "could not find a ${channel} release; set ASTROLABE_VERSION"
 fi
 case "$version" in
   *-preview.*)
     printf '%s\n' \
-      "t3 ${version} is a preview build." \
+      "astrolabe ${version} is a preview build." \
       "  Preview builds are cut by maintainers from unreleased branches to exercise the release" \
       "  pipeline. They can be broken, receive no fixes, and are never offered as updates." \
-      "  Set T3CODE_CHANNEL=stable (the default) for a supported build." >&2
+      "  Set ASTROLABE_CHANNEL=stable (the default) for a supported build." >&2
     if [ "$channel" != "preview" ] && [ -z "${T3CODE_VERSION:-}" ]; then
       fail "refusing a preview build that was not explicitly requested"
     fi
@@ -188,12 +195,12 @@ else
   trap 'printf "\n" >&2; exit 143' TERM
 
   if "$interactive"; then printf '\r\033[2K' >&2; fi
-  printf '  %sInstalling%s T3 Code %s%s%s\n\n' "$muted" "$reset" "$bold" "$version" "$reset" >&2
+  printf '  %sInstalling%s Astrolabe %s%s%s\n\n' "$muted" "$reset" "$bold" "$version" "$reset" >&2
   step "Downloading..."
   fetch_status=0
   fetch "${base_url}/v${version}/SHA256SUMS" "${staging}/SHA256SUMS" || fetch_status=$?
   if [ "$fetch_status" -eq 44 ]; then
-    fail "t3 ${version} has no release archive for ${platform}-${arch}; releases before the self-contained CLI can only be installed with \`npm install -g t3@${version}\`"
+    fail "astrolabe ${version} has no release archive for ${platform}-${arch}; releases before the self-contained CLI can only be installed with \`npm install -g @mercurian/astrolabe@${version}\`"
   elif [ "$fetch_status" -ne 0 ]; then
     fail "could not download the release checksums"
   fi
@@ -205,10 +212,10 @@ else
   actual="$(checksum "${staging}/${archive}")"
   [ "$actual" = "$expected" ] || fail "checksum mismatch for ${archive}"
 
-  step "Extracting T3 Code..."
+  step "Extracting Astrolabe..."
   tar -xzf "${staging}/${archive}" -C "$staging" --strip-components=1
   rm -f "${staging}/${archive}" "${staging}/SHA256SUMS"
-  "${staging}/t3" --version >/dev/null || fail "the downloaded executable does not run"
+  "${staging}/astrolabe" --version >/dev/null || fail "the downloaded executable does not run"
   printf '%s\n' "$version" > "${staging}/.install-complete"
 
   rm -rf "$target_dir"
@@ -216,16 +223,16 @@ else
   trap - EXIT
 fi
 
-step "Setting up the t3 command..."
+step "Setting up the astrolabe command..."
 mkdir -p "$bin_dir"
-ln -sfn "${target_dir}/t3" "${bin_dir}/t3"
+ln -sfn "${target_dir}/astrolabe" "${bin_dir}/astrolabe"
 # Pruning keeps what this launcher points at; a background service cannot see bin_dir otherwise.
-launcher="$(CDPATH='' cd -P -- "$bin_dir" && pwd)/t3"
+launcher="$(CDPATH='' cd -P -- "$bin_dir" && pwd)/astrolabe"
 launchers="${t3_home}/runtime/launchers"
 grep -qxF "$launcher" "$launchers" 2>/dev/null || printf '%s\n' "$launcher" >> "$launchers"
 if "$interactive"; then printf '\r\033[2K' >&2; fi
-printf '  %sInstalled T3 Code %s%s\n\n' "$green" "$version" "$reset" >&2
+printf '  %sInstalled Astrolabe %s%s\n\n' "$green" "$version" "$reset" >&2
 case ":${PATH}:" in
-  *":${bin_dir}:"*) printf '  Run %st3%s to get started.\n\n' "$bold" "$reset" ;;
-  *) printf '  Add %s to your PATH, then run %st3%s.\n\n' "$bin_dir" "$bold" "$reset" ;;
+  *":${bin_dir}:"*) printf '  Run %sastrolabe%s to get started.\n\n' "$bold" "$reset" ;;
+  *) printf '  Add %s to your PATH, then run %sastrolabe%s.\n\n' "$bin_dir" "$bold" "$reset" ;;
 esac

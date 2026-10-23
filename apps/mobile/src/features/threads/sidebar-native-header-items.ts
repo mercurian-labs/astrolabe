@@ -3,6 +3,7 @@ import type {
   NativeStackHeaderItemMenu,
 } from "@react-navigation/native-stack";
 
+import { type AccountMenu, accountHeaderItem } from "../cloud/accountMenu";
 import type { HomeListFilterMenu } from "../home/home-list-filter-menu";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 
@@ -31,37 +32,24 @@ function toNativeHeaderMenuItems(items: HomeListFilterMenu["items"]): NativeHead
   );
 }
 
-export function createSidebarFilterHeaderItem(input: {
-  readonly filterIcon: string;
-  readonly filterMenu: HomeListFilterMenu;
-}): NativeStackHeaderItemMenu {
-  return withNativeGlassHeaderItem({
-    type: "menu",
-    axisBehavior: "horizontalOnly",
-    label: "",
-    accessibilityLabel: "Filter threads",
-    icon: sfSymbolIcon(input.filterIcon),
-    menu: {
-      title: input.filterMenu.title,
-      items: toNativeHeaderMenuItems(input.filterMenu.items),
-    },
-  });
-}
-
 export function createSidebarHeaderItems(input: {
   readonly filterIcon: string;
   readonly filterMenu: HomeListFilterMenu;
+  readonly accountMenu: AccountMenu | null;
   readonly onOpenSettings: () => void;
 }): NativeStackHeaderItem[] {
   return [
-    createSidebarFilterHeaderItem(input),
     withNativeGlassHeaderItem({
-      type: "button",
+      type: "menu",
       axisBehavior: "horizontalOnly",
-      label: "Settings",
-      accessibilityLabel: "Open settings",
-      icon: sfSymbolIcon("gearshape"),
-      onPress: input.onOpenSettings,
+      label: "",
+      accessibilityLabel: "Filter threads",
+      icon: sfSymbolIcon(input.filterIcon),
+      menu: {
+        title: input.filterMenu.title,
+        items: toNativeHeaderMenuItems(input.filterMenu.items),
+      },
     }),
+    accountHeaderItem(input.accountMenu, input.onOpenSettings),
   ];
 }

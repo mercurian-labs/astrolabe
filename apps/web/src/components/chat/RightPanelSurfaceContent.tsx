@@ -31,6 +31,9 @@ const DevicePanel = lazy(() =>
   import("../device/DevicePanel").then((module) => ({ default: module.DevicePanel })),
 );
 const FilePreviewPanel = lazy(() => import("../files/FilePreviewPanel"));
+const GraphPanel = lazy(() => import("../graph/GraphPanel"));
+const LineagePanel = lazy(() => import("../lineage/LineagePanel"));
+const ignoreTurn = (_messageId: string) => {};
 
 export type RightPanelTerminalProps = Omit<
   PersistentThreadTerminalPanelProps,
@@ -74,6 +77,11 @@ export function RightPanelSurfaceContent(props: {
     image: ComposerImageAttachment | null,
   ) => void;
   readonly onCloseSurface: (surface: RightPanelSurface) => void;
+  /** Astrolabe: the Lineage tab remounts per thread and scrolls the chat to a checkpoint's turn. */
+  readonly lineage?: {
+    readonly threadKey: string | null;
+    readonly onShowTurn: (messageId: string) => void;
+  };
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
@@ -122,7 +130,7 @@ export function RightPanelSurfaceContent(props: {
         return (
           <PullRequestsUnavailableState
             title="Pull requests unavailable"
-            error="Update this environment's T3 Code server to browse pull requests."
+            error="Update this environment's Astrolabe server to browse pull requests."
           />
         );
       }
@@ -167,6 +175,22 @@ export function RightPanelSurfaceContent(props: {
     }
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
+    case "graph":
+      return (
+        <Suspense fallback={null}>
+          <GraphPanel threadRef={threadRef} />
+        </Suspense>
+      );
+    case "lineage":
+      return (
+        <Suspense fallback={null}>
+          <LineagePanel
+            key={props.lineage?.threadKey}
+            threadRef={threadRef}
+            onShowTurn={props.lineage?.onShowTurn ?? ignoreTurn}
+          />
+        </Suspense>
+      );
     case "device":
       return (
         <Suspense fallback={null}>

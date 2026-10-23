@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import { ForwardCompatibleArray, TrimmedString } from "./baseSchemas.ts";
 
-export const MAX_KEYBINDING_VALUE_LENGTH = 64;
+const MAX_KEYBINDING_VALUE_LENGTH = 64;
 const MAX_KEYBINDING_WHEN_LENGTH = 256;
 export const MAX_WHEN_EXPRESSION_DEPTH = 64;
 export const MAX_SCRIPT_ID_LENGTH = 24;
@@ -56,6 +56,53 @@ const MODEL_PICKER_KEYBINDING_COMMANDS = [
 ] as const;
 export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMANDS)[number];
 
+/**
+ * Astrolabe: commands the client's command registry runs (`apps/web/src/whichKey/commands.ts`),
+ * reached from the keyboard menu, the Command Palette's aliases, and shortcuts alike.
+ */
+export const ASTROLABE_KEYBINDING_COMMANDS = [
+  "commandLine.open",
+  "section.new",
+  "section.threads",
+  "section.wikis",
+  "section.repositories",
+  "section.pullRequests",
+  "section.usage",
+  "section.settings",
+  "chatTab.next",
+  "chatTab.previous",
+  "chatTab.close",
+  "pane.splitRight",
+  "pane.splitDown",
+  "pane.close",
+  "pane.toggleMaximized",
+  "pane.toggleFullScreen",
+  "focus.left",
+  "focus.down",
+  "focus.up",
+  "focus.right",
+  "scroll.down",
+  "scroll.up",
+  "wiki.findDocument",
+  "tab.close",
+  "draft.write",
+  "buffer.open",
+  "document.open",
+  "search.clearHighlight",
+] as const;
+export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
+
+/** Astrolabe: the Markdown editors' formatting commands, which each editor binds itself. */
+export const MARKDOWN_KEYBINDING_COMMANDS = [
+  "markdown.bold",
+  "markdown.italic",
+  "markdown.code",
+  "markdown.strikethrough",
+  "markdown.highlight",
+  "markdown.link",
+] as const;
+export type MarkdownKeybindingCommand = (typeof MARKDOWN_KEYBINDING_COMMANDS)[number];
+
 export const STATIC_KEYBINDING_COMMANDS = [
   "sidebar.toggle",
   "navigation.back",
@@ -80,6 +127,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "preview.zoomOut",
   "preview.resetZoom",
   "commandPalette.toggle",
+  // Astrolabe: the keyboard (which-key) menu, which `mod+k` opens; the palette is inside it.
+  "whichKey.open",
   "filePicker.toggle",
   "projectSearch.toggle",
   "usage.open",
@@ -113,6 +162,9 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "usage.period.quarter",
   ...MODEL_PICKER_KEYBINDING_COMMANDS,
   ...THREAD_KEYBINDING_COMMANDS,
+  // Astrolabe
+  ...ASTROLABE_KEYBINDING_COMMANDS,
+  ...MARKDOWN_KEYBINDING_COMMANDS,
 ] as const;
 
 export const SCRIPT_RUN_COMMAND_PATTERN = Schema.TemplateLiteral([
@@ -139,9 +191,26 @@ export const KeybindingWhen = TrimmedString.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(MAX_KEYBINDING_WHEN_LENGTH),
 );
+/**
+ * Astrolabe: a rule whose command starts with `-` removes the matching default instead of adding
+ * a binding (VS Code's convention): `{ "key": "menu t ]", "command": "-chatTab.next" }`.
+ */
+export const KeybindingRemovalCommand = Schema.TemplateLiteral([
+  Schema.Literal("-"),
+  KeybindingCommand,
+]);
+export type KeybindingRemovalCommand = typeof KeybindingRemovalCommand.Type;
+export const KeybindingRuleCommand = Schema.Union([KeybindingCommand, KeybindingRemovalCommand]);
+export type KeybindingRuleCommand = typeof KeybindingRuleCommand.Type;
+
+/**
+ * A rule's `key` is its trigger: a shortcut (`mod+k`), or, in Astrolabe, menu keys for the
+ * keyboard menu (`menu g w`) or an alias for the Command Palette (`:q[uit]`).
+ */
 export const KeybindingRule = Schema.Struct({
   key: KeybindingValue,
-  command: KeybindingCommand,
+  // Astrolabe: or a `-command` removal.
+  command: KeybindingRuleCommand,
   when: Schema.optional(KeybindingWhen),
 });
 export type KeybindingRule = typeof KeybindingRule.Type;
@@ -212,6 +281,40 @@ export const ResolvedKeybindingsConfig = ForwardCompatibleArray(ResolvedKeybindi
   Schema.isMaxLength(MAX_KEYBINDINGS_COUNT),
 );
 export type ResolvedKeybindingsConfig = typeof ResolvedKeybindingsConfig.Type;
+
+/**
+ * Astrolabe: the triggers beside shortcuts, as the server resolved them (defaults merged, removals
+ * applied). A `menu` trigger's sequence is the keys pressed in the open keyboard menu; an alias is
+ * matched as Vim matches an ex name, by any abbreviation down to its `shortest` letters (`:q[uit]`
+ * is 1).
+ */
+export const ResolvedKeybindingTrigger = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("menu"),
+    command: KeybindingCommand,
+    sequence: Schema.Array(Schema.NonEmptyString).check(Schema.isMinLength(1)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("alias"),
+    command: KeybindingCommand,
+    name: Schema.NonEmptyString,
+    shortest: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+  }),
+]);
+export type ResolvedKeybindingTrigger = typeof ResolvedKeybindingTrigger.Type;
+
+/**
+ * Astrolabe: sent beside `keybindings` in its own optional field, so older clients (which require
+ * a shortcut on every rule) never see it. `unboundCommands` are commands a `-command` rule left
+ * with no shortcut at all, which a client's own default merge must not give back.
+ */
+export const ResolvedKeybindingTriggers = Schema.Struct({
+  triggers: ForwardCompatibleArray(ResolvedKeybindingTrigger).check(
+    Schema.isMaxLength(MAX_KEYBINDINGS_COUNT),
+  ),
+  unboundCommands: ForwardCompatibleArray(KeybindingCommand),
+});
+export type ResolvedKeybindingTriggers = typeof ResolvedKeybindingTriggers.Type;
 
 export class KeybindingsConfigError extends Schema.TaggedError<KeybindingsConfigError>()(
   "KeybindingsConfigParseError",

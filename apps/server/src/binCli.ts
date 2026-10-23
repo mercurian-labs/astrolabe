@@ -13,11 +13,13 @@ import { authCommand } from "./cli/auth.ts";
 import { appCommand } from "./cli/app.ts";
 import { browserCommand } from "./cli/browser.ts";
 import { connectCommand } from "./cli/connect.ts";
+import { CLI_COMMAND } from "./cli/invocation.ts";
 import { pairCommand } from "./cli/pair.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { extendConnectionAttemptTimeout, keepOutboundFetchOnHttp1 } from "./outboundHttp.ts";
 import { sharedServerCommandFlags } from "./cli/config.ts";
 import { projectCommand } from "./cli/project.ts";
+import { threadCommand } from "./cli/thread.ts";
 import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { updateCommand } from "./cli/update.ts";
 import { uninstallCommand } from "./cli/uninstall.ts";
@@ -33,7 +35,7 @@ import { triageCommand } from "./cli/triage.ts";
 const layerCliRuntime = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
 const connectPublicConfigMissingMessage =
-  "T3 Connect commands are unavailable: this build is missing T3 Connect public configuration.";
+  "Remote access commands are unavailable: this build is missing remote access public configuration.";
 
 class ConnectPublicConfigMissingError extends CliError.UserError {
   override get message() {
@@ -44,12 +46,12 @@ class ConnectPublicConfigMissingError extends CliError.UserError {
 const connectUnavailableCommand = Command.make("connect", {
   command: Argument.String("command").pipe(Argument.variadic),
 }).pipe(
-  Command.withDescription("T3 Connect is unavailable in builds without public configuration."),
+  Command.withDescription("Remote access is unavailable in builds without public configuration."),
   Command.unlisted,
   Command.withHandler(() =>
     Effect.fail(
       new CliError.ShowHelp({
-        commandPath: ["t3", "connect"],
+        commandPath: [CLI_COMMAND, "connect"],
         errors: [new ConnectPublicConfigMissingError({ cause: connectPublicConfigMissingMessage })],
       }),
     ),
@@ -57,14 +59,14 @@ const connectUnavailableCommand = Command.make("connect", {
 );
 
 export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
-  Command.make("t3", { ...sharedServerCommandFlags }).pipe(
-    Command.withDescription("Run the T3 Code server."),
+  Command.make(CLI_COMMAND, { ...sharedServerCommandFlags }).pipe(
+    Command.withDescription("Run the Astrolabe server."),
     Command.withHandler(runDefaultServerCommand),
     Command.withSubcommands([
       Command.make("help").pipe(
         Command.withDescription("Show command help."),
         Command.withHandler(() =>
-          Effect.fail(new CliError.ShowHelp({ commandPath: ["t3"], errors: [] })),
+          Effect.fail(new CliError.ShowHelp({ commandPath: [CLI_COMMAND], errors: [] })),
         ),
       ),
       acpMcpBridgeCommand,
@@ -76,6 +78,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       authCommand,
       browserCommand,
       projectCommand,
+      threadCommand,
       serviceCommand,
       updateCommand,
       uninstallCommand,

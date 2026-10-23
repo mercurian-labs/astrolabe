@@ -94,7 +94,9 @@ import {
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   WS_METHODS,
+  WsAstrolabeRpcGroup,
   WsRpcGroup,
+  WsUpstreamRpcGroup,
 } from "@t3tools/contracts";
 import {
   HttpRouter,
@@ -108,6 +110,8 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
+// Astrolabe
+import * as Vimrc from "./vimrc.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
@@ -230,6 +234,8 @@ import type { TelemetryOwner } from "./telemetry/Identify.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as WikiService from "./wiki/WikiService.ts";
+import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -246,6 +252,7 @@ import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
+import { isNetworkPath } from "@t3tools/shared/path";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { isTelemetryIdHash } from "@t3tools/shared/telemetryId";
 import {
@@ -268,7 +275,7 @@ const resolveDiscoveryForConfig = <A, E, R>(
     Effect.map(Option.getOrElse(onTimeout)),
   );
 
-export const resolveAvailableEditorsForConfig = <A, E, R>(
+const resolveAvailableEditorsForConfig = <A, E, R>(
   discovery: Effect.Effect<ReadonlyArray<A>, E, R>,
 ) => resolveDiscoveryForConfig(discovery, () => []);
 
@@ -344,6 +351,9 @@ export const withLateEditorConfig = <E, R>(
             return [{ ...current, providers: event.payload.providers }, [event]];
           case "settingsUpdated":
             return [{ ...current, settings: event.payload.settings }, [event]];
+          // Astrolabe
+          case "vimrcUpdated":
+            return [{ ...current, vimrc: event.payload.vimrc }, [event]];
           // Themes and usage-limit sources never ride in a snapshot; clients
           // carry their projected values across one.
           default:
@@ -544,6 +554,8 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+const ServerWsUpstreamRpcGroup = WsUpstreamRpcGroup.middleware(RpcInstrumentation);
+const ServerWsAstrolabeRpcGroup = WsAstrolabeRpcGroup.middleware(RpcInstrumentation);
 // Replaying each intervening event costs a shell refetch; past this gap a
 // single O(active-threads) snapshot is cheaper and bounded.
 const SHELL_RESUME_MAX_GAP = 1_000;
@@ -602,14 +614,14 @@ const MAX_CLIENT_APP_VERSION_LENGTH = 64;
 const MAX_CLIENT_BROWSER_LENGTH = 64;
 const MAX_CLIENT_DEVICE_MODEL_LENGTH = 80;
 
-export function hasCompatibleOrchestrationProtocol(url: URL): boolean {
+function hasCompatibleOrchestrationProtocol(url: URL): boolean {
   return (
     url.searchParams.get(ORCHESTRATION_PROTOCOL_QUERY_PARAM) ===
     String(ORCHESTRATION_PROTOCOL_VERSION)
   );
 }
 
-export function shouldUseBoundedThreadSnapshot(input: {
+function shouldUseBoundedThreadSnapshot(input: {
   readonly acceptBoundedSnapshot?: boolean;
 }): boolean {
   return input.acceptBoundedSnapshot === true;
@@ -1180,14 +1192,50 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
   },
 );
 
-export const layerWsRpc = (
+/** Astrolabe's RPC handlers, a layer of their own beside upstream's; see `WsAstrolabeRpcGroup`. */
+const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
+  Effect.gen(function* () {
+    const wikis = yield* WikiService.WikiService;
+    const vimrc = yield* Vimrc.Vimrc;
+    const review = yield* ReviewService.ReviewService;
+    const changeGroups = yield* ChangeGroupService.ChangeGroupService;
+    return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
+      [WS_METHODS.changeGroupsList]: () => changeGroups.list,
+      [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
+      [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
+      [WS_METHODS.serverRemoveVimMapping]: (input) => vimrc.removeMapping(input),
+      [WS_METHODS.serverSetVimOption]: (input) => vimrc.setOption(input),
+      [WS_METHODS.wikiList]: (_input) => wikis.list,
+      [WS_METHODS.wikiSubscribe]: (_input) => wikis.subscribe,
+      [WS_METHODS.wikiRegister]: (input) => wikis.register(input),
+      [WS_METHODS.wikiCreate]: (input) => wikis.create(input),
+      [WS_METHODS.wikiRemove]: (input) => wikis.remove(input).pipe(Effect.as({})),
+      [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
+      [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
+      [WS_METHODS.wikiChangeRequestsList]: (input) => wikis.changeRequestsList(input),
+      [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
+      [WS_METHODS.wikiChangeRequestsOpen]: (input) =>
+        wikis.changeRequestsOpen(input, WikiService.person),
+      [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
+      [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
+      [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
+      [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
+      [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
+      [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
+      [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
+    });
+  }),
+);
+
+const layerWsUpstreamRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  ServerWsUpstreamRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1257,6 +1305,8 @@ export const layerWsRpc = (
       const agentSessionImporter = yield* AgentSessionImporter.AgentSessionImporter;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
+      // Astrolabe
+      const vimrc = yield* Vimrc.Vimrc;
       const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
@@ -1693,7 +1743,11 @@ export const layerWsRpc = (
           cwd: config.cwd,
           keybindingsConfigPath: config.keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
+          // Astrolabe
+          keybindingTriggers: keybindingsConfig.keybindingTriggers,
           issues: keybindingsConfig.issues,
+          vimrcConfigPath: config.vimrcConfigPath,
+          vimrc: yield* vimrc.getSnapshot,
           providers,
           ...editorConfig,
           remoteOpenTargets: yield* resolveAvailableEditorsForConfig(
@@ -1803,7 +1857,7 @@ export const layerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers = ServerWsUpstreamRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -2369,13 +2423,16 @@ export const layerWsRpc = (
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(function* (rule) {
             const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule);
-            return { keybindings: keybindingsConfig, issues: [] };
+            // Astrolabe: the triggers come back too, from the state the upsert cached.
+            const { keybindingTriggers } = yield* keybindings.getSnapshot;
+            return { keybindings: keybindingsConfig, keybindingTriggers, issues: [] };
           }),
         [WS_METHODS.serverRemoveKeybinding]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(function* (rule) {
             const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
-            return { keybindings: keybindingsConfig, issues: [] };
+            const { keybindingTriggers } = yield* keybindings.getSnapshot;
+            return { keybindings: keybindingsConfig, keybindingTriggers, issues: [] };
           }),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,
@@ -2721,7 +2778,10 @@ export const layerWsRpc = (
               input.resource._tag === "native-app-icon" ||
               input.resource._tag === "tool-output-image" ||
               input.resource._tag === "github-media" ||
-              (input.resource._tag === "media-file" && path.isAbsolute(input.resource.path))
+              // A network path is served only from the thread's project, looked up below.
+              (input.resource._tag === "media-file" &&
+                path.isAbsolute(input.resource.path) &&
+                !isNetworkPath(input.resource.path))
             ) {
               return yield* issueAssetUrl({ resource: input.resource });
             }
@@ -2969,6 +3029,8 @@ export const layerWsRpc = (
                   type: "keybindingsUpdated" as const,
                   payload: {
                     keybindings: event.keybindings,
+                    // Astrolabe
+                    keybindingTriggers: event.keybindingTriggers,
                     issues: event.issues,
                   },
                 })),
@@ -3029,6 +3091,17 @@ export const layerWsRpc = (
                       })),
                     )
                   : Stream.empty;
+              // Astrolabe: gated like the themes, for the same reason.
+              const vimrcUpdates =
+                input.vimrc === true
+                  ? vimrc.streamChanges.pipe(
+                      Stream.map((state) => ({
+                        version: 1 as const,
+                        type: "vimrcUpdated" as const,
+                        payload: { vimrc: state },
+                      })),
+                    )
+                  : Stream.empty;
               const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
@@ -3044,7 +3117,10 @@ export const layerWsRpc = (
                   providerStatuses,
                   Stream.merge(
                     settingsUpdates,
-                    Stream.merge(environmentThemeUpdates, usageLimitSourceUpdates),
+                    Stream.merge(
+                      environmentThemeUpdates,
+                      Stream.merge(usageLimitSourceUpdates, vimrcUpdates),
+                    ),
                   ),
                 ),
               );
@@ -3122,6 +3198,25 @@ export const layerWsRpc = (
       });
       return handlers;
     }),
+  );
+
+/** Upstream's RPC handlers and Astrolabe's (see `WsAstrolabeRpcGroup`), served together. */
+export const layerWsRpc = (
+  currentSession: EnvironmentAuth.AuthenticatedSession,
+  clientOrigin: OrchestrationClientOrigin,
+  clientAnalyticsProps: Readonly<Record<string, unknown>>,
+  previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
+  serverBrowser: ServerBrowser.ServerBrowser["Service"],
+) =>
+  Layer.merge(
+    layerWsUpstreamRpc(
+      currentSession,
+      clientOrigin,
+      clientAnalyticsProps,
+      previewAutomationBroker,
+      serverBrowser,
+    ),
+    layerWsAstrolabeRpc,
   );
 
 // RpcServer's default sends a socket-level Defect frame instead, and the client

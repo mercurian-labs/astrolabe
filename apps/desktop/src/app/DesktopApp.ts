@@ -136,7 +136,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
     yield* electronDialog.showErrorBox(
-      "T3 Code failed to start",
+      "Astrolabe failed to start",
       `Stage: ${stage}\n${message}${detail}`,
     );
   }
@@ -147,7 +147,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
 const fatalStartupCause = <E>(stage: string, cause: Cause.Cause<E>) =>
   handleFatalStartupError(stage, Cause.pretty(cause)).pipe(Effect.andThen(Effect.failCause(cause)));
 
-export const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
+const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
   function* (): Effect.fn.Return<void, never, DesktopBackendPool.DesktopBackendPool> {
     const pool = yield* DesktopBackendPool.DesktopBackendPool;
     const instances = yield* pool.list;
@@ -175,7 +175,6 @@ const bootstrap = Effect.gen(function* () {
     ...(environment.isDevelopment
       ? { targetOrigin: Option.getOrThrow(environment.devServerUrl) }
       : { assetDirectory: environment.clientAssetsDir }),
-    clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
   });
   yield* installDesktopIpcHandlers();
   yield* logBootstrapInfo("bootstrap ipc handlers registered");

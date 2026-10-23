@@ -1,5 +1,6 @@
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import { MERCURIAN_THEME_ID } from "@t3tools/shared/themePalettes";
 import * as Schema from "effect/Schema";
 import { useEffect, useSyncExternalStore } from "react";
 import {
@@ -39,8 +40,9 @@ type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
+// A fresh install opens in Astrolabe's own theme, following the system appearance.
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
-  theme: "system",
+  theme: MERCURIAN_THEME_ID,
   resolvedTheme: "light",
   systemDark: false,
   followSystem: true,
@@ -114,7 +116,7 @@ export class ThemeStorageError extends Schema.TaggedError<ThemeStorageError>()(
   }
 }
 
-export const isThemeStorageError = Schema.is(ThemeStorageError);
+const isThemeStorageError = Schema.is(ThemeStorageError);
 
 export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncError>()(
   "DesktopThemeSyncError",
@@ -128,7 +130,7 @@ export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncEr
   }
 }
 
-export const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
+const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
 
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
@@ -151,7 +153,8 @@ function getSystemDark() {
 }
 
 function readStoredFollowSystem(theme: Theme): boolean {
-  if (typeof window === "undefined") return theme === "system";
+  const followsByDefault = theme === "system" || theme === DEFAULT_THEME_SNAPSHOT.theme;
+  if (typeof window === "undefined") return followsByDefault;
 
   try {
     const raw = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
@@ -159,7 +162,7 @@ function readStoredFollowSystem(theme: Theme): boolean {
     if (raw === "false") return false;
   } catch {}
 
-  return theme === "system";
+  return followsByDefault;
 }
 
 function isThemePreferenceMode(value: string | null): value is ThemePreferenceMode {
@@ -209,7 +212,7 @@ export function readThemePreference(): Theme {
   return DEFAULT_THEME_SNAPSHOT.theme;
 }
 
-export function writeThemePreference(theme: Theme): void {
+function writeThemePreference(theme: Theme): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, theme);
@@ -354,7 +357,7 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
   }
 }
 
-export async function syncDesktopThemePreference(
+async function syncDesktopThemePreference(
   bridge: DesktopThemeBridge,
   theme: Theme,
   followSystem?: boolean,
@@ -368,7 +371,7 @@ export async function syncDesktopThemePreference(
   }
 }
 
-export function syncDesktopTheme(
+function syncDesktopTheme(
   theme: Theme,
   followSystem?: boolean,
   appearanceMode?: ThemePreferenceMode,

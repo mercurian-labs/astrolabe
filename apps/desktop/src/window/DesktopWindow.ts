@@ -39,7 +39,7 @@ import { copyContextMenuImage } from "./ContextMenuImage.ts";
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
 // buttons are 14 points tall and do not scale with the renderer's zoom.
-const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
+const MACOS_WORKSPACE_TOPBAR_HEIGHT = 40;
 const MACOS_WINDOW_BUTTON_RADIUS = 7;
 
 function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
@@ -185,7 +185,7 @@ function buildConnectingSplashDataUrl(shouldUseDarkColors: boolean): string {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-export function isSameOriginRendererNavigation(input: {
+function isSameOriginRendererNavigation(input: {
   readonly applicationUrl: string;
   readonly navigationUrl: string;
 }): boolean {
@@ -196,7 +196,7 @@ export function isSameOriginRendererNavigation(input: {
   }
 }
 
-export function isRetryableDevelopmentRendererLoadFailure(input: {
+function isRetryableDevelopmentRendererLoadFailure(input: {
   readonly applicationUrl: string;
   readonly errorCode: number;
   readonly isMainFrame: boolean;
@@ -212,7 +212,7 @@ export function isRetryableDevelopmentRendererLoadFailure(input: {
   );
 }
 
-export function concealPendingQuitWindow(
+function concealPendingQuitWindow(
   window: Pick<
     Electron.BrowserWindow,
     "isDestroyed" | "isFullScreen" | "setFullScreen" | "setOpacity"

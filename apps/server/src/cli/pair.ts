@@ -5,6 +5,7 @@ import {
   PortSchema,
 } from "@t3tools/contracts";
 import { resolveWorktreeT3Home } from "@t3tools/shared/devHome";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import {
@@ -61,13 +62,17 @@ export class NoRunningServerError extends Schema.TaggedError<NoRunningServerErro
   "NoRunningServerError",
   {
     checkedStatePaths: Schema.Array(Schema.String),
+    inLinkedWorktree: Schema.Boolean,
   },
 ) {
   override get message(): string {
     return [
-      "No running T3 Code server found.",
+      "No running Astrolabe server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start one with `npx t3 serve`, or connect this machine with T3 Connect: `npx t3 connect`.",
+      ...(this.inLinkedWorktree
+        ? ["In a linked worktree, pass --base-dir to pair with a server outside it."]
+        : []),
+      "Start one with `npx @mercurian/astrolabe serve`, or turn on remote access for this machine: `npx @mercurian/astrolabe connect`.",
     ].join("\n");
   }
 }
@@ -104,7 +109,7 @@ export class ServesOtherEnvironmentError extends Schema.TaggedError<ServesOtherE
   { servePort: Schema.Number },
 ) {
   override get message(): string {
-    return `Tailscale Serve on HTTPS port ${String(this.servePort)} already fronts a different T3 Code server. Pass --tailscale-serve-port to publish this one on another port.`;
+    return `Tailscale Serve on HTTPS port ${String(this.servePort)} already fronts a different Astrolabe server. Pass --tailscale-serve-port to publish this one on another port.`;
   }
 }
 
@@ -122,11 +127,11 @@ export class ServePortOccupiedError extends Schema.TaggedError<ServePortOccupied
   { servePort: Schema.Number },
 ) {
   override get message(): string {
-    return `HTTPS port ${String(this.servePort)} on the tailnet already serves something that is not a T3 Code server. Pass --tailscale-serve-port to publish this one on another port.`;
+    return `HTTPS port ${String(this.servePort)} on the tailnet already serves something that is not an Astrolabe server. Pass --tailscale-serve-port to publish this one on another port.`;
   }
 }
 
-export const resolveDirectPairingBaseUrl = (state: PersistedServerRuntimeState): string =>
+const resolveDirectPairingBaseUrl = (state: PersistedServerRuntimeState): string =>
   state.devUrl ?? resolveHeadlessConnectionString(state.host, state.port);
 
 export class DevServerNotProxiableError extends Schema.TaggedError<DevServerNotProxiableError>()(
@@ -228,18 +233,22 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
   explicitBaseDir: string | undefined,
 ) {
   const bases: Array<string> = [];
+  let inLinkedWorktree = false;
   if (explicitBaseDir !== undefined && explicitBaseDir.trim().length > 0) {
     bases.push(yield* resolveBaseDir(explicitBaseDir));
   } else {
-    // Same precedence as dev-runner: inside a linked worktree its own `.t3`
-    // outranks the shared home, so `t3 pair` in a worktree pairs with the dev
-    // server under test rather than the daily-driver install.
-    const worktreeHome = yield* resolveWorktreeT3Home(process.cwd());
+    // Same precedence as dev-runner: inside a linked worktree only its own
+    // `.t3` counts. Minting opens the target database with this checkout's
+    // migrations, so falling back to the shared home could migrate the live
+    // install with unreleased schema.
+    const worktreeHome = yield* resolveWorktreeT3Home(yield* HostProcess.WorkingDirectory);
     if (worktreeHome !== undefined) {
       bases.push(worktreeHome);
+      inLinkedWorktree = true;
+    } else {
+      const envHome = yield* Config.String("T3CODE_HOME").pipe(Config.option);
+      bases.push(yield* resolveBaseDir(Option.getOrUndefined(envHome)));
     }
-    const envHome = yield* Config.String("T3CODE_HOME").pipe(Config.option);
-    bases.push(yield* resolveBaseDir(Option.getOrUndefined(envHome)));
   }
 
   const checkedStatePaths: Array<string> = [];
@@ -274,7 +283,7 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
       } satisfies DiscoveredPairTarget;
     }
   }
-  return yield* new NoRunningServerError({ checkedStatePaths });
+  return yield* new NoRunningServerError({ checkedStatePaths, inLinkedWorktree });
 });
 
 /**
@@ -428,7 +437,7 @@ const mintPairingLink = Effect.fn("pair.mintPairingLink")(function* (input: {
     return yield* environmentAuth.createPairingLink({
       scopes: input.scopes,
       subject: "one-time-token",
-      label: Option.getOrElse(input.label, () => "t3 pair"),
+      label: Option.getOrElse(input.label, () => "astrolabe pair"),
       ...(Option.isSome(input.ttl) ? { ttl: input.ttl.value } : {}),
     });
   }).pipe(
@@ -476,7 +485,7 @@ export const pairCommand = Command.make("pair", {
   tailscaleServePort: tailscaleServePortFlag,
 }).pipe(
   Command.withDescription(
-    "Mint a pairing token for a running T3 Code server and print it as a QR code.",
+    "Mint a pairing token for a running Astrolabe server and print it as a QR code.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {

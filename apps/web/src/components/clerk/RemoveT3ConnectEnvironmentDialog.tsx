@@ -41,7 +41,7 @@ export function RemoveT3ConnectEnvironmentDialog({
               This forgets its pairing, credentials, and cached threads here.
             </AlertDialogDescription>
             <AlertDialogDescription>
-              It stays on your T3 Connect account and keeps its host space. Deregister it in{" "}
+              It stays on your Astrolabe account and keeps its host space. Deregister it in{" "}
               {openAccountPage ? (
                 <InlineButton
                   onClick={() => {
@@ -49,10 +49,10 @@ export function RemoveT3ConnectEnvironmentDialog({
                     openAccountPage();
                   }}
                 >
-                  T3 Connect settings
+                  Remote access settings
                 </InlineButton>
               ) : (
-                "T3 Connect settings"
+                "Remote access settings"
               )}{" "}
               to free it.
             </AlertDialogDescription>

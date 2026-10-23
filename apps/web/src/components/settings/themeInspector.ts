@@ -60,6 +60,7 @@ const THEME_UTILITY_ROLES: Readonly<Partial<Record<string, ThemeColorRole>>> = {
   "message-action": "messageAction",
   "message-action-foreground": "messageActionForeground",
   "message-action-hover": "messageActionHover",
+  "focus-bar": "focusBar",
   sidebar: "sidebar",
   "sidebar-foreground": "sidebarForeground",
   "sidebar-muted-foreground": "sidebarMutedForeground",
@@ -292,7 +293,7 @@ function getThemePaintSnapshot(
   };
 }
 
-export function changedThemePaintKinds(
+function changedThemePaintKinds(
   before: ThemePaintSnapshot,
   after: ThemePaintSnapshot,
 ): ReadonlyArray<ThemePaintKind> {
@@ -349,10 +350,7 @@ function themeInspectorCandidates(): ReadonlyArray<Element> {
   );
 }
 
-export function themeRoleFromUtilityClass(
-  className: string,
-  kind: ThemePaintKind,
-): ThemeColorRole | null {
+function themeRoleFromUtilityClass(className: string, kind: ThemePaintKind): ThemeColorRole | null {
   if (className.includes(":")) return null;
   for (const prefix of THEME_UTILITY_PREFIXES[kind]) {
     if (!className.startsWith(prefix)) continue;

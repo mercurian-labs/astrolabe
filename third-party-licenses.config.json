@@ -273,6 +273,14 @@
       }
     },
     {
+      "name": "@pixi/colord",
+      "version": "2.9.6",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2020 Vlad Shilov"]
+      }
+    },
+    {
       "license": "MIT",
       "name": "@react-grab/cli",
       "sourceUrl": "https://github.com/aidenybai/react-grab/tree/main/packages/cli",
@@ -728,6 +736,14 @@
       "generatedNotice": {
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2019-present Fabio Spampinato, Andrew Maney"]
+      }
+    },
+    {
+      "name": "@rollup/rollup-darwin-arm64",
+      "version": "4.64.12",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2017 [these people]"]
       }
     }
   ]

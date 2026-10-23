@@ -5,7 +5,8 @@ export function hasNonZeroStat(stat: { additions: number; deletions: number }): 
   return stat.additions > 0 || stat.deletions > 0;
 }
 
-function formatCompactDiffCount(value: number): string {
+/** A diff count as the chat shows it: 950, 1.2k, 38k, 1.4m. */
+export function formatCompactDiffCount(value: number): string {
   if (value < 1000) return String(value);
   if (value < 1_000_000) {
     const k = value / 1000;

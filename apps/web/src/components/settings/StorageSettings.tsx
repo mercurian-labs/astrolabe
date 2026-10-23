@@ -69,7 +69,7 @@ function WorktreesDirectoryRow() {
     <SettingsRow
       {...searchableSetting("storage-worktrees-location")}
       description={
-        "Folder where new worktrees are created, on any drive, such as D:\\worktrees or ~/worktrees. Existing worktrees stay where they are. Leave empty to use the T3 home folder."
+        "Folder where new worktrees are created, on any drive, such as D:\\worktrees or ~/worktrees. Existing worktrees stay where they are. Leave empty to use the Astrolabe home folder."
       }
       serverScoped
       settingKeys={["worktreesDirectory"]}
@@ -491,19 +491,14 @@ export function StorageSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      {!isProjectScope &&
-        connectedEnvironments
-          .filter(
+      {!isProjectScope && (
+        <DatabaseStorageNotice
+          environments={connectedEnvironments.filter(
             (environment) =>
               environment.serverConfig?.environment.capabilities.databaseStorage === true,
-          )
-          .map((environment) => (
-            <DatabaseStorageNotice
-              key={environment.environmentId}
-              environmentId={environment.environmentId}
-              label={environment.label}
-            />
-          ))}
+          )}
+        />
+      )}
       <SettingsSection id="storage-worktrees" title="Worktrees">
         {!isProjectScope && <WorktreesDirectoryRow />}
         {isProjectScope && (

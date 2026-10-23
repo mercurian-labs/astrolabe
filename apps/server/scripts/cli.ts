@@ -11,6 +11,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { DEVELOPMENT_ICON_OVERRIDES } from "../../../scripts/lib/brand-assets.ts";
 import { findEsmImportsOfExternalPackages } from "../../../scripts/lib/cli-executable-imports.ts";
+import rootPackageJson from "../../../package.json" with { type: "json" };
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import {
   ServerCliBuildAssetMissingError,
@@ -144,12 +145,12 @@ const buildExeCmd = Command.make(
         return yield* new ServerCliExecutableImportError({ bundlePath, specifiers });
       }
       yield* Effect.log(
-        "[cli] Built dist-exe/t3 (expects client/, resource-monitor/, and the runtime-external node_modules beside it; scripts/build-cli-archive.ts assembles that tree)",
+        "[cli] Built dist-exe/astrolabe (expects client/, resource-monitor/, and the runtime-external node_modules beside it; scripts/build-cli-archive.ts assembles that tree)",
       );
     }),
 ).pipe(
   Command.withDescription(
-    "Build the server as a Node single-executable (needs a Node 25.7+ host for --build-sea). The binary still resolves native packages from a node_modules tree beside it.",
+    `Build the server as a Node single-executable. Native builds require Node ${rootPackageJson.engines.node}; explicit cross-target builds need a Node 25.7+ host for --build-sea. The binary still resolves native packages from a node_modules tree beside it.`,
   ),
 );
 
@@ -175,7 +176,7 @@ const publishCmd = Command.make(
       const path = yield* Path.Path;
       const fs = yield* FileSystem.FileSystem;
       const packagesDir = path.resolve(config.packagesDir);
-      const launcherTarball = path.join(packagesDir, "t3.tgz");
+      const launcherTarball = path.join(packagesDir, "@mercurian/astrolabe.tgz");
       if (!(yield* fs.exists(launcherTarball))) {
         return yield* new ServerCliBuildAssetMissingError({ assetPath: launcherTarball });
       }
@@ -184,7 +185,7 @@ const publishCmd = Command.make(
       if (config.provenance) args.push("--provenance");
       if (config.dryRun) args.push("--dry-run");
       const spawnCommand = yield* resolveSpawnCommand("npm", [...args, launcherTarball]);
-      yield* Effect.log(`[cli] npm ${args.join(" ")} t3.tgz`);
+      yield* Effect.log(`[cli] npm ${args.join(" ")} @mercurian/astrolabe.tgz`);
       yield* runCommand(
         ChildProcess.make(spawnCommand.command, spawnCommand.args, {
           cwd: packagesDir,
@@ -194,7 +195,7 @@ const publishCmd = Command.make(
         }),
       );
     }),
-).pipe(Command.withDescription("Publish the t3 launcher to npm."));
+).pipe(Command.withDescription("Publish the @mercurian/astrolabe launcher to npm."));
 
 const cli = Command.make("cli").pipe(
   Command.withDescription("T3 server build & publish CLI."),

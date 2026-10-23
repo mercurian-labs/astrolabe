@@ -168,7 +168,7 @@ export function boundedSnapShotString(
   return candidate.slice(0, end).trimEnd();
 }
 
-export function capturedImageBounds(
+function capturedImageBounds(
   bounds: WindowBounds | null | undefined,
   sourceBounds: WindowBounds,
   imageSize: CapturedImageSize,
@@ -446,7 +446,7 @@ export function hideAndWaitForBlur(window: {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       window.removeListener("blur", onBlur);
-      reject(new Error("Timed out waiting for T3 Code to lose focus."));
+      reject(new Error("Timed out waiting for Astrolabe to lose focus."));
     }, WINDOW_BLUR_TIMEOUT_MS);
     const onBlur = () => {
       clearTimeout(timeout);

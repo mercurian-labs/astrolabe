@@ -26,10 +26,10 @@ export const layer = Layer.effectDiscard(
       Effect.timeout("10 seconds"),
       Effect.retry({ schedule: Schedule.exponential("2 seconds"), times: 3 }),
       Effect.tap((pending) =>
-        pending ? Effect.logInfo("T3 Connect is delivering held webhook requests") : Effect.void,
+        pending ? Effect.logInfo("The relay is delivering held webhook requests") : Effect.void,
       ),
       Effect.catchCause((cause) =>
-        Effect.logWarning("Could not ask T3 Connect to deliver held webhook requests", { cause }),
+        Effect.logWarning("Could not ask the relay to deliver held webhook requests", { cause }),
       ),
     );
     yield* runtime.tunnelConnected.pipe(

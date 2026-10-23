@@ -95,12 +95,12 @@ export const AUTH_SCOPE_OPTIONS: ReadonlyArray<{
   },
   {
     scope: AuthRelayReadScope,
-    title: "View relay",
-    description: "Inspect managed relay connectivity.",
+    title: "View remote access",
+    description: "See whether this environment is reachable through remote access.",
   },
   {
     scope: AuthRelayWriteScope,
-    title: "Manage relay",
-    description: "Change managed tunnel connectivity.",
+    title: "Manage remote access",
+    description: "Turn remote access on or off for this environment.",
   },
 ];

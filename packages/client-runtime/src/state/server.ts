@@ -6,6 +6,7 @@ import {
   type ServerLifecycleStreamReadyEvent,
   type ServerSelfUpdateProgressEvent,
   type ServerSelfUpdateResult,
+  shouldRecommendDatabaseCompaction,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -97,7 +98,7 @@ export class ServerUpdateResumeTimeoutError extends Schema.TaggedError<ServerUpd
   },
 ) {
   override get message(): string {
-    return `The server did not resume on t3@${this.targetVersion}.`;
+    return `The server did not resume on astrolabe@${this.targetVersion}.`;
   }
 }
 
@@ -108,7 +109,7 @@ export class ServerUpdateProgressIncompleteError extends Schema.TaggedError<Serv
   },
 ) {
   override get message(): string {
-    return `The t3@${this.targetVersion} update ended before the server accepted the restart.`;
+    return `The astrolabe@${this.targetVersion} update ended before the server accepted the restart.`;
   }
 }
 
@@ -121,7 +122,7 @@ export class ServerUpdateTerminalError extends Schema.TaggedError<ServerUpdateTe
   },
 ) {
   override get message(): string {
-    return this.reason ?? `The t3@${this.targetVersion} update ${this.status}.`;
+    return this.reason ?? `The astrolabe@${this.targetVersion} update ${this.status}.`;
   }
 }
 
@@ -355,6 +356,8 @@ export interface ServerConfigSubscriptionOptions {
   readonly environmentThemes?: boolean;
   readonly usageLimitSources?: boolean;
   readonly usageLimitsCommand?: boolean;
+  // Astrolabe
+  readonly vimrc?: boolean;
 }
 
 export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConfigState.make")(
@@ -430,6 +433,7 @@ export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConf
       ...(subscription.environmentThemes === true ? { environmentThemes: true } : {}),
       ...(subscription.usageLimitSources === true ? { usageLimitSources: true } : {}),
       ...(subscription.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+      ...(subscription.vimrc === true ? { vimrc: true } : {}),
     }).pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
@@ -613,6 +617,8 @@ export function createServerEnvironmentAtoms<R, E>(
     readonly environmentThemes?: boolean;
     readonly usageLimitSources?: boolean;
     readonly usageLimitsCommand?: boolean;
+    /** Astrolabe: whether this surface applies the server's vimrc (mobile has no Vim). */
+    readonly vimrc?: boolean;
   },
 ) {
   const configScheduler = createAtomCommandScheduler();
@@ -628,6 +634,7 @@ export function createServerEnvironmentAtoms<R, E>(
           ...(options.environmentThemes === true ? { environmentThemes: true } : {}),
           ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
           ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+          ...(options.vimrc === true ? { vimrc: true } : {}),
         }),
       )
       .pipe(
@@ -954,6 +961,34 @@ export function createServerEnvironmentAtoms<R, E>(
         : AsyncResult.success(result.value, result);
     }).pipe(Atom.withLabel(`environment-data:server:welcome:${environmentId}`)),
   );
+  const databaseStorage = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:server:database-storage",
+    tag: WS_METHODS.serverGetDatabaseStorage,
+    idleTtlMs: 0,
+  });
+  // Keyed by a JSON array of environment ids so one notice can list every machine.
+  const databaseCompactionRecommendations = Atom.family((environmentIdsKey: string) => {
+    const sources = (JSON.parse(environmentIdsKey) as EnvironmentId[]).map((environmentId) => ({
+      environmentId,
+      atom: databaseStorage({ environmentId, input: {} }),
+    }));
+    return Atom.make((get) =>
+      sources
+        .flatMap(({ environmentId, atom }) => {
+          const result = get(atom);
+          return result._tag === "Success" &&
+            result.value !== null &&
+            shouldRecommendDatabaseCompaction(result.value)
+            ? [{ environmentId, status: result.value }]
+            : [];
+        })
+        .sort((left, right) => right.status.reclaimableBytes - left.status.reclaimableBytes),
+    ).pipe(
+      Atom.withLabel(
+        `environment-data:server:database-compaction-recommendations:${environmentIdsKey}`,
+      ),
+    );
+  });
   const welcome = (target: {
     readonly environmentId: EnvironmentId;
     readonly input: EnvironmentRpcInput<typeof WS_METHODS.subscribeServerLifecycle>;
@@ -972,11 +1007,8 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverRunStorageCleanup,
       concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
     }),
-    databaseStorage: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:server:database-storage",
-      tag: WS_METHODS.serverGetDatabaseStorage,
-      idleTtlMs: 0,
-    }),
+    databaseStorage,
+    databaseCompactionRecommendations,
     storageCleanupReport: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:storage-cleanup-report",
       tag: WS_METHODS.serverGetStorageCleanupReport,
@@ -1183,6 +1215,25 @@ export function createServerEnvironmentAtoms<R, E>(
     removeKeybinding: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:remove-keybinding",
       tag: WS_METHODS.serverRemoveKeybinding,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    // Astrolabe: the vimrc's mappings and options.
+    upsertVimMapping: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:upsert-vim-mapping",
+      tag: WS_METHODS.serverUpsertVimMapping,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    removeVimMapping: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remove-vim-mapping",
+      tag: WS_METHODS.serverRemoveVimMapping,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    setVimOption: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:set-vim-option",
+      tag: WS_METHODS.serverSetVimOption,
       scheduler: configScheduler,
       concurrency: configConcurrency,
     }),

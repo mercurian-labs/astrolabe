@@ -26,6 +26,8 @@ export * from "./chatAttachment.ts";
 export * from "./checkpointDiff.ts";
 export * from "./model.ts";
 export * from "./keybindings.ts";
+// Astrolabe
+export * from "./vimrc.ts";
 export * from "./server.ts";
 export * from "./settings.ts";
 export * from "./git.ts";
@@ -60,6 +62,8 @@ export * from "./previewCapture.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./usage.ts";
 export * from "./scheduledTask.ts";
+export * from "./wiki.ts";
+export * from "./changeGroups.ts";
 export * from "./worktreeMcp.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./rpc.ts";

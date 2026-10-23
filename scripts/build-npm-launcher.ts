@@ -2,7 +2,7 @@
 /**
  * Builds the `t3` npm package behind `npx t3` / `npm i -g t3`: a launcher
  * with no dependencies that downloads this exact version's CLI archive from
- * the GitHub Release on first run (scripts/npm-launcher/t3.mjs).
+ * the GitHub Release on first run (scripts/npm-launcher/astrolabe.mjs).
  * The executables are not published to npm. npm's publish-time scanning held
  * 250 MB platform packages back for up to an hour after the launcher went
  * live, and every install in that window ran a launcher with nothing to
@@ -28,7 +28,9 @@ import serverPackageJson from "../apps/server/package.json" with { type: "json" 
 
 import { windowsSystemTar } from "./lib/windows-tar.ts";
 
-export const NPM_LAUNCHER_PACKAGE_NAME = "t3";
+export const NPM_LAUNCHER_PACKAGE_NAME = "@mercurian/astrolabe";
+/** The command the launcher installs, and the executable inside the release archive. */
+const CLI_EXECUTABLE_NAME = "astrolabe";
 
 const encodePackageJson = Schema.encodeEffect(fromJsonStringPretty(Schema.Unknown));
 
@@ -47,10 +49,10 @@ export function npmLauncherPackageManifest(version: string) {
     name: NPM_LAUNCHER_PACKAGE_NAME,
     version,
     description:
-      "T3 Code CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
+      "Astrolabe CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
     license: serverPackageJson.license,
     repository: serverPackageJson.repository,
-    bin: { t3: "./bin/t3.mjs" },
+    bin: { [CLI_EXECUTABLE_NAME]: `./bin/${CLI_EXECUTABLE_NAME}.mjs` },
     files: ["bin", "dist"],
     engines: { node: ">=20.11" },
   };
@@ -77,8 +79,12 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
     path.join(stageDir, "package.json"),
     `${yield* encodePackageJson(npmLauncherPackageManifest(input.version))}\n`,
   );
-  yield* fs.copyFile(path.join(sourceDir, "t3.mjs"), path.join(stageDir, "bin/t3.mjs"));
-  yield* fs.chmod(path.join(stageDir, "bin/t3.mjs"), 0o755);
+  const launcherScript = `${CLI_EXECUTABLE_NAME}.mjs`;
+  yield* fs.copyFile(
+    path.join(sourceDir, launcherScript),
+    path.join(stageDir, "bin", launcherScript),
+  );
+  yield* fs.chmod(path.join(stageDir, "bin", launcherScript), 0o755);
   yield* fs.copyFile(path.join(sourceDir, "bin.mjs"), path.join(stageDir, "dist/bin.mjs"));
   const readme = yield* path.fromFileUrl(new URL("../apps/server/README.md", import.meta.url));
   if (yield* fs.exists(readme)) {
@@ -87,6 +93,8 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
 
   const packageDir = path.join(input.outputDir, NPM_LAUNCHER_PACKAGE_NAME);
   const tarball = path.join(input.outputDir, `${NPM_LAUNCHER_PACKAGE_NAME}.tgz`);
+  // The scoped name nests both under `@mercurian/`.
+  yield* fs.makeDirectory(path.dirname(tarball), { recursive: true });
   yield* fs.remove(tarball, { force: true });
   const tar = (yield* HostProcess.Platform) === "win32" ? windowsSystemTar() : "tar";
   // npm tarballs root everything under `package/`.
@@ -115,7 +123,7 @@ const command = Command.make(
     outputDir: Flag.String("output-dir").pipe(Flag.withDefault("npm-packages")),
   },
   buildNpmLauncher,
-).pipe(Command.withDescription("Build the t3 npm launcher package."));
+).pipe(Command.withDescription("Build the @mercurian/astrolabe npm launcher package."));
 
 if (import.meta.main) {
   Command.run(command, { version: "0.0.0" }).pipe(

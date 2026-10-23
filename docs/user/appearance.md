@@ -3,7 +3,8 @@
 On web and desktop, open **Settings → Appearance** to choose a theme and follow the system
 appearance or stay in light or dark mode. To use different themes for light and dark mode, select
 the corresponding preview within each theme. Appearance preferences are saved separately on each
-device or browser.
+device or browser. A fresh install opens in the **Mercurian** theme and follows the system
+appearance; choose **T3 Code** for the standard look.
 
 On web and desktop, use **Change theme** in the command palette to select a theme without leaving chat.
 Press **Cmd+Option+A** on macOS or **Ctrl+Alt+A** on Windows/Linux to open the theme picker directly.
@@ -67,21 +68,21 @@ standard theme.
 Run this on the server to set a default and switch connected clients to it:
 
 ```bash
-t3 theme set nightfall
+astrolabe theme set nightfall
 ```
 
 Clients that are offline apply it when they reconnect. Each client applies the setting once;
-choosing another theme afterward sticks until the next `t3 theme set`. Run the command again to
+choosing another theme afterward sticks until the next `astrolabe theme set`. Run the command again to
 reapply it, even if the name is unchanged.
 
-`t3 theme clear` removes the default without changing anyone's current theme. `t3 theme show` lists
+`astrolabe theme clear` removes the default without changing anyone's current theme. `astrolabe theme show` lists
 the default and published themes.
 
 ### Publish a theme
 
-Save a theme exported from T3 Code into `~/.t3/userdata/themes/` on the server, or the `themes`
+Save a theme exported from T3 Code into `~/.astrolabe/userdata/themes/` on the server, or the `themes`
 directory under your custom state directory. The filename supplies the theme ID: `nightfall.json`
-can be selected with `t3 theme set nightfall`. Keep the filename stable when updating its colors.
+can be selected with `astrolabe theme set nightfall`. Keep the filename stable when updating its colors.
 Do not use `system`, `light`, `dark`, or a built-in theme's ID.
 
 For an integration that generates a palette, this shorter format also works:

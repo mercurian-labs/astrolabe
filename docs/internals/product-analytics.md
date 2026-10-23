@@ -85,7 +85,9 @@ which is also why tool events carry no per-thread sequence.
 ## Delivery
 
 The server sends batches to the ingest endpoint at `ingest.t3.codes`, which archives
-every event and forwards some of them to PostHog. A send can fail after the endpoint
+every event and forwards some of them to PostHog. Astrolabe ships with no endpoint or
+key, so it records and sends nothing until `T3CODE_POSTHOG_KEY` and
+`T3CODE_POSTHOG_HOST` are set. A send can fail after the endpoint
 has stored the batch, so every retry is a copy.
 [Delivery](../../apps/server/src/telemetry/AnalyticsService.ts) gives each event a
 uuid when it is recorded (the endpoint rejects events without one), backs off after

@@ -1,26 +1,50 @@
 {
   "fill": {
-    "solid": "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "linear-gradient": [
+      "srgb:0.98431,0.96471,0.92941,1.00000",
+      "srgb:0.90588,0.86275,0.79608,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1
+      }
+    }
   },
   "groups": [
     {
       "layers": [
         {
-          "image-name": "text.svg",
-          "name": "Text",
+          "glass": false,
+          "image-name": "pivot.svg",
+          "name": "Pivot",
           "position": {
-            "scale": 8.5,
+            "scale": 1,
+            "translation-in-points": [0, 0]
+          }
+        },
+        {
+          "glass": false,
+          "image-name": "mark.svg",
+          "name": "Mark",
+          "position": {
+            "scale": 1,
             "translation-in-points": [0, 0]
           }
         }
       ],
       "shadow": {
-        "kind": "neutral",
-        "opacity": 0.5
+        "kind": "none",
+        "opacity": 0
       },
+      "specular": false,
       "translucency": {
-        "enabled": true,
-        "value": 0.5
+        "enabled": false,
+        "value": 0
       }
     }
   ],

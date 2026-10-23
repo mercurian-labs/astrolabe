@@ -24,13 +24,13 @@ import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KeybindingsConfigWarning } from "../components/KeybindingsConfigWarning";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
+import { CloudAccountDialogs } from "../components/clerk/CloudAccountDialogs";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
 import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
-import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { DesktopUpdateLaunchNotice } from "../components/sidebar/updateEverythingRun";
 import { LegacyThreadMigrationToast } from "../components/LegacyThreadMigrationToast";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
@@ -154,7 +154,7 @@ function RootRouteView() {
     authGateState.status === "hosted-static",
   );
 
-  if (pathname === "/pair" || pathname === "/connect" || pathname === "/connect-agent") {
+  if (pathname === "/pair" || pathname === "/connect-agent") {
     return (
       <>
         <DocumentTitleSync />
@@ -188,6 +188,7 @@ function RootRouteView() {
           <FontAppearanceSync />
           <ProviderAuthCallbackCoordinator />
           <CustomSnoozeDialogHost />
+          <CloudAccountDialogs />
           <CommandPalette>
             <AppSidebarLayout>
               <Outlet />
@@ -237,6 +238,7 @@ function RootRouteView() {
           {isElectron ? <RunningThreadKeepAlive /> : null}
           <RelayClientInstallDialog />
           <ConnectOnboardingDialog />
+          <CloudAccountDialogs />
           <SshPasswordPromptDialog />
           <SnapShotCoordinator />
           <ThreadNotificationCoordinator />
@@ -254,7 +256,6 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? (
             <EventRouter skipInitialBootstrapNavigation={returningFromWelcome} />
           ) : null}
-          {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
           {isElectron ? <DesktopUpdateLaunchNotice /> : null}
           {appShell}
           {/* Above the router: a theme draft is judged by walking the app, so the
@@ -581,6 +582,34 @@ function EventRouter({
         title: "Keybindings updated",
         description: "Keybindings configuration reloaded successfully.",
       });
+      return;
+    }
+
+    // Astrolabe: the vimrc's own reload and warning, which open the vimrc.
+    if (decision._tag === "VimrcSuccess") {
+      toastManager.add({
+        type: "success",
+        title: "Vim configuration updated",
+        description: "The vimrc reloaded.",
+      });
+      return;
+    }
+    if (decision._tag === "InvalidVimrc") {
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: "Vim configuration has lines it cannot apply",
+          description: (
+            <KeybindingsConfigWarning
+              message={decision.message}
+              environmentId={primaryEnvironment?.environmentId ?? null}
+              configPath={serverConfig?.vimrcConfigPath ?? null}
+              availableEditors={serverConfig?.availableEditors ?? []}
+              fileName="vimrc"
+            />
+          ),
+        }),
+      );
       return;
     }
 

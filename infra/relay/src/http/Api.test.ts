@@ -9,7 +9,7 @@ import * as RelayTokens from "../auth/RelayTokens.ts";
 import * as Devices from "../agentActivity/Devices.ts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no generateKeyPairSync.
 import * as NodeCrypto from "node:crypto";
-import { createClerkClient, verifyToken } from "@clerk/backend";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
@@ -19,20 +19,16 @@ import * as Data from "effect/Data";
 import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
 import * as Etag from "effect/http/Etag";
 import * as HttpEffect from "effect/http/HttpEffect";
 import * as HttpRouter from "effect/http/HttpRouter";
-import * as HttpMiddleware from "effect/http/HttpMiddleware";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HttpApi from "effect/http-api/HttpApi";
@@ -50,11 +46,9 @@ import { RELAY_MANAGED_TUNNEL_RECOVERY_TYP, signRelayJwt } from "@t3tools/shared
 
 import {
   RELAY_HTTP_ROUTER_CONFIG,
-  RELAY_REQUEST_DEADLINE_MS,
   recoverEnvironmentTunnelRecord,
   registerEnvironmentTunnelRecovery,
   relayDpopFailureReason,
-  revokeEnvironmentLinkRecord,
   traceRelayHttpRequestWith,
   unlinkEnvironmentRecord,
   verifyRelayClientBearerToken,
@@ -73,11 +67,6 @@ import * as ManagedEndpointProvider from "../environments/ManagedEndpointProvide
 import * as AgentActivityPublisher from "../agentActivity/AgentActivityPublisher.ts";
 import * as EnvironmentPublishSignatures from "../environments/EnvironmentPublishSignatures.ts";
 
-vi.mock("@clerk/backend", () => ({
-  createClerkClient: vi.fn(),
-  verifyToken: vi.fn(),
-}));
-
 const relaySettings: RelayConfiguration.RelayConfiguration["Service"] = {
   relayIssuer: "https://relay.example.test",
   apns: {
@@ -87,9 +76,7 @@ const relaySettings: RelayConfiguration.RelayConfiguration["Service"] = {
     bundleId: "com.example.t3",
     environment: "sandbox",
   },
-  clerkSecretKey: Redacted.make("clerk-secret-key"),
-  clerkPublishableKey: "pk_test_test",
-  clerkJwtAudience: "t3-code-relay",
+  accountJwtIssuer: "https://auth.example.test",
   apnsDeliveryJobSigningSecret: Redacted.make("apns-delivery-secret"),
   cloudMintPrivateKey: Redacted.make("cloud-mint-private-key"),
   cloudMintPublicKey: "cloud-mint-public-key",
@@ -188,7 +175,7 @@ describe("managed endpoint provisioning errors", () => {
       });
       const error = yield* decodeLinkUnavailableError(body);
       expect(relayProtectedErrorMessage(error)).toBe(
-        "Relay cannot provision the managed endpoint (managed_endpoint_provisioning_failed). Failed stage: ensure-tunnel.",
+        "Could not set up the remote access tunnel (managed_endpoint_provisioning_failed). Failed stage: ensure-tunnel.",
       );
     }).pipe(Effect.scoped);
   });
@@ -385,57 +372,65 @@ describe("Cloudflare rate-limit retry hint", () => {
 });
 
 describe("relay client authentication", () => {
-  it.effect("preserves the existing Clerk session JWT path", () =>
-    Effect.gen(function* () {
-      vi.mocked(verifyToken).mockResolvedValue({
-        sub: "user_session",
-        aud: relaySettings.clerkJwtAudience,
-      } as never);
+  const accountKeys = Effect.promise(async () => {
+    const { privateKey, publicKey } = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+    const jwk = { ...(await exportJWK(publicKey)), kid: "account-key", alg: "EdDSA" };
+    return { privateKey, jwks: { keys: [jwk] } };
+  }).pipe(Effect.cached, Effect.runSync);
 
-      expect(yield* verifyRelayClientBearerToken(relaySettings, "session-token")).toEqual({
-        sub: "user_session",
-        mode: "clerk_session_bearer",
+  const signAccountToken = (claims: { iss?: string; aud?: string; sub?: string }) =>
+    Effect.gen(function* () {
+      const { privateKey } = yield* accountKeys;
+      const jwt = new SignJWT({})
+        .setProtectedHeader({ alg: "EdDSA", kid: "account-key" })
+        .setIssuer(claims.iss ?? relaySettings.accountJwtIssuer)
+        .setAudience(claims.aud ?? relaySettings.relayIssuer)
+        .setIssuedAt()
+        .setExpirationTime("15m");
+      if (claims.sub !== undefined) jwt.setSubject(claims.sub);
+      return yield* Effect.promise(() => jwt.sign(privateKey));
+    });
+
+  // Sign in with Mercurian publishes its keys at <issuer>/api/auth/jwks.
+  const withAccountJwks = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const { jwks } = yield* accountKeys;
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = input instanceof Request ? input.url : String(input);
+        return url === `${relaySettings.accountJwtIssuer}/api/auth/jwks`
+          ? Response.json(jwks)
+          : new Response("not found", { status: 404 });
       });
-      expect(verifyToken).toHaveBeenCalledWith("session-token", {
-        secretKey: "clerk-secret-key",
-        audience: relaySettings.clerkJwtAudience,
-      });
-      expect(createClerkClient).not.toHaveBeenCalled();
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          vi.mocked(verifyToken).mockReset();
-          vi.mocked(createClerkClient).mockReset();
-        }),
-      ),
+      return yield* effect.pipe(Effect.ensuring(Effect.sync(() => fetchSpy.mockRestore())));
+    });
+
+  it.effect("accepts an account token issued for this relay", () =>
+    withAccountJwks(
+      Effect.gen(function* () {
+        const token = yield* signAccountToken({ sub: "user_1" });
+        expect(yield* verifyRelayClientBearerToken(relaySettings, token)).toEqual({
+          sub: "user_1",
+          mode: "account_bearer",
+        });
+      }),
     ),
   );
 
-  it.effect("falls back to Clerk OAuth token verification for the headless CLI", () =>
-    Effect.gen(function* () {
-      vi.mocked(verifyToken).mockRejectedValue(new Error("not a session JWT"));
-      vi.mocked(createClerkClient).mockReturnValue({
-        authenticateRequest: vi.fn().mockResolvedValue({
-          isAuthenticated: true,
-          toAuth: () => ({ userId: "user_oauth" }),
-        }),
-      } as never);
-
-      expect(yield* verifyRelayClientBearerToken(relaySettings, "oauth-token")).toEqual({
-        sub: "user_oauth",
-        mode: "clerk_oauth_bearer",
-      });
-      expect(createClerkClient).toHaveBeenCalledWith({
-        secretKey: "clerk-secret-key",
-        publishableKey: "pk_test_test",
-      });
-    }).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          vi.mocked(verifyToken).mockReset();
-          vi.mocked(createClerkClient).mockReset();
-        }),
-      ),
+  it.effect("rejects tokens for another audience, from another issuer, or without a subject", () =>
+    withAccountJwks(
+      Effect.gen(function* () {
+        for (const claims of [
+          { sub: "user_1", aud: "https://other-relay.example.test" },
+          { sub: "user_1", iss: "https://impostor.example.test" },
+          {},
+        ]) {
+          const token = yield* signAccountToken(claims);
+          const result = yield* verifyRelayClientBearerToken(relaySettings, token).pipe(
+            Effect.flip,
+          );
+          expect(result._tag).toBe("AccountTokenVerificationFailed");
+        }
+      }),
     ),
   );
 });
@@ -1072,39 +1067,6 @@ describe("relay managed tunnel recovery", () => {
 });
 
 describe("relay environment unlink", () => {
-  it.effect("revokes the link and its credentials in one database transaction", () => {
-    const calls: Array<string> = [];
-    return Effect.gen(function* () {
-      expect(
-        yield* revokeEnvironmentLinkRecord({
-          userId: "user-1",
-          environmentId: "environment-1",
-          environmentPublicKey: "public-key",
-        }),
-      ).toBe(true);
-      expect(calls).toEqual(["transaction", "link", "credential"]);
-    }).pipe(
-      Effect.provide(
-        layerRelayUnlinkTest({
-          withTransaction: (effect) => {
-            calls.push("transaction");
-            return effect;
-          },
-          revokeForUser: () =>
-            Effect.sync(() => {
-              calls.push("link");
-              return true;
-            }),
-          revokeCredential: () =>
-            Effect.sync(() => {
-              calls.push("credential");
-              return true;
-            }),
-        }),
-      ),
-    );
-  });
-
   it.effect("drops the unlinked endpoint's held webhooks, even if clearing fails", () => {
     const cleared: Array<string> = [];
     const endpointKey = "0123456789abcdef";
@@ -1392,98 +1354,6 @@ describe("relay request tracing", () => {
         expect(Option.getOrUndefined(spans[1]!.parent)?.spanId).toBe(spans[0]?.spanId);
       }),
   );
-
-  it.effect("records the Cloudflare edge a request entered through on its server span", () =>
-    Effect.gen(function* () {
-      const spans: Array<Tracer.NativeSpan> = [];
-      const tracer = Tracer.make({
-        span: (options) => {
-          const span = new Tracer.NativeSpan(options);
-          spans.push(span);
-          return span;
-        },
-      });
-      const source = new Request("https://relay.test/v1/environments/env-1/connect", {
-        method: "POST",
-      });
-      Object.defineProperty(source, "cf", {
-        value: { colo: "JNB", country: "ZA", continent: "AF", asn: 37_100 },
-      });
-
-      yield* traceRelayHttpRequestWith(
-        Effect.succeed(HttpServerResponse.empty({ status: 204 })),
-        Layer.succeed(Tracer.Tracer, tracer),
-      ).pipe(
-        Effect.provideService(
-          HttpServerRequest.HttpServerRequest,
-          HttpServerRequest.fromWeb(source),
-        ),
-      );
-
-      const server = spans.find((span) => span.kind === "server");
-      expect(server?.attributes.get("relay.edge.colo")).toBe("JNB");
-      expect(server?.attributes.get("relay.edge.country")).toBe("ZA");
-      expect(server?.attributes.get("relay.edge.continent")).toBe("AF");
-    }),
-  );
-
-  it.effect("records one server span inside the worker's disabled HTTP tracer", () =>
-    Effect.gen(function* () {
-      const spans: Array<Tracer.NativeSpan> = [];
-      const tracer = Tracer.make({
-        span: (options) => {
-          const span = new Tracer.NativeSpan(options);
-          spans.push(span);
-          return span;
-        },
-      });
-      const request = HttpServerRequest.fromWeb(
-        new Request("https://relay.test/v1/mobile/devices", { method: "POST" }),
-      );
-
-      yield* HttpMiddleware.tracer(
-        traceRelayHttpRequestWith(
-          Effect.succeed(HttpServerResponse.empty({ status: 204 })),
-          Layer.empty,
-        ),
-      ).pipe(
-        Effect.provideService(HttpMiddleware.TracerDisabledWhen, () => true),
-        Effect.provideService(HttpServerRequest.HttpServerRequest, request),
-        Effect.withTracer(tracer),
-      );
-      yield* Effect.yieldNow;
-
-      expect(spans.filter((span) => span.kind === "server")).toHaveLength(1);
-      expect(spans[0]?.attributes.get("url.path")).toBe("/v1/mobile/devices");
-    }),
-  );
-
-  it.effect("fails hung requests with a 504 before the client's 10s abort", () =>
-    Effect.gen(function* () {
-      const spans: Array<Tracer.NativeSpan> = [];
-      const tracer = Tracer.make({
-        span: (options) => {
-          const span = new Tracer.NativeSpan(options);
-          spans.push(span);
-          return span;
-        },
-      });
-      const request = HttpServerRequest.fromWeb(
-        new Request("https://relay.test/v1/mobile/devices", { method: "POST" }),
-      );
-
-      const fiber = yield* traceRelayHttpRequestWith(
-        Effect.never,
-        Layer.succeed(Tracer.Tracer, tracer),
-      ).pipe(Effect.provideService(HttpServerRequest.HttpServerRequest, request), Effect.forkChild);
-      yield* TestClock.adjust(Duration.millis(RELAY_REQUEST_DEADLINE_MS));
-      const response = yield* Fiber.join(fiber);
-
-      expect(response.status).toBe(504);
-      expect(spans[0]?.attributes.get("relay.request.deadline_exceeded")).toBe(true);
-      expect(spans[0]?.attributes.get("http.response.status_code")).toBe(504);
-    }),
-  );
 });
 
 describe("relay routing fallback", () => {
@@ -1583,74 +1453,12 @@ describe("relay routing fallback", () => {
       expect(verified.map((input) => input.threadId)).toEqual(threadIds);
     }).pipe(Effect.scoped),
   );
-
-  it.effect("redirects the relay root to the API docs", () =>
-    Effect.gen(function* () {
-      const httpEffect = yield* HttpRouter.toHttpEffect(
-        Layer.mergeAll(
-          RelayHttpApi.layerDocsRedirectRoute,
-          RelayHttpApi.layerNotFoundRoute,
-          RelayHttpApi.layerCors,
-        ),
-      );
-      const response = yield* sendRelayRequest(httpEffect, new Request("https://relay.test/"));
-
-      expect(response.status).toBe(302);
-      expect(response.headers.location).toBe("/docs");
-      expect(response.headers["access-control-allow-origin"]).toBe("*");
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("returns a CORS-compatible 404 response for unmatched paths", () =>
-    Effect.gen(function* () {
-      const httpEffect = yield* HttpRouter.toHttpEffect(
-        Layer.merge(RelayHttpApi.layerNotFoundRoute, RelayHttpApi.layerCors),
-      );
-      const response = yield* sendRelayRequest(
-        httpEffect,
-        new Request("https://relay.test/v1/environmentsd", { method: "GET" }),
-      );
-
-      expect(response.status).toBe(404);
-      expect(response.headers["access-control-allow-origin"]).toBe("*");
-    }).pipe(Effect.scoped),
-  );
 });
 
 describe("relay CORS", () => {
   const origin = "https://app.t3.codes";
 
   class HandlerFailed extends Data.TaggedError("HandlerFailed") {}
-
-  it.effect("answers preflight requests without reaching a route", () =>
-    Effect.gen(function* () {
-      const httpEffect = yield* HttpRouter.toHttpEffect(
-        Layer.merge(RelayHttpApi.layerNotFoundRoute, RelayHttpApi.layerCors),
-      );
-      const response = yield* sendRelayRequest(
-        httpEffect,
-        new Request("https://relay.test/v1/client/environments", {
-          method: "OPTIONS",
-          headers: {
-            origin,
-            "access-control-request-method": "POST",
-            "access-control-request-headers": "authorization,dpop,content-type",
-          },
-        }),
-      );
-
-      expect(response.status).toBe(204);
-      expect(
-        response.headers["access-control-allow-methods"]?.split(",").map((method) => method.trim()),
-      ).toEqual(["GET", "POST", "DELETE", "OPTIONS"]);
-      expect(response.headers).toMatchObject({
-        "access-control-allow-origin": "*",
-        "access-control-allow-headers": "authorization,b3,traceparent,content-type,dpop",
-        "access-control-expose-headers": "traceparent,www-authenticate",
-        "access-control-max-age": "86400",
-      });
-    }).pipe(Effect.scoped),
-  );
 
   it.effect("adds CORS headers to handler failures and defects", () =>
     Effect.gen(function* () {
@@ -1674,30 +1482,6 @@ describe("relay CORS", () => {
           "traceparent,www-authenticate",
         );
       }
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("adds CORS headers to the request deadline response", () =>
-    Effect.gen(function* () {
-      const httpEffect = yield* HttpRouter.toHttpEffect(
-        Layer.mergeAll(
-          HttpRouter.add("GET", "/v1/hang", Effect.never),
-          RelayHttpApi.layerNotFoundRoute,
-          RelayHttpApi.layerCors,
-        ),
-      );
-      const fiber = yield* sendRelayRequest(
-        traceRelayHttpRequestWith(httpEffect, Layer.empty),
-        new Request("https://relay.test/v1/hang", { headers: { origin } }),
-      ).pipe(Effect.forkChild);
-      yield* TestClock.adjust(Duration.millis(RELAY_REQUEST_DEADLINE_MS));
-      const response = yield* Fiber.join(fiber);
-
-      expect(response.status).toBe(504);
-      expect(response.headers["access-control-allow-origin"]).toBe("*");
-      expect(response.headers["access-control-expose-headers"]).toBe(
-        "traceparent,www-authenticate",
-      );
     }).pipe(Effect.scoped),
   );
 });

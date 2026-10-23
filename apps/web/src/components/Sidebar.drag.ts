@@ -13,6 +13,8 @@ const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 const hidden = { ...stationary, scaleY: 0 };
 type ThreadItem = Extract<SidebarListItem, { kind: "thread" }>;
 type Layout = Parameters<SortingStrategy>[0];
+const isCardSection = (section: SidebarSection) =>
+  section === "pinned" || section === "active" || section === "working";
 const isShelfHeader = (item: SidebarListItem | undefined) =>
   item?.kind === "marker" &&
   (item.marker === "working-header" ||
@@ -141,7 +143,8 @@ export function createSidebarSortingStrategy(input: {
     }
     const scale =
       slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 82) / 82);
-    cardHeight ??= 82 * scale;
+    // Astrolabe: with no card listed, a card with no second line (sidebar/SidebarCard.tsx).
+    cardHeight ??= 28 * scale;
     slimHeight ??= 36 * scale;
     const labelHeight = (input.boundaryLabelHeight ?? 0) * scale;
     const group = groups[target.section];
@@ -201,13 +204,19 @@ export function createSidebarSortingStrategy(input: {
           ? cardHeight
           : slimHeight;
       const moved = item.kind === "thread" && item.key === active.key;
+      // Astrolabe: cards take one line or two, so the moved row keeps its own height unless it
+      // changes between card and slim.
+      const keepsKind =
+        item.kind === "thread" && isCardSection(item.section) === isCardSection(active.section);
       return item.kind === "marker" &&
         (item.marker === "pinned-header" || item.marker === "pinned-divider")
         ? labelHeight
         : item.kind === "marker" && item.marker.endsWith("placeholder")
           ? slimHeight
           : moved
-            ? fallback
+            ? keepsKind
+              ? (rects[activeIndex]?.height ?? fallback)
+              : fallback
             : (rect?.height ?? fallback);
     });
     const firstShelf = items.findIndex(isShelfHeader);

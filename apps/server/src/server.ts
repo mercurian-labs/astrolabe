@@ -79,6 +79,8 @@ import * as ProcessRunner from "./processRunner.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
+// Astrolabe
+import * as Vimrc from "./vimrc.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerOwnership from "./serverOwnership.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -174,6 +176,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as CodexUsageHistory from "./usage/CodexUsageHistory.ts";
 import * as RuntimeLayer from "./orchestration-v2/runtimeLayer.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
+import * as ThreadLineage from "./orchestration-v2/ThreadLineage.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as ThreadSettlementService from "./orchestration-v2/ThreadSettlementService.ts";
 import * as IdleCompactionService from "./orchestration-v2/IdleCompactionService.ts";
@@ -605,7 +608,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
-  Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+  Layer.provideMerge(Layer.mergeAll(ProjectStore.layer, ThreadSearch.layer, ThreadLineage.layer)),
   Layer.provideMerge(layerServerSettings),
   Layer.provideMerge(layerSourceControlProviderRegistry),
   Layer.provideMerge(layerGit),
@@ -613,7 +616,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
   Layer.provideMerge(layerPersistence),
   Layer.provideMerge(
-    Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer, UsageLimitSources.layer),
+    // Astrolabe: and the vimrc.
+    Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer, UsageLimitSources.layer, Vimrc.layer),
   ),
   Layer.provideMerge(ProviderRegistry.layer),
   Layer.provideMerge(ProviderInstanceRegistryHydration.layer),
@@ -658,10 +662,7 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(
     Layer.mergeAll(
-      CloudCliTokenManager.layer.pipe(
-        Layer.provide(ServerSecretStore.layer),
-        Layer.provide(ExternalLauncher.layer),
-      ),
+      CloudCliTokenManager.layer.pipe(Layer.provide(ServerSecretStore.layer)),
       layerCloudManagedEndpointRuntime,
     ),
   ),
@@ -877,12 +878,12 @@ const layerMakeServer = Layer.unwrap(
             const recoverManagedTunnel = (config: RelayManagedEndpointRuntimeConfig) =>
               runManagedTunnelRecovery(config).pipe(
                 Effect.tap((recovered) =>
-                  recovered ? Effect.logInfo("T3 Connect managed tunnel recovered") : Effect.void,
+                  recovered ? Effect.logInfo("Remote access tunnel recovered") : Effect.void,
                 ),
                 Effect.catchCause((cause) =>
                   Cause.hasInterrupts(cause)
                     ? Effect.interrupt
-                    : Effect.logWarning("Failed to recover the T3 Connect managed tunnel", {
+                    : Effect.logWarning("Failed to recover the remote access tunnel", {
                         cause,
                       }),
                 ),
@@ -894,9 +895,9 @@ const layerMakeServer = Layer.unwrap(
             const wantsCliLink = hasCloudPublicConfig
               ? yield* CloudCliState.readCliDesiredCloudLink.pipe(
                   Effect.catch((cause) =>
-                    Effect.logWarning("Failed to read the desired T3 Connect link", { cause }).pipe(
-                      Effect.as(false),
-                    ),
+                    Effect.logWarning("Failed to read the desired remote access link", {
+                      cause,
+                    }).pipe(Effect.as(false)),
                   ),
                 )
               : false;
@@ -905,7 +906,7 @@ const layerMakeServer = Layer.unwrap(
             const desiredCliLinkMode = wantsCliLink
               ? yield* CloudCliState.readCliDesiredLinkMode.pipe(
                   Effect.catch((cause) =>
-                    Effect.logWarning("Failed to read the desired T3 Connect link mode", {
+                    Effect.logWarning("Failed to read the desired remote access link mode", {
                       cause,
                     }).pipe(Effect.as("managed" as const)),
                   ),
@@ -918,7 +919,7 @@ const layerMakeServer = Layer.unwrap(
                 ? false
                 : yield* cloudLink.startManagedTunnelIfOriginConfirmed(localOrigin).pipe(
                     Effect.catch((cause) =>
-                      Effect.logWarning("Failed to start the confirmed T3 Connect tunnel", {
+                      Effect.logWarning("Failed to start the confirmed remote access tunnel", {
                         cause,
                       }).pipe(Effect.as(false)),
                     ),
@@ -931,12 +932,12 @@ const layerMakeServer = Layer.unwrap(
                 Effect.tap((started) =>
                   started
                     ? Effect.logWarning(
-                        "T3 Connect started the stored tunnel without relay confirmation",
+                        "Remote access started the stored tunnel without relay confirmation",
                       )
                     : Effect.void,
                 ),
                 Effect.catch((cause) =>
-                  Effect.logWarning("Failed to start the stored T3 Connect tunnel", { cause }),
+                  Effect.logWarning("Failed to start the stored remote access tunnel", { cause }),
                 ),
                 Effect.asVoid,
               );
@@ -951,13 +952,13 @@ const layerMakeServer = Layer.unwrap(
             ).pipe(
               Effect.tap((result) =>
                 result.status === "ready"
-                  ? Effect.logInfo("T3 Connect managed tunnel recovery registered")
+                  ? Effect.logInfo("Remote access tunnel recovery registered")
                   : Effect.void,
               ),
               Effect.catchCause((cause) =>
                 Cause.hasInterrupts(cause)
                   ? Effect.interrupt
-                  : Effect.logWarning("Failed to register T3 Connect managed tunnel recovery", {
+                  : Effect.logWarning("Failed to register remote access tunnel recovery", {
                       cause,
                     }).pipe(Effect.as({ status: "unavailable" as const })),
               ),
@@ -989,19 +990,22 @@ const layerMakeServer = Layer.unwrap(
                   (reconcile) =>
                     retryDesiredLinkReconcile(reconcile, CloudLink.shouldRetryCloudLink, (cause) =>
                       Effect.logWarning(
-                        "T3 Connect relay is still unavailable; retrying the desired link in the background",
+                        "Remote access is still unavailable; retrying the desired link in the background",
                         { cause },
                       ),
                     ),
                   Effect.tap((mode) =>
                     mode === null
                       ? Effect.void
-                      : Effect.logInfo("T3 Connect desired link reconciled on startup"),
+                      : Effect.logInfo("Remote access desired link reconciled on startup"),
                   ),
                   Effect.catch((cause) =>
-                    Effect.logWarning("Failed to reconcile T3 Connect desired link on startup", {
-                      cause,
-                    }).pipe(Effect.as(null)),
+                    Effect.logWarning(
+                      "Failed to reconcile the desired remote access link on startup",
+                      {
+                        cause,
+                      },
+                    ).pipe(Effect.as(null)),
                   ),
                 );
               if (reconciledMode === "managed") {

@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./astrolabeEnv": {
+      "types": "./src/astrolabeEnv.ts",
+      "import": "./src/astrolabeEnv.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"
@@ -191,10 +195,6 @@
       "types": "./src/telemetryId.ts",
       "import": "./src/telemetryId.ts"
     },
-    "./relayAuth": {
-      "types": "./src/relayAuth.ts",
-      "import": "./src/relayAuth.ts"
-    },
     "./relayUrl": {
       "types": "./src/relayUrl.ts",
       "import": "./src/relayUrl.ts"
@@ -223,6 +223,14 @@
       "types": "./src/connectAuth.ts",
       "import": "./src/connectAuth.ts"
     },
+    "./mercurianAccount": {
+      "types": "./src/mercurianAccount.ts",
+      "import": "./src/mercurianAccount.ts"
+    },
+    "./mercurianWorkspaces": {
+      "types": "./src/mercurianWorkspaces.ts",
+      "import": "./src/mercurianWorkspaces.ts"
+    },
     "./symlink": {
       "types": "./src/symlink.ts",
       "import": "./src/symlink.ts"
@@ -238,6 +246,14 @@
     "./threadTranscript": {
       "types": "./src/threadTranscript.ts",
       "import": "./src/threadTranscript.ts"
+    },
+    "./keybindingTriggers": {
+      "types": "./src/keybindingTriggers.ts",
+      "import": "./src/keybindingTriggers.ts"
+    },
+    "./vimrc": {
+      "types": "./src/vimrc.ts",
+      "import": "./src/vimrc.ts"
     },
     "./threadReference": {
       "types": "./src/threadReference.ts",
@@ -502,10 +518,18 @@
     "./markdownMath": {
       "types": "./src/markdownMath.ts",
       "import": "./src/markdownMath.ts"
+    },
+    "./changeGroups": {
+      "types": "./src/changeGroups.ts",
+      "import": "./src/changeGroups.ts"
+    },
+    "./cloneUrl": {
+      "types": "./src/cloneUrl.ts",
+      "import": "./src/cloneUrl.ts"
     }
   },
   "scripts": {
-    "typecheck": "tsc-rs --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vp test run --config ../../vite.config.ts --dir ."
   },
   "dependencies": {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   initialWorkspaceTabsState,
+  workspaceTabsFor,
   workspaceTabsReducer,
-  workspaceToolbarHeight,
 } from "./workspace-tabs-state";
 
 describe("workspace root navigation", () => {
@@ -37,6 +37,24 @@ describe("workspace root navigation", () => {
     });
   });
 
+  it("Wikis keeps its own search and position beside the other roots", () => {
+    let state = initialWorkspaceTabsState();
+    state = workspaceTabsReducer(state, { type: "select", tab: "wikis" });
+    state = workspaceTabsReducer(state, { type: "scroll", tab: "wikis", offset: 320 });
+    state = workspaceTabsReducer(state, { type: "search" });
+    state = workspaceTabsReducer(state, { type: "query", query: "roadmap" });
+    state = workspaceTabsReducer(state, { type: "select", tab: "threads" });
+    expect(state.tabs.threads.query).toBe("");
+    state = workspaceTabsReducer(state, { type: "select", tab: "wikis" });
+    expect(state.tabs.wikis).toMatchObject({ query: "roadmap", searchMode: "active" });
+    expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.wikis.scrollOffset).toBe(320);
+  });
+
+  it("iPhone shows Wikis and Repositories; iPad keeps its two roots until they have a sidebar design", () => {
+    expect(workspaceTabsFor("phone")).toEqual(["threads", "pullRequests", "wikis", "repositories"]);
+    expect(workspaceTabsFor("pad")).toEqual(["threads", "pullRequests"]);
+  });
+
   it("clear keeps search active without losing the position cancel restores", () => {
     let state = initialWorkspaceTabsState();
     state = workspaceTabsReducer(state, { type: "scroll", tab: "threads", offset: 500 });
@@ -51,12 +69,6 @@ describe("workspace root navigation", () => {
       searchEntryOffset: 500,
     });
     expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.threads.scrollOffset).toBe(500);
-  });
-
-  it("reserves space for both Android toolbar rows when expanded", () => {
-    expect(workspaceToolbarHeight("expanded")).toBeGreaterThan(
-      workspaceToolbarHeight("resting") * 2,
-    );
   });
 
   it("a late native blur cannot reopen a cancelled search", () => {

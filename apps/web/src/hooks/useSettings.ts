@@ -385,9 +385,9 @@ export function resolveEnvironmentIdentificationMode(input: {
   paletteThemeAllowsArtwork?: boolean;
 }): EnvironmentIdentificationMode {
   if (!input.settingsHydrated) return "none";
-  return input.paletteThemeActive && !input.paletteThemeAllowsArtwork && input.mode === "artwork"
-    ? "pill"
-    : input.mode;
+  // Astrolabe has no sidebar artwork: the schema's "artwork" (its default) shows the pill, which
+  // is theme-aware, so a T3 server's stored choice still reads.
+  return input.mode === "artwork" ? "pill" : input.mode;
 }
 
 export function useEnvironmentIdentificationMode(): EnvironmentIdentificationMode {

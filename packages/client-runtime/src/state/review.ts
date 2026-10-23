@@ -27,6 +27,12 @@ export function createReviewEnvironmentAtoms<R, E>(
       tag: WS_METHODS.reviewGetDiffPreview,
       staleTimeMs: 5_000,
     }),
+    // Astrolabe: the files a checkout's recent commits changed, for the Repositories list.
+    recentFiles: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:review:recent-files",
+      tag: WS_METHODS.reviewGetRecentFiles,
+      staleTimeMs: 30_000,
+    }),
     diffFilePatch: createEnvironmentQueryAtomFamily(runtime, {
       label: "environment-data:review:diff-file-patch",
       staleTimeMs: 5 * 60_000,

@@ -935,6 +935,7 @@ export * from "./archivedThreads.ts";
 export * from "./checkpointDiff.ts";
 export * as BoundedThreadSnapshotLoader from "./boundedThreadSnapshotHttp.ts";
 export * as ThreadHistoryController from "./threadHistoryController.ts";
+export * as ThreadLineageLoader from "./threadLineageHttp.ts";
 export type { ThreadHistoryLoadEarlierResult } from "./threadHistoryController.ts";
 export * from "./threadHistoryMerge.ts";
 export * from "./threadSnapshotHttp.ts";

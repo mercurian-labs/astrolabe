@@ -32,6 +32,11 @@ const ROW_STYLE =
     ? { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, gap: 8 }
     : { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 10, gap: 8 };
 const id = (field: string, value: string) => JSON.stringify([field, value]);
+/** Astrolabe: a wiki's choice in the project menu, told apart from a project's. */
+const WIKI_CHOICE = "wiki:";
+/** Astrolabe: every repository's pull requests, the project menu's Repositories heading. */
+const REPOSITORIES_CHOICE = "kind:repositories";
+
 function choices(field: string, options: Readonly<Record<string, string>>, selected: string) {
   return Object.entries(options).map(([value, title]) => ({
     id: id(field, value),
@@ -74,6 +79,16 @@ export function PullRequestListFilters(props: {
   readonly authors: readonly string[];
   readonly labels: readonly string[];
   readonly projects: readonly { id: string; title: string; environmentId: string }[];
+  /**
+   * Astrolabe: the project menu lists All projects, Repositories and each repository, then the
+   * wikis (Wikis and each wiki), as every section's project filter does. `onSource` hears which
+   * kind or wiki is picked: `"all"`, `"repositories"` (also for one repository, which `onChange`
+   * carries), or a wiki choice's value.
+   */
+  readonly wikis?: readonly { value: string; title: string }[];
+  readonly wikiValue?: string | null;
+  readonly repositoriesOnly?: boolean;
+  readonly onSource?: (value: string) => void;
 }) {
   const { value } = props;
   const projects = useProjectsInSidebarOrder(props.projects);
@@ -102,6 +117,7 @@ export function PullRequestListFilters(props: {
           props.onEnvironmentChange(next);
         break;
       case "reset":
+        props.onSource?.("all");
         props.onChange(DEFAULT_PR_LIST_CONTROLS);
         // The Android header menu also holds the environment, so its reset clears that too.
         if (next === "environment") props.onEnvironmentChange(null);
@@ -116,6 +132,19 @@ export function PullRequestListFilters(props: {
         props.onChange({ ...value, sort: next as PullRequestListControls["sort"] });
         break;
       case "project": {
+        if (next.startsWith(WIKI_CHOICE) || next === REPOSITORIES_CHOICE || next === "") {
+          props.onSource?.(
+            next.startsWith(WIKI_CHOICE)
+              ? next.slice(WIKI_CHOICE.length)
+              : next === ""
+                ? "all"
+                : "repositories",
+          );
+          if (value.projectId)
+            props.onChange({ ...value, projectId: undefined, projectEnvironmentId: undefined });
+          break;
+        }
+        props.onSource?.("repositories");
         const project = projects.find(
           (project) => JSON.stringify([project.environmentId, project.id]) === next,
         );
@@ -185,7 +214,7 @@ export function PullRequestListFilters(props: {
     Number(Boolean(value.filters.draft)) +
     Number(Boolean(value.filters.review)) +
     Number(Boolean(value.filters.checks)) +
-    Number(Boolean(value.projectId));
+    Number(Boolean(value.projectId || props.wikiValue || props.repositoriesOnly));
   const more: MenuProps["actions"] = [
     {
       id: "drafts",
@@ -205,20 +234,30 @@ export function PullRequestListFilters(props: {
     {
       id: "projects",
       title:
+        props.wikis?.find((wiki) => wiki.value === props.wikiValue)?.title ??
         projects.find(
           (project) =>
             project.id === value.projectId && project.environmentId === value.projectEnvironmentId,
-        )?.title ?? "Project",
+        )?.title ??
+        (props.repositoriesOnly ? "Repositories" : "Project"),
       subactions: choices(
         "project",
         Object.fromEntries([
           ["", "All projects"],
+          ...(props.onSource && projects.length > 0 ? [[REPOSITORIES_CHOICE, "Repositories"]] : []),
           ...projects.map((project) => [
             JSON.stringify([project.environmentId, project.id]),
             project.title,
           ]),
+          ...(props.wikis ?? []).map((wiki) => [`${WIKI_CHOICE}${wiki.value}`, wiki.title]),
         ]),
-        value.projectId ? JSON.stringify([value.projectEnvironmentId, value.projectId]) : "",
+        props.wikiValue
+          ? `${WIKI_CHOICE}${props.wikiValue}`
+          : value.projectId
+            ? JSON.stringify([value.projectEnvironmentId, value.projectId])
+            : props.repositoriesOnly
+              ? REPOSITORIES_CHOICE
+              : "",
       ),
     },
     { id: "sort", title: SORTS[value.sort], subactions: choices("sort", SORTS, value.sort) },

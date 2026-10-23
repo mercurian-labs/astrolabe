@@ -72,14 +72,14 @@ function joinSshAskpassPath(
 }
 
 const ASKPASS_POSIX_SCRIPT = `#!/bin/sh
-# Invoked by ssh via SSH_ASKPASS when T3 Code re-runs ssh with a cached password
+# Invoked by ssh via SSH_ASKPASS when Astrolabe re-runs ssh with a cached password
 # from the renderer's in-app prompt. We never expose a native dialog here - if
 # T3_SSH_AUTH_SECRET is missing, that's a caller bug and we fail loudly.
 if [ "\${T3_SSH_AUTH_SECRET+x}" = "x" ]; then
   printf "%s\\n" "$T3_SSH_AUTH_SECRET"
   exit 0
 fi
-printf 'T3 Code ssh-askpass invoked without T3_SSH_AUTH_SECRET.\\n' >&2
+printf 'Astrolabe ssh-askpass invoked without T3_SSH_AUTH_SECRET.\\n' >&2
 exit 1
 `;
 
@@ -87,7 +87,7 @@ const ASKPASS_WINDOWS_LAUNCHER_SCRIPT = `@echo off\r
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ssh-askpass.ps1" %*\r
 `;
 
-const ASKPASS_WINDOWS_SCRIPT = `# Invoked by ssh via SSH_ASKPASS (through ssh-askpass.cmd) when T3 Code re-runs\r
+const ASKPASS_WINDOWS_SCRIPT = `# Invoked by ssh via SSH_ASKPASS (through ssh-askpass.cmd) when Astrolabe re-runs\r
 # ssh with a cached password from the renderer's in-app prompt. We never expose\r
 # a native dialog here - if T3_SSH_AUTH_SECRET is missing, that's a caller bug\r
 # and we fail loudly.\r
@@ -95,7 +95,7 @@ if ($null -ne $env:T3_SSH_AUTH_SECRET) {\r
   [Console]::Out.WriteLine($env:T3_SSH_AUTH_SECRET)\r
   exit 0\r
 }\r
-[Console]::Error.WriteLine("T3 Code ssh-askpass invoked without T3_SSH_AUTH_SECRET.")\r
+[Console]::Error.WriteLine("Astrolabe ssh-askpass invoked without T3_SSH_AUTH_SECRET.")\r
 exit 1\r
 `;
 
@@ -108,43 +108,43 @@ const getDefaultSshAskpassDirectory = Effect.fn("ssh/auth.getDefaultSshAskpassDi
   },
 );
 
-export const buildSshAskpassHelperDescriptor = Effect.fn(
-  "ssh/auth.buildSshAskpassHelperDescriptor",
-)(function* (input: {
-  readonly directory: string;
-}): Effect.fn.Return<SshAskpassHelperDescriptor, never, Path.Path> {
-  const platform = yield* HostProcess.Platform;
-  const path = yield* Path.Path;
-  const directory = input.directory;
+const buildSshAskpassHelperDescriptor = Effect.fn("ssh/auth.buildSshAskpassHelperDescriptor")(
+  function* (input: {
+    readonly directory: string;
+  }): Effect.fn.Return<SshAskpassHelperDescriptor, never, Path.Path> {
+    const platform = yield* HostProcess.Platform;
+    const path = yield* Path.Path;
+    const directory = input.directory;
 
-  if (platform === "win32") {
-    const powershellPath = joinSshAskpassPath(directory, "ssh-askpass.ps1", platform);
+    if (platform === "win32") {
+      const powershellPath = joinSshAskpassPath(directory, "ssh-askpass.ps1", platform);
+      return {
+        launcherPath: joinSshAskpassPath(directory, "ssh-askpass.cmd", platform),
+        files: [
+          {
+            path: joinSshAskpassPath(directory, "ssh-askpass.cmd", platform),
+            contents: ASKPASS_WINDOWS_LAUNCHER_SCRIPT,
+          },
+          {
+            path: powershellPath,
+            contents: ASKPASS_WINDOWS_SCRIPT,
+          },
+        ],
+      };
+    }
+
     return {
-      launcherPath: joinSshAskpassPath(directory, "ssh-askpass.cmd", platform),
+      launcherPath: path.join(directory, "ssh-askpass.sh"),
       files: [
         {
-          path: joinSshAskpassPath(directory, "ssh-askpass.cmd", platform),
-          contents: ASKPASS_WINDOWS_LAUNCHER_SCRIPT,
-        },
-        {
-          path: powershellPath,
-          contents: ASKPASS_WINDOWS_SCRIPT,
+          path: path.join(directory, "ssh-askpass.sh"),
+          contents: ASKPASS_POSIX_SCRIPT,
+          mode: 0o700,
         },
       ],
     };
-  }
-
-  return {
-    launcherPath: path.join(directory, "ssh-askpass.sh"),
-    files: [
-      {
-        path: path.join(directory, "ssh-askpass.sh"),
-        contents: ASKPASS_POSIX_SCRIPT,
-        mode: 0o700,
-      },
-    ],
-  };
-});
+  },
+);
 
 const ensureSshAskpassHelpers = Effect.fn("ssh/auth.ensureSshAskpassHelpers")(function* (input: {
   readonly directory: string;

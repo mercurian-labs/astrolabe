@@ -114,7 +114,9 @@ function requireRelayUrl(): Effect.Effect<string, CloudEnvironmentLinkError> {
   const relayUrl = readRelayUrl();
   return relayUrl
     ? Effect.succeed(relayUrl)
-    : Effect.fail(new CloudEnvironmentLinkError({ message: "Relay URL is not configured." }));
+    : Effect.fail(
+        new CloudEnvironmentLinkError({ message: "Remote access URL is not configured." }),
+      );
 }
 
 function endpointOrigin(httpBaseUrl: string) {
@@ -132,12 +134,12 @@ function ensureLinkedEnvironmentMatches(input: {
 }): Effect.Effect<void, CloudEnvironmentLinkError> {
   if (input.link.environmentId !== input.expectedEnvironmentId) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different environment.",
+      message: "Remote access returned credentials for a different environment.",
     });
   }
   if (input.link.endpoint.providerKind !== input.expectedProviderKind) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different endpoint provider.",
+      message: "Remote access returned credentials for a different tunnel type.",
     });
   }
   return Effect.void;
@@ -160,7 +162,7 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
 ): Effect.fn.Return<void, CloudEnvironmentLinkError, LinkEnvironmentToCloudRequirements> {
   if (!input.connection.bearerToken) {
     return yield* new CloudEnvironmentLinkError({
-      message: "Only a locally paired bearer connection can be linked to the cloud.",
+      message: "Remote access can only be turned on for a locally paired connection.",
     });
   }
   const localBearerToken = input.connection.bearerToken;
@@ -182,7 +184,7 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
     })
     .pipe(
       Effect.mapError(
-        decodedRelayClientError(`${relayUrl}/v1/client/environment-link-challenges failed`),
+        decodedRelayClientError(`Could not start turning on remote access (${relayUrl})`),
       ),
     );
   const environmentClient = yield* makeEnvironmentHttpApiClient(input.connection.httpBaseUrl);
@@ -200,7 +202,11 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
         origin: endpointOrigin(input.connection.httpBaseUrl),
       },
     })
-    .pipe(Effect.mapError(cloudEnvironmentLinkError("Could not obtain environment link proof.")));
+    .pipe(
+      Effect.mapError(
+        cloudEnvironmentLinkError("Could not get remote access proof from the environment."),
+      ),
+    );
   const link = yield* relayClient
     .linkEnvironment({
       clerkToken: input.clerkToken,
@@ -213,7 +219,7 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
       },
     })
     .pipe(
-      Effect.mapError(decodedRelayClientError(`${relayUrl}/v1/client/environment-links failed`)),
+      Effect.mapError(decodedRelayClientError(`Could not turn on remote access (${relayUrl})`)),
     );
   yield* ensureLinkedEnvironmentMatches({
     expectedEnvironmentId: input.connection.environmentId,
@@ -234,6 +240,8 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
       },
     })
     .pipe(
-      Effect.mapError(cloudEnvironmentLinkError("Could not configure environment relay access.")),
+      Effect.mapError(
+        cloudEnvironmentLinkError("Could not set up remote access on the environment."),
+      ),
     );
 });

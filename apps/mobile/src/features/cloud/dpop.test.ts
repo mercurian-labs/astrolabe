@@ -91,7 +91,7 @@ describe("mobile DPoP", () => {
 
       const error = yield* loadOrCreateDpopProofKeyPair().pipe(Effect.flip);
 
-      expect(error.message).toBe("Stored DPoP proof key is invalid.");
+      expect(error.message).toBe("This device's saved signing key is invalid.");
     }).pipe(Effect.provide(Dpop.layer)),
   );
 

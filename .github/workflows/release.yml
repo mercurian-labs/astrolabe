@@ -370,7 +370,7 @@ jobs:
         run: vp run --filter t3 test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
   relay_public_config:
-    name: Resolve T3 Connect public config
+    name: Resolve remote access public config
     # Consumes only the release commit, not preflight's resolved version, so it
     # runs alongside preflight instead of after it. The condition mirrors preflight's.
     needs: [resolve_commit]
@@ -382,18 +382,14 @@ jobs:
     environment:
       name: production
     outputs:
-      clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ steps.public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ steps.public_config.outputs.auth_url }}
       relay_url: ${{ steps.public_config.outputs.relay_url }}
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       RELAY_DOMAIN: ${{ vars.RELAY_DOMAIN }}
       RELAY_API_ZONE_NAME: ${{ vars.RELAY_API_ZONE_NAME }}
-      CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-      CLERK_JWT_TEMPLATE: ${{ vars.CLERK_JWT_TEMPLATE }}
-      CLERK_CLI_OAUTH_CLIENT_ID: ${{ vars.CLERK_CLI_OAUTH_CLIENT_ID }}
+      AUTH_URL: ${{ vars.AUTH_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -459,9 +455,7 @@ jobs:
           fi
           required=(
             relay_domain
-            CLERK_PUBLISHABLE_KEY
-            CLERK_JWT_TEMPLATE
-            CLERK_CLI_OAUTH_CLIENT_ID
+            AUTH_URL
           )
           missing=()
           for name in "${required[@]}"; do
@@ -474,14 +468,12 @@ jobs:
             exit 1
           fi
 
-          echo "clerk_publishable_key=$CLERK_PUBLISHABLE_KEY" >> "$GITHUB_OUTPUT"
-          echo "clerk_jwt_template=$CLERK_JWT_TEMPLATE" >> "$GITHUB_OUTPUT"
-          echo "clerk_cli_oauth_client_id=$CLERK_CLI_OAUTH_CLIENT_ID" >> "$GITHUB_OUTPUT"
+          echo "auth_url=$AUTH_URL" >> "$GITHUB_OUTPUT"
           echo "relay_url=https://$relay_domain" >> "$GITHUB_OUTPUT"
 
   # The platform-independent JS (server bundle, web client, Electron main) is
   # built exactly once here and handed to every platform job as `js-bundle`.
-  # The relay/Clerk values are baked into the bundle, so they belong to this
+  # The relay and auth values are baked into the bundle, so they belong to this
   # job rather than to the packaging jobs.
   build_bundle:
     name: Build JS bundle
@@ -492,9 +484,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30
     env:
-      T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     steps:
       - name: Checkout
@@ -573,8 +563,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # One job per platform and architecture (see release-desktop.yml), each on
-  # hardware of its own architecture, and each gated only on the JS bundle.
+  # One job per platform and architecture (see release-desktop.yml), each
+  # gated only on the JS bundle. Windows targets build on Linux and run their
+  # native checks on a Windows runner of their own architecture.
   # The Windows jobs also embed the same-arch Linux CLI archive as the WSL
   # runtime; they wait for that artifact partway through instead of for the
   # whole Linux job. Every job builds the desktop app; all but macOS x64 also
@@ -590,12 +581,10 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       ref: ${{ needs.preflight.outputs.ref }}
       release_channel: ${{ needs.preflight.outputs.release_channel }}
-      clerk_publishable_key: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: macOS arm64
-      runner: macos-26-xlarge
+      runner: blacksmith-12vcpu-macos-26
       platform: mac
       target: dmg
       arch: arm64
@@ -613,12 +602,10 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       ref: ${{ needs.preflight.outputs.ref }}
       release_channel: ${{ needs.preflight.outputs.release_channel }}
-      clerk_publishable_key: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: macOS x64
-      runner: macos-26-xlarge
+      runner: blacksmith-12vcpu-macos-26
       platform: mac
       target: dmg
       arch: x64
@@ -639,9 +626,7 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       ref: ${{ needs.preflight.outputs.ref }}
       release_channel: ${{ needs.preflight.outputs.release_channel }}
-      clerk_publishable_key: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Linux x64
       runner: blacksmith-32vcpu-ubuntu-2404
@@ -664,9 +649,7 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       ref: ${{ needs.preflight.outputs.ref }}
       release_channel: ${{ needs.preflight.outputs.release_channel }}
-      clerk_publishable_key: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Linux arm64
       runner: blacksmith-16vcpu-ubuntu-2404-arm
@@ -677,9 +660,11 @@ jobs:
       resource_key: linux-arm64
       cli_archive: true
 
-  # The Windows jobs start with the other platforms. Their checkout, install,
-  # and toolchain setup take longer than the same-arch Linux job needs to
-  # upload its CLI archive, so the wait inside is usually instant.
+  # The Windows jobs start with the other platforms and wait for the same-arch
+  # Linux CLI archive after their other setup. Packaging is mostly CPU and
+  # small-file work, which Linux runners do faster than Windows ones, so both
+  # Windows targets build and sign on Linux and only the native checks run on
+  # Windows.
   desktop_win_x64:
     name: Desktop Windows x64
     needs: [preflight, relay_public_config, build_bundle]
@@ -690,12 +675,11 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       ref: ${{ needs.preflight.outputs.ref }}
       release_channel: ${{ needs.preflight.outputs.release_channel }}
-      clerk_publishable_key: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Windows x64
-      runner: blacksmith-32vcpu-windows-2025
+      runner: blacksmith-16vcpu-ubuntu-2404
+      verify_runner: windows-2025
       platform: win
       target: nsis
       arch: x64
@@ -703,8 +687,6 @@ jobs:
       resource_key: win32-x64
       cli_archive: true
 
-  # Windows arm64 runners have 4 vCPUs, and the packaging is mostly CPU-bound,
-  # so the build runs on Linux and only the native checks run on arm64.
   desktop_win_arm64:
     name: Desktop Windows arm64
     needs: [preflight, relay_public_config, build_bundle]
@@ -715,9 +697,7 @@ jobs:
       version: ${{ needs.preflight.outputs.version }}
       ref: ${{ needs.preflight.outputs.ref }}
       release_channel: ${{ needs.preflight.outputs.release_channel }}
-      clerk_publishable_key: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      clerk_jwt_template: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Windows arm64
       runner: blacksmith-16vcpu-ubuntu-2404
@@ -973,7 +953,7 @@ jobs:
       - name: Publish the npm launcher
         run: |
           if ! node apps/server/scripts/cli.ts publish --packages-dir npm-packages --tag "${{ needs.preflight.outputs.cli_dist_tag }}" --provenance --verbose; then
-            echo "::error::npm publish failed. Make sure package t3 has a trusted publisher registered for .github/workflows/release.yml (see docs/operations/release.md)." >&2
+            echo "::error::npm publish failed. Make sure package @mercurian/astrolabe has a trusted publisher registered for .github/workflows/release.yml (see docs/operations/release.md)." >&2
             exit 1
           fi
 
@@ -1002,9 +982,7 @@ jobs:
     outputs:
       deployment_url: ${{ steps.deploy.outputs.deployment_url }}
     env:
-      T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
-      T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
-      T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -1070,7 +1048,7 @@ jobs:
           fi
 
           echo "Building hosted web app for $channel_name channel."
-          deployment_url="$(
+          deployment_output="$(
             vp dlx vercel@53.1.1 deploy \
               --archive=tgz \
               --prod \
@@ -1079,9 +1057,7 @@ jobs:
               --token "$VERCEL_TOKEN" \
               --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}" \
               --build-env "APP_VERSION=${{ needs.preflight.outputs.version }}" \
-              --build-env "T3CODE_CLERK_PUBLISHABLE_KEY=${T3CODE_CLERK_PUBLISHABLE_KEY:-}" \
-              --build-env "T3CODE_CLERK_JWT_TEMPLATE=${T3CODE_CLERK_JWT_TEMPLATE:-}" \
-              --build-env "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID=${T3CODE_CLERK_CLI_OAUTH_CLIENT_ID:-}" \
+              --build-env "T3CODE_AUTH_URL=${T3CODE_AUTH_URL:-}" \
               --build-env "T3CODE_RELAY_URL=${T3CODE_RELAY_URL:-}" \
               --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_URL=${T3CODE_RELAY_CLIENT_OTLP_TRACES_URL:-}" \
               --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET=${T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET:-}" \
@@ -1089,6 +1065,13 @@ jobs:
               --build-env "VITE_HOSTED_APP_URL=$router_url" \
               --build-env "VITE_HOSTED_APP_CHANNEL=$channel_name"
           )"
+          printf '%s\n' "$deployment_output"
+          # Vercel can print lockfile warnings to stdout before the deployment URL.
+          deployment_url="$(printf '%s\n' "$deployment_output" | grep -E '^https://[[:alnum:].-]+\.vercel\.app$')"
+          if [[ "$deployment_url" == *$'\n'* ]]; then
+            echo "Vercel returned multiple deployment URLs." >&2
+            exit 1
+          fi
           echo "Staged $deployment_url."
           echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
 
@@ -1217,7 +1200,7 @@ jobs:
           )"
           export VERCEL_PROJECT_ID
 
-          deployment_url="$(
+          deployment_output="$(
             vp dlx vercel@53.1.1 deploy \
               --archive=tgz \
               --prod \
@@ -1226,6 +1209,13 @@ jobs:
               --token "$VERCEL_TOKEN" \
               --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}"
           )"
+          printf '%s\n' "$deployment_output"
+          # Vercel can print lockfile warnings to stdout before the deployment URL.
+          deployment_url="$(printf '%s\n' "$deployment_output" | grep -E '^https://[[:alnum:].-]+\.vercel\.app$')"
+          if [[ "$deployment_url" == *$'\n'* ]]; then
+            echo "Vercel returned multiple deployment URLs." >&2
+            exit 1
+          fi
           echo "Staged $deployment_url."
           echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
           echo "project_id=$VERCEL_PROJECT_ID" >> "$GITHUB_OUTPUT"

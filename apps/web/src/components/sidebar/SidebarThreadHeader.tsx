@@ -1,23 +1,42 @@
+/**
+ * Astrolabe: the sidebar's title row, upstream's search row with the section's name in it. The
+ * name ("Agents", "Wikis") heads the list, with search, the scope filter and new item as icon
+ * buttons at the row's end. Search opens upstream's own search field in the name's place, and the
+ * field stays while it has focus or holds a query; Escape on an empty field, leaving it empty, or
+ * picking a result puts the name back.
+ *
+ * The scope picker itself is passed in: its combobox state lives with the rest of the sidebar's
+ * scope logic. The scope icon swaps to the project favicon while a project is selected, so the
+ * header still names the scope.
+ */
 import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
+  type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
 } from "react";
+import { observeResize } from "~/lib/observeResize";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
-import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
+import { SidebarInput, SidebarMenuButton, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { focusListRow, listDefaultRow } from "../../keyboardNav/placeLists";
+import { sidebarSectionSlot } from "../../whichKey/handles";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
-  onNewProject: () => void;
-  onNewThread: (event: ReactMouseEvent) => void;
+  /** Astrolabe: without an event when the keyboard menu asks (see `sidebarSectionSlot`). */
+  onNewThread: (event?: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
@@ -30,13 +49,18 @@ export interface SidebarThreadHeaderProps {
   searchResultCount: number;
   activeSearchResultIndex: number;
   onClearSearch: () => void;
+  /** Astrolabe: the section's name, heading the list. */
+  title: string;
+  /** Astrolabe: what the list holds, for naming its search ("thread", "document"). */
+  searchNoun?: string;
+  /** Astrolabe: what the new button makes, for headers of lists other than threads. */
+  newItemLabel?: string;
 }
 
 export function SidebarThreadHeader({
   searchFieldRef,
   hasProjects,
   projectScope,
-  onNewProject,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
@@ -50,21 +74,64 @@ export function SidebarThreadHeader({
   searchResultCount,
   activeSearchResultIndex,
   onClearSearch,
+  title,
+  searchNoun = "thread",
+  newItemLabel = "New thread",
 }: SidebarThreadHeaderProps) {
+  // Astrolabe: the field shows from the search button until it loses focus, and while it holds a
+  // query, so picking a result or leaving it empty puts the section's name back.
+  const { isMobile, open, setOpen } = useSidebar();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
+  const fieldShown = searchOpen || isSearching;
+  const collapsed = !isMobile && !open;
+  useEffect(() => {
+    if (searchFocusRequest === 0) return;
+    // The sidebar may still be sliding in; focusing must not scroll it.
+    searchInputRef.current?.focus({ preventScroll: true });
+  }, [searchFocusRequest, searchInputRef]);
+  const openSearch = () => {
+    if (collapsed) setOpen(true);
+    setSearchOpen(true);
+    setSearchFocusRequest((request) => request + 1);
+  };
+  const searchLabel = `Search ${searchNoun}s`;
+  // Astrolabe: the keyboard menu's `n` is this row's new button, and the list's `/` its search.
+  const newItem = useRef(onNewThread);
+  const search = useRef(openSearch);
+  useLayoutEffect(() => {
+    newItem.current = onNewThread;
+    search.current = openSearch;
+  });
+  useEffect(
+    () =>
+      sidebarSectionSlot.register({
+        newItem: () => newItem.current(),
+        newItemLabel,
+        newItemDisabled: newThreadDisabled,
+        openSearch: () => search.current(),
+      }),
+    [newItemLabel, newThreadDisabled],
+  );
   const resultsVisible = isSearching && searchResultCount > 0;
   // Results shrink as the query narrows, so the active index can outrun the
   // list; pointing aria-activedescendant at a removed option strands the
   // screen reader on nothing.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   const newThreadLabel = newThreadShortcutLabel
-    ? `New thread (${newThreadShortcutLabel})`
-    : "New thread";
+    ? `${newItemLabel} (${newThreadShortcutLabel})`
+    : newItemLabel;
 
   return (
     <div className="flex items-center gap-1">
+      {/* Astrolabe: the section's name holds the field's place until search opens it. */}
+      {fieldShown ? null : <SidebarSectionTitle ref={searchFieldRef}>{title}</SidebarSectionTitle>}
       <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+        ref={fieldShown ? searchFieldRef : undefined}
+        className={cn(
+          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+          !fieldShown && "hidden",
+        )}
       >
         <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput
@@ -73,9 +140,24 @@ export function SidebarThreadHeader({
           type="search"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
-          onKeyDown={onSearchKeyDown}
+          onKeyDown={(event) => {
+            onSearchKeyDown(event);
+            // Astrolabe: Escape on an empty field puts the section's name back, and focus on
+            // the list's row, rather than nowhere once the field hides.
+            if (event.key === "Escape" && !event.defaultPrevented) {
+              event.preventDefault();
+              event.stopPropagation();
+              setSearchOpen(false);
+              const sidebar = event.currentTarget.closest("[data-app-sidebar]");
+              const row = sidebar ? listDefaultRow(sidebar) : null;
+              if (row) focusListRow(row);
+            }
+          }}
+          // Astrolabe: an empty field shows only while it has focus.
+          onFocus={() => setSearchOpen(true)}
+          onBlur={() => setSearchOpen(false)}
           placeholder="Search"
-          aria-label="Search threads"
+          aria-label={searchLabel}
           role="combobox"
           aria-autocomplete="list"
           aria-expanded={resultsVisible}
@@ -93,7 +175,7 @@ export function SidebarThreadHeader({
             size="icon-micro"
             variant="ghost-muted"
             className="shrink-0"
-            aria-label="Clear thread search"
+            aria-label={`Clear ${searchNoun} search`}
             onClick={() => {
               onClearSearch();
               searchInputRef.current?.focus();
@@ -104,16 +186,14 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
-        {hasProjects ? (
-          <>
-            {projectScope}
-            <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
-              <FolderPlusIcon />
-            </SidebarHeaderIconButton>
-          </>
-        ) : null}
+        {fieldShown ? null : (
+          <SidebarHeaderIconButton label={searchLabel} onClick={openSearch}>
+            <SearchIcon />
+          </SidebarHeaderIconButton>
+        )}
+        {hasProjects ? projectScope : null}
         <SidebarHeaderIconButton
-          label="New thread"
+          label={newItemLabel}
           tooltip={
             showNewThreadInProjectHint ? (
               <span className="flex flex-col gap-0.5">
@@ -137,6 +217,102 @@ export function SidebarThreadHeader({
   );
 }
 
+/** Astrolabe: the section's name, as large as a dialog's title, on the search field's row height. */
+export function SidebarSectionTitle({
+  ref,
+  children,
+}: {
+  ref?: RefObject<HTMLDivElement | null> | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <div ref={ref} className="flex h-8 min-w-0 flex-1 items-center px-2">
+      <h2 className="truncate text-xl font-semibold text-sidebar-foreground">{children}</h2>
+    </div>
+  );
+}
+
+/** The project picker's last row: adding a project, which used to be its own header button. */
+export function SidebarNewProjectRow({ onClick }: { onClick: () => void }) {
+  return (
+    <SidebarPickerFooter>
+      <SidebarPickerAction icon={FolderPlusIcon} onClick={onClick}>
+        New project
+      </SidebarPickerAction>
+    </SidebarPickerFooter>
+  );
+}
+
+/** Astrolabe: the rows below a header picker's list, for actions rather than picks. */
+export function SidebarPickerFooter({ children }: { children: ReactNode }) {
+  return <div className="border-t border-border p-1">{children}</div>;
+}
+
+export function SidebarPickerAction({
+  icon: Icon,
+  onClick,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-base outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent sm:min-h-7 sm:text-sm"
+      onClick={onClick}
+    >
+      <Icon className="size-4 shrink-0 text-muted-foreground" />
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Astrolabe: what the title bar holds after the window's own controls while the sidebar is
+ * collapsed (the section's back and forward, see `SidebarTabHistory`). It publishes its width as
+ * `--workspace-collapsed-sidebar-actions`, so titlebars that inset for the window's controls clear
+ * it too; `gap` includes the room after it.
+ */
+export function SidebarCollapsedActionsSlot({
+  gap = false,
+  children,
+}: {
+  gap?: boolean;
+  children: ReactNode;
+}) {
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!element) return;
+    const root = document.documentElement;
+    const publish = () =>
+      root.style.setProperty("--workspace-collapsed-sidebar-actions", `${element.offsetWidth}px`);
+    publish();
+    const stop = observeResize(element, publish);
+    return () => {
+      stop();
+      root.style.removeProperty("--workspace-collapsed-sidebar-actions");
+    };
+  }, [element]);
+  return (
+    <div
+      ref={setElement}
+      className={cn(
+        "pointer-events-auto flex items-center empty:hidden [-webkit-app-region:no-drag]",
+        gap && "pe-(--workspace-titlebar-control-gap)",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Icon button with a tooltip, sized for the header's group. Spreads unknown props through so it
+ * can serve as a popup trigger's render target, which injects its own handlers, ref and aria
+ * state.
+ */
 export function SidebarHeaderIconButton({
   label,
   tooltip = label,
@@ -144,6 +320,7 @@ export function SidebarHeaderIconButton({
   children,
   ...rest
 }: {
+  /** Accessible name; also the tooltip unless `tooltip` says more. */
   label: string;
   tooltip?: ReactNode;
   className?: string | undefined;
@@ -166,12 +343,13 @@ export function SidebarHeaderIconButton({
         }
       >
         {children}
+        {/* Coarse-pointer hit area, matching the rest of the sidebar chrome. */}
         <span
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
         />
       </TooltipTrigger>
-      <TooltipPopup side="top">{tooltip}</TooltipPopup>
+      <TooltipPopup side="bottom">{tooltip}</TooltipPopup>
     </Tooltip>
   );
 }

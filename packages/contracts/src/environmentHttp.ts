@@ -55,6 +55,7 @@ import {
   OrchestrationV2ThreadDetailSnapshot,
   OrchestrationV2ThreadHistoryPage,
   OrchestrationV2ThreadTranscript,
+  OrchestrationV2ThreadLineage,
 } from "./orchestrationV2.ts";
 import { Project, ProjectMutation, ProjectSnapshot } from "./project.ts";
 import {
@@ -125,6 +126,7 @@ export const EnvironmentInternalErrorReason = Schema.Literals([
   "orchestration_thread_snapshot_failed",
   "orchestration_thread_bounded_snapshot_failed",
   "orchestration_thread_history_failed",
+  "orchestration_thread_lineage_failed",
   "internal_error",
 ]);
 export type EnvironmentInternalErrorReason = typeof EnvironmentInternalErrorReason.Type;
@@ -715,6 +717,14 @@ class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestration")
       query: EnvironmentOrchestrationThreadHistoryQuery,
       success: OrchestrationV2ThreadHistoryPage,
       error: EnvironmentOrchestrationThreadHistoryErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get("threadLineage", "/api/orchestration/threads/:threadId/lineage", {
+      headers: OrchestrationProtocolHeaders,
+      params: EnvironmentOrchestrationThreadSnapshotParams,
+      success: OrchestrationV2ThreadLineage,
+      error: EnvironmentOrchestrationThreadSnapshotErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 

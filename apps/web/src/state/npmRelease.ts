@@ -3,11 +3,15 @@ import * as Effect from "effect/Effect";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 import { AsyncResult, Atom } from "effect/reactivity";
 
+/** The npm launcher package that servers not managed by the desktop app update from. */
+export const NPM_LAUNCHER_PACKAGE = "@mercurian/astrolabe";
+
 export const npmReleasePublishedAtom = Atom.family((version: string) =>
   Atom.make(
     Effect.gen(function* () {
+      // The registry takes a scoped name with its slash escaped: @scope%2Fname.
       const response = yield* HttpClient.get(
-        `https://registry.npmjs.org/t3/${encodeURIComponent(version)}`,
+        `https://registry.npmjs.org/${NPM_LAUNCHER_PACKAGE.replace("/", "%2F")}/${encodeURIComponent(version)}`,
       );
       if (response.status === 404) return false;
       const body = yield* HttpClientResponse.filterStatusOk(response).pipe(

@@ -1,0 +1,1804 @@
+{
+  "id": "almagest",
+  "notes": [
+    {
+      "id": "Agent Sandbox Service",
+      "name": "Agent Sandbox Service",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Assistant",
+      "name": "Assistant",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Atlas",
+      "name": "Atlas",
+      "frontier": false,
+      "lastChanged": "2026-09-26"
+    },
+    {
+      "id": "Atlas Chat",
+      "name": "Atlas Chat",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Atlas Editor",
+      "name": "Atlas Editor",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Atlas Graph",
+      "name": "Atlas Graph",
+      "frontier": false,
+      "lastChanged": "2026-09-26"
+    },
+    {
+      "id": "Checkpoint Graph",
+      "name": "Checkpoint Graph",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Collaborative DAG",
+      "name": "Collaborative DAG",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Composer",
+      "name": "Composer",
+      "frontier": false,
+      "lastChanged": "2026-09-25"
+    },
+    {
+      "id": "Control Plane Pivot",
+      "name": "Control Plane Pivot",
+      "frontier": true
+    },
+    {
+      "id": "DAG",
+      "name": "DAG",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Design Lab",
+      "name": "Design Lab",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Environments",
+      "name": "Environments",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "Git Mirroring",
+      "name": "Git Mirroring",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Left Sidebar",
+      "name": "Left Sidebar",
+      "frontier": false,
+      "lastChanged": "2026-09-25"
+    },
+    {
+      "id": "Marketing Site",
+      "name": "Marketing Site",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Memory",
+      "name": "Memory",
+      "frontier": false,
+      "lastChanged": "2026-09-26"
+    },
+    {
+      "id": "Mercurian",
+      "name": "Mercurian",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Merges",
+      "name": "Merges",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Mobile App",
+      "name": "Mobile App",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "PR Review",
+      "name": "PR Review",
+      "frontier": true
+    },
+    {
+      "id": "Providers",
+      "name": "Providers",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "Publishing",
+      "name": "Publishing",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Repositories",
+      "name": "Repositories",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Search Palette",
+      "name": "Search Palette",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Settings",
+      "name": "Settings",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "Skill Maps",
+      "name": "Skill Maps",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Skills",
+      "name": "Skills",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Splits",
+      "name": "Splits",
+      "frontier": false,
+      "lastChanged": "2026-09-25"
+    },
+    {
+      "id": "Status Vocabulary",
+      "name": "Status Vocabulary",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "Sync",
+      "name": "Sync",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "T3code Providers",
+      "name": "T3code Providers",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "T3code Settings",
+      "name": "T3code Settings",
+      "frontier": false,
+      "lastChanged": "2026-07-15"
+    },
+    {
+      "id": "T3code Sidebar",
+      "name": "T3code Sidebar",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "T3code Source Control",
+      "name": "T3code Source Control",
+      "frontier": false,
+      "lastChanged": "2026-07-15"
+    },
+    {
+      "id": "T3code Thread",
+      "name": "T3code Thread",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "T3code Thread View",
+      "name": "T3code Thread View",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "T3code Worktree Lifecycle",
+      "name": "T3code Worktree Lifecycle",
+      "frontier": false,
+      "lastChanged": "2026-09-16"
+    },
+    {
+      "id": "Tabs",
+      "name": "Tabs",
+      "frontier": false,
+      "lastChanged": "2026-09-25"
+    },
+    {
+      "id": "The demonstration loop",
+      "name": "The demonstration loop",
+      "frontier": true
+    },
+    {
+      "id": "Thread Tabs",
+      "name": "Thread Tabs",
+      "frontier": false,
+      "lastChanged": "2026-09-26"
+    },
+    {
+      "id": "Threads",
+      "name": "Threads",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Visual Language",
+      "name": "Visual Language",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    },
+    {
+      "id": "Workspaces",
+      "name": "Workspaces",
+      "frontier": false,
+      "lastChanged": "2026-09-24"
+    }
+  ],
+  "links": [
+    {
+      "from": "Assistant",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Assistant",
+      "to": "Composer"
+    },
+    {
+      "from": "Assistant",
+      "to": "DAG"
+    },
+    {
+      "from": "Assistant",
+      "to": "Memory"
+    },
+    {
+      "from": "Assistant",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Assistant",
+      "to": "Merges"
+    },
+    {
+      "from": "Assistant",
+      "to": "Providers"
+    },
+    {
+      "from": "Assistant",
+      "to": "Settings"
+    },
+    {
+      "from": "Assistant",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Assistant",
+      "to": "T3code Providers"
+    },
+    {
+      "from": "Assistant",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "Assistant",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "Assistant",
+      "to": "Threads"
+    },
+    {
+      "from": "Atlas",
+      "to": "Assistant"
+    },
+    {
+      "from": "Atlas",
+      "to": "Atlas Chat"
+    },
+    {
+      "from": "Atlas",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Atlas",
+      "to": "Atlas Graph"
+    },
+    {
+      "from": "Atlas",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "Atlas",
+      "to": "Composer"
+    },
+    {
+      "from": "Atlas",
+      "to": "DAG"
+    },
+    {
+      "from": "Atlas",
+      "to": "Memory"
+    },
+    {
+      "from": "Atlas",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Atlas",
+      "to": "Publishing"
+    },
+    {
+      "from": "Atlas",
+      "to": "Skill Maps"
+    },
+    {
+      "from": "Atlas",
+      "to": "Skills"
+    },
+    {
+      "from": "Atlas",
+      "to": "Tabs"
+    },
+    {
+      "from": "Atlas",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Atlas",
+      "to": "Threads"
+    },
+    {
+      "from": "Atlas Chat",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Atlas Chat",
+      "to": "DAG"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Assistant"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Atlas"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Atlas Chat"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Composer"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Memory"
+    },
+    {
+      "from": "Atlas Editor",
+      "to": "Threads"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Assistant"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Atlas"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Composer"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Memory"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Skill Maps"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Splits"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Threads"
+    },
+    {
+      "from": "Atlas Graph",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Assistant"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Composer"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "DAG"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Memory"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Merges"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Publishing"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Settings"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Tabs"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Threads"
+    },
+    {
+      "from": "Checkpoint Graph",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Collaborative DAG",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "Collaborative DAG",
+      "to": "DAG"
+    },
+    {
+      "from": "Collaborative DAG",
+      "to": "Environments"
+    },
+    {
+      "from": "Collaborative DAG",
+      "to": "Publishing"
+    },
+    {
+      "from": "Collaborative DAG",
+      "to": "Sync"
+    },
+    {
+      "from": "Composer",
+      "to": "Assistant"
+    },
+    {
+      "from": "Composer",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Composer",
+      "to": "DAG"
+    },
+    {
+      "from": "Composer",
+      "to": "Memory"
+    },
+    {
+      "from": "Composer",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Composer",
+      "to": "Merges"
+    },
+    {
+      "from": "Composer",
+      "to": "Providers"
+    },
+    {
+      "from": "Composer",
+      "to": "Skill Maps"
+    },
+    {
+      "from": "Composer",
+      "to": "Skills"
+    },
+    {
+      "from": "Composer",
+      "to": "Splits"
+    },
+    {
+      "from": "Composer",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "Composer",
+      "to": "Tabs"
+    },
+    {
+      "from": "Composer",
+      "to": "Threads"
+    },
+    {
+      "from": "DAG",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "DAG",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "DAG",
+      "to": "Composer"
+    },
+    {
+      "from": "DAG",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "DAG",
+      "to": "Memory"
+    },
+    {
+      "from": "DAG",
+      "to": "Merges"
+    },
+    {
+      "from": "DAG",
+      "to": "Publishing"
+    },
+    {
+      "from": "DAG",
+      "to": "Threads"
+    },
+    {
+      "from": "DAG",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Design Lab",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Design Lab",
+      "to": "Settings"
+    },
+    {
+      "from": "Design Lab",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Design Lab",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Environments",
+      "to": "Assistant"
+    },
+    {
+      "from": "Environments",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Environments",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Environments",
+      "to": "Publishing"
+    },
+    {
+      "from": "Environments",
+      "to": "Repositories"
+    },
+    {
+      "from": "Environments",
+      "to": "Settings"
+    },
+    {
+      "from": "Environments",
+      "to": "T3code Settings"
+    },
+    {
+      "from": "Git Mirroring",
+      "to": "PR Review"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "DAG"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Environments"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Memory"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "PR Review"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Providers"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Repositories"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Search Palette"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Settings"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Splits"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Sync"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Tabs"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Threads"
+    },
+    {
+      "from": "Left Sidebar",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Composer"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Design Lab"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Memory"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "The demonstration loop"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Threads"
+    },
+    {
+      "from": "Marketing Site",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Memory",
+      "to": "Assistant"
+    },
+    {
+      "from": "Memory",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Memory",
+      "to": "Atlas Graph"
+    },
+    {
+      "from": "Memory",
+      "to": "Composer"
+    },
+    {
+      "from": "Memory",
+      "to": "DAG"
+    },
+    {
+      "from": "Memory",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Memory",
+      "to": "Search Palette"
+    },
+    {
+      "from": "Memory",
+      "to": "Skill Maps"
+    },
+    {
+      "from": "Memory",
+      "to": "Skills"
+    },
+    {
+      "from": "Memory",
+      "to": "Tabs"
+    },
+    {
+      "from": "Memory",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Memory",
+      "to": "Threads"
+    },
+    {
+      "from": "Memory",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Assistant"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Atlas"
+    },
+    {
+      "from": "Mercurian",
+      "to": "DAG"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Design Lab"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Marketing Site"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Memory"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Mobile App"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Publishing"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Threads"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Mercurian",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Merges",
+      "to": "Assistant"
+    },
+    {
+      "from": "Merges",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Merges",
+      "to": "Composer"
+    },
+    {
+      "from": "Merges",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "Merges",
+      "to": "DAG"
+    },
+    {
+      "from": "Merges",
+      "to": "Providers"
+    },
+    {
+      "from": "Merges",
+      "to": "Publishing"
+    },
+    {
+      "from": "Merges",
+      "to": "Threads"
+    },
+    {
+      "from": "Merges",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Assistant"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Mobile App",
+      "to": "T3code Settings"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Tabs"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Mobile App",
+      "to": "Threads"
+    },
+    {
+      "from": "Providers",
+      "to": "Assistant"
+    },
+    {
+      "from": "Providers",
+      "to": "Composer"
+    },
+    {
+      "from": "Providers",
+      "to": "Environments"
+    },
+    {
+      "from": "Providers",
+      "to": "Settings"
+    },
+    {
+      "from": "Providers",
+      "to": "T3code Providers"
+    },
+    {
+      "from": "Providers",
+      "to": "T3code Settings"
+    },
+    {
+      "from": "Providers",
+      "to": "Threads"
+    },
+    {
+      "from": "Publishing",
+      "to": "DAG"
+    },
+    {
+      "from": "Publishing",
+      "to": "Environments"
+    },
+    {
+      "from": "Publishing",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Publishing",
+      "to": "Merges"
+    },
+    {
+      "from": "Publishing",
+      "to": "Threads"
+    },
+    {
+      "from": "Repositories",
+      "to": "Environments"
+    },
+    {
+      "from": "Repositories",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Repositories",
+      "to": "Providers"
+    },
+    {
+      "from": "Repositories",
+      "to": "Settings"
+    },
+    {
+      "from": "Repositories",
+      "to": "T3code Source Control"
+    },
+    {
+      "from": "Repositories",
+      "to": "Threads"
+    },
+    {
+      "from": "Repositories",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Repositories"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Settings"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Search Palette",
+      "to": "T3code Sidebar"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Threads"
+    },
+    {
+      "from": "Search Palette",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Settings",
+      "to": "Assistant"
+    },
+    {
+      "from": "Settings",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Settings",
+      "to": "Composer"
+    },
+    {
+      "from": "Settings",
+      "to": "Design Lab"
+    },
+    {
+      "from": "Settings",
+      "to": "Environments"
+    },
+    {
+      "from": "Settings",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Settings",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Settings",
+      "to": "Providers"
+    },
+    {
+      "from": "Settings",
+      "to": "Publishing"
+    },
+    {
+      "from": "Settings",
+      "to": "Repositories"
+    },
+    {
+      "from": "Settings",
+      "to": "T3code Settings"
+    },
+    {
+      "from": "Settings",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "Settings",
+      "to": "Threads"
+    },
+    {
+      "from": "Settings",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Skill Maps",
+      "to": "Assistant"
+    },
+    {
+      "from": "Skill Maps",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Skill Maps",
+      "to": "Composer"
+    },
+    {
+      "from": "Skill Maps",
+      "to": "Memory"
+    },
+    {
+      "from": "Skill Maps",
+      "to": "Skills"
+    },
+    {
+      "from": "Skills",
+      "to": "Assistant"
+    },
+    {
+      "from": "Skills",
+      "to": "Composer"
+    },
+    {
+      "from": "Skills",
+      "to": "DAG"
+    },
+    {
+      "from": "Skills",
+      "to": "Memory"
+    },
+    {
+      "from": "Skills",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Skills",
+      "to": "Providers"
+    },
+    {
+      "from": "Skills",
+      "to": "Skill Maps"
+    },
+    {
+      "from": "Skills",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "Skills",
+      "to": "Threads"
+    },
+    {
+      "from": "Splits",
+      "to": "Composer"
+    },
+    {
+      "from": "Splits",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Splits",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Splits",
+      "to": "Mobile App"
+    },
+    {
+      "from": "Splits",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Splits",
+      "to": "Tabs"
+    },
+    {
+      "from": "Splits",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Composer"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Providers"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Publishing"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Search Palette"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Threads"
+    },
+    {
+      "from": "Status Vocabulary",
+      "to": "Visual Language"
+    },
+    {
+      "from": "Sync",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "Sync",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "Sync",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Sync",
+      "to": "Publishing"
+    },
+    {
+      "from": "Sync",
+      "to": "Workspaces"
+    },
+    {
+      "from": "T3code Providers",
+      "to": "Assistant"
+    },
+    {
+      "from": "T3code Providers",
+      "to": "Providers"
+    },
+    {
+      "from": "T3code Providers",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "T3code Providers",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "Environments"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "Settings"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "T3code Providers"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "T3code Sidebar"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "T3code Source Control"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "T3code Settings",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "T3code Sidebar",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "T3code Sidebar",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "T3code Sidebar",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "T3code Sidebar",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "T3code Source Control",
+      "to": "Repositories"
+    },
+    {
+      "from": "T3code Source Control",
+      "to": "T3code Providers"
+    },
+    {
+      "from": "T3code Source Control",
+      "to": "T3code Settings"
+    },
+    {
+      "from": "T3code Source Control",
+      "to": "T3code Sidebar"
+    },
+    {
+      "from": "T3code Source Control",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "DAG"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "Environments"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "T3code Providers"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "T3code Sidebar"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "T3code Worktree Lifecycle"
+    },
+    {
+      "from": "T3code Thread",
+      "to": "Threads"
+    },
+    {
+      "from": "T3code Thread View",
+      "to": "Assistant"
+    },
+    {
+      "from": "T3code Thread View",
+      "to": "T3code Providers"
+    },
+    {
+      "from": "T3code Thread View",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "T3code Thread View",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "T3code Thread View",
+      "to": "Threads"
+    },
+    {
+      "from": "T3code Worktree Lifecycle",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "T3code Worktree Lifecycle",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "T3code Worktree Lifecycle",
+      "to": "Threads"
+    },
+    {
+      "from": "Tabs",
+      "to": "Atlas"
+    },
+    {
+      "from": "Tabs",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Tabs",
+      "to": "Atlas Graph"
+    },
+    {
+      "from": "Tabs",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Tabs",
+      "to": "Composer"
+    },
+    {
+      "from": "Tabs",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Tabs",
+      "to": "Memory"
+    },
+    {
+      "from": "Tabs",
+      "to": "Mobile App"
+    },
+    {
+      "from": "Tabs",
+      "to": "Repositories"
+    },
+    {
+      "from": "Tabs",
+      "to": "Search Palette"
+    },
+    {
+      "from": "Tabs",
+      "to": "Splits"
+    },
+    {
+      "from": "Tabs",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Tabs",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Tabs",
+      "to": "Threads"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Atlas Graph"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Composer"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Splits"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Tabs"
+    },
+    {
+      "from": "Thread Tabs",
+      "to": "Threads"
+    },
+    {
+      "from": "Threads",
+      "to": "Assistant"
+    },
+    {
+      "from": "Threads",
+      "to": "Atlas Editor"
+    },
+    {
+      "from": "Threads",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Threads",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "Threads",
+      "to": "Composer"
+    },
+    {
+      "from": "Threads",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "Threads",
+      "to": "DAG"
+    },
+    {
+      "from": "Threads",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Threads",
+      "to": "Memory"
+    },
+    {
+      "from": "Threads",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Threads",
+      "to": "Merges"
+    },
+    {
+      "from": "Threads",
+      "to": "Providers"
+    },
+    {
+      "from": "Threads",
+      "to": "Publishing"
+    },
+    {
+      "from": "Threads",
+      "to": "Repositories"
+    },
+    {
+      "from": "Threads",
+      "to": "Settings"
+    },
+    {
+      "from": "Threads",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "Threads",
+      "to": "T3code Thread View"
+    },
+    {
+      "from": "Threads",
+      "to": "T3code Worktree Lifecycle"
+    },
+    {
+      "from": "Threads",
+      "to": "Thread Tabs"
+    },
+    {
+      "from": "Threads",
+      "to": "Workspaces"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Checkpoint Graph"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Composer"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Design Lab"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Marketing Site"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Memory"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Mercurian"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Merges"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Mobile App"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Settings"
+    },
+    {
+      "from": "Visual Language",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Collaborative DAG"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Control Plane Pivot"
+    },
+    {
+      "from": "Workspaces",
+      "to": "DAG"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Environments"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Left Sidebar"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Memory"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Publishing"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Repositories"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Search Palette"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Settings"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Status Vocabulary"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Sync"
+    },
+    {
+      "from": "Workspaces",
+      "to": "T3code Thread"
+    },
+    {
+      "from": "Workspaces",
+      "to": "Threads"
+    }
+  ],
+  "lenses": [
+    {
+      "name": "Decisions",
+      "types": {
+        "informs": "The source supplies context or constraints for decisions about the destination."
+      },
+      "edges": [
+        {
+          "from": "Memory",
+          "type": "informs",
+          "to": "Skill Maps",
+          "rationale": "Memory delegates the interpretation and surfacing of decision conventions to skill-map teaching."
+        },
+        {
+          "from": "Skill Maps",
+          "type": "informs",
+          "to": "Skills",
+          "rationale": "The map protocol specializes the base teaching that Skills defines."
+        },
+        {
+          "from": "Memory",
+          "type": "informs",
+          "to": "Composer",
+          "rationale": "Memory describes how open forks can become offers in the composer through teaching."
+        },
+        {
+          "from": "Threads",
+          "type": "informs",
+          "to": "DAG",
+          "rationale": "A thread is one line; how threads fork and take context from one another is where human-controlled branching now constrains work history (2026-09-24; formerly this edge reached the Commit Tree)."
+        },
+        {
+          "from": "Skill Maps",
+          "type": "informs",
+          "to": "Atlas Graph",
+          "rationale": "Skill Maps fixes the web reading for cyclic graphs, the shared camera, and the lens rule, arrangement over the graph and never in it, that the Atlas Graph's forks are resolved against (2026-09-24)."
+        }
+      ]
+    },
+    {
+      "name": "Product",
+      "types": {
+        "contains": "The destination is a constituent part of the source."
+      },
+      "edges": [
+        {
+          "from": "Mercurian",
+          "type": "contains",
+          "to": "Left Sidebar",
+          "rationale": "Preserves the explicit containment declaration in Mercurian; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Left Sidebar",
+          "type": "contains",
+          "to": "Search Palette",
+          "rationale": "Preserves the explicit containment declaration in Left Sidebar; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Left Sidebar",
+          "type": "contains",
+          "to": "Workspaces",
+          "rationale": "Preserves the explicit containment declaration in Left Sidebar; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Workspaces",
+          "type": "contains",
+          "to": "Threads",
+          "rationale": "Preserves the explicit containment declaration in Projects; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Workspaces",
+          "type": "contains",
+          "to": "DAG",
+          "rationale": "A project's threads and the forks and transfers between them form its DAG; the DAG is the project's, since a thread never branches inside itself (2026-09-24)."
+        },
+        {
+          "from": "DAG",
+          "type": "contains",
+          "to": "Merges",
+          "rationale": "A merge is one kind of edge of the DAG — a thread taking context from another — so the DAG contains it where the Commit Tree once did (2026-09-24)."
+        },
+        {
+          "from": "Threads",
+          "type": "contains",
+          "to": "Composer",
+          "rationale": "Preserves the explicit containment declaration in Threads; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Threads",
+          "type": "contains",
+          "to": "Thread Tabs",
+          "rationale": "Preserves the explicit containment declaration in Threads; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Thread Tabs",
+          "type": "contains",
+          "to": "Checkpoint Graph",
+          "rationale": "Preserves the explicit containment declaration in Right Sidebar; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Left Sidebar",
+          "type": "contains",
+          "to": "Memory",
+          "rationale": "Preserves the explicit containment declaration in Left Sidebar; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Left Sidebar",
+          "type": "contains",
+          "to": "Repositories",
+          "rationale": "Preserves the explicit containment declaration in Left Sidebar; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Left Sidebar",
+          "type": "contains",
+          "to": "Settings",
+          "rationale": "Preserves the explicit containment declaration in Left Sidebar; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Settings",
+          "type": "contains",
+          "to": "Environments",
+          "rationale": "Preserves the explicit containment declaration in Settings; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Settings",
+          "type": "contains",
+          "to": "Providers",
+          "rationale": "Preserves the explicit containment declaration in Settings; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Mercurian",
+          "type": "contains",
+          "to": "Mobile App",
+          "rationale": "Preserves the explicit containment declaration in Mercurian; this migration introduces no new containment decision."
+        },
+        {
+          "from": "Thread Tabs",
+          "type": "contains",
+          "to": "Atlas Graph",
+          "rationale": "The Atlas Graph is a thread tab, linked to its thread's tab and drawing that thread's branch, since the Memory page's graph was dropped (2026-09-26)."
+        }
+      ]
+    }
+  ]
+}

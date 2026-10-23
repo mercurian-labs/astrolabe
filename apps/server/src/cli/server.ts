@@ -13,6 +13,13 @@ import { type CliServerFlags, resolveServerConfig, sharedServerCommandFlags } fr
 
 const encodeCommand = Schema.encodeEffect(Schema.fromJsonString(Schema.String));
 
+// The desktop launcher reads this process's stdout and stderr. Once it is gone,
+// every log write fails, and Node turns an unhandled stream error into a crash
+// that skips shutdown and leaves the ownership lock and runtime record behind.
+function ignoreClosedLauncherPipe(error: NodeJS.ErrnoException): void {
+  if (error.code !== "EPIPE" && error.code !== "ERR_STREAM_DESTROYED") throw error;
+}
+
 const runServerCommand = Effect.fn("server.runServerCommand")(function* (
   flags: CliServerFlags,
   options?: {
@@ -25,6 +32,10 @@ const runServerCommand = Effect.fn("server.runServerCommand")(function* (
   const config = yield* resolveServerConfig(flags, logLevel, options);
   const run = runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));
   if (config.mode !== "desktop" || config.desktopBootstrapToken === undefined) return yield* run;
+  yield* Effect.sync(() => {
+    process.stdout.on("error", ignoreClosedLauncherPipe);
+    process.stderr.on("error", ignoreClosedLauncherPipe);
+  });
   return yield* Effect.raceFirst(
     run,
     awaitLauncherLoss().pipe(
@@ -50,7 +61,7 @@ export const runDefaultServerCommand = Effect.fn("server.runDefaultServerCommand
     if (!explicitPath && (!(yield* fs.exists(cwd)) || (yield* fs.stat(cwd)).type !== "Directory")) {
       return yield* new CliError.UserError({
         cause: cwd,
-        userMessage: `Unknown command ${yield* encodeCommand(cwd)}. Use "t3 --help" for commands or an explicit path such as "t3 ./my-project" for a new directory.`,
+        userMessage: `Unknown command ${yield* encodeCommand(cwd)}. Use "astrolabe --help" for commands or an explicit path such as "astrolabe ./my-project" for a new directory.`,
       });
     }
   }
@@ -58,13 +69,13 @@ export const runDefaultServerCommand = Effect.fn("server.runDefaultServerCommand
 });
 
 export const startCommand = Command.make("start", { ...sharedServerCommandFlags }).pipe(
-  Command.withDescription("Run the T3 Code server."),
+  Command.withDescription("Run the Astrolabe server."),
   Command.withHandler((flags) => runServerCommand(flags, { rejectRunningServer: true })),
 );
 
 export const serveCommand = Command.make("serve", { ...sharedServerCommandFlags }).pipe(
   Command.withDescription(
-    "Run the T3 Code server without opening a browser and print headless pairing details.",
+    "Run the Astrolabe server without opening a browser and print headless pairing details.",
   ),
   Command.withHandler((flags) =>
     runServerCommand(flags, {

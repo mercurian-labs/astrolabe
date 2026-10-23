@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.mercurian.astrolabe</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Astrolabe</name>
+  <summary>Desktop GUI for coding agents</summary>
+  <developer id="com.mercurian">
+    <name>Mercurian</name>
+  </developer>
+  <description>
+    <p>
+      Astrolabe is an open-source desktop app for coding agents. Work with
+      your existing agent subscriptions, review code changes, and run commands in
+      your projects.
+    </p>
+    <p>
+      Connect from desktop, web, or mobile to continue working remotely.
+    </p>
+  </description>
+  <launchable type="desktop-id">astrolabe.desktop</launchable>
+  <icon type="stock">astrolabe</icon>
+  <provides>
+    <binary>astrolabe</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <url type="homepage">https://astrolabe.sh</url>
+  <url type="bugtracker">https://github.com/mercurian-labs/astrolabe/issues</url>
+  <url type="vcs-browser">https://github.com/mercurian-labs/astrolabe</url>
+</component>

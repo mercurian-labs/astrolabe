@@ -6,6 +6,7 @@ import {
   type AuthEnvironmentScope,
 } from "./auth.ts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -19,6 +20,11 @@ import {
   TrimmedString,
 } from "./baseSchemas.ts";
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
+import {
+  ChangeGroupGroupingSettings,
+  ChangeGroupGroupingSettingsPatch,
+  DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
+} from "./changeGroups.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
 import {
@@ -310,6 +316,22 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
+/** Astrolabe: a leader key, as `KeyboardEvent.key` names it (`" "` for Space). */
+export const LeaderKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32));
+export type LeaderKey = typeof LeaderKey.Type;
+
+/**
+ * Astrolabe: how long, in milliseconds, the keyboard menu keeps a repeatable command's keys live
+ * after it ran from the menu (the focus moves' arrows and h/j/k/l, scrolling's d/u), as tmux's
+ * repeat-time; 0 turns it off.
+ */
+export const MAX_MENU_REPEAT_WINDOW_MS = 5000;
+export const MenuRepeatWindowMs = Schema.Int.check(
+  Schema.isBetween({ minimum: 0, maximum: MAX_MENU_REPEAT_WINDOW_MS }),
+);
+export type MenuRepeatWindowMs = typeof MenuRepeatWindowMs.Type;
+export const DEFAULT_MENU_REPEAT_WINDOW_MS: MenuRepeatWindowMs = 500;
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -434,6 +456,22 @@ export const ClientSettingsSchema = Schema.Struct({
   contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   composerCollapseOnScroll: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   composerRichTextEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Astrolabe: Vim keys in the composer and the wiki's note editor. Off until turned on in
+  // Settings, which first asks for `:q`.
+  vimModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Astrolabe: Vim's j and k move by screen line (as gj and gk) without a count. Off by default,
+  // as Vim's are.
+  vimScreenLinesEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Astrolabe: superseded by `leaderKey`, and read only when that is unset (see
+  // `resolveLeaderKey`): false there means no leader key.
+  spaceLeaderEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Astrolabe: the key that opens the keyboard menu while focus is on no field or control (or in
+  // Vim's normal and visual modes); null for none. Unset, `resolveLeaderKey` reads the old switch.
+  leaderKey: Schema.optionalKey(Schema.NullOr(LeaderKey)),
+  // Astrolabe: the keyboard menu's repeat window (see `MenuRepeatWindowMs`).
+  menuRepeatWindowMs: MenuRepeatWindowMs.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_MENU_REPEAT_WINDOW_MS)),
+  ),
   sendShortcut: Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("enter")),
   ),
@@ -486,6 +524,17 @@ export const ClientSettingsSchema = Schema.Struct({
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientSettingsSchema)({});
+
+/**
+ * Astrolabe: this device's leader key, or null for none: the `leaderKey` setting, else what the
+ * older Space switch said (on is Space, off is none).
+ */
+export function resolveLeaderKey(
+  settings: Pick<ClientSettings, "leaderKey" | "spaceLeaderEnabled">,
+): string | null {
+  if (settings.leaderKey !== undefined) return settings.leaderKey;
+  return settings.spaceLeaderEnabled ? " " : null;
+}
 
 const UsageModelTokenPrice = Schema.Number.check(
   Schema.isFinite(),
@@ -643,6 +692,29 @@ export type CodexSettings = typeof CodexSettings.Type;
 
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 
+export const IDLE_COMPACTION_MODES = [
+  { value: "onReturn", label: "When you return" },
+  { value: "beforeCacheExpires", label: "Before the cache expires (beta)" },
+  { value: "off", label: "Never" },
+] as const;
+export const IdleCompactionMode = Schema.Literals(IDLE_COMPACTION_MODES.map((mode) => mode.value));
+export type IdleCompactionMode = typeof IdleCompactionMode.Type;
+
+// `compactIdleThreads` was a beta on/off switch for compacting before the cache
+// expires. Shipped clients decode it as a boolean and drop the whole server config
+// otherwise, so it stays a boolean on the wire and the mode lives in
+// `idleCompaction`. Servers before that split sent the mode here, so a string is
+// still read.
+const LegacyCompactIdleThreads = Schema.Union([Schema.Boolean, IdleCompactionMode]);
+
+const INSTANCE_IDLE_COMPACTION_MODES = [
+  { value: "default", label: "Use default" },
+  ...IDLE_COMPACTION_MODES,
+] as const;
+const InstanceIdleCompaction = Schema.Literals(
+  INSTANCE_IDLE_COMPACTION_MODES.map((mode) => mode.value),
+);
+
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -694,9 +766,22 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    idleCompaction: InstanceIdleCompaction.pipe(
+      Schema.withDecodingDefault(Effect.succeed("default" as const)),
+      Schema.annotateKey({
+        title: "Compact idle threads",
+        description:
+          "When to compact an idle thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Overrides the default in General settings.",
+        providerSettingsForm: {
+          control: "select",
+          options: INSTANCE_IDLE_COMPACTION_MODES,
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs"],
+    order: ["binaryPath", "homePath", "autoCompactWindow", "idleCompaction", "launchArgs"],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
@@ -1101,6 +1186,10 @@ export const ServerSettings = Schema.Struct({
   storageCleanup: StorageCleanupSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(StorageCleanupSettings)({}))),
   ),
+  /** Astrolabe: Settings › Change Requests › Grouping (see `changeGroups.ts`). */
+  changeGroupGrouping: ChangeGroupGroupingSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS)),
+  ),
 
   worktreesDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
@@ -1160,7 +1249,10 @@ export const ServerSettings = Schema.Struct({
   sidebarAutoSettleAfterDays: Schema.NullOr(SidebarAutoSettleAfterDays).pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS)),
   ),
-  compactIdleThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  compactIdleThreads: LegacyCompactIdleThreads.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
@@ -1334,6 +1426,55 @@ export const resolveProjectProviderInstanceEnabled = (
     : isUnconfiguredDefaultInstanceEnabled(instanceId);
 };
 
+const decodeClaudeSettings = Schema.decodeUnknownOption(ClaudeSettings);
+
+type IdleCompactionSettings = Pick<ServerSettings, "compactIdleThreads" | "idleCompaction">;
+
+/** The environment-wide idle compaction mode, from whichever field the settings carry. */
+export const globalIdleCompaction = (settings: IdleCompactionSettings): IdleCompactionMode =>
+  settings.idleCompaction ??
+  (typeof settings.compactIdleThreads === "string"
+    ? settings.compactIdleThreads
+    : settings.compactIdleThreads
+      ? "beforeCacheExpires"
+      : "onReturn");
+
+/** Sets the mode, and the legacy switch shipped clients still read alongside it. */
+export const withIdleCompaction = <S extends IdleCompactionSettings>(
+  settings: S,
+  mode: IdleCompactionMode,
+): S => ({ ...settings, idleCompaction: mode, compactIdleThreads: mode === "beforeCacheExpires" });
+
+/** Whether a server reads modes, rather than only the boolean switch from before them. */
+export const readsIdleCompactionModes = (settings: IdleCompactionSettings) =>
+  settings.idleCompaction !== undefined || typeof settings.compactIdleThreads === "string";
+
+/**
+ * The patch that sets `mode` in the form the server's settings show it reads:
+ * the mode for a server that has `idleCompaction` or kept the mode in the legacy
+ * field, the boolean switch for a server from before modes.
+ */
+export const idleCompactionPatch = (settings: IdleCompactionSettings, mode: IdleCompactionMode) =>
+  settings.idleCompaction !== undefined
+    ? { idleCompaction: mode }
+    : readsIdleCompactionModes(settings)
+      ? { compactIdleThreads: mode }
+      : { compactIdleThreads: mode === "beforeCacheExpires" };
+
+export const resolveIdleCompaction = (
+  settings: Pick<ServerSettings, "providerInstances" | "compactIdleThreads" | "idleCompaction">,
+  instanceId: ProviderInstanceId,
+): IdleCompactionMode => {
+  const instance = Object.hasOwn(settings.providerInstances, instanceId)
+    ? settings.providerInstances[instanceId]
+    : undefined;
+  const override = decodeClaudeSettings(instance?.config ?? {}).pipe(
+    Option.map((config) => config.idleCompaction),
+    Option.getOrElse(() => "default" as const),
+  );
+  return override === "default" ? globalIdleCompaction(settings) : override;
+};
+
 export const ServerSettingsOperation = Schema.Literals([
   "normalize",
   "check-exists",
@@ -1420,6 +1561,7 @@ export const ServerSettingsPatch = Schema.Struct({
       ]),
     ),
   ),
+  changeGroupGrouping: Schema.optionalKey(ChangeGroupGroupingSettingsPatch),
   storageCleanup: Schema.optionalKey(
     Schema.Struct({
       worktreeKeepWhen: Schema.optionalKey(WorktreeKeepWhen),
@@ -1475,7 +1617,8 @@ export const ServerSettingsPatch = Schema.Struct({
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),
   easDeviceHosts: Schema.optionalKey(EasDeviceHostConfigs),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
-  compactIdleThreads: Schema.optionalKey(Schema.Boolean),
+  compactIdleThreads: Schema.optionalKey(LegacyCompactIdleThreads),
+  idleCompaction: Schema.optionalKey(IdleCompactionMode),
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
@@ -1635,6 +1778,15 @@ export const ClientSettingsPatch = Schema.Struct({
   contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   composerCollapseOnScroll: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
+  // Astrolabe: Vim keys in the composer and notes.
+  vimModeEnabled: Schema.optionalKey(Schema.Boolean),
+  vimScreenLinesEnabled: Schema.optionalKey(Schema.Boolean),
+  // Astrolabe: Space as the keyboard menu's leader key.
+  spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),
+  // Astrolabe: the keyboard menu's leader key, or null for none.
+  leaderKey: Schema.optionalKey(Schema.NullOr(LeaderKey)),
+  // Astrolabe: the keyboard menu's repeat window, in milliseconds.
+  menuRepeatWindowMs: Schema.optionalKey(MenuRepeatWindowMs),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),

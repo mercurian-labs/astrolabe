@@ -32,7 +32,7 @@ export function relayRequestError(cause: unknown): RelayRequestError {
     ? cause
     : new RelayRequestError({
         rejection: "unavailable",
-        description: `Could not complete the T3 Connect relay request. ${isHttpClientError(cause) ? `The relay request failed (${cause.reason._tag}).` : "The relay returned an unexpected response."} Check this machine's network connection and relay availability, then retry.`,
+        description: `Could not complete the remote access request. ${isHttpClientError(cause) ? `The request failed (${cause.reason._tag}).` : "Remote access returned an unexpected response."} Check this machine's network connection and whether remote access is available, then retry.`,
       });
 }
 
@@ -66,14 +66,14 @@ export function relayRetryAfterMillis(error: unknown): number | undefined {
 function recoveryHint(error: RelayProtectedError): string {
   switch (error._tag) {
     case "RelayEnvironmentLinkLimitExceededError":
-      return "Unlink an unused environment in T3 Connect, then restart T3 Code on this machine.";
+      return "Turn off remote access for an unused environment, then restart Astrolabe on this machine.";
     case "RelayAuthInvalidError":
-      return "Run `t3 connect login` to check this machine's authorization. If the stored credential was revoked, sign out with `t3 connect logout`, then run `t3 connect` again. Restart T3 Code after signing in.";
+      return "Run `astrolabe connect login` to check this machine's authorization. If the stored credential was revoked, sign out with `astrolabe connect logout`, then run `astrolabe connect` again. Restart Astrolabe after signing in.";
     case "RelayEnvironmentLinkProofExpiredError":
     case "RelayEnvironmentLinkProofInvalidError":
-      return "Check this machine's date and time, update T3 Code, then restart it.";
+      return "Check this machine's date and time, update Astrolabe, then restart it.";
     default:
-      return "Retry when the relay is available. If this continues, include the trace ID when reporting it.";
+      return "Retry when remote access is available. If this continues, include the trace ID when reporting it.";
   }
 }
 
@@ -87,8 +87,8 @@ export const filterRelayResponse = Effect.fn("cloud.filter_relay_response")(func
   const ray = response.headers["cf-ray"];
   const requestId = ray && /^[a-zA-Z0-9-]{1,128}$/.test(ray) ? ` Cloudflare Ray ID: ${ray}.` : "";
   const description = Option.isSome(decoded)
-    ? `T3 Connect: ${decoded.value.message}. ${recoveryHint(decoded.value)} Trace ID: ${decoded.value.traceId}.`
-    : `T3 Connect relay returned HTTP ${response.status} without a recognized error response. Check relay access and any proxy or firewall restrictions, then restart T3 Code.${requestId}`;
+    ? `Remote access: ${decoded.value.message}. ${recoveryHint(decoded.value)} Trace ID: ${decoded.value.traceId}.`
+    : `Remote access returned HTTP ${response.status} without a recognized error response. Check that this machine can reach remote access, and any proxy or firewall restrictions, then restart Astrolabe.${requestId}`;
 
   // The only 401 that clears itself: a proof signed with a skewed clock (a host
   // that booted before NTP) expires on arrival, and the next attempt signs a new

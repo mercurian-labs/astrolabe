@@ -330,7 +330,7 @@ const layerCapabilities = Layer.effectContext(
         if (session === null) {
           return yield* new ConnectionBlockedError({
             reason: "authentication",
-            detail: "Sign in to T3 Connect to connect this environment.",
+            detail: "Sign in to connect this environment.",
           });
         }
         const token = yield* session.readClerkToken().pipe(
@@ -345,7 +345,7 @@ const layerCapabilities = Layer.effectContext(
         if (token === null) {
           return yield* new ConnectionBlockedError({
             reason: "authentication",
-            detail: "The T3 Connect session is unavailable.",
+            detail: "Your Astrolabe session is unavailable.",
           });
         }
         return token;
@@ -491,14 +491,14 @@ const loadSecondaryConnectionRegistration = Effect.fn(
 const PLATFORM_POLL_INTERVAL = "3 seconds";
 const SECONDARY_BEARER_REFRESH_SKEW_MS = 5_000;
 
-export function secondaryBearerExpiresAtEpochMs(
+function secondaryBearerExpiresAtEpochMs(
   issuedAtEpochMs: number,
   expiresInSeconds: number,
 ): number {
   return issuedAtEpochMs + Math.max(0, expiresInSeconds * 1_000);
 }
 
-export function secondaryBearerRefreshAtEpochMs(
+function secondaryBearerRefreshAtEpochMs(
   issuedAtEpochMs: number,
   expiresInSeconds: number,
 ): number {
@@ -527,7 +527,7 @@ export type PrimaryEnvironmentTargetRead =
       readonly cause: unknown;
     };
 
-export function readPrimaryEnvironmentTargetResult(
+function readPrimaryEnvironmentTargetResult(
   readTarget: () => PrimaryEnvironmentTarget | null = readPrimaryEnvironmentTarget,
 ): PrimaryEnvironmentTargetRead {
   try {

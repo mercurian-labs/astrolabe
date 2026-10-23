@@ -3,6 +3,7 @@ import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
 import {
   BoundedThreadSnapshotLoader,
   ThreadHistoryController,
+  ThreadLineageLoader,
 } from "@t3tools/client-runtime/state/threads";
 import { PullRequestDiffLoader } from "@t3tools/client-runtime/state/pull-requests";
 import * as Layer from "effect/Layer";
@@ -18,6 +19,7 @@ const layerSnapshotLoader = Layer.mergeAll(
   BoundedThreadSnapshotLoader.layer,
   ShellSnapshotLoader.layer,
   ThreadHistoryController.layer,
+  ThreadLineageLoader.layer,
   PullRequestDiffLoader.layer,
 );
 
@@ -35,6 +37,8 @@ const layerProvidedClientConnection = layerSnapshotLoader.pipe(
       environmentThemes: true,
       usageLimitSources: true,
       usageLimitsCommand: true,
+      // Astrolabe
+      vimrc: true,
     }),
   ),
   Layer.provideMerge(

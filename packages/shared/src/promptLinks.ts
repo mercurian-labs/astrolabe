@@ -110,7 +110,7 @@ function readPrompt(params: URLSearchParams): PromptLinkResult<LinkedPrompt | nu
   if (raw.length > PROMPT_LINK_MAX_PROMPT_LENGTH) {
     return {
       ok: false,
-      error: `This prompt is longer than ${PROMPT_LINK_MAX_PROMPT_LENGTH.toLocaleString("en-US")} characters, so T3 Code did not open it.`,
+      error: `This prompt is longer than ${PROMPT_LINK_MAX_PROMPT_LENGTH.toLocaleString("en-US")} characters, so Astrolabe did not open it.`,
     };
   }
   const prompt = sanitizeLinkedPrompt(raw);
@@ -118,7 +118,7 @@ function readPrompt(params: URLSearchParams): PromptLinkResult<LinkedPrompt | nu
     return {
       ok: false,
       error:
-        "This prompt had only hidden characters, so it may be malicious. T3 Code did not open it.",
+        "This prompt had only hidden characters, so it may be malicious. Astrolabe did not open it.",
     };
   }
   return { ok: true, value: prompt.text.length > 0 ? prompt : null };
@@ -134,7 +134,7 @@ export function parseNewThreadLink(search: string): PromptLinkResult<NewThreadLi
   if (pr !== null) {
     const pullRequest = parsePromptLinkPullRequest(pr);
     if (pullRequest === null) {
-      return { ok: false, error: "This link names a pull request T3 Code cannot read." };
+      return { ok: false, error: "This link names a pull request Astrolabe cannot read." };
     }
     return { ok: true, value: { kind: "pull-request", pullRequest, prompt: prompt.value } };
   }
@@ -142,7 +142,7 @@ export function parseNewThreadLink(search: string): PromptLinkResult<NewThreadLi
   const repo = params.get("repo");
   const repository = repo === null ? null : parsePromptLinkRepository(repo);
   if (repo !== null && repository === null) {
-    return { ok: false, error: "This link names a repository T3 Code cannot read." };
+    return { ok: false, error: "This link names a repository Astrolabe cannot read." };
   }
   return {
     ok: true,
@@ -184,7 +184,7 @@ export function buildNewThreadLink(input: {
   return url.toString();
 }
 
-const APP_SCHEME = /^t3code(?:-[a-z]+)?:$/;
+const APP_SCHEME = /^astrolabe(?:-[a-z]+)?:$/;
 const THREAD_PATH = /^\/([^/]+)\/([^/]+)\/?$/;
 
 export function promptLinkAppPath(
@@ -206,7 +206,7 @@ export function promptLinkAppPath(
   return thread ? `/${thread[1]}/${thread[2]}${url.search}` : null;
 }
 
-export function promptLinkDeepLink(appPath: string, scheme = "t3code"): string {
+export function promptLinkDeepLink(appPath: string, scheme = "astrolabe"): string {
   const url = new URL(appPath, "https://app.invalid");
   const host = url.pathname === "/new" ? "new" : `threads${url.pathname}`;
   return `${scheme}://${host}${url.search}`;

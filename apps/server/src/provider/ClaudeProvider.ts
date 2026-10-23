@@ -197,7 +197,7 @@ const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 // Native CLI startup on Windows can exceed the shared probe deadline.
 const CLAUDE_VERSION_CHECK_TIMEOUT_MS = 20_000;
 
-export const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
+const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
   "user",
   "project",
   "local",
@@ -508,7 +508,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Claude is disabled in T3 Code settings.",
+        message: "Claude is disabled in Astrolabe settings.",
       },
     });
   }
@@ -724,7 +724,7 @@ export const makePendingClaudeProvider = Effect.fn("ClaudeProvider.makePendingCl
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Claude is disabled in T3 Code settings.",
+          message: "Claude is disabled in Astrolabe settings.",
         },
       });
     }

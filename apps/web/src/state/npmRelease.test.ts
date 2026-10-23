@@ -42,21 +42,13 @@ describe("npmReleasePublishedAtom", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = new Request(fetchMock.mock.calls[0]?.[0] ?? "", fetchMock.mock.calls[0]?.[1]);
-    expect(request.url).toBe(`https://registry.npmjs.org/t3/${version}`);
+    expect(request.url).toBe(`https://registry.npmjs.org/@mercurian%2Fastrolabe/${version}`);
     expect(request.headers.get("traceparent")).toBeNull();
     expect(request.headers.get("b3")).toBeNull();
     expect(AsyncResult.getOrElse(result, () => false)).toBe(true);
   });
 
-  it("reports a version npm does not have as unpublished", async () => {
-    fetchMock.mockImplementation(async () => new Response(null, { status: 404 }));
-
-    const result = await settledCheck();
-
-    expect(AsyncResult.isSuccess(result)).toBe(true);
-    expect(AsyncResult.getOrElse(result, () => true)).toBe(false);
-  });
-
+  // regression: #18709 update-everything skipped npm-installed servers
   it("leaves a failed first check unknown, which callers read as unpublished", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 

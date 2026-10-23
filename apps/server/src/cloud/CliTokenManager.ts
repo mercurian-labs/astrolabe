@@ -1,127 +1,39 @@
-// @effect-diagnostics nodeBuiltinImport:off - The CLI loopback OAuth callback is a Node HTTP boundary.
-import * as NodeHttp from "node:http";
-
-import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as Clock from "effect/Clock";
-import * as Cause from "effect/Cause";
-import * as Console from "effect/Console";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import * as Terminal from "effect/Terminal";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import * as HttpRouter from "effect/http/HttpRouter";
-import * as HttpServerRequest from "effect/http/HttpServerRequest";
-import * as HttpServerResponse from "effect/http/HttpServerResponse";
-
-import { buildConnectAuthorizeRequestUrl } from "@t3tools/shared/connectAuth";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
-import * as ExternalLauncher from "../process/externalLauncher.ts";
-import {
-  cloudCliOAuthConfig,
-  hostedAppUrlConfig,
-  type CloudCliOAuthConfig,
-} from "./publicConfig.ts";
-import { renderLoopbackAuthorizationCompleteHtml } from "./cliAuthHtml.ts";
+import { cloudCliAuthConfig, type CloudCliAuthConfig } from "./publicConfig.ts";
 
 const CLOUD_CLI_OAUTH_TOKEN_SECRET = "cloud-cli-oauth-token";
-const CLOUD_CLI_OAUTH_CALLBACK_TIMEOUT = Duration.minutes(10);
-const CLOUD_CLI_OAUTH_REFRESH_EARLY_MS = Duration.toMillis(Duration.minutes(5));
+// Relay tokens live 15 minutes; mint a new one shortly before that.
+const CLOUD_CLI_RELAY_TOKEN_REFRESH_EARLY_MS = Duration.toMillis(Duration.minutes(1));
+const CLOUD_CLI_RELAY_TOKEN_DEFAULT_LIFETIME = Duration.minutes(15);
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
-// RFC 8628 defaults, used only when Clerk omits the field.
+// RFC 8628 defaults, used only when the server omits the field.
 const DEVICE_AUTHORIZATION_DEFAULT_INTERVAL = Duration.seconds(5);
 // RFC 8628 §3.5: a slow_down response means "add 5 seconds to the interval".
 const DEVICE_AUTHORIZATION_SLOW_DOWN_INCREMENT = Duration.seconds(5);
-// Bounds one token or device-authorization request, including reading the
-// body. A stalled refresh holds the manager's semaphore and blocks every
-// other credential call.
-const OAUTH_REQUEST_TIMEOUT = Duration.seconds(10);
-const boldTerminalText = (value: string): string => `\u001b[1m${value}\u001b[22m`;
+// Bounds one relay-token or device-code request, including reading the body.
+// A stalled refresh holds the manager's semaphore and blocks every other
+// credential call.
+const AUTH_REQUEST_TIMEOUT = Duration.seconds(10);
 
-function formatLoopbackAuthorizationPrompt(authorizationUrl: string): string {
-  return [
-    "Open this URL to authorize T3 Connect:",
-    `  ${authorizationUrl}`,
-    "",
-    `Press ${boldTerminalText("Enter")} to open it in your browser.`,
-    `No browser on this device? Press ${boldTerminalText("H")} to switch to headless mode.`,
-  ].join("\n");
-}
-
-export type LoopbackAuthorizationResult =
-  | { readonly _tag: "AuthorizationCode"; readonly code: string }
-  | { readonly _tag: "HeadlessRequested" };
-
-const readLoopbackAuthorizationAction = Effect.fn(
-  "cloud.cli_token.read_loopback_authorization_action",
-)(function* (input: Queue.Dequeue<Terminal.UserInput, Cause.Done>) {
-  while (true) {
-    const event = yield* Queue.take(input).pipe(Effect.mapError(() => new Terminal.QuitError({})));
-    const keyName = event.key.name.toLowerCase();
-    if (!event.key.ctrl && !event.key.meta && keyName === "h") {
-      return "headless" as const;
-    }
-    if (keyName === "enter" || keyName === "return") {
-      return "open-browser" as const;
-    }
-  }
-});
-
-export const waitForLoopbackAuthorization = Effect.fn(
-  "cloud.cli_token.wait_for_loopback_authorization",
-)(function* <E, R>(input: {
-  readonly authorizationUrl: string;
-  readonly callback: Effect.Effect<string, E, R>;
-  readonly terminal: Terminal.Terminal;
-  readonly launchBrowser: (
-    url: string,
-  ) => Effect.Effect<void, ExternalLauncher.ExternalLauncherError>;
-}) {
-  return yield* Effect.scoped(
-    Effect.gen(function* () {
-      const terminalInput = yield* input.terminal.readInput;
-      while (true) {
-        const result = yield* Effect.raceFirst(
-          input.callback.pipe(
-            Effect.map((code): LoopbackAuthorizationResult => ({
-              _tag: "AuthorizationCode",
-              code,
-            })),
-          ),
-          readLoopbackAuthorizationAction(terminalInput),
-        );
-        if (typeof result !== "string") {
-          return result;
-        }
-        if (result === "headless") {
-          return { _tag: "HeadlessRequested" } as const;
-        }
-        yield* input
-          .launchBrowser(input.authorizationUrl)
-          .pipe(
-            Effect.catch(() =>
-              Console.warn(
-                `Could not open a browser on this device. Open the URL above manually, or press ${boldTerminalText("H")} to switch to headless mode.`,
-              ),
-            ),
-          );
-      }
-    }),
-  );
-});
-
+/**
+ * `accessToken` is the relay token the CLI presents to the relay, and
+ * `refreshToken` is the Better Auth session it was minted from: the session
+ * mints a fresh relay token whenever the stored one is about to expire.
+ */
 const PersistedToken = Schema.Struct({
   accessToken: Schema.String,
   refreshToken: Schema.String,
@@ -134,11 +46,8 @@ const PersistedTokenJson = Schema.fromJsonString(PersistedToken);
 const decodePersistedToken = Schema.decodeUnknownEffect(PersistedTokenJson);
 const encodePersistedToken = Schema.encodeEffect(PersistedTokenJson);
 
-const OAuthTokenResponse = Schema.Struct({
+const DeviceTokenResponse = Schema.Struct({
   access_token: Schema.String,
-  refresh_token: Schema.optional(Schema.String),
-  id_token: Schema.optional(Schema.String),
-  expires_in: Schema.Number,
   token_type: Schema.String,
 });
 
@@ -146,21 +55,6 @@ const OAuthErrorResponse = Schema.Struct({
   error: Schema.String,
   error_description: Schema.optional(Schema.String),
 });
-const OAuthRefreshErrorCode = Schema.Literals([
-  "invalid_grant",
-  "invalid_client",
-  "unauthorized_client",
-  "unsupported_grant_type",
-  "invalid_request",
-  "invalid_scope",
-  "access_denied",
-]);
-const decodeOAuthRefreshErrorResponse = Schema.decodeUnknownOption(
-  Schema.Struct({ error: OAuthRefreshErrorCode }),
-);
-
-const isPermanentRefreshStatus = (status: number): boolean =>
-  status >= 400 && status < 500 && status !== 408 && status !== 429;
 
 const DeviceAuthorizationResponse = Schema.Struct({
   device_code: Schema.String,
@@ -171,27 +65,24 @@ const DeviceAuthorizationResponse = Schema.Struct({
   interval: Schema.optional(Schema.Number),
 });
 
-const OidcIdentityClaimsJson = Schema.fromJsonString(
-  Schema.Struct({
-    email: Schema.optional(Schema.String),
-    preferred_username: Schema.optional(Schema.String),
-    sub: Schema.optional(Schema.String),
-  }),
-);
-const decodeOidcIdentityClaimsJson = Schema.decodeUnknownOption(OidcIdentityClaimsJson);
+const RelayTokenResponse = Schema.Struct({ token: Schema.String });
+const RelayTokenRefusal = Schema.Struct({ code: Schema.optional(Schema.String) });
 
-function idTokenIdentity(idToken: string | undefined): string | null {
-  if (!idToken) return null;
-  const payload = idToken.split(".")[1];
+const SessionResponse = Schema.NullOr(
+  Schema.Struct({ user: Schema.Struct({ email: Schema.String }) }),
+);
+
+const JwtExpiryJson = Schema.fromJsonString(Schema.Struct({ exp: Schema.Number }));
+const decodeJwtExpiryJson = Schema.decodeUnknownOption(JwtExpiryJson);
+
+/** Reads a relay token's `exp`; the CLI only uses it to schedule a refresh. */
+function jwtExpiryEpochMs(token: string): number | null {
+  const payload = token.split(".")[1];
   if (!payload) return null;
   const decoded = Base64Url.decodeString(payload);
   if (decoded._tag !== "Success") return null;
-  const claims = decodeOidcIdentityClaimsJson(decoded.success);
-  if (Option.isNone(claims)) return null;
-  for (const value of [claims.value.email, claims.value.preferred_username, claims.value.sub]) {
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
+  const claims = decodeJwtExpiryJson(decoded.success);
+  return Option.isSome(claims) ? claims.value.exp * 1_000 : null;
 }
 
 export class CloudCliCredentialRemovalError extends Schema.TaggedError<CloudCliCredentialRemovalError>()(
@@ -199,28 +90,29 @@ export class CloudCliCredentialRemovalError extends Schema.TaggedError<CloudCliC
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not remove the stored T3 Connect CLI credential.";
+    return "Could not remove the stored remote access sign-in.";
   }
 }
+
+const isPermanentRefreshStatus = (status: number): boolean =>
+  status >= 400 && status < 500 && status !== 408 && status !== 429;
 
 export class CloudCliCredentialRefreshError extends Schema.TaggedError<CloudCliCredentialRefreshError>()(
   "CloudCliCredentialRefreshError",
   {
     cause: Schema.Defect(),
     status: Schema.optional(Schema.Number),
-    oauthErrorCode: Schema.optional(OAuthRefreshErrorCode),
   },
 ) {
+  /** The session behind the stored credential was rejected, so retrying cannot help. */
   get requiresLogin(): boolean {
     return this.status !== undefined && isPermanentRefreshStatus(this.status);
   }
 
   override get message(): string {
     return this.requiresLogin
-      ? `Could not refresh the T3 Connect CLI credential${
-          this.oauthErrorCode === undefined ? "" : ` (OAuth error: ${this.oauthErrorCode})`
-        }. Run \`t3 connect login\` to authorize again.`
-      : "Could not refresh the T3 Connect CLI credential.";
+      ? "Could not refresh the stored remote access sign-in. Run `astrolabe connect login` to sign in again."
+      : "Could not refresh the stored remote access sign-in.";
   }
 }
 
@@ -231,7 +123,7 @@ export class CloudCliCredentialReadError extends Schema.TaggedError<CloudCliCred
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not read the stored T3 Connect CLI credential.";
+    return "Could not read the stored remote access sign-in.";
   }
 }
 
@@ -240,7 +132,7 @@ export class CloudCliAuthorizationError extends Schema.TaggedError<CloudCliAutho
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not authorize the T3 Connect CLI.";
+    return "Could not complete remote access authorization.";
   }
 }
 
@@ -249,7 +141,7 @@ export class CloudCliAuthorizationTimeoutError extends Schema.TaggedError<CloudC
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Timed out waiting for T3 Connect authorization.";
+    return "Timed out waiting for remote access authorization.";
   }
 }
 
@@ -258,7 +150,16 @@ export class CloudCliAuthorizationDeniedError extends Schema.TaggedError<CloudCl
   {},
 ) {
   override get message(): string {
-    return "T3 Connect authorization was denied in the browser.";
+    return "Remote access authorization was denied in the browser.";
+  }
+}
+
+export class CloudCliAccountWaitlistedError extends Schema.TaggedError<CloudCliAccountWaitlistedError>()(
+  "CloudCliAccountWaitlistedError",
+  {},
+) {
+  override get message(): string {
+    return "Your Astrolabe account is still on the waitlist. You'll get an email once it's approved.";
   }
 }
 
@@ -269,17 +170,13 @@ export const CloudCliTokenManagerError = Schema.Union([
   CloudCliAuthorizationError,
   CloudCliAuthorizationTimeoutError,
   CloudCliAuthorizationDeniedError,
+  CloudCliAccountWaitlistedError,
 ]);
 export type CloudCliTokenManagerError = typeof CloudCliTokenManagerError.Type;
 
 export class CloudCliTokenManager extends Context.Service<
   CloudCliTokenManager,
   {
-    readonly get: Effect.Effect<
-      | { readonly _tag: "Authorized"; readonly token: PersistedToken }
-      | { readonly _tag: "HeadlessRequested" },
-      CloudCliTokenManagerError | Terminal.QuitError
-    >;
     readonly getExisting: Effect.Effect<Option.Option<PersistedToken>, CloudCliTokenManagerError>;
     readonly hasCredential: Effect.Effect<boolean, CloudCliTokenManagerError>;
     readonly store: (token: PersistedToken) => Effect.Effect<void, CloudCliTokenManagerError>;
@@ -295,86 +192,58 @@ function bytesToString(value: Uint8Array): string {
   return new TextDecoder().decode(value);
 }
 
-const readTokenResponse = Effect.fn("cloud.cli_token.read_token_response")(function* (
-  response: HttpClientResponse.HttpClientResponse,
-  params: Record<string, string>,
+/**
+ * Trades a Better Auth session for a relay token at `/token`, the one path
+ * every client uses. A waitlisted account has a session but gets no token.
+ */
+const issueRelayToken = Effect.fn("cloud.cli_token.issue_relay_token")(function* (
+  config: Pick<CloudCliAuthConfig, "relayTokenEndpoint">,
+  sessionToken: string,
+  identity: string | undefined,
 ) {
-  const body = yield* HttpClientResponse.schemaBodyJson(OAuthTokenResponse)(response);
+  const httpClient = yield* HttpClient.HttpClient;
+  const { token } = yield* HttpClientRequest.get(config.relayTokenEndpoint).pipe(
+    HttpClientRequest.bearerToken(sessionToken),
+    httpClient.execute,
+    Effect.flatMap((response) =>
+      Effect.gen(function* () {
+        if (response.status === 403) {
+          const refusal = yield* HttpClientResponse.schemaBodyJson(RelayTokenRefusal)(
+            response,
+          ).pipe(Effect.orElseSucceed(() => ({ code: undefined })));
+          if (refusal.code === "WAITLISTED") return yield* new CloudCliAccountWaitlistedError();
+        }
+        return yield* HttpClientResponse.filterStatusOk(response).pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(RelayTokenResponse)),
+        );
+      }),
+    ),
+    Effect.timeout(AUTH_REQUEST_TIMEOUT),
+  );
   const now = yield* Clock.currentTimeMillis;
-  const identity = idTokenIdentity(body.id_token);
   return {
-    token: {
-      accessToken: body.access_token,
-      refreshToken: body.refresh_token ?? params.refresh_token ?? "",
-      expiresAtEpochMs: now + body.expires_in * 1_000,
-      ...(identity === null ? {} : { identity }),
-    } satisfies PersistedToken,
-    identity,
-  };
+    accessToken: token,
+    refreshToken: sessionToken,
+    expiresAtEpochMs:
+      jwtExpiryEpochMs(token) ?? now + Duration.toMillis(CLOUD_CLI_RELAY_TOKEN_DEFAULT_LIFETIME),
+    ...(identity === undefined ? {} : { identity }),
+  } satisfies PersistedToken;
 });
 
-const exchangeToken = Effect.fn("cloud.cli_token.exchange")(function* (
-  metadata: Pick<CloudCliOAuthConfig, "tokenEndpoint">,
-  params: Record<string, string>,
+/** Best-effort read of the signed-in email, shown so the operator knows which account linked. */
+const readSessionIdentity = Effect.fn("cloud.cli_token.read_session_identity")(function* (
+  config: Pick<CloudCliAuthConfig, "sessionEndpoint">,
+  sessionToken: string,
 ) {
   const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
-  const startedAt = yield* Clock.monotonicTimeNanos;
-  return yield* HttpClientRequest.post(metadata.tokenEndpoint).pipe(
-    HttpClientRequest.bodyUrlParams(params),
+  return yield* HttpClientRequest.get(config.sessionEndpoint).pipe(
+    HttpClientRequest.bearerToken(sessionToken),
     httpClient.execute,
-    Effect.flatMap((response) => readTokenResponse(response, params)),
-    Effect.timeout(OAUTH_REQUEST_TIMEOUT),
-    Effect.catchTags({
-      HttpClientError: (cause) =>
-        Effect.gen(function* () {
-          const reason = cause.reason;
-          if (
-            params.grant_type !== "refresh_token" ||
-            reason._tag !== "StatusCodeError" ||
-            !isPermanentRefreshStatus(reason.response.status)
-          ) {
-            return yield* cause;
-          }
-          // Reading a rejection body shares the exchange budget without losing
-          // the known status when the body stalls or cannot be decoded.
-          const elapsed = Duration.toMillis(
-            Duration.nanos((yield* Clock.monotonicTimeNanos) - startedAt),
-          );
-          const body = yield* reason.response.json.pipe(
-            Effect.timeout(Math.max(0, Duration.toMillis(OAUTH_REQUEST_TIMEOUT) - elapsed)),
-            Effect.mapError(
-              (cause) =>
-                new CloudCliCredentialRefreshError({
-                  status: reason.response.status,
-                  cause: new HttpClientError.HttpClientError({
-                    reason: new HttpClientError.StatusCodeError({
-                      request: reason.request,
-                      response: reason.response,
-                      cause,
-                    }),
-                  }),
-                }),
-            ),
-          );
-          const diagnostic = decodeOAuthRefreshErrorResponse(body);
-          return yield* new CloudCliCredentialRefreshError({
-            cause,
-            status: reason.response.status,
-            ...(Option.isSome(diagnostic) ? { oauthErrorCode: diagnostic.value.error } : {}),
-          });
-        }),
-    }),
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(SessionResponse)),
+    Effect.timeout(AUTH_REQUEST_TIMEOUT),
+    Effect.map((session) => session?.user.email),
+    Effect.orElseSucceed(() => undefined),
   );
-});
-
-const makePkceRequest = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
-  const verifier = Base64Url.encode(yield* crypto.randomBytes(32));
-  const challenge = Base64Url.encode(
-    yield* crypto.digest("SHA-256", new TextEncoder().encode(verifier)),
-  );
-  const state = Base64Url.encode(yield* crypto.randomBytes(16));
-  return { verifier, challenge, state };
 });
 
 export interface DeviceAuthorizationPrompt {
@@ -388,21 +257,21 @@ const isTransportError = (error: unknown) =>
   HttpClientError.isHttpClientError(error) && error.reason._tag === "TransportError";
 
 const pollDeviceToken = Effect.fn("cloud.cli_token.poll_device_token")(function* (
-  metadata: Pick<CloudCliOAuthConfig, "tokenEndpoint" | "clientId">,
+  config: Pick<CloudCliAuthConfig, "deviceTokenEndpoint" | "clientId">,
   deviceCode: string,
   initialInterval: Duration.Duration,
 ) {
   const httpClient = yield* HttpClient.HttpClient;
-  const params = {
+  const body = {
     grant_type: DEVICE_CODE_GRANT_TYPE,
     device_code: deviceCode,
-    client_id: metadata.clientId,
+    client_id: config.clientId,
   };
   let interval = initialInterval;
   while (true) {
     yield* Effect.sleep(interval);
-    const response = yield* HttpClientRequest.post(metadata.tokenEndpoint).pipe(
-      HttpClientRequest.bodyUrlParams(params),
+    const response = yield* HttpClientRequest.post(config.deviceTokenEndpoint).pipe(
+      HttpClientRequest.bodyJsonUnsafe(body),
       httpClient.execute,
       Effect.asSome,
       Effect.catchIf(isTransportError, () => Effect.succeedNone),
@@ -417,7 +286,8 @@ const pollDeviceToken = Effect.fn("cloud.cli_token.poll_device_token")(function*
       continue;
     }
     if (response.value.status >= 200 && response.value.status < 300) {
-      return yield* readTokenResponse(response.value, params);
+      const granted = yield* HttpClientResponse.schemaBodyJson(DeviceTokenResponse)(response.value);
+      return granted.access_token;
     }
     const failure = yield* HttpClientResponse.schemaBodyJson(OAuthErrorResponse)(response.value);
     switch (failure.error) {
@@ -438,18 +308,21 @@ const pollDeviceToken = Effect.fn("cloud.cli_token.poll_device_token")(function*
   }
 });
 
+/**
+ * Better Auth's device authorization grant (RFC 8628). The user approves a
+ * short code at app.astrolabe.sh/device from any browser while this process polls;
+ * no redirect URI is involved, so it works the same over SSH. The approved
+ * session is then traded for a relay token.
+ */
 export const deviceAuthorizationLogin = Effect.fn("cloud.cli_token.device_authorization_login")(
   function* <E, R>(showPrompt: (prompt: DeviceAuthorizationPrompt) => Effect.Effect<void, E, R>) {
-    const metadata = yield* cloudCliOAuthConfig;
+    const config = yield* cloudCliAuthConfig;
     const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
-    const authorization = yield* HttpClientRequest.post(metadata.deviceAuthorizationEndpoint).pipe(
-      HttpClientRequest.bodyUrlParams({
-        client_id: metadata.clientId,
-        scope: metadata.scopes.join(" "),
-      }),
+    const authorization = yield* HttpClientRequest.post(config.deviceCodeEndpoint).pipe(
+      HttpClientRequest.bodyJsonUnsafe({ client_id: config.clientId }),
       httpClient.execute,
       Effect.flatMap(HttpClientResponse.schemaBodyJson(DeviceAuthorizationResponse)),
-      Effect.timeout(OAUTH_REQUEST_TIMEOUT),
+      Effect.timeout(AUTH_REQUEST_TIMEOUT),
     );
     const expiresIn = Duration.seconds(authorization.expires_in);
     const interval =
@@ -462,25 +335,23 @@ export const deviceAuthorizationLogin = Effect.fn("cloud.cli_token.device_author
       userCode: authorization.user_code,
       expiresIn,
     });
-    return yield* pollDeviceToken(metadata, authorization.device_code, interval).pipe(
+    const sessionToken = yield* pollDeviceToken(config, authorization.device_code, interval).pipe(
       Effect.timeout(expiresIn),
       Effect.catchTags({
         TimeoutError: (cause) => Effect.fail(new CloudCliAuthorizationTimeoutError({ cause })),
       }),
     );
+    const identity = yield* readSessionIdentity(config, sessionToken);
+    const token = yield* issueRelayToken(config, sessionToken, identity);
+    return { token, identity: identity ?? null };
   },
 );
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
   const httpClient = yield* HttpClient.HttpClient;
-  const services = Context.make(Crypto.Crypto, crypto).pipe(
-    Context.add(HttpClient.HttpClient, httpClient),
-  );
+  const services = Context.make(HttpClient.HttpClient, httpClient);
   const secrets = yield* ServerSecretStore.ServerSecretStore;
-  const terminal = yield* Terminal.Terminal;
-  const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
   const semaphore = yield* Semaphore.make(1);
   const persist = Effect.fn("cloud.cli_token.persist")(function* (token: PersistedToken) {
     const encoded = yield* encodePersistedToken(token);
@@ -498,113 +369,33 @@ export const make = Effect.gen(function* () {
     return Option.some(yield* decodePersistedToken(bytesToString(encoded.value)));
   });
 
+  // An ended session (signed out everywhere, account deleted) fails here, and
+  // callers fall through to a fresh device authorization.
   const refresh = Effect.fn("cloud.cli_token.refresh")(function* (token: PersistedToken) {
-    const metadata = yield* cloudCliOAuthConfig;
-    const { token: refreshed } = yield* exchangeToken(metadata, {
-      grant_type: "refresh_token",
-      refresh_token: token.refreshToken,
-      client_id: metadata.clientId,
-    });
-    return refreshed.identity === undefined && token.identity !== undefined
-      ? { ...refreshed, identity: token.identity }
-      : refreshed;
-  });
-
-  const login = Effect.fn("cloud.cli_token.login")(function* () {
-    const metadata = yield* cloudCliOAuthConfig;
-    const hostedAppUrl = yield* hostedAppUrlConfig;
-    const { verifier, challenge, state } = yield* makePkceRequest;
-    const callback = yield* Deferred.make<string>();
-    const layerCallbackRoute = HttpRouter.add(
-      "GET",
-      "/callback",
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const url = new URL(request.originalUrl, metadata.redirectUri);
-        const code = url.searchParams.get("code");
-        if (url.searchParams.get("state") !== state || !code) {
-          return HttpServerResponse.text("Invalid T3 Connect authorization callback.", {
-            status: 400,
-          });
-        }
-        yield* Deferred.succeed(callback, code);
-        return HttpServerResponse.html(renderLoopbackAuthorizationCompleteHtml());
-      }),
-    );
-    yield* HttpRouter.serve(layerCallbackRoute, {
-      disableListenLog: true,
-      disableLogger: true,
-    }).pipe(
-      Layer.provide(
-        NodeHttpServer.layer(NodeHttp.createServer, {
-          host: "127.0.0.1",
-          port: metadata.loopbackPort,
-          disablePreemptiveShutdown: true,
-        }),
-      ),
-      Layer.build,
-    );
-    // The hosted /connect page establishes a Clerk session before forwarding
-    // the request to /oauth/authorize with the loopback redirect URI. Sending
-    // a signed-out browser to /oauth/authorize directly loses the authorize
-    // parameters across Clerk's sign-in redirect (#5051).
-    const authorizationUrl = buildConnectAuthorizeRequestUrl({
-      hostedAppUrl,
-      state,
-      challenge,
-      loopbackPort: metadata.loopbackPort,
-    });
-    yield* Console.log(formatLoopbackAuthorizationPrompt(authorizationUrl));
-    const authorization = yield* waitForLoopbackAuthorization({
-      authorizationUrl,
-      callback: Deferred.await(callback).pipe(
-        Effect.timeout(CLOUD_CLI_OAUTH_CALLBACK_TIMEOUT),
-        Effect.catchTags({
-          TimeoutError: (cause) => Effect.fail(new CloudCliAuthorizationTimeoutError({ cause })),
-        }),
-      ),
-      terminal,
-      launchBrowser: externalLauncher.launchBrowser,
-    });
-    if (authorization._tag === "HeadlessRequested") {
-      return authorization;
-    }
-    const { token } = yield* exchangeToken(metadata, {
-      grant_type: "authorization_code",
-      code: authorization.code,
-      redirect_uri: metadata.redirectUri,
-      client_id: metadata.clientId,
-      code_verifier: verifier,
-    });
-    return { _tag: "Authorized", token } as const;
+    const config = yield* cloudCliAuthConfig;
+    return yield* issueRelayToken(config, token.refreshToken, token.identity);
   });
 
   const getExistingNoLock = Effect.fn("cloud.cli_token.get_existing_no_lock")(function* () {
     const token = yield* read();
     if (Option.isNone(token)) return token;
     const now = yield* Clock.currentTimeMillis;
-    if (token.value.expiresAtEpochMs - CLOUD_CLI_OAUTH_REFRESH_EARLY_MS > now) {
+    if (token.value.expiresAtEpochMs - CLOUD_CLI_RELAY_TOKEN_REFRESH_EARLY_MS > now) {
       return token;
     }
-    return Option.some(
-      // The endpoint can rotate the refresh token before shutdown interrupts us.
-      // Keep the lock through persistence; the exchange still times out internally.
-      yield* refresh(token.value).pipe(Effect.flatMap(persist), Effect.uninterruptible),
-    );
+    return Option.some(yield* refresh(token.value).pipe(Effect.flatMap(persist)));
   });
 
   const getExisting = semaphore.withPermits(1)(
     getExistingNoLock().pipe(
-      Effect.mapError((cause) =>
-        isCloudCliCredentialRefreshError(cause)
-          ? cause
-          : new CloudCliCredentialRefreshError({
-              cause,
-              ...(HttpClientError.isHttpClientError(cause) &&
-              cause.reason._tag === "StatusCodeError"
-                ? { status: cause.reason.response.status }
-                : {}),
-            }),
+      Effect.mapError(
+        (cause) =>
+          new CloudCliCredentialRefreshError({
+            cause,
+            ...(HttpClientError.isHttpClientError(cause) && cause.reason._tag === "StatusCodeError"
+              ? { status: cause.reason.response.status }
+              : {}),
+          }),
       ),
       Effect.provide(services),
     ),
@@ -613,25 +404,6 @@ export const make = Effect.gen(function* () {
     read().pipe(
       Effect.map(Option.isSome),
       Effect.mapError((cause) => new CloudCliCredentialReadError({ cause })),
-    ),
-  );
-  const get = semaphore.withPermits(1)(
-    Effect.gen(function* () {
-      const token = yield* getExistingNoLock().pipe(
-        Effect.orElseSucceed(() => Option.none<PersistedToken>()),
-      );
-      if (Option.isSome(token)) {
-        return { _tag: "Authorized", token: token.value } as const;
-      }
-      const authorization = yield* Effect.scoped(login());
-      return authorization._tag === "Authorized"
-        ? ({ _tag: "Authorized", token: yield* persist(authorization.token) } as const)
-        : authorization;
-    }).pipe(
-      Effect.mapError((cause) =>
-        Terminal.isQuitError(cause) ? cause : new CloudCliAuthorizationError({ cause }),
-      ),
-      Effect.provide(services),
     ),
   );
   const store = Effect.fn("cloud.cli_token.store")(function* (token: PersistedToken) {
@@ -643,7 +415,7 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  return CloudCliTokenManager.of({ get, getExisting, hasCredential, store, clear });
+  return CloudCliTokenManager.of({ getExisting, hasCredential, store, clear });
 });
 
 export const layer = Layer.effect(CloudCliTokenManager, make);

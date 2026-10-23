@@ -14,9 +14,10 @@ import { Route as UsageRouteImport } from './routes/usage'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as ConnectAgentRouteImport } from './routes/connect-agent'
-import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as WSlugRouteImport } from './routes/w.$slug'
+import { Route as SettingsWorkspacesRouteImport } from './routes/settings.workspaces'
 import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsSnapShotRouteImport } from './routes/settings.snap-shot'
@@ -29,11 +30,15 @@ import { Route as SettingsIntegrationsRouteImport } from './routes/settings.inte
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
+import { Route as SettingsChangeRequestsRouteImport } from './routes/settings.change-requests'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+import { Route as ChatWikisRouteImport } from './routes/_chat.wikis'
+import { Route as ChatRepositoriesRouteImport } from './routes/_chat.repositories'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
+import { Route as ChatWikisWikiIdRouteImport } from './routes/_chat.wikis_.$wikiId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -62,11 +67,6 @@ const ConnectAgentRoute = ConnectAgentRouteImport.update({
   path: '/connect-agent',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConnectRoute = ConnectRouteImport.update({
-  id: '/connect',
-  path: '/connect',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
   getParentRoute: () => rootRouteImport,
@@ -75,6 +75,16 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => ChatRoute,
+} as any)
+const WSlugRoute = WSlugRouteImport.update({
+  id: '/w/$slug',
+  path: '/w/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsWorkspacesRoute = SettingsWorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsStorageRoute = SettingsStorageRouteImport.update({
   id: '/storage',
@@ -137,6 +147,11 @@ const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   path: '/connections',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsChangeRequestsRoute = SettingsChangeRequestsRouteImport.update({
+  id: '/change-requests',
+  path: '/change-requests',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   id: '/archived',
   path: '/archived',
@@ -152,6 +167,16 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   path: '/projects/$projectKey',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatWikisRoute = ChatWikisRouteImport.update({
+  id: '/wikis',
+  path: '/wikis',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatRepositoriesRoute = ChatRepositoriesRouteImport.update({
+  id: '/repositories',
+  path: '/repositories',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   id: '/pull-requests',
   path: '/pull-requests',
@@ -160,6 +185,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
 const ChatNewRoute = ChatNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatWikisWikiIdRoute = ChatWikisWikiIdRouteImport.update({
+  id: '/wikis_/$wikiId',
+  path: '/wikis/$wikiId',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
@@ -176,7 +206,6 @@ const ChatEnvironmentIdThreadIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
-  '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -184,9 +213,12 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
+  '/repositories': typeof ChatRepositoriesRoute
+  '/wikis': typeof ChatWikisRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
+  '/settings/change-requests': typeof SettingsChangeRequestsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -199,11 +231,13 @@ export interface FileRoutesByFullPath {
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/storage': typeof SettingsStorageRoute
+  '/settings/workspaces': typeof SettingsWorkspacesRoute
+  '/w/$slug': typeof WSlugRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/wikis/$wikiId': typeof ChatWikisWikiIdRoute
 }
 export interface FileRoutesByTo {
-  '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -211,9 +245,12 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
+  '/repositories': typeof ChatRepositoriesRoute
+  '/wikis': typeof ChatWikisRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
+  '/settings/change-requests': typeof SettingsChangeRequestsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -226,14 +263,16 @@ export interface FileRoutesByTo {
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/storage': typeof SettingsStorageRoute
+  '/settings/workspaces': typeof SettingsWorkspacesRoute
+  '/w/$slug': typeof WSlugRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/wikis/$wikiId': typeof ChatWikisWikiIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
-  '/connect': typeof ConnectRoute
   '/connect-agent': typeof ConnectAgentRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -241,9 +280,12 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
+  '/_chat/repositories': typeof ChatRepositoriesRoute
+  '/_chat/wikis': typeof ChatWikisRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
+  '/settings/change-requests': typeof SettingsChangeRequestsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -256,15 +298,17 @@ export interface FileRoutesById {
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/storage': typeof SettingsStorageRoute
+  '/settings/workspaces': typeof SettingsWorkspacesRoute
+  '/w/$slug': typeof WSlugRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/_chat/wikis_/$wikiId': typeof ChatWikisWikiIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/connect'
     | '/connect-agent'
     | '/pair'
     | '/settings'
@@ -272,9 +316,12 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/new'
     | '/pull-requests'
+    | '/repositories'
+    | '/wikis'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
+    | '/settings/change-requests'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
@@ -287,11 +334,13 @@ export interface FileRouteTypes {
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
+    | '/settings/workspaces'
+    | '/w/$slug'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/wikis/$wikiId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/connect'
     | '/connect-agent'
     | '/pair'
     | '/settings'
@@ -299,9 +348,12 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/new'
     | '/pull-requests'
+    | '/repositories'
+    | '/wikis'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
+    | '/settings/change-requests'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
@@ -314,13 +366,15 @@ export interface FileRouteTypes {
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
+    | '/settings/workspaces'
+    | '/w/$slug'
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/wikis/$wikiId'
   id:
     | '__root__'
     | '/_chat'
-    | '/connect'
     | '/connect-agent'
     | '/pair'
     | '/settings'
@@ -328,9 +382,12 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/_chat/new'
     | '/_chat/pull-requests'
+    | '/_chat/repositories'
+    | '/_chat/wikis'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
+    | '/settings/change-requests'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
@@ -343,20 +400,23 @@ export interface FileRouteTypes {
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
+    | '/settings/workspaces'
+    | '/w/$slug'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/_chat/wikis_/$wikiId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
-  ConnectRoute: typeof ConnectRoute
   ConnectAgentRoute: typeof ConnectAgentRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
   WelcomeRoute: typeof WelcomeRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
+  WSlugRoute: typeof WSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -396,13 +456,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectAgentRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/connect': {
-      id: '/connect'
-      path: '/connect'
-      fullPath: '/connect'
-      preLoaderRoute: typeof ConnectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_chat': {
       id: '/_chat'
       path: ''
@@ -416,6 +469,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/w/$slug': {
+      id: '/w/$slug'
+      path: '/w/$slug'
+      fullPath: '/w/$slug'
+      preLoaderRoute: typeof WSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/workspaces': {
+      id: '/settings/workspaces'
+      path: '/workspaces'
+      fullPath: '/settings/workspaces'
+      preLoaderRoute: typeof SettingsWorkspacesRouteImport
+      parentRoute: typeof SettingsRoute
     }
     '/settings/storage': {
       id: '/settings/storage'
@@ -501,6 +568,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsConnectionsRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/change-requests': {
+      id: '/settings/change-requests'
+      path: '/change-requests'
+      fullPath: '/settings/change-requests'
+      preLoaderRoute: typeof SettingsChangeRequestsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/archived': {
       id: '/settings/archived'
       path: '/archived'
@@ -522,6 +596,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_chat/wikis': {
+      id: '/_chat/wikis'
+      path: '/wikis'
+      fullPath: '/wikis'
+      preLoaderRoute: typeof ChatWikisRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/repositories': {
+      id: '/_chat/repositories'
+      path: '/repositories'
+      fullPath: '/repositories'
+      preLoaderRoute: typeof ChatRepositoriesRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/pull-requests': {
       id: '/_chat/pull-requests'
       path: '/pull-requests'
@@ -534,6 +622,13 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof ChatNewRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/wikis_/$wikiId': {
+      id: '/_chat/wikis_/$wikiId'
+      path: '/wikis/$wikiId'
+      fullPath: '/wikis/$wikiId'
+      preLoaderRoute: typeof ChatWikisWikiIdRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/draft/$draftId': {
@@ -556,17 +651,23 @@ declare module '@tanstack/react-router' {
 interface ChatRouteChildren {
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
+  ChatRepositoriesRoute: typeof ChatRepositoriesRoute
+  ChatWikisRoute: typeof ChatWikisRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
+  ChatWikisWikiIdRoute: typeof ChatWikisWikiIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
+  ChatRepositoriesRoute: ChatRepositoriesRoute,
+  ChatWikisRoute: ChatWikisRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
+  ChatWikisWikiIdRoute: ChatWikisWikiIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
@@ -574,6 +675,7 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 interface SettingsRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
+  SettingsChangeRequestsRoute: typeof SettingsChangeRequestsRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
@@ -586,11 +688,13 @@ interface SettingsRouteChildren {
   SettingsSnapShotRoute: typeof SettingsSnapShotRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsStorageRoute: typeof SettingsStorageRoute
+  SettingsWorkspacesRoute: typeof SettingsWorkspacesRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
+  SettingsChangeRequestsRoute: SettingsChangeRequestsRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
@@ -603,6 +707,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsSnapShotRoute: SettingsSnapShotRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsStorageRoute: SettingsStorageRoute,
+  SettingsWorkspacesRoute: SettingsWorkspacesRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
@@ -611,13 +716,13 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
-  ConnectRoute: ConnectRoute,
   ConnectAgentRoute: ConnectAgentRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
   WelcomeRoute: WelcomeRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
+  WSlugRoute: WSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

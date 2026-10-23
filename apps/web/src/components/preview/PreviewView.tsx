@@ -1,5 +1,3 @@
-"use client";
-
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { previewStreamDownloadUrl } from "@t3tools/client-runtime/preview/server-browser-stream";
@@ -1035,7 +1033,7 @@ export function PreviewView({
           ) : (
             <div className="flex h-full items-center justify-center p-8 text-center">
               <p className="max-w-sm text-sm text-muted-foreground">
-                This tab is open in the T3 Code desktop app.
+                This tab is open in the Astrolabe desktop app.
               </p>
             </div>
           )

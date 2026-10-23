@@ -1,0 +1,43 @@
+{
+  "name": "@mercurian/cloud",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./app": "./src/app.ts",
+    "./testing": "./src/auth/testing.ts",
+    "./waitlist": "./src/admin/waitlist.ts",
+    "./mail": "./src/mail/Mailer.ts",
+    "./mail/templates": "./src/mail/templates.ts"
+  },
+  "scripts": {
+    "auth:schema": "npx auth@1.7.7 generate --config scripts/auth-schema.ts --output src/auth/schema.ts --yes && node scripts/mark-generated.ts && vp fmt src/auth/schema.ts",
+    "db:generate": "drizzle-kit generate",
+    "test": "vp test run --config ../../vite.config.ts --dir .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@alchemy.run/better-auth": "2.0.0-beta.80",
+    "@better-auth/core": "1.7.7",
+    "@better-auth/drizzle-adapter": "1.7.7",
+    "@better-auth/electron": "1.7.7",
+    "@better-auth/expo": "1.7.7",
+    "@better-auth/passkey": "1.7.7",
+    "@distilled.cloud/aws": "1.0.0-rc.13",
+    "@t3tools/shared": "workspace:*",
+    "alchemy": "2.0.0-beta.80",
+    "better-auth": "1.7.7",
+    "drizzle-orm": "1.0.0-rc.5-ab785fc",
+    "effect": "catalog:",
+    "jose": "6.2.3",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@electric-sql/pglite": "0.3.15",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "1.0.0-rc.5-ab785fc",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

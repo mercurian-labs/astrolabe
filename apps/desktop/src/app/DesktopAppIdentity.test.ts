@@ -14,7 +14,6 @@ import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
-import * as DesktopUserData from "./DesktopUserData.ts";
 
 const defaultEnvironmentInput = {
   dirname: "/repo/apps/desktop/dist-electron",
@@ -133,7 +132,7 @@ const withIdentity = <A, E, R>(
               input.legacyPathProbeError
                 ? Effect.fail(input.legacyPathProbeError)
                 : Effect.succeed(
-                    input.legacyPathExists === true && /T3 Code \((Alpha|Dev)\)/.test(path),
+                    input.legacyPathExists === true && /Astrolabe \((Alpha|Dev)\)/.test(path),
                   ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
@@ -154,7 +153,7 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         const userDataPath = yield* identity.resolveUserDataPath;
 
-        assert.equal(userDataPath, "/Users/alice/Library/Application Support/t3code-v2");
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/astrolabe");
       }),
       { legacyPathExists: true },
     ),
@@ -166,7 +165,7 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         assert.equal(
           yield* identity.resolveUserDataPath,
-          "/Users/alice/Library/Application Support/T3 Code (Dev)",
+          "/Users/alice/Library/Application Support/Astrolabe (Dev)",
         );
       }),
       {
@@ -175,66 +174,6 @@ describe("DesktopAppIdentity", () => {
       },
     ),
   );
-
-  it.effect("preserves failures while inspecting the legacy userData path", () => {
-    const legacyPath = "/Users/alice/Library/Application Support/T3 Code (Dev)";
-    const cause = PlatformError.systemError({
-      _tag: "PermissionDenied",
-      module: "FileSystem",
-      method: "exists",
-      description: "permission denied",
-      pathOrDescriptor: legacyPath,
-    });
-
-    return withIdentity(
-      Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const error = yield* identity.resolveUserDataPath.pipe(Effect.flip);
-
-        assert.instanceOf(error, DesktopUserData.DesktopUserDataInitializationError);
-        assert.equal(error.resourcePath, legacyPath);
-        assert.strictEqual(error.cause, cause);
-        assert.equal(
-          error.message,
-          `Could not initialize Electron user data during inspect at ${legacyPath} (PermissionDenied).`,
-        );
-      }),
-      {
-        legacyPathProbeError: cause,
-        environment: { env: { VITE_DEV_SERVER_URL: "http://localhost:5173" } },
-      },
-    );
-  });
-
-  it.effect("configures app identity from the environment commit override", () => {
-    const calls: ElectronAppCalls = {
-      setAboutPanelOptions: [],
-      setDockIcon: [],
-      setName: [],
-    };
-
-    return withIdentity(
-      Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        yield* identity.configure;
-
-        assert.deepEqual(calls.setName, ["T3 Code Beta"]);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "T3 Code (Beta)");
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
-        assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
-        assert.deepEqual(calls.setDockIcon, []);
-      }),
-      {
-        calls,
-        environment: {
-          env: {
-            T3CODE_COMMIT_HASH: "0123456789abcdef",
-          },
-        },
-        pngIconPath: Option.some("/icon.png"),
-      },
-    );
-  });
 
   it.effect.each([
     { stage: "Beta", environment: {} },
@@ -260,33 +199,11 @@ describe("DesktopAppIdentity", () => {
 
         const runtimeName = calls.setName[0];
         assert.isDefined(runtimeName);
-        assert.equal(runtimeName, `T3 Code ${stage}`);
+        assert.equal(runtimeName, `Astrolabe ${stage}`);
         assert.match(runtimeName.replaceAll(" ", ""), /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `T3 Code (${stage})`);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `Astrolabe (${stage})`);
       }),
       { calls, environment },
-    );
-  });
-
-  it.effect("sets the dock icon only when running unpackaged", () => {
-    const calls: ElectronAppCalls = {
-      setAboutPanelOptions: [],
-      setDockIcon: [],
-      setName: [],
-    };
-
-    return withIdentity(
-      Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        yield* identity.configure;
-
-        assert.deepEqual(calls.setDockIcon, ["/icon.png"]);
-      }),
-      {
-        calls,
-        environment: { isPackaged: false },
-        pngIconPath: Option.some("/icon.png"),
-      },
     );
   });
 });

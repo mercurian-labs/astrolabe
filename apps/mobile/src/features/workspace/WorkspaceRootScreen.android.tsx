@@ -19,7 +19,7 @@ import type { WorkspaceTab } from "./workspace-tabs-state";
 const TABS: readonly WorkspaceTab[] = ["threads", "pullRequests"];
 
 export function WorkspaceRootScreen() {
-  const { layout } = useAdaptiveWorkspaceLayout();
+  const { layout, startNewTask } = useAdaptiveWorkspaceLayout();
   const workspace = useWorkspaceTabs()!;
   const insets = useSafeAreaInsets();
   const { fabClearance } = useAndroidControlSizing();
@@ -43,7 +43,7 @@ export function WorkspaceRootScreen() {
           ) : (
             <>
               <NativeStackScreenOptions options={{ headerShown: false }} />
-              <AndroidScreenHeader title="Pull requests" />
+              <AndroidScreenHeader title="Changes" />
               <View className="flex-1 items-center justify-center px-10">
                 <EmptyState
                   title="Select a pull request"
@@ -80,7 +80,7 @@ export function WorkspaceRootScreen() {
             }
           />
         </SafeAreaInsetsContext>
-        <AndroidWorkspaceNavigation />
+        <AndroidWorkspaceNavigation onNewThread={startNewTask} />
       </View>
     </WorkspaceTabsContext>
   );

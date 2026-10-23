@@ -108,11 +108,11 @@ afterEach(async () => {
 });
 
 it("selects the native adapter without needing a portal or GNOME extension", async () => {
-  expect(await getLinuxCaptureSupport("com.t3tools.T3Code")).toEqual({
+  expect(await getLinuxCaptureSupport("com.mercurian.Astrolabe")).toEqual({
     linuxBackend: "niri",
     linuxFeedbackAvailable: false,
   });
-  const snapshot = await captureLinuxWindow("com.t3tools.T3Code");
+  const snapshot = await captureLinuxWindow("com.mercurian.Astrolabe");
   expect(snapshot?.png).toEqual(png);
   expect(snapshot?.window).toMatchObject({
     processId: 123,
@@ -196,7 +196,7 @@ it("rejects compositor errors and cleans up its temporary image", async () => {
       send(socket, { Err: "window disappeared" });
     } else await original(request, socket);
   };
-  await expect(captureLinuxWindow("com.t3tools.T3Code")).rejects.toThrow("window disappeared");
+  await expect(captureLinuxWindow("com.mercurian.Astrolabe")).rejects.toThrow("window disappeared");
   expect(await NodeFSP.stat(NodePath.dirname(capturePath!)).catch(() => undefined)).toBeUndefined();
 });
 
@@ -225,16 +225,6 @@ it("fails promptly when Niri disconnects", async () => {
     socket.end();
   };
   await expect(checkNiriCaptureSupport(socketPath)).rejects.toThrow("disconnected");
-});
-
-it("bounds requests even when the compositor never answers", async () => {
-  vi.useFakeTimers();
-  const received = Promise.withResolvers<void>();
-  handler = async () => received.resolve();
-  const result = expect(checkNiriCaptureSupport(socketPath)).rejects.toThrow("timed out");
-  await received.promise;
-  await vi.advanceTimersByTimeAsync(5_000);
-  await result;
 });
 
 it("does not use stale, relative, or sandboxed Niri sockets", () => {

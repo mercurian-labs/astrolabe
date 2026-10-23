@@ -97,6 +97,8 @@ export function applyServerConfigProjection(
         config: {
           ...projection.config,
           keybindings: event.payload.keybindings,
+          // Astrolabe: absent from servers that predate menu keys and aliases.
+          keybindingTriggers: event.payload.keybindingTriggers,
           issues: event.payload.issues,
         },
         latestEvent: event,
@@ -126,6 +128,13 @@ export function applyServerConfigProjection(
           ...projection.config,
           environmentThemes: event.payload.themes.length > 0 ? event.payload.themes : undefined,
         },
+        latestEvent: event,
+        source: "live",
+      }));
+    // Astrolabe
+    case "vimrcUpdated":
+      return Option.map(current, (projection) => ({
+        config: { ...projection.config, vimrc: event.payload.vimrc },
         latestEvent: event,
         source: "live",
       }));

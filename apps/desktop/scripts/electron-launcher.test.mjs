@@ -12,8 +12,6 @@ import {
   makeDevelopmentLauncherScript,
   resolveElectronBinaryPath,
   resolveMacBundleInfoPlistStrings,
-  resolveMacCodeSignArguments,
-  resolveMacLauncherIconPaths,
   resolveMacLauncherPaths,
   writeDevelopmentLauncherScript,
 } from "./electron-launcher.mjs";
@@ -79,18 +77,18 @@ describe("electron development launcher", () => {
 
   it("keeps the native Electron executable name inside the branded macOS bundle", () => {
     const paths = resolveMacLauncherPaths(
-      "/repo/apps/desktop/.electron-runtime/T3 Code (Dev).app",
-      "T3 Code (Dev)",
+      "/repo/apps/desktop/.electron-runtime/Astrolabe (Dev).app",
+      "Astrolabe (Dev)",
     );
 
-    assert.equal(paths.launcherExecutableName, "T3 Code (Dev) Launcher");
+    assert.equal(paths.launcherExecutableName, "Astrolabe (Dev) Launcher");
     assert.equal(
       paths.launcherBinaryPath,
-      "/repo/apps/desktop/.electron-runtime/T3 Code (Dev).app/Contents/MacOS/T3 Code (Dev) Launcher",
+      "/repo/apps/desktop/.electron-runtime/Astrolabe (Dev).app/Contents/MacOS/Astrolabe (Dev) Launcher",
     );
     assert.equal(
       paths.runtimeElectronBinaryPath,
-      "/repo/apps/desktop/.electron-runtime/T3 Code (Dev).app/Contents/MacOS/Electron",
+      "/repo/apps/desktop/.electron-runtime/Astrolabe (Dev).app/Contents/MacOS/Electron",
     );
 
     const script = makeDevelopmentLauncherScript({
@@ -101,33 +99,17 @@ describe("electron development launcher", () => {
     });
     assert.include(
       script,
-      "exec '/repo/apps/desktop/.electron-runtime/T3 Code (Dev).app/Contents/MacOS/Electron'",
+      "exec '/repo/apps/desktop/.electron-runtime/Astrolabe (Dev).app/Contents/MacOS/Electron'",
     );
     assert.notInclude(script, "node_modules/electron");
   });
 
-  it("declares why the macOS app needs protected access", () => {
-    const values = resolveMacBundleInfoPlistStrings("T3 Code (Dev) Launcher");
+  it("names the macOS app Astrolabe while keeping its bundle identity", () => {
+    const values = resolveMacBundleInfoPlistStrings("Astrolabe (Dev) Launcher");
 
-    assert.equal(
-      values.NSScreenCaptureUsageDescription,
-      "T3 Code captures the active window when you use the snapshot shortcut.",
-    );
-    assert.equal(
-      values.NSDocumentsFolderUsageDescription,
-      "T3 Code reads project files you open in the desktop app.",
-    );
-  });
-
-  it("ad-hoc signs the complete development app bundle", () => {
-    assert.deepEqual(resolveMacCodeSignArguments("/runtime/T3 Code (Dev).app"), [
-      "--force",
-      "--deep",
-      "--sign",
-      "-",
-      "--timestamp=none",
-      "/runtime/T3 Code (Dev).app",
-    ]);
+    assert.match(values.CFBundleDisplayName, /^Astrolabe \((?:Dev|Beta)\)$/);
+    assert.equal(values.CFBundleName, values.CFBundleDisplayName);
+    assert.match(values.CFBundleIdentifier, /^com\.mercurian\.astrolabe(?:\.dev\.[a-z0-9]+)?$/);
   });
 
   it("restores execute permissions on an unchanged launcher", () => {
@@ -142,16 +124,6 @@ describe("electron development launcher", () => {
     } finally {
       NodeFS.rmSync(directory, { recursive: true, force: true });
     }
-  });
-
-  it("derives launcher icons from canonical development and production assets", () => {
-    const development = resolveMacLauncherIconPaths("/runtime", true);
-    const production = resolveMacLauncherIconPaths("/runtime", false);
-
-    assert.match(development.sourceIconPath, /assets[\\/]dev[\\/]blueprint-macos-1024\.png$/);
-    assert.equal(development.generatedIconPath, "/runtime/icon-dev.icns");
-    assert.match(production.sourceIconPath, /assets[\\/]prod[\\/]black-macos-1024\.png$/);
-    assert.equal(production.generatedIconPath, "/runtime/icon-prod.icns");
   });
 });
 

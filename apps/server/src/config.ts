@@ -25,6 +25,8 @@ export interface ServerDerivedPaths {
   readonly stateDir: string;
   readonly dbPath: string;
   readonly keybindingsConfigPath: string;
+  /** Astrolabe: the vimrc every Vim editor of this server's clients applies. */
+  readonly vimrcConfigPath: string;
   readonly settingsPath: string;
   readonly environmentThemesDir: string;
   readonly providerStatusCacheDir: string;
@@ -130,6 +132,7 @@ export const deriveServerPaths = Effect.fn(function* (
     stateDir,
     dbPath,
     keybindingsConfigPath: join(stateDir, "keybindings.json"),
+    vimrcConfigPath: join(stateDir, "vimrc"),
     settingsPath: join(stateDir, "settings.json"),
     environmentThemesDir: join(stateDir, "themes"),
     providerStatusCacheDir,
@@ -187,7 +190,9 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
   const baseDir =
     typeof baseDirOrPrefix === "string"
       ? baseDirOrPrefix
-      : yield* fs.makeTempDirectoryScoped({ prefix: baseDirOrPrefix.prefix });
+      : // macOS temp dirs live under the /var -> /private/var symlink; storage cleanup's
+        // symlink guards compare resolved paths, so generated test dirs must be real paths.
+        yield* fs.realPath(yield* fs.makeTempDirectoryScoped({ prefix: baseDirOrPrefix.prefix }));
   const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
   yield* ensureServerDirectories(derivedPaths);
 

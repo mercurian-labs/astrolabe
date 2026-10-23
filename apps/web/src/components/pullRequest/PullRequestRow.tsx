@@ -7,11 +7,25 @@ import {
   PullRequestSpeedActions,
   type PullRequestSpeedActionResult,
 } from "./PullRequestSpeedActions";
-import { memo, type RefCallback } from "react";
+import { memo, type DragEvent, type MouseEvent, type RefCallback } from "react";
+import { endDrag } from "~/panes/drag";
 
 import { cn } from "~/lib/utils";
+import type { RowClick } from "~/tabNavigation.logic";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
+import {
+  SIDEBAR_ROW_ACTIVE_CLASS,
+  SIDEBAR_ROW_IDLE_CLASS,
+  SIDEBAR_ROW_SELECTED_CLASS,
+  SIDEBAR_ROW_SURFACE_CLASS,
+  SidebarCardContent,
+  SidebarCardFooter,
+  SidebarCardHeader,
+  SIDEBAR_CARD_ITEM_CLASS,
+  SidebarCardTitle,
+} from "../sidebar/SidebarCard";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import type { EnvironmentPullRequestEntry } from "./pullRequestList.logic";
@@ -61,6 +75,17 @@ function PullRequestRowLabels({ labels }: { labels: EnvironmentPullRequestEntry[
   );
 }
 
+/** Astrolabe: a sidebar card's labels, which have room for one: the first, and how many more. */
+function PullRequestCardLabel({ labels }: { labels: EnvironmentPullRequestEntry["labels"] }) {
+  const [first] = labels;
+  if (!first) return null;
+  return (
+    <PullRequestLabelChip label={first} className="max-w-24">
+      {labels.length > 1 ? <span className="shrink-0">+{labels.length - 1}</span> : null}
+    </PullRequestLabelChip>
+  );
+}
+
 const PAGE_ROW_CLASS = "px-3 py-2.5";
 
 export type PullRequestRowTarget = Pick<
@@ -78,12 +103,15 @@ function PullRequestRowImpl({
   statsKey,
   statsRef,
   onSelect,
-  speedMode,
+  inSelection = false,
+  onDragRow,
+  onRowMenu,
   hostActions,
   onActed,
   closing = false,
   sweeping = false,
   onCloseSweepStart,
+  layout = "row",
 }: {
   entry: EnvironmentPullRequestEntry;
   selected: boolean;
@@ -94,15 +122,205 @@ function PullRequestRowImpl({
   /** Used by the list's shared visibility observer to defer optional line-count reads. */
   statsKey?: string;
   statsRef?: RefCallback<HTMLDivElement>;
-  onSelect: (entry: PullRequestRowTarget) => void;
-  speedMode: boolean;
+  /**
+   * `click` is how the row was pressed (see `rowClickIntent`), Option or the middle button asking
+   * for a new tab; without one, it shows in the tab in front.
+   */
+  onSelect: (entry: PullRequestRowTarget, click?: RowClick) => void;
+  /** Astrolabe: in the Cmd/Shift-click selection (see `sidebarRowSelection`). */
+  inSelection?: boolean;
+  /** Astrolabe: the row dragged, toward a pane's strip; and its right-click menu. */
+  onDragRow?: (entry: EnvironmentPullRequestEntry, event: DragEvent<HTMLElement>) => void;
+  onRowMenu?: (entry: EnvironmentPullRequestEntry, event: MouseEvent<HTMLElement>) => void;
   hostActions: ReadonlySet<PullRequestAction>;
   onActed: (result: PullRequestSpeedActionResult) => void;
   closing?: boolean;
   sweeping?: boolean;
   onCloseSweepStart?: (entry: EnvironmentPullRequestEntry, event: PointerEvent) => void;
+  /**
+   * Astrolabe: `card` draws the row as the sidebar's thread and document cards are drawn (where
+   * it lives, on which host when several are listed, and when; the title; then who, its first
+   * label, its stack and how it stands), for the Pull Requests sidebar.
+   */
+  layout?: "row" | "card";
 }) {
   const { Icon, providerName } = getSourceControlPresentationForKind(entry.provider);
+  const glyph = (
+    <PullRequestRowGlyph
+      state={entry.state}
+      isDraft={entry.isDraft}
+      mergeability={entry.mergeability}
+      baseBranch={entry.baseBranch}
+      className={layout === "card" ? "shrink-0" : "mt-0.75 self-start"}
+    />
+  );
+  const numberLink = (
+    // The number carries the link, here as much as on the detail: a right-click on it copies
+    // the pull request's own address rather than opening the editing menu.
+    <span
+      className={PULL_REQUEST_ROW_NUMBER_CLASS}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void showPullRequestLinkContextMenu({
+          url: entry.url,
+          openLabel: openOnHostLabel(sourceControlClients.get(entry.provider)),
+          position: { x: event.clientX, y: event.clientY },
+        });
+      }}
+    >
+      #{entry.number}
+    </span>
+  );
+  const signals = (
+    <>
+      {entry.checksState === undefined ? null : (
+        <PullRequestChecksPopover
+          checksState={entry.checksState}
+          environmentId={entry.environmentId}
+          reference={{
+            projectId: entry.projectId,
+            repository: entry.repository,
+            number: entry.number,
+          }}
+        />
+      )}
+      {/* Only a verdict the host actually reports: an approval, a request for changes, or a
+        review the branch rules still require. No glyph on the common case of a pull request
+        nobody has reviewed, so a row only wears a person when the person has said something. */}
+      {entry.reviewDecision === undefined ? null : (
+        <PullRequestReviewDecisionGlyph decision={entry.reviewDecision} />
+      )}
+    </>
+  );
+  const speedActions =
+    hostActions.size > 0 ? (
+      <PullRequestSpeedActions
+        entry={entry}
+        hostActions={hostActions}
+        onActed={onActed}
+        closing={closing}
+        sweeping={sweeping}
+        {...(onCloseSweepStart ? { onCloseSweepStart } : {})}
+      />
+    ) : null;
+
+  if (layout === "card") {
+    return (
+      <div
+        ref={statsRef}
+        data-pull-request-stats-key={statsKey}
+        data-pull-request-key={statsKey}
+        className={cn("flex items-center", SIDEBAR_CARD_ITEM_CLASS)}
+      >
+        <button
+          type="button"
+          aria-current={selected ? "page" : undefined}
+          aria-label={`#${entry.number} ${entry.title}`}
+          data-selected={inSelection || undefined}
+          draggable={onDragRow !== undefined}
+          onDragStart={onDragRow ? (event) => onDragRow(entry, event) : undefined}
+          onDragEnd={onDragRow ? endDrag : undefined}
+          onContextMenu={
+            onRowMenu
+              ? (event) => {
+                  event.preventDefault();
+                  onRowMenu(entry, event);
+                }
+              : undefined
+          }
+          onClick={(event) => onSelect(entry, event)}
+          onMouseDown={(event) => {
+            // The middle button opens a new tab; keep the browser from starting its autoscroll.
+            if (event.button === 1) event.preventDefault();
+          }}
+          onAuxClick={(event) => {
+            if (event.button === 1) onSelect(entry, event);
+          }}
+          className={cn(
+            SIDEBAR_ROW_SURFACE_CLASS,
+            "min-w-0 flex-1",
+            inSelection
+              ? SIDEBAR_ROW_SELECTED_CLASS
+              : selected
+                ? SIDEBAR_ROW_ACTIVE_CLASS
+                : SIDEBAR_ROW_IDLE_CLASS,
+          )}
+        >
+          <SidebarCardContent>
+            <SidebarCardHeader>
+              {glyph}
+              {showProvider ? (
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+                    <Icon aria-label={providerName} className="size-3" />
+                  </TooltipTrigger>
+                  <TooltipPopup>{providerName}</TooltipPopup>
+                </Tooltip>
+              ) : null}
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
+                {entry.repository}
+                {environmentLabel ? ` · ${environmentLabel}` : null}
+              </span>
+              <span className="ml-auto shrink-0 text-xs tabular-nums text-secondary-label">
+                {formatRelativeTimeLabel(entry.updatedAt)}
+              </span>
+            </SidebarCardHeader>
+            <SidebarCardTitle>
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                {numberLink}
+                <span className="min-w-0 truncate text-sm font-medium text-foreground/90">
+                  {entry.title}
+                </span>
+              </span>
+            </SidebarCardTitle>
+            <SidebarCardFooter>
+              <PullRequestRowAuthor
+                actor={entry.author}
+                className="min-w-3.5 max-w-32"
+                labelClassName="truncate"
+              />
+              <PullRequestCardLabel labels={entry.labels} />
+              {matchedElsewhere ? (
+                <SearchIcon aria-label="Matched in the description" className="size-3 shrink-0" />
+              ) : null}
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {entry.stack ? (
+                  <PullRequestStackPopover
+                    environmentId={entry.environmentId}
+                    reference={{
+                      projectId: entry.projectId,
+                      host: entry.host,
+                      repository: entry.repository,
+                      number: entry.number,
+                    }}
+                    membership={entry.stack}
+                    onSelect={(target) =>
+                      onSelect({ ...target, host: entry.host, environmentId: entry.environmentId })
+                    }
+                  />
+                ) : null}
+                {signals}
+                <PullRequestChangeBreakdownStat
+                  environmentId={entry.environmentId}
+                  reference={{
+                    projectId: entry.projectId,
+                    host: entry.host,
+                    repository: entry.repository,
+                    number: entry.number,
+                  }}
+                  additions={entry.additions}
+                  deletions={entry.deletions}
+                  className="font-mono"
+                />
+              </span>
+            </SidebarCardFooter>
+          </SidebarCardContent>
+        </button>
+        {speedActions}
+      </div>
+    );
+  }
   return (
     <div
       ref={statsRef}
@@ -116,56 +334,25 @@ function PullRequestRowImpl({
       <button
         type="button"
         aria-current={selected ? "true" : undefined}
-        onClick={() => onSelect(entry)}
+        onClick={(event) => onSelect(entry, event)}
+        onMouseDown={(event) => {
+          // The middle button opens a new tab; keep the browser from starting its autoscroll.
+          if (event.button === 1) event.preventDefault();
+        }}
+        onAuxClick={(event) => {
+          if (event.button === 1) onSelect(entry, event);
+        }}
         className={cn(
           PULL_REQUEST_ROW_CLASS,
           PAGE_ROW_CLASS,
           "min-w-0 flex-1 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
         )}
       >
-        <PullRequestRowGlyph
-          state={entry.state}
-          isDraft={entry.isDraft}
-          mergeability={entry.mergeability}
-          baseBranch={entry.baseBranch}
-          className="mt-0.75 self-start"
-        />
+        {glyph}
         <PullRequestRowLines
-          number={
-            <span
-              className={PULL_REQUEST_ROW_NUMBER_CLASS}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void showPullRequestLinkContextMenu({
-                  url: entry.url,
-                  openLabel: openOnHostLabel(sourceControlClients.get(entry.provider)),
-                  position: { x: event.clientX, y: event.clientY },
-                });
-              }}
-            >
-              #{entry.number}
-            </span>
-          }
+          number={numberLink}
           title={entry.title}
-          signals={
-            <>
-              {entry.checksState === undefined ? null : (
-                <PullRequestChecksPopover
-                  checksState={entry.checksState}
-                  environmentId={entry.environmentId}
-                  reference={{
-                    projectId: entry.projectId,
-                    repository: entry.repository,
-                    number: entry.number,
-                  }}
-                />
-              )}
-              {entry.reviewDecision === undefined ? null : (
-                <PullRequestReviewDecisionGlyph decision={entry.reviewDecision} />
-              )}
-            </>
-          }
+          signals={signals}
           status={
             <>
               {entry.stack ? (
@@ -239,17 +426,7 @@ function PullRequestRowImpl({
           updatedAt={entry.updatedAt}
         />
       </button>
-      {hostActions.size > 0 ? (
-        <PullRequestSpeedActions
-          entry={entry}
-          hostActions={hostActions}
-          visible={speedMode}
-          onActed={onActed}
-          closing={closing}
-          sweeping={sweeping}
-          {...(onCloseSweepStart ? { onCloseSweepStart } : {})}
-        />
-      ) : null}
+      {speedActions}
     </div>
   );
 }

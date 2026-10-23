@@ -116,6 +116,13 @@ export const RPC_REQUIRED_SCOPES = {
   // Delivery logs hold request bodies, so they need the same scope as the URL.
   [WS_METHODS.scheduledTasksListWebhookDeliveries]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksGetWebhookDelivery]: AuthOrchestrationOperateScope,
+  // Astrolabe: wiki reads are file reads; writes come from CLIENT_GUARDED_RPC_SCOPES.
+  [WS_METHODS.wikiList]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiSubscribe]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiIndex]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiReadNote]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,
   [WS_METHODS.cloudGetRelayClientStatus]: AuthRelayReadScope,
   [WS_METHODS.cloudInstallRelayClient]: AuthRelayWriteScope,
   [WS_METHODS.pullRequestsList]: AuthOrchestrationReadScope,
@@ -171,6 +178,9 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.gitResolvePullRequest]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsListRefs]: AuthOrchestrationReadScope,
   [WS_METHODS.reviewGetDiffPreview]: AuthFilesystemReadScope,
+  [WS_METHODS.reviewGetRecentFiles]: AuthFilesystemReadScope,
+  [WS_METHODS.changeGroupsList]: AuthOrchestrationReadScope,
+  [WS_METHODS.changeGroupsUpdate]: AuthOrchestrationOperateScope,
   [WS_METHODS.reviewGetDiffFileContents]: AuthFilesystemReadScope,
   [WS_METHODS.terminalOpen]: AuthTerminalOperateScope,
   [WS_METHODS.terminalAttach]: AuthTerminalOperateScope,

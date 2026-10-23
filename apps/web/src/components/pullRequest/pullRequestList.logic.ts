@@ -223,7 +223,9 @@ export function groupPullRequestsByInvolvement<Entry extends ScopedEntry>(
     .map((key) => ({ key, label: GROUP_LABELS[key], entries: buckets[key] }));
 }
 
-export function pullRequestEntryKey(entry: ScopedEntry): string {
+export function pullRequestEntryKey(
+  entry: Pick<ScopedEntry, "environmentId" | "host" | "repository" | "number">,
+): string {
   const scope = entry.environmentId === undefined ? "" : `${entry.environmentId}:`;
   return `${scope}${entry.host}:${entry.repository}#${entry.number}`;
 }
@@ -753,7 +755,7 @@ export function rankPullRequestsBlockedOnAuthor<Entry extends PullRequestListEnt
   });
 }
 
-export function rankPullRequestsBlockedOnReviewer<Entry extends PullRequestListEntry>(
+function rankPullRequestsBlockedOnReviewer<Entry extends PullRequestListEntry>(
   entries: ReadonlyArray<Entry>,
 ): ReadonlyArray<Entry> {
   return rankByTierThenRecency(entries, (entry) => (entry.state === "open" ? 0 : 1));

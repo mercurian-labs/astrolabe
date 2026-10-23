@@ -86,9 +86,11 @@ const connectInspector = Effect.fn("measure.connectInspector")(function* (metro:
   const targets = yield* http
     .get(`${metro}/json/list`)
     .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(InspectorTargets)));
-  const target = targets.find((entry) => entry.appId.startsWith("com.t3tools.t3code"));
+  const target = targets.find((entry) => entry.appId.startsWith("com.mercurian.astrolabe"));
   if (!target)
-    return yield* new MeasureError({ message: `No T3 Code app is attached to Metro at ${metro}.` });
+    return yield* new MeasureError({
+      message: `No Astrolabe app is attached to Metro at ${metro}.`,
+    });
   // Expo terminates inspector sockets whose Origin differs from the URL Metro
   // advertises (the LAN address with `--lan`), so pass that URL as `--metro`.
   const socket = yield* Socket.makeWebSocket(target.webSocketDebuggerUrl, {
@@ -345,11 +347,11 @@ const command = Command.make(
   "measure-renders",
   {
     server: Flag.String("server").pipe(
-      Flag.withDescription("T3 server origin the app is paired with."),
+      Flag.withDescription("Astrolabe server origin the app is paired with."),
       Flag.withDefault(""),
     ),
     token: Flag.String("token").pipe(
-      Flag.withDescription("Bearer token from `t3 auth session issue --token-only`."),
+      Flag.withDescription("Bearer token from `astrolabe auth session issue --token-only`."),
       Flag.withDefault(""),
     ),
     route: Flag.String("route").pipe(
@@ -359,7 +361,7 @@ const command = Command.make(
       Flag.optional,
     ),
     metro: Flag.String("metro").pipe(Flag.withDefault("http://127.0.0.1:8081")),
-    scheme: Flag.String("scheme").pipe(Flag.withDefault("t3code-dev")),
+    scheme: Flag.String("scheme").pipe(Flag.withDefault("astrolabe-dev")),
     runs: Flag.Int("runs").pipe(Flag.withDefault(3)),
     window: Flag.Int("window").pipe(
       Flag.withDescription("Seconds to record; defaults to 12 for a reply and 6 for --route."),

@@ -4,15 +4,15 @@
   "type": "module",
   "scripts": {
     "deploy": "alchemy deploy",
+    "dev": "alchemy dev --env-file dev.env",
     "push:android:smoke": "node scripts/android-push-smoke.ts",
     "push:android:watch": "node scripts/android-push-watch.ts",
     "tunnels:census": "node scripts/tunnel-census.ts",
     "destroy": "alchemy destroy",
     "test": "vp test run --config ../../vite.config.ts --dir .",
-    "typecheck": "tsc-rs --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clerk/backend": "catalog:",
     "@distilled.cloud/cloudflare": "catalog:",
     "@effect/sql-pg": "catalog:",
     "@effect/sql-sqlite-do": "catalog:",
@@ -23,7 +23,8 @@
     "@t3tools/shared": "workspace:*",
     "alchemy": "2.0.0-beta.80",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "jose": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260601.1",

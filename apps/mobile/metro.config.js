@@ -19,6 +19,8 @@ const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"
 const mobileShikiRoot = path.dirname(require.resolve("shiki/package.json", { paths: [__dirname] }));
 const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-stream");
 const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
+// Astrolabe: the wiki editor page, one inline HTML document (see generate-wiki-editor.mts).
+const generatedWikiEditorRoot = path.join(__dirname, ".generated", "wiki-editor");
 const resolveShikiDependencyRoot = (packageName) => {
   const entryPath = require.resolve(packageName, { paths: [mobileShikiRoot] });
   let currentDir = path.dirname(entryPath);
@@ -50,6 +52,7 @@ config.resolver = {
     "@t3tools/mobile-third-party-licenses": generatedLicenseModuleRoot,
     "@t3tools/mobile-device-stream": generatedDeviceStreamRoot,
     "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
+    "@t3tools/mobile-wiki-editor": generatedWikiEditorRoot,
     shiki: mobileShikiRoot,
     "@shikijs/core": resolveShikiDependencyRoot("@shikijs/core"),
     "@shikijs/engine-javascript": resolveShikiDependencyRoot("@shikijs/engine-javascript"),
@@ -137,11 +140,32 @@ async function prepareStreamScripts() {
   }
 }
 
-module.exports = Promise.all([generateMobileThirdPartyLicenses(), prepareStreamScripts()]).then(
-  () =>
-    withUniwindConfig(config, {
-      cssEntryFile: "./global.css",
-      extraThemes,
-      polyfills: { rem: 14 },
-    }),
+// Astrolabe: built at startup, and rebuilt in development when the page or the editor changes.
+async function prepareWikiEditorPage() {
+  const { generateWikiEditorPage, wikiEditorSources } = await import(
+    pathToFileURL(path.join(__dirname, "scripts", "generate-wiki-editor.mts")).href
+  );
+  await generateWikiEditorPage();
+  if (process.env.NODE_ENV === "production") return;
+  let rebuild = Promise.resolve();
+  for (const directory of wikiEditorSources) {
+    fs.watch(directory, { persistent: false, recursive: true }, () => {
+      rebuild = rebuild.then(generateWikiEditorPage).then(
+        () => undefined,
+        (error) => console.error("Could not rebuild the wiki editor page:", error),
+      );
+    });
+  }
+}
+
+module.exports = Promise.all([
+  generateMobileThirdPartyLicenses(),
+  prepareStreamScripts(),
+  prepareWikiEditorPage(),
+]).then(() =>
+  withUniwindConfig(config, {
+    cssEntryFile: "./global.css",
+    extraThemes,
+    polyfills: { rem: 14 },
+  }),
 );

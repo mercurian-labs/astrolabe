@@ -21,15 +21,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { useRestingTopOffset } from "../../native/useRestingTopOffset";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import { useWorkspaceState } from "../../state/workspace";
 import { useProjects } from "../../state/entities";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { PullRequestListRow } from "./PullRequestListRow";
 import { PullRequestListFilters } from "./PullRequestListFilters";
+import { PullRequestCardRow } from "./PullRequestControls";
 import { usePullRequestList } from "./usePullRequestList";
 import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
+import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
+import { ChangeGroupsSection } from "../changeGroups/ChangeGroupsSection";
+import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
   pullRequestListFacets,
@@ -43,17 +48,43 @@ import { useDebouncedValue } from "../../state/queries";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { useAndroidWorkspaceSelection } from "../workspace/useAndroidWorkspaceSelection";
 
+const NO_ENTRIES: EnvironmentPullRequestListEntry[] = [];
+
 function PullRequestScrollView(props: ScrollViewProps) {
   const insets = useSafeAreaInsets();
+  const restingOffset = useRestingTopOffset(insets.top, props);
   return (
     <ScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         {...props}
+        {...restingOffset}
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
-        contentOffset={props.contentOffset ?? { x: 0, y: -insets.top }}
       />
     </ScrollViewMarker>
+  );
+}
+
+function PullRequestListErrors(props: { readonly messages: readonly string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const title = `${props.messages.length} ${props.messages.length === 1 ? "error" : "errors"} loading pull requests`;
+  return (
+    <View>
+      <PullRequestCardRow
+        title={title}
+        icon="exclamationmark.triangle"
+        compact
+        last
+        expanded={expanded}
+        accessibilityLabel={`${title}. ${expanded ? "Hide" : "Show"} details`}
+        onPress={() => setExpanded((value) => !value)}
+      />
+      {expanded ? (
+        <Text selectable className="px-4 pb-3 text-sm text-foreground-muted">
+          {props.messages.join("\n")}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -144,6 +175,9 @@ export function PullRequestsScreen(
   const sidebar = props.sidebar === true || primaryColumn !== null;
   const selectedKey = props.selectedPullRequestKey ?? primaryColumn?.selectedPullRequestKey;
   const connectedKey = connectedTargets.map((target) => target.environmentId).join("\n");
+  // Astrolabe: the project filter's kind: the wikis picked list only the wikis' change requests,
+  // the repositories only the pull requests.
+  const wikiSource = useChangeRequestProjectFilter();
   const entries = useMemo(
     () =>
       filterPullRequestList(
@@ -210,7 +244,7 @@ export function PullRequestsScreen(
     <View className={sidebar ? "flex-1 bg-drawer" : "flex-1 bg-screen"}>
       <LegendList
         ref={listRef}
-        data={entries}
+        data={wikiSource.wikisOnly ? NO_ENTRIES : entries}
         extraData={`${selectedKey}:${busyKey}`}
         keyExtractor={pullRequestKey}
         itemsAreEqual={pullRequestListRowsAreEqual}
@@ -292,17 +326,29 @@ export function PullRequestsScreen(
               labels={
                 knownFacets.environmentId === environmentId ? knownFacets.labels : facets.labels
               }
-              projects={projects}
+              projects={wikiSource.withoutWikiProjects(projects)}
+              wikis={wikiSource.choices}
+              wikiValue={wikiSource.selected}
+              repositoriesOnly={wikiSource.repositoriesOnly}
+              onSource={wikiSource.select}
             />
             {result.data?.errors.length ? (
-              <Text className="px-4 py-3 text-sm text-foreground-muted">
-                {result.data.errors
-                  .map(
-                    (error) =>
-                      `${error.projectTitle || environments.find((environment) => environment.environmentId === error.environmentId)?.environmentLabel || "Environment"}: ${error.message}`,
-                  )
-                  .join("\n")}
-              </Text>
+              <PullRequestListErrors
+                key={JSON.stringify(targets)}
+                messages={result.data.errors.map(
+                  (error) =>
+                    `${error.projectTitle || environments.find((environment) => environment.environmentId === error.environmentId)?.environmentLabel || "Environment"}: ${error.message}`,
+                )}
+              />
+            ) : null}
+            {/* Astrolabe: the wikis' change requests, a group of their own above. */}
+            <ChangeGroupsSection query={query} />
+            {wikiSource.wikisOnly || (wikiSource.kind === "all" && !controls.projectId) ? (
+              <WikiChangesSection
+                query={query}
+                scope={wikiSource.scope}
+                pullRequestsFollow={!wikiSource.wikisOnly}
+              />
             ) : null}
           </>
         }
@@ -326,7 +372,7 @@ export function PullRequestsScreen(
           ) : undefined
         }
         ListEmptyComponent={
-          result.isPending && connectedTargets.length > 0 ? (
+          wikiSource.wikisOnly ? null : result.isPending && connectedTargets.length > 0 ? (
             <View className="items-center py-12">
               <AppActivityIndicator colorClassName="accent-icon" />
             </View>

@@ -1,10 +1,9 @@
 import type { Plugin, ViteDevServer } from "vite-plus";
 
-// What the first page load pulls in: the app, the managed-auth shell, the chat
-// layout and its landing routes, and the sidebar's project icons.
+// What the first page load pulls in: the app, the chat layout and its landing
+// routes, and the sidebar's project icons.
 const STARTUP_LAZY_ENTRIES = [
   "src/main.tsx",
-  "src/components/clerk/BrowserManagedAuthShell.tsx",
   "src/routes/_chat.tsx",
   "src/routes/_chat.index.tsx",
   "src/routes/_chat.$environmentId.$threadId.tsx",
@@ -50,7 +49,7 @@ function hasBundledDevInternals(value: unknown): value is BundledDevInternals {
  * the lazy module ids it compiled. The browser's own requests then reuse
  * Rolldown's transform cache. Entries are paths relative to the Vite root.
  */
-export async function warmLazyEntries(
+async function warmLazyEntries(
   server: ViteDevServer,
   entries: readonly string[],
 ): Promise<string[]> {

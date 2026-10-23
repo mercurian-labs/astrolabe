@@ -55,6 +55,7 @@ import {
 } from "./threadPullRequest.ts";
 import {
   ProviderApprovalDecision,
+  ProviderApprovalFullAccessOverride,
   ProviderApprovalOption,
   ProviderInteractionMode,
   ProviderRequestKind,
@@ -1429,6 +1430,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     requestId: RuntimeRequestId,
     requestKind: ProviderRequestKind,
     prompt: Schema.optional(Schema.String),
+    reason: Schema.optional(Schema.String),
+    fullAccessOverride: Schema.optional(ProviderApprovalFullAccessOverride),
     appName: Schema.optional(Schema.String),
     options: Schema.optional(Schema.Array(ProviderApprovalOption)),
   }),
@@ -1825,6 +1828,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  latestRunStopRequested: Schema.optional(Schema.Boolean),
   activeRunId: Schema.NullOr(RunId),
   activityRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   activityRunStatus: Schema.optional(
@@ -1834,6 +1838,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   status: OrchestrationV2ShellThreadStatus,
   lastError: Schema.optional(Schema.NullOr(Schema.String)),
   lastErrorClass: Schema.optional(Schema.NullOr(OrchestrationV2ProviderFailureClass)),
+  lastErrorCode: Schema.optional(Schema.NullOr(Schema.String)),
   usageLimitResetAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   pendingRuntimeRequest: Schema.NullOr(OrchestrationV2PendingRuntimeRequestSummary),
   latestVisibleMessage: Schema.NullOr(OrchestrationV2LatestVisibleMessageSummary),
@@ -2188,6 +2193,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     requestId: RuntimeRequestId,
     requestKind: ProviderRequestKind,
     prompt: Schema.optional(Schema.String),
+    reason: Schema.optional(Schema.String),
+    fullAccessOverride: Schema.optional(ProviderApprovalFullAccessOverride),
     appName: Schema.optional(Schema.String),
     options: Schema.optional(Schema.Array(ProviderApprovalOption)),
   }),
@@ -2879,6 +2886,12 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
   }),
   Schema.Struct({
+    type: Schema.Literal("queued-run.start"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runId: RunId,
+  }),
+  Schema.Struct({
     type: Schema.Literal("queued-run.reorder"),
     commandId: CommandId,
     threadId: ThreadId,
@@ -3253,6 +3266,67 @@ export const OrchestrationV2ThreadHistoryPage = Schema.Struct({
   hasMoreHistory: Schema.Boolean,
 });
 export type OrchestrationV2ThreadHistoryPage = typeof OrchestrationV2ThreadHistoryPage.Type;
+
+/** One run of a lineage thread: every turn, not the bounded window a projection holds. */
+export const OrchestrationV2ThreadLineageRun = Schema.Struct({
+  id: RunId,
+  ordinal: PositiveInt,
+  requestedAt: Schema.DateTimeUtc,
+  status: OrchestrationV2RunStatus,
+  userMessageId: MessageId,
+  /** The start of the run's user message, cut short; empty when the message is gone. */
+  text: Schema.String,
+  /** When the run ended; null while it works. */
+  completedAt: Schema.NullOr(Schema.DateTimeUtc),
+  /** The model the run asked for, when it named one. */
+  model: Schema.NullOr(Schema.String),
+  /** The start of the run's last agent message, cut short; empty when it has none. */
+  reply: Schema.String,
+  /** Line and file totals across the run's checkpoints. */
+  additions: NonNegativeInt,
+  deletions: NonNegativeInt,
+  files: NonNegativeInt,
+});
+export type OrchestrationV2ThreadLineageRun = typeof OrchestrationV2ThreadLineageRun.Type;
+
+export const OrchestrationV2ThreadLineageThread = Schema.Struct({
+  id: ThreadId,
+  title: Schema.String,
+  /** The fork parent; null for the family's root. */
+  parentId: Schema.NullOr(ThreadId),
+  /** The parent's run the fork left from, when it forked from one. */
+  forkRunId: Schema.NullOr(RunId),
+  createdAt: Schema.DateTimeUtc,
+  providerInstanceId: ProviderInstanceId,
+  archived: Schema.Boolean,
+  /** In ordinal order. */
+  runs: Schema.Array(OrchestrationV2ThreadLineageRun),
+});
+export type OrchestrationV2ThreadLineageThread = typeof OrchestrationV2ThreadLineageThread.Type;
+
+/** A fork's context carried back into another family thread. */
+export const OrchestrationV2ThreadLineageMergeBack = Schema.Struct({
+  id: ContextTransferId,
+  sourceThreadId: ThreadId,
+  sourceRunId: Schema.NullOr(RunId),
+  targetThreadId: ThreadId,
+  /** The target's run that took the context; null while it waits for one. */
+  targetRunId: Schema.NullOr(RunId),
+  createdAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2ThreadLineageMergeBack =
+  typeof OrchestrationV2ThreadLineageMergeBack.Type;
+
+/**
+ * A thread's fork family: its fork ancestors up to the root and every fork below that root, root
+ * first. Subagent children and deleted threads are left out; archived forks are kept.
+ */
+export const OrchestrationV2ThreadLineage = Schema.Struct({
+  threads: Schema.Array(OrchestrationV2ThreadLineageThread),
+  /** Merge-backs between family threads that carried or will carry context. */
+  mergeBacks: Schema.Array(OrchestrationV2ThreadLineageMergeBack),
+});
+export type OrchestrationV2ThreadLineage = typeof OrchestrationV2ThreadLineage.Type;
 
 const knownDomainEventTypes: ReadonlySet<string> = new Set(
   OrchestrationV2DomainEvent.members.flatMap((member) => {

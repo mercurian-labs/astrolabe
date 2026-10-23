@@ -1,0 +1,762 @@
+import { repositoryMoveOfSurface } from "~/components/repositories/openInRepositories";
+import {
+  Files,
+  FileDiff,
+  FileText,
+  GitFork,
+  Globe2,
+  Plus,
+  Smartphone,
+  SquareDashed,
+  TerminalSquare,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react";
+import { Volume2, VolumeOff } from "lucide";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+
+import { useBrowserDefaults } from "~/browser/browserDefaults";
+import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { MorphIcon } from "~/components/MorphIcon";
+import { previewBridge } from "~/components/preview/previewBridge";
+import {
+  DeviceTabTooltip,
+  LAUNCHER_SHORTCUT_BLOCKING_LAYERS,
+  RightPanelEmptyState,
+  SURFACE_DISABLED_REASONS,
+  SurfaceMenuItem,
+  previewFaviconOf,
+  previewTabIdOf,
+  SurfaceIcon,
+  surfaceShortcutActionForKey,
+  surfaceTitle,
+  tabAudioState,
+  tabMuteMenuItem,
+} from "~/components/RightPanelTabs";
+import { Button } from "~/components/ui/button";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuShortcut,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "~/components/ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { useTheme } from "~/hooks/useTheme";
+import { resolveShortcutCommand } from "~/keybindings";
+import {
+  selectThreadRightPanelState,
+  useRightPanelStore,
+  type RightPanelSurface,
+} from "~/rightPanelStore";
+import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
+import { WikiFinder } from "~/components/wiki/WikiFinder";
+import { parseWikiTabKey, wikiTabKey } from "~/components/wiki/wikiTabs";
+import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import {
+  closeSectionTab,
+  SectionTabContent,
+  sectionTabMove,
+  useSectionTabLabel,
+} from "~/sectionTabs/SectionTabContent";
+import {
+  allTabs,
+  closeTab,
+  focusedPane,
+  isEmptyTab,
+  openTab,
+  surfaceIdOf,
+  surfaceKey,
+} from "./arrangement";
+import { openTabGroupBesideThread } from "./GroupPanelRunsSync";
+import type { PanelProps, PanesController } from "./panesController";
+import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
+import { useRightPanelHost, usePanesThreadRef, type RightPanelHost } from "./PaneSurfaceHost";
+import { TabIconButton } from "./TabParts";
+import type { Leaf } from "./tree";
+
+/**
+ * The right panel's panes: their tabs are the thread's surfaces, mirrored from T3 Code's
+ * right-panel record (see `surfaceMirror.ts`), and its one live surface renders into a container
+ * that moves into the pane showing it.
+ */
+export function createRightPanelHost(controller: PanesController): RightPanelHost {
+  const surface = document.createElement("div");
+  surface.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col";
+  surface.dataset.panesContent = "surface";
+  const place = (slot: HTMLElement, visible: boolean) => {
+    // Moving a node that is already in place would still detach and reattach it.
+    if (surface.parentNode !== slot) slot.appendChild(surface);
+    surface.style.display = visible ? "" : "none";
+  };
+  // Astrolabe: documents opened beside the thread, each in its own container.
+  const sectionTabs = new Map<string, HTMLDivElement>();
+  const sectionTabContainer = (key: string) => {
+    let container = sectionTabs.get(key);
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col bg-background";
+      container.dataset.sectionTab = key;
+      sectionTabs.set(key, container);
+    }
+    return container;
+  };
+  const close = (tabKey: string) => closeTabOf(controller, tabKey);
+  const tabs: PaneTabs = {
+    Label: TabLabel,
+    menuItems: (tabKey) => surfaceMenuItems(controller, tabKey),
+    close,
+    NewTab: NewTabMenu,
+    place: (slot, leaf, hosting) => {
+      if (hosting) place(slot, true);
+      for (const key of leaf.tabs) {
+        const container = sectionTabs.get(key);
+        if (!container) continue;
+        if (container.parentNode !== slot) slot.appendChild(container);
+        container.style.display = key === leaf.active ? "" : "none";
+      }
+      // A document in front covers what the pane showed before it.
+      if (!hosting && surface.parentNode === slot && sectionTabs.has(leaf.active)) {
+        surface.style.display = "none";
+      }
+    },
+    Overlay: SurfaceOverlay,
+    reservesTopRight: true,
+    openElsewhere: (tabKey) =>
+      repositoryMoveOfSurface(controller.threadRef(), surfaceIdOf(tabKey)) ??
+      sectionTabMove(tabKey, "threads", close, pullRequestOfSurface(controller, tabKey)),
+  };
+  return {
+    controller,
+    surface,
+    place,
+    hide() {
+      surface.style.display = "none";
+    },
+    tabs,
+    sectionTabContainer,
+    pruneSectionTabs(open) {
+      for (const [key, container] of sectionTabs) {
+        if (open.has(key)) continue;
+        container.remove();
+        sectionTabs.delete(key);
+      }
+    },
+  };
+}
+
+/** The thread's surface a tab shows, as the record holds it now; null for any other tab. */
+function surfaceOfTab(controller: PanesController, tabKey: string): RightPanelSurface | null {
+  const ref = controller.threadRef();
+  const surfaceId = surfaceIdOf(tabKey);
+  if (ref === null || surfaceId === null) return null;
+  return (
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref).surfaces.find(
+      (entry) => entry.id === surfaceId,
+    ) ?? null
+  );
+}
+
+/**
+ * What a surface's tab menu offers of its own, as T3 Code's panel tabs do: a workspace file's
+ * Copy path, and a browser tab's Mute or Unmute. A device's Rename comes with its label.
+ */
+function surfaceMenuItems(controller: PanesController, tabKey: string): PaneTabMenuItem[] {
+  const surface = surfaceOfTab(controller, tabKey);
+  const panel = controller.getPanel();
+  if (!surface || !panel) return [];
+  if (surface.kind === "file" && surface.attachment === undefined) {
+    return [{ label: "Copy path", run: () => panel.onCopyFilePath(surface.relativePath) }];
+  }
+  if (surface.kind !== "preview") return [];
+  const previewTabId = previewTabIdOf(surface, panel.previewSessions);
+  const overlay = previewTabId ? (panel.desktopByTabId[previewTabId] ?? null) : null;
+  const item = tabMuteMenuItem({
+    overlay,
+    canResolveRuntimeTabId: panel.previewRuntimeTabId !== undefined,
+  });
+  return [
+    {
+      ...item,
+      run: () => {
+        const runtimeTabId =
+          previewTabId && overlay ? (panel.previewRuntimeTabId?.(previewTabId) ?? null) : null;
+        if (!runtimeTabId) return;
+        void previewBridge
+          ?.setAudioMuted(runtimeTabId, !(overlay?.audioMuted ?? false))
+          .catch(() => undefined);
+      },
+    },
+  ];
+}
+
+/**
+ * Astrolabe: a pull request beside the thread, named in full to open in Change Requests; its key
+ * leaves out the server, which is the thread's.
+ */
+function pullRequestOfSurface(controller: PanesController, tabKey: string) {
+  const ref = controller.threadRef();
+  const surface = surfaceOfTab(controller, tabKey);
+  if (ref === null || surface?.kind !== "pull-request") return null;
+  return {
+    environmentId: surface.environmentId ?? ref.environmentId,
+    projectId: surface.projectId,
+    repository: surface.repository,
+    number: surface.number,
+    ...(surface.host ? { host: surface.host } : {}),
+    ...(surface.url ? { url: surface.url } : {}),
+  };
+}
+
+/**
+ * Astrolabe: the documents and change groups open beside the thread, each rendered once into its
+ * container. A change request's thread link goes to the thread, rather than opening a chat inside
+ * a chat; a change group's threads open in the chat tabs, and its other tabs in its shared run.
+ */
+export function RightPanelSectionTabs() {
+  const host = useRightPanelHost();
+  const { controller } = host;
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const keys = snapshot
+    ? allTabs(snapshot.arrangement).filter(
+        (key) => parseWikiTabKey(key) !== null || parseChangeGroupTabKey(key) !== null,
+      )
+    : [];
+  const focusedKey = snapshot ? focusedPane(snapshot.arrangement).active : null;
+  useEffect(() => {
+    host.pruneSectionTabs(new Set(keys));
+  }, [host, keys]);
+  return (
+    <>
+      {keys.map((key) =>
+        createPortal(
+          <SectionTabContent
+            tabKey={key}
+            store={controller}
+            active={key === focusedKey}
+            chats={false}
+            openAll={(tabKeys, group) => openTabGroupBesideThread(controller, group, tabKeys)}
+            openPullRequest={(target) => {
+              // Beside a thread, its pull requests are the thread's own surfaces.
+              const ref = controller.threadRef();
+              if (!ref) return;
+              const { environmentId, ...rest } = target;
+              useRightPanelStore
+                .getState()
+                .openPullRequest(ref, environmentId === ref.environmentId ? rest : target);
+            }}
+          />,
+          host.sectionTabContainer(key),
+          key,
+        ),
+      )}
+    </>
+  );
+}
+
+/** Re-renders when what the strip draws from ChatView's panel props changes. */
+function usePanel(controller: PanesController): PanelProps | null {
+  return useSyncExternalStore(controller.subscribePanel, controller.getPanelSnapshot);
+}
+
+function useSurface(surfaceId: string | null) {
+  const ref = usePanesThreadRef();
+  return useRightPanelStore((state) =>
+    surfaceId === null || ref === null
+      ? null
+      : (selectThreadRightPanelState(state.byThreadKey, ref).surfaces.find(
+          (surface) => surface.id === surfaceId,
+        ) ?? null),
+  );
+}
+
+function TabLabel({ tabKey, children }: PaneTabLabelProps) {
+  return children(useTabLabel(tabKey));
+}
+
+/**
+ * A tab's label: an empty tab, a document, or one of T3 Code's surfaces, which draws as T3 Code's
+ * panel tab does. A file still saving shows a dot on its icon, a playing browser tab its speaker,
+ * and a device tab names its machine on hover and can be renamed.
+ */
+function useTabLabel(tabKey: string): PaneTabLabel {
+  const { controller } = useRightPanelHost();
+  const panel = usePanel(controller);
+  const surface = useSurface(surfaceIdOf(tabKey));
+  const document = useSectionTabLabel(tabKey);
+  const { resolvedTheme } = useTheme();
+  if (!surface && surfaceIdOf(tabKey) === null && document !== null) return document;
+  if (!surface) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
+  const sessions = panel?.previewSessions ?? {};
+  const favicon = previewFaviconOf(surface, sessions, panel?.desktopByTabId ?? {});
+  const title = surfaceTitle(surface, sessions, panel?.terminalLabelsById ?? new Map());
+  const environmentId = panel?.environmentId ?? null;
+  const previewTabId = previewTabIdOf(surface, sessions);
+  const audio = tabAudioState(previewTabId ? (panel?.desktopByTabId[previewTabId] ?? null) : null);
+  return {
+    title,
+    icon: (
+      <span className="relative flex">
+        <SurfaceIcon
+          surface={surface}
+          previewUrl={favicon.url}
+          previewCapturedUrl={favicon.capturedUrl}
+          theme={resolvedTheme}
+          environmentId={environmentId}
+          pullRequestStatusSeed={panel?.pullRequestStatusSeeds?.[surface.id]}
+        />
+        {panel?.pendingSurfaceIds.has(surface.id) ? (
+          <span
+            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+            aria-hidden
+          />
+        ) : null}
+      </span>
+    ),
+    ...(previewTabId && audio !== "none" && panel?.previewRuntimeTabId
+      ? {
+          accessory: (
+            <TabAudioButton
+              controller={controller}
+              previewTabId={previewTabId}
+              muted={audio === "muted"}
+              title={title}
+            />
+          ),
+        }
+      : {}),
+    ...(surface.kind === "device"
+      ? {
+          tooltip: (
+            <DeviceTabTooltip surface={surface} environmentId={environmentId} title={title} />
+          ),
+          ...(panel?.onRenameDevice
+            ? {
+                rename: (next: string) => controller.getPanel()?.onRenameDevice?.(surface.id, next),
+              }
+            : {}),
+        }
+      : {}),
+  };
+}
+
+/** Mutes or unmutes a playing browser tab, as T3 Code's panel tab's speaker does. */
+function TabAudioButton({
+  controller,
+  previewTabId,
+  muted,
+  title,
+}: {
+  controller: PanesController;
+  previewTabId: string;
+  muted: boolean;
+  title: string;
+}) {
+  const label = muted ? "Unmute tab" : "Mute tab";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <TabIconButton
+            label={muted ? `Unmute ${title}` : `Mute ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              const runtimeTabId = controller.getPanel()?.previewRuntimeTabId?.(previewTabId);
+              if (!runtimeTabId) return;
+              void previewBridge?.setAudioMuted(runtimeTabId, !muted).catch(() => undefined);
+            }}
+          />
+        }
+      >
+        <MorphIcon className="size-3" icon={muted ? VolumeOff : Volume2} />
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** Closes a tab: a surface through ChatView's own close, which may ask first. */
+function closeTabOf(controller: PanesController, tabKey: string) {
+  const surfaceId = surfaceIdOf(tabKey);
+  const ref = controller.threadRef();
+  if (surfaceId === null || ref === null) {
+    closeSectionTab(controller, tabKey);
+    return;
+  }
+  const surface = selectThreadRightPanelState(
+    useRightPanelStore.getState().byThreadKey,
+    ref,
+  ).surfaces.find((entry) => entry.id === surfaceId);
+  if (!surface) {
+    controller.update((arrangement) => closeTab(arrangement, tabKey));
+    return;
+  }
+  const panel = controller.getPanel();
+  if (panel) panel.onCloseSurface(surface);
+  else useRightPanelStore.getState().closeSurface(ref, surface.id);
+}
+
+interface AddAction {
+  readonly label: string;
+  readonly icon: LucideIcon;
+  readonly shortcut: string;
+  readonly available: boolean;
+  /** Why it is unavailable, shown on hovering it then. */
+  readonly disabledReason: string;
+  /** The surface this opens when the record already holds it, which then moves here instead. */
+  readonly singleton: RightPanelSurface["id"] | null;
+  /** Adds the surface through ChatView, given its current panel props. */
+  readonly invoke: (panel: PanelProps) => void;
+}
+
+/** The surfaces a pane can open, as ChatView offers them in its panel's New tab menu. */
+function addActions(panel: PanelProps | null): AddAction[] {
+  if (!panel) return [];
+  return [
+    {
+      label: "Browser",
+      icon: Globe2,
+      shortcut: "B",
+      available: panel.browserAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.browser,
+      singleton: null,
+      invoke: (current) => current.onAddBrowser(),
+    },
+    {
+      label: "Terminal",
+      icon: TerminalSquare,
+      shortcut: "T",
+      available: panel.terminalAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.terminal,
+      singleton: null,
+      invoke: (current) => current.onAddTerminal(),
+    },
+    {
+      label: "Files",
+      icon: Files,
+      shortcut: "F",
+      available: panel.filesAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.files,
+      singleton: "files",
+      invoke: (current) => current.onAddFiles(),
+    },
+    {
+      label: "Diff",
+      icon: FileDiff,
+      shortcut: "D",
+      available: panel.diffAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.diff,
+      singleton: "diff",
+      invoke: (current) => current.onAddDiff(),
+    },
+    {
+      label: "Pull request",
+      icon: PullRequestGlyph.pullRequest,
+      shortcut: "P",
+      available: panel.pullRequestAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
+      singleton: null,
+      invoke: (current) => current.onAddPullRequest(),
+    },
+    {
+      label: "Linked pull requests",
+      icon: PullRequestGlyph.link,
+      shortcut: "L",
+      available: panel.pullRequestsAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.pullRequests,
+      singleton: "pull-requests",
+      invoke: (current) => current.onAddPullRequests(),
+    },
+    {
+      label: "Device",
+      icon: Smartphone,
+      shortcut: "M",
+      available: panel.deviceAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.device,
+      singleton: null,
+      invoke: (current) => current.onAddDevice(),
+    },
+    {
+      label: "Graph",
+      icon: Waypoints,
+      shortcut: "G",
+      available: panel.graphAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.graph,
+      singleton: "graph",
+      invoke: (current) => current.onAddGraph(),
+    },
+    {
+      label: "Lineage",
+      icon: GitFork,
+      shortcut: "I",
+      available: panel.lineageAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.lineage,
+      singleton: "lineage",
+      invoke: (current) => current.onAddLineage(),
+    },
+  ];
+}
+
+/**
+ * Opens a surface in a pane. One the record already holds moves here, as a view open in
+ * another pane does; anything else is added through ChatView, and lands here when it arrives.
+ */
+function runAddAction(controller: PanesController, paneId: string, action: AddAction) {
+  const ref = controller.threadRef();
+  const held =
+    action.singleton !== null && ref !== null
+      ? selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref).surfaces.some(
+          (surface) => surface.id === action.singleton,
+        )
+      : false;
+  if (held && action.singleton !== null) {
+    const key = surfaceKey(action.singleton);
+    controller.update((arrangement) => openTab(arrangement, key, paneId));
+    return;
+  }
+  const panel = controller.getPanel();
+  if (!panel) return;
+  controller.targetPane(paneId);
+  action.invoke(panel);
+}
+
+/**
+ * A pane's New tab menu, as T3 Code's panel's: its letters open a surface, and Mod+T
+ * (`rightPanel.new`) opens the focused pane's menu.
+ */
+function NewTabMenu({ paneId }: { paneId: string }) {
+  const { controller } = useRightPanelHost();
+  const panel = usePanel(controller);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [finding, setFinding] = useState(false);
+  const profiles = useBrowserDefaults().profiles;
+  const actions = addActions(panel);
+  const run = (action: AddAction) => {
+    setOpen(false);
+    runAddAction(controller, paneId, action);
+  };
+  if (panel?.open === false && open) setOpen(false);
+  const onNewTabShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing) return;
+    const current = controller.getPanel();
+    const snapshot = controller.getSnapshot();
+    if (!current || current.open === false || !snapshot) return;
+    if (focusedPane(snapshot.arrangement).id !== paneId) return;
+    if (
+      resolveShortcutCommand(event, current.keybindings, {
+        context: { ...current.getShortcutContext(), rightPanelOpen: true },
+      }) !== "rightPanel.new"
+    )
+      return;
+    if (!open && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat) return;
+    trigger.current?.focus();
+    setOpen(true);
+  });
+  useEffect(() => {
+    document.addEventListener("keydown", onNewTabShortcut, true);
+    return () => document.removeEventListener("keydown", onNewTabShortcut, true);
+  }, []);
+  return (
+    <Menu open={open} onOpenChange={setOpen}>
+      <MenuTrigger
+        ref={trigger}
+        render={
+          <Button aria-label="New tab" className="shrink-0" size="icon-sm" variant="ghost-muted" />
+        }
+      >
+        <Plus className="size-4" />
+      </MenuTrigger>
+      <MenuPopup
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        onKeyDownCapture={(event) => {
+          if (
+            event.key.toLowerCase() === "o" &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+            setFinding(true);
+            return;
+          }
+          const action = surfaceShortcutActionForKey(actions, event.nativeEvent);
+          if (!action) return;
+          event.preventDefault();
+          event.stopPropagation();
+          run(action);
+        }}
+      >
+        {actions.map((action) => {
+          const Icon = action.icon;
+          if (action.label === "Browser" && action.available && profiles.length > 1) {
+            return (
+              <MenuSub key={action.label}>
+                <MenuSubTrigger className="[&>svg:last-child]:ms-0" onClick={() => run(action)}>
+                  <Icon />
+                  {action.label}
+                  <MenuShortcut>{action.shortcut}</MenuShortcut>
+                </MenuSubTrigger>
+                <MenuSubPopup className="max-w-56">
+                  {profiles.map((profile) => (
+                    <MenuItem
+                      key={profile.id}
+                      onClick={() => {
+                        setOpen(false);
+                        const current = controller.getPanel();
+                        if (!current) return;
+                        controller.targetPane(paneId);
+                        current.onAddBrowserInProfile(profile.id);
+                      }}
+                    >
+                      <span className="min-w-0 truncate">{profile.name}</span>
+                    </MenuItem>
+                  ))}
+                </MenuSubPopup>
+              </MenuSub>
+            );
+          }
+          return (
+            <SurfaceMenuItem
+              key={action.label}
+              available={action.available}
+              disabledReason={action.disabledReason}
+              shortcut={action.shortcut}
+              onClick={() => run(action)}
+            >
+              <Icon />
+              {action.label}
+            </SurfaceMenuItem>
+          );
+        })}
+        <MenuItem
+          onClick={() => {
+            setOpen(false);
+            setFinding(true);
+          }}
+        >
+          <FileText />
+          Document
+          <MenuShortcut>O</MenuShortcut>
+        </MenuItem>
+      </MenuPopup>
+      {finding ? (
+        <PaneDocumentFinder
+          onClose={() => setFinding(false)}
+          onPick={(key) => controller.update((arrangement) => openTab(arrangement, key, paneId))}
+        />
+      ) : null}
+    </Menu>
+  );
+}
+
+/**
+ * Astrolabe: a wiki's document, opened beside the thread in the pane asked from, as the Wikis
+ * finder finds or writes one.
+ */
+function PaneDocumentFinder({
+  onClose,
+  onPick,
+}: {
+  readonly onClose: () => void;
+  readonly onPick: (key: string) => void;
+}) {
+  const { overviews } = useWikiOverviews();
+  return (
+    <WikiFinder
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      overviews={overviews}
+      scope={null}
+      mode="find"
+      onPick={(tab) => {
+        onClose();
+        onPick(wikiTabKey(tab));
+      }}
+    />
+  );
+}
+
+/**
+ * What covers a pane's content: an empty tab's launcher, or a surface waiting its turn to be the
+ * one T3 Code renders. Nothing while the pane shows the live surface.
+ */
+function SurfaceOverlay({ leaf, hosting }: { leaf: Leaf; hosting: boolean }) {
+  if (isEmptyTab(leaf.active)) return <EmptyTab paneId={leaf.id} />;
+  if (surfaceIdOf(leaf.active) !== null && !hosting) return <WaitingSurface tabKey={leaf.active} />;
+  return null;
+}
+
+/** An empty tab: nothing yet, and T3 Code's own launcher for the surfaces it can open. */
+function EmptyTab({ paneId }: { paneId: string }) {
+  const { controller } = useRightPanelHost();
+  const panel = usePanel(controller);
+  const profiles = useBrowserDefaults().profiles;
+  const actions = addActions(panel);
+  const available = (label: string) =>
+    actions.find((action) => action.label === label)?.available ?? false;
+  // Each opens in this pane, as the New tab menu's do; one already open elsewhere moves here.
+  const run = (label: string) => () => {
+    const action = actions.find((candidate) => candidate.label === label);
+    if (action) runAddAction(controller, paneId, action);
+  };
+  return (
+    <RightPanelEmptyState
+      onAddBrowser={run("Browser")}
+      onAddBrowserInProfile={(profileId) => {
+        const current = controller.getPanel();
+        if (!current) return;
+        controller.targetPane(paneId);
+        current.onAddBrowserInProfile(profileId);
+      }}
+      browserProfiles={profiles}
+      onAddTerminal={run("Terminal")}
+      onAddDiff={run("Diff")}
+      onAddFiles={run("Files")}
+      onAddPullRequest={run("Pull request")}
+      onAddPullRequests={run("Linked pull requests")}
+      onAddDevice={run("Device")}
+      onAddGraph={run("Graph")}
+      onAddLineage={run("Lineage")}
+      browserAvailable={available("Browser")}
+      terminalAvailable={available("Terminal")}
+      diffAvailable={available("Diff")}
+      filesAvailable={available("Files")}
+      pullRequestAvailable={available("Pull request")}
+      pullRequestsAvailable={available("Linked pull requests")}
+      deviceAvailable={available("Device")}
+      graphAvailable={available("Graph")}
+      lineageAvailable={available("Lineage")}
+    />
+  );
+}
+
+/**
+ * A surface's tab shown while another surface is the one T3 Code renders: T3 Code keeps one
+ * surface live per thread, so this one waits for its pane to take focus.
+ */
+function WaitingSurface({ tabKey }: { tabKey: string }) {
+  const { title, icon } = useTabLabel(tabKey);
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-foreground [&_svg]:size-4">
+        {icon}
+        {title}
+      </span>
+      <span>Click to show</span>
+    </div>
+  );
+}

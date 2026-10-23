@@ -1,12 +1,6 @@
-import { useClerk } from "@clerk/react";
+import { startCloudSignIn } from "../../cloud/account";
 
-import { isElectron } from "../../env";
-import { resolveClerkSignInProps } from "./authRedirect";
-
-export function useT3ConnectAuthPrompt() {
-  const clerk = useClerk();
-  const openAuthPrompt = () => {
-    clerk.openSignIn(resolveClerkSignInProps(window.location.href, isElectron));
-  };
-  return { authPrompt: null, openAuthPrompt };
+/** Astrolabe: T3 Connect's sign-in prompt is the device-code sign-in, so it calls no hooks. */
+export function t3ConnectAuthPrompt() {
+  return { authPrompt: null, openAuthPrompt: startCloudSignIn };
 }

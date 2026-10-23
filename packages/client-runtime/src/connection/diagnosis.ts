@@ -85,24 +85,24 @@ function headline(host: string, located: Located, failure: ConnectionAttemptErro
     case "offline":
       return "This device is offline";
     case "outdated":
-      return `${host} runs an older T3 Code`;
+      return `${host} runs an older Astrolabe`;
     case "clock_skew":
       return "This device's clock is off";
     case "not_linked":
-      return `${host} is not linked to your T3 Connect account`;
+      return `${host} is not linked to your Astrolabe account`;
     case "relay_error":
-      return "T3 Connect returned an error";
+      return "Remote access returned an error";
     case "tunnel_pending":
       return `${host}'s tunnel is still being set up`;
     case "tunnel_not_enabled":
-      return `T3 Connect is not turned on for ${host}`;
+      return `Remote access is not turned on for ${host}`;
     case "released":
     case "tunnel_down":
       return `${host}'s tunnel is offline`;
     case "origin_unreachable":
-      return `Tunnel works, but T3 Code on ${host} did not answer`;
+      return `Tunnel works, but Astrolabe on ${host} did not answer`;
     case "invalid_response":
-      return `T3 Code on ${host} sent an unexpected answer`;
+      return `Astrolabe on ${host} sent an unexpected answer`;
     case "dns":
       return `${host}'s tunnel address did not resolve`;
     case "tls":
@@ -120,55 +120,55 @@ function headline(host: string, located: Located, failure: ConnectionAttemptErro
       return "This device could not prepare the connection";
     case "relay":
       return failure?.reason === "authentication"
-        ? "T3 Connect did not accept this device's sign-in"
-        : "This device can't reach T3 Connect";
+        ? "Remote access did not accept this device's sign-in"
+        : "This device can't reach remote access";
     case "tunnel":
       // The relay already reached the host when this device fails on its own (#17629).
       return failure?.reason === "network" ||
         failure?.reason === "transport" ||
         failure?.reason === "timeout"
         ? `This device can't reach ${host}'s tunnel`
-        : `T3 Connect could not reach ${host}'s tunnel`;
+        : `Remote access could not reach ${host}'s tunnel`;
     case "server":
       return failure?.reason === "authentication" || failure?.reason === "permission"
-        ? `T3 Code on ${host} did not accept this device`
-        : `T3 Code on ${host} did not answer`;
+        ? `Astrolabe on ${host} did not accept this device`
+        : `Astrolabe on ${host} did not answer`;
   }
 }
 
 function steps(host: string, located: Located, failure: ConnectionAttemptError | null): string[] {
-  const checkHost = `On ${host}, check Settings > Connections or run \`t3 connect status\`.`;
+  const checkHost = `On ${host}, check Settings > Connections or run \`astrolabe connect status\`.`;
   switch (located.cause) {
     case "offline":
-      return ["Connect this device to the internet. T3 Code reconnects on its own."];
+      return ["Connect this device to the internet. Astrolabe reconnects on its own."];
     case "outdated":
-      return [`Update T3 Code on ${host}.`];
+      return [`Update Astrolabe on ${host}.`];
     case "clock_skew":
       return [`Turn on automatic date and time on this device and on ${host}, then retry.`];
     case "not_linked":
       return [
-        "Check that this device is signed in to the same T3 Connect account as the host.",
-        `On ${host}, open Settings > Connections and turn T3 Connect on.`,
+        "Check that this device is signed in to the same Astrolabe account as the host.",
+        `On ${host}, open Settings > Connections and turn remote access on.`,
       ];
     case "tunnel_pending":
-      return ["Wait a minute. T3 Code retries on its own.", checkHost];
+      return ["Wait a minute. Astrolabe retries on its own.", checkHost];
     case "relay_error":
       return [
-        "Wait a few minutes. T3 Code retries on its own.",
+        "Wait a few minutes. Astrolabe retries on its own.",
         "If it keeps failing, copy the diagnostics and report it.",
       ];
     case "tunnel_not_enabled":
-      return [`On ${host}, open Settings > Connections and turn T3 Connect on.`];
+      return [`On ${host}, open Settings > Connections and turn remote access on.`];
     case "released":
     case "tunnel_down":
       return [
-        `Make sure ${host} is awake and T3 Code is running on it.`,
+        `Make sure ${host} is awake and Astrolabe is running on it.`,
         checkHost,
         `A VPN or Tailscale exit node on ${host} can block the tunnel (port 7844). Turn it off or allow the tunnel.`,
       ];
     case "origin_unreachable":
     case "invalid_response":
-      return [`Open or restart T3 Code on ${host}.`, checkHost];
+      return [`Open or restart Astrolabe on ${host}.`, checkHost];
     // The relay saw these on its way to the host, so the fix is on the host.
     case "dns":
     case "tls":
@@ -182,15 +182,15 @@ function steps(host: string, located: Located, failure: ConnectionAttemptError |
   switch (located.hop) {
     case "device":
       return [
-        "Restart T3 Code on this device.",
+        "Restart Astrolabe on this device.",
         `If it keeps failing, remove ${host} from this device and add it again.`,
       ];
     case "relay":
       return failure?.reason === "authentication"
-        ? ["Sign out of T3 Connect and sign in again."]
+        ? ["Sign out and sign in again."]
         : [
             "Check this device's internet connection.",
-            "A VPN, firewall, or ad blocker on this device can block T3 Connect.",
+            "A VPN, firewall, or ad blocker on this device can block remote access.",
           ];
     case "tunnel":
       return failure?.reason === "network" ||
@@ -203,7 +203,7 @@ function steps(host: string, located: Located, failure: ConnectionAttemptError |
         : [`Make sure ${host} is awake and online.`, checkHost];
     case "server":
       return [
-        `Make sure T3 Code is running on ${host}.`,
+        `Make sure Astrolabe is running on ${host}.`,
         "Retry. If it keeps failing, copy the diagnostics.",
       ];
   }
@@ -271,11 +271,11 @@ function hopLabel(hop: ConnectionHop, host: string): string {
     case "device":
       return "This device";
     case "relay":
-      return "T3 Connect";
+      return "Remote access";
     case "tunnel":
       return `${host} tunnel`;
     case "server":
-      return `T3 Code on ${host}`;
+      return `Astrolabe on ${host}`;
   }
 }
 
@@ -318,7 +318,7 @@ export function presentConnectionDiagnosis(
       ? null
       : DateTime.formatIso(DateTime.makeUnsafe(input.state.retryAt)),
   );
-  add("Route", relayPath ? "T3 Connect" : "Direct");
+  add("Route", relayPath ? "Remote access" : "Direct");
   add("App version", input.clientVersion);
   add("Host version", input.serverVersion);
   add("Error", failure?.detail);
@@ -338,7 +338,7 @@ const HOP_MARK = { ok: "ok", failed: "FAILED", unchecked: "not checked" } as con
 /** One plain-text block for bug reports. */
 export function connectionDiagnosisText(hostLabel: string, diagnosis: ConnectionDiagnosis): string {
   return [
-    `T3 Code connection to ${hostLabel}: ${diagnosis.headline}`,
+    `Astrolabe connection to ${hostLabel}: ${diagnosis.headline}`,
     "",
     ...diagnosis.hops.map((hop) => `${hop.label}: ${HOP_MARK[hop.result]}`),
     "",

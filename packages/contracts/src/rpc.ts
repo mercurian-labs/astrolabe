@@ -145,11 +145,27 @@ import {
 import {
   ReviewDiffFileContentsInput,
   ReviewDiffFileContentsResult,
+  ReviewRecentFilesInput,
+  ReviewRecentFilesResult,
   ReviewDiffPreviewError,
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
+import {
+  ChangeGroupDecisions,
+  ChangeGroupError,
+  ChangeGroupListInput,
+  ChangeGroupListResult,
+  ChangeGroupUpdateInput,
+} from "./changeGroups.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
+import {
+  ServerRemoveVimMappingInput,
+  ServerSetVimOptionInput,
+  ServerUpsertVimMappingInput,
+  ServerVimrc,
+  VimrcConfigError,
+} from "./vimrc.ts";
 import {
   OrchestrationSearchThreadsError,
   OrchestrationSearchThreadsInput,
@@ -357,6 +373,32 @@ import {
 } from "./scheduledTask.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
+  WikiAmendInput,
+  WikiAmendResult,
+  WikiChangeRequest,
+  WikiChangeRequestDetail,
+  WikiChangeRequestListInput,
+  WikiChangeRequestListResult,
+  WikiChangeRequestOpenInput,
+  WikiChangeRequestTarget,
+  WikiCreateInput,
+  WikiError,
+  WikiEvent,
+  WikiIndexResult,
+  WikiListResult,
+  WikiMergeResult,
+  WikiNoteInput,
+  WikiNoteResult,
+  WikiReadScope,
+  WikiRegisterInput,
+  WikiRevertInput,
+  WikiSetChangeRequestStatusInput,
+  WikiSetMirrorInput,
+  WikiSummary,
+  WikiTarget,
+  WikiTransformInput,
+} from "./wiki.ts";
+import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
   ProjectCloneListEvent,
@@ -439,6 +481,9 @@ export const WS_METHODS = {
 
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
+  reviewGetRecentFiles: "review.getRecentFiles",
+  changeGroupsList: "changeGroups.list",
+  changeGroupsUpdate: "changeGroups.update",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -479,6 +524,10 @@ export const WS_METHODS = {
   serverCommitDesktopUpdate: "server.commitDesktopUpdate",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
+  // Astrolabe: the vimrc's mappings and options.
+  serverUpsertVimMapping: "server.upsertVimMapping",
+  serverRemoveVimMapping: "server.removeVimMapping",
+  serverSetVimOption: "server.setVimOption",
   serverRunStorageCleanup: "server.runStorageCleanup",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
@@ -509,6 +558,25 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+
+  // Astrolabe: local wikis.
+  wikiList: "wiki.list",
+  wikiSubscribe: "wiki.subscribe",
+  wikiRegister: "wiki.register",
+  wikiCreate: "wiki.create",
+  wikiRemove: "wiki.remove",
+  wikiIndex: "wiki.index",
+  wikiReadNote: "wiki.readNote",
+  wikiChangeRequestsList: "wiki.changeRequests.list",
+  wikiChangeRequestsGet: "wiki.changeRequests.get",
+  wikiChangeRequestsOpen: "wiki.changeRequests.open",
+  wikiAmend: "wiki.amend",
+  wikiTransform: "wiki.transform",
+  wikiRevertAmendment: "wiki.revertAmendment",
+  wikiMerge: "wiki.merge",
+  wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
+  wikiSetMirror: "wiki.setMirror",
+  wikiPushMirror: "wiki.pushMirror",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -591,6 +659,24 @@ const WsServerRemoveKeybindingRpc = Rpc.make(WS_METHODS.serverRemoveKeybinding, 
   payload: ServerRemoveKeybindingInput,
   success: ServerRemoveKeybindingResult,
   error: Schema.Union([KeybindingsConfigError, EnvironmentAuthorizationError]),
+});
+
+const WsServerUpsertVimMappingRpc = Rpc.make(WS_METHODS.serverUpsertVimMapping, {
+  payload: ServerUpsertVimMappingInput,
+  success: ServerVimrc,
+  error: Schema.Union([VimrcConfigError, EnvironmentAuthorizationError]),
+});
+
+const WsServerRemoveVimMappingRpc = Rpc.make(WS_METHODS.serverRemoveVimMapping, {
+  payload: ServerRemoveVimMappingInput,
+  success: ServerVimrc,
+  error: Schema.Union([VimrcConfigError, EnvironmentAuthorizationError]),
+});
+
+const WsServerSetVimOptionRpc = Rpc.make(WS_METHODS.serverSetVimOption, {
+  payload: ServerSetVimOptionInput,
+  success: ServerVimrc,
+  error: Schema.Union([VimrcConfigError, EnvironmentAuthorizationError]),
 });
 
 const WsServerProbeRpc = Rpc.make(WS_METHODS.serverProbe, {
@@ -1444,6 +1530,24 @@ const WsReviewGetDiffFileContentsRpc = Rpc.make(WS_METHODS.reviewGetDiffFileCont
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsChangeGroupsListRpc = Rpc.make(WS_METHODS.changeGroupsList, {
+  payload: ChangeGroupListInput,
+  success: ChangeGroupListResult,
+  error: Schema.Union([ChangeGroupError, EnvironmentAuthorizationError]),
+});
+
+const WsChangeGroupsUpdateRpc = Rpc.make(WS_METHODS.changeGroupsUpdate, {
+  payload: ChangeGroupUpdateInput,
+  success: ChangeGroupDecisions,
+  error: Schema.Union([ChangeGroupError, EnvironmentAuthorizationError]),
+});
+
+const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
+  payload: ReviewRecentFilesInput,
+  success: ReviewRecentFilesResult,
+  error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
+});
+
 const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -1771,6 +1875,8 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
      * client would send it to the provider as an ordinary prompt.
      */
     usageLimitsCommand: Schema.optional(Schema.Boolean),
+    /** Astrolabe: whether this client understands `vimrcUpdated` events. */
+    vimrc: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
@@ -1782,6 +1888,110 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   success: ServerLifecycleStreamEvent,
   error: EnvironmentAuthorizationError,
   stream: true,
+});
+
+// Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
+const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
+  payload: Schema.Struct({}),
+  success: WikiListResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSubscribeRpc = Rpc.make(WS_METHODS.wikiSubscribe, {
+  payload: Schema.Struct({}),
+  success: WikiEvent,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsWikiRegisterRpc = Rpc.make(WS_METHODS.wikiRegister, {
+  payload: WikiRegisterInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiCreateRpc = Rpc.make(WS_METHODS.wikiCreate, {
+  payload: WikiCreateInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiRemoveRpc = Rpc.make(WS_METHODS.wikiRemove, {
+  payload: WikiTarget,
+  success: Schema.Struct({}),
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiIndexRpc = Rpc.make(WS_METHODS.wikiIndex, {
+  payload: WikiReadScope,
+  success: WikiIndexResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiReadNoteRpc = Rpc.make(WS_METHODS.wikiReadNote, {
+  payload: WikiNoteInput,
+  success: WikiNoteResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
+  payload: WikiChangeRequestListInput,
+  success: WikiChangeRequestListResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiChangeRequestsGetRpc = Rpc.make(WS_METHODS.wikiChangeRequestsGet, {
+  payload: WikiChangeRequestTarget,
+  success: WikiChangeRequestDetail,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiChangeRequestsOpenRpc = Rpc.make(WS_METHODS.wikiChangeRequestsOpen, {
+  payload: WikiChangeRequestOpenInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiAmendRpc = Rpc.make(WS_METHODS.wikiAmend, {
+  payload: WikiAmendInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
+  payload: WikiTransformInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiRevertAmendmentRpc = Rpc.make(WS_METHODS.wikiRevertAmendment, {
+  payload: WikiRevertInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiMergeRpc = Rpc.make(WS_METHODS.wikiMerge, {
+  payload: WikiChangeRequestTarget,
+  success: WikiMergeResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSetChangeRequestStatusRpc = Rpc.make(WS_METHODS.wikiSetChangeRequestStatus, {
+  payload: WikiSetChangeRequestStatusInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
+  payload: WikiSetMirrorInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
@@ -1879,7 +2089,8 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
-export const WsRpcGroup = RpcGroup.make(
+/** Upstream T3 Code's RPCs. */
+export const WsUpstreamRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -2079,3 +2290,36 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeThreadRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
 ).middleware(RpcScopeAuthorization);
+
+/**
+ * Astrolabe's own RPCs. They are a group of their own because one group holding every RPC is
+ * past TypeScript's instantiation depth when the server types its handlers; the server builds
+ * each group's handlers separately and serves them together through `WsRpcGroup`.
+ */
+export const WsAstrolabeRpcGroup = RpcGroup.make(
+  WsChangeGroupsListRpc,
+  WsChangeGroupsUpdateRpc,
+  WsReviewGetRecentFilesRpc,
+  WsServerUpsertVimMappingRpc,
+  WsServerRemoveVimMappingRpc,
+  WsServerSetVimOptionRpc,
+  WsWikiListRpc,
+  WsWikiSubscribeRpc,
+  WsWikiRegisterRpc,
+  WsWikiCreateRpc,
+  WsWikiRemoveRpc,
+  WsWikiIndexRpc,
+  WsWikiReadNoteRpc,
+  WsWikiChangeRequestsListRpc,
+  WsWikiChangeRequestsGetRpc,
+  WsWikiChangeRequestsOpenRpc,
+  WsWikiAmendRpc,
+  WsWikiTransformRpc,
+  WsWikiRevertAmendmentRpc,
+  WsWikiMergeRpc,
+  WsWikiSetChangeRequestStatusRpc,
+  WsWikiSetMirrorRpc,
+  WsWikiPushMirrorRpc,
+).middleware(RpcScopeAuthorization);
+
+export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "erasableSyntaxOnly": false,
+    "verbatimModuleSyntax": false,
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        // Diagnostic severities are deep-merged with tsconfig.base.json; this is browser code
+        // outside Effect, so the global Date/console/timers/fetch rules do not apply.
+        "diagnosticSeverity": {
+          "globalDate": "off",
+          "globalConsole": "off",
+          "globalRandom": "off",
+          "globalTimers": "off",
+          "globalFetch": "off"
+        }
+      }
+    ]
+  },
+  "include": ["src", "vite.config.ts"]
+}

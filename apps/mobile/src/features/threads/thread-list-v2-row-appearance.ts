@@ -21,6 +21,17 @@ export const selectedThreadRowColors = {
   mutedIconTintClassName: "accent-thread-selected-foreground-muted",
 };
 
+/** A row's colours on the screen surface (not the sidebar), which read no theme values. */
+export const THREAD_LIST_V2_SCREEN_ROW = {
+  className: "bg-screen",
+  interactionClassName: "bg-row-hover",
+  foregroundClassName: "text-foreground",
+  mutedForegroundClassName: "text-foreground-muted",
+  tertiaryForegroundClassName: "text-foreground-tertiary",
+  mutedIconTintClassName: "accent-foreground-muted",
+  tertiaryIconTintClassName: "accent-foreground-tertiary",
+} as const;
+
 export function getThreadListV2NewBranchMenuTitle(_branch: string) {
   return "New thread on branch";
 }
@@ -42,22 +53,26 @@ export function getThreadListV2RowAppearance(
     : undefined;
 
   return {
-    className: sidebarPane ? undefined : "bg-screen",
-    interactionClassName: sidebarPane ? "bg-thread-hover" : "bg-row-hover",
+    className: sidebarPane ? undefined : THREAD_LIST_V2_SCREEN_ROW.className,
+    interactionClassName: sidebarPane
+      ? "bg-thread-hover"
+      : THREAD_LIST_V2_SCREEN_ROW.interactionClassName,
     interactionOpacity: selected ? 0 : 1,
-    foregroundClassName: sidebarPane ? "text-drawer-foreground" : "text-foreground",
+    foregroundClassName: sidebarPane
+      ? "text-drawer-foreground"
+      : THREAD_LIST_V2_SCREEN_ROW.foregroundClassName,
     mutedForegroundClassName: sidebarPane
       ? "text-drawer-foreground-muted"
-      : "text-foreground-muted",
+      : THREAD_LIST_V2_SCREEN_ROW.mutedForegroundClassName,
     tertiaryForegroundClassName: sidebarPane
       ? "text-drawer-foreground-muted"
-      : "text-foreground-tertiary",
+      : THREAD_LIST_V2_SCREEN_ROW.tertiaryForegroundClassName,
     mutedIconTintClassName: sidebarPane
       ? "accent-drawer-foreground-muted"
-      : "accent-foreground-muted",
+      : THREAD_LIST_V2_SCREEN_ROW.mutedIconTintClassName,
     tertiaryIconTintClassName: sidebarPane
       ? "accent-drawer-foreground-muted"
-      : "accent-foreground-tertiary",
+      : THREAD_LIST_V2_SCREEN_ROW.tertiaryIconTintClassName,
     style,
     cardStyle: sidebarPane ? { ...style, ...THREAD_LIST_V2_SIDEBAR_ROW_STYLE } : undefined,
     swipeContainerStyle,

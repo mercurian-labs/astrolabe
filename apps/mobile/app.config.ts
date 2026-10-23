@@ -18,6 +18,9 @@ const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
+// Android layers are rendered by scripts/export-android-icons.ts from the Icon Composer sources.
+// The monogram sits inside the adaptive safe zone; the channel's ground is a full-bleed background.
+// Nightly's light ink needs its own foreground.
 const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (
@@ -35,25 +38,25 @@ const DEVELOPMENT_ASSETS = {
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#347FF8",
+  androidAdaptiveBackgroundColor: "#D3C39C",
   androidAdaptiveBackgroundImage: "./assets/android-icon-background-dev.png",
   androidSplashIcon: "./assets/android-splash-icon-dev.png",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#00639B",
+  androidNotificationColor: "#A0492A",
 } as const;
 
 const PREVIEW_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
-  androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#111533",
+  androidAdaptiveForeground: "./assets/android-icon-foreground-nightly.png",
+  androidAdaptiveBackgroundColor: "#2E2B28",
   androidAdaptiveBackgroundImage: "./assets/android-icon-background-nightly.png",
   androidSplashIcon: "./assets/android-splash-icon-nightly.png",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#7565C7",
+  androidNotificationColor: "#A0492A",
 } as const;
 
 const RELEASE_ASSETS = {
@@ -61,37 +64,34 @@ const RELEASE_ASSETS = {
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#000000",
-  androidAdaptiveBackgroundImage: undefined,
+  androidAdaptiveBackgroundColor: "#F1E9DC",
+  androidAdaptiveBackgroundImage: "./assets/android-icon-background-prod.png",
   androidSplashIcon: "./assets/android-splash-icon-prod.png",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
   androidNotificationIcon: "./assets/android-notification-icon.png",
-  androidNotificationColor: "#FFFFFF",
+  androidNotificationColor: "#A0492A",
 } as const;
 
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
-    scheme: "t3code-dev",
-    iosBundleIdentifier: "com.t3tools.t3code.dev",
-    androidPackage: "com.t3tools.t3code.dev",
-    relyingParty: "clerk.t3.codes",
+    appName: "Astrolabe Dev",
+    scheme: "astrolabe-dev",
+    iosBundleIdentifier: "com.mercurian.astrolabe.dev",
+    androidPackage: "com.mercurian.astrolabe.dev",
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "T3 Code Preview",
-    scheme: "t3code-preview",
-    iosBundleIdentifier: "com.t3tools.t3code.preview",
-    androidPackage: "com.t3tools.t3code.preview",
-    relyingParty: "clerk.t3.codes",
+    appName: "Astrolabe Preview",
+    scheme: "astrolabe-preview",
+    iosBundleIdentifier: "com.mercurian.astrolabe.preview",
+    androidPackage: "com.mercurian.astrolabe.preview",
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "T3 Code",
-    scheme: "t3code",
-    iosBundleIdentifier: "com.t3tools.t3code",
-    androidPackage: "com.t3tools.t3code",
-    relyingParty: "clerk.t3.codes",
+    appName: "Astrolabe",
+    scheme: "astrolabe",
+    iosBundleIdentifier: "com.mercurian.astrolabe",
+    androidPackage: "com.mercurian.astrolabe",
     assets: RELEASE_ASSETS,
   },
 } as const;
@@ -132,7 +132,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "SubscriptionUsage",
         displayName: "Subscription usage",
-        description: "Subscription quotas from your connected T3 Code environments.",
+        description: "Subscription quotas from your connected Astrolabe environments.",
         ios: {
           configuration: {
             title: "Subscription usage",
@@ -183,7 +183,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "AgentActivity",
         displayName: "Agent Activity",
-        description: "Shows the current state of active T3 Code agents.",
+        description: "Shows the current state of active Astrolabe agents.",
         android: null,
         ios: { supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"] },
       },
@@ -226,7 +226,7 @@ const config: ExpoConfig = {
   slug: "t3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
-  version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.0.0",
+  version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.1.0",
   runtimeVersion: {
     // Development manifests resolve on every launch, so avoid fingerprint's
     // expensive native-project calculation there. Preview and production stay
@@ -247,14 +247,10 @@ const config: ExpoConfig = {
     supportsTablet: true,
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
-    // does not fall back to a personal team (which cannot sign app groups,
-    // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
-    associatedDomains: [
-      `applinks:${variant.relyingParty}`,
-      `webcredentials:${variant.relyingParty}`,
-    ],
+    // Pin code signing to the Mercurian team so non-interactive `expo run:ios`
+    // does not fall back to a personal team (which cannot sign app groups or
+    // push notification entitlements).
+    appleTeamId: "SC9Q89Q4B6",
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
     },
@@ -268,8 +264,8 @@ const config: ExpoConfig = {
         NSAllowsArbitraryLoads: true,
       },
       NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
-      NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+        "Allow Astrolabe to connect to Astrolabe servers on your local network or tailnet.",
+      NSPhotoLibraryAddUsageDescription: "Allow Astrolabe to save images to your photo library.",
       // "Audio, AirPlay, and Picture in Picture": the browser screen's system
       // picture in picture needs it to start and to stay up outside the app.
       UIBackgroundModes: ["audio"],
@@ -355,9 +351,6 @@ const config: ExpoConfig = {
         mode: APP_VARIANT === "development" ? "development" : "production",
       },
     ],
-    // appleSignIn must be gated here: withoutIosPersonalTeamCapabilities.cjs runs before
-    // plugins earlier in this array, so it cannot strip the entitlement Clerk would add.
-    ["@clerk/expo", { theme: "./clerk-theme.json", appleSignIn: !isIosPersonalTeamBuild }],
     "expo-web-browser",
     [
       "expo-quick-actions",
@@ -378,7 +371,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow T3 Code to use your microphone for voice input.",
+        microphonePermission: "Allow Astrolabe to use your microphone for voice input.",
         recordAudioAndroid: false,
         enableBackgroundPlayback: false,
         enableBackgroundRecording: false,
@@ -387,7 +380,7 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission: "Allow Astrolabe to access your camera so you can scan pairing QR codes.",
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,
@@ -468,19 +461,10 @@ const config: ExpoConfig = {
     relay: {
       url: repoEnv.T3CODE_RELAY_URL ?? null,
     },
-    clerk: {
-      publishableKey: repoEnv.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? null,
-      jwtTemplate: repoEnv.EXPO_PUBLIC_CLERK_JWT_TEMPLATE ?? null,
+    // Astrolabe accounts (app.astrolabe.sh); see src/features/cloud/account.ts.
+    auth: {
+      url: repoEnv.T3CODE_AUTH_URL ?? null,
     },
-    // @clerk/expo reads these from `extra`
-    // under their exact env-var names (not nested), and its config plugin reads
-    // the iOS URL scheme at prebuild to register it in Info.plist.
-    // Unset values must be omitted (not null): the public manifest serializes
-    // null to {}, which is truthy and would defeat Clerk's fallback checks.
-    EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID,
-    EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_CLIENT_ID,
-    EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID,
-    EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME: repoEnv.EXPO_PUBLIC_CLERK_GOOGLE_IOS_URL_SCHEME,
     observability: {
       tracesUrl: repoEnv.EXPO_PUBLIC_OTLP_TRACES_URL ?? "https://api.axiom.co/v1/traces",
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,

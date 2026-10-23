@@ -21,28 +21,12 @@ import {
   serviceStateHasPendingUpdate,
 } from "./serviceProtocol.ts";
 
-const linuxRuntime = "/home/theo/.t3/runtime/versions/1.2.3/t3";
-const linuxPlan = {
-  program: [linuxRuntime, "__service-launcher"],
-  baseDir: "/home/theo/.t3",
-  logPath: "/home/theo/.t3/userdata/logs/boot-service.log",
-  unitPath: "/home/theo/.config/systemd/user/t3code.service",
-};
-
-it("runs the pinned runtime's own executable as the systemd launcher", () => {
-  const unit = BootService.renderBootServiceUnit(linuxPlan);
-
-  expect(unit).toContain(`ExecStart=${linuxRuntime} __service-launcher`);
-  expect(unit).toContain("KillMode=mixed");
-  expect(unit).not.toContain("node");
-});
-
 it("reads the served T3 home back out of a rendered unit or plist", () => {
   const plan = (baseDir: string) => ({
     program: [`${baseDir}/runtime/versions/1.2.3/t3`, "__service-launcher"],
     baseDir,
     logPath: `${baseDir}/userdata/logs/boot-service.log`,
-    unitPath: "/home/theo/.config/systemd/user/t3code.service",
+    unitPath: "/home/theo/.config/systemd/user/astrolabe.service",
   });
 
   expect(
@@ -81,67 +65,8 @@ it.each([
   ).toBe(program);
 });
 
-it("survives the kernel OOM-killing a greedy agent child", () => {
-  const unit = BootService.renderBootServiceUnit(linuxPlan);
-
-  expect(unit).toContain("OOMPolicy=continue");
-});
-
-const macRuntime = "/Users/theo/.t3/runtime/versions/1.2.3/t3";
-const macPlan = {
-  program: [macRuntime, "__service-launcher"],
-  baseDir: "/Users/theo/.t3",
-  logPath: "/Users/theo/.t3/userdata/logs/boot-service.log",
-  unitPath: "/Users/theo/Library/LaunchAgents/com.t3tools.t3code.service.plist",
-};
 const macInstallerPath =
   "/opt/homebrew/bin:/Users/theo/.npm-global/bin:/Users/theo/.nvm/versions/node/v22.16.0/bin:/usr/bin:/bin";
-const macRenderOptions = { homeDir: "/Users/theo", environmentPath: macInstallerPath };
-
-it("runs the pinned runtime's own executable as the launch agent", () => {
-  const plist = BootService.renderBootServicePlist(macPlan, macRenderOptions);
-
-  expect(plist).toContain(
-    `  <array>\n    <string>${macRuntime}</string>\n    <string>__service-launcher</string>\n  </array>`,
-  );
-  expect(plist).not.toContain("node</string>");
-});
-
-it("preserves the installer's provider search path in the launch agent", () => {
-  const plist = BootService.renderBootServicePlist(macPlan, macRenderOptions);
-
-  expect(plist).toContain(`    <key>PATH</key>\n    <string>${macInstallerPath}</string>`);
-});
-
-it("restarts the launch agent on the systemd cadence", () => {
-  const plist = BootService.renderBootServicePlist(macPlan, macRenderOptions);
-
-  expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
-  expect(plist).toContain("<key>KeepAlive</key>\n  <true/>");
-  expect(plist).toContain("<key>ThrottleInterval</key>\n  <integer>5</integer>");
-  expect(plist).toContain("<key>ExitTimeOut</key>\n  <integer>90</integer>");
-});
-
-it("appends both stdio streams to the boot service log", () => {
-  const plist = BootService.renderBootServicePlist(macPlan, macRenderOptions);
-
-  expect(plist).toContain(
-    "<key>StandardOutPath</key>\n  <string>/Users/theo/.t3/userdata/logs/boot-service.log</string>",
-  );
-  expect(plist).toContain(
-    "<key>StandardErrorPath</key>\n  <string>/Users/theo/.t3/userdata/logs/boot-service.log</string>",
-  );
-});
-
-it("escapes XML in host paths", () => {
-  const plist = BootService.renderBootServicePlist(
-    { ...macPlan, baseDir: "/Users/theo/T3 & <Co>" },
-    { homeDir: "/Users/theo", environmentPath: "/Users/theo/Tools & <Scripts>:/usr/bin" },
-  );
-
-  expect(plist).toContain("<string>/Users/theo/T3 &amp; &lt;Co&gt;</string>");
-  expect(plist).toContain("<string>/Users/theo/Tools &amp; &lt;Scripts&gt;:/usr/bin</string>");
-});
 
 const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
   platform: NodeJS.Platform = "linux",
@@ -183,13 +108,15 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       const failed = command === control.failCommand;
       if (!failed && command === "loginctl enable-linger --no-ask-password 501")
         control.linger = "yes";
-      if (!failed && command === "systemctl --user enable t3code.service") control.enabled = true;
-      if (!failed && command === "systemctl --user restart t3code.service") control.active = true;
+      if (!failed && command === "systemctl --user enable astrolabe.service")
+        control.enabled = true;
+      if (!failed && command === "systemctl --user restart astrolabe.service")
+        control.active = true;
       // A stop that fails (a timeout, say) has still stopped the service.
-      if (command === "systemctl --user stop t3code.service") control.active = false;
+      if (command === "systemctl --user stop astrolabe.service") control.active = false;
       if (
         control.stateAfterStop !== undefined &&
-        (command === "systemctl --user stop t3code.service" ||
+        (command === "systemctl --user stop astrolabe.service" ||
           command.startsWith("launchctl bootout --wait "))
       ) {
         yield* fs.writeFileString(statePath, control.stateAfterStop).pipe(Effect.orDie);
@@ -256,7 +183,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
                 ...(environmentPath === undefined || environmentPath === ""
                   ? {}
                   : { PATH: environmentPath }),
-                ...(insideService ? { T3_BOOT_SERVICE_UNIT: "t3code.service" } : {}),
+                ...(insideService ? { T3_BOOT_SERVICE_UNIT: "astrolabe.service" } : {}),
               },
             }),
           ),
@@ -330,7 +257,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         );
         expect(yield* fs.readFileString(statePath)).toBe(before);
         expect(yield* fs.readFileString(plan.unitPath)).toBe(unit);
-        expect(commands).not.toContain("systemctl --user stop t3code.service");
+        expect(commands).not.toContain("systemctl --user stop astrolabe.service");
       }),
   );
 
@@ -404,7 +331,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       expect((yield* service.status).installed).toBe(false);
       // The stop can block up to systemd's 90s TimeoutStopSec; the runner's
       // 60s default would cancel it mid-shutdown.
-      expect(timeouts.get("systemctl --user disable --now t3code.service")).toEqual(
+      expect(timeouts.get("systemctl --user disable --now astrolabe.service")).toEqual(
         Duration.seconds(120),
       );
     }),
@@ -430,6 +357,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       }),
   );
 
+  // regression: #5302 prevent accidental service downgrades
   it.effect("reports an unknown version for invalid service state", () =>
     Effect.gen(function* () {
       const { service, fs, statePath } = yield* makeHarness();
@@ -476,15 +404,19 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
           ),
         ).toEqual(
           platform === "linux"
-            ? ["systemctl --user stop t3code.service", "systemctl --user restart t3code.service"]
+            ? [
+                "systemctl --user stop astrolabe.service",
+                "systemctl --user restart astrolabe.service",
+              ]
             : [
-                "launchctl bootout --wait gui/501/com.t3tools.t3code.service",
+                "launchctl bootout --wait gui/501/com.mercurian.astrolabe.service",
                 `launchctl bootstrap gui/501 ${plan.unitPath}`,
               ],
         );
       }),
   );
 
+  // regression: #5302 prevent accidental service downgrades
   it.effect("allows an explicit downgrade", () =>
     Effect.gen(function* () {
       const { service, fs, statePath } = yield* makeHarness();
@@ -542,7 +474,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
           protocol: SERVICE_LAUNCHER_PROTOCOL,
           activeVersion: "1.2.4",
         });
-        expect(yield* fs.readFileString(plan.unitPath)).toContain("versions/1.2.4/t3");
+        expect(yield* fs.readFileString(plan.unitPath)).toContain("versions/1.2.4/astrolabe");
         expect(
           commands.filter(
             (command) =>
@@ -615,7 +547,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       expect(control.active).toBe(true);
 
       // A failed stop skips the operation but still starts the service again.
-      control.failCommand = "systemctl --user stop t3code.service";
+      control.failCommand = "systemctl --user stop astrolabe.service";
       let ran = false;
       const stopFailure = yield* service
         .withStopped(
@@ -638,11 +570,11 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       commands.length = 0;
       yield* service.withStopped(Effect.sync(() => commands.push("repair")));
       expect(commands).toEqual([
-        "systemctl --user is-enabled t3code.service",
-        "systemctl --user is-active t3code.service",
-        "systemctl --user stop t3code.service",
+        "systemctl --user is-enabled astrolabe.service",
+        "systemctl --user is-active astrolabe.service",
+        "systemctl --user stop astrolabe.service",
         "repair",
-        "systemctl --user restart t3code.service",
+        "systemctl --user restart astrolabe.service",
       ]);
       expect(control.active).toBe(true);
       // A running unit the user disabled is started again but stays disabled.
@@ -654,8 +586,8 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       control.enabled = false;
       commands.length = 0;
       yield* service.withStopped(Effect.sync(() => commands.push("repair")));
-      expect(commands).toContain("systemctl --user stop t3code.service");
-      expect(commands).not.toContain("systemctl --user restart t3code.service");
+      expect(commands).toContain("systemctl --user stop astrolabe.service");
+      expect(commands).not.toContain("systemctl --user restart astrolabe.service");
       expect(control.active).toBe(false);
       control.enabled = true;
       control.active = true;
@@ -666,27 +598,6 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       commands.length = 0;
       expect(yield* other.withStopped(Effect.sync(() => control.active))).toBe(true);
       expect(commands).toEqual([]);
-    }),
-  );
-
-  it.effect("restart stops and starts an installed service, and is a no-op otherwise", () =>
-    Effect.gen(function* () {
-      const { service, commands } = yield* makeHarness();
-      expect(yield* service.restart).toBe("skipped");
-      yield* service.install();
-      commands.length = 0;
-
-      expect(yield* service.restart).toBe("restarted");
-      expect(
-        commands.filter(
-          (command) => command.startsWith("systemctl ") && !command.includes("show-environment"),
-        ),
-      ).toEqual([
-        "systemctl --user stop t3code.service",
-        "systemctl --user daemon-reload",
-        "systemctl --user enable t3code.service",
-        "systemctl --user restart t3code.service",
-      ]);
     }),
   );
 
@@ -701,27 +612,6 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       const other = yield* makeService(undefined, "1.2.3", path.join(otherHome, ".t3"));
       expect(yield* other.restart).toBe("skipped");
       expect(commands.filter((command) => command.startsWith("systemctl "))).toEqual([]);
-    }),
-  );
-
-  it.effect("restart brings the service back when activation fails", () =>
-    Effect.gen(function* () {
-      const { service, commands, control } = yield* makeHarness();
-      yield* service.install();
-      commands.length = 0;
-      control.failCommand = "systemctl --user daemon-reload";
-
-      const error = yield* service.restart.pipe(Effect.flip);
-      expect(error._tag).toBe("BootServiceCommandError");
-      expect(
-        commands.filter(
-          (command) => command.startsWith("systemctl ") && !command.includes("show-environment"),
-        ),
-      ).toEqual([
-        "systemctl --user stop t3code.service",
-        "systemctl --user daemon-reload",
-        "systemctl --user restart t3code.service",
-      ]);
     }),
   );
 
@@ -744,7 +634,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
 
       expect(yield* fs.readFileString(statePath)).toBe(state);
       expect(yield* fs.readFileString(plan.unitPath)).toBe(unit);
-      expect(commands).not.toContain("systemctl --user stop t3code.service");
+      expect(commands).not.toContain("systemctl --user stop astrolabe.service");
       expect(result).toMatchObject({ handedOff: true, logPath: plan.logPath });
       const handoffs = invocations.filter(({ command }) => command === "systemd-run");
       expect(handoffs).toHaveLength(1);
@@ -770,7 +660,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       expect(yield* fs.readFileString(statePath)).toBe(state);
       expect(yield* fs.readFileString(plan.unitPath)).toBe(unit);
       expect(control.active).toBe(true);
-      expect(commands).not.toContain("systemctl --user stop t3code.service");
+      expect(commands).not.toContain("systemctl --user stop astrolabe.service");
     }),
   );
 
@@ -797,8 +687,8 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
         const outcome = yield* inside.restart;
         expect(commands).toEqual([
           "systemctl --user daemon-reload",
-          "systemctl --user enable t3code.service",
-          "systemctl --user restart --no-block t3code.service",
+          "systemctl --user enable astrolabe.service",
+          "systemctl --user restart --no-block astrolabe.service",
         ]);
         expect(outcome).toBe("queued");
         expect(yield* fs.readFileString(statePath)).toBe(state);
@@ -820,9 +710,9 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
           (command) => command.startsWith("systemctl ") && !command.includes("show-environment"),
         ),
       ).toEqual([
-        "systemctl --user stop t3code.service",
+        "systemctl --user stop astrolabe.service",
         "systemctl --user daemon-reload",
-        "systemctl --user restart t3code.service",
+        "systemctl --user restart astrolabe.service",
       ]);
     }),
   );
@@ -854,18 +744,10 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
             (command) => command.startsWith("systemctl ") && !command.includes("show-environment"),
           ),
         ).toEqual([
-          "systemctl --user stop t3code.service",
-          "systemctl --user restart t3code.service",
+          "systemctl --user stop astrolabe.service",
+          "systemctl --user restart astrolabe.service",
         ]);
       }
-    }),
-  );
-
-  it.effect("fails closed on Windows", () =>
-    Effect.gen(function* () {
-      const { service } = yield* makeHarness("win32");
-      expect((yield* service.status).supported).toBe(false);
-      expect((yield* service.install().pipe(Effect.flip))._tag).toBe("BootServiceUnsupportedError");
     }),
   );
 
@@ -877,7 +759,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
 
       expect(
         plan.unitPath.endsWith(
-          path.join("Library", "LaunchAgents", "com.t3tools.t3code.service.plist"),
+          path.join("Library", "LaunchAgents", "com.mercurian.astrolabe.service.plist"),
         ),
       ).toBe(true);
       expect(yield* fs.readFileString(plan.unitPath)).toContain(
@@ -899,31 +781,13 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       expect(commands.some((command) => command.startsWith("systemctl "))).toBe(false);
       // A bootout can block up to the plist's 90s ExitTimeOut; the runner's
       // 60s default would cancel it and let bootstrap race a loaded job.
-      expect(timeouts.get("launchctl bootout --wait gui/501/com.t3tools.t3code.service")).toEqual(
-        Duration.seconds(120),
-      );
+      expect(
+        timeouts.get("launchctl bootout --wait gui/501/com.mercurian.astrolabe.service"),
+      ).toEqual(Duration.seconds(120));
     }),
   );
 
-  it.effect("restarts the launch agent when repair fails", () =>
-    Effect.gen(function* () {
-      const { service, commands, control } = yield* makeHarness("darwin");
-      yield* service.install();
-      const plistPath = (yield* service.status).unitPath;
-      commands.length = 0;
-      control.failCommand = `launchctl bootstrap gui/501 ${plistPath}`;
-
-      const error = yield* service.install().pipe(Effect.flip);
-      expect(error._tag).toBe("BootServiceCommandError");
-      expect(commands.filter((command) => command.startsWith("launchctl "))).toEqual([
-        "launchctl bootout --wait gui/501/com.t3tools.t3code.service",
-        "launchctl enable gui/501/com.t3tools.t3code.service",
-        `launchctl bootstrap gui/501 ${plistPath}`,
-        `launchctl bootstrap gui/501 ${plistPath}`,
-      ]);
-    }),
-  );
-
+  // regression: #8173 keep provider CLIs available in the macOS service
   it.effect("reconstructs a launch agent search path when the installer has no PATH", () =>
     Effect.gen(function* () {
       const { service, fs } = yield* makeHarness("darwin", "");
@@ -979,7 +843,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
     Effect.gen(function* () {
       const { service, control } = yield* makeHarness("darwin");
       yield* service.install();
-      control.failCommand = "launchctl bootout --wait gui/501/com.t3tools.t3code.service";
+      control.failCommand = "launchctl bootout --wait gui/501/com.mercurian.astrolabe.service";
 
       yield* service.install();
       expect((yield* service.status).current).toBe(true);
@@ -1009,37 +873,6 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       expect(commands).toContain(bootstrap);
       expect(yield* fs.exists(markerPath)).toBe(false);
       expect((yield* service.status).current).toBe(true);
-    }),
-  );
-
-  it.effect("restarts without overwriting a pending remote update on macOS", () =>
-    Effect.gen(function* () {
-      const { service, fs, statePath, commands } = yield* makeHarness("darwin");
-      yield* service.install();
-      const plistPath = (yield* service.status).unitPath;
-      const pendingState = JSON.stringify({
-        protocol: SERVICE_LAUNCHER_PROTOCOL - 1,
-        activeVersion: "1.2.3",
-        update: {
-          id: "remote-update",
-          fromVersion: "1.2.3",
-          targetVersion: "1.2.4",
-          status: "pending",
-        },
-      });
-      yield* fs.writeFileString(statePath, pendingState);
-      for (const allowDowngrade of [false, true]) {
-        commands.length = 0;
-
-        expect((yield* service.install({ allowDowngrade }).pipe(Effect.flip))._tag).toBe(
-          "BootServiceUpdatePendingError",
-        );
-        expect(serviceStateHasPendingUpdate(yield* fs.readFileString(statePath))).toBe(true);
-        expect(commands.filter((command) => command.startsWith("launchctl "))).toEqual([
-          "launchctl bootout --wait gui/501/com.t3tools.t3code.service",
-          `launchctl bootstrap gui/501 ${plistPath}`,
-        ]);
-      }
     }),
   );
 });

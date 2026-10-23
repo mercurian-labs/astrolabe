@@ -6,7 +6,9 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { ALCHEMY_DEV } from "alchemy/Phase";
 import * as Planetscale from "alchemy/Planetscale";
+import * as Redacted from "effect/Redacted";
 
 import { PublishClientConfig, tokenDigest } from "./src/clientConfig.ts";
 import * as RelayDb from "./src/db.ts";
@@ -17,15 +19,34 @@ import * as RelayWorker from "./src/worker.ts";
 export default Alchemy.Stack(
   "T3CodeRelay",
   {
-    providers: Layer.mergeAll(
-      Axiom.providers(),
-      Cloudflare.providers(),
-      Drizzle.providers(),
-      Planetscale.providers(),
-    ),
-    state: Cloudflare.state(),
+    providers:
+      process.env.ALCHEMY_DEV === "true"
+        ? Cloudflare.providers()
+        : Layer.mergeAll(
+            Axiom.providers(),
+            Cloudflare.providers(),
+            Drizzle.providers(),
+            Planetscale.providers(),
+          ),
+    // Local dev needs no Cloudflare account; see src/local.ts.
+    state: process.env.ALCHEMY_DEV === "true" ? Alchemy.localState() : Cloudflare.state(),
   },
   Effect.gen(function* () {
+    if (yield* ALCHEMY_DEV) {
+      const api = yield* RelayWorker.Api;
+      // Points this checkout's web and desktop dev builds at the local relay.
+      yield* PublishClientConfig({
+        url: api.url,
+        mobileTracingUrl: "",
+        mobileTracingDataset: "",
+        mobileTracingToken: Redacted.make(""),
+        clientTracingUrl: "",
+        clientTracingDataset: "",
+        clientTracingToken: Redacted.make(""),
+        tokenDigest: "",
+      });
+      return { workerName: api.workerName, url: api.url };
+    }
     const db = yield* RelayDb.PlanetscaleDatabase;
     const hyperdrive = yield* RelayDb.RelayHyperdrive;
     const managedEndpointZone = yield* ManagedEndpointZone.pipe(Effect.orDie);
