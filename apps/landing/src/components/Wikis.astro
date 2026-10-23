@@ -19,7 +19,7 @@
               </div>
               <div class="surface__ui">
           <figure class="window">
-            <div class="app app--poster app--doc" role="img" aria-label="The Wikis section of Astrolabe. The sidebar lists an engineering wiki's documents under a row for one open change; the document Rounding is open, and Claude is replacing a sentence in it with its own cursor, beside Accept all and Revert all.">
+            <div class="app app--poster app--doc" role="img" aria-label="The Wikis section of Astrolabe. The sidebar lists an engineering wiki's documents under a row for one open change; the document Rounding is open, and Claude is replacing a sentence in it with its own cursor, above a bar to accept or revert its changes.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -68,10 +68,11 @@
                 </aside>
                 <div class="pane pane--doc">
                   <div class="doc__bar">
-                    <span>In “Ledger owns rounding”</span><span class="doc__dot">·</span><span class="doc__working">Claude is editing</span>
+                    <span class="doc__name">Rounding</span>
+                    <span class="doc__scope">In “Ledger owns rounding” · <span class="doc__working">agent working</span></span>
                     <span class="spacer"></span>
-                    <span class="mini">Revert all</span>
-                    <span class="mini mini--solid">Accept all</span>
+                    <span class="mini mini--ghost">Discard edits</span>
+                    <span class="mini mini--solid">Save to change request</span>
                   </div>
                   <article class="doc">
                     <h4>Rounding</h4>
@@ -95,6 +96,13 @@
                       how existing entries were written, which <a>Reconciliation</a> depends on.
                     </p>
                   </article>
+                  <div class="cbar">
+                    <span class="cbar__count">1 agent change</span>
+                    <span class="cbar__btn">Previous</span>
+                    <span class="cbar__btn">Next</span>
+                    <span class="cbar__btn">Accept all</span>
+                    <span class="cbar__btn">Revert all</span>
+                  </div>
                 </div>
               </div>
             </div>

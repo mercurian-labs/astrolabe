@@ -2032,19 +2032,36 @@ hidden, leaves the sticky stage working). */
 }
 
 .pane--doc {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
+/* As the app's note header: one line as tall as the tab strip above it, the note's name, where it
+   is, and Discard edits and Save to change request while there are unsaved edits. */
 .doc__bar {
   display: flex;
   flex: none;
   align-items: center;
   gap: 0.5em;
-  height: 2.75em;
-  padding: 0 1.25em 0 2.6em;
-  font-size: 0.8125em;
+  height: var(--tb);
+  padding: 0 1.5em;
   color: var(--app-muted);
   border-bottom: 1px solid var(--app-border);
+}
+.doc__name {
+  color: var(--app-text);
+  font-weight: 600;
+}
+.doc__scope {
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+.doc__bar .mini {
+  font-size: 0.75em;
+}
+.doc__bar .mini--ghost {
+  border-color: transparent;
+  background: transparent;
 }
 .doc__working {
   color: var(--app-agent);
@@ -2768,35 +2785,29 @@ hidden, leaves the sticky stage working). */
   color: #fff;
 }
 /* The bar that collects the agent's changes in the note, floating over the page's foot. */
+/* The editor's agent-change bar, as packages/editor draws it: a flat strip along the bottom of the
+   note with the count and four plain buttons. */
 .cbar {
   position: absolute;
-  left: 50%;
-  bottom: 1.3em;
-  translate: -50% 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   gap: 0.3em;
-  padding: 0.3em 0.3em 0.3em 0.9em;
-  border: 1px solid var(--app-border);
-  border-radius: 0.7em;
+  padding: 0.3em 0.6em;
+  border-top: 1px solid var(--app-border);
   background: var(--app-surface);
-  box-shadow: 0 6px 18px -8px oklch(0 0 0 / 0.25);
-  font-size: 0.82em;
+  font-size: 0.8em;
   white-space: nowrap;
 }
 .cbar__count {
-  margin-right: 0.5em;
-  font-weight: 500;
+  flex: 1;
+  opacity: 0.75;
 }
 .cbar__btn {
-  padding: 0.35em 0.65em;
-  border-radius: 0.5em;
-  color: var(--app-muted);
-}
-.cbar__btn--solid {
-  background: var(--app-accent);
-  color: var(--app-accent-fg);
-  font-weight: 500;
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
 }
 
 /* Changes: the group card leads the sidebar; the switch slides when it is turned on. */
@@ -2983,16 +2994,7 @@ hidden, leaves the sticky stage working). */
   cursor: pointer;
 }
 .app--tour[data-state="exploring"]
-  :is(
-    .card,
-    .slim,
-    .tab:not(.is-front),
-    .mini,
-    .chip,
-    .sub,
-    .cbar__btn:not(.cbar__btn--solid),
-    .divider__act
-  ):hover {
+  :is(.card, .slim, .tab:not(.is-front), .mini, .chip, .sub, .cbar__btn, .divider__act):hover {
   background: var(--app-row-active);
 }
 .app--tour[data-state="exploring"] .rail__item:hover {
@@ -3119,7 +3121,7 @@ hidden, leaves the sticky stage working). */
   .app--tour .note__head {
     padding-inline: 1.5em;
   }
-  .app--tour .cbar__btn:not(.cbar__btn--solid, :nth-last-child(2)) {
+  .app--tour .cbar__btn:not(:nth-last-child(-n + 2)) {
     display: none;
   }
   .app--tour .grp,
