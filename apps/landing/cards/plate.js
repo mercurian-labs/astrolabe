@@ -59,7 +59,7 @@ done(
     const ground = { scale, offset: [W / 2 - BASIN[0] * scale, H / 2 - BASIN[1] * scale] };
     const sun = ink === "day" ? { alt: 40, az: 292 } : { alt: 16, az: 292 };
     const gain = Number(params.get("gain") ?? (ink === "day" ? 1 : 0.65));
-    const density = Number(params.get("density") ?? 0.82);
+    const density = Number(params.get("density") ?? (ink === "day" ? 0.9 : 0.82));
     await print(canvas, { ink, plate: await inkPlate(inked), sun, ground, gain, density });
 
     if (spec.monogram) return;

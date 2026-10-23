@@ -156,7 +156,7 @@ const fragment = `#version 300 es
     } else {
       // The day print: ink where the ground falls below the paper, as [02]'s ground prints by day.
       float r = lit / 0.225;
-      float dark = (0.05 + 0.5 * pow(clamp(1.0 - r, 0.0, 1.0), 1.1)) * u_gain * clear;
+      float dark = (0.03 + 0.5 * pow(clamp(1.0 - r, 0.0, 1.0), 1.1)) * u_gain * clear;
       vec2 cover = grain(dark, olive * 0.85, dev);
       color = u_paper;
       color = mix(color, u_olive, cover.y * 0.42);
