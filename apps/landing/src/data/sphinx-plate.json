@@ -1,0 +1,18 @@
+{
+  "comment": "Fig. 5 of astrolabe-site's observatory plates (lab/observatories/plates.json, sphinx-1), made by its scripts/observatories/. The plate is a 1000-unit square; box is the art's x, y, width, height in it.",
+  "assets": "/assets/art/sphinx",
+  "size": [1024, 936],
+  "relief": 170.67,
+  "box": [67.4, 204.0, 805.2, 736.0],
+  "callouts": [
+    { "at": [503.0, 277.6], "label": "Dome", "key": true, "lx": 780, "ly": 244 },
+    { "at": [325.9, 499.9], "label": "Terrace", "lx": 800, "ly": 470 }
+  ],
+  "fig": "Fig. 3 · Sphinx Observatory · Jungfraujoch · 3,571 m · 1937",
+  "notes": "Elev. 3,571 m",
+  "alt": "A print of the Sphinx Observatory on its rock at the Jungfraujoch, lit by the astrolabe's sun",
+  "credit": "Roy Egloff",
+  "source": "https://commons.wikimedia.org/wiki/File:CH.BE.Grindelwald_2021-04-20_Jungfraujoch_Sphinx-Observatory.jpg",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/"
+}
