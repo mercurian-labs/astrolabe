@@ -47,7 +47,8 @@ const JOBS = [
   },
   {
     out: "public/og/card-instrument.jpg",
-    page: `instrument.html?${q({ line: headline })}`,
+    // An October afternoon in New York: the sun low in the south-west, the rete well clear of the rule.
+    page: `instrument.html?${q({ line: headline, t: "2026-10-21T15:30", tz: "America/New_York", ground: "hemisphere" })}`,
     w: 1200,
     h: 630,
   },
@@ -98,11 +99,11 @@ const TYPES = {
   ".woff2": "font/woff2",
 };
 
-// cards/ at /cards/, public/ at the root, as the site serves it.
+// cards/ at /cards/, the page's own scripts and styles at /src/, public/ at the root as the site serves it.
 function serve() {
   const server = createServer(async (req, res) => {
     const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
-    const file = path.startsWith("/cards/") ? join(APP, path) : join(APP, "public", path);
+    const file = /^\/(cards|src)\//.test(path) ? join(APP, path) : join(APP, "public", path);
     if (relative(APP, file).startsWith("..")) return res.writeHead(403).end();
     try {
       const body = await readFile(file);
@@ -140,6 +141,8 @@ try {
     const page = await browser.newPage({
       viewport: { width: job.w, height: job.h },
       deviceScaleFactor: 1,
+      // The instrument arrives set rather than sweeping in.
+      reducedMotion: "reduce",
     });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
