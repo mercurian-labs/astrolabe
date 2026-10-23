@@ -237,6 +237,8 @@ through one of these values in the merge commit.
 | CLI releases          | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off         |
 | Mobile EAS project    | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | unset: OTA updates off       |
 | App Store Connect app | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | unset                        |
+| Store listings        | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden          |
+| Desktop download page | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | unset: links hidden          |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
@@ -261,6 +263,13 @@ through one of these values in the merge commit.
   in-app update check is hidden (it follows `Updates.isEnabled`). The slug is `astrolabe` until an
   EAS project names its own. `eas submit` has no App Store Connect app either: upstream's
   `ascAppId` would have submitted to T3 Code's listing.
+- **Store listings and downloads.** Upstream's links install T3 Tools' apps. **Settings → General
+  → Mobile app** and its search entry show only the stores that have a URL, and nothing without
+  one. The hosted app's "Or download the desktop app" and "Get Astrolabe" links need
+  `DESKTOP_DOWNLOAD_URL`. The mobile app links to no store. `apps/marketing` is upstream's own
+  site, store links and legal pages included. Astrolabe never deploys it: `release.yml`'s
+  marketing jobs look up a Vercel project named `t3code-marketing`, and Astrolabe's site is
+  `apps/landing`. When the release pipeline moves to Astrolabe, drop those jobs.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
@@ -286,7 +295,6 @@ merging upstream doc changes.
 
 Expected exceptions:
 
-- Play Store and App Store links to upstream's listings.
 - `migrate-dev-db`, `devHome`, `dev-runner`'s first-start seed and `setup-worktree`, which still use
   `.t3`.
 - `t3code:` storage keys, which the pattern only matches when they're followed by `//`.
