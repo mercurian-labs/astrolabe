@@ -267,7 +267,7 @@ if (manifesto && motion) {
 }
 
 /* ───────────────────────────── Scrubbed figures: scroll carries a figure's progress, written to --p on
-   its stage, and the CSS draws each mark in its own window of it (drafting.css, [05]). Only while the
+   its stage, and the CSS draws each mark in its own window of it (drafting.css, [04]). Only while the
    figure is active (wide screens with motion; static otherwise, at --p 1) and near the window. */
 
 const scrubQuery = matchMedia("(min-width: 901px) and (min-height: 560px)");
@@ -342,56 +342,6 @@ if (day) {
 }
 
 layoutScrubs();
-
-/* ───────────────────────────── Moves: each drawing plays once on arrival, again on hover. */
-
-const sims = $$("[data-sim]");
-const playSim = (sim) => {
-  if (!motion) return;
-  sim.dataset.played = "true";
-  for (const animation of sim.getAnimations({ subtree: true })) {
-    animation.currentTime = 0;
-    animation.play();
-  }
-};
-const simRunning = (sim) =>
-  sim.getAnimations({ subtree: true }).some((a) => a.playState === "running");
-once(sims, playSim, { threshold: 0.55 });
-for (const sim of sims) {
-  sim.closest(".move").addEventListener("pointerenter", (event) => {
-    if (event.pointerType === "touch" || !sim.dataset.played || simRunning(sim)) return;
-    playSim(sim);
-  });
-}
-
-// On small screens the moves are a scroll-snap row with a pager.
-const moves = $("[data-moves]");
-const pager = $("[data-pager]");
-if (moves && pager) {
-  const items = $$(".move", moves);
-  const buttons = $$("button", pager);
-  pager.hidden = false;
-  buttons.forEach((button, index) => {
-    button.addEventListener("click", () => {
-      const item = items[index];
-      moves.scrollTo({
-        left: item.offsetLeft - moves.offsetLeft,
-        behavior: motion ? "smooth" : "auto",
-      });
-    });
-  });
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const index = items.indexOf(entry.target);
-        buttons.forEach((button, i) => button.setAttribute("aria-current", String(i === index)));
-      }
-    },
-    { root: moves, threshold: 0.6 },
-  );
-  for (const item of items) observer.observe(item);
-}
 
 /* ───────────────────────────── Who it's for: one row open at a time. */
 

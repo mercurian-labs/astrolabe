@@ -1087,7 +1087,7 @@ section {
   }
 }
 
-/* ───────────────────────────────────────── [03] Problems */
+/* ───────────────────────────────────────── [03] Agents: four cards, each a hairline figure */
 
 .pcards {
   display: grid;
@@ -1112,10 +1112,10 @@ section {
 .pcard__rail span:last-child {
   color: var(--ink-3);
 }
-/* Four figures on one field (240 × 160, an 8-unit grid): terminals and chats are framed windows
-   with a title rule, output is rows of rule, time runs along a thin axis. Three weights
-   (ink 1.5, secondary 1, construction 0.75) that hold at any size; rust marks the one thing that goes
-   wrong. The figures are complete at rest. */
+/* Four figures on one field (240 × 160, an 8-unit grid): panes and chats are framed windows with a
+   title rule, output is rows of rule, branches and checkpoints run along a thin line. Three weights
+   (ink 1.5, secondary 1, construction 0.75) that hold at any size; rust marks the one thing each
+   figure is about. The figures are complete at rest. */
 .pcard__fig {
   display: block;
   width: 100%;
@@ -1210,35 +1210,6 @@ path.pf-rs {
   text-wrap: pretty;
 }
 
-@keyframes draw {
-  from {
-    stroke-dashoffset: 1;
-    opacity: 0;
-  }
-  2% {
-    opacity: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-@keyframes pop {
-  from {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-}
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
 @media (hover: hover) and (min-width: 901px) {
   .pcard:is(:hover, :focus-visible) .pcard__title {
     transform: translateX(0.4rem);
@@ -1273,7 +1244,7 @@ path.pf-rs {
   }
 }
 
-/* ───────────────────────────────────────── [05] How the work moves, assembled while you scroll
+/* ───────────────────────────────────────── [04] How the work moves, assembled while you scroll
    One custom property, --p, runs 0 → 1 across the runway. Each mark has its own window (--a to --b)
    and reads its local progress --t from it. Static (no JS, narrow screens, reduced motion): --p is 1
    and the stages stack. */
@@ -3349,7 +3320,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [06] Wikis */
+/* ───────────────────────────────────────── [05] Wikis */
 
 .surface {
   display: grid;
@@ -3442,7 +3413,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [07] Repositories: a thread's checkout, as
+/* ───────────────────────────────────────── [06] Repositories: a thread's checkout, as
    RepositorySidebar and RepositoryFileView draw it. The sidebar's rows are the app's 32 px rows;
    the file's header is its 32 px bar, and its code the editor's code mode, Alabaster's colours. */
 
@@ -3616,7 +3587,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [08] Changes: a change group, and what its states mean */
+/* ───────────────────────────────────────── [07] Changes: a change group, and what its states mean */
 
 .changes__body {
   display: grid;
@@ -3678,471 +3649,10 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [04] Agents: four moves on a centre rule */
-
-.moves {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  row-gap: clamp(1.5rem, 3vw, 3.5rem);
-  padding-block: clamp(3rem, 5vw, 6rem);
-  border-top: 1px solid var(--rule);
-}
-.moves::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--rule);
-}
-.move {
-  position: relative;
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: subgrid;
-  align-items: end;
-}
-/* A checkpoint on the centre rule, level with each caption. */
-.move::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 1.6rem;
-  width: 9px;
-  height: 9px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  transform: translate(-50%, 50%);
-}
-.move__sim {
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: end;
-  width: min(100% - 2 * var(--pad), 33rem);
-  margin-right: clamp(1.5rem, 3.5vw, 4.5rem);
-}
-.move__cap {
-  grid-column: 2;
-  grid-row: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  max-width: 25rem;
-  margin-left: clamp(1.5rem, 3.5vw, 4.5rem);
-  padding-bottom: 1rem;
-}
-.move:nth-child(even) .move__sim {
-  grid-column: 2;
-  justify-self: start;
-  margin-right: 0;
-  margin-left: clamp(1.5rem, 3.5vw, 4.5rem);
-}
-.move:nth-child(even) .move__cap {
-  grid-column: 1;
-  justify-self: end;
-  margin-left: 0;
-  margin-right: clamp(1.5rem, 3.5vw, 4.5rem);
-}
-.move__verb {
-  font-family: var(--serif);
-  font-weight: 360;
-  font-size: clamp(2.5rem, 1rem + 3vw, 5rem);
-  line-height: 0.95;
-  letter-spacing: -0.035em;
-  font-variation-settings:
-    "opsz" 144,
-    "SOFT" 30,
-    "WONK" 0;
-}
-.move__cap p:last-child {
-  color: var(--ink-2);
-  text-wrap: pretty;
-}
-.pager {
-  display: none;
-}
-
-/* Simulations: small drawings of each move, played once on arrival and again on hover. */
-.sim {
-  position: relative;
-  aspect-ratio: 16 / 10;
-  overflow: hidden;
-  border: 1px solid var(--rule);
-  background: var(--paper);
-}
-.motion [data-sim] *,
-.motion [data-sim] *::before,
-.motion [data-sim] *::after {
-  animation-play-state: paused;
-}
-
-.sf {
-  width: 100%;
-  height: 100%;
-}
-.sf-main,
-.sf-branch {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-}
-.sf-n {
-  fill: var(--ink);
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.sf-ring {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.25;
-  stroke-dasharray: 1;
-}
-.sf-head {
-  fill: var(--rust);
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.sf-t {
-  font: 500 12px var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  fill: var(--ink-3);
-}
-.sf-tag rect {
-  fill: var(--paper);
-  stroke: var(--ink);
-}
-.sf-tag text {
-  font: 500 12px var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  fill: var(--ink);
-}
-.motion .sf-main {
-  animation: draw 1s var(--ease-out) both;
-}
-.motion .sf-n {
-  animation: pop 0.35s var(--ease-out) var(--d) both;
-}
-.motion .sf-ring {
-  animation: draw 0.6s var(--ease-out) 1s both;
-}
-.motion .sf-t {
-  animation: fade 0.4s ease 1.1s both;
-}
-.motion .sf-branch {
-  animation: draw 0.9s var(--ease-out) 1.25s both;
-}
-.motion .sf-head {
-  animation: pop 0.35s var(--ease-out) 2s both;
-}
-.motion .sf-tag {
-  animation: rise 0.45s var(--ease-out) 2.15s both;
-}
-
-/* Isolate: each branch ends in a worktree, named for its branch, with its agent at the right. */
-.motion .sw .sf-branch {
-  animation-delay: var(--d);
-}
-.sw-tree rect {
-  fill: var(--paper);
-  stroke: var(--ink);
-  stroke-width: 1.25;
-}
-.sw-tree text {
-  font: 500 12px var(--mono);
-  letter-spacing: 0.04em;
-  fill: var(--ink);
-}
-.sw-tree .sw-who {
-  text-transform: uppercase;
-  fill: var(--ink-3);
-}
-.motion .sw-tree {
-  animation: rise 0.45s var(--ease-out) var(--d) both;
-}
-
-/* Hand off: the planner's chat, drawn the way the app draws subagents. A round mark per agent with
-   its state in the corner; a result lands back as a row of its own. */
-.sh {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.8rem;
-  height: 100%;
-  padding: 1.1rem 1.4rem;
-  font: 400 0.8rem/1.4 var(--sans);
-}
-.sh__ask {
-  align-self: flex-end;
-  max-width: 82%;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid var(--rule);
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-  color: var(--ink);
-}
-.sh__group {
-  border: 1px solid var(--rule);
-}
-.sh__head,
-.sh__row {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.45rem 0.65rem;
-}
-.sh__head {
-  border-bottom: 1px solid var(--rule-soft);
-}
-.sh__head > span:nth-child(2),
-.sh__row > span:nth-child(2) {
-  flex: 1;
-  min-width: 0;
-}
-.sh b,
-.sh em {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sh b {
-  font-weight: 500;
-  color: var(--ink);
-}
-.sh b i {
-  margin-left: 0.4em;
-  font: 500 0.66rem var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-style: normal;
-  color: var(--ink-3);
-}
-.sh em {
-  font-style: normal;
-  font-size: 0.72rem;
-  color: var(--ink-3);
-}
-.sh__head em {
-  color: var(--rust);
-}
-.sh__time {
-  font: 500 0.68rem var(--mono);
-  color: var(--ink-3);
-}
-.sh__avs {
-  display: flex;
-}
-.sh__avs .sh__av + .sh__av {
-  margin-left: -0.45rem;
-}
-.sh__av {
-  position: relative;
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  border: 1px solid var(--rule);
-  border-radius: 50%;
-  background: var(--paper);
-  color: var(--ink);
-}
-.sh__av svg {
-  width: 0.85rem;
-  height: 0.85rem;
-}
-/* The state in the corner: ink once done, rust while it works. */
-.sh__av--done::after,
-.sh__av--run::after {
-  content: "";
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 0.5rem;
-  height: 0.5rem;
-  border: 2px solid var(--paper);
-  border-radius: 50%;
-  background: var(--ink);
-}
-.sh__av--run::after {
-  background: var(--rust);
-}
-.sh__back {
-  border: 1px solid var(--ink);
-  background: var(--paper);
-}
-.motion .sh > * {
-  animation: rise 0.45s var(--ease-out) var(--d) both;
-}
-
-.sim--run {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.sr {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 1.1rem 1.2rem;
-  font: 400 0.8rem/1.45 var(--mono);
-}
-.sr {
-  gap: 0.85rem;
-}
-.sr__foot {
-  margin-top: auto;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--rule-soft);
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-.sr + .sr {
-  border-left: 1px solid var(--rule);
-}
-.sr__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid var(--rule-soft);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.sr__line {
-  white-space: nowrap;
-  overflow: hidden;
-  color: var(--ink-2);
-}
-.sr__line b {
-  font-weight: 500;
-  color: var(--ink);
-}
-.sr__done {
-  color: var(--ink-3);
-}
-.sr__live {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45em;
-  color: var(--rust);
-}
-.sr__live i {
-  width: 0.45em;
-  height: 0.45em;
-  background: var(--rust);
-}
-@keyframes type {
-  from {
-    clip-path: inset(0 100% 0 0);
-  }
-  to {
-    clip-path: inset(0 0 0 0);
-  }
-}
-.motion .sr__line {
-  animation: type calc(var(--n) * 34ms) steps(var(--n), end) var(--d) both;
-}
-.motion .sr__done {
-  animation: fade 0.3s ease 2.3s both;
-}
-
-@media (max-width: 900px) {
-  .moves {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    overscroll-behavior-x: contain;
-    padding: 0;
-    row-gap: 0;
-  }
-  .moves::-webkit-scrollbar {
-    display: none;
-  }
-  .moves::before,
-  .move::before {
-    display: none;
-  }
-  .move {
-    flex: 0 0 86%;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    scroll-snap-align: start;
-    border-right: 1px solid var(--rule);
-  }
-  .move .move__sim,
-  .move:nth-child(even) .move__sim {
-    width: auto;
-    margin: 0;
-    border: 0;
-    border-bottom: 1px solid var(--rule);
-    aspect-ratio: 4 / 3;
-  }
-  .move .move__cap,
-  .move:nth-child(even) .move__cap {
-    margin: 0;
-    max-width: none;
-    padding: 1.25rem var(--pad) 1.75rem;
-  }
-  .sim--run {
-    grid-template-columns: 1fr;
-  }
-  .sim--run .sr + .sr {
-    border-left: 0;
-    border-top: 1px solid var(--rule);
-  }
-  .sr {
-    gap: 0.4rem;
-    padding: 0.8rem 1rem;
-  }
-  .sr__head {
-    padding-bottom: 0.4rem;
-  }
-  .sr {
-    font-size: 0.72rem;
-  }
-  .sh {
-    padding: 0.9rem 1rem;
-    font-size: 0.72rem;
-  }
-  .sr__line:nth-of-type(n + 4) {
-    display: none;
-  }
-  .sr__foot {
-    display: none;
-  }
-  .pager:not([hidden]) {
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 1rem 0 1.25rem;
-    border-top: 1px solid var(--rule);
-  }
-  .pager button {
-    width: 2.75rem;
-    height: 2.75rem;
-    padding: 0;
-    border: 0;
-    background: linear-gradient(var(--ink-4), var(--ink-4)) center / 1.75rem 2px no-repeat;
-    cursor: pointer;
-  }
-  .pager button[aria-current="true"] {
-    background-image: linear-gradient(var(--ink), var(--ink));
-  }
-}
-
-/* ───────────────────────────────────────── [09] Automations: one weekday, three ways an agent starts
+/* ───────────────────────────────────────── [08] Automations: one weekday, three ways an agent starts
    Each row is a trigger beside its lane on one shared day. A lane places its marks by time, as
    fractions of the day: --x where it starts, --w where the pull request wakes it, --y where it ends.
-   Each mark draws in as the playhead (--p) passes, through the same windows as [05]. Static (no JS,
+   Each mark draws in as the playhead (--p) passes, through the same windows as [04]. Static (no JS,
    phones, a short window, reduced motion): --p is 1, every lane is complete and the playhead hides. */
 
 .auto {
@@ -4422,66 +3932,7 @@ hidden, leaves the sticky stage working). */
     border-top: 1px solid var(--rule);
   }
 }
-/* ───────────────────────────────────────── [10] One window: [03]'s cards, drawing the answers
-   The cards and figures are [03]'s (.pcards, .pf-*). Glyphs are inlined sprite paths at 8 units,
-   held to the figures' hairlines. */
-
-.window-strip {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  border-top: 1px solid var(--rule);
-}
-.window-strip__head {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: baseline;
-  gap: 2rem;
-  padding: var(--pad);
-  border-bottom: 1px solid var(--rule);
-}
-.window-strip__head .h3 {
-  font-size: clamp(1.5rem, 1rem + 1.1vw, 2.25rem);
-}
-.window-strip .pcards {
-  grid-column: 1 / -1;
-  border-top: 0;
-}
-/* The titles are one line and the bodies differ in length: hang them from the figures, not the
-   card's foot, so the four titles share a line. */
-.window-strip .pcard__title {
-  margin-top: 0;
-}
-.pf-i * {
-  fill: none;
-  stroke: var(--ink-3);
-  stroke-width: 1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.pf-i--ink * {
-  stroke: var(--ink);
-}
-.pf-i--faint * {
-  stroke: var(--ink-4);
-}
-.pf-lbl.pf-typed {
-  fill: var(--ink);
-}
-kbd {
-  padding: 0.05em 0.35em;
-  border: 1px solid var(--rule);
-  border-bottom-width: 2px;
-  background: var(--paper);
-  font: 500 0.8125em var(--mono);
-}
-@media (max-width: 900px) {
-  .window-strip__head {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-}
-
-/* ───────────────────────────────────────── [11] Anywhere */
+/* ───────────────────────────────────────── [09] Anywhere */
 
 .anywhere {
   display: grid;
@@ -4503,7 +3954,7 @@ kbd {
   border-left: 1px solid var(--rule);
   container-type: inline-size;
 }
-/* The reach figure ([11] Anywhere) is drawn in the problem figures' language: the devices are
+/* The reach figure ([09] Anywhere) is drawn in the [03] cards' figure language: the devices are
    <g> parts in .reach__defs, placed by two compositions, wide beside the copy and tall when the
    column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
 .reach__defs {
@@ -4606,7 +4057,7 @@ kbd {
   }
 }
 
-/* ───────────────────────────────────────── [12] Who it's for */
+/* ───────────────────────────────────────── [10] Who it's for */
 
 .who {
   display: grid;
