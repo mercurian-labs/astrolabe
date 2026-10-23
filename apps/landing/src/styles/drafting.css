@@ -3347,7 +3347,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [05] Wikis */
+/* ───────────────────────────────────────── [06] Wikis */
 
 .surface {
   display: grid;
@@ -3440,7 +3440,181 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [06] Changes: a change group, and what its states mean */
+/* ───────────────────────────────────────── [07] Repositories: a thread's checkout, as
+   RepositorySidebar and RepositoryFileView draw it. The sidebar's rows are the app's 32 px rows;
+   the file's header is its 32 px bar, and its code the editor's code mode, Alabaster's colours. */
+
+.app--repo .tb {
+  grid-template-columns: calc(var(--rail) + var(--side)) minmax(0, 1fr);
+}
+.app--repo .pb {
+  grid-template-columns: var(--rail) var(--side) minmax(0, 1fr);
+  height: 31.6em;
+}
+.checkout {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  height: 2.2em;
+  margin: 0 0.15em 0.5em;
+  padding: 0 0.6em;
+  border: 1px solid var(--app-border);
+  border-radius: 0.55em;
+  background: var(--app-surface);
+  font-size: 0.93em;
+}
+.checkout span,
+.rlink span,
+.rfile b,
+.rfile span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.checkout span,
+.rlink span,
+.rfile span {
+  flex: 1;
+}
+.checkout .ico {
+  color: var(--app-muted);
+}
+.rlink {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  height: 2.2em;
+  padding: 0 0.6em;
+  font-size: 0.86em;
+  font-weight: 500;
+  color: var(--app-muted);
+}
+.rlabel {
+  margin: 0.55em 0.75em 0.1em;
+  font-size: 0.78em;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--app-muted) 75%, transparent);
+}
+.rfile {
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  height: 2.2em;
+  padding: 0 0.7em;
+  border-radius: 0.55em;
+  color: color-mix(in srgb, var(--app-muted) 80%, transparent);
+}
+.rfile .ico {
+  opacity: 0.7;
+}
+.rfile b {
+  flex: 0 1 auto;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--app-text) 85%, transparent);
+}
+.rfile span,
+.rfile em {
+  font-size: 0.86em;
+}
+.rfile em {
+  flex: none;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.rfile.is-active {
+  background: var(--app-row-active);
+  color: var(--app-text);
+}
+.pane--file {
+  display: flex;
+  flex-direction: column;
+}
+/* The file's header: its path, the agent at work in its checkout, and whether it saved. */
+.file__bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.65em;
+  height: 2.667em;
+  padding: 0 1em;
+  border-bottom: 1px solid var(--app-border);
+  font-size: 0.75em;
+  color: var(--app-muted);
+  white-space: nowrap;
+}
+.app .file__bar code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0;
+  font-size: 1em;
+  background: none;
+}
+.file__working {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  color: var(--app-agent);
+}
+.file__working .ico {
+  width: 1.15em;
+  height: 1.15em;
+}
+.code {
+  padding: 0.7em 0 1em;
+  font: 400 0.8125em/1.7 var(--mono);
+}
+.code p {
+  display: flex;
+  white-space: pre;
+}
+.code i {
+  flex: none;
+  width: 3.4em;
+  padding-right: 1.2em;
+  text-align: right;
+  font-style: normal;
+  color: var(--app-faint);
+}
+.app .code code {
+  padding: 0;
+  font-size: 1em;
+  background: none;
+}
+.syn-s {
+  color: var(--syn-s);
+}
+.syn-n {
+  color: var(--syn-n);
+}
+.syn-c {
+  color: var(--syn-c);
+}
+.syn-d {
+  color: var(--syn-d);
+}
+@container (max-width: 900px) {
+  .app--repo .tb,
+  .app--repo .pb {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app--repo .tb__cap {
+    display: none;
+  }
+  .app--repo .lights--crop {
+    display: flex;
+    margin-right: 0.6em;
+  }
+}
+@container (max-width: 560px) {
+  .app--repo .pb {
+    height: auto;
+  }
+}
+
+/* ───────────────────────────────────────── [08] Changes: a change group, and what its states mean */
 
 .changes__body {
   display: grid;
@@ -3502,7 +3676,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [07] Agents: four moves on a centre rule */
+/* ───────────────────────────────────────── [04] Agents: four moves on a centre rule */
 
 .moves {
   position: relative;
@@ -3963,7 +4137,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [08] Automations: one weekday, three ways an agent starts
+/* ───────────────────────────────────────── [09] Automations: one weekday, three ways an agent starts
    Each row is a trigger beside its lane on one shared day. A lane places its marks by time, as
    fractions of the day: --x where it starts, --w where the pull request wakes it, --y where it ends.
    Each mark draws in as the playhead (--p) passes, through the same windows as [05]. Static (no JS,
@@ -4246,7 +4420,7 @@ hidden, leaves the sticky stage working). */
     border-top: 1px solid var(--rule);
   }
 }
-/* ───────────────────────────────────────── [09] One window: [03]'s cards, drawing the answers
+/* ───────────────────────────────────────── [10] One window: [03]'s cards, drawing the answers
    The cards and figures are [03]'s (.pcards, .pf-*). Glyphs are inlined sprite paths at 8 units,
    held to the figures' hairlines. */
 
@@ -4305,7 +4479,7 @@ kbd {
   }
 }
 
-/* ───────────────────────────────────────── [09] Anywhere */
+/* ───────────────────────────────────────── [11] Anywhere */
 
 .anywhere {
   display: grid;
@@ -4327,7 +4501,7 @@ kbd {
   border-left: 1px solid var(--rule);
   container-type: inline-size;
 }
-/* The reach figure ([09] Anywhere) is drawn in the problem figures' language: the devices are
+/* The reach figure ([11] Anywhere) is drawn in the problem figures' language: the devices are
    <g> parts in .reach__defs, placed by two compositions, wide beside the copy and tall when the
    column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
 .reach__defs {
@@ -4430,7 +4604,7 @@ kbd {
   }
 }
 
-/* ───────────────────────────────────────── [10] Who it's for */
+/* ───────────────────────────────────────── [12] Who it's for */
 
 .who {
   display: grid;
