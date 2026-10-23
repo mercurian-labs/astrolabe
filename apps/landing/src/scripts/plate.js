@@ -25,6 +25,12 @@
 // tab. On touch a tap opens it there, a sideways drag moves it (vertical swipes scroll) and a tap
 // elsewhere closes it. Its photograph loads on the first approach, never with the page.
 //
+// After sunset the two upper windows light up in the page's rust: the glass of their panes (packed into
+// the tone texture's alpha by astrolabe-site's scripts/observatories/windows.py) is printed flat in rust,
+// grain by grain like the other inks and under the drawn lines. The lamps come up through civil and
+// nautical twilight and are full before the page's inks turn over at −10°; the eyepiece shows them lit
+// too. Rust is the page's fill rust before the turn and its night rust (--rust-text) after it.
+//
 // Repaints happen only when the sun moves, the pointer moves or the iris turns, and only on screen in
 // a visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks under a mid-morning
 // sun) shows and there is no eyepiece.
@@ -51,6 +57,8 @@ import plate from "../data/sphinx-plate.json";
   const u = {};
   const lens = { x: 0, y: 0, r: 0, loaded: false }; // art px
 
+  // The page's fill rust (drafting.css's --rust, which twilight.js never changes).
+  const RUST = "#a0492a";
   const smooth = (a, b, x) => {
     const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
     return t * t * (3 - 2 * t);
@@ -115,8 +123,9 @@ import plate from "../data/sphinx-plate.json";
     precision mediump float;
     #endif
     uniform sampler2D u_geo;     // r, g: normal x, y (view); b: depth (near is high); a: the building
-    uniform sampler2D u_tone;    // r: the photograph's dark detail; g: recess; b: albedo / 2
-    uniform sampler2D u_noise;   // 512 × 512 fixed thresholds: r ink, g olive, b the eyepiece's edge
+    uniform sampler2D u_tone;    // r: the photograph's dark detail; g: recess; b: albedo / 2;
+                                 // a: 1 − the window panes × 128/255
+    uniform sampler2D u_noise;   // 512 × 512 fixed thresholds: r ink, g olive, b the eyepiece's edge, a lamps
     uniform sampler2D u_duo;     // the eyepiece's photograph: luminance, registered with u_geo
     uniform vec2 u_res;          // canvas, device px
     uniform vec2 u_size;         // the data, texels
@@ -138,6 +147,7 @@ import plate from "../data/sphinx-plate.json";
     uniform vec4 u_lens;         // the aperture: centre (device px, GL), radius (device px), 1 once loaded
     uniform vec3 u_duoDark;      // the duotone's ends: shadows, highlights (the olive, softened, between)
     uniform vec3 u_duoLight;
+    uniform vec4 u_lamp;         // the lamps' rust, and how far they are up (0 by day)
 
     const float DAY_Y = 0.947;   // the day paper's luminance; the building is measured against it
 
@@ -205,6 +215,7 @@ import plate from "../data/sphinx-plate.json";
       float inkDark = 0.0;
       float inkLight = 0.0;
       float oliveCover = 0.0;
+      float lampCover = 0.0;
       for (int j = 0; j < 2; j++) {
         for (int i = 0; i < 2; i++) {
           if (float(i) >= u_sub || float(j) >= u_sub) continue;
@@ -212,6 +223,7 @@ import plate from "../data/sphinx-plate.json";
           inkDark += step(r.r, dark);
           inkLight += step(r.r, light);
           oliveCover += step(r.g, olive);
+          lampCover += step(r.a, u_lamp.a);
         }
       }
       float k = 1.0 / (u_sub * u_sub);
@@ -233,6 +245,13 @@ import plate from "../data/sphinx-plate.json";
                            : mix(mid, u_duoLight, smoothstep(0.0, 1.0, (l - 0.5) / 0.5));
           gl_FragColor = vec4(c * g.a, g.a);
         }
+      }
+
+      // The lamps, over the print and the eyepiece alike.
+      if (u_lamp.a > 0.0) {
+        float pane = clamp((1.0 - texture2D(u_tone, uv).a) * 255.0 / 128.0, 0.0, 1.0) * g.a;
+        float aLamp = lampCover * k * pane;
+        gl_FragColor = vec4(u_lamp.rgb, 1.0) * aLamp + gl_FragColor * (1.0 - aLamp);
       }
     }`;
 
@@ -300,7 +319,7 @@ import plate from "../data/sphinx-plate.json";
         texture(0, gl.LINEAR, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, geo);
         texture(1, gl.LINEAR, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, tone);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tone);
         gl.uniform1i(u.u_geo, 0);
         gl.uniform1i(u.u_tone, 1);
         gl.uniform1i(u.u_noise, 2);
@@ -400,6 +419,9 @@ import plate from "../data/sphinx-plate.json";
     );
     gl.uniform3f(u.u_duoDark, ...(palette.inverted ? palette.paper : palette.dark));
     gl.uniform3f(u.u_duoLight, ...(palette.inverted ? palette.ivory : palette.paper));
+    // The lamps: up from just after sunset, full at −9°, a degree before the inks turn over.
+    const rust = Twilight.hex(palette.inverted ? palette.vars["--rust-text"] : RUST);
+    gl.uniform4f(u.u_lamp, ...rust, 0.96 * smooth(-0.5, -9, alt));
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
