@@ -2037,6 +2037,7 @@ hidden, leaves the sticky stage working). */
 }
 .doc__bar {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 0.5em;
   height: 2.75em;
