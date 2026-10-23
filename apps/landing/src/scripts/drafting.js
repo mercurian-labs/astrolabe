@@ -2,7 +2,7 @@
 //
 // Motion here plays once on arrival or answers the pointer, and every loop stops when it settles.
 // One rAF, woken by scroll, maps scroll position to the effects that need it (the manifesto's ink,
-// the thread figure, the surfaces' ink wipe, the header). With reduced motion every finished state
+// the thread figure, the header). With reduced motion every finished state
 // shows at once and every interaction still works; without this script the page reads as a document.
 
 const root = document.documentElement;
@@ -342,78 +342,6 @@ if (day) {
 }
 
 layoutScrubs();
-
-/* ───────────────────────────── Surfaces: an ink wipe from the line sketch to the finished window,
-   scrubbed by scroll. The mask is noise-displaced, so its edge reads as ink, not a circle. Once the
-   window is fully revealed the mask comes off. */
-
-let wipeId = 0;
-for (const host of $$("[data-wipe]")) {
-  const finished = $(".window", host);
-  if (!finished) continue;
-  // The sketch is the same window, outlined; it carries no meaning of its own.
-  const sketch = finished.cloneNode(true);
-  sketch.classList.add("window--sketch");
-  sketch.setAttribute("aria-hidden", "true");
-  sketch.inert = true;
-  $$("[role], [aria-label]", sketch).forEach((el) => {
-    el.removeAttribute("role");
-    el.removeAttribute("aria-label");
-  });
-  host.prepend(sketch);
-  if (!motion) continue;
-
-  const id = `wipe-mask-${++wipeId}`;
-  const ns = "http://www.w3.org/2000/svg";
-  const defs = document.createElementNS(ns, "svg");
-  defs.setAttribute("width", "0");
-  defs.setAttribute("height", "0");
-  defs.setAttribute("aria-hidden", "true");
-  defs.style.position = "absolute";
-  defs.innerHTML = `<mask id="${id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="1" height="1"><g filter="url(#wipe-ink)"><circle r="0" fill="#fff" /></g></mask>`;
-  host.append(defs);
-  const mask = $("mask", defs);
-  const circle = $("circle", defs);
-  const [fx, fy] = (host.dataset.wipe || "0.5 0.5").split(" ").map(Number);
-  let size = { w: 1, h: 1, r: 1 };
-  const resize = () => {
-    const w = finished.offsetWidth;
-    const h = finished.offsetHeight;
-    mask.setAttribute("width", w);
-    mask.setAttribute("height", h);
-    circle.setAttribute("cx", w * fx);
-    circle.setAttribute("cy", h * fy);
-    // Far enough to clear the farthest corner, edge noise included.
-    size = { w, h, r: Math.hypot(Math.max(fx, 1 - fx) * w, Math.max(fy, 1 - fy) * h) + 90 };
-    lastR = -1;
-    requestFrame();
-  };
-  new ResizeObserver(resize).observe(finished);
-  let lastR = -1;
-  finished.style.mask = finished.style.webkitMask = `url(#${id})`;
-  jobs.push((vh) => {
-    const rect = finished.getBoundingClientRect();
-    if (rect.bottom < 0 || rect.top > vh) {
-      if (rect.top > vh && lastR !== 0) {
-        finished.style.mask = finished.style.webkitMask = `url(#${id})`;
-        circle.setAttribute("r", 0);
-        lastR = 0;
-      }
-      return;
-    }
-    // From the window's top at the bottom of the screen to its middle at 45% height.
-    const progress = motion ? clamp((vh * 0.95 - rect.top) / (rect.height * 0.5 + vh * 0.5)) : 1;
-    const r = Math.round(progress * size.r);
-    if (r === lastR) return;
-    lastR = r;
-    if (progress >= 1) {
-      finished.style.mask = finished.style.webkitMask = "none";
-    } else {
-      finished.style.mask = finished.style.webkitMask = `url(#${id})`;
-      circle.setAttribute("r", r);
-    }
-  });
-}
 
 /* ───────────────────────────── Moves: each drawing plays once on arrival, again on hover. */
 

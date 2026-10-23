@@ -3413,63 +3413,6 @@ hidden, leaves the sticky stage working). */
   box-shadow: 0.5rem 0.5rem 0 -1px color-mix(in srgb, var(--ink) 8%, transparent);
   background: var(--paper);
 }
-/* The sketch under the finished window: the same markup, every surface reduced to its outline. */
-.window--sketch {
-  z-index: 0;
-  box-shadow: none;
-  border-color: color-mix(in srgb, var(--ink) 40%, transparent);
-  background: transparent;
-}
-.window--sketch .app,
-.window--sketch .app * {
-  color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border-color: color-mix(in srgb, var(--ink) 30%, transparent) !important;
-}
-.window--sketch
-  :is(
-    .tab.is-front,
-    .card.is-active,
-    .slim.is-active,
-    .tile,
-    .rail__mark,
-    .lights i,
-    .opens,
-    .mini,
-    .doc__changed,
-    .cursor__flag
-  ) {
-  outline: 1px solid color-mix(in srgb, var(--ink) 30%, transparent);
-  outline-offset: -1px;
-}
-.window--sketch
-  :is(
-    .doc h4,
-    .doc h5,
-    .doc p,
-    .side__title,
-    .slim span,
-    .tab__title,
-    .opens span,
-    .doc__bar span
-  ) {
-  text-decoration: line-through;
-  text-decoration-thickness: 0.55em;
-  text-decoration-color: color-mix(in srgb, var(--ink) 11%, transparent);
-  text-decoration-skip-ink: none;
-}
-.window--sketch .ico {
-  color: color-mix(in srgb, var(--ink) 40%, transparent) !important;
-}
-.window--sketch img {
-  opacity: 0.25;
-}
-.window--sketch .add,
-.window--sketch .del {
-  text-decoration: none !important;
-}
-
 @media (max-width: 900px) {
   .surface {
     grid-template-rows: auto;
