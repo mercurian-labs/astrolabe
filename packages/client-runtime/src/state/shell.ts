@@ -35,7 +35,6 @@ import {
   mergeShellSnapshotProjects,
   reuseUnchangedThreadShells,
   sameThreadPullRequests,
-  shellThreadsRemoved,
 } from "./shellReducer.ts";
 import { type EnvironmentCatalogState, enabledEnvironmentIds } from "./connections.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
@@ -187,9 +186,11 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     let waiting = yield* Ref.get(awaitingCompletion);
     let next = initial;
     let receivedSnapshot = false;
-    let receivedRemoval = false;
+    const deletedThreadIds: Array<ThreadId> = [];
     for (const item of items) {
-      receivedRemoval ||= item.kind === "thread.removed";
+      if (item.kind === "thread.removed" && item.deleted === true) {
+        deletedThreadIds.push(item.threadId);
+      }
       if (item.kind === "synchronized") {
         waiting = false;
         if (Option.isSome(next.snapshot)) {
@@ -223,6 +224,22 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         error: Option.none(),
       };
     }
+    // Deleted here or on another device: its cached transcript goes too. An
+    // archived thread keeps its cache.
+    yield* Effect.forEach(
+      deletedThreadIds,
+      (threadId) =>
+        cache
+          .removeThread(environmentId, threadId)
+          .pipe(
+            Effect.catch((error) =>
+              Effect.logWarning("Could not remove the cached thread.").pipe(
+                Effect.annotateLogs({ environmentId, threadId, ...safeErrorLogAttributes(error) }),
+              ),
+            ),
+          ),
+      { discard: true },
+    );
     yield* Ref.set(awaitingCompletion, waiting);
     if (next === initial) return;
     if (pendingLinkIds !== undefined && Option.isSome(next.snapshot)) {
@@ -234,31 +251,6 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
       yield* Ref.set(latestLiveSnapshot, next.snapshot);
     }
     yield* SubscriptionRef.set(state, next);
-    // A thread gone from both lists was deleted, here or on another device
-    // while this one was away; its cached transcript goes too.
-    const previous = initial.snapshot;
-    if ((receivedSnapshot || receivedRemoval) && Option.isSome(previous)) {
-      const removed = Option.match(next.snapshot, {
-        onNone: () => [],
-        onSome: (snapshot) => shellThreadsRemoved(previous.value, snapshot),
-      });
-      yield* Effect.forEach(
-        removed,
-        (threadId) =>
-          cache.removeThread(environmentId, threadId).pipe(
-            Effect.catch((error) =>
-              Effect.logWarning("Could not remove the cached thread.").pipe(
-                Effect.annotateLogs({
-                  environmentId,
-                  threadId,
-                  ...safeErrorLogAttributes(error),
-                }),
-              ),
-            ),
-          ),
-        { discard: true },
-      );
-    }
     if (receivedSnapshot) {
       const session = yield* Ref.get(activeSubscriptionSession);
       if (session !== null) {

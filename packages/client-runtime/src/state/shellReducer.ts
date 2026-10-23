@@ -5,7 +5,6 @@ import {
   type OrchestrationProjectShell,
   type OrchestrationV2ShellSnapshot,
   type OrchestrationV2ShellStreamItem,
-  type ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
@@ -127,25 +126,6 @@ export function mergeShellSnapshotProjects(
       return retainRepositoryIdentity(prior, project);
     }),
   };
-}
-
-/**
- * Threads `previous` listed, active or archived, that `next` lists nowhere. An
- * archived thread moves lists; a deleted one leaves both.
- */
-export function shellThreadsRemoved(
-  previous: OrchestrationV2ShellSnapshot,
-  next: OrchestrationV2ShellSnapshot,
-): ReadonlyArray<ThreadId> {
-  const listed = new Set<ThreadId>();
-  for (const thread of next.threads) listed.add(thread.id);
-  for (const thread of next.archivedThreads) listed.add(thread.id);
-  const removed: Array<ThreadId> = [];
-  for (const thread of previous.threads) if (!listed.has(thread.id)) removed.push(thread.id);
-  for (const thread of previous.archivedThreads) {
-    if (!listed.has(thread.id)) removed.push(thread.id);
-  }
-  return removed;
 }
 
 export function applyShellStreamEvent(

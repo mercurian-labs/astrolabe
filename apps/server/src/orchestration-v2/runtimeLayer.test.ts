@@ -2420,6 +2420,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           sequence: remove.sequence,
           location: "active",
           threadId,
+          deleted: true,
         },
       );
 

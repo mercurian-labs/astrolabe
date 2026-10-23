@@ -416,21 +416,26 @@ describe("environment shell synchronization", () => {
     }),
   );
 
-  it.effect("drops the cached transcript of a thread the shell no longer lists", () =>
+  it.effect("drops a cached transcript only when the server says the thread was deleted", () =>
     Effect.gen(function* () {
       const thread = (id: string) => ({ ...v2ThreadShell, id: ThreadId.make(id) });
+      // The active shell never lists archived threads.
       const cachedSnapshot: OrchestrationV2ShellSnapshot = {
         ...v2ShellSnapshot,
         snapshotSequence: 1,
-        threads: [thread("kept"), thread("archived-meanwhile"), thread("deleted-meanwhile")],
-        archivedThreads: [thread("deleted-from-archive")],
+        threads: [
+          thread("kept"),
+          thread("archived-away"),
+          thread("archived-now"),
+          thread("deleted"),
+        ],
+        archivedThreads: [],
       };
-      // What the server sends after this device was away.
       const httpSnapshot: OrchestrationV2ShellSnapshot = {
         ...v2ShellSnapshot,
         snapshotSequence: 2,
-        threads: [thread("kept")],
-        archivedThreads: [thread("archived-meanwhile")],
+        threads: [thread("kept"), thread("archived-now"), thread("deleted")],
+        archivedThreads: [],
       };
       const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
       const removed = yield* Queue.unbounded<ThreadId>();
@@ -461,7 +466,7 @@ describe("environment shell synchronization", () => {
         clearVcsRefs: () => Effect.void,
         clear: () => Effect.void,
       });
-      yield* makeEnvironmentShellState().pipe(
+      const shellState = yield* makeEnvironmentShellState().pipe(
         Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
         Effect.provideService(Persistence.EnvironmentCacheStore, cache),
         Effect.provideService(
@@ -471,19 +476,30 @@ describe("environment shell synchronization", () => {
           }),
         ),
       );
+      // A thread missing from a fresh snapshot may only have been archived.
+      yield* SubscriptionRef.changes(shellState).pipe(
+        Stream.filter(
+          (state) => Option.isSome(state.snapshot) && state.snapshot.value.snapshotSequence === 2,
+        ),
+        Stream.runHead,
+      );
 
-      expect([yield* Queue.take(removed), yield* Queue.take(removed)]).toEqual([
-        "deleted-meanwhile",
-        "deleted-from-archive",
+      yield* Queue.offerAll(events, [
+        {
+          kind: "thread.removed",
+          sequence: 3,
+          location: "active",
+          threadId: ThreadId.make("archived-now"),
+        },
+        {
+          kind: "thread.removed",
+          sequence: 4,
+          location: "active",
+          threadId: ThreadId.make("deleted"),
+          deleted: true,
+        },
       ]);
-
-      yield* Queue.offer(events, {
-        kind: "thread.removed",
-        sequence: 3,
-        location: "active",
-        threadId: ThreadId.make("kept"),
-      });
-      expect(yield* Queue.take(removed)).toBe("kept");
+      expect(yield* Queue.take(removed)).toBe("deleted");
       expect(yield* Queue.size(removed)).toBe(0);
     }),
   );
