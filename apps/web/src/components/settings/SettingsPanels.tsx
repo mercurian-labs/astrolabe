@@ -1922,7 +1922,7 @@ export function GeneralSettingsPanel() {
         <MobileAppSettingsRow />
         <SettingsRow
           {...searchableSetting("privacy-policy")}
-          description="How we handle your data, including the anonymous usage data Astrolabe collects."
+          description="How we handle your data."
           control={
             <Button
               render={<a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer noopener" />}

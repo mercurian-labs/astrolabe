@@ -72,19 +72,22 @@ function retryDelayMs(failures: number, random: number): number {
 }
 
 const TelemetryEnvConfig = Config.all({
-  posthogKey: Config.String("T3CODE_POSTHOG_KEY").pipe(
-    Config.withDefault("phc_XOWci4oZP4VvLiEyrFqkFjP4CZn55mjYYBMREK5Wd6m"),
-  ),
-  posthogHost: Config.String("T3CODE_POSTHOG_HOST").pipe(
-    Config.withDefault("https://ingest.t3.codes"),
-  ),
+  posthogKey: Config.String("T3CODE_POSTHOG_KEY").pipe(Config.withDefault("")),
+  posthogHost: Config.String("T3CODE_POSTHOG_HOST").pipe(Config.withDefault("")),
   enabled: Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(Config.withDefault(true)),
   flushBatchSize: Config.Number("T3CODE_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
   maxBufferedEvents: Config.Number("T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(
     Config.withDefault(1_000),
   ),
   wslDistroName: Config.String("WSL_DISTRO_NAME").pipe(Config.option),
-});
+}).pipe(
+  // Astrolabe: product events have no default destination (upstream's is T3 Code's
+  // ingest), so nothing is recorded or sent until both the key and the host are set.
+  Config.map((config) => ({
+    ...config,
+    enabled: config.enabled && config.posthogKey !== "" && config.posthogHost !== "",
+  })),
+);
 
 export class AnalyticsService extends Context.Service<
   AnalyticsService,

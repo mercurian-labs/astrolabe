@@ -201,6 +201,15 @@ Upstream adds new "T3 Code" strings often. Change them in the merge commit.
   kin, the `astrolabe connect` command and trace span names. The `apps/marketing` legal pages and
   AGENTS.md still say T3 Connect on purpose; the legal pages need a full rewrite, not a rename.
 
+### Product analytics
+
+Upstream's server sends product events to T3 Code's own ingest with T3 Code's PostHog key. Astrolabe
+removes both defaults in `apps/server/src/telemetry/AnalyticsService.ts`, so it records and sends
+nothing until `ASTROLABE_POSTHOG_KEY` and `ASTROLABE_POSTHOG_HOST` are set. Keep that on every sync.
+If Astrolabe starts collecting to its own project, also change the onboarding note in
+`WelcomeWizard.tsx`, the privacy row in `SettingsPanels.tsx` and `docs/user/telemetry.md`, which say
+it collects nothing.
+
 ### Accounts and hosted services still upstream's
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. Nothing in the

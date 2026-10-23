@@ -314,4 +314,46 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
       assert.deepEqual(capturedPaths, []);
     }),
   );
+
+  it.effect("sends nothing until a PostHog key is configured", () =>
+    Effect.gen(function* () {
+      const capturedPaths: Array<string> = [];
+      const layerServerConfig = ServerConfig.ServerConfig.layerTest(process.cwd(), {
+        prefix: "t3-telemetry-unconfigured-",
+      });
+      const layerTelemetry = AnalyticsService.layer.pipe(Layer.provideMerge(layerServerConfig));
+      const layerConfig = ConfigProvider.layer(
+        ConfigProvider.fromUnknown({
+          T3CODE_TELEMETRY_ENABLED: true,
+          T3CODE_POSTHOG_HOST: "http://localhost",
+        }),
+      );
+      const layerBatchServer = HttpServer.serve(
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          capturedPaths.push(request.url);
+          return HttpServerResponse.jsonUnsafe({});
+        }),
+      );
+      const layerRuntime = layerTelemetry.pipe(
+        Layer.provide(layerConfig),
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(HostProcess.Platform, "linux"),
+            Layer.succeed(HostProcess.Architecture, "arm64"),
+          ),
+        ),
+        Layer.provideMerge(NodeHttpServer.layerTest),
+      );
+
+      yield* Effect.gen(function* () {
+        yield* Layer.launch(layerBatchServer).pipe(Effect.forkScoped);
+        const analytics = yield* AnalyticsService.AnalyticsService;
+        yield* analytics.record("test.unconfigured", { index: 1 });
+        yield* analytics.flush;
+      }).pipe(Effect.provide(layerRuntime));
+
+      assert.deepEqual(capturedPaths, []);
+    }),
+  );
 });
