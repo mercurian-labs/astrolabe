@@ -205,7 +205,7 @@ Upstream adds new "T3 Code" strings often. Change them in the merge commit.
 
 Upstream's server sends product events to T3 Code's own ingest with T3 Code's PostHog key. Astrolabe
 removes both defaults in `apps/server/src/telemetry/AnalyticsService.ts`, so it records and sends
-nothing until `ASTROLABE_POSTHOG_KEY` and `ASTROLABE_POSTHOG_HOST` are set. Keep that on every sync.
+nothing until `T3CODE_POSTHOG_KEY` and `T3CODE_POSTHOG_HOST` are set. Keep that on every sync.
 If Astrolabe starts collecting to its own project, also change the onboarding note in
 `WelcomeWizard.tsx`, the privacy row in `SettingsPanels.tsx` and `docs/user/telemetry.md`, which say
 it collects nothing.
