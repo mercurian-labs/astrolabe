@@ -1,0 +1,365 @@
+/* Astrolabe · drafting · the download page
+   One choice for the visitor's computer and the latest release's title block, then every way in:
+   the desktop builds, the command line and the browser, and the phone apps. The page's state
+   (data-release, set by scripts/download.js) decides what the links do; every colour is a page
+   token, so the page follows the astrolabe's light like the rest of the site. */
+
+.dl {
+  padding-top: var(--head);
+}
+
+/* ───────────────────────── The head: the lead beside the release's title block. */
+
+.dl__head {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+.dl__lead {
+  grid-column: span 7;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: clamp(2.25rem, 4.6vw, 5.5rem) var(--pad) clamp(2rem, 3.2vw, 3.5rem);
+}
+.dl__title {
+  font-family: var(--serif);
+  font-weight: 380;
+  font-size: clamp(2.25rem, 1.15rem + 2.3vw, 3.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.028em;
+  font-variation-settings:
+    "opsz" 96,
+    "SOFT" 30,
+    "WONK" 0;
+  text-wrap: balance;
+}
+.dl__lede {
+  max-width: 31em;
+  font-size: clamp(1.0625rem, 0.95rem + 0.3vw, 1.25rem);
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+.dl__act {
+  margin-top: 0.75rem;
+}
+.dl__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.dl__caption {
+  margin-top: 0.85rem;
+  color: var(--ink-3);
+}
+/* A down arrow drops rather than slides. */
+.dl :is(.px, .dl__file):is(:hover, :focus-visible) .arw--down {
+  transform: translateY(0.15rem);
+}
+
+/* While GitHub is asked, the lead holds its place empty rather than offer a link it may take back. */
+.js .dl[data-release="pending"] :is(.dl__act, [data-release-version], [data-release-published]) {
+  visibility: hidden;
+}
+
+/* Before the first release: the note stands where the buttons were. */
+.dl__soon {
+  display: none;
+  gap: 0.6rem;
+  max-width: 34rem;
+  padding: 1.1rem 1.25rem 1.2rem;
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+}
+.dl__soon-title {
+  font: 500 0.875rem/1.35 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--rust-text);
+}
+.dl[data-release="none"] .dl__soon {
+  display: grid;
+}
+.dl[data-release="none"] :is(.dl__choice, [data-release-link]) {
+  display: none;
+}
+
+/* The title block, as a drawing carries one in its corner. */
+.dl__block {
+  grid-column: span 5;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 1.25rem;
+  padding: 2.75rem var(--pad) var(--pad);
+  border-left: 1px solid var(--rule);
+}
+.dl__sheet {
+  border: 1px solid var(--rule);
+}
+.dl__sheet > div {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: baseline;
+}
+.dl__sheet > div + div {
+  border-top: 1px solid var(--rule-soft);
+}
+.dl__sheet dt {
+  align-self: stretch;
+  padding: 0.7rem 0.9rem;
+  border-right: 1px solid var(--rule-soft);
+  color: var(--ink-3);
+}
+.dl__sheet dd {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+/* ───────────────────────── The sections. */
+
+.dl__sec {
+  border-top: 1px solid var(--rule);
+}
+.dl__sec-head {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.75rem 0;
+  padding: clamp(1.75rem, 3vw, 3rem) var(--pad) var(--pad);
+}
+.dl__sec-head .tag {
+  grid-column: 1 / -1;
+}
+.dl__h2 {
+  grid-column: span 6;
+  font-family: var(--serif);
+  font-weight: 380;
+  font-size: clamp(1.6rem, 1.1rem + 1vw, 2.25rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-variation-settings:
+    "opsz" 72,
+    "SOFT" 30,
+    "WONK" 0;
+  text-wrap: balance;
+}
+.dl__sec-head .body {
+  grid-column: span 6;
+}
+
+.dl__cards {
+  display: grid;
+  border-top: 1px solid var(--rule);
+}
+.dl__cards--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dl__cards--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.dl__card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-bottom: var(--pad);
+}
+.dl__card + .dl__card {
+  border-left: 1px solid var(--rule);
+}
+.dl__rail {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem var(--pad);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.dl__num {
+  color: var(--ink-3);
+}
+/* The visitor's own platform: its rail is underlined in rust and says so. */
+.dl__yours {
+  display: none;
+  color: var(--rust-text);
+}
+.dl[data-platform="mac"] .dl__card--mac .dl__rail,
+.dl[data-platform="win"] .dl__card--win .dl__rail,
+.dl[data-platform="linux"] .dl__card--linux .dl__rail {
+  background: linear-gradient(var(--rust), var(--rust)) 0 100% / 100% 2px no-repeat;
+}
+.dl[data-platform="mac"] .dl__card--mac .dl__yours,
+.dl[data-platform="win"] .dl__card--win .dl__yours,
+.dl[data-platform="linux"] .dl__card--linux .dl__yours {
+  display: inline;
+}
+.dl[data-platform="mac"] .dl__card--mac .dl__num,
+.dl[data-platform="win"] .dl__card--win .dl__num,
+.dl[data-platform="linux"] .dl__card--linux .dl__num {
+  display: none;
+}
+
+.dl__glyph {
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 2rem var(--pad) 1.75rem;
+  color: var(--ink);
+}
+.dl__glyph--line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dl__card--soon .dl__glyph {
+  color: var(--ink-3);
+}
+
+/* A build: what it is for, its format, and the arrow that takes it. */
+.dl__files li:last-child .dl__file {
+  border-bottom: 1px solid var(--rule-soft);
+}
+.dl__file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem var(--pad);
+  border-top: 1px solid var(--rule-soft);
+  text-decoration: none;
+  outline-offset: -4px;
+}
+.dl__file-label {
+  transition: transform 0.4s var(--ease-out);
+}
+.dl__file-format {
+  color: var(--ink-3);
+}
+.dl__file .arw {
+  color: var(--ink-2);
+}
+.dl__file-soon {
+  display: none;
+  color: var(--ink-3);
+}
+@media (hover: hover) {
+  a.dl__file[href]:hover .dl__file-label {
+    transform: translateX(0.4rem);
+  }
+  a.dl__file[href]:hover .arw {
+    color: var(--rust-text);
+  }
+}
+a.dl__file[href]:focus-visible .arw {
+  color: var(--rust-text);
+}
+.dl[data-release="none"] .dl__file {
+  color: var(--ink-2);
+}
+.dl[data-release="none"] .dl__file .arw {
+  display: none;
+}
+.dl[data-release="none"] .dl__file-soon {
+  display: inline;
+}
+
+.dl__card-body {
+  max-width: 30em;
+  padding: 0 var(--pad);
+  color: var(--ink-2);
+  font-size: 1rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.dl__card-note {
+  margin: 1.25rem var(--pad) 0;
+  color: var(--ink-3);
+}
+.dl__card-note--soon {
+  display: none;
+}
+.dl[data-release="none"] .dl__card-note--soon {
+  display: block;
+}
+.dl__card-link {
+  margin: 1.5rem var(--pad) 0;
+}
+
+/* The command, and the button that copies it. */
+.dl__cmd {
+  display: flex;
+  margin: 1.5rem var(--pad) 0;
+  border: 1px solid var(--rule);
+}
+.dl__cmd code {
+  flex: 1;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font: 0.875rem/1.4 var(--mono);
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.dl__copy {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: none;
+  padding: 0 1rem;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  background: none;
+  font: 500 0.75rem var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dl__copy svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.dl__all {
+  padding: var(--pad);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+.dl__all a {
+  text-decoration-color: var(--ink-4);
+  text-underline-offset: 0.2em;
+}
+.dl__all a:is(:hover, :focus-visible) {
+  text-decoration-color: var(--rust);
+}
+.dl[data-release="none"] .dl__all {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .dl__lead,
+  .dl__block,
+  .dl__h2,
+  .dl__sec-head .body {
+    grid-column: 1 / -1;
+  }
+  .dl__block {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .dl__cards--3,
+  .dl__cards--2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dl__card + .dl__card {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+}
