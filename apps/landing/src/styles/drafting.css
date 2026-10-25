@@ -595,7 +595,7 @@ section {
   background: var(--paper) var(--noise);
 }
 .mast__lead {
-  grid-column: span 5;
+  grid-column: span 4;
   display: flex;
   min-width: 0;
 }
@@ -650,7 +650,7 @@ section {
   display: inline;
 }
 .mast__nav {
-  grid-column: span 5;
+  grid-column: span 6;
   display: grid;
   grid-template-columns: subgrid;
 }
