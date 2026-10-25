@@ -4776,6 +4776,21 @@ hidden, leaves the sticky stage working). */
   color: var(--ink-3);
   cursor: default;
 }
+/* Day, Night and Now as one strip of joined buttons; the light the page shows reads as pressed. */
+.sky__jumps {
+  display: flex;
+}
+.sky__jumps .sky__now + .sky__now {
+  margin-left: -1px;
+}
+.sky__now[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+.sky__now:focus-visible {
+  position: relative;
+  z-index: 1;
+}
 .star-tip {
   position: absolute;
   left: 0;
@@ -4993,11 +5008,11 @@ html:not(.js) .hover-only {
   /* The working instrument takes a band of its own: the plate label under the figure number, the
      instrument as wide as the field allows with room for its callouts, the reading beneath. */
   .sky:has(.has-model) {
-    min-height: calc(8.5rem + (100vw - 18px) * 0.86 * 1.125);
+    min-height: calc(13rem + (100vw - 18px) * 0.86 * 1.125);
   }
   .sky__art.has-model {
     top: 3.6rem;
-    height: min(calc(100% - 8.5rem), calc((100vw - 18px) * 0.86 * 1.125));
+    height: min(calc(100% - 13rem), calc((100vw - 18px) * 0.86 * 1.125));
   }
   .sky:has(.has-model) .sky__tag--tr {
     display: block;
@@ -5009,13 +5024,22 @@ html:not(.js) .hover-only {
   .sky:has(.has-model) > :is(.cross--bl, .cross--br) {
     display: none;
   }
+  /* The reading, then Day, Night and Now as a full-width strip beneath it, sized for a thumb. */
   .sky__time {
     left: 1.5rem;
-    bottom: 1.1rem;
+    bottom: 4.25rem;
   }
   .sky__wind {
+    left: 1.5rem;
     right: 1.5rem;
     bottom: 1.1rem;
+  }
+  .sky__jumps {
+    flex: 1;
+  }
+  .sky__jumps .sky__now {
+    flex: 1;
+    min-height: 2.5rem;
   }
   .sky__hint {
     display: none;

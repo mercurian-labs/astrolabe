@@ -23,7 +23,11 @@
                 </div>
                 <div class="sky__wind" data-time hidden>
                   <p class="tag sky__hint"><span class="hover-only">Point to sight<span class="sky__sep"> · </span></span>Drag the rete to wind time</p>
-                  <button class="sky__now" type="button" data-now>Now</button>
+                  <div class="sky__jumps" role="group" aria-label="Wind the rete to">
+                    <button class="sky__now" type="button" data-jump="day" aria-pressed="false">Day</button>
+                    <button class="sky__now" type="button" data-jump="night" aria-pressed="false">Night</button>
+                    <button class="sky__now" type="button" data-now>Now</button>
+                  </div>
                 </div>
                 <span class="tag star-tip" data-star-tip hidden></span>
                 <div class="sight" aria-hidden="true">

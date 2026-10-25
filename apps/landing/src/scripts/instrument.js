@@ -355,6 +355,7 @@ import Sky from "./sky.js";
   const dateEl = $("[data-date]");
   const skyEl = $("[data-sky]");
   const nowButton = $("[data-now]");
+  const jumpButtons = field.querySelectorAll("[data-jump]");
   const tip = $("[data-star-tip]");
   for (const el of field.querySelectorAll("[data-time]")) el.hidden = false;
 
@@ -480,6 +481,11 @@ import Sky from "./sky.js";
     // The represented moment, for anything on the page that follows this sky (relight.js).
     field.dispatchEvent(new CustomEvent("astrolabe:time", { bubbles: true, detail: state }));
     if (nowButton) nowButton.disabled = Math.abs(offset) < 30000;
+    // Day and Night read as pressed while the page shows full day or full night (twilight.js).
+    for (const b of jumpButtons) {
+      const on = b.dataset.jump === "day" ? state.sunAlt > 0 : state.sunAlt < -18;
+      b.setAttribute("aria-pressed", String(on));
+    }
     if (tipStar !== null) placeTip();
     updateCallouts();
   }
@@ -676,6 +682,20 @@ import Sky from "./sky.js";
     render();
   });
   nowButton?.addEventListener("click", backToNow);
+
+  // Day and Night wind the rete the short way round to the nearest local noon or midnight, where the
+  // sun's hour angle is 0° or 180°: for touch, where turning the rete by hand is hard.
+  function windTo(hourAngle) {
+    if (!current) return;
+    const degrees = ((hourAngle - current.sunHa + 540) % 360) - 180;
+    if (Math.abs(degrees) < 0.5) return;
+    arriving = false;
+    const ms = (degrees / 15) * 3600000;
+    tweenOffset(offset + ms, Math.min(1400, 400 + Math.abs(ms) / 40000));
+  }
+  for (const b of jumpButtons) {
+    b.addEventListener("click", () => windTo(b.dataset.jump === "day" ? 0 : 180));
+  }
 
   /* ─────────── Stars: hover or focus names one, with its altitude and azimuth at the moment shown. */
 
