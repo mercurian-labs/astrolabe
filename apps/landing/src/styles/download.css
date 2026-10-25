@@ -93,7 +93,7 @@
   flex-direction: column;
   justify-content: flex-end;
   gap: 1.25rem;
-  padding: 2.75rem var(--pad) var(--pad);
+  padding: 2.75rem var(--pad);
   border-left: 1px solid var(--rule);
 }
 .dl__sheet {
