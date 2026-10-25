@@ -29,6 +29,10 @@ vp run --filter @mercurian/landing typecheck # astro check
   Markdown in `src/content/legal/`, kept plain so counsel can review it as text; `Legal.astro` renders
   it with a contents list and the draft notice, and marks each `[DECISION: …]`, `[PENDING: …]` and
   `[VERIFY: …]` it finds so they can be scanned. The pages are `noindex` while they are drafts.
+- `/download` asks GitHub for the latest release in the browser (`src/scripts/releases.js`, which
+  holds the repository's name) and links each build by the tail of its file name, so a release shows
+  without a rebuild. Before the first release it reads as coming soon; if GitHub can't be reached
+  every link goes to the releases page.
 - Everything in `public/` is copied from astrolabe-site under the same names, so a new render drops in
   by copying the file over.
 
