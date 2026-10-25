@@ -66,11 +66,12 @@ const JOBS = [
     w: 1200,
     h: 630,
   },
-  // The page cards, for the legal pages (and later posts): the same plate, a title and a caption.
+  // The page cards, for the legal pages, the download page (and later posts): the same plate, a title and a caption.
   ...[
     ["privacy-policy", "Privacy Policy"],
     ["terms-of-service", "Terms of Service"],
     ["licenses", "Licenses"],
+    ["download", "Download"],
   ].map(([slug, title]) => ({
     out: `public/og/page-${slug}.jpg`,
     page: `plate.html?${q({ ink: "night", layout: "page", title, caption: `Fig. 0 · astrolabe.sh/${slug}` })}`,

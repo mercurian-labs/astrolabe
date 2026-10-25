@@ -2,11 +2,11 @@
 // The unfurl lab: each share card as the platforms show it, at their display sizes, crops, corner
 // radii and text layouts, in light and dark. The sizes are read off the current clients and are
 // approximate; the crops are the ones that matter. Linked from nowhere and kept out of search.
-// `?d=night|day|instrument|sphinx|sphinx-day|privacy-policy|terms-of-service|licenses` picks the card; `?safe=0` hides
+// `?d=night|day|instrument|sphinx|sphinx-day|privacy-policy|terms-of-service|licenses|download` picks the card; `?safe=0` hides
 // the safe area.
 import { description, headline } from "../../site.js";
 
-const legal = {
+const pages = {
   "privacy-policy": [
     "Privacy Policy",
     "What Astrolabe and Mercurian's hosted services collect, where it goes, how long it stays, and what you control.",
@@ -19,6 +19,10 @@ const legal = {
     "Licenses",
     "Which license covers which part of Astrolabe, the third-party software inside it, and the sources of this website's art and fonts.",
   ],
+  download: [
+    "Download",
+    "Download Astrolabe for macOS, Windows and Linux, run it from the command line, or open it in your browser.",
+  ],
 };
 const cards = [
   { id: "night", label: "A · Night plate", src: "/og/card-night.jpg", title: `Astrolabe · ${headline}`, description },
@@ -26,7 +30,7 @@ const cards = [
   { id: "instrument", label: "C · Instrument", src: "/og/card-instrument.jpg", title: `Astrolabe · ${headline}`, description },
   { id: "sphinx", label: "D · Sphinx", src: "/og/card-sphinx.jpg", title: `Astrolabe · ${headline}`, description },
   { id: "sphinx-day", label: "D · Sphinx by day", src: "/og/card-sphinx-day.jpg", title: `Astrolabe · ${headline}`, description },
-  ...Object.entries(legal).map(([slug, [title, text]]) => ({
+  ...Object.entries(pages).map(([slug, [title, text]]) => ({
     id: slug,
     label: `Page · ${title}`,
     src: `/og/page-${slug}.jpg`,
