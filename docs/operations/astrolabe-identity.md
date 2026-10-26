@@ -273,8 +273,8 @@ through one of these values in the merge commit.
 | Remote-access troubleshooting guide | `REMOTE_ACCESS_TROUBLESHOOTING_URL` in `packages/contracts/src/environmentHttp.ts`                                     | unset: "More info" links hidden |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
-  `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
-  hosted-web defaults in `release.yml` carry the same host for the Vercel channel router. The hosted
+  `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/wrangler.jsonc` and the
+  hosted build in `release.yml` carry the same host for the Cloudflare Worker that serves it. The hosted
   app's sign-in shares the sign-in pages' session cookie, so it works only once the hosted app is
   served from `app.astrolabe.sh`.
 - **Relay and sign-in.** Nothing is deployed at `relay.astrolabe.sh` or behind the
