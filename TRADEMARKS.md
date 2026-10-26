@@ -47,7 +47,7 @@ inside your own organisation doesn't need renaming.
 ## Questions and permission
 
 If you'd like to do something this page doesn't cover, or you aren't sure whether it's allowed,
-write to [DECISION: trademark contact address, e.g. trademarks@mercurian.ai]. We'll usually say yes
+write to [legal@mercurian.ai](mailto:legal@mercurian.ai). We'll usually say yes
 to uses that are accurate and don't confuse anyone.
 
 This policy is modelled on [Mozilla's trademark policy](https://www.mozilla.org/en-US/foundation/trademarks/policy/).

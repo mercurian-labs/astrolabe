@@ -18,7 +18,10 @@ packages); that code stays MIT.
 
 Third-party files keep their own licenses, wherever they sit. For example, the Fraunces font in
 `apps/auth/src/assets/fonts` is under the SIL Open Font License (`OFL.txt` next to it), and the
-vendored Ghostty code carries its own `LICENSE`.
+vendored Ghostty code carries its own `LICENSE`. The website's Sphinx Observatory prints
+(`apps/landing/public/assets/art/sphinx`, and the Sphinx share cards in `apps/landing/public/og`)
+adapt a CC BY-SA 4.0 photograph and are CC BY-SA 4.0 too; `apps/landing/public/assets/art/CREDITS.md`
+lists every source of the site's art.
 
 Every build lists the third-party software it ships, with each license text, under **Settings →
 General → Open source licenses**. The list comes from `third-party-licenses.config.json`, the
@@ -65,8 +68,11 @@ short: say truthfully that something works with Astrolabe, but give a fork or mo
 own name and logo.
 
 [DECISION: whether logo and wordmark files (`assets/`, `apps/web/src/assets/brand`,
-`apps/web/public/brand`, `apps/mobile/src/components/brand`, `apps/auth/src/assets`) are excluded
-from the MIT and FSL grants, or licensed with the code and protected only by the trademark policy]
+`apps/web/public/brand`, `apps/mobile/src/components/brand`, `apps/auth/src/assets`,
+`apps/landing/public/assets/brand`) and the website's own artwork (`apps/landing/public/assets/art`,
+`apps/landing/public/og`) are excluded from the MIT and FSL grants, or licensed with the code and
+protected only by the trademark policy. The Licenses page and `apps/landing/public/assets/art/CREDITS.md`
+assume excluded, all rights reserved; the Sphinx adaptations stay CC BY-SA 4.0 either way]
 
 ## Contributing
 
