@@ -336,6 +336,8 @@ upstream's:
   `t3-terminal` podspecs say MIT where upstream's say `UNLICENSED`.
 - `LICENSING.md`, `TRADEMARKS.md` and the "Licensing of contributions" section at the end of
   `CONTRIBUTING.md` are Astrolabe's. Keep that section when upstream rewrites the guide.
+- `.github/SECURITY.md` is Astrolabe's: upstream's sends vulnerability reports to T3 Tools. Keep
+  ours when upstream edits theirs.
 
 ## After each sync
 
