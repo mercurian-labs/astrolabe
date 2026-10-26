@@ -94,6 +94,11 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
   );
   yield* fs.chmod(path.join(stageDir, "bin", launcherScript), 0o755);
   yield* fs.copyFile(path.join(sourceDir, "bin.mjs"), path.join(stageDir, "dist/bin.mjs"));
+  // The tarball is built with tar, not npm pack, so nothing adds the license unless we do.
+  yield* fs.copyFile(
+    yield* path.fromFileUrl(new URL("../LICENSE", import.meta.url)),
+    path.join(stageDir, "LICENSE"),
+  );
   const readme = yield* path.fromFileUrl(new URL("../apps/server/README.md", import.meta.url));
   if (yield* fs.exists(readme)) {
     yield* fs.copyFile(readme, path.join(stageDir, "README.md"));
