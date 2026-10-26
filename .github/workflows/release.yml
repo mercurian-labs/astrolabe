@@ -1010,8 +1010,8 @@ jobs:
         run: vp install --lockfile-only --ignore-scripts
 
       - id: deploy
-        name: Build staged deployment
         if: steps.vercel.outputs.configured == 'true'
+        name: Build staged deployment
         shell: bash
         run: |
           set -euo pipefail
