@@ -51,19 +51,10 @@ on:
         description: "OTA update message (mode=update only)"
         required: false
         type: string
-  push:
-    branches: [main]
-    paths:
-      - apps/mobile/**
-      - packages/client-runtime/**
-      - packages/contracts/**
-      - packages/shared/**
-      - assets/**
-      - scripts/**
-      - patches/**
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .github/workflows/mobile-eas-production.yml
+  # Astrolabe: no `push:` trigger. Upstream reconciles fingerprints, cuts store
+  # builds and publishes OTAs on every merge to main that touches mobile or
+  # shared code; Astrolabe runs store builds and OTAs only by hand. The
+  # push-only steps below stay so restoring the trigger is enough.
 
 # Serialize runs so OTAs publish in merge order. GitHub keeps at most one
 # queued run per group, so a burst of merges collapses into one run of the
@@ -75,7 +66,7 @@ concurrency:
 jobs:
   production:
     name: EAS ${{ inputs.profile || 'production' }} ${{ github.event_name == 'push' && 'auto' || inputs.mode }}
-    if: github.repository == 'pingdotgg/t3code'
+    if: github.repository == 'mercurian-labs/astrolabe' && github.event_name == 'workflow_dispatch'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     permissions:
       contents: read
