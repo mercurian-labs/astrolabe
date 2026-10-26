@@ -1,6 +1,7 @@
 {
   "name": "@t3tools/provider-pi",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./client": {

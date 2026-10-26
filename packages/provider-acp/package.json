@@ -1,6 +1,7 @@
 {
   "name": "@t3tools/provider-acp",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./server/AcpSessionRuntime": {

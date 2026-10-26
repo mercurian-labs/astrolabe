@@ -1,6 +1,7 @@
 {
   "name": "@mercurian/wiki-editor",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./note-buffer": {
