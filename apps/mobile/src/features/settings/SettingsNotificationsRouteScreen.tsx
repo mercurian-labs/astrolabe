@@ -4,14 +4,13 @@ import { readEnvironmentScope } from "../../state/session";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import * as Notifications from "expo-notifications";
-import { useNavigation } from "@react-navigation/native";
+import { StackActions, useNavigation } from "@react-navigation/native";
 import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/reactivity";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Linking, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "../../components/ui/AppText";
 import {
   isAtomCommandInterrupted,
   reportAtomCommandResult,
@@ -56,22 +55,17 @@ function useDeviceRegistered(): boolean {
 }
 
 export function SettingsNotificationsRouteScreen() {
-  if (!hasCloudPublicConfig()) {
-    return (
-      <SettingsScreen title="Notifications">
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerClassName="px-5 pt-4"
-        >
-          <Text className="text-base text-foreground-muted">
-            Notifications require remote access in this app build.
-          </Text>
-        </ScrollView>
-      </SettingsScreen>
-    );
-  }
+  const navigation = useNavigation();
 
-  return <ConfiguredSettingsNotificationsRouteScreen />;
+  // Deep-linkable (settings/notifications); push goes through the relay, so a build without cloud
+  // config sends the link to Settings, which lists no Notifications row either.
+  useLayoutEffect(() => {
+    if (!hasCloudPublicConfig()) {
+      navigation.dispatch(StackActions.replace("Settings"));
+    }
+  }, [navigation]);
+
+  return hasCloudPublicConfig() ? <ConfiguredSettingsNotificationsRouteScreen /> : null;
 }
 
 function ConfiguredSettingsNotificationsRouteScreen() {
