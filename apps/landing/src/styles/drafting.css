@@ -4337,7 +4337,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── Close: the invitation beside Mercury's limb */
+/* ───────────────────────────────────────── Close: the invitation beside the Pic du Midi */
 
 .close {
   display: grid;
@@ -4372,75 +4372,21 @@ hidden, leaves the sticky stage working). */
   overflow: hidden;
   border-left: 1px solid var(--rule);
 }
-.art {
-  position: absolute;
-  inset: 0;
-  background: var(--ink);
-  -webkit-mask: var(--art) var(--pos, center) / var(--size, cover) no-repeat;
-  mask: var(--art) var(--pos, center) / var(--size, cover) no-repeat;
+/* The Pic du Midi's plate takes the whole panel: the square is as wide as the panel, and its art stands
+   on the panel's foot, so the rock runs off both sides (its left fades to paper in the art, its right
+   is cut by the panel's edge) and its fall fades into the foot. The figure line and the credit keep
+   the panel's corners. */
+.plate--wide .plate__sheet {
+  width: 100cqw;
+  height: 100cqh;
+  aspect-ratio: auto;
+  container-type: size;
 }
-/* The limb rises from the panel's foot at every width. */
-.art--limb {
-  --art: url("/assets/art/hero-twoink-light.webp");
-  --pos: 50% 100%;
-  --size: max(100%, 40rem) auto;
-  background: var(--ink-2);
-  opacity: 0.6;
-}
-/* Six shared-size print separations: the building keeps full ink while the DEM recedes.
-   The page's existing astrolabe palette supplies the paper/ink; this has no clock of its own. */
-.close[data-close-art="samrat"] .art--limb,
-.close[data-close-art="limb"] .close__samrat,
-.close[data-close-art="limb"] .close__samrat-credit {
-  display: none;
-}
-.close__samrat {
-  position: absolute;
-  inset: 0;
-  --pos: 50% 100%;
-  --size: 100% auto;
-}
-.samrat__ground--day {
-  --art: url("/assets/art/jaipur-balanced-ground-day.webp");
-  opacity: 0.43;
-}
-.samrat__ground--night {
-  --art: url("/assets/art/jaipur-balanced-ground-night.webp");
-  opacity: 0;
-}
-.samrat__olive {
-  --art: url("/assets/art/jaipur-balanced-olive.webp");
-  background: var(--olive);
-  opacity: 0.55;
-}
-.samrat__body {
-  --art: url("/assets/art/jaipur-balanced-body.webp");
-  background: var(--paper);
-}
-.samrat__building--day {
-  --art: url("/assets/art/jaipur-balanced-building-day.webp");
-}
-.samrat__building--night {
-  --art: url("/assets/art/jaipur-balanced-building-night.webp");
-  opacity: 0;
-}
-:root[data-theme="dark"] .samrat__ground--day,
-:root[data-theme="dark"] .samrat__building--day {
-  opacity: 0;
-}
-:root[data-theme="dark"] .samrat__ground--night {
-  opacity: 0.68;
-}
-:root[data-theme="dark"] .samrat__building--night {
-  opacity: 1;
-}
-.close__credit {
-  position: absolute;
-  left: 2.75rem;
-  bottom: 1.6rem;
-  padding: 0.3rem 0.5rem;
-  background: var(--paper);
-  color: var(--ink-3);
+.plate--wide .plate__art {
+  left: calc(var(--x) * 1cqw);
+  top: calc(100cqh - var(--h) * 1cqw);
+  width: calc(var(--w) * 1cqw);
+  height: calc(var(--h) * 1cqw);
 }
 @media (max-width: 900px) {
   .close > .close__copy,
@@ -4453,12 +4399,11 @@ hidden, leaves the sticky stage working). */
     border-left: 0;
     border-top: 1px solid var(--rule);
   }
-  .art--limb {
-    --size: max(100%, 30rem) auto;
-  }
-  .close__credit {
-    left: 1.25rem;
-    bottom: 1rem;
+}
+/* On a phone the figure line wraps; a square panel keeps it clear of the mast. */
+@media (max-width: 560px) {
+  .close > .close__art {
+    aspect-ratio: 1;
   }
 }
 

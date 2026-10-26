@@ -1,0 +1,13 @@
+{
+  "comment": "Fig. 16 of astrolabe-site's observatory plates (lab/observatories/plates.json, picdumidi-1, at cce8da1), made by its scripts/observatories/. The plate is a 1000-unit square; box is the art's x, y, width, height in it. The rock runs off both sides of the square: its left fades to paper in the art, its right is cut and wants a clipping edge.",
+  "assets": "/assets/art/picdumidi",
+  "size": [1024, 596],
+  "relief": 170.67,
+  "box": [-74.7, 222.8, 1115.4, 649.2],
+  "fig": "Fig. 5 · Pic du Midi Observatory · Pyrenees · 2,877 m · 1878",
+  "alt": "A print of the Pic du Midi Observatory on its rock face in the Pyrenees, lit by the astrolabe's sun",
+  "credit": "GoginkLobabi",
+  "source": "https://commons.wikimedia.org/wiki/File:Observatoire_du_Pic_du_Midi_2022.jpg",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/"
+}
