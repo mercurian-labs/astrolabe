@@ -330,8 +330,10 @@ upstream's:
   and `"license": "FSL-1.1-MIT"` in each `package.json`. Upstream has none of these directories, so
   they can't conflict. The FSL rests on all their code being Mercurian's: don't move upstream code
   into them, and if some has to move, it keeps T3 Tools' MIT notice.
-- `"license": "MIT"` in the root, `apps/desktop`, `apps/web` and `apps/mobile` package.json files
-  is ours; keep the line when upstream edits next to it. `apps/server` declares MIT upstream too.
+- Every other `package.json` declares `"license": "MIT"`, private ones included. Upstream declares
+  it only in `apps/server`; the line in the rest is ours, so keep it when upstream edits next to it,
+  and give a new upstream package the same line in the merge commit. The `t3-review-diff` and
+  `t3-terminal` podspecs say MIT where upstream's say `UNLICENSED`.
 - `LICENSING.md`, `TRADEMARKS.md` and the "Licensing of contributions" section at the end of
   `CONTRIBUTING.md` are Astrolabe's. Keep that section when upstream rewrites the guide.
 
