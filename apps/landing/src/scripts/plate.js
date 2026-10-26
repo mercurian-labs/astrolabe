@@ -1,7 +1,7 @@
 // Astrolabe · drafting · the observatory plates, lit by the astrolabe's sun
 //
-// Two plates stand on the page: the Sphinx Observatory in [10] and the Pic du Midi Observatory in the
-// close. Each is a building printed in the page's own print from a photograph (by astrolabe-site's
+// Four plates stand on the page: the Sphinx Observatory, La Silla's New Technology Telescope and Gemini
+// North as chapter plates between sections, and the Pic du Midi Observatory in the close. Each is a building printed in the page's own print from a photograph (by astrolabe-site's
 // scripts/observatories/), and each figure (Plate.astro) names its textures' folder, their size and
 // relief: a geometry texture whose red and green carry the view-space normal's x (right) and y (up),
 // whose blue carries the relative depth and whose alpha is the building and its rock; a tone texture
@@ -33,12 +33,17 @@
 // twilight and are full before the page's inks turn over at −10°; the eyepiece shows them lit too. Rust
 // is the page's fill rust before the turn and its night rust (--rust-text) after it.
 //
-// Each plate has its own WebGL context, made only when the page comes within 800 px of it, so a visit
-// that never scrolls down makes none and the two plates make two. One shared context would have to
-// copy its drawing into each plate's canvas on every repaint; two small contexts cost less than that
-// and keep each plate's textures where it draws them. Repaints happen only when the sun moves, the
-// pointer moves or the iris turns, and only for a plate on screen in a visible tab. DPR is capped at
-// 2. Without WebGL the static print (CSS masks under a mid-morning sun) shows and there is no eyepiece.
+// Nothing of a plate loads until the page comes within 800 px of it: not its still print or line masks
+// (drafting.css holds their masks back until .plate--near), not its textures, not its WebGL context.
+// Each plate then has its own context, so a visit that never scrolls down makes none and the whole
+// page makes four. One shared context would have to copy its drawing into each plate's canvas on every
+// repaint; small contexts cost less than that and keep each plate's textures where it draws them. A
+// plate that falls more than 800 px off screen shrinks its canvas to one pixel, giving back its drawing
+// buffer (the largest thing it holds: about 7.6 MB for a 690 px square at DPR 2), and shows its still
+// until it comes back; its textures stay, so coming back costs one draw, not a reload. Repaints happen
+// only when the sun moves, the pointer moves or the iris turns, and only for a plate on screen in a
+// visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks under a mid-morning sun)
+// shows and there is no eyepiece.
 
 import Twilight from "./twilight.js";
 
@@ -297,11 +302,13 @@ import Twilight from "./twilight.js";
     const relief = Number(figure.dataset.plateRelief);
     const plate = { figure, dirty: true, paint() {} };
     const fallback = () => figure.classList.add("plate--still");
-    if (noGL || !canvas || !("IntersectionObserver" in window)) {
+    if (!("IntersectionObserver" in window)) {
+      figure.classList.add("plate--near");
       fallback();
       return plate;
     }
 
+    let nearby = false;
     let visible = false;
     let draw = null;
     let gl = null;
@@ -310,21 +317,29 @@ import Twilight from "./twilight.js";
     const lens = { x: 0, y: 0, r: 0, loaded: false }; // art px
 
     plate.paint = () => {
-      if (!draw || !sun || !plate.dirty || !visible || document.hidden) return;
+      if (!draw || !sun || !plate.dirty || !nearby || !visible || document.hidden) return;
       plate.dirty = false;
       draw();
       figure.classList.add("plate--live");
     };
 
-    const near = new IntersectionObserver(
+    new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) return;
-        near.disconnect();
-        start();
+        nearby = entry.isIntersecting;
+        if (nearby) figure.classList.add("plate--near");
+        if (noGL || !canvas) return fallback();
+        if (!gl) {
+          if (nearby) start();
+          return;
+        }
+        if (!draw) return; // still loading: its layout() reads `nearby`
+        layout();
+        if (!nearby) figure.classList.remove("plate--live");
+        plate.dirty = true;
+        plate.paint();
       },
       { rootMargin: "800px 0px" },
-    );
-    near.observe(figure);
+    ).observe(figure);
     new IntersectionObserver(([entry]) => {
       visible = entry.isIntersecting;
       plate.paint();
@@ -340,7 +355,12 @@ import Twilight from "./twilight.js";
     };
 
     function start() {
-      gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: true, alpha: true });
+      gl = canvas.getContext("webgl", {
+        antialias: false,
+        depth: false,
+        premultipliedAlpha: true,
+        alpha: true,
+      });
       if (!gl) return fallback();
       const program = gl.createProgram();
       for (const [type, source] of [
@@ -408,11 +428,12 @@ import Twilight from "./twilight.js";
       });
     }
 
+    // Far from the screen the canvas is one pixel (top of file).
     function layout() {
       dpr = Math.min(2, window.devicePixelRatio || 1);
       const box = canvas.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.round(box.width * dpr));
-      canvas.height = Math.max(1, Math.round(box.height * dpr));
+      canvas.width = nearby ? Math.max(1, Math.round(box.width * dpr)) : 1;
+      canvas.height = nearby ? Math.max(1, Math.round(box.height * dpr)) : 1;
     }
 
     function render() {
@@ -536,7 +557,7 @@ import Twilight from "./twilight.js";
 
       // The section's own approach fetches the photograph, before the pointer reaches the plate.
       figure
-        .closest("section")
+        .closest("section, .chapter")
         ?.addEventListener("pointerover", () => loadDuotone(), { once: true });
       sheet.addEventListener("pointerenter", (e) => track(e));
       sheet.addEventListener("pointermove", (e) => track(e));

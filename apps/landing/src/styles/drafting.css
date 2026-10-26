@@ -4140,6 +4140,13 @@ hidden, leaves the sticky stage working). */
   -webkit-mask: var(--art) center / 100% 100% no-repeat;
   mask: var(--art) center / 100% 100% no-repeat;
 }
+/* Until the page comes near a plate (plate.js adds .plate--near), its masks are held back, so their
+   images load with the plate rather than with the page. */
+.js .plate:not(.plate--near) .plate__art > i {
+  -webkit-mask: none;
+  mask: none;
+  visibility: hidden;
+}
 .plate__still--ink {
   background: var(--ink);
   opacity: 0.9;
