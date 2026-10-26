@@ -127,7 +127,7 @@ The server contains an analytics client that stays off unless whoever builds or 
 
 - **astrolabe.sh** sets no cookies and runs no analytics or third-party scripts. Its fonts are served from the site itself. It reads your time zone in your browser to set the page's light, and that never leaves your browser. The download page asks GitHub for the latest release from your browser, so GitHub sees your IP address, and keeps the answer in your browser until you close the tab.
 - **app.astrolabe.sh** is the web app, served as static files. It has no accounts. It sets one cookie that remembers whether the sidebar is open. Everything else it keeps, such as your saved servers, their credentials, drafts and settings, stays in your browser's storage, and it talks to the Astrolabe servers you connect it to, straight from your browser. It makes the automatic requests in section 3.4 that happen in the client: link icons from Google and the npm update check.
-- **Hosting.** Our web host, [DECISION: web host for astrolabe.sh and app.astrolabe.sh, proposed: Cloudflare], serves both sites. Like any web host, it receives your IP address, browser details and the addresses you request, including the text of any prompt link you open, and may keep request logs to run and protect the sites.
+- **Hosting.** Our web host, Cloudflare, serves both sites. Like any web host, it receives your IP address, browser details and the addresses you request, including the text of any prompt link you open, and may keep request logs to run and protect the sites.
 
 ## 5. How we use and share data
 
