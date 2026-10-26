@@ -75,7 +75,7 @@ Nothing in these terms excludes or limits any liability, or any of your rights a
 
 ## 9. Governing law
 
-These terms are governed by the laws of the State of Delaware, and disputes about them go to the state or federal courts there. [DECISION: state of incorporation, proposed: Delaware; the governing law follows it] There's no arbitration clause.
+These terms are governed by the laws of the State of Delaware, and disputes about them go to the state or federal courts there. There's no arbitration clause.
 
 If you live in the EU or the UK, you keep the protections of your local consumer law, and you can bring claims in your local courts.
 
@@ -89,7 +89,6 @@ If you live in the EU or the UK, you keep the protections of your local consumer
 ## 11. Contact
 
 Mercurian, Inc.<br>
-[DECISION: postal address]<br>
 [legal@mercurian.ai](mailto:legal@mercurian.ai)
 
 See also our [Privacy Policy](/privacy-policy) and [Licenses](/licenses).

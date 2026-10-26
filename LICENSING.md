@@ -67,12 +67,11 @@ their logos and wordmarks are trademarks, covered by the [trademark policy](TRAD
 short: say truthfully that something works with Astrolabe, but give a fork or modified build its
 own name and logo.
 
-[DECISION: whether logo and wordmark files (`assets/`, `apps/web/src/assets/brand`,
-`apps/web/public/brand`, `apps/mobile/src/components/brand`, `apps/auth/src/assets`,
-`apps/landing/public/assets/brand`) and the website's own artwork (`apps/landing/public/assets/art`,
-`apps/landing/public/og`) are excluded from the MIT and FSL grants, or licensed with the code and
-protected only by the trademark policy. The Licenses page and `apps/landing/public/assets/art/CREDITS.md`
-assume excluded, all rights reserved; the Sphinx adaptations stay CC BY-SA 4.0 either way]
+The logo and wordmark files (`assets/`, `apps/web/src/assets/brand`, `apps/web/public/brand`,
+`apps/mobile/src/components/brand`, `apps/auth/src/assets`, `apps/landing/public/assets/brand`) and
+the website's own artwork (`apps/landing/public/assets/art`, `apps/landing/public/og`) are not covered
+by the MIT or FSL licenses: all rights in them are reserved. The Sphinx and Pic du Midi adaptations
+are the exception and stay CC BY-SA 4.0, as `apps/landing/public/assets/art/CREDITS.md` says.
 
 ## Contributing
 

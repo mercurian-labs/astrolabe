@@ -6,7 +6,7 @@ are how people know a build came from us, so they work differently: Astrolabe's 
 licenses](LICENSING.md) don't grant any rights to them. This policy says what you can do without
 asking.
 
-[DECISION: which marks are registered or pending (add ® or ™ notes), and in which countries]
+None of the Marks is registered yet. Mercurian claims them as unregistered trademarks (™).
 
 ## Uses that need no permission
 

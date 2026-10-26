@@ -16,7 +16,7 @@ updated: October 25, 2026
 
 ## 1. Who we are and what this covers
 
-Mercurian, Inc. ("Mercurian", "we", "us"), a Delaware corporation [DECISION: state of incorporation, proposed: Delaware], makes Astrolabe. Our address is in section 10.
+Mercurian, Inc. ("Mercurian", "we", "us"), a Delaware corporation, makes Astrolabe. How to reach us is in section 10.
 
 This policy covers:
 
@@ -164,7 +164,6 @@ We'll post every change here with a new date, and every earlier version stays in
 ## 10. Contact
 
 Mercurian, Inc.<br>
-[DECISION: postal address]<br>
 [privacy@mercurian.ai](mailto:privacy@mercurian.ai)
 
 See also our [Terms of Service](/terms-of-service) and [Licenses](/licenses).

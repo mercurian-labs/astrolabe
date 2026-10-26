@@ -50,7 +50,7 @@ Not everything Astrolabe ships is open source. The server includes Anthropic's C
 
 The text, layout and code of this website are part of the Astrolabe repository. Its pictures and fonts come from these sources.
 
-The site's own artwork, and the brand marks, are Mercurian's, and all rights in them are reserved, except where a section below says otherwise. [DECISION: whether site artwork and brand marks are excluded from the repository's MIT License, proposed: excluded, all rights reserved, with the same note in LICENSING.md]
+The site's own artwork, and the brand marks, are Mercurian's, and all rights in them are reserved, except where a section below says otherwise.
 
 ### The Sphinx Observatory
 
