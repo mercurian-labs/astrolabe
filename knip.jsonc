@@ -95,6 +95,11 @@
         "src/components/ComposerPromptEditorTiptap.tsx": ["exports"],
       },
     },
+    "apps/landing": {
+      // Run by hand (`node apps/landing/scripts/*.mjs`); cards/*.js load from the card templates' HTML;
+      // drafting.js is imported from a <script> in Layout.astro, which knip does not follow.
+      "entry": ["scripts/*.mjs", "cards/*.js", "src/scripts/drafting.js"],
+    },
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
       "ignoreDependencies": ["@astrojs/check"],
