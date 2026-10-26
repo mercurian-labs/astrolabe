@@ -382,6 +382,12 @@ jobs:
     environment:
       name: production
     outputs:
+      # Astrolabe deploys no relay or sign-in service yet. With neither
+      # RELAY_DOMAIN (or RELAY_API_ZONE_NAME) nor AUTH_URL set, every output is
+      # empty and `configured` is false: clients build with remote access and
+      # sign-in hidden (hasCloudPublicConfig in apps/web/src/cloud/publicConfig.ts),
+      # and nothing reads the relay's Alchemy state or its tracing artifact.
+      configured: ${{ steps.public_config.outputs.configured }}
       auth_url: ${{ steps.public_config.outputs.auth_url }}
       relay_url: ${{ steps.public_config.outputs.relay_url }}
     env:
@@ -391,7 +397,45 @@ jobs:
       RELAY_API_ZONE_NAME: ${{ vars.RELAY_API_ZONE_NAME }}
       AUTH_URL: ${{ vars.AUTH_URL }}
     steps:
+      - id: public_config
+        name: Resolve production relay public config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          relay_domain="${RELAY_DOMAIN:-}"
+          if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
+            relay_domain="relay.$RELAY_API_ZONE_NAME"
+          fi
+          if [[ -z "$relay_domain" && -z "${AUTH_URL:-}" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "No relay or auth configuration; building clients without remote access or sign-in."
+            exit 0
+          fi
+          # Remote access needs both; one without the other is a mistake.
+          required=(
+            relay_domain
+            AUTH_URL
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required relay deployment configuration: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          {
+            echo "configured=true"
+            echo "auth_url=$AUTH_URL"
+            echo "relay_url=https://$relay_domain"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.public_config.outputs.configured == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve_commit.outputs.ref }}
@@ -401,6 +445,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
+        if: steps.public_config.outputs.configured == 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -416,6 +461,7 @@ jobs:
       # Redacted values are persisted as
       # {"__redacted__": "<value>"}; the token is masked before it is written.
       - name: Read production relay tracing config
+        if: steps.public_config.outputs.configured == 'true'
         shell: bash
         working-directory: infra/relay
         run: |
@@ -436,40 +482,13 @@ jobs:
           } > "$RUNNER_TEMP/relay-client-tracing.env"
 
       - name: Upload relay client tracing config
+        if: steps.public_config.outputs.configured == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing.env
           if-no-files-found: error
           retention-days: 1
-
-      - id: public_config
-        name: Resolve production relay public config
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          relay_domain="${RELAY_DOMAIN:-}"
-          if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
-            relay_domain="relay.$RELAY_API_ZONE_NAME"
-          fi
-          required=(
-            relay_domain
-            AUTH_URL
-          )
-          missing=()
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              missing+=("$name")
-            fi
-          done
-          if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required relay deployment configuration: %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-
-          echo "auth_url=$AUTH_URL" >> "$GITHUB_OUTPUT"
-          echo "relay_url=https://$relay_domain" >> "$GITHUB_OUTPUT"
 
   # The platform-independent JS (server bundle, web client, Electron main) is
   # built exactly once here and handed to every platform job as `js-bundle`.
@@ -518,12 +537,14 @@ jobs:
         run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
 
       - name: Download relay client tracing config
+        if: needs.relay_public_config.outputs.configured == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
+        if: needs.relay_public_config.outputs.configured == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
@@ -583,6 +604,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: macOS arm64
       runner: blacksmith-12vcpu-macos-26
       platform: mac
@@ -604,6 +626,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: macOS x64
       runner: blacksmith-12vcpu-macos-26
       platform: mac
@@ -628,6 +651,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: Linux x64
       runner: blacksmith-32vcpu-ubuntu-2404
       platform: linux
@@ -651,6 +675,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: Linux arm64
       runner: blacksmith-16vcpu-ubuntu-2404-arm
       platform: linux
@@ -677,6 +702,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: Windows x64
       runner: blacksmith-16vcpu-ubuntu-2404
       verify_runner: windows-2025
@@ -699,6 +725,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: Windows arm64
       runner: blacksmith-16vcpu-ubuntu-2404
       verify_runner: windows-11-arm
@@ -1010,12 +1037,14 @@ jobs:
               - --filter=@t3tools/web...
 
       - name: Download relay client tracing config
+        if: needs.relay_public_config.outputs.configured == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
+        if: needs.relay_public_config.outputs.configured == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
