@@ -69,7 +69,7 @@ To the extent the law allows:
 
 - Mercurian isn't liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue or data.
 - Mercurian isn't liable for actions agents take under the modes and settings you chose, or for charges from your AI providers.
-- Mercurian's total liability for any claim about these terms, the websites or the software is limited to US$100. [DECISION: liability cap, proposed: US$100, since Mercurian charges nothing]
+- Mercurian's total liability for all claims about these terms, the websites or the software is limited to the greater of US$100 or what you paid Mercurian in the 12 months before the claim arose.
 
 Nothing in these terms excludes or limits any liability, or any of your rights as a consumer, that the law doesn't allow to be excluded or limited, such as liability for fraud, or for death or personal injury caused by negligence. This applies to the warranty disclaimer in section 7 too.
 
