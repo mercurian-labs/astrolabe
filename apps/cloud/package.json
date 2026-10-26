@@ -1,6 +1,7 @@
 {
   "name": "@mercurian/cloud",
   "private": true,
+  "license": "FSL-1.1-MIT",
   "type": "module",
   "exports": {
     "./app": "./src/app.ts",

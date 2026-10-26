@@ -1,6 +1,7 @@
 {
   "name": "mercurian-cloud-infra",
   "private": true,
+  "license": "FSL-1.1-MIT",
   "type": "module",
   "scripts": {
     "build": "vp pack && mkdir -p dist/migrate/migrations && cp -R ../../apps/cloud/migrations/auth dist/migrate/migrations/auth && cp -R ../relay/migrations/postgres dist/migrate/migrations/relay",

@@ -2,6 +2,7 @@
   "name": "@t3tools/desktop",
   "version": "0.1.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "dist-electron/boot.cjs",
   "scripts": {

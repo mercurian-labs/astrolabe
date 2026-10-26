@@ -2,6 +2,7 @@
   "name": "@t3tools/web",
   "version": "0.1.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build:ghostty-wasm": "bash scripts/build-libghostty-wasm.sh",
