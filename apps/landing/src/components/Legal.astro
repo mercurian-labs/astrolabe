@@ -10,6 +10,11 @@ interface Props {
   doc: MarkdownInstance<Record<string, string>>;
 }
 
+// The launch switch. While true, every legal page carries the draft banner, a noindex tag and
+// "(draft)" in its title. Set it to false to publish; the build then fails while any page still
+// holds a [DECISION], [PENDING] or [VERIFY] marker.
+const DRAFT = true;
+
 const { doc } = Astro.props;
 const { title, description, updated } = doc.frontmatter;
 
@@ -40,13 +45,18 @@ const html = (await doc.compiledContent())
   .replace(/<table>/g, '<div class="legal__table" tabindex="0" role="region" aria-label="Table"><table>')
   .replace(/<\/table>/g, "</table></div>");
 
+const markers = counts.DECISION + counts.PENDING + counts.VERIFY;
+if (!DRAFT && markers > 0) {
+  throw new Error(`${title} still has ${markers} open marker(s); resolve them before publishing.`);
+}
+
 const contents = doc.getHeadings().filter((heading) => heading.depth === 2);
 ---
 
 <Layout
-  title={`${title} (draft) · Astrolabe`}
+  title={DRAFT ? `${title} (draft) · Astrolabe` : `${title} · Astrolabe`}
   description={description}
-  noindex
+  noindex={DRAFT}
   image={{ src: `/og/page-${here.slice(1)}.jpg`, alt: `${title}, Astrolabe, printed on a two-ink print of Mercury` }}
 >
   <Header />
@@ -66,25 +76,27 @@ const contents = doc.getHeadings().filter((heading) => heading.depth === 2);
       <p class="tag">Last updated {updated}</p>
     </div>
 
-    <aside class="legal__draft" aria-labelledby="legal-draft">
-      <p class="legal__draft-title" id="legal-draft">Draft, not in effect</p>
-      <p>
-        This is a working draft for review by Mercurian and its counsel. It is not in effect. It describes the product as
-        it will be once the changes marked pending have shipped.
-      </p>
-      <ul class="legal__legend" aria-label="Marks in this draft">
-        {
-          (Object.keys(KINDS) as Kind[]).map((kind) => (
-            <li>
-              <mark class={`flag flag--${kind.toLowerCase()}`}>
-                [<span class="flag__kind">{kind}</span>]
-              </mark>{" "}
-              {counts[kind]} {KINDS[kind]}
-            </li>
-          ))
-        }
-      </ul>
-    </aside>
+    {
+      DRAFT && (
+        <aside class="legal__draft" aria-labelledby="legal-draft">
+          <p class="legal__draft-title" id="legal-draft">Draft, not in effect</p>
+          <p>
+            This is a working draft for review by Mercurian and its counsel. It is not in effect yet. The
+            highlighted marks are facts Mercurian has still to supply.
+          </p>
+          <ul class="legal__legend" aria-label="Marks in this draft">
+            {(Object.keys(KINDS) as Kind[]).map((kind) => (
+              <li>
+                <mark class={`flag flag--${kind.toLowerCase()}`}>
+                  [<span class="flag__kind">{kind}</span>]
+                </mark>{" "}
+                {counts[kind]} {KINDS[kind]}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )
+    }
 
     <div class="legal__body">
       <nav class="legal__toc" aria-labelledby="legal-toc">
