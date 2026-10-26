@@ -298,9 +298,9 @@ through one of these values in the merge commit.
   → Mobile app** and its search entry show only the stores that have a URL, and nothing without
   one. The hosted app's "Or download the desktop app" and "Get Astrolabe" links need
   `DESKTOP_DOWNLOAD_URL`. The mobile app links to no store. `apps/marketing` is upstream's own
-  site, store links and legal pages included. Astrolabe never deploys it: `release.yml`'s
-  marketing jobs look up a Vercel project named `t3code-marketing`, and Astrolabe's site is
-  `apps/landing`. When the release pipeline moves to Astrolabe, drop those jobs.
+  site, store links and legal pages included. Astrolabe never deploys it: `release.yml` has no
+  marketing jobs, and Astrolabe's site is `apps/landing`. When a sync brings upstream's
+  `build_marketing` and `deploy_marketing` back, drop them again.
 - **Triage.** `astrolabe triage` fetched and followed upstream's live playbook, cloned upstream's
   source and filed issues on `pingdotgg/t3code`. It is unlisted and refuses to run while
   `TRIAGE_REPOSITORY` is unset. The playbook text (both copies) still names upstream's repository

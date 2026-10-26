@@ -994,6 +994,11 @@ jobs:
     secrets:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
 
+  # Astrolabe: the hosted web app deploys only when VERCEL_TOKEN, VERCEL_ORG_ID
+  # and VERCEL_PROJECT_ID are all set. Without them both web jobs skip their
+  # work and pass, so a missing hosted deploy never blocks or fails a release;
+  # nothing else waits on them (publish_cli needs only the GitHub Release).
+  #
   # Vercel builds the hosted web app while the desktop jobs run. `--skip-domain`
   # keeps the custom domains (the channel and router domains) on the previous
   # deployment until deploy_web aliases them, after the GitHub Release. It does
@@ -1017,7 +1022,19 @@ jobs:
       T3CODE_WEB_ROUTER_URL: ${{ vars.T3CODE_WEB_ROUTER_URL }}
       VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
     steps:
+      - id: vercel
+        name: Check Vercel configuration
+        shell: bash
+        run: |
+          if [[ -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_ORG_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel secrets are not set; skipping the hosted web app deploy."
+          fi
+
       - name: Checkout
+        if: steps.vercel.outputs.configured == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.preflight.outputs.ref }}
@@ -1027,6 +1044,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
+        if: steps.vercel.outputs.configured == 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -1037,14 +1055,14 @@ jobs:
               - --filter=@t3tools/web...
 
       - name: Download relay client tracing config
-        if: needs.relay_public_config.outputs.configured == 'true'
+        if: steps.vercel.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
-        if: needs.relay_public_config.outputs.configured == 'true'
+        if: steps.vercel.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
@@ -1053,21 +1071,19 @@ jobs:
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
+        if: steps.vercel.outputs.configured == 'true'
         run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
 
       - name: Refresh release lockfile
+        if: steps.vercel.outputs.configured == 'true'
         run: vp install --lockfile-only --ignore-scripts
 
       - id: deploy
         name: Build staged deployment
+        if: steps.vercel.outputs.configured == 'true'
         shell: bash
         run: |
           set -euo pipefail
-
-          if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" || -z "${VERCEL_PROJECT_ID:-}" ]]; then
-            echo "Missing one or more required Vercel secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID." >&2
-            exit 1
-          fi
 
           router_url="${T3CODE_WEB_ROUTER_URL:-https://app.astrolabe.sh}"
           if [[ "${{ needs.preflight.outputs.release_channel }}" == "stable" ]]; then
@@ -1107,7 +1123,7 @@ jobs:
   deploy_web:
     name: Deploy hosted web app
     needs: [preflight, build_web, release, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.build_web.outputs.deployment_url != '' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     env:
@@ -1175,124 +1191,10 @@ jobs:
               "${vercel_scope_args[@]}"
           fi
 
-  # Same split as the web app: build a production deployment early, then
-  # promote it to t3.codes once the release it links to exists. As above, the
-  # project's own *.vercel.app hostname moves at build time.
-  build_marketing:
-    name: Build marketing site
-    needs: [preflight]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
-      project_id: ${{ steps.deploy.outputs.project_id }}
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=@t3tools/marketing...
-
-      - id: deploy
-        name: Build staged deployment
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" ]]; then
-            echo "Missing one or more required Vercel secrets: VERCEL_TOKEN, VERCEL_ORG_ID." >&2
-            exit 1
-          fi
-
-          VERCEL_PROJECT_ID="$(
-            curl --fail --silent --show-error \
-              --header "Authorization: Bearer $VERCEL_TOKEN" \
-              "https://api.vercel.com/v9/projects/t3code-marketing?teamId=$VERCEL_ORG_ID" \
-              | jq --exit-status --raw-output '.id'
-          )"
-          export VERCEL_PROJECT_ID
-
-          deployment_output="$(
-            vp dlx vercel@53.1.1 deploy \
-              --archive=tgz \
-              --prod \
-              --skip-domain \
-              --yes \
-              --token "$VERCEL_TOKEN" \
-              --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}"
-          )"
-          printf '%s\n' "$deployment_output"
-          # Vercel can print lockfile warnings to stdout before the deployment URL.
-          deployment_url="$(printf '%s\n' "$deployment_output" | grep -E '^https://[[:alnum:].-]+\.vercel\.app$')"
-          if [[ "$deployment_url" == *$'\n'* ]]; then
-            echo "Vercel returned multiple deployment URLs." >&2
-            exit 1
-          fi
-          echo "Staged $deployment_url."
-          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-          echo "project_id=$VERCEL_PROJECT_ID" >> "$GITHUB_OUTPUT"
-
-  deploy_marketing:
-    name: Deploy marketing site
-    needs: [preflight, build_marketing, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_marketing.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 10
-    env:
-      DEPLOYMENT_URL: ${{ needs.build_marketing.outputs.deployment_url }}
-      VERCEL_PROJECT_ID: ${{ needs.build_marketing.outputs.project_id }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Promote marketing site
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "$DEPLOYMENT_URL" ]]; then
-            echo "Build marketing site did not report a deployment URL." >&2
-            exit 1
-          fi
-
-          echo "Promoting $DEPLOYMENT_URL."
-          vp dlx vercel@53.1.1 promote "$DEPLOYMENT_URL" \
-            --yes \
-            --token "$VERCEL_TOKEN" \
-            --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}"
+  # Astrolabe: no marketing jobs. Upstream's build_marketing/deploy_marketing
+  # promote apps/marketing (T3 Code's own site, Vercel project
+  # `t3code-marketing`) on nightlies. Astrolabe's site is apps/landing, which
+  # deploys outside this workflow.
 
   finalize:
     name: Finalize release
