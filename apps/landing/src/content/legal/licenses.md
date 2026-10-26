@@ -58,15 +58,17 @@ The print of the Sphinx Observatory on the Jungfraujoch is adapted from "[CH.BE.
 
 Our adaptations are licensed under CC BY-SA 4.0 too. They are the files in `/assets/art/sphinx/` and the Sphinx share cards (`/og/card-sphinx.jpg` and `/og/card-sphinx-day.jpg`). You may reuse them under that license if you credit Roy Egloff and this site and say what you changed.
 
+### The Pic du Midi Observatory
+
+The print of the Pic du Midi Observatory in the Pyrenees is adapted from "[Observatoire du Pic du Midi 2022](https://commons.wikimedia.org/wiki/File:Observatoire_du_Pic_du_Midi_2022.jpg)", a photograph by GoginkLobabi, licensed under [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0). We changed it: we painted out the cable-car cables, the visitors, a crane, a flag and the terrace netting, cut the summit from the sky, faded its rock to paper, derived shape, tone and line drawings from it, and print it lit by the astrolabe's sun.
+
+Our adaptations are licensed under CC BY-SA 4.0 too. They are the files in `/assets/art/picdumidi/`. You may reuse them under that license if you credit GoginkLobabi and this site and say what you changed.
+
 ### Mercury
 
 The planet's terrain throughout this site, including the footer's Beethoven basin, is drawn from the [Mercury MESSENGER Global DEM 665m](https://astrogeology.usgs.gov/search/map/mercury_messenger_global_dem_665m) (version 2), published by the USGS Astrogeology Science Center. It was made by Kris Becker and colleagues from NASA's MESSENGER mission data, with NASA, Arizona State University, the Johns Hopkins Applied Physics Laboratory and the Carnegie Institution for Science. See Becker et al., "First global digital elevation model of Mercury", 47th Lunar and Planetary Science Conference, 2016. The USGS places no constraints on its use and asks users to cite the authors.
 
 The names of features around the Beethoven basin come from the [Gazetteer of Planetary Nomenclature](https://planetarynames.wr.usgs.gov/), which the USGS Astrogeology Science Center maintains for the International Astronomical Union's Working Group for Planetary System Nomenclature, with NASA support.
-
-### Jaipur's Great Samrat Yantra
-
-The sundial on the closing globe is our own reconstruction of the Great Samrat Yantra at Jantar Mantar, Jaipur. We modelled it from published measurements and drawings, chiefly UNESCO's World Heritage nomination dossier 1338 and M. N. Ashish Ganju's 1985 plans and elevations. No photographs or drawings by others appear in the finished art.
 
 ### The astrolabe
 
