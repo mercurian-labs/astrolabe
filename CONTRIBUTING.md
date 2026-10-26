@@ -175,5 +175,5 @@ Most of this repository is MIT licensed (see [LICENSING.md](LICENSING.md)). By s
 contribution to an MIT-licensed part, you agree that it is licensed under the same
 [MIT license](LICENSE), and you confirm you have the right to submit it.
 
-`apps/cloud`, `apps/auth`, `apps/admin` and `infra/cloud` are under FSL-1.1-MIT.
-[DECISION: CLA or no outside contributions for the cloud directories at first]
+`apps/cloud`, `apps/auth`, `apps/admin` and `infra/cloud` are under FSL-1.1-MIT, and we don't
+accept outside contributions to them for now. Please open an issue instead.

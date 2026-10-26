@@ -64,5 +64,5 @@ from the MIT and FSL grants, or licensed with the code and protected only by the
 
 ## Contributing
 
-Contributions to the MIT parts are accepted under MIT. See [CONTRIBUTING.md](CONTRIBUTING.md#licensing)
-for the cloud directories.
+Contributions to the MIT parts are accepted under MIT. We don't accept outside contributions to
+the FSL directories for now. See [CONTRIBUTING.md](CONTRIBUTING.md#licensing).
