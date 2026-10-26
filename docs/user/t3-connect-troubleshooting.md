@@ -1,5 +1,9 @@
 # Remote access troubleshooting
 
+> **Not available yet.** Remote access through your Astrolabe account isn't live,
+> so this guide applies only once it is. See [Remote access](./remote-access.md)
+> for direct pairing.
+
 A remote access connection goes through four parts, in this order:
 
 1. **This device** reaches the remote access service over the internet.
