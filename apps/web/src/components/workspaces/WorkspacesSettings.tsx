@@ -13,7 +13,6 @@ import { PlusIcon, UserPlusIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { startCloudSignIn, useCloudAccountState } from "../../cloud/account";
-import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { useWorkspaceSync } from "../../cloud/workspaces";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "../settings/settingsLayout";
 import { Badge } from "../ui/badge";
@@ -47,21 +46,16 @@ const POLICY_LABELS: Readonly<Record<WorkspacePolicy, string>> = {
   admins: "Owner and admins",
 };
 
-/** Settings › Workspaces: the workspaces you belong to, their people and teams, and invitations to you. */
+/**
+ * Settings › Workspaces: the workspaces you belong to, their people and teams, and invitations to
+ * you. Its route redirects away in builds without cloud config.
+ */
 export function WorkspacesSettings() {
   const account = useCloudAccountState();
   const sync = useWorkspaceSync();
   return (
     <SettingsPageContainer>
-      {!hasCloudPublicConfig() ? (
-        // Without the cloud's addresses the account never loads; say why.
-        <SettingsSection title="Workspaces">
-          <SettingsRow
-            title="Sign-in isn't set up in this build"
-            description="Workspaces and teams need Astrolabe sign-in, which this build of Astrolabe doesn't include."
-          />
-        </SettingsSection>
-      ) : account.status === "loading" ? (
+      {account.status === "loading" ? (
         <div className="flex justify-center py-8">
           <Spinner />
         </div>

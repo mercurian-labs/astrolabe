@@ -7,6 +7,7 @@ import {
   getSettingsSearchTargetScope,
   getThreadAutoSettlementSearchAvailability,
   isSettingsSearchScopeAvailable,
+  isSettingsSectionAvailable,
   searchSettings,
   SETTINGS_SEARCH_ITEMS,
   type SettingsSearchItem,
@@ -126,6 +127,28 @@ describe("searchSettings", () => {
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
   });
+
+  it.each([false, true])(
+    "never offers a result in a hidden section (cloud config %s)",
+    (hasCloudPublicConfig) => {
+      const available = filterAvailableSettingsSearchItems({
+        hasCloudPublicConfig,
+        hasEnvironment: true,
+        hasProviderSettingsEnvironment: true,
+        hasMacProviderSettingsEnvironment: true,
+        canManageLocalBackend: true,
+        isWslSettingsRowVisible: true,
+        hasThreadAutoSettlement: true,
+        managedTunnelActive: true,
+      });
+      const sections = new Set(available.map((item) => item.to));
+      for (const section of sections) {
+        expect(isSettingsSectionAvailable(section, { hasCloudPublicConfig })).toBe(true);
+      }
+      expect(sections.has("/settings/workspaces")).toBe(hasCloudPublicConfig);
+      expect(sections.has("/settings/connections")).toBe(true);
+    },
+  );
 
   it("finds keybinding commands by label, command id, and default key", () => {
     expect(searchSettings("toggle sidebar")[0]?.id).toBe("keybinding-sidebar.toggle");

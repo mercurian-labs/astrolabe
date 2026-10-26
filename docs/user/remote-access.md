@@ -5,6 +5,11 @@ machine. That machine must stay running and reachable while you work.
 
 ## Connect through your Astrolabe account
 
+> **Not available yet.** Astrolabe accounts and the remote access service aren't
+> live, so current builds don't offer this. Use
+> [direct pairing](#pair-over-a-lan-or-private-network) over your network or
+> Tailscale instead.
+
 Remote access makes an environment available to your other devices without setting
 up router forwarding. In the desktop app on the host, open **Settings →
 Connections**, sign in, and turn on **Remote access** for that environment.

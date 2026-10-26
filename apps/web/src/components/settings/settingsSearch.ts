@@ -93,6 +93,16 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/archived": "Archive",
 };
 
+/** Sections that need Astrolabe sign-in. Builds without cloud config hide them. */
+const CLOUD_ONLY_SETTINGS_SECTIONS: ReadonlySet<SettingsPath> = new Set(["/settings/workspaces"]);
+
+export function isSettingsSectionAvailable(
+  path: SettingsPath,
+  availability: Pick<SettingsSearchAvailability, "hasCloudPublicConfig">,
+): boolean {
+  return availability.hasCloudPublicConfig || !CLOUD_ONLY_SETTINGS_SECTIONS.has(path);
+}
+
 export function keybindingSearchAnchorId<Command extends KeybindingCommand>(command: Command) {
   return `keybinding-${command}` as const;
 }

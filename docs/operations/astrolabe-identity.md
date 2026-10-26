@@ -263,7 +263,7 @@ through one of these values in the merge commit.
 | Concern                             | Value                                                                                                                  | Astrolabe now                   |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | Hosted web app                      | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`      |
-| Relay                               | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh`    |
+| Relay and sign-in                   | `T3CODE_RELAY_URL`, `T3CODE_AUTH_URL` in `.env.example`                                                                | unset: cloud features hidden    |
 | CLI releases                        | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | `mercurian-labs/astrolabe`      |
 | Mobile EAS project                  | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | `@mercurian/astrolabe`          |
 | App Store Connect app               | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | `6826105166`                    |
@@ -277,11 +277,15 @@ through one of these values in the merge commit.
   hosted-web defaults in `release.yml` carry the same host for the Vercel channel router. The hosted
   app's sign-in shares the sign-in pages' session cookie, so it works only once the hosted app is
   served from `app.astrolabe.sh`.
-- **Relay.** Source builds and the signed macOS PR previews take the relay from `.env.example`;
-  release builds take it from the `RELAY_DOMAIN` repository variable, and the sign-in origin from
-  `AUTH_URL`. With neither set, releases build with remote access and sign-in hidden. The relay dashboards in
-  `infra/relay/src/monitoring.ts` match relay requests by path, not host, and their runbook links
-  point at Astrolabe's repository.
+- **Relay and sign-in.** Nothing is deployed at `relay.astrolabe.sh` or behind the
+  `app.astrolabe.sh` sign-in yet, so both values stay unset and every cloud feature (sign-in,
+  workspaces, remote access through the relay, push notifications) is hidden on every surface. Each
+  client gates on its own `hasCloudPublicConfig()` and the server CLI on its `hasCloudPublicConfig`;
+  none falls back to a host. Source builds and the signed macOS PR previews read the values from
+  `.env.example`, where they are commented out; release builds take them from the `RELAY_DOMAIN`
+  and `AUTH_URL` repository variables. Setting both brings the features back unchanged. The relay
+  dashboards in `infra/relay/src/monitoring.ts` match relay requests by path, not host, and their
+  runbook links point at Astrolabe's repository.
 - **CLI releases.** Every runtime download derives from `CLI_RELEASE_REPOSITORY`: the npm launcher
   (`scripts/build-npm-launcher.ts` stamps it into the package as `astrolabe.releaseRepository`),
   `astrolabe update` (unlisted while it is unset), the background service and remote self-update
