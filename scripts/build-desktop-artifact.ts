@@ -1095,6 +1095,8 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
   },
+  // Astrolabe's own license, beside Electron's LICENSE.electron.txt and LICENSES.chromium.html.
+  { from: "apps/desktop/prod-resources/LICENSE", to: "LICENSE" },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {
@@ -3638,6 +3640,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
+  yield* fs.copyFile(path.join(repoRoot, "LICENSE"), path.join(stageProdResourcesDir, "LICENSE"));
 
   const configuredMacPasskeySigning =
     options.platform === "mac" && options.signed
