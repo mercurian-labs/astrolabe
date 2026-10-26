@@ -20,6 +20,12 @@ Third-party files keep their own licenses, wherever they sit. For example, the F
 `apps/auth/src/assets/fonts` is under the SIL Open Font License (`OFL.txt` next to it), and the
 vendored Ghostty code carries its own `LICENSE`.
 
+Every build lists the third-party software it ships, with each license text, under **Settings →
+General → Open source licenses**. The list comes from `third-party-licenses.config.json`, the
+production dependencies, and each Rust helper's `THIRD-PARTY-NOTICES.txt`. Two dependencies in it
+aren't open source: Anthropic's Claude Agent SDK and Cursor's SDK, which come under their owners'
+own terms.
+
 ## The app: MIT
 
 The app is MIT licensed. You can use, copy, change, and redistribute it, commercially or not, as
