@@ -2758,7 +2758,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       icon: "icons",
       category: "Development",
       synopsis: "Desktop GUI for coding agents",
-      maintainer: "Mercurian <venk@mercurian.ai>",
+      maintainer: "Mercurian <hello@mercurian.ai>",
       protocols: [
         {
           name: "Astrolabe",
