@@ -85,7 +85,7 @@ const contents = doc.getHeadings().filter((heading) => heading.depth === 2);
             highlighted marks are facts Mercurian has still to supply.
           </p>
           <ul class="legal__legend" aria-label="Marks in this draft">
-            {(Object.keys(KINDS) as Kind[]).map((kind) => (
+            {(Object.keys(KINDS) as Kind[]).filter((kind) => counts[kind] > 0).map((kind) => (
               <li>
                 <mark class={`flag flag--${kind.toLowerCase()}`}>
                   [<span class="flag__kind">{kind}</span>]
