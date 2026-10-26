@@ -39,7 +39,7 @@
 // page makes four. One shared context would have to copy its drawing into each plate's canvas on every
 // repaint; small contexts cost less than that and keep each plate's textures where it draws them. A
 // plate that falls more than 800 px off screen shrinks its canvas to one pixel, giving back its drawing
-// buffer (the largest thing it holds: about 7.6 MB for a 690 px square at DPR 2), and shows its still
+// buffer (the largest thing it holds: some 6 MB for a band at 1440 px and DPR 2), and shows its still
 // until it comes back; its textures stay, so coming back costs one draw, not a reload. Repaints happen
 // only when the sun moves, the pointer moves or the iris turns, and only for a plate on screen in a
 // visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks under a mid-morning sun)
