@@ -147,6 +147,12 @@ function publish(staging, dir) {
 
 async function main() {
   const key = `${process.platform}-${process.arch}`;
+  // Releases ship macOS and Linux only for now. Drop this when the Windows jobs return to release.yml.
+  if (process.platform === "win32") {
+    throw new Error(
+      "Astrolabe for Windows is coming soon. macOS and Linux builds are at https://astrolabe.sh/download",
+    );
+  }
   if (!SUPPORTED.includes(key)) {
     throw new Error(
       `no Astrolabe CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).` +

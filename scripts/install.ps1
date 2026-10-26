@@ -37,6 +37,10 @@ function Fail([string] $message) {
 if (-not $baseUrl) {
   Fail "Astrolabe publishes no CLI releases yet. Set ASTROLABE_RELEASE_BASE_URL to a mirror of the release archives."
 }
+# Releases ship macOS and Linux only for now. Drop this when the Windows jobs return to release.yml.
+if (-not $env:T3CODE_RELEASE_BASE_URL) {
+  Fail "Astrolabe for Windows is coming soon. macOS and Linux builds are at https://astrolabe.sh/download"
+}
 
 $terminal = -not [Console]::IsErrorRedirected -and $env:TERM -ne "dumb"
 $interactive = $terminal -and $Host.UI.SupportsVirtualTerminal
