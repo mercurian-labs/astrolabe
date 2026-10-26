@@ -1,0 +1,15 @@
+{
+  "comment": "Fig. 19 of astrolabe-site's observatory plates (lab/observatories/plates/plates.json, maunakea-2, at 5fc6ae3), made by its scripts/observatories/ (plates_maunakea.py). The plate is a 1000-unit square; box is the art's x, y, width, height in it. The ridge and the annex run off both sides.",
+  "assets": "/assets/art/gemini",
+  "size": [1024, 618],
+  "relief": 170.67,
+  "box": [-61.0, 192.9, 1122.0, 677.1],
+  "fig": "Fig. 5 · Gemini North · Maunakea · 4,213 m · 1999",
+  "alt": "A print of the Gemini North telescope in snow on Maunakea, the Canada-France-Hawai‘i Telescope beyond, lit by the astrolabe's sun",
+  "credit": "International Gemini Observatory/NOIRLab/NSF/AURA",
+  "changes": "inpainted, isolated and printed",
+  "source": "https://commons.wikimedia.org/wiki/File:Gemini_North_in_Snow_(CFHT_Gemini-CC).jpg",
+  "at": ["19°49′ N", "155°28′ W"],
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+}

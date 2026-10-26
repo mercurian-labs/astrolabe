@@ -5,6 +5,7 @@ import Anywhere from "../components/Anywhere.astro";
 import Audience from "../components/Audience.astro";
 import Automations from "../components/Automations.astro";
 import Changes from "../components/Changes.astro";
+import Chapter from "../components/Chapter.astro";
 import Close from "../components/Close.astro";
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
@@ -13,6 +14,9 @@ import Repositories from "../components/Repositories.astro";
 import Value from "../components/Value.astro";
 import Walkthrough from "../components/Walkthrough.astro";
 import Wikis from "../components/Wikis.astro";
+import gemini from "../data/gemini-plate.json";
+import lasilla from "../data/lasilla-plate.json";
+import sphinx from "../data/sphinx-plate.json";
 ---
 
 <Layout>
@@ -22,10 +26,13 @@ import Wikis from "../components/Wikis.astro";
     <Hero />
     <Value />
     <Agents />
+    <Chapter plate={sphinx} />
     <Walkthrough />
     <Wikis />
+    <Chapter plate={lasilla} />
     <Repositories />
     <Changes />
+    <Chapter plate={gemini} />
     <Automations />
     <Anywhere />
     <Audience />

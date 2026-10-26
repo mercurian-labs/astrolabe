@@ -11,6 +11,7 @@ interface Props {
     fig: string;
     alt: string;
     credit: string;
+    changes: string;
     source: string;
     license: string;
     licenseUrl: string;
@@ -38,7 +39,7 @@ const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
     </div>
     <figcaption class="plate__fig">{plate.fig}</figcaption>
     <p class="plate__credit">
-      After a <a href={plate.source}>photograph by {plate.credit}</a>, inpainted and printed · <a href={plate.licenseUrl} rel="license">{plate.license}</a>
+      After a <a href={plate.source}>photograph by {plate.credit}</a>, {plate.changes} · <a href={plate.licenseUrl} rel="license">{plate.license}</a>
     </p>
   </div>
 </figure>

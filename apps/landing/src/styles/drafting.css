@@ -4057,18 +4057,47 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [10] Who it's for */
+/* ───────────────────────────────────────── Chapter plates */
 
-.who {
+/* An observatory print between two sections, as an atlas sets a full-page plate between chapters: the
+   square stands in the middle of a ruled band as tall as itself, ruled down both sides with crosses at
+   its corners, and clips the art that runs off its edges. Its margin carries the observatory's place
+   on the globe, against the rule and level with the figure line. On a tablet or phone the square
+   stands alone. */
+.chapter {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   border-top: 1px solid var(--rule);
 }
-.who__art {
-  grid-column: span 6;
+.chapter__at {
+  grid-area: 1 / 1 / 2 / 4;
+  display: grid;
+  align-content: start;
+  justify-items: end;
+  padding: calc(var(--pad) + 0.5rem) var(--pad);
+  color: var(--ink-3);
+}
+.chapter__plate {
+  grid-area: 1 / 4 / 2 / 10;
   position: relative;
-  min-height: clamp(34rem, 46vw, 58rem);
+  aspect-ratio: 1;
   overflow: hidden;
+  border-inline: 1px solid var(--rule);
+}
+@media (max-width: 900px) {
+  .chapter__at {
+    display: none;
+  }
+  .chapter__plate {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: min(100%, 36rem);
+  }
+}
+@media (max-width: 560px) {
+  .chapter__plate {
+    border-inline: 0;
+  }
 }
 
 /* The observatory plates (Plate.astro, plate.js): a square drawing 1000 units across, standing as
@@ -4228,19 +4257,30 @@ hidden, leaves the sticky stage working). */
 .is-looking > .plate__eyepiece {
   visibility: visible;
 }
-.who__list {
-  grid-column: span 6;
+
+/* ───────────────────────────────────────── [10] Who it's for: a section head beside its list */
+
+.who {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  border-top: 1px solid var(--rule);
+}
+.who__head {
+  grid-column: span 5;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  padding: var(--pad) var(--pad) var(--pad-lg);
+  padding: var(--pad-lg) var(--pad) var(--pad);
+}
+.who__head .h2 {
+  max-width: 10em;
+}
+.who__list {
+  grid-column: span 7;
+  padding: var(--pad-lg) var(--pad);
   border-left: 1px solid var(--rule);
 }
-.who__list .h2 {
-  max-width: 12em;
-}
 .acc {
-  margin-top: auto;
   border-bottom: 1px solid var(--rule);
 }
 .acc__item {
@@ -4318,22 +4358,13 @@ hidden, leaves the sticky stage working). */
   transition: visibility 0s 0.4s;
 }
 @media (max-width: 900px) {
-  .who__art,
+  .who__head,
   .who__list {
     grid-column: 1 / -1;
   }
-  /* The plate wants a square panel on a phone. */
-  .who__art {
-    min-height: 0;
-    aspect-ratio: 1;
-  }
   .who__list {
     border-left: 0;
-    border-top: 1px solid var(--rule);
-    padding-top: var(--pad-lg);
-  }
-  .acc {
-    margin-top: 1rem;
+    padding-top: 0.5rem;
   }
 }
 

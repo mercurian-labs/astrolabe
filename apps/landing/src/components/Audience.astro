@@ -1,17 +1,10 @@
----
-import Plate from "./Plate.astro";
-import plate from "../data/sphinx-plate.json";
----
           <!-- ───────────────────────────────────────── [10] Who it's for -->
           <section class="who" aria-labelledby="who-title" data-who>
-            <div class="who__art">
-              <Plate plate={plate} />
-              <span class="cross cross--tl" aria-hidden="true"></span>
-              <span class="cross cross--br" aria-hidden="true"></span>
-            </div>
-            <div class="who__list">
+            <div class="who__head">
               <p class="tag">[10] Who it's for</p>
               <h2 id="who-title" class="h2" data-reveal>For whoever is directing the agents.</h2>
+            </div>
+            <div class="who__list">
               <ul class="acc">
                 <li class="acc__item is-open">
                   <h3><button class="acc__btn" type="button" aria-expanded="true" aria-controls="acc-0" id="acc-0-btn">Solo developers<i class="pm" aria-hidden="true"></i></button></h3>

@@ -1,0 +1,17 @@
+---
+// A chapter plate: one observatory print between two sections, as an atlas sets a full-page plate
+// between its chapters. `at` is the observatory's latitude and longitude, set in the margin.
+import type { ComponentProps } from "astro/types";
+import Plate from "./Plate.astro";
+
+type Props = { plate: ComponentProps<typeof Plate>["plate"] & { at: string[] } };
+const { plate } = Astro.props;
+---
+          <div class="chapter">
+            <p class="tag chapter__at">{plate.at.map((line) => <span>{line}</span>)}</p>
+            <div class="chapter__plate">
+              <Plate plate={plate} />
+              <span class="cross cross--tl" aria-hidden="true"></span>
+              <span class="cross cross--br" aria-hidden="true"></span>
+            </div>
+          </div>
