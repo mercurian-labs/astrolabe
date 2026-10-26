@@ -13,17 +13,17 @@
 // Settings → General → Social preview, the X and LinkedIn header and the avatar on the accounts).
 // Needs the Playwright Chromium (`vp exec playwright install chromium` if missing).
 
-import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { dirname, extname, join, normalize, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import * as NodeHttp from "node:http";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeModule from "node:module";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
 import { headline } from "../src/site.js";
 
-const APP = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOT = join(APP, "../..");
-const require = createRequire(
-  join(ROOT, "node_modules/.pnpm/playwright@1.60.0/node_modules/playwright/"),
+const APP = NodePath.join(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
+const ROOT = NodePath.join(APP, "../..");
+const require = NodeModule.createRequire(
+  NodePath.join(ROOT, "node_modules/.pnpm/playwright@1.60.0/node_modules/playwright/"),
 );
 const { chromium } = require("playwright");
 
@@ -122,14 +122,18 @@ const TYPES = {
 
 // cards/ at /cards/, the page's own scripts and styles at /src/, public/ at the root as the site serves it.
 function serve() {
-  const server = createServer(async (req, res) => {
-    const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
-    const file = /^\/(cards|src)\//.test(path) ? join(APP, path) : join(APP, "public", path);
-    if (relative(APP, file).startsWith("..")) return res.writeHead(403).end();
+  const server = NodeHttp.createServer(async (req, res) => {
+    const path = NodePath.normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
+    const file = /^\/(cards|src)\//.test(path)
+      ? NodePath.join(APP, path)
+      : NodePath.join(APP, "public", path);
+    if (NodePath.relative(APP, file).startsWith("..")) return res.writeHead(403).end();
     try {
-      const body = await readFile(file);
+      const body = await NodeFSP.readFile(file);
       res
-        .writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" })
+        .writeHead(200, {
+          "content-type": TYPES[NodePath.extname(file)] ?? "application/octet-stream",
+        })
         .end(body);
     } catch {
       res.writeHead(404).end();
@@ -141,11 +145,14 @@ function serve() {
 // The light favicon is the brand's icon as drawn; on a dark tab the tile turns to the night band's
 // charcoal and the A to its ivory.
 async function favicon() {
-  const svg = await readFile(join(APP, "public/assets/brand/icon-small.svg"), "utf8");
+  const svg = await NodeFSP.readFile(
+    NodePath.join(APP, "public/assets/brand/icon-small.svg"),
+    "utf8",
+  );
   const style =
     '<style>@media (prefers-color-scheme: dark) { rect { fill: #1e1c1a } path[fill="#292724"] { fill: #eaddc7 } }</style>';
-  const out = join(APP, "public/favicon.svg");
-  await writeFile(out, svg.replace(/^(<svg[^>]*>)/, `$1${style}`));
+  const out = NodePath.join(APP, "public/favicon.svg");
+  await NodeFSP.writeFile(out, svg.replace(/^(<svg[^>]*>)/, `$1${style}`));
   return out;
 }
 
@@ -171,8 +178,8 @@ try {
     await page.goto(`${origin}/cards/${job.page}`, { waitUntil: "load" });
     await page.evaluate(() => window.card);
     if (errors.length) throw new Error(`${job.out}: ${errors.join("; ")}`);
-    const out = join(APP, job.out);
-    await mkdir(dirname(out), { recursive: true });
+    const out = NodePath.join(APP, job.out);
+    await NodeFSP.mkdir(NodePath.dirname(out), { recursive: true });
     let bytes;
     let quality;
     if (out.endsWith(".png")) {
@@ -186,13 +193,13 @@ try {
     }
     if (bytes.length > MAX_BYTES)
       throw new Error(`${job.out} is ${bytes.length} bytes, over the cap`);
-    await writeFile(out, bytes);
+    await NodeFSP.writeFile(out, bytes);
     report.push([job.out, `${job.w}×${job.h}`, quality ? `q${quality}` : "png", bytes.length]);
     await page.close();
   }
   if (!filter || "public/favicon.svg".includes(filter)) {
     const out = await favicon();
-    report.push(["public/favicon.svg", "1024×1024", "svg", (await stat(out)).size]);
+    report.push(["public/favicon.svg", "1024×1024", "svg", (await NodeFSP.stat(out)).size]);
   }
 } finally {
   await browser.close();

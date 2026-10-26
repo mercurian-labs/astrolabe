@@ -2,7 +2,7 @@
 // twilight.js shows it (quantised to its steps), and of the drawn app's text in both its themes.
 // Body and UI text need 4.5:1. Run: node apps/landing/scripts/twilight-contrast.mjs
 
-import { readFileSync } from "node:fs";
+import * as NodeFS from "node:fs";
 import Twilight from "../src/scripts/twilight.js";
 
 const { at, step, contrast, hex, FLIP } = Twilight;
@@ -20,7 +20,7 @@ for (let alt = 2; alt >= -20; alt -= 0.25) {
 }
 
 // The drawn app's tokens, light (:root) and dark (:root[data-theme="dark"]), from the stylesheet.
-const css = readFileSync(new URL("../src/styles/drafting.css", import.meta.url), "utf8");
+const css = NodeFS.readFileSync(new URL("../src/styles/drafting.css", import.meta.url), "utf8");
 const block = (selector) => {
   const start = css.indexOf(`${selector} {`);
   return css.slice(start, css.indexOf("}", start));
