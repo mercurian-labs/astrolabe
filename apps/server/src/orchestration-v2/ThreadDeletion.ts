@@ -9,6 +9,30 @@ import * as Effect from "effect/Effect";
 import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import type * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 
+/** Replaces every deleted thread's title, so the record names no content. */
+export const DELETED_THREAD_TITLE = "Deleted thread";
+
+/**
+ * What a deleted thread keeps: ids, lineage, settings and timestamps. The
+ * worktree path and branch stay because worktree cleanup on delete reads them;
+ * the title, pull request links and failure text go.
+ */
+export function threadTombstone(
+  thread: OrchestrationV2ThreadProjection["thread"],
+): OrchestrationV2ThreadProjection["thread"] {
+  const { rollbackRequestId: _rollbackRequestId, ...rest } = thread;
+  return {
+    ...rest,
+    title: DELETED_THREAD_TITLE,
+    ...(thread.linkedPullRequest === undefined ? {} : { linkedPullRequest: null }),
+    ...(thread.pullRequests === undefined ? {} : { pullRequests: [] }),
+    ...(thread.branchPullRequest === undefined ? {} : { branchPullRequest: null }),
+    ...(thread.limitRecovery === undefined ? {} : { limitRecovery: null }),
+    ...(thread.titleRegeneration === undefined ? {} : { titleRegeneration: null }),
+    ...(thread.rollbackFailure === undefined ? {} : { rollbackFailure: null }),
+  };
+}
+
 export interface ThreadDeletionPlan {
   readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
   readonly effects: ReadonlyArray<PendingOrchestrationEffectV2>;
@@ -58,12 +82,12 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
     threadId: command.threadId,
     providerInstanceId: projection.thread.providerInstanceId,
     occurredAt: now,
-    payload: {
+    payload: threadTombstone({
       ...projection.thread,
       deletedAt: projection.thread.deletedAt ?? now,
       titleRegeneration: null,
       updatedAt: now,
-    },
+    }),
   });
 
   const activeRuns = projection.runs.filter((run) =>
@@ -235,5 +259,13 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
       request: { type: "attachment.cleanup", attachmentIds },
     });
   }
+  // Last, so it runs once the thread's other effects settle: they read the
+  // records it removes.
+  effects.push({
+    id: `effect:${command.commandId}:thread.purge`,
+    commandId: command.commandId,
+    threadId: command.threadId,
+    request: { type: "thread.purge" },
+  });
   return { events, effects };
 });

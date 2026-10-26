@@ -5238,7 +5238,48 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ? latestRun
         : undefined;
     const queueBehindRun = activeRun ?? worktreeMissingRun;
-    const pendingMergeBackTransfers = pendingMergeBackTransfersForThread(projection);
+    // A merge-back from a fork deleted since can never be read, so it is
+    // dropped instead of failing this and every later message.
+    const pendingMergeBackTransfers: Array<OrchestrationV2ContextTransfer> = [];
+    for (const transfer of pendingMergeBackTransfersForThread(projection)) {
+      const source = yield* projectionStore.getThread(transfer.sourceThreadId).pipe(
+        Effect.map((thread) => thread.deletedAt === null),
+        Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(false) }),
+        Effect.mapError(
+          (cause) => new OrchestratorProjectionError({ threadId: transfer.sourceThreadId, cause }),
+        ),
+      );
+      if (source) {
+        pendingMergeBackTransfers.push(transfer);
+        continue;
+      }
+      const droppedAt = yield* DateTime.now;
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "context-transfer.updated",
+        threadId: command.threadId,
+        providerInstanceId: projection.thread.providerInstanceId,
+        occurredAt: droppedAt,
+        payload: {
+          ...transfer,
+          status: "superseded",
+          error: "Its fork was deleted.",
+          updatedAt: droppedAt,
+        },
+      });
+      // Nothing reads the fork now, so its purge can finish.
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        {
+          id: `effect:${command.commandId}:thread.purge:${transfer.sourceThreadId}`,
+          commandId: command.commandId,
+          threadId: transfer.sourceThreadId,
+          request: { type: "thread.purge" },
+        } satisfies PendingOrchestrationEffectV2,
+      ]);
+    }
     const startsOrQueuesRun =
       dispatchMode.type === "defer_start" ||
       dispatchMode.type === "start_immediately" ||

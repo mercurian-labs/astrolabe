@@ -250,6 +250,60 @@ it.effect("waitForThread follows a restart continuation instead of the cut run",
   }),
 );
 
+it.effect("waitForThread settles when the thread is deleted and purged mid-wait", () =>
+  Effect.gen(function* () {
+    const projectId = ProjectId.make("project:thread-management:wait-deleted");
+    const threadId = ThreadId.make("thread:thread-management:wait-deleted");
+    const runId = RunId.make("run:thread-management:wait-deleted");
+    const subscribed = yield* Deferred.make<void>();
+    const deletion = yield* Queue.unbounded<OrchestrationV2StoredEvent>();
+    let purged = false;
+    const layerTest = ThreadManagementService.layer.pipe(
+      Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
+      Layer.provide(
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          getThreadEventSequence: () => Effect.succeed(0),
+          restartContinuationPending: () => Effect.succeed(false),
+          awaitRestartContinuation: () => Effect.never,
+          streamStoredEventsFrom: (input) =>
+            input?.eventType === "thread.deleted"
+              ? Stream.fromEffect(Deferred.succeed(subscribed, undefined)).pipe(
+                  Stream.drain,
+                  Stream.concat(Stream.fromQueue(deletion)),
+                )
+              : Stream.never,
+          // The purge has removed the run by the time the wait reads again.
+          getThreadRecords: () =>
+            Effect.sync(
+              () =>
+                ({
+                  thread: { id: threadId, projectId, deletedAt: purged ? "2026-10-01" : null },
+                  runs: purged ? [] : [{ id: runId, status: "running" }],
+                }) as unknown as OrchestrationV2ThreadProjection,
+            ),
+        }),
+      ),
+      Layer.provide(ServerSettings.layerTest()),
+      Layer.provide(layerReceiptsTest),
+    );
+    const service = yield* ThreadManagementService.ThreadManagementService.pipe(
+      Effect.provide(layerTest),
+    );
+    const fiber = yield* service
+      .waitForThread({ projectId, threadId, runId, timeoutMs: 60 * 60 * 1_000 })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(subscribed);
+    purged = true;
+    yield* Queue.offer(deletion, {
+      sequence: 1,
+      event: { threadId, type: "thread.deleted" },
+    } as unknown as OrchestrationV2StoredEvent);
+    const result = yield* Fiber.join(fiber);
+
+    expect(result).toMatchObject({ timedOut: false, run: { id: runId, status: "cancelled" } });
+  }),
+);
+
 it.effect("waitForThread returns the cut run once its continuation is declined", () =>
   Effect.gen(function* () {
     const projectId = ProjectId.make("project:thread-management:wait-declined");
