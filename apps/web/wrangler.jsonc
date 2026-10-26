@@ -1,0 +1,16 @@
+// app.astrolabe.sh: a Worker serving the hosted static build in dist/, deployed by the release
+// workflow's deploy_web job, which also copies cloudflare/_headers into dist/. Files are served
+// straight from assets; the script only answers requests that match none (cloudflare/worker.js).
+{
+  "name": "astrolabe-app",
+  "main": "./cloudflare/worker.js",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+  },
+  "routes": [{ "pattern": "app.astrolabe.sh", "custom_domain": true }],
+  // The custom domain is the app's only address.
+  "workers_dev": false,
+  "preview_urls": false,
+}

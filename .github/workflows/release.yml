@@ -925,47 +925,37 @@ jobs:
   # Astrolabe: no AUR publish. publish-aur.yml and packaging/aur still package
   # upstream's `t3code-bin` from pingdotgg/t3code's AppImage; see that workflow.
 
-  # Astrolabe: the hosted web app deploys only when VERCEL_TOKEN, VERCEL_ORG_ID
-  # and VERCEL_PROJECT_ID are all set. Without them both web jobs skip their
-  # work and pass, so a missing hosted deploy never blocks or fails a release;
-  # nothing else waits on them (publish_cli needs only the GitHub Release).
-  #
-  # Vercel builds the hosted web app while the desktop jobs run. `--skip-domain`
-  # keeps the custom domains (the channel and router domains) on the previous
-  # deployment until deploy_web aliases them, after the GitHub Release. It does
-  # still move the project's own *.vercel.app production hostname at build time.
-  # That hostname sits behind Vercel SSO and is not a user channel, so the
-  # npm-before-client order in docs/operations/release.md holds for users.
-  build_web:
-    name: Build hosted web app
-    needs: [preflight, relay_public_config]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
+  # Astrolabe: the hosted web app (app.astrolabe.sh) is the Cloudflare Worker
+  # `astrolabe-app` (apps/web/wrangler.jsonc), one channel. Only stable releases
+  # deploy it: they are what npm's `latest` dist-tag and `npx
+  # @mercurian/astrolabe` install, and the hosted app has to stay compatible
+  # with that server, so nightly and preview servers never replace it. It
+  # deploys after npm so the hosted client never runs ahead of the server users
+  # can install. Without CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID it skips
+  # its steps and passes; nothing but announce_discord waits on it.
+  deploy_web:
+    name: Deploy hosted web app
+    needs: [preflight, relay_public_config, release, publish_cli]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
+    timeout-minutes: 15
     env:
-      T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
-      T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      T3CODE_WEB_ROUTER_URL: ${{ vars.T3CODE_WEB_ROUTER_URL }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - id: vercel
-        name: Check Vercel configuration
+      - id: cloudflare
+        name: Check Cloudflare configuration
         shell: bash
         run: |
-          if [[ -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_ORG_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
+          if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Vercel secrets are not set; skipping the hosted web app deploy."
+            echo "::notice::Cloudflare secrets are not set; skipping the hosted web app deploy."
           fi
 
       - name: Checkout
-        if: steps.vercel.outputs.configured == 'true'
+        if: steps.cloudflare.outputs.configured == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.preflight.outputs.ref }}
@@ -975,7 +965,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
-        if: steps.vercel.outputs.configured == 'true'
+        if: steps.cloudflare.outputs.configured == 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -986,14 +976,14 @@ jobs:
               - --filter=@t3tools/web...
 
       - name: Download relay client tracing config
-        if: steps.vercel.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
+        if: steps.cloudflare.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
-        if: steps.vercel.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
+        if: steps.cloudflare.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
@@ -1001,126 +991,26 @@ jobs:
           echo "::add-mask::$tracing_token"
           cat "$config_path" >> "$GITHUB_ENV"
 
-      - name: Align package versions to release version
-        if: steps.vercel.outputs.configured == 'true'
-        run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
-
-      - name: Refresh release lockfile
-        if: steps.vercel.outputs.configured == 'true'
-        run: vp install --lockfile-only --ignore-scripts
-
-      - id: deploy
-        if: steps.vercel.outputs.configured == 'true'
-        name: Build staged deployment
-        shell: bash
+      # The same relay and sign-in switch as every other client: both unset
+      # builds a pairing-only app. VITE_HOSTED_APP_CHANNEL marks the build as
+      # the hosted app whatever origin serves it.
+      - name: Build hosted web app
+        if: steps.cloudflare.outputs.configured == 'true'
+        env:
+          APP_VERSION: ${{ needs.preflight.outputs.version }}
+          T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
+          T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
+          VITE_HOSTED_APP_URL: https://app.astrolabe.sh
+          VITE_HOSTED_APP_CHANNEL: latest
         run: |
-          set -euo pipefail
+          vp run --filter @t3tools/web build
+          node scripts/apply-web-brand-assets.ts --channel latest
+          cp apps/web/cloudflare/_headers apps/web/dist/_headers
 
-          router_url="${T3CODE_WEB_ROUTER_URL:-https://app.astrolabe.sh}"
-          if [[ "${{ needs.preflight.outputs.release_channel }}" == "stable" ]]; then
-            channel_name="latest"
-          else
-            channel_name="nightly"
-          fi
-
-          echo "Building hosted web app for $channel_name channel."
-          deployment_output="$(
-            vp dlx vercel@53.1.1 deploy \
-              --archive=tgz \
-              --prod \
-              --skip-domain \
-              --yes \
-              --token "$VERCEL_TOKEN" \
-              --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}" \
-              --build-env "APP_VERSION=${{ needs.preflight.outputs.version }}" \
-              --build-env "T3CODE_AUTH_URL=${T3CODE_AUTH_URL:-}" \
-              --build-env "T3CODE_RELAY_URL=${T3CODE_RELAY_URL:-}" \
-              --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_URL=${T3CODE_RELAY_CLIENT_OTLP_TRACES_URL:-}" \
-              --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET=${T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET:-}" \
-              --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=${T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN:-}" \
-              --build-env "VITE_HOSTED_APP_URL=$router_url" \
-              --build-env "VITE_HOSTED_APP_CHANNEL=$channel_name"
-          )"
-          printf '%s\n' "$deployment_output"
-          # Vercel can print lockfile warnings to stdout before the deployment URL.
-          deployment_url="$(printf '%s\n' "$deployment_output" | grep -E '^https://[[:alnum:].-]+\.vercel\.app$')"
-          if [[ "$deployment_url" == *$'\n'* ]]; then
-            echo "Vercel returned multiple deployment URLs." >&2
-            exit 1
-          fi
-          echo "Staged $deployment_url."
-          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-
-  deploy_web:
-    name: Deploy hosted web app
-    needs: [preflight, build_web, release, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.build_web.outputs.deployment_url != '' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 10
-    env:
-      DEPLOYMENT_URL: ${{ needs.build_web.outputs.deployment_url }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      T3CODE_WEB_ROUTER_URL: ${{ vars.T3CODE_WEB_ROUTER_URL }}
-      T3CODE_WEB_LATEST_DOMAIN: ${{ vars.T3CODE_WEB_LATEST_DOMAIN }}
-      T3CODE_WEB_NIGHTLY_DOMAIN: ${{ vars.T3CODE_WEB_NIGHTLY_DOMAIN }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Alias channel
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "$DEPLOYMENT_URL" ]]; then
-            echo "Build hosted web app did not report a deployment URL." >&2
-            exit 1
-          fi
-
-          router_url="${T3CODE_WEB_ROUTER_URL:-https://app.astrolabe.sh}"
-          latest_domain="${T3CODE_WEB_LATEST_DOMAIN:-latest.app.astrolabe.sh}"
-          nightly_domain="${T3CODE_WEB_NIGHTLY_DOMAIN:-nightly.app.astrolabe.sh}"
-          router_domain="${router_url#http://}"
-          router_domain="${router_domain#https://}"
-          router_domain="${router_domain%%/*}"
-
-          if [[ "${{ needs.preflight.outputs.release_channel }}" == "stable" ]]; then
-            channel_domain="$latest_domain"
-            channel_name="latest"
-          else
-            channel_domain="$nightly_domain"
-            channel_name="nightly"
-          fi
-
-          vercel_scope_args=(--scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}")
-
-          echo "Aliasing $DEPLOYMENT_URL to $channel_domain."
-          vp dlx vercel@53.1.1 alias set "$DEPLOYMENT_URL" "$channel_domain" \
-            --token "$VERCEL_TOKEN" \
-            "${vercel_scope_args[@]}"
-
-          if [[ "$channel_name" == "latest" && -n "$router_domain" && "$router_domain" != "$channel_domain" ]]; then
-            echo "Aliasing $DEPLOYMENT_URL to router domain $router_domain."
-            vp dlx vercel@53.1.1 alias set "$DEPLOYMENT_URL" "$router_domain" \
-              --token "$VERCEL_TOKEN" \
-              "${vercel_scope_args[@]}"
-          fi
+      - name: Deploy hosted web app
+        if: steps.cloudflare.outputs.configured == 'true'
+        working-directory: apps/web
+        run: vp dlx wrangler@4.151.3 deploy
 
   # Astrolabe: no marketing jobs. Upstream's build_marketing/deploy_marketing
   # promote apps/marketing (T3 Code's own site, Vercel project
