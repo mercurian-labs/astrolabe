@@ -8,6 +8,27 @@
       "sourceUrl": "https://github.com/mercurian-labs/astrolabe"
     },
     {
+      "bundles": ["desktop", "server"],
+      "license": "MIT AND Unicode-3.0",
+      "name": "Rust crates in the resource monitor",
+      "noticeFile": "native/resource-monitor/THIRD-PARTY-NOTICES.txt",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/resource-monitor"
+    },
+    {
+      "bundles": ["desktop"],
+      "license": "MIT AND Unicode-3.0 AND Zlib",
+      "name": "Rust crates in the Hyprland window capture helper (Linux)",
+      "noticeFile": "native/hyprland-snap-shot/THIRD-PARTY-NOTICES.txt",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/hyprland-snap-shot"
+    },
+    {
+      "bundles": ["desktop"],
+      "license": "MIT AND Unicode-3.0 AND Zlib",
+      "name": "Rust crates in the KDE window capture helper (Linux)",
+      "noticeFile": "native/kde-snap-shot/THIRD-PARTY-NOTICES.txt",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/kde-snap-shot"
+    },
+    {
       "bundles": ["desktop", "web"],
       "license": "MIT",
       "name": "Ionic keyboard assist",
