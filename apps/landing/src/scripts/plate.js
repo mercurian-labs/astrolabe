@@ -1,17 +1,19 @@
-// Astrolabe · drafting · the Sphinx's plate in [10], lit by the astrolabe's sun
+// Astrolabe · drafting · the observatory plates, lit by the astrolabe's sun
 //
-// The panel shows the Sphinx Observatory as a plate in the page's own print (made from Roy Egloff's
-// photograph by astrolabe-site's scripts/observatories/): a geometry texture whose red and green carry
-// the view-space normal's x (right) and y (up), whose blue carries the relative depth and whose alpha
-// is the building and its rock; a tone texture with the photograph's dark detail (red), the recesses
-// (green) and the albedo over two (blue: snow brighter than masonry, rock darker); and two line masks
-// coloured by CSS. Each time the working astrolabe's moment changes (`astrolabe:time`), this shader
-// lights the normals from its sun and prints them as relight.js prints Mercury: the building's
-// brightness against the paper's, thresholded against fixed noise, dark ink where it is darker than
-// the paper and ivory where it is lighter, the olive off register in the shadow side and the
-// recesses, with the shadows the building casts on itself marched through the depth.
+// Two plates stand on the page: the Sphinx Observatory in [10] and the Pic du Midi Observatory in the
+// close. Each is a building printed in the page's own print from a photograph (by astrolabe-site's
+// scripts/observatories/), and each figure (Plate.astro) names its textures' folder, their size and
+// relief: a geometry texture whose red and green carry the view-space normal's x (right) and y (up),
+// whose blue carries the relative depth and whose alpha is the building and its rock; a tone texture
+// with the photograph's dark detail (red), the recesses (green) and the albedo over two (blue: snow
+// brighter than masonry, rock darker); and two line masks coloured by CSS. Each time the working
+// astrolabe's moment changes (`astrolabe:time`), this shader lights the normals from its sun and prints
+// them as relight.js prints Mercury: the building's brightness against the paper's, thresholded against
+// fixed noise, dark ink where it is darker than the paper and ivory where it is lighter, the olive off
+// register in the shadow side and the recesses, with the shadows the building casts on itself marched
+// through the depth.
 //
-// The frame: we stand with our back to the sun's side of the sky, as the photographer did, so a
+// The frame: we stand with our back to the sun's side of the sky, as the photographers did, so a
 // northern observer faces north: the view's x is east, y the zenith, z (towards us) south, and a sun
 // at azimuth A, altitude h lights the plate along (cos h sin A, sin h, −cos h cos A): morning from the
 // right, noon from high in front, evening from the left. A southern observer faces south.
@@ -23,39 +25,28 @@
 // pointer it opens like an iris on enter (0.45 s), follows the pointer exactly, closes on leave
 // (0.35 s) and takes the cursor, which comes back over the credit's links, on leave, blur and a hidden
 // tab. On touch a tap opens it there, a sideways drag moves it (vertical swipes scroll) and a tap
-// elsewhere closes it. Its photograph loads on the first approach, never with the page.
+// elsewhere closes it. Its photograph loads on the first approach to its section, never with the page.
 //
-// After sunset the two upper windows light up in the page's rust: the glass of their panes (packed into
-// the tone texture's alpha by astrolabe-site's scripts/observatories/windows.py) is printed flat in rust,
-// grain by grain like the other inks and under the drawn lines. The lamps come up through civil and
-// nautical twilight and are full before the page's inks turn over at −10°; the eyepiece shows them lit
-// too. Rust is the page's fill rust before the turn and its night rust (--rust-text) after it.
+// After sunset the windows light up in the page's rust: the glass of their panes (packed into the tone
+// texture's alpha by astrolabe-site's scripts/observatories/windows.py) is printed flat in rust, grain
+// by grain like the other inks and under the drawn lines. The lamps come up through civil and nautical
+// twilight and are full before the page's inks turn over at −10°; the eyepiece shows them lit too. Rust
+// is the page's fill rust before the turn and its night rust (--rust-text) after it.
 //
-// Repaints happen only when the sun moves, the pointer moves or the iris turns, and only on screen in
-// a visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks under a mid-morning
-// sun) shows and there is no eyepiece.
+// Each plate has its own WebGL context, made only when the page comes within 800 px of it, so a visit
+// that never scrolls down makes none and the two plates make two. One shared context would have to
+// copy its drawing into each plate's canvas on every repaint; two small contexts cost less than that
+// and keep each plate's textures where it draws them. Repaints happen only when the sun moves, the
+// pointer moves or the iris turns, and only for a plate on screen in a visible tab. DPR is capped at
+// 2. Without WebGL the static print (CSS masks under a mid-morning sun) shows and there is no eyepiece.
 
 import Twilight from "./twilight.js";
-import plate from "../data/sphinx-plate.json";
 
 (() => {
-  const figure = document.querySelector("[data-sphinx]");
-  if (!figure) return;
-  const sheet = figure.querySelector(".plate__sheet");
-  const art = figure.querySelector(".plate__art");
-  const canvas = figure.querySelector(".plate__canvas");
+  const figures = document.querySelectorAll("[data-plate-assets]");
+  if (!figures.length) return;
   const RAD = Math.PI / 180;
-  const fallback = () => figure.classList.add("plate--still");
-  if (new URLSearchParams(location.search).get("gl") === "0" || !canvas) return fallback();
-
-  let sun = null; // { alt, az, south }
-  let dirty = true;
-  let visible = false;
-  let draw = null;
-  let gl = null;
-  let dpr = 1;
-  const u = {};
-  const lens = { x: 0, y: 0, r: 0, loaded: false }; // art px
+  const noGL = new URLSearchParams(location.search).get("gl") === "0";
 
   // The page's fill rust (drafting.css's --rust, which twilight.js never changes).
   const RUST = "#a0492a";
@@ -64,16 +55,17 @@ import plate from "../data/sphinx-plate.json";
     return t * t * (3 - 2 * t);
   };
 
+  let sun = null; // { alt, az, south }, shared by every plate
+  const plates = [...figures].map(mount);
+
   document.addEventListener("astrolabe:time", (event) => {
     const { sunAlt, sunAz, nowAlt, arriving, lat } = event.detail;
     // relight.js sets the page's palette from the same event; asking again only reads it back.
     const palette = Twilight.page(arriving ? nowAlt : sunAlt);
     // Between sunset and the flip the building is darker than the paper and reads by its outline; the
     // lines inside it fade (drafting.css) until the night brings them back in ivory.
-    figure.style.setProperty(
-      "--plate-dusk",
-      (palette.inverted ? 0 : smooth(0.5, -4, sunAlt)).toFixed(3),
-    );
+    const dusk = (palette.inverted ? 0 : smooth(0.5, -4, sunAlt)).toFixed(3);
+    for (const plate of plates) plate.figure.style.setProperty("--plate-dusk", dusk);
     const south = lat < 0;
     if (
       sun &&
@@ -83,34 +75,16 @@ import plate from "../data/sphinx-plate.json";
     )
       return;
     sun = { alt: sunAlt, az: sunAz, south };
-    dirty = true;
-    paint();
+    for (const plate of plates) {
+      plate.dirty = true;
+      plate.paint();
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    for (const plate of plates) plate.paint();
   });
 
-  function paint() {
-    if (!draw || !sun || !dirty || !visible || document.hidden) return;
-    dirty = false;
-    draw();
-    figure.classList.add("plate--live");
-  }
-  document.addEventListener("visibilitychange", paint);
-
-  if (!("IntersectionObserver" in window)) return fallback();
-  const near = new IntersectionObserver(
-    ([entry]) => {
-      if (!entry.isIntersecting) return;
-      near.disconnect();
-      start();
-    },
-    { rootMargin: "800px 0px" },
-  );
-  near.observe(figure);
-  new IntersectionObserver(([entry]) => {
-    visible = entry.isIntersecting;
-    paint();
-  }).observe(canvas);
-
-  /* ─────────── WebGL. */
+  /* ─────────── WebGL, the same program for every plate. */
 
   const vertex = `
     attribute vec2 a_pos;
@@ -264,42 +238,10 @@ import plate from "../data/sphinx-plate.json";
       img.src = src;
     });
 
-  const texture = (unit, filter, wrap) => {
-    gl.activeTexture(gl.TEXTURE0 + unit);
-    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
-  };
-
-  function start() {
-    gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: true, alpha: true });
-    if (!gl) return fallback();
-    const program = gl.createProgram();
-    for (const [type, source] of [
-      [gl.VERTEX_SHADER, vertex],
-      [gl.FRAGMENT_SHADER, fragment],
-    ]) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      gl.attachShader(program, shader);
-    }
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return fallback();
-    gl.useProgram(program);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    const position = gl.getAttribLocation(program, "a_pos");
-    gl.enableVertexAttribArray(position);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    for (let i = 0; i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i++) {
-      const name = gl.getActiveUniform(program, i).name;
-      u[name] = gl.getUniformLocation(program, name);
-    }
-
-    // The noise: seeded, so the print is the same grain on every visit (relight.js's).
+  // The noise: seeded, so the print is the same grain on every visit (relight.js's), and on every plate.
+  let noise = null;
+  function grain() {
+    if (noise) return noise;
     let seed = 0x2f6e2b1;
     const random = () => {
       seed = (seed + 0x6d2b79f5) | 0;
@@ -307,52 +249,9 @@ import plate from "../data/sphinx-plate.json";
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    const noise = new Uint8Array(512 * 512 * 4);
+    noise = new Uint8Array(512 * 512 * 4);
     for (let i = 0; i < noise.length; i++) noise[i] = Math.floor(random() * 255) + 1;
-    texture(2, gl.NEAREST, gl.REPEAT);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, noise);
-
-    Promise.all([image(`${plate.assets}/geometry.webp`), image(`${plate.assets}/tone.webp`)])
-      .then(([geo, tone]) => {
-        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
-        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-        texture(0, gl.LINEAR, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, geo);
-        texture(1, gl.LINEAR, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tone);
-        gl.uniform1i(u.u_geo, 0);
-        gl.uniform1i(u.u_tone, 1);
-        gl.uniform1i(u.u_noise, 2);
-        gl.uniform1i(u.u_duo, 3);
-        gl.uniform2f(u.u_size, ...plate.size);
-        gl.uniform1f(u.u_relief, plate.relief);
-        gl.disable(gl.BLEND);
-        draw = render;
-        layout();
-        new ResizeObserver(() => {
-          layout();
-          dirty = true;
-          paint();
-        }).observe(canvas);
-        eyepiece();
-        dirty = true;
-        paint();
-      })
-      .catch(fallback);
-
-    canvas.addEventListener("webglcontextlost", (event) => {
-      event.preventDefault();
-      draw = null;
-      figure.classList.remove("plate--live");
-      fallback();
-    });
-  }
-
-  function layout() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    const box = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.round(box.width * dpr));
-    canvas.height = Math.max(1, Math.round(box.height * dpr));
+    return noise;
   }
 
   // Brightness of the sky on the building through twilight, in units of the day paper: a pale facade
@@ -387,141 +286,275 @@ import plate from "../data/sphinx-plate.json";
     return south ? [-east, up, north] : [east, up, -north];
   }
 
-  function render() {
-    const { alt, az, south } = sun;
-    const palette = Twilight.current() || Twilight.at(alt);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.uniform2f(u.u_res, canvas.width, canvas.height);
-    gl.uniform1f(u.u_dpr, dpr);
-    gl.uniform1f(u.u_sub, dpr < 1.5 ? 2 : 1);
-    gl.uniform3f(u.u_sun, ...toward(alt, az, south));
-    gl.uniform3f(u.u_glow, ...toward(18, az, south));
-    gl.uniform1f(u.u_direct, 0.58 * smooth(-0.8, 1, alt));
-    gl.uniform1f(u.u_ambient, along(AMBIENT, alt));
-    gl.uniform1f(u.u_glowShare, 0.25 + 0.55 * smooth(2, -3, alt) - 0.8 * smooth(-12, -19, alt));
-    gl.uniform1f(u.u_expose, 0.6);
-    gl.uniform3f(u.u_y, palette.paperY, palette.darkY, palette.ivoryY);
-    gl.uniform3f(u.u_dark, ...palette.dark);
-    gl.uniform3f(u.u_ivory, ...palette.ivory);
-    gl.uniform3f(u.u_olive, ...palette.olive);
-    // After sunset the building is lit only by the sky; its ink thins a little so the silhouette keeps
-    // the side toward the glow instead of filling solid.
-    gl.uniform3f(u.u_alpha, 0.92 - 0.24 * smooth(1, -5, alt), 0.8, 0.62 - 0.42 * palette.night);
-    // Once the paper has turned dark, the building stands against it a shade darker still.
-    const b = palette.inverted ? 0.42 : 0;
-    gl.uniform4f(u.u_body, ...palette.paper.map((c) => c * 0.62 * b), b);
-    gl.uniform4f(
-      u.u_lens,
-      lens.x * dpr,
-      canvas.height - lens.y * dpr,
-      lens.r * dpr,
-      lens.loaded ? 1 : 0,
-    );
-    gl.uniform3f(u.u_duoDark, ...(palette.inverted ? palette.paper : palette.dark));
-    gl.uniform3f(u.u_duoLight, ...(palette.inverted ? palette.ivory : palette.paper));
-    // The lamps: up from just after sunset, full at −9°, a degree before the inks turn over.
-    const rust = Twilight.hex(palette.inverted ? palette.vars["--rust-text"] : RUST);
-    gl.uniform4f(u.u_lamp, ...rust, 0.96 * smooth(-0.5, -9, alt));
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }
+  /* ─────────── One plate. */
 
-  /* ─────────── The eyepiece. */
-
-  let duo = null;
-  function loadDuotone() {
-    duo ||= image(`${plate.assets}/duotone.webp`).then((img) => {
-      texture(3, gl.LINEAR, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, img);
-      lens.loaded = true;
-    });
-    return duo;
-  }
-
-  function eyepiece() {
-    const CONTROLS = "a[href], button, input, select, textarea, label, summary";
-    const fine = matchMedia("(hover: hover) and (pointer: fine)");
-    const still = matchMedia("(prefers-reduced-motion: reduce)");
-    const ring = document.createElement("span");
-    ring.className = "plate__eyepiece";
-    ring.setAttribute("aria-hidden", "true");
-    sheet.append(ring);
-    sheet.classList.add("plate__sheet--eyepiece");
-    const at = { x: 0, y: 0 }; // sheet px
-    let open = 0; // the iris, 0 → 1
-    let goal = 0;
-    let from = 0;
-    let started = 0;
-    let raf = 0;
-
-    const radius = () => Math.min(100, Math.max(55, sheet.clientWidth * 0.125));
-    const frame = () => {
-      if (!raf) raf = requestAnimationFrame(tick);
-    };
-    const to = (next, now = false) => {
-      if (goal === next && !now) return;
-      goal = next;
-      from = open;
-      started = performance.now();
-      if (now || still.matches) open = goal;
-      frame();
-    };
-    const close = (now = false) => {
-      sheet.classList.remove("takes-cursor");
-      to(0, now);
-    };
-    const track = (e, tap = false) => {
-      const touch = e.pointerType !== "mouse" && e.pointerType !== "pen";
-      if (!touch && !fine.matches) return;
-      if (touch && !tap && !goal) return; // a touch only moves an eyepiece it opened
-      if (e.target.closest?.(CONTROLS)) return close();
-      const box = sheet.getBoundingClientRect();
-      at.x = e.clientX - box.left;
-      at.y = e.clientY - box.top;
-      sheet.classList.toggle("takes-cursor", !touch);
-      loadDuotone().then(() => to(1));
-      frame();
-    };
-    function tick() {
-      raf = 0;
-      if (open !== goal) {
-        const t = Math.min(1, (performance.now() - started) / (goal ? 450 : 350));
-        open = t >= 1 ? goal : from + (goal - from) * (1 - (1 - t) ** 3);
-        if (t < 1) frame();
-      }
-      const r = radius() * open;
-      const s = sheet.getBoundingClientRect();
-      const a = art.getBoundingClientRect();
-      lens.x = at.x - (a.left - s.left);
-      lens.y = at.y - (a.top - s.top);
-      lens.r = r;
-      sheet.classList.toggle("is-looking", r > 0.5);
-      art.style.setProperty("--lens", `${lens.x}px ${lens.y}px`);
-      sheet.style.setProperty("--lens-r", `${r}px`);
-      // The ring is sized, not scaled, so its hairline stays a hairline through the iris.
-      ring.style.width = ring.style.height = `${2 * r}px`;
-      ring.style.transform = `translate(${at.x - r}px, ${at.y - r}px)`;
-      dirty = true;
-      paint();
+  function mount(figure) {
+    const sheet = figure.querySelector(".plate__sheet");
+    const art = figure.querySelector(".plate__art");
+    const canvas = figure.querySelector(".plate__canvas");
+    const assets = figure.dataset.plateAssets;
+    const size = figure.dataset.plateSize.split(" ").map(Number);
+    const relief = Number(figure.dataset.plateRelief);
+    const plate = { figure, dirty: true, paint() {} };
+    const fallback = () => figure.classList.add("plate--still");
+    if (noGL || !canvas || !("IntersectionObserver" in window)) {
+      fallback();
+      return plate;
     }
 
-    // The section's own approach fetches the photograph, before the pointer reaches the plate.
-    figure.closest("section")?.addEventListener("pointerover", () => loadDuotone(), { once: true });
-    sheet.addEventListener("pointerenter", (e) => track(e));
-    sheet.addEventListener("pointermove", (e) => track(e));
-    sheet.addEventListener("pointerleave", (e) => {
-      if (e.pointerType !== "touch") close();
-    });
-    sheet.addEventListener("pointerdown", (e) => {
-      if (e.pointerType !== "mouse") track(e, true);
-    });
-    document.addEventListener("pointerdown", (e) => {
-      if (!sheet.contains(e.target)) close();
-    });
-    addEventListener("blur", () => close(true));
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) close(true);
-    });
+    let visible = false;
+    let draw = null;
+    let gl = null;
+    let dpr = 1;
+    const u = {};
+    const lens = { x: 0, y: 0, r: 0, loaded: false }; // art px
+
+    plate.paint = () => {
+      if (!draw || !sun || !plate.dirty || !visible || document.hidden) return;
+      plate.dirty = false;
+      draw();
+      figure.classList.add("plate--live");
+    };
+
+    const near = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        near.disconnect();
+        start();
+      },
+      { rootMargin: "800px 0px" },
+    );
+    near.observe(figure);
+    new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      plate.paint();
+    }).observe(canvas);
+
+    const texture = (unit, filter, wrap) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+    };
+
+    function start() {
+      gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: true, alpha: true });
+      if (!gl) return fallback();
+      const program = gl.createProgram();
+      for (const [type, source] of [
+        [gl.VERTEX_SHADER, vertex],
+        [gl.FRAGMENT_SHADER, fragment],
+      ]) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        gl.attachShader(program, shader);
+      }
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return fallback();
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+        gl.STATIC_DRAW,
+      );
+      const position = gl.getAttribLocation(program, "a_pos");
+      gl.enableVertexAttribArray(position);
+      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+      for (let i = 0; i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i++) {
+        const name = gl.getActiveUniform(program, i).name;
+        u[name] = gl.getUniformLocation(program, name);
+      }
+
+      texture(2, gl.NEAREST, gl.REPEAT);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, grain());
+
+      Promise.all([image(`${assets}/geometry.webp`), image(`${assets}/tone.webp`)])
+        .then(([geo, tone]) => {
+          gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+          texture(0, gl.LINEAR, gl.CLAMP_TO_EDGE);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, geo);
+          texture(1, gl.LINEAR, gl.CLAMP_TO_EDGE);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tone);
+          gl.uniform1i(u.u_geo, 0);
+          gl.uniform1i(u.u_tone, 1);
+          gl.uniform1i(u.u_noise, 2);
+          gl.uniform1i(u.u_duo, 3);
+          gl.uniform2f(u.u_size, ...size);
+          gl.uniform1f(u.u_relief, relief);
+          gl.disable(gl.BLEND);
+          draw = render;
+          layout();
+          new ResizeObserver(() => {
+            layout();
+            plate.dirty = true;
+            plate.paint();
+          }).observe(canvas);
+          eyepiece();
+          plate.dirty = true;
+          plate.paint();
+        })
+        .catch(fallback);
+
+      canvas.addEventListener("webglcontextlost", (event) => {
+        event.preventDefault();
+        draw = null;
+        figure.classList.remove("plate--live");
+        fallback();
+      });
+    }
+
+    function layout() {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      const box = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.round(box.width * dpr));
+      canvas.height = Math.max(1, Math.round(box.height * dpr));
+    }
+
+    function render() {
+      const { alt, az, south } = sun;
+      const palette = Twilight.current() || Twilight.at(alt);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.uniform2f(u.u_res, canvas.width, canvas.height);
+      gl.uniform1f(u.u_dpr, dpr);
+      gl.uniform1f(u.u_sub, dpr < 1.5 ? 2 : 1);
+      gl.uniform3f(u.u_sun, ...toward(alt, az, south));
+      gl.uniform3f(u.u_glow, ...toward(18, az, south));
+      gl.uniform1f(u.u_direct, 0.58 * smooth(-0.8, 1, alt));
+      gl.uniform1f(u.u_ambient, along(AMBIENT, alt));
+      gl.uniform1f(u.u_glowShare, 0.25 + 0.55 * smooth(2, -3, alt) - 0.8 * smooth(-12, -19, alt));
+      gl.uniform1f(u.u_expose, 0.6);
+      gl.uniform3f(u.u_y, palette.paperY, palette.darkY, palette.ivoryY);
+      gl.uniform3f(u.u_dark, ...palette.dark);
+      gl.uniform3f(u.u_ivory, ...palette.ivory);
+      gl.uniform3f(u.u_olive, ...palette.olive);
+      // After sunset the building is lit only by the sky; its ink thins a little so the silhouette
+      // keeps the side toward the glow instead of filling solid.
+      gl.uniform3f(u.u_alpha, 0.92 - 0.24 * smooth(1, -5, alt), 0.8, 0.62 - 0.42 * palette.night);
+      // Once the paper has turned dark, the building stands against it a shade darker still.
+      const b = palette.inverted ? 0.42 : 0;
+      gl.uniform4f(u.u_body, ...palette.paper.map((c) => c * 0.62 * b), b);
+      gl.uniform4f(
+        u.u_lens,
+        lens.x * dpr,
+        canvas.height - lens.y * dpr,
+        lens.r * dpr,
+        lens.loaded ? 1 : 0,
+      );
+      gl.uniform3f(u.u_duoDark, ...(palette.inverted ? palette.paper : palette.dark));
+      gl.uniform3f(u.u_duoLight, ...(palette.inverted ? palette.ivory : palette.paper));
+      // The lamps: up from just after sunset, full at −9°, a degree before the inks turn over.
+      const rust = Twilight.hex(palette.inverted ? palette.vars["--rust-text"] : RUST);
+      gl.uniform4f(u.u_lamp, ...rust, 0.96 * smooth(-0.5, -9, alt));
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    /* ─────────── The eyepiece. */
+
+    let duo = null;
+    function loadDuotone() {
+      duo ||= image(`${assets}/duotone.webp`).then((img) => {
+        texture(3, gl.LINEAR, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, img);
+        lens.loaded = true;
+      });
+      return duo;
+    }
+
+    function eyepiece() {
+      const CONTROLS = "a[href], button, input, select, textarea, label, summary";
+      const fine = matchMedia("(hover: hover) and (pointer: fine)");
+      const still = matchMedia("(prefers-reduced-motion: reduce)");
+      const ring = document.createElement("span");
+      ring.className = "plate__eyepiece";
+      ring.setAttribute("aria-hidden", "true");
+      sheet.append(ring);
+      sheet.classList.add("plate__sheet--eyepiece");
+      const at = { x: 0, y: 0 }; // sheet px
+      let open = 0; // the iris, 0 → 1
+      let goal = 0;
+      let from = 0;
+      let started = 0;
+      let raf = 0;
+
+      const radius = () => Math.min(100, Math.max(55, sheet.clientWidth * 0.125));
+      const frame = () => {
+        if (!raf) raf = requestAnimationFrame(tick);
+      };
+      const to = (next, now = false) => {
+        if (goal === next && !now) return;
+        goal = next;
+        from = open;
+        started = performance.now();
+        if (now || still.matches) open = goal;
+        frame();
+      };
+      const close = (now = false) => {
+        sheet.classList.remove("takes-cursor");
+        to(0, now);
+      };
+      const track = (e, tap = false) => {
+        const touch = e.pointerType !== "mouse" && e.pointerType !== "pen";
+        if (!touch && !fine.matches) return;
+        if (touch && !tap && !goal) return; // a touch only moves an eyepiece it opened
+        if (e.target.closest?.(CONTROLS)) return close();
+        const box = sheet.getBoundingClientRect();
+        at.x = e.clientX - box.left;
+        at.y = e.clientY - box.top;
+        sheet.classList.toggle("takes-cursor", !touch);
+        loadDuotone().then(() => to(1));
+        frame();
+      };
+      function tick() {
+        raf = 0;
+        if (open !== goal) {
+          const t = Math.min(1, (performance.now() - started) / (goal ? 450 : 350));
+          open = t >= 1 ? goal : from + (goal - from) * (1 - (1 - t) ** 3);
+          if (t < 1) frame();
+        }
+        const r = radius() * open;
+        const s = sheet.getBoundingClientRect();
+        const a = art.getBoundingClientRect();
+        lens.x = at.x - (a.left - s.left);
+        lens.y = at.y - (a.top - s.top);
+        lens.r = r;
+        sheet.classList.toggle("is-looking", r > 0.5);
+        art.style.setProperty("--lens", `${lens.x}px ${lens.y}px`);
+        sheet.style.setProperty("--lens-r", `${r}px`);
+        // The ring is sized, not scaled, so its hairline stays a hairline through the iris.
+        ring.style.width = ring.style.height = `${2 * r}px`;
+        ring.style.transform = `translate(${at.x - r}px, ${at.y - r}px)`;
+        plate.dirty = true;
+        plate.paint();
+      }
+
+      // The section's own approach fetches the photograph, before the pointer reaches the plate.
+      figure
+        .closest("section")
+        ?.addEventListener("pointerover", () => loadDuotone(), { once: true });
+      sheet.addEventListener("pointerenter", (e) => track(e));
+      sheet.addEventListener("pointermove", (e) => track(e));
+      sheet.addEventListener("pointerleave", (e) => {
+        if (e.pointerType !== "touch") close();
+      });
+      sheet.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "mouse") track(e, true);
+      });
+      document.addEventListener("pointerdown", (e) => {
+        if (!sheet.contains(e.target)) close();
+      });
+      addEventListener("blur", () => close(true));
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) close(true);
+      });
+    }
+
+    return plate;
   }
 })();

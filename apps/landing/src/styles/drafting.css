@@ -4071,10 +4071,10 @@ hidden, leaves the sticky stage working). */
   overflow: hidden;
 }
 
-/* The Sphinx's plate (plate.js): a square drawing 1000 units across, standing as large as the panel
-   allows. The art's box holds the static print (CSS masks, shown until the shader has painted), the
-   canvas, and the drawn lines; the figure line and the credit are HTML. Its type scales with it, down
-   to 9 px. */
+/* The observatory plates (Plate.astro, plate.js): a square drawing 1000 units across, standing as
+   large as the panel allows. The art's box (--x, --y, --w, --h: percent of the square) holds the static
+   print (CSS masks, shown until the shader has painted), the canvas, and the drawn lines; the figure
+   line and the credit are HTML. Its type scales with it, down to 9 px. */
 .plate {
   position: absolute;
   inset: 0;
@@ -4094,6 +4094,10 @@ hidden, leaves the sticky stage working). */
 }
 .plate__art {
   position: absolute;
+  left: calc(var(--x) * 1%);
+  top: calc(var(--y) * 1%);
+  width: calc(var(--w) * 1%);
+  height: calc(var(--h) * 1%);
 }
 .plate__art > * {
   position: absolute;

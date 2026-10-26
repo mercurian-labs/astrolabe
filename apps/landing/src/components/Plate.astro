@@ -1,0 +1,44 @@
+---
+// An observatory plate (plate.js prints it): the art's box in a 1000-unit square, the still print shown
+// until the shader has painted, the canvas, the drawn lines, the figure line and the credit the licence
+// asks for. plate.js reads the textures' folder, size and relief from the figure.
+interface Props {
+  plate: {
+    assets: string;
+    size: number[];
+    relief: number;
+    box: number[];
+    fig: string;
+    alt: string;
+    credit: string;
+    source: string;
+    license: string;
+    licenseUrl: string;
+  };
+  class?: string;
+}
+const { plate, class: modifier } = Astro.props;
+const [x, y, w, h] = plate.box;
+const box = `--x:${x / 10};--y:${y / 10};--w:${w / 10};--h:${h / 10}`;
+const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
+---
+<figure
+  class:list={["plate", modifier]}
+  data-plate-assets={plate.assets}
+  data-plate-size={plate.size.join(" ")}
+  data-plate-relief={plate.relief}
+>
+  <div class="plate__sheet">
+    <div class="plate__art" role="img" aria-label={plate.alt} style={box}>
+      <i class="plate__still plate__still--olive" style={art("still-olive")}></i>
+      <i class="plate__still plate__still--ink" style={art("still-ink")}></i>
+      <canvas class="plate__canvas"></canvas>
+      <i class="plate__lines" style={art("lines")}></i>
+      <i class="plate__outline" style={art("outline")}></i>
+    </div>
+    <figcaption class="plate__fig">{plate.fig}</figcaption>
+    <p class="plate__credit">
+      After a <a href={plate.source}>photograph by {plate.credit}</a>, inpainted and printed · <a href={plate.licenseUrl} rel="license">{plate.license}</a>
+    </p>
+  </div>
+</figure>

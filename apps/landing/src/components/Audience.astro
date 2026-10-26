@@ -1,28 +1,11 @@
 ---
+import Plate from "./Plate.astro";
 import plate from "../data/sphinx-plate.json";
-
-// The plate is a 1000-unit square: where the art's box sits in it, and the masks its layers print.
-const place = ([x, y, w, h]: number[]) => `left:${x / 10}%;top:${y / 10}%;width:${w / 10}%;height:${h / 10}%`;
-const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
 ---
           <!-- ───────────────────────────────────────── [10] Who it's for -->
           <section class="who" aria-labelledby="who-title" data-who>
             <div class="who__art">
-              <figure class="plate" data-sphinx>
-                <div class="plate__sheet">
-                  <div class="plate__art" role="img" aria-label={plate.alt} style={place(plate.box)}>
-                    <i class="plate__still plate__still--olive" style={art("still-olive")}></i>
-                    <i class="plate__still plate__still--ink" style={art("still-ink")}></i>
-                    <canvas class="plate__canvas"></canvas>
-                    <i class="plate__lines" style={art("lines")}></i>
-                    <i class="plate__outline" style={art("outline")}></i>
-                  </div>
-                  <figcaption class="plate__fig">{plate.fig}</figcaption>
-                  <p class="plate__credit">
-                    After a <a href={plate.source}>photograph by {plate.credit}</a>, inpainted and printed · <a href={plate.licenseUrl} rel="license">{plate.license}</a>
-                  </p>
-                </div>
-              </figure>
+              <Plate plate={plate} />
               <span class="cross cross--tl" aria-hidden="true"></span>
               <span class="cross cross--br" aria-hidden="true"></span>
             </div>
