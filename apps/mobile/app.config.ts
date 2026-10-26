@@ -11,12 +11,16 @@ Object.assign(process.env, repoEnv);
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 
 /**
- * Astrolabe's own Expo (EAS) project. Unset until Astrolabe has one, so the
- * app makes no over-the-air update checks and EAS builds have no project to
- * build into. Never upstream's pingdotgg project: every launch's update check
- * sends it the install's id and the text of the last fatal error.
+ * Astrolabe's own Expo (EAS) project. Setting it to null turns off the app's
+ * over-the-air update checks and leaves EAS builds no project to build into.
+ * Never upstream's pingdotgg project: every launch's update check sends it the
+ * install's id and the text of the last fatal error.
  */
-const EAS_PROJECT = null as {
+const EAS_PROJECT = {
+  owner: "mercurian",
+  projectId: "917c2a7b-7979-4505-ab80-085cb0b4099d",
+  slug: "astrolabe",
+} as {
   readonly owner: string;
   readonly projectId: string;
   readonly slug: string;
