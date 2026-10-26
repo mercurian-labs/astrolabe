@@ -922,15 +922,8 @@ jobs:
             exit 1
           fi
 
-  publish_aur:
-    name: Publish AUR package
-    needs: [preflight, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
-    uses: ./.github/workflows/publish-aur.yml
-    with:
-      release_tag: ${{ needs.preflight.outputs.tag }}
-    secrets:
-      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+  # Astrolabe: no AUR publish. publish-aur.yml and packaging/aur still package
+  # upstream's `t3code-bin` from pingdotgg/t3code's AppImage; see that workflow.
 
   # Astrolabe: the hosted web app deploys only when VERCEL_TOKEN, VERCEL_ORG_ID
   # and VERCEL_PROJECT_ID are all set. Without them both web jobs skip their
