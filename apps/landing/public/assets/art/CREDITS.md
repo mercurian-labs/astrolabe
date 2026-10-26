@@ -48,7 +48,7 @@ product with non-USGS co-originators.
 | `plex-sans.woff2` | IBM Plex Sans | 2019 IBM Corp. | SIL OFL 1.1, `OFL-IBM-Plex.txt` |
 | `plex-mono-400.woff2`, `plex-mono-500.woff2` | IBM Plex Mono | 2017 IBM Corp. | SIL OFL 1.1, `OFL-IBM-Plex.txt` |
 
-IBM Plex Mono's license reserves the font name "Plex" (IBM's own notice, in `OFL-IBM-Plex.txt`). Fraunces and Plex Sans declare no Reserved Font Name.
+IBM Plex Mono's license reserves the font name "Plex" (IBM's own notice, in `OFL-IBM-Plex.txt`), so its files are IBM's own Latin1 web cuts from `@ibm/plex-mono` 2.5.0, unmodified. Fraunces and Plex Sans declare no Reserved Font Name.
 
 ## Brand marks (`assets/brand/`)
 
