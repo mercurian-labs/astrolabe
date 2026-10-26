@@ -24,8 +24,8 @@ foreach ($name in "CHANNEL", "VERSION", "INSTALL_BIN_DIR", "RELEASE_BASE_URL") {
 $env:T3CODE_HOME = $env:ASTROLABE_HOME
 
 # Astrolabe's release repository: the same value as CLI_RELEASE_REPOSITORY in
-# packages/shared/src/cliRelease.ts. Empty while Astrolabe publishes no releases.
-$repo = ""
+# packages/shared/src/cliRelease.ts. Empty turns downloads off.
+$repo = "mercurian-labs/astrolabe"
 $baseUrl = if ($env:T3CODE_RELEASE_BASE_URL) { $env:T3CODE_RELEASE_BASE_URL.TrimEnd("/") } elseif ($repo) { "https://github.com/$repo/releases/download" } else { "" }
 $t3Home = if ($env:T3CODE_HOME) { $env:T3CODE_HOME } else { Join-Path $HOME ".astrolabe" }
 $binDir = if ($env:T3CODE_INSTALL_BIN_DIR) { $env:T3CODE_INSTALL_BIN_DIR } else { Join-Path $HOME ".local\bin" }

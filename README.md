@@ -24,14 +24,10 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 
 ### Command line
 
+On macOS (Apple silicon) and Linux:
+
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
+curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh
 ```
 
 Then run `astrolabe` to start the server and open the local web app. `astrolabe service install` keeps it running in the background, `astrolabe update` moves to a newer release, and `astrolabe --help` has the full reference.
@@ -40,49 +36,13 @@ To try it once without installing, run `npx @mercurian/astrolabe@latest` instead
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+Download the desktop app for macOS or Linux from [astrolabe.sh/download](https://astrolabe.sh/download) or [GitHub Releases](https://github.com/mercurian-labs/astrolabe/releases). Windows is coming later.
 
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### Windows (`scoop`)
+On Debian or Ubuntu, install the `.deb` with:
 
 ```bash
-scoop install extras/t3code
+sudo apt install ./Astrolabe-*.deb
 ```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Debian, Ubuntu (`.deb`)
-
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
-
-```bash
-sudo apt install ./T3-Code-*.deb
-```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
 
 ## Some notes
 

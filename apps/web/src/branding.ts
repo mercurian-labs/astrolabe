@@ -26,10 +26,10 @@ export const APP_DISPLAY_NAME =
   formatAppDisplayName({ baseName: APP_BASE_NAME, stageLabel: APP_STAGE_LABEL });
 export const APP_VERSION = import.meta.env.APP_VERSION || "0.0.0";
 /**
- * Astrolabe's desktop download page and mobile store listings. Null until they
- * exist, so the links and QR codes that use them stay hidden. Never T3 Code's,
- * which install T3 Tools' apps.
+ * Astrolabe's desktop download page and mobile store listings. A null one
+ * hides the links and QR codes that use it. Never T3 Code's, which install
+ * T3 Tools' apps.
  */
-export const DESKTOP_DOWNLOAD_URL = null as string | null;
+export const DESKTOP_DOWNLOAD_URL = "https://astrolabe.sh/download" as string | null;
 export const APP_STORE_URL = null as string | null;
 export const GOOGLE_PLAY_URL = null as string | null;

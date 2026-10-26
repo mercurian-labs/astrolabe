@@ -47,7 +47,7 @@ export class NpmLauncherCommandFailedError extends Schema.TaggedError<NpmLaunche
 /**
  * package.json for the launcher. `engines` asks for `import.meta.dirname` and `fetch`.
  * `astrolabe.releaseRepository` tells the launcher where to download from; it is left out
- * while Astrolabe publishes no releases, and the launcher then refuses to download.
+ * while CLI_RELEASE_REPOSITORY is unset, and the launcher then refuses to download.
  */
 export function npmLauncherPackageManifest(version: string) {
   return {

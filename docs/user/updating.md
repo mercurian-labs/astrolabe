@@ -5,9 +5,6 @@ When a server is behind your web or desktop app, an update notice appears in the
 conversation and **Settings → Connections**. Update the machine named in that
 notice.
 
-Astrolabe doesn't publish releases yet, so server and command-line updates have
-nothing to download until it does.
-
 ## Update everything at once
 
 The update button at the bottom of the sidebar updates every connected machine

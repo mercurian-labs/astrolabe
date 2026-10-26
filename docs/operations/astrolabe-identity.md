@@ -264,11 +264,11 @@ through one of these values in the merge commit.
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | Hosted web app                      | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`      |
 | Relay                               | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh`    |
-| CLI releases                        | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off            |
+| CLI releases                        | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | `mercurian-labs/astrolabe`      |
 | Mobile EAS project                  | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | `@mercurian/astrolabe`          |
 | App Store Connect app               | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | `6826105166`                    |
 | Store listings                      | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden             |
-| Desktop download page               | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | unset: links hidden             |
+| Desktop download page               | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | `https://astrolabe.sh/download` |
 | Triage repository                   | `TRIAGE_REPOSITORY` in `apps/server/src/cli/triagePrompt.ts`                                                           | unset: triage off               |
 | Remote-access troubleshooting guide | `REMOTE_ACCESS_TROUBLESHOOTING_URL` in `packages/contracts/src/environmentHttp.ts`                                     | unset: "More info" links hidden |
 
@@ -278,16 +278,17 @@ through one of these values in the merge commit.
   app's sign-in shares the sign-in pages' session cookie, so it works only once the hosted app is
   served from `app.astrolabe.sh`.
 - **Relay.** Source builds and the signed macOS PR previews take the relay from `.env.example`;
-  release builds take it from the `RELAY_DOMAIN` repository variable. The relay dashboards in
+  release builds take it from the `RELAY_DOMAIN` repository variable, and the sign-in origin from
+  `AUTH_URL`. With neither set, releases build with remote access and sign-in hidden. The relay dashboards in
   `infra/relay/src/monitoring.ts` match relay requests by path, not host, and their runbook links
   point at Astrolabe's repository.
 - **CLI releases.** Every runtime download derives from `CLI_RELEASE_REPOSITORY`: the npm launcher
   (`scripts/build-npm-launcher.ts` stamps it into the package as `astrolabe.releaseRepository`),
   `astrolabe update` (unlisted while it is unset), the background service and remote self-update
   (`apps/server/src/cloud/pinnedRuntime.ts`), SSH installs (`packages/ssh/src/tunnel.ts`) and the
-  mobile app's update check, whose button is hidden while it is unset. Each says Astrolabe
-  publishes no releases yet instead of downloading. `ASTROLABE_RELEASE_BASE_URL` still points
-  downloads at a mirror. The install scripts run on their own, so they keep a copy;
+  mobile app's update check, whose button is hidden while it is unset. Unset, each says Astrolabe
+  publishes no releases instead of downloading. `ASTROLABE_RELEASE_BASE_URL` points downloads at
+  a mirror. The install scripts run on their own, so they keep a copy;
   `scripts/install-scripts.test.ts` fails when the copies drift. The desktop's release-notes links
   follow its own update feed and link nowhere when the build names none.
 - **Mobile EAS project.** Owner, project id and slug in one value. While it is unset the app has
@@ -297,7 +298,8 @@ through one of these values in the merge commit.
 - **Store listings and downloads.** Upstream's links install T3 Tools' apps. **Settings → General
   → Mobile app** and its search entry show only the stores that have a URL, and nothing without
   one. The hosted app's "Or download the desktop app" and "Get Astrolabe" links need
-  `DESKTOP_DOWNLOAD_URL`. The mobile app links to no store. `apps/marketing` is upstream's own
+  `DESKTOP_DOWNLOAD_URL`, the download page on `apps/landing`, which reads this repository's
+  latest release. The mobile app links to no store. `apps/marketing` is upstream's own
   site, store links and legal pages included. Astrolabe never deploys it: `release.yml` has no
   marketing jobs, and Astrolabe's site is `apps/landing`. When a sync brings upstream's
   `build_marketing` and `deploy_marketing` back, drop them again.
@@ -316,8 +318,8 @@ upstream's:
 
 - The Firebase project. Push to `com.mercurian.astrolabe*` needs Astrolabe's own APNs key and
   Firebase app.
-- npm trusted publishing for `@mercurian/astrolabe`, and the `repository` field in
-  `apps/server/package.json` that the npm package copies.
+- npm trusted publishing for `@mercurian/astrolabe`: a one-time setup on npmjs.com, listed in
+  [release destinations](./release-destinations.md).
 
 ## After each sync
 
@@ -342,8 +344,7 @@ git grep -nE 't3\.codes|pingdotgg|u\.expo\.dev|apps\.apple\.com|play\.google\.co
 ```
 
 Expected hits: the triage playbook text, the model manifest URL, the `t3.json` schema URL, the
-GNOME extension's `snap-shot@t3.codes` uuid, `apps/server/package.json`'s `repository`, the
-mobile `deps` README, and maintainer scripts that quote upstream's repository.
+GNOME extension's `snap-shot@t3.codes` uuid, the mobile `deps` README, and maintainer scripts that quote upstream's repository.
 
 Expected exceptions:
 

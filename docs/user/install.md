@@ -10,10 +10,15 @@ launch T3 Code and configure providers afterwards.
 
 ## Command line
 
-Astrolabe doesn't publish release builds yet, so the install scripts,
-`npx @mercurian/astrolabe` and `astrolabe update` have nothing to download.
-[Build the server from source](#build-from-source) for now. Once it runs, these
-are the everyday commands:
+On macOS (Apple silicon) and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh
+```
+
+This installs the `astrolabe` binary to `~/.local/bin`. If your shell reports `command not found`
+afterwards, that directory is not on your `PATH` yet; the installer prints the
+line to add. Set `ASTROLABE_VERSION` to pin an exact version.
 
 | Task                                             | Command                                                                        |
 | ------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -32,9 +37,14 @@ If `astrolabe` or `astrolabe start` reports an already running server, connect t
 instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
+To try Astrolabe once without installing it, run `npx @mercurian/astrolabe@latest` instead
+(needs Node.js for `npx`).
+
 ### Build from source
 
-Build the server with Node.js 24 and `vp` ([Install vp](../../README.md#install-vp)):
+There is no `astrolabe` executable for Intel Macs or Windows yet (the desktop app runs on Intel
+Macs). To run a server there, build it with Node.js 24 and `vp`
+([Install vp](../../README.md#install-vp)):
 
 ```bash
 git clone https://github.com/mercurian-labs/astrolabe
@@ -47,7 +57,15 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Astrolabe doesn't publish desktop downloads yet.
+Download it from [astrolabe.sh/download](https://astrolabe.sh/download) or
+[GitHub Releases](https://github.com/mercurian-labs/astrolabe/releases): a `.dmg` for macOS
+(Apple silicon or Intel), and an AppImage or `.deb` for Linux (x64 or arm64). Windows is coming
+later.
+
+On Debian or Ubuntu, install the `.deb` with `sudo apt install ./Astrolabe-*.deb`. It updates
+itself like the other desktop builds and asks for your password to install each update. If your
+desktop has no password prompt, the update fails; download the new `.deb` and install it the
+same way.
 
 ### The `astrolabe` command
 

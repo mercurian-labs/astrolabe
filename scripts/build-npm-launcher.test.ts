@@ -119,6 +119,14 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         assert.equal(manifest.name, "@mercurian/astrolabe");
         assert.equal(manifest.version, VERSION);
         assert.deepStrictEqual(manifest.bin, { astrolabe: "./bin/astrolabe.mjs" });
+        // Downloads come from Astrolabe's releases, and npm provenance only accepts a
+        // package whose repository is the one whose workflow publishes it.
+        assert.deepStrictEqual(manifest.astrolabe, {
+          releaseRepository: "mercurian-labs/astrolabe",
+        });
+        assert.deepInclude(manifest.repository, {
+          url: "https://github.com/mercurian-labs/astrolabe",
+        });
         // Nothing for npm to resolve, so nothing that can lag behind the launcher.
         assert.isUndefined(manifest.dependencies);
         assert.isUndefined(manifest.optionalDependencies);
