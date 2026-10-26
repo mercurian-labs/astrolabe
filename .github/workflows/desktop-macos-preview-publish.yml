@@ -225,8 +225,9 @@ jobs:
             output="${key%%:*}"
             name="${key##*:}"
             value="$(sed -n "s/^${name}=//p" "$RUNNER_TEMP/head.env.example" | head -n 1)"
-            if [[ ! "$value" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
-              echo "$name is missing or malformed in .env.example at $HEAD_SHA." >&2
+            # Unset means the build has cloud features off; only a malformed value fails.
+            if [[ -n "$value" && ! "$value" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
+              echo "$name is malformed in .env.example at $HEAD_SHA." >&2
               exit 1
             fi
             echo "${output}=${value}" >> "$GITHUB_OUTPUT"
