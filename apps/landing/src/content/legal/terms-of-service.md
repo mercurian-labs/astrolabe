@@ -75,7 +75,7 @@ Nothing in these terms limits liability that the law doesn't allow to be limited
 
 ## 9. Governing law
 
-These terms are governed by the laws of the State of Delaware, and disputes about them go to the state or federal courts there. [DECISION: governing law and courts, proposed: Delaware, if that is Mercurian, Inc.'s state of incorporation; otherwise that state] There's no arbitration clause.
+These terms are governed by the laws of the State of Delaware, and disputes about them go to the state or federal courts there. [DECISION: state of incorporation, proposed: Delaware; the governing law follows it] There's no arbitration clause.
 
 If you live in the EU or the UK, you keep the protections of your local consumer law, and you can bring claims in your local courts.
 
