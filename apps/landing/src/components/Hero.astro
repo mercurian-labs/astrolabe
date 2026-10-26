@@ -1,0 +1,69 @@
+---
+import HeroWindow from "./HeroWindow.astro";
+import { phases, scenarios } from "../scripts/tour-scenes.js";
+import { headline } from "../site.js";
+---
+
+          <!-- ───────────────────────────────────────── [01] Hero -->
+          <section class="hero" id="top" aria-labelledby="hero-title">
+            <div class="hero__head">
+              <h1 id="hero-title" class="hero__title">{headline}</h1>
+              <p class="hero__lede">
+                Astrolabe is an agent development environment. Run Claude Code, Codex and the rest side by
+                side, hand work from one agent to the next, and ship what you and your agents build as one
+                change, code and docs together.
+              </p>
+              <div class="hero__actions">
+                <a class="btn btn--rust px px--on-rust" href="/download">
+                  <span class="roll"><span>Download Astrolabe</span><span aria-hidden="true">Download Astrolabe</span></span>
+                  <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+                </a>
+                <a class="btn px" href="#tour" data-tour-run>
+                  <span class="roll"><span>See it run</span><span aria-hidden="true">See it run</span></span>
+                  <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+                </a>
+              </div>
+            </div>
+
+            <!-- The tour's three phases, one per section. Without script the first is shown; while the tour
+                 plays the running one fills; once it has played each replays from its phase. -->
+            <div class="tour" id="tour" data-tour>
+              <ol class="tour__phases" aria-label="The tour's phases">
+                <li><button type="button" class="tour__phase is-on" data-tour-phase disabled aria-current="step"><i aria-hidden="true"><span></span></i><span class="tag"><b>01</b> Agents</span></button></li>
+                <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>02</b> Wikis</span></button></li>
+                <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>03</b> Changes</span></button></li>
+              </ol>
+              <p class="tour__caption" data-tour-caption aria-live="polite">{phases[0].caption}</p>
+            </div>
+
+            <div class="panel">
+              <div class="panel__print" aria-hidden="true"><i class="panel__olive"></i><i class="panel__ivory"></i></div>
+              <div class="panel__slot">
+                <figure class="poster">
+                  <HeroWindow />
+                </figure>
+                <!-- Once the tour has played: three prompts to send into the drawn composer. -->
+                <div class="tour__try" data-tour-try hidden>
+                  <p class="tag">Example prompts</p>
+                  <ul class="tour__chips">
+                    {
+                      scenarios.map((s) => (
+                        <li>
+                          <button type="button" class="tour__chip" data-try aria-pressed="false">
+                            <svg class="arw" aria-hidden="true">
+                              <use href="#i-arrow" />
+                            </svg>
+                            {s.prompt}
+                          </button>
+                        </li>
+                      ))
+                    }
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </section>
+
+<script>
+  import "../scripts/tour.js";
+</script>

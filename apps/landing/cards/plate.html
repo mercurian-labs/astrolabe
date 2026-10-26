@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- Astrolabe · share cards · the plate
+     The footer's night band (or its day print) recomposed at a card's size: the wordmark as a raised
+     plate on Beethoven basin, the line under it, the figure captions in the corners. Rendered by
+     scripts/render-cards.mjs at the viewport's exact size; the query picks the card:
+       ink      night | day
+       layout   main (1200 × 630) | page | github (1280 × 640) | header (1500 × 500) | avatar (400 × 400)
+       title    the page card's line
+       caption  the top-left figure caption -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Astrolabe · plate</title>
+    <link rel="stylesheet" href="./card.css" />
+  </head>
+  <body>
+    <div class="card">
+      <canvas></canvas>
+    </div>
+    <script type="module" src="./plate.js"></script>
+  </body>
+</html>

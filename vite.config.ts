@@ -152,6 +152,8 @@ export default defineConfig({
       "apps/mobile/ios/**",
       "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
+      // Rendered art and data copied in from astrolabe-site; kept byte for byte.
+      "apps/landing/public/**",
     ],
     sortPackageJson: {},
     overrides: [

@@ -1,0 +1,31 @@
+          <!-- ───────────────────────────────────────── Close -->
+          <section class="close" aria-labelledby="close-title" data-close-art="samrat">
+            <div class="close__copy">
+              <h2 id="close-title" class="display display--close" data-reveal>Start with a question.</h2>
+              <p class="close__line" data-reveal>Open Astrolabe on your repository and put two agents on it.</p>
+              <a class="btn btn--rust px px--on-rust" href="/download">
+                <span class="roll"><span>Download Astrolabe</span><span aria-hidden="true">Download Astrolabe</span></span>
+                <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+              </a>
+            </div>
+            <div class="close__art" aria-hidden="true">
+              <i class="art art--limb"></i>
+              <div class="close__samrat">
+                <i class="art samrat__ground samrat__ground--day"></i>
+                <i class="art samrat__ground samrat__ground--night"></i>
+                <i class="art samrat__body"></i>
+                <i class="art samrat__olive"></i>
+                <i class="art samrat__building samrat__building--day"></i>
+                <i class="art samrat__building samrat__building--night"></i>
+              </div>
+              <span class="cross cross--tl"></span>
+              <span class="cross cross--br"></span>
+              <p class="tag close__credit"><span class="close__samrat-credit">Jaipur · Great Samrat Yantra<br /></span>Mercury · MESSENGER elevation model</p>
+            </div>
+          </section>
+
+<script is:inline>
+  if (new URLSearchParams(location.search).get("close") === "limb") {
+    document.querySelector(".close")?.setAttribute("data-close-art", "limb");
+  }
+</script>

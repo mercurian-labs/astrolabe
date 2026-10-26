@@ -1,0 +1,81 @@
+          <!-- ───────────────────────────────────────── [02] Value -->
+          <section id="why" class="value" data-relight aria-labelledby="value-title">
+              <div class="sky" data-sight>
+                <canvas class="relight__ground" data-relight-canvas aria-hidden="true"></canvas>
+                <div class="relight__static" aria-hidden="true"><i class="relight__olive"></i><i class="relight__dark"></i><i class="relight__light"></i></div>
+                <i class="ruler ruler--x" aria-hidden="true"></i>
+                <i class="ruler ruler--y" aria-hidden="true"></i>
+                <div class="sky__art">
+                  <i class="sky__plate" aria-hidden="true"></i>
+                  <div class="sky__instrument" data-model>
+                    <noscript><img class="sky__static" src="/assets/art/astrolabe-static.svg" alt="A planispheric astrolabe with a plate for 40° N and a rete of twelve stars" /></noscript>
+                  </div>
+                </div>
+                <span class="cross cross--tl" aria-hidden="true"></span>
+                <span class="cross cross--tr" aria-hidden="true"></span>
+                <span class="cross cross--bl" aria-hidden="true"></span>
+                <span class="cross cross--br" aria-hidden="true"></span>
+                <p class="tag sky__tag sky__tag--tl" aria-hidden="true">Fig. 1 · <span class="wide-only">Planispheric </span>astrolabe</p>
+                <p class="tag sky__tag sky__tag--tr" data-plate>Plate for 40° N · Rete of twelve stars</p>
+                <div class="sky__time" data-time hidden>
+                  <p class="tag"><span class="sky__clock" data-clock>00:00</span> <span class="sky__date" data-date></span></p>
+                  <p class="tag sky__desc" data-sky></p>
+                </div>
+                <div class="sky__wind" data-time hidden>
+                  <p class="tag sky__hint"><span class="hover-only">Point to sight<span class="sky__sep"> · </span></span>Drag the rete to wind time</p>
+                  <div class="sky__jumps" role="group" aria-label="Wind the rete to">
+                    <button class="sky__now" type="button" data-jump="day" aria-pressed="false">Day</button>
+                    <button class="sky__now" type="button" data-jump="night" aria-pressed="false">Night</button>
+                    <button class="sky__now" type="button" data-now>Now</button>
+                  </div>
+                </div>
+                <span class="tag star-tip" data-star-tip hidden></span>
+                <div class="sight" aria-hidden="true">
+                  <svg class="sight__rule"><line x1="0" y1="0" x2="0" y2="0" /></svg>
+                  <i class="sight__h"></i>
+                  <i class="sight__v"></i>
+                  <i class="sight__mx"></i>
+                  <i class="sight__my"></i>
+                  <span class="sight__read">ALT 00.0° · AZ 000.0°</span>
+                  <svg class="sight__mark" viewBox="-24 -24 48 48">
+                    <g class="sight__cue"><path d="M-15.6 -9A18 18 0 0 1 3.1 -17.7M-0.8 -21.5L3.1 -17.7L-1.8 -15.6M15.6 9A18 18 0 0 1 -3.1 17.7M0.8 21.5L-3.1 17.7L1.8 15.6" /></g>
+                    <circle class="sight__ring" r="7" />
+                    <path class="sight__ticks" d="M0 -16V-10M0 10V16M-16 0H-10M10 0H16" />
+                    <circle class="sight__pip" r="1.6" />
+                  </svg>
+                </div>
+              </div>
+            <div class="value__text">
+              <p class="tag">[02] Why Astrolabe</p>
+              <h2 id="value-title" class="sr-only">Why Astrolabe</h2>
+              <p class="manifesto" data-ink-words>
+                One agent is a tool. Five at once are a team, and a team needs a place where you can see
+                every one of them at work.
+              </p>
+              <a class="btn px" href="#how">
+                <span class="roll"><span>How the work moves</span><span aria-hidden="true">How the work moves</span></span>
+                <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+              </a>
+            </div>
+            <div class="works">
+              <div class="works__label">
+                <p class="tag">Works with</p>
+                <p class="works__note">The agents installed on your computer, signed in with your own accounts.</p>
+              </div>
+              <ul class="works__list" aria-label="Supported agents">
+                <li>Codex</li>
+                <li>Claude Code</li>
+                <li>Cursor</li>
+                <li>Grok</li>
+                <li>OpenCode</li>
+                <li>Antigravity</li>
+              </ul>
+            </div>
+          </section>
+<script>
+  // The instrument announces each moment it shows; the ground and the Sphinx's plate in [10] listen,
+  // so they load first.
+  import "../scripts/relight.js";
+  import "../scripts/plate.js";
+  import "../scripts/instrument.js";
+</script>
