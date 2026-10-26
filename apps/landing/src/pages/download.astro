@@ -205,7 +205,7 @@ const desktop = [
                 </>
               ) : (
                 <ul class="dl__files">
-                  {os.files.map((file) => (
+                  {(os.files ?? []).map((file) => (
                     <li>
                       <a class="dl__file" href={RELEASES_URL} data-asset={file.asset}>
                         <span class="dl__file-label">{file.label}</span>
