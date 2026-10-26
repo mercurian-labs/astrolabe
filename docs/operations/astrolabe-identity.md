@@ -325,6 +325,26 @@ upstream's:
 - npm trusted publishing for `@mercurian/astrolabe`: a one-time setup on npmjs.com, listed in
   [release destinations](./release-destinations.md).
 
+### License files
+
+[LICENSING.md](../../LICENSING.md) explains the split. What a sync has to keep:
+
+- The root `LICENSE` is MIT with two copyright lines, Mercurian, Inc.'s and then T3 Tools Inc.'s.
+  Upstream's has only theirs. On a conflict keep both lines, and copy any change upstream makes to
+  its own line (a new year, say) onto the T3 Tools line. Never take upstream's file wholesale.
+- `apps/cloud`, `apps/auth`, `apps/admin` and `infra/cloud` are FSL-1.1-MIT: a `LICENSE` in each
+  and `"license": "FSL-1.1-MIT"` in each `package.json`. Upstream has none of these directories, so
+  they can't conflict. The FSL rests on all their code being Mercurian's: don't move upstream code
+  into them, and if some has to move, it keeps T3 Tools' MIT notice.
+- Every other `package.json` declares `"license": "MIT"`, private ones included. Upstream declares
+  it only in `apps/server`; the line in the rest is ours, so keep it when upstream edits next to it,
+  and give a new upstream package the same line in the merge commit. The `t3-review-diff` and
+  `t3-terminal` podspecs say MIT where upstream's say `UNLICENSED`.
+- `LICENSING.md`, `TRADEMARKS.md` and the "Licensing of contributions" section at the end of
+  `CONTRIBUTING.md` are Astrolabe's. Keep that section when upstream rewrites the guide.
+- `.github/SECURITY.md` is Astrolabe's: upstream's sends vulnerability reports to T3 Tools. Keep
+  ours when upstream edits theirs.
+
 ## After each sync
 
 Run this from the repo root. Each hit is either a new upstream site to rename or a deliberate

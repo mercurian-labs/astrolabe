@@ -1,6 +1,7 @@
 {
   "name": "@t3tools/provider-cursor",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./client": {

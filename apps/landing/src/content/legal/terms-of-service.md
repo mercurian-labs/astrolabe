@@ -1,170 +1,95 @@
 ---
 title: Terms of Service
-description: The terms for Mercurian's hosted services and the official Astrolabe builds, including AI providers, agents acting on your machine, and remote access.
-updated: October 23, 2026
+description: The terms for Astrolabe's websites and the Astrolabe software Mercurian distributes, including your AI providers and the agents that act on your machine.
+updated: October 25, 2026
 ---
 
-**Effective date:** [DECISION: effective date, proposed: the day the hosted services open to the public]
+**Effective date:** [DECISION: effective date, proposed: the day astrolabe.sh launches]
 
-These terms are an agreement between you and Mercurian, Inc. ("Mercurian", "we", "us"). Please read them with our [Privacy Policy](/privacy-policy), which explains what data we collect and why.
+These terms are an agreement between you and Mercurian, Inc. ("Mercurian", "we", "us"). Please read them with our [Privacy Policy](/privacy-policy).
 
 ## 1. What these terms cover
 
-These terms cover:
+- **Our websites:** astrolabe.sh, and the web app at app.astrolabe.sh, which your browser uses to connect to an Astrolabe server you run.
+- **The Astrolabe software we distribute:** the desktop app for macOS and Linux, and the command-line server, including the `@mercurian/astrolabe` package on npm and the downloads on Astrolabe's GitHub Releases page.
 
-- **Our hosted services:** the Mercurian account, workspaces, remote access and its relay, push notifications, and our websites at astrolabe.sh and app.astrolabe.sh.
-- **The official builds of Astrolabe** that Mercurian distributes: the desktop app, the mobile app, and the `@mercurian/astrolabe` command-line package.
+Mercurian doesn't offer accounts or other hosted services yet. If we do, we'll update these terms before they open.
 
-They don't cover builds you make from source, or forks that others make. The open-source licenses govern those (section 2). If such a build connects to our hosted services, these terms govern your use of the hosted services.
+You must be at least 18 to use them. If you use Astrolabe for an organization, you accept these terms for it and confirm you have the authority to do so.
 
-If you use Astrolabe for an organization, you accept these terms for it and confirm you have the authority to do so.
+## 2. Open source comes first
 
-## 2. Open source and these terms
+Astrolabe is open source. Its code is licensed under the MIT License, apart from a few directories under the Functional Source License (FSL-1.1-MIT). The [Licenses](/licenses) page says which license covers what.
 
-Astrolabe's app is open source under the MIT License. [PENDING: astrolabe/licensing] The source of our hosted backend is available under the Functional Source License (FSL-1.1-MIT), and each version becomes MIT-licensed two years after its release. The [Licenses](/licenses) page explains what covers what.
+Those licenses give you their rights directly, and nothing in these terms takes any of them away. If these terms and an open-source license conflict, the license wins for the code it covers. Builds you make from source, and forks others make, are governed by the licenses alone.
 
-Nothing in these terms limits the rights an open-source license gives you. If these terms and such a license conflict, the license wins for the code it covers. The restrictions in these terms apply only to our hosted services.
+The licenses cover code, not names. "Astrolabe" and "Mercurian" and their logos are Mercurian's trademarks; the [trademark policy](https://github.com/mercurian-labs/astrolabe/blob/main/TRADEMARKS.md) says how you can use them.
 
-The names Astrolabe and Mercurian, and their logos, are Mercurian's trademarks. The open-source licenses don't grant any rights in them.
+## 3. Your AI providers
 
-## 3. Your account
+Astrolabe runs AI coding agents from providers you choose, such as Anthropic, OpenAI and Cursor, using your own subscriptions, API keys or accounts.
 
-- You must be at least [DECISION: minimum age, proposed: 16 in the EU and UK and 13 elsewhere, or 18 everywhere if simpler] to create an account.
-- Give us accurate information, and keep your sign-in methods secure.
-- You are responsible for what happens under your account, including on the machines you link and the devices you sign in on. This doesn't apply to activity caused by someone exploiting a flaw in our services.
-- Tell us right away if you think someone else is using your account.
+- **Your agreement with each provider governs your use of it.** You must follow that provider's terms and usage policies, including its rules about using a subscription through other apps.
+- **Keep your subscription to yourself.** Don't use Astrolabe to let other people run turns on your personal plan, for example by giving a teammate access to a server signed in to your account, or to run turns on someone else's plan, unless that provider's terms allow it.
+- **Providers change their rules.** A provider may restrict, re-price or end your use of its service through Astrolabe. If that happens, you may need a different sign-in method, such as an API key, or a different provider.
+- **Mercurian isn't part of that agreement.** We don't resell or pay for your usage, and we aren't responsible for a provider's availability, charges, data retention or training.
+- **No endorsement.** No AI provider endorses Astrolabe. Their names are their owners' trademarks, used only to say what Astrolabe works with.
 
-## 4. Early access and fees
+Some parts of what Astrolabe installs aren't open source. For example, it uses Anthropic's Claude Agent SDK, which is subject to [Anthropic's own terms](https://code.claude.com/docs/en/legal-and-compliance).
 
-The hosted services are in early access. They may change, have bugs, lose data or be unavailable, and we may limit who can join through a waitlist.
-
-[DECISION: pricing, proposed: the hosted services are free during early access; if we introduce paid plans we'll give at least 30 days' notice, and Mercurian will never charge for using your own AI provider plan through Astrolabe]
-
-## 5. Your content
-
-Your content is what you put into Astrolabe or have it produce: prompts, code, files, threads, wikis and agent output. Between you and Mercurian, you own it.
-
-You give Mercurian a limited, non-exclusive, worldwide license to host, copy, transmit and process your content only as needed to run, secure and troubleshoot the hosted features you turn on. For workspaces, that includes showing your profile to the other members. The license ends when we no longer need it for those purposes.
-
-We don't use your content to train AI models. We don't access it except:
-
-- to provide a feature you asked for, or with your permission, for example to answer a support request;
-- to keep the services secure and working;
-- when the law requires it.
-
-You are responsible for having the rights to the content you send through Astrolabe.
-
-## 6. Your AI providers
-
-Astrolabe works with AI providers you choose, such as Anthropic, OpenAI and Cursor, through your own subscriptions, API keys or accounts.
-
-- **Your agreement with each provider governs your use of it,** not these terms. You must follow that provider's terms and usage policies, including its rules about using its subscription plans through other apps.
-- **Providers change those rules.** A provider may restrict, re-price or end your use of its service through Astrolabe, sometimes without notice. If that happens, you may need to use a different sign-in method, such as an API key, or a different provider.
-- **Mercurian is not a party to your provider agreement.** We don't resell or pay for your usage, and we aren't responsible for a provider's availability, charges, data retention or training.
-- **No endorsement.** No AI provider endorses Astrolabe. Provider names are their owners' trademarks, used only to say what Astrolabe works with.
-
-## 7. Agents act on your machine
+## 4. Agents act on your machine
 
 Agents in Astrolabe don't just write text. They act.
 
 - **What agents can do.** An agent can read and change files, run commands, use the network, use your saved credentials and signed-in browser sessions, and act on websites and services. It acts with the permissions of the user account that runs the Astrolabe server.
-- **Permission modes.** You choose how much an agent may do without asking: Supervised, Auto-accept edits, Auto or Full access. In Full access, agents run commands and change files without asking first. New threads start in Full access unless you choose a different default in Settings → General → Permissions.
+- **Permission modes.** You choose how much an agent may do without asking: Supervised, Auto-accept edits, Auto or Full access. In Full access, agents run commands and change files without asking first. New threads start in Full access unless you choose another default in Settings → General → Permissions.
 - **Astrolabe doesn't sandbox agents.** Any approval prompts or sandbox come from the provider's own agent and the mode you choose. Full access removes them.
-- **Agents can start without you at the keyboard.** Your phone or browser can start a turn through remote access. So can scheduled tasks, webhooks and outside agents you approve. Those turns run on your machine with the same permissions.
-- **You are responsible for what your agents do.** That covers every action an agent takes at your direction or under the modes and settings you choose, and what it sends or publishes on your behalf. Agent output and actions can be wrong, insecure, incomplete or different from what you intended. Review them before you rely on, publish or deploy them.
-- **By choosing or keeping a mode that lets agents act without asking, you accept the risks of those actions,** including lost data, security weaknesses, outages, charges, and changes to accounts and services the agent can reach.
+- **Agents can start without you at the keyboard.** A device you've paired, a scheduled task, a webhook or an outside agent you approve can start a turn. It runs on your machine with the same permissions.
+- **You are responsible for what your agents do,** at your direction or under the modes and settings you choose, including what they send or publish on your behalf. Their output and actions can be wrong, insecure or different from what you intended. Review them before you rely on, publish or deploy them.
 
 Use version control, keep backups, and run agents on untrusted code in an isolated environment, such as a container or a separate machine.
 
-## 8. Remote access
+## 5. Using our websites
 
-Remote access lets your other devices reach Astrolabe on a machine you link to your account.
+Don't use our websites to break the law, to attack or overload them or anyone else, or to get access to machines or data you aren't authorized to reach. Good-faith security research is welcome; report what you find to [security@mercurian.ai](mailto:security@mercurian.ai).
 
-- Traffic travels through Cloudflare's network, and its encryption ends at Cloudflare's edge. Astrolabe doesn't add end-to-end encryption yet. The [Privacy Policy](/privacy-policy#43-remote-access) explains what that means.
-- Any device signed in to your account can control the machines you've linked. Link only machines you are allowed to control, and unlink a machine when you no longer need it.
-- Tunnels exist to reach your own Astrolabe server. Don't use them to host or proxy other services.
-- We may limit usage, or revoke a tunnel that is abused or puts others at risk.
+app.astrolabe.sh connects your browser to an Astrolabe server whose address you give it. Connect it only to servers you are allowed to use.
 
-## 9. Workspaces
-
-- Workspace owners and admins manage who belongs to a workspace. Members can see each other's names, email addresses, profile pictures, roles and teams.
-- The owner is responsible for the people they invite and for how the workspace is used.
-- If you leave a workspace, you lose access to it.
-
-[DECISION: data processing agreement, proposed: available on request for workspaces whose owners need one]
-
-## 10. Acceptable use
-
-When you use our hosted services, don't:
-
-- break the law or infringe anyone's rights;
-- access machines, accounts or data you aren't authorized to;
-- send malware, spam or abusive content through our services;
-- probe, scan, overload or disrupt our services, or get around their rate limits, waitlist or access controls, except for good-faith security research reported to us;
-- resell or share access to the hosted services, or create accounts automatically to get around limits;
-- use Astrolabe to let other people use your AI provider subscription, or to run turns on someone else's subscription, unless that provider's terms allow it. For example, don't let a teammate's messages start turns on your personal plan through a machine you've linked;
-- use agents to do anything your AI provider's usage policy forbids.
-
-[DECISION: shared threads and provider subscriptions. Provider terms (OpenAI's Sign in with ChatGPT terms; Anthropic's consumer terms and usage policy) forbid one person's subscription serving another person's requests. Proposed: keep the rule above, and before shared threads ship, make teammates' turns run on the teammate's own provider account.]
-
-Automation is welcome. Scheduled tasks, scripts and agents that use the hosted services for your own work are normal use.
-
-## 11. Other services
-
-Astrolabe connects to services that others run: your AI providers, code hosts, Apple, Google and Cloudflare among them. Their terms govern your use of them, and we aren't responsible for them.
-
-If you got the mobile app from the App Store or Google Play, that store's terms also apply. Apple and Google aren't responsible for the app or for supporting it.
-
-## 12. Feedback
+## 6. Feedback
 
 If you send us ideas or feedback, we may use them without owing you anything.
 
-## 13. Ending your account
+## 7. Disclaimer
 
-- You can stop using the hosted services and delete your account at any time, in the app.
-- We may suspend or close your account if you break these terms, if your use puts other people or our services at risk, or if the law requires it. Where we reasonably can, we'll tell you first and explain why.
-- If we shut down a hosted service, we'll give you at least 30 days' notice.
-- If your account ends, Astrolabe keeps working on your machine without it, and your local data stays where it is.
+The websites and the software are provided "as is" and "as available", without warranties of any kind. To the extent the law allows, we disclaim all warranties, including merchantability, fitness for a particular purpose and non-infringement. We don't promise that they will be uninterrupted, secure or free of errors, that agents' output or actions will be correct, or that any AI provider will keep working with Astrolabe.
 
-## 14. Disclaimers
-
-The hosted services and the official builds are provided "as is" and "as available". To the extent the law allows, we disclaim all warranties, including merchantability, fitness for a particular purpose and non-infringement. We don't promise that the services will be uninterrupted or secure, that agents' output or actions will be correct, or that any AI provider will stay available through Astrolabe.
-
-## 15. Limits on liability
+## 8. Limits on liability
 
 To the extent the law allows:
 
 - Mercurian isn't liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue or data.
 - Mercurian isn't liable for actions agents take under the modes and settings you chose, or for charges from your AI providers.
-- Mercurian's total liability for any claim about these terms or the services is limited to [DECISION: liability cap, proposed: the greater of what you paid us in the 12 months before the claim and US$100].
+- Mercurian's total liability for any claim about these terms, the websites or the software is limited to US$100. [DECISION: liability cap, proposed: US$100, since Mercurian charges nothing]
 
 Nothing in these terms limits liability that the law doesn't allow to be limited, such as for fraud, or for death or personal injury caused by negligence.
 
-## 16. Indemnity
+## 9. Governing law
 
-If you use the hosted services for a business, you will defend and indemnify Mercurian against third-party claims that arise from your content, from actions your agents take under your control, or from your breach of these terms or of your AI providers' terms. If you are a consumer, this applies only as far as your local law allows.
-
-## 17. Governing law and disputes
-
-[DECISION: governing law and courts, proposed: the law of the state where Mercurian, Inc. is incorporated and its courts, with no arbitration clause]
+These terms are governed by the laws of the State of Delaware, and disputes about them go to the state or federal courts there. [DECISION: state of incorporation, proposed: Delaware; the governing law follows it] There's no arbitration clause.
 
 If you live in the EU or the UK, you keep the protections of your local consumer law, and you can bring claims in your local courts.
 
-## 18. Changes to these terms
+## 10. Changes and general terms
 
-We'll post every change here with a new date. If a change is significant, we'll tell account holders by email or in the app at least 30 days before it takes effect. If you don't agree with a change, stop using the hosted services and delete your account. If you keep using them after the change takes effect, the new terms apply.
-
-## 19. General
-
-- These terms and the [Privacy Policy](/privacy-policy) are the whole agreement between you and Mercurian about the hosted services and the official builds.
-- If a court finds part of these terms unenforceable, the rest still applies.
-- If we don't enforce a term right away, we haven't given up the right to enforce it later.
-- We may transfer these terms if Mercurian merges or is acquired. You may not transfer them without our consent.
+- We'll post every change to these terms here with a new date. Earlier versions stay in Astrolabe's public repository. If you keep using the websites or the software we distribute after a change takes effect, the new terms apply.
+- If a court finds part of these terms unenforceable, the rest still applies. If we don't enforce a term right away, we haven't given up the right to enforce it later.
+- We may transfer these terms if Mercurian merges or is acquired.
 - You must follow the export control and sanctions laws that apply to you.
-- We aren't responsible for delays or failures caused by events beyond our reasonable control.
 
-## 20. Contact
+## 11. Contact
 
 Mercurian, Inc.<br>
 [DECISION: postal address]<br>
-[DECISION: contact email for these terms, proposed: legal@mercurian.ai]
+[legal@mercurian.ai](mailto:legal@mercurian.ai)
+
+See also our [Privacy Policy](/privacy-policy) and [Licenses](/licenses).

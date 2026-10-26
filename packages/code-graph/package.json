@@ -1,6 +1,7 @@
 {
   "name": "@mercurian/code-graph",
   "private": true,
+  "license": "MIT",
   "bin": {
     "code-graph": "./src/cli.ts"
   },

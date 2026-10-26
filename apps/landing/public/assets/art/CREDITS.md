@@ -5,14 +5,15 @@ Licenses page (`src/content/legal/licenses.md`) says the same in prose. Add a ro
 asset is added or re-sourced.
 
 The repository's MIT License does not cover these files. Mercurian's own art and the brand marks
-are all rights reserved unless a row says otherwise. (DECISION pending: confirm this, and add the
-same note to `apps/landing/README.md`.)
+are all rights reserved unless a row says otherwise. (DECISION pending, the same one as in
+`LICENSING.md` and the Licenses page: whether art and marks are excluded from the MIT License.)
 
 ## `assets/art/`
 
 | File | Source | License |
 | --- | --- | --- |
 | `sphinx/*.webp` (duotone, geometry, lines, outline, still-ink, still-olive, tone) | Derived from [a photograph by Roy Egloff](https://commons.wikimedia.org/wiki/File:CH.BE.Grindelwald_2021-04-20_Jungfraujoch_Sphinx-Observatory.jpg), Wikimedia Commons, by astrolabe-site's `scripts/observatories/` (inpainted, then shape, tone and line passes). | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), as the source requires. Credit: Roy Egloff. The page credits it under the plate. |
+| `../../og/card-sphinx.jpg`, `../../og/card-sphinx-day.jpg` | Share cards built on the Sphinx print above, with the Astrolabe wordmark. | CC BY-SA 4.0, as adaptations of the photograph. Credit: Roy Egloff. |
 | `print-wide-{light,olive}.webp`, `print-tall-{light,olive}.webp`, `hero-twoink-light.webp`, `astro-plate.webp` | Rendered by astrolabe-site's `scripts/render-art.py` from the Mercury MESSENGER Global DEM 665m v2 (below). | Mercurian's rendering; the DEM's terms below apply to the data. |
 | `close-relief.{webp,json}`, `close-relief-{dark,light,olive}.webp` | astrolabe-site's `scripts/render-relight.py`, from the same DEM. | As above. |
 | `hemisphere.{webp,json}`, `hemisphere-{dark,light,olive}.webp` | astrolabe-site's `scripts/render-hemisphere.py`, from the same DEM. | As above. |
@@ -47,7 +48,7 @@ product with non-USGS co-originators.
 | `plex-sans.woff2` | IBM Plex Sans | 2019 IBM Corp. | SIL OFL 1.1, `OFL-IBM-Plex.txt` |
 | `plex-mono-400.woff2`, `plex-mono-500.woff2` | IBM Plex Mono | 2017 IBM Corp. | SIL OFL 1.1, `OFL-IBM-Plex.txt` |
 
-Neither license text declares a Reserved Font Name.
+IBM Plex Mono's license reserves the font name "Plex" (IBM's own notice, in `OFL-IBM-Plex.txt`). Fraunces and Plex Sans declare no Reserved Font Name.
 
 ## Brand marks (`assets/brand/`)
 
