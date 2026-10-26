@@ -4,7 +4,7 @@
 // states it is in (data-release): pending while GitHub is asked, ready with a release, none before
 // the first release, unavailable when GitHub can't be reached (the links stay on the releases page).
 // The visitor's platform is read before the first paint by the page's inline script; this refines
-// it with the architecture where the browser will say (Chromium on Windows and Linux).
+// it with the architecture where the browser will say (Chromium on Linux).
 
 import { NoRelease, RELEASES_URL, assetFor, fetchRelease } from "./releases.js";
 
@@ -32,7 +32,7 @@ function showLead() {
   for (const lead of leads) lead.hidden = lead !== match;
 }
 
-if (page.dataset.platform === "win" || page.dataset.platform === "linux") {
+if (page.dataset.platform === "linux") {
   navigator.userAgentData
     ?.getHighEntropyValues(["architecture"])
     .then(({ architecture }) => {

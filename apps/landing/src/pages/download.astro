@@ -13,13 +13,12 @@ const CLI = "npx @mercurian/astrolabe@latest";
 // Each `asset` is the tail of a release file's name: Astrolabe-<version>-<asset>.
 const leads = [
   { id: "mac", label: "Download for macOS", asset: "arm64.dmg", caption: "Apple Silicon · .dmg", alt: { label: "Intel Mac", asset: "x64.dmg" } },
-  { id: "win", label: "Download for Windows", asset: "x64.exe", caption: "x64 · .exe installer", alt: { label: "Arm64", asset: "arm64.exe" } },
-  { id: "win-arm64", label: "Download for Windows", asset: "arm64.exe", caption: "Arm64 · .exe installer", alt: { label: "x64", asset: "x64.exe" } },
   { id: "linux", label: "Download for Linux", asset: "x86_64.AppImage", caption: "x86_64 · AppImage", alt: { label: ".deb", asset: "amd64.deb" } },
   { id: "linux-arm64", label: "Download for Linux", asset: "arm64.AppImage", caption: "arm64 · AppImage", alt: { label: ".deb", asset: "arm64.deb" } },
 ];
 
-// Every build, by platform, in the order the cards list them.
+// Every build, by platform, in the order the cards list them. A platform without `files` is drawn as
+// coming soon.
 const desktop = [
   {
     id: "mac",
@@ -34,10 +33,7 @@ const desktop = [
     id: "win",
     name: "Windows",
     glyph: "g-windows",
-    files: [
-      { label: "x64", format: ".exe", asset: "x64.exe" },
-      { label: "Arm64", format: ".exe", asset: "arm64.exe" },
-    ],
+    soon: "The Windows app follows the first release. Until then, run Astrolabe from the command line.",
   },
   {
     id: "linux",
@@ -55,7 +51,7 @@ const desktop = [
 
 <Layout
   title="Download · Astrolabe"
-  description="Download Astrolabe for macOS, Windows and Linux, run it from the command line, or open it in your browser."
+  description="Download Astrolabe for macOS and Linux, run it from the command line, or open it in your browser."
   image={{ src: "/og/page-download.jpg", alt: "Download, Astrolabe, printed on a two-ink print of Mercury" }}
 >
   <Header />
@@ -107,6 +103,15 @@ const desktop = [
               </div>
             ))
           }
+          <div class="dl__choice" data-lead="win" hidden>
+            <div class="dl__buttons">
+              <a class="btn btn--rust px px--on-rust" href="#direct">
+                <span class="roll"><span>Run it from a terminal</span><span aria-hidden="true">Run it from a terminal</span></span>
+                <svg class="arw arw--down" aria-hidden="true"><use href="#i-down" /></svg>
+              </a>
+            </div>
+            <p class="tag dl__caption">The Windows app is coming soon · macOS and Linux are ready</p>
+          </div>
           <div class="dl__choice" data-lead="mobile" hidden>
             <div class="dl__buttons">
               <a class="btn btn--rust px px--on-rust" href="#desktop">
@@ -123,7 +128,7 @@ const desktop = [
                 <svg class="arw arw--down" aria-hidden="true"><use href="#i-down" /></svg>
               </a>
             </div>
-            <p class="tag dl__caption">macOS · Windows · Linux</p>
+            <p class="tag dl__caption">macOS · Linux · Windows soon</p>
           </div>
           {/* Before paint: the visitor's platform from the user agent, so the right choice is the first one drawn. */}
           <script is:inline>
@@ -151,8 +156,8 @@ const desktop = [
           <div class="dl__soon" role="status">
             <p class="dl__soon-title">Coming soon</p>
             <p>
-              The first release of Astrolabe for macOS, Windows and Linux is on its way. Its builds will be listed here the
-              day it ships.
+              The first release of Astrolabe for macOS and Linux is on its way. Its builds will be listed here the day it
+              ships, and Windows follows.
             </p>
           </div>
         </div>
@@ -166,7 +171,7 @@ const desktop = [
           <div><dt class="tag">Channel</dt><dd>Stable</dd></div>
           <div><dt class="tag">Version</dt><dd data-release-version>—</dd></div>
           <div><dt class="tag">Published</dt><dd data-release-published>—</dd></div>
-          <div><dt class="tag">Platforms</dt><dd>macOS · Windows · Linux</dd></div>
+          <div><dt class="tag">Platforms</dt><dd>macOS · Linux</dd></div>
         </dl>
         <a class="link dl__notes" href={RELEASES_URL} data-release-link target="_blank" rel="noopener noreferrer">
           Release notes<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
@@ -184,7 +189,7 @@ const desktop = [
       <ul class="dl__cards dl__cards--3">
         {
           desktop.map((os, index) => (
-            <li class={`dl__card dl__card--${os.id}`}>
+            <li class:list={["dl__card", `dl__card--${os.id}`, os.soon && "dl__card--soon"]}>
               <p class="dl__rail tag">
                 <span>{os.name}</span>
                 <span class="dl__num">[{String(index + 1).padStart(2, "0")}]</span>
@@ -193,20 +198,27 @@ const desktop = [
               <svg class="dl__glyph" aria-hidden="true">
                 <use href={`#${os.glyph}`} />
               </svg>
-              <ul class="dl__files">
-                {os.files.map((file) => (
-                  <li>
-                    <a class="dl__file" href={RELEASES_URL} data-asset={file.asset}>
-                      <span class="dl__file-label">{file.label}</span>
-                      <span class="tag dl__file-format">{file.format}</span>
-                      <svg class="arw arw--down" aria-hidden="true">
-                        <use href="#i-down" />
-                      </svg>
-                      <span class="tag dl__file-soon">Soon</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {os.soon ? (
+                <>
+                  <p class="dl__card-body">{os.soon}</p>
+                  <p class="tag dl__card-note">Coming soon</p>
+                </>
+              ) : (
+                <ul class="dl__files">
+                  {os.files.map((file) => (
+                    <li>
+                      <a class="dl__file" href={RELEASES_URL} data-asset={file.asset}>
+                        <span class="dl__file-label">{file.label}</span>
+                        <span class="tag dl__file-format">{file.format}</span>
+                        <svg class="arw arw--down" aria-hidden="true">
+                          <use href="#i-down" />
+                        </svg>
+                        <span class="tag dl__file-soon">Soon</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))
         }
@@ -214,7 +226,7 @@ const desktop = [
     </section>
 
     <!-- ───────────────────────────────────────── [02] Without installing -->
-    <section class="dl__sec" aria-labelledby="direct-title">
+    <section class="dl__sec" id="direct" aria-labelledby="direct-title">
       <div class="dl__sec-head">
         <p class="tag">[02] Without the app</p>
         <h2 id="direct-title" class="dl__h2">From a terminal or a browser</h2>
