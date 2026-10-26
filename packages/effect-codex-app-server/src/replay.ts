@@ -202,8 +202,11 @@ function normalizeReplayFrame(value: unknown): unknown {
     if (typeof params.clientInfo === "object" && params.clientInfo !== null) {
       normalized.params = {
         ...params,
+        // Astrolabe: upstream's fixtures record its own client name.
         clientInfo: {
           ...(params.clientInfo as Record<string, unknown>),
+          name: "<ignored>",
+          title: "<ignored>",
           version: "<ignored>",
         },
       };

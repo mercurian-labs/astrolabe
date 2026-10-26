@@ -56,8 +56,8 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
 
 - `apps/mobile/app.config.ts`: `VARIANT_CONFIG` names, ids and schemes; permission prompts; widget
   descriptions. The `appleTeamId` is Mercurian's (`SC9Q89Q4B6`); keep it when upstream changes the
-  line. EAS `owner`/`projectId` and `slug` are still upstream's accounts and stay that way until
-  Astrolabe has its own.
+  line. The EAS `owner`, `projectId` and `slug` come from `EAS_PROJECT` (see
+  [Upstream services](#upstream-services)).
 - `apps/mobile/package.json`: the `--scheme` in the `dev:client*` and `showcase` scripts.
 - `apps/mobile/src/App.tsx`: linking `prefixes`.
 - `apps/mobile/src/lib/appLinking.ts`: the scheme regex.
@@ -140,9 +140,7 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   and onboarding surfaces, `packages/client-runtime`, the mobile pairing screen, and the docs.
   `.github/triage/PLAYBOOK.md` must stay byte-identical to `apps/server/src/cli/triagePrompt.ts`.
 - Release archives keep upstream's `t3-<version>-<platform>` names but contain `astrolabe`.
-  `CLI_RELEASE_REPOSITORY` (`packages/shared/src/cliRelease.ts`) and `repo=` in both install
-  scripts still point at `pingdotgg/t3code`. Upstream's archives contain `t3`, so self-update, the
-  pinned runtime, SSH, WSL and the install scripts need Astrolabe releases before they work.
+  Where they are downloaded from is in [Upstream services](#upstream-services).
 
 ### Environment variables
 
@@ -178,14 +176,27 @@ Astrolabe in string literals only. Comments keep upstream's wording. Where this 
 - **Providers:** the status and error messages in `packages/provider-*`.
 - **Desktop:** the GNOME extension `metadata.json` (name and description) and the snapshot setup messages.
 - **Installers:** the banner and progress lines in `scripts/install.sh` and `install.ps1`.
+- **Relay:** the Live Activity title in `infra/relay/src/agentActivity/agentActivityAggregate.ts`,
+  which Apple shows on the lock screen.
+- **OpenAI:** `CODEX_CLIENT_NAME` in `apps/server/src/provider/CodexProvider.ts` (the Codex
+  `initialize` client name and the `originator` header on ChatGPT backend requests) and the
+  `agent_name_hint` in `CodexChatGptAuth.ts` (the app name on ChatGPT's sign-in consent screen).
+  OpenAI's terms ask an app to identify as itself. The backend tailors the Codex model catalog to
+  the originator, so tiers it offers only to clients it recognises (Sol Ultrafast reaches "T3 Code"
+  but not the plain CLI) are missing until OpenAI recognises "Astrolabe". Keep both on every sync.
+  Upstream's Codex replay fixtures record "T3 Code", so the replay
+  (`packages/effect-codex-app-server/src/replay.ts`) ignores the client name.
+- **Git history:** stacked-PR rebases
+  (`packages/source-control-github/src/server/githubStackRebase.ts`) commit as
+  `Astrolabe <noreply@astrolabe.sh>` into the user's pushed branches. The checkpoint author below
+  stays "T3 Code" because checkpoint refs are never pushed.
 
 Kept as "T3" on purpose:
 
-- **External identifiers:** the Codex client name and originator, the `agent_name_hint` sent to
-  OpenAI, and the Muse `clientInfo`.
+- **External identifiers:** the Muse `clientInfo`, and the `t3-code` client names sent to
+  Antigravity and ACP agents.
 - **Persisted or ownership markers:** the desktop CLI shim `MARKER`, the "T3 environment" fallback
   label, and the git checkpoint author.
-- **Triage:** it fetches upstream's playbook and files issues upstream.
 - **Upstream references:** the "T3 Code" theme label, which names upstream's palette.
 - **Not decided yet:**
   - "T3 thread" in MCP tool text, next to the `t3-code` MCP server id and `t3_thread_*` tools;
@@ -210,20 +221,73 @@ If Astrolabe starts collecting to its own project, also change the onboarding no
 `WelcomeWizard.tsx`, the privacy row in `SettingsPanels.tsx` and `docs/user/telemetry.md`, which say
 it collects nothing.
 
-### Accounts and hosted services still upstream's
+### Upstream services
 
-Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. Nothing in the
-fork changes the rest yet. Astrolabe builds that need them won't work against upstream's accounts:
+Upstream's defaults send data, downloads and people to T3 Tools' own services. Astrolabe never
+falls back to them. Each concern is one value. Where Astrolabe has its own service, the value
+points at it. Where it doesn't yet, the value is unset, and the feature is off and hidden until
+someone sets it. When upstream adds a link to or a download from one of its services, route it
+through one of these values in the merge commit.
 
-- `app.t3.codes` (`packages/shared/src/connectAuth.ts`, `providerAuthReturnUrl.ts`,
-  `apps/web/vercel.ts`) and `relay.t3.codes` (`.env.example`). The hosted app's sign-in shares the
-  sign-in pages' session cookie, so it works only once the hosted app is served from
-  `app.astrolabe.sh`.
-- EAS `owner: "pingdotgg"`, `projectId` and `slug: "t3-code"` in
-  `apps/mobile/app.config.ts`, and the Firebase project. Push to `com.mercurian.astrolabe*` needs
-  Astrolabe's own APNs key and Firebase app.
-- npm trusted publishing for `@mercurian/astrolabe`.
-- `t3.codes/install.sh|ps1` URLs in the docs, and the GitHub release repository.
+| Concern                             | Value                                                                                                                  | Astrolabe now                   |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Hosted web app                      | `DEFAULT_HOSTED_APP_URL` in `packages/shared/src/connectAuth.ts`                                                       | `https://app.astrolabe.sh`      |
+| Relay                               | `T3CODE_RELAY_URL` in `.env.example`                                                                                   | `https://relay.astrolabe.sh`    |
+| CLI releases                        | `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts`, and `repo=` in `scripts/install.sh` and `install.ps1` | unset: downloads off            |
+| Mobile EAS project                  | `EAS_PROJECT` in `apps/mobile/app.config.ts`                                                                           | unset: OTA updates off          |
+| App Store Connect app               | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | unset                           |
+| Store listings                      | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden             |
+| Desktop download page               | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | unset: links hidden             |
+| Triage repository                   | `TRIAGE_REPOSITORY` in `apps/server/src/cli/triagePrompt.ts`                                                           | unset: triage off               |
+| Remote-access troubleshooting guide | `REMOTE_ACCESS_TROUBLESHOOTING_URL` in `packages/contracts/src/environmentHttp.ts`                                     | unset: "More info" links hidden |
+
+- **Hosted web app.** Prompt links and hosted pairing links are built on it, and
+  `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/vercel.ts` and the
+  hosted-web defaults in `release.yml` carry the same host for the Vercel channel router. The hosted
+  app's sign-in shares the sign-in pages' session cookie, so it works only once the hosted app is
+  served from `app.astrolabe.sh`.
+- **Relay.** Source builds and the signed macOS PR previews take the relay from `.env.example`;
+  release builds take it from the `RELAY_DOMAIN` repository variable. The relay dashboards in
+  `infra/relay/src/monitoring.ts` match relay requests by path, not host, and their runbook links
+  point at Astrolabe's repository.
+- **CLI releases.** Every runtime download derives from `CLI_RELEASE_REPOSITORY`: the npm launcher
+  (`scripts/build-npm-launcher.ts` stamps it into the package as `astrolabe.releaseRepository`),
+  `astrolabe update` (unlisted while it is unset), the background service and remote self-update
+  (`apps/server/src/cloud/pinnedRuntime.ts`), SSH installs (`packages/ssh/src/tunnel.ts`) and the
+  mobile app's update check, whose button is hidden while it is unset. Each says Astrolabe
+  publishes no releases yet instead of downloading. `ASTROLABE_RELEASE_BASE_URL` still points
+  downloads at a mirror. The install scripts run on their own, so they keep a copy;
+  `scripts/install-scripts.test.ts` fails when the copies drift. The desktop's release-notes links
+  follow its own update feed and link nowhere when the build names none.
+- **Mobile EAS project.** Owner, project id and slug in one value. While it is unset the app has
+  no Expo update URL and over-the-air updates are off, so a launch sends Expo nothing, and the
+  in-app update check is hidden (it follows `Updates.isEnabled`). The slug is `astrolabe` until an
+  EAS project names its own. `eas submit` has no App Store Connect app either: upstream's
+  `ascAppId` would have submitted to T3 Code's listing.
+- **Store listings and downloads.** Upstream's links install T3 Tools' apps. **Settings → General
+  → Mobile app** and its search entry show only the stores that have a URL, and nothing without
+  one. The hosted app's "Or download the desktop app" and "Get Astrolabe" links need
+  `DESKTOP_DOWNLOAD_URL`. The mobile app links to no store. `apps/marketing` is upstream's own
+  site, store links and legal pages included. Astrolabe never deploys it: `release.yml`'s
+  marketing jobs look up a Vercel project named `t3code-marketing`, and Astrolabe's site is
+  `apps/landing`. When the release pipeline moves to Astrolabe, drop those jobs.
+- **Triage.** `astrolabe triage` fetched and followed upstream's live playbook, cloned upstream's
+  source and filed issues on `pingdotgg/t3code`. It is unlisted and refuses to run while
+  `TRIAGE_REPOSITORY` is unset. The playbook text (both copies) still names upstream's repository
+  and T3 Code; turning triage on means pointing it at Astrolabe's first.
+- **Remote-access troubleshooting.** The "More info" links in the CLI's reachability diagnosis,
+  server logs, **Settings → Connections** and the client's connection diagnosis pointed at
+  upstream's copy of `docs/user/t3-connect-troubleshooting.md`, which describes T3 Connect. They
+  are left out until Astrolabe publishes its own. The GNOME extension's `metadata.json` names no
+  homepage, since upstream's linked to its repository.
+
+Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
+upstream's:
+
+- The Firebase project. Push to `com.mercurian.astrolabe*` needs Astrolabe's own APNs key and
+  Firebase app.
+- npm trusted publishing for `@mercurian/astrolabe`, and the `repository` field in
+  `apps/server/package.json` that the npm package copies.
 
 ## After each sync
 
@@ -239,9 +303,20 @@ git grep -nE 'com\.t3tools\.t3code|com\.t3tools\.T3Code|t3code(-dev|-preview)?:/
 The final `grep -v` drops comment lines. Run it again over `docs` without the filter after
 merging upstream doc changes.
 
+Then look for new links to upstream's services ([Upstream services](#upstream-services)):
+
+```sh
+git grep -nE 't3\.codes|pingdotgg|u\.expo\.dev|apps\.apple\.com|play\.google\.com' \
+  -- apps packages scripts infra .env.example ':!*.test.*' ':!**/fixtures/**' ':!apps/marketing' \
+  ':!.repos' | grep -vE '^[^:]+:[0-9]+:\s*(//|\*|/\*|#)'
+```
+
+Expected hits: the triage playbook text, the model manifest URL, the `t3.json` schema URL, the
+GNOME extension's `snap-shot@t3.codes` uuid, `apps/server/package.json`'s `repository`, the
+mobile `deps` README, and maintainer scripts that quote upstream's repository.
+
 Expected exceptions:
 
-- Play Store and App Store links to upstream's listings.
 - `migrate-dev-db`, `devHome`, `dev-runner`'s first-start seed and `setup-worktree`, which still use
   `.t3`.
 - `t3code:` storage keys, which the pattern only matches when they're followed by `//`.

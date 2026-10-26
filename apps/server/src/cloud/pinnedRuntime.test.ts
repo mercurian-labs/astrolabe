@@ -11,6 +11,7 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import { CLI_RELEASE_REPOSITORY } from "@t3tools/shared/cliRelease";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -140,6 +141,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         platform: "linux",
         arch: "x64",
         httpClient: client,
+        releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path),
         validate: () => Effect.die("must not validate an interrupted archive"),
         onProgress: (event) => {
@@ -157,6 +159,32 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
     }),
   );
 
+  // Once CLI_RELEASE_REPOSITORY is set, the install downloads from it instead.
+  it.effect.skipIf(CLI_RELEASE_REPOSITORY !== null)(
+    "downloads nothing while Astrolabe publishes no releases and no mirror is set",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-pinned-no-release-" });
+        const requests: string[] = [];
+        const error = yield* ensurePinnedRuntimeInstalled({
+          baseDir,
+          version,
+          fs,
+          path,
+          platform: "linux",
+          arch: "x64",
+          httpClient: releaseHttpClient(yield* validChecksums, requests),
+          runner: extractingRunner(fs, path, []),
+          validate: () => Effect.die("must not validate without a download"),
+        }).pipe(Effect.flip);
+        assert.instanceOf(error, PinnedRuntimeInstallError);
+        assert.include(error.message, "Astrolabe publishes none yet");
+        assert.deepEqual(requests, []);
+      }),
+  );
+
   it.effect("refuses an archive whose checksum does not match the release", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -171,6 +199,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         platform: "linux",
         arch: "x64",
         httpClient: releaseHttpClient(`${"0".repeat(64)}  ${archiveName}\n`),
+        releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path, commands),
         validate: () => Effect.die("must not validate an unverified archive"),
       }).pipe(Effect.flip);
@@ -197,6 +226,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         platform: "linux",
         arch: "x64",
         httpClient: releaseHttpClient(yield* validChecksums),
+        releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path),
         validate: (staging) =>
           Effect.gen(function* () {
@@ -228,6 +258,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         platform: "linux",
         arch: "x64",
         httpClient: releaseHttpClient(yield* validChecksums),
+        releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path),
         validate: () =>
           Effect.fail(new PinnedRuntimeInstallError({ step: "validating the staged runtime" })),
@@ -260,6 +291,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         platform: "linux",
         arch: "x64",
         httpClient: releaseHttpClient(yield* validChecksums),
+        releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path),
         validate: () => Effect.void,
       });
@@ -289,6 +321,7 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
         platform: "linux",
         arch: "x64",
         httpClient: releaseHttpClient(yield* validChecksums, requests),
+        releaseBaseUrl: "https://releases.example/download",
         runner: extractingRunner(fs, path),
         validate: (paths) =>
           Effect.gen(function* () {

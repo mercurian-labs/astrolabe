@@ -31,6 +31,7 @@ it("context file labels the CLI version as the CLI's, not the user's build", () 
   // `npx t3 triage` can resolve a different `t3` than the app the bug
   // happened on (#13337), so the agent must not read it as the user's version.
   const context = buildTriageContext({
+    repository: "acme/astrolabe",
     generatedAt: "2026-09-24T00:00:00.000Z",
     cliVersion: "0.0.42",
     os: "linux x64 (7.2.0)",

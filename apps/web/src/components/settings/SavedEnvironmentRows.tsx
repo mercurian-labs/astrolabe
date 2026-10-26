@@ -493,6 +493,8 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     return () => window.clearInterval(interval);
   }, []);
   const reachability = managedTunnelActive ? primaryCloudLinkState.data?.reachability : undefined;
+  const reachabilityHelpUrl =
+    reachability?.status === "unreachable" ? connectReachabilityHelpUrl(reachability.cause) : null;
   const reachabilityStatus =
     reachability?.status === "reachable" ? (
       formatConnectReachable(reachability)
@@ -500,15 +502,20 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       <span className="block text-destructive">
         {[reachability.reason, reachability.hint, `Fix: ${reachability.fix}`]
           .filter(Boolean)
-          .join(" ")}{" "}
-        <a
-          href={connectReachabilityHelpUrl(reachability.cause)}
-          target="_blank"
-          rel="noreferrer"
-          className="underline underline-offset-2"
-        >
-          More info
-        </a>
+          .join(" ")}
+        {reachabilityHelpUrl ? (
+          <>
+            {" "}
+            <a
+              href={reachabilityHelpUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2"
+            >
+              More info
+            </a>
+          </>
+        ) : null}
       </span>
     ) : null;
 

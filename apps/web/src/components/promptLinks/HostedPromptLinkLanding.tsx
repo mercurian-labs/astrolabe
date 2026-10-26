@@ -154,9 +154,11 @@ function HostedPromptLinkLanding({
             Continue here
           </Button>
         ) : null}
-        <Button variant="ghost" render={<a href={DESKTOP_DOWNLOAD_URL} />}>
-          Get Astrolabe
-        </Button>
+        {DESKTOP_DOWNLOAD_URL ? (
+          <Button variant="ghost" render={<a href={DESKTOP_DOWNLOAD_URL} />}>
+            Get Astrolabe
+          </Button>
+        ) : null}
       </div>
       <label className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
         <Checkbox checked={remember} onCheckedChange={(checked) => setRemember(checked === true)} />

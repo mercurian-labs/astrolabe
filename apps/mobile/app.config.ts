@@ -9,6 +9,19 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+
+/**
+ * Astrolabe's own Expo (EAS) project. Unset until Astrolabe has one, so the
+ * app makes no over-the-air update checks and EAS builds have no project to
+ * build into. Never upstream's pingdotgg project: every launch's update check
+ * sends it the install's id and the text of the last fatal error.
+ */
+const EAS_PROJECT = null as {
+  readonly owner: string;
+  readonly projectId: string;
+  readonly slug: string;
+} | null;
+
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
@@ -223,7 +236,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: EAS_PROJECT?.slug ?? "astrolabe",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.1.0",
@@ -237,8 +250,8 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+    enabled: EAS_PROJECT !== null && repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+    ...(EAS_PROJECT === null ? {} : { url: `https://u.expo.dev/${EAS_PROJECT.projectId}` }),
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -470,11 +483,9 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
-    },
+    ...(EAS_PROJECT === null ? {} : { eas: { projectId: EAS_PROJECT.projectId } }),
   },
-  owner: "pingdotgg",
+  ...(EAS_PROJECT === null ? {} : { owner: EAS_PROJECT.owner }),
   experiments: {
     // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
     reactCompiler: true,

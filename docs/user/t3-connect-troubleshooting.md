@@ -144,8 +144,7 @@ If T3 Code on the host disappears when SSH closes, see
 
 ## Report a problem
 
-If none of this helps, open an issue on
-[GitHub](https://github.com/pingdotgg/t3code/issues). Include:
+If none of this helps, report it to the Astrolabe team. Include:
 
 - The text from **Copy diagnostics** in the environment's **Details**.
 - The output of `astrolabe connect status` on the host.

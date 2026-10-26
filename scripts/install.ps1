@@ -1,7 +1,7 @@
 # Installs the T3 Code CLI from a GitHub Release archive on Windows. Needs
 # only PowerShell 5.1+; no Node, npm, or compiler.
 #
-#   irm https://t3.codes/install.ps1 | iex
+#   powershell -File install.ps1
 #
 # Environment:
 #   ASTROLABE_CHANNEL           release train to follow: stable, nightly, or preview
@@ -23,14 +23,19 @@ foreach ($name in "CHANNEL", "VERSION", "INSTALL_BIN_DIR", "RELEASE_BASE_URL") {
 }
 $env:T3CODE_HOME = $env:ASTROLABE_HOME
 
-$repo = "pingdotgg/t3code"
-$baseUrl = if ($env:T3CODE_RELEASE_BASE_URL) { $env:T3CODE_RELEASE_BASE_URL.TrimEnd("/") } else { "https://github.com/$repo/releases/download" }
+# Astrolabe's release repository: the same value as CLI_RELEASE_REPOSITORY in
+# packages/shared/src/cliRelease.ts. Empty while Astrolabe publishes no releases.
+$repo = ""
+$baseUrl = if ($env:T3CODE_RELEASE_BASE_URL) { $env:T3CODE_RELEASE_BASE_URL.TrimEnd("/") } elseif ($repo) { "https://github.com/$repo/releases/download" } else { "" }
 $t3Home = if ($env:T3CODE_HOME) { $env:T3CODE_HOME } else { Join-Path $HOME ".astrolabe" }
 $binDir = if ($env:T3CODE_INSTALL_BIN_DIR) { $env:T3CODE_INSTALL_BIN_DIR } else { Join-Path $HOME ".local\bin" }
 
 function Fail([string] $message) {
   Write-Error "astrolabe install: $message"
   exit 1
+}
+if (-not $baseUrl) {
+  Fail "Astrolabe publishes no CLI releases yet. Set ASTROLABE_RELEASE_BASE_URL to a mirror of the release archives."
 }
 
 $terminal = -not [Console]::IsErrorRedirected -and $env:TERM -ne "dumb"
@@ -146,6 +151,7 @@ if (-not $version) {
     "preview" { '^v\d+\.\d+\.\d+-preview\.\d+\.\d+$' }
     default { Fail "ASTROLABE_CHANNEL must be stable, nightly, or preview" }
   }
+  if (-not $repo) { Fail "there is no release list to search; set ASTROLABE_VERSION" }
   $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers @{ "User-Agent" = "astrolabe-install" }
   $tag = ($releases | Where-Object { -not $_.draft -and $_.tag_name -match $tagPattern } | Select-Object -First 1).tag_name
   if (-not $tag) { Fail "could not find a $channel release; set ASTROLABE_VERSION" }

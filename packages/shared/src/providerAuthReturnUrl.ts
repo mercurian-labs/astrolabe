@@ -1,3 +1,4 @@
+import { DEFAULT_HOSTED_APP_URL } from "./connectAuth.ts";
 import { isLoopbackHost } from "./preview.ts";
 
 export function providerAuthReturnUrl(value: string | undefined): string | undefined {
@@ -7,7 +8,7 @@ export function providerAuthReturnUrl(value: string | undefined): string | undef
     const desktop = ["astrolabe:", "astrolabe-dev:"].includes(url.protocol) && url.host === "app";
     const web =
       ["http:", "https:"].includes(url.protocol) &&
-      (isLoopbackHost(url.hostname) || url.origin === "https://app.t3.codes");
+      (isLoopbackHost(url.hostname) || url.origin === DEFAULT_HOSTED_APP_URL);
     if (
       url.username ||
       url.password ||

@@ -150,14 +150,16 @@ function RunOnComputer({ command }: { readonly command: string }) {
     <>
       <p>Run on your computer:</p>
       <CommandBlock command={command} className="mt-2" />
-      <a
-        className="mt-2 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        href={DESKTOP_DOWNLOAD_URL}
-        target="_blank"
-        rel="noreferrer noopener"
-      >
-        Or download the desktop app
-      </a>
+      {DESKTOP_DOWNLOAD_URL ? (
+        <a
+          className="mt-2 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          href={DESKTOP_DOWNLOAD_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          Or download the desktop app
+        </a>
+      ) : null}
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
+import { APP_STORE_URL, GOOGLE_PLAY_URL } from "~/branding";
 
 import {
   filterAvailableSettingsSearchItems,
@@ -83,6 +84,15 @@ describe("searchSettings", () => {
     expect(searchSettings("wsl")).toEqual([]);
     expect(searchSettings("update track")).toEqual([]);
   });
+
+  // The Mobile app row links Astrolabe's store listings once they exist.
+  it.skipIf(APP_STORE_URL !== null || GOOGLE_PLAY_URL !== null)(
+    "hides the Mobile app row while Astrolabe has no store listing",
+    () => {
+      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "mobile-app")).toBe(true);
+      expect(searchSettings("App Store")).toEqual([]);
+    },
+  );
 
   it("hides settings whose controls are unavailable", () => {
     const available = filterAvailableSettingsSearchItems({

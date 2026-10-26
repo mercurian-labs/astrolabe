@@ -5,6 +5,9 @@ When a server is behind your web or desktop app, an update notice appears in the
 conversation and **Settings → Connections**. Update the machine named in that
 notice.
 
+Astrolabe doesn't publish releases yet, so server and command-line updates have
+nothing to download until it does.
+
 ## Update everything at once
 
 The update button at the bottom of the sidebar updates every connected machine
@@ -143,8 +146,5 @@ there before refreshing to find newer versions. The same setting controls whethe
 T3 Code downloads model catalog updates, so with it off new models may not appear
 until you enable it and refresh provider status.
 
-Install App Store or Google Play releases as usual. The mobile app can also
-download updates in the background and apply them when you next leave the app.
-It saves drafts and queued messages before restarting. If you keep the app open
-for a long time, it may ask to install immediately; choosing **Later** leaves the
-update queued for the next suitable moment.
+Astrolabe's mobile app isn't in the App Store or Google Play yet, and it doesn't
+download updates in the background.

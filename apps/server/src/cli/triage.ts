@@ -27,6 +27,7 @@ import {
   buildTriageContext,
   buildTriageLaunchPrompt,
   buildTriageSeedPrompt,
+  TRIAGE_REPOSITORY,
 } from "./triagePrompt.ts";
 
 interface TriageAgent {
@@ -39,6 +40,15 @@ const TRIAGE_AGENTS: ReadonlyArray<TriageAgent> = [
   { id: "claude", command: "claude", label: "Claude Code" },
   { id: "codex", command: "codex", label: "Codex" },
 ];
+
+export class TriageUnavailableError extends Schema.TaggedError<TriageUnavailableError>()(
+  "TriageUnavailableError",
+  {},
+) {
+  override get message(): string {
+    return "Triage is off until Astrolabe has a public repository to search and file issues on.";
+  }
+}
 
 export class TriageAgentUnavailableError extends Schema.TaggedError<TriageAgentUnavailableError>()(
   "TriageAgentUnavailableError",
@@ -141,7 +151,7 @@ const modelFlag = Flag.String("model").pipe(
   Flag.optional,
 );
 
-export const triageCommand = Command.make("triage", {
+const listedTriageCommand = Command.make("triage", {
   baseDir: baseDirFlag,
   agent: agentFlag,
   model: modelFlag,
@@ -151,6 +161,8 @@ export const triageCommand = Command.make("triage", {
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
+      const repository = TRIAGE_REPOSITORY;
+      if (repository === null) return yield* new TriageUnavailableError();
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
 
@@ -172,6 +184,7 @@ export const triageCommand = Command.make("triage", {
       yield* fs.writeFileString(
         contextFilePath,
         buildTriageContext({
+          repository,
           generatedAt: DateTime.formatIso(now),
           cliVersion: packageJson.version,
           os: `${yield* HostProcess.Platform} ${yield* HostProcess.Architecture} (${NodeOS.release()})`,
@@ -255,3 +268,7 @@ export const triageCommand = Command.make("triage", {
     }),
   ),
 );
+
+/** Unlisted until `TRIAGE_REPOSITORY` names Astrolabe's public repository. */
+export const triageCommand =
+  TRIAGE_REPOSITORY === null ? Command.unlisted(listedTriageCommand) : listedTriageCommand;

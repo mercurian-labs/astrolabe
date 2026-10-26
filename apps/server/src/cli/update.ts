@@ -2,6 +2,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   CLI_RELEASE_BASE_URL_ENV,
   CLI_RELEASE_CHANNELS,
+  CLI_RELEASE_REPOSITORY,
   cliReleaseIndexPageUrl,
   cliReleaseChannelOf,
   newestCliReleaseVersion,
@@ -57,12 +58,19 @@ const RELEASE_INDEX_MAX_PAGES = 10;
 
 export const resolveNewestVersion = Effect.fn("cli.update.resolve_newest")(function* (
   channel: CliReleaseChannel,
+  repository = CLI_RELEASE_REPOSITORY,
 ) {
   const httpClient = yield* HttpClient.HttpClient;
   const environment = yield* HostProcess.Environment;
   const githubToken = environment.GH_TOKEN?.trim() || environment.GITHUB_TOKEN?.trim() || undefined;
   for (let page = 1; page <= RELEASE_INDEX_MAX_PAGES; page += 1) {
-    const request = HttpClientRequest.get(cliReleaseIndexPageUrl(page)).pipe(
+    const url = cliReleaseIndexPageUrl(page, repository);
+    if (url === null) {
+      return yield* new CliUpdateError({
+        reason: "Astrolabe publishes no releases to update from yet.",
+      });
+    }
+    const request = HttpClientRequest.get(url).pipe(
       HttpClientRequest.setHeader("Accept", "application/vnd.github+json"),
     );
     const authenticatedRequest =
@@ -224,7 +232,7 @@ const versionArgument = Argument.String("version").pipe(
   Argument.optional,
 );
 
-export const updateCommand = Command.make("update", {
+const listedUpdateCommand = Command.make("update", {
   ...updateFlags,
   version: versionArgument,
 }).pipe(
@@ -251,6 +259,10 @@ export const updateCommand = Command.make("update", {
     }),
   ),
 );
+
+/** Unlisted until Astrolabe publishes releases; run anyway, it says why it can't update. */
+export const updateCommand =
+  CLI_RELEASE_REPOSITORY === null ? Command.unlisted(listedUpdateCommand) : listedUpdateCommand;
 
 const findForegroundServer = Effect.fn("cli.update.find_foreground_server")(function* (input: {
   readonly serverRuntimeStatePath: string;

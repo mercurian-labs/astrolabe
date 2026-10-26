@@ -4,7 +4,11 @@ import * as NodeFS from "node:fs";
 import { T3_CONNECT_TROUBLESHOOTING_SECTIONS } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { classifyReachability, type ReachabilityFacts } from "./ConnectReachability.ts";
+import {
+  classifyReachability,
+  formatReachabilityFailure,
+  type ReachabilityFacts,
+} from "./ConnectReachability.ts";
 
 const checkedAt = "2026-10-19T00:00:00.000Z";
 const connected = { readyConnections: 4, hostname: "env.example.test", protocol: "quic" };
@@ -68,6 +72,12 @@ describe("classifyReachability", () => {
 });
 
 describe("T3 Connect troubleshooting links", () => {
+  it("never sends people to upstream's T3 Connect guide", () => {
+    const result = classifyReachability(facts({ connector: notConnected }), checkedAt);
+    if (result.status !== "unreachable") throw new Error("expected an unreachable result");
+    expect(formatReachabilityFailure(result)).not.toContain("pingdotgg");
+  });
+
   it("each section names a heading in the user guide", () => {
     const guide = NodeFS.readFileSync(
       new URL("../../../../docs/user/t3-connect-troubleshooting.md", import.meta.url),

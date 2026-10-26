@@ -6,9 +6,10 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import {
-  CLI_RELEASES_PAGE_URL,
+  CLI_RELEASE_REPOSITORY,
   cliReleaseChannelOf,
   cliReleaseIndexPageUrl,
+  cliReleasesPageUrl,
   newestCliReleaseVersion,
 } from "@t3tools/shared/cliRelease";
 import { compareSemverVersions } from "@t3tools/shared/semver";
@@ -59,11 +60,22 @@ async function fetchReleases(url: string, accept: string, signal: AbortSignal) {
   return response;
 }
 
-export async function findEnvironmentUpdate(currentVersion: string, signal: AbortSignal) {
+/** Hide "Check for updates" while Astrolabe publishes no releases to check. */
+export const canCheckEnvironmentUpdates = CLI_RELEASE_REPOSITORY !== null;
+
+export async function findEnvironmentUpdate(
+  currentVersion: string,
+  signal: AbortSignal,
+  repository = CLI_RELEASE_REPOSITORY,
+) {
+  const releasesPage = cliReleasesPageUrl(repository);
+  if (releasesPage === null) {
+    throw new Error("Astrolabe publishes no releases to check yet.");
+  }
   const channel = cliReleaseChannelOf(currentVersion);
   // Public release pages avoid the anonymous API quota shared by devices on the same network.
   const response = await fetchReleases(
-    channel === "stable" ? `${CLI_RELEASES_PAGE_URL}/latest` : `${CLI_RELEASES_PAGE_URL}.atom`,
+    channel === "stable" ? `${releasesPage}/latest` : `${releasesPage}.atom`,
     channel === "stable" ? "application/json" : "application/atom+xml",
     signal,
   );
@@ -80,11 +92,9 @@ export async function findEnvironmentUpdate(currentVersion: string, signal: Abor
 
   // The feed only includes ten releases, so later nightlies can displace a published preview.
   for (let page = 1; version === undefined; page++) {
-    const response = await fetchReleases(
-      cliReleaseIndexPageUrl(page),
-      "application/vnd.github+json",
-      signal,
-    );
+    const indexUrl = cliReleaseIndexPageUrl(page, repository);
+    if (indexUrl === null) break;
+    const response = await fetchReleases(indexUrl, "application/vnd.github+json", signal);
     const releases = decodeReleases(await response.json());
     version = newestCliReleaseVersion(releases, channel);
     if (releases.length < 100) break;

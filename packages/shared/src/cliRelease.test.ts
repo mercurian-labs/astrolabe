@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cliArchiveTarCommand, newestCliReleaseVersion, parseChecksums } from "./cliRelease.ts";
+import {
+  cliArchiveTarCommand,
+  cliReleaseDownloadBaseUrl,
+  newestCliReleaseVersion,
+  parseChecksums,
+} from "./cliRelease.ts";
 
 describe("cliRelease", () => {
   it("parses sha256sum output including binary-mode markers", () => {
@@ -38,5 +43,15 @@ describe("cliRelease", () => {
     expect(newestCliReleaseVersion(releases, "nightly")).toBe("1.2.4-nightly.20260912.7");
     expect(newestCliReleaseVersion(releases, "stable")).toBe("1.2.3");
     expect(newestCliReleaseVersion([{ tag_name: "v1.2.3" }], "preview")).toBeUndefined();
+  });
+
+  it("downloads from a mirror, else the release repository, else nowhere", () => {
+    expect(cliReleaseDownloadBaseUrl("1.2.3", "https://mirror.example/dl/", "acme/astrolabe")).toBe(
+      "https://mirror.example/dl/v1.2.3",
+    );
+    expect(cliReleaseDownloadBaseUrl("1.2.3", " ", "acme/astrolabe")).toBe(
+      "https://github.com/acme/astrolabe/releases/download/v1.2.3",
+    );
+    expect(cliReleaseDownloadBaseUrl("1.2.3", undefined, null)).toBeNull();
   });
 });

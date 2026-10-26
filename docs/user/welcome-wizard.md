@@ -3,7 +3,7 @@
 T3 Code shows a setup flow when you open a new installation. Existing
 workspaces skip this flow.
 
-The hosted app at app.t3.codes does not open setup. With no computer connected,
+The hosted app at app.astrolabe.sh does not open setup. With no computer connected,
 it asks you to sign in to your Astrolabe account, then to run `npx @mercurian/astrolabe connect` on your
 computer. From home, it adds compatible computers linked to your account and
 opens the app.
