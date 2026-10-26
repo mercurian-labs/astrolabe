@@ -1,7 +1,7 @@
 ---
 title: Licenses
 description: Which license covers which part of Astrolabe, the third-party software inside it, and the sources of this website's art and fonts.
-updated: October 25, 2026
+updated: October 26, 2026
 ---
 
 Astrolabe is open source. This page explains which license covers which part, what Astrolabe is built on, and where this website's pictures and fonts come from. It is a summary. The license files in the [repository](https://github.com/mercurian-labs/astrolabe) are what count; [LICENSING.md](https://github.com/mercurian-labs/astrolabe/blob/main/LICENSING.md) gives the details.
@@ -63,6 +63,14 @@ Our adaptations are licensed under CC BY-SA 4.0 too. They are the files in `/ass
 The print of the Pic du Midi Observatory in the Pyrenees is adapted from "[Observatoire du Pic du Midi 2022](https://commons.wikimedia.org/wiki/File:Observatoire_du_Pic_du_Midi_2022.jpg)", a photograph by GoginkLobabi, licensed under [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0). We changed it: we painted out the cable-car cables, the visitors, a crane, a flag and the terrace netting, cut the summit from the sky, faded its rock to paper, derived shape, tone and line drawings from it, and print it lit by the astrolabe's sun.
 
 Our adaptations are licensed under CC BY-SA 4.0 too. They are the files in `/assets/art/picdumidi/`. You may reuse them under that license if you credit GoginkLobabi and this site and say what you changed.
+
+### The New Technology Telescope at La Silla
+
+The print of ESO's New Technology Telescope at La Silla is adapted from "[La Silla](https://www.eso.org/public/images/jfs-ls-2011_8538/)", a photograph by ESO/José Francisco Salgado (josefrancisco.org), licensed under [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/) (CC BY 4.0). We changed it: we cut the telescope and its rock from the sky, faded the rock to paper, derived shape, tone and line drawings from it, and print it lit by the astrolabe's sun. The files are in `/assets/art/lasilla/`.
+
+### Gemini North
+
+The print of the Gemini North telescope on Maunakea is adapted from "[Gemini North in Snow (CFHT Gemini-CC)](<https://commons.wikimedia.org/wiki/File:Gemini_North_in_Snow_(CFHT_Gemini-CC).jpg>)", a photograph by International Gemini Observatory/NOIRLab/NSF/AURA, licensed under [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/) (CC BY 4.0). We changed it: we painted out a marker block, two posts, a weather tower and an object at the edge, cut the summit from the sky, faded its slopes to paper, derived shape, tone and line drawings from it, and print it lit by the astrolabe's sun. The files are in `/assets/art/gemini/`.
 
 ### Mercury
 
