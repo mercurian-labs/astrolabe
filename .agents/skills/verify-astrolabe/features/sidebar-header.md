@@ -19,8 +19,8 @@ actions at its right end.
 ## Sub-features
 
 - No brand link in the header row; the rail's monogram tile (`[data-app-rail-mark]`, as large
-  as a rail button, 8px corners) heads the rail. Where the open sidebar meets the rail and the
-  title bar, `[data-app-rail-corner]` rounds the join with the tab's 8px radius. With the
+  as a rail button, 6px corners) heads the rail. Where the open sidebar meets the rail and the
+  title bar, `[data-app-rail-corner]` rounds the join with the tab's 6px radius (`--radius-md`). With the
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
   corner the same way, where the rail's edge meets the title bar's bottom border (strips,
   and the Settings and Usage headers).
