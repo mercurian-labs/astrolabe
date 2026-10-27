@@ -14,7 +14,7 @@ import {
   type WorkspaceTeam,
   type WorkspaceView,
 } from "@t3tools/client-runtime/workspaces";
-import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -53,21 +53,10 @@ type Screen =
   | { readonly kind: "newWorkspace" };
 
 /**
- * Settings › Workspaces on mobile: invitations for you, the workspaces you
- * belong to, their people and teams. Opens at a workspace from a /w/<short
- * name> link.
+ * Settings › Workspaces on mobile: your invitations, workspaces, people and teams. Opens at a
+ * workspace from a /w/<short name> link, which appLinking drops without cloud config.
  */
 export function WorkspacesRouteScreen() {
-  const navigation = useNavigation();
-
-  // Deep-linkable (settings/workspaces, w/<slug>); workspaces need Astrolabe sign-in, so a build
-  // without cloud config sends the link to Settings instead.
-  useLayoutEffect(() => {
-    if (!hasCloudPublicConfig()) {
-      navigation.dispatch(StackActions.replace("SettingsContent"));
-    }
-  }, [navigation]);
-
   return hasCloudPublicConfig() ? <ConfiguredWorkspacesRouteScreen /> : null;
 }
 

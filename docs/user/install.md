@@ -43,7 +43,7 @@ To try Astrolabe once without installing it, run `npx @mercurian/astrolabe@lates
 ### Build from source
 
 There is no `astrolabe` executable for Intel Macs or Windows yet (the desktop app runs on Intel
-Macs). To run a server there, build it with Node.js 24 and `vp`
+Macs). To run a server there, build it from source with `vp`, which provides the Node version it needs
 ([Install vp](../../README.md#install-vp)):
 
 ```bash
@@ -70,7 +70,7 @@ same way.
 ### The `astrolabe` command
 
 The desktop app includes the `astrolabe` command-line tool. To run it from any
-terminal, open **Settings → General → About** and choose **Install** next to
+terminal, open **Settings → About** and choose **Install** next to
 **astrolabe command**. On macOS and Linux it adds an `astrolabe` link to a folder on your
 `PATH`; on Windows it adds the app's command folder to your `PATH`. Open a new
 terminal afterwards. **Remove** takes it off again. If you already have `astrolabe`
@@ -78,7 +78,7 @@ from npm, it stays as it is.
 
 ### Windows Subsystem for Linux
 
-Choose a WSL distro in **Settings → Connections** to run agents and projects
+Choose a WSL distro in **Settings → Sharing & access** to run agents and projects
 there. Install the provider CLIs inside that distro. T3 Code installs its own
 server runtime there automatically; the first launch after an app update can
 take longer.
@@ -125,6 +125,7 @@ computer.
 | Antigravity | Install and sign in with Google from T3 Code's provider settings.                                                                                         |
 | Pi          | Install [Pi](./providers-pi.md#set-up-pi) with Node.js 22.19 or newer, then run `pi` and `/login`.                                                        |
 | Muse Code   | Install [Muse Code](https://dev.meta.ai/docs/muse-code) on the server, run `muse login`, then enable it in Settings → Providers.                          |
+| fx          | Install [fx](https://fx.sh) with `curl -fsSL https://fx.sh/setup.sh \| bash`, then run `fx login`.                                                        |
 
 Provider CLIs must be on the server's `PATH`. If T3 Code cannot find one, set its
 **Binary path** in provider settings, especially when using a version manager.
@@ -153,8 +154,8 @@ their original values.
 
 For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 [Claude](./providers-claude.md), [OpenCode](./providers-opencode.md),
-[Antigravity](./providers-antigravity.md), [Pi](./providers-pi.md), and
-[Muse Code](./providers-muse.md).
+[Antigravity](./providers-antigravity.md), [Pi](./providers-pi.md),
+[Muse Code](./providers-muse.md), and [fx](./providers-fx.md).
 
 ## Next steps
 

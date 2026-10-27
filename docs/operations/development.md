@@ -2,8 +2,8 @@
 
 ## First checkout
 
-Install `vp` using the [root README](../../README.md#install-vp). The checkout requires Node 24;
-Bun is optional. From the repository root:
+Install `vp` using the [root README](../../README.md#install-vp). It provides the Node version
+pinned in `package.json` (Node 26), so no separate Node install is needed. From the repository root:
 
 ```sh
 vp i
@@ -28,6 +28,11 @@ Add `--browser` to open a browser automatically.
 
 Linked worktrees default to their own `.t3/userdata`, even when `T3CODE_HOME` is set.
 The main checkout defaults to `~/.astrolabe/dev/userdata`. An explicit `--home-dir` wins in both cases.
+The first start in a worktree seeds its empty database from a read-only copy of
+`~/.t3/userdata/statev2.sqlite` if the source is at most 500 MiB. Larger sources warn
+and dev starts with an empty database. `--no-seed` or `T3CODE_DEV_SEED=0` skips seeding.
+To copy a larger source, run `vp run migrate-dev-db` with dev stopped. It may use
+substantial disk space before pruning.
 Never run a development server against the live `~/.astrolabe/userdata`.
 See [test data](../../AGENTS.md#test-data) for copying a consistent database snapshot.
 
@@ -117,6 +122,11 @@ files to packages with [ci-changes.cjs](../../.github/scripts/ci-changes.cjs), a
 compares against the merge base with `origin/main`, or with a ref you pass. CI still runs the full
 test suites and the jobs the summary lists, so a local pass does not promise a green CI run.
 
+The steps run side by side, so a run takes about as long as its slowest step, usually knip's
+exports pass at about 10 s. When the files are exactly those of the last passing run, it prints that
+run's summary instead of running again. Any change to a file, the install, or a generated file runs
+the checks again.
+
 While you iterate, run single checks:
 
 ```sh
@@ -132,7 +142,6 @@ and runs in headless Chromium with the React Compiler on, like the app. There is
 TypeScript workspaces typecheck with `tsc`. The `typescript` catalog entry is
 `@tsc-rs/typescript`, the tsc-rs drop-in, with Effect diagnostics, quick fixes, and
 refactors built in. VS Code uses it through `js/ts.tsdk.path` in `.vscode/settings.json`.
-Marketing keeps `astro check` for Astro files.
 
 Use `vp run lint:mobile` for native mobile changes. CI owns the full suite; see
 [ci.yml](../../.github/workflows/ci.yml) for its current jobs.

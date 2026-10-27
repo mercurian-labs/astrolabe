@@ -1,16 +1,14 @@
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Pressable, View } from "react-native";
 
-import { AccountMenuButton } from "../cloud/accountMenu";
-
 export interface SidebarHeaderActionsProps {
   readonly onOpenSettings: () => void;
 }
 
 function FallbackHeaderButton(props: {
   readonly accessibilityLabel: string;
-  readonly icon: "gearshape" | "person.crop.circle" | "square.and.pencil";
-  readonly onPress?: () => void;
+  readonly icon: "gearshape" | "square.and.pencil";
+  readonly onPress: () => void;
 }) {
   return (
     <Pressable
@@ -33,9 +31,10 @@ function FallbackHeaderButton(props: {
 export function SidebarHeaderActions(props: SidebarHeaderActionsProps) {
   return (
     <View className="flex-row items-center gap-0.5">
-      <AccountMenuButton
-        onOpenSettings={props.onOpenSettings}
-        renderButton={(button) => <FallbackHeaderButton {...button} />}
+      <FallbackHeaderButton
+        accessibilityLabel="Open settings"
+        icon="gearshape"
+        onPress={props.onOpenSettings}
       />
     </View>
   );

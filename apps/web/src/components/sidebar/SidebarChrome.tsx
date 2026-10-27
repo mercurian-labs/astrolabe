@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 
 import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
@@ -39,6 +39,7 @@ import {
   isRepositoriesPath,
   isWikisPath,
   useNavigateToMainApp,
+  useSectionPathname,
 } from "./mainAppLocation";
 import { SidebarTabHistory } from "./SidebarTabHistory";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
@@ -152,20 +153,16 @@ function SidebarUtilityItem({
   );
 }
 
-export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
   const { isMobile, setOpenMobile } = useSidebar();
-  const isOnUtilityPage = useLocation({
-    select: (location) => isSidebarUtilityPage(location.pathname),
-  });
-  const isOnWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
-  const isOnRepositories = useLocation({
-    select: (location) => isRepositoriesPath(location.pathname),
-  });
-  const isOnPullRequests = useLocation({
-    select: (location) => isPullRequestsPath(location.pathname),
-  });
+  // Settings and Usage open over a section, which keeps its footer.
+  const sectionPathname = useSectionPathname();
+  const isOnUtilityPage = isSidebarUtilityPage(sectionPathname);
+  const isOnWikis = isWikisPath(sectionPathname);
+  const isOnRepositories = isRepositoriesPath(sectionPathname);
+  const isOnPullRequests = isPullRequestsPath(sectionPathname);
   const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
@@ -284,10 +281,14 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  showUndoNotice = false,
+}: {
+  showUndoNotice?: boolean;
+}) {
   return (
     <SidebarFooter>
-      <SidebarThreadUndoNotice />
+      {showUndoNotice ? <SidebarThreadUndoNotice /> : null}
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
       <SidebarUtilityMenu />

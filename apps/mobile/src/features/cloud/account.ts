@@ -1,4 +1,8 @@
 import {
+  createMercurianAccountSource,
+  type MercurianAccountSource,
+} from "@t3tools/client-runtime/relay";
+import {
   type CloudAccountClient,
   type CloudAccountState,
   type CloudConnection,
@@ -44,6 +48,16 @@ function accountClient(): CloudAccountClient | null {
 /** How the workspace client reaches the cloud as the signed-in account. */
 export function cloudConnection(): CloudConnection | null {
   return accountClient()?.connection ?? null;
+}
+
+let accountSource: MercurianAccountSource | null = null;
+
+/** The account as `createCloudAccountService` observes it; null when sign-in isn't configured. */
+export function cloudAccountSource(): MercurianAccountSource | null {
+  const account = accountClient();
+  if (!account) return null;
+  accountSource ??= createMercurianAccountSource(account);
+  return accountSource;
 }
 
 export function refreshCloudAccount(): Promise<void> {

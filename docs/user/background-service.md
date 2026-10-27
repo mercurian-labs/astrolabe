@@ -40,6 +40,17 @@ downloaded versions after showing you the list and asking once. Your projects,
 threads, and settings under `~/.astrolabe/userdata` are kept, along with `service.env`
 under T3 home. Pass `--yes` from a script.
 
+## Local network access
+
+By default the service accepts connections from your private network (your local
+network and your tailnet), so the desktop and mobile apps on the same network
+connect to it directly. The hosted web app can't use these addresses, because
+browsers block plain HTTP from an HTTPS page. The service does not answer on
+public addresses, and every device still needs to pair. To keep the service reachable from this machine only, set
+`T3CODE_HOST=127.0.0.1` in `service.env` (below). Any `T3CODE_HOST` value
+replaces this default. `service.env` takes the `T3CODE_*` spellings, so
+`ASTROLABE_HOST` has no effect there.
+
 ## Configure the service environment
 
 Put custom environment variables in `service.env` under the service's T3 home
@@ -125,7 +136,7 @@ For remote access failures after signing in, see
 T3 Code removes superseded internal history on its own while it runs; your
 conversations are kept. Databases created before this shrank automatically
 still hold the freed space on disk until a one-time offline repair returns it
-and turns on automatic shrinking. Settings > Storage (web and desktop) or
+and turns on automatic shrinking. Settings > Maintenance (web and desktop) or
 Settings > Maintenance (mobile) suggests the repair when at least 1 GiB can be
 reclaimed.
 

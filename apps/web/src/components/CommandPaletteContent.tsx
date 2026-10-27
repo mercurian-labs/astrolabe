@@ -1,11 +1,28 @@
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import { type ComponentProps, type ReactNode, useEffect, useRef } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { macListStep } from "~/whichKey/leader";
 
 import { Command, CommandFooter, CommandInput, CommandPanel } from "./ui/command";
 import { Kbd, KbdGroup } from "./ui/kbd";
+
+/**
+ * A view replacing another inside an open dialog mounts with focus on the body,
+ * left there by the removed input. Claim it so typing cannot reach the composer
+ * behind the modal. On first open the dialog's own initial focus handles it.
+ */
+function claimFocusInOpenDialog(input: HTMLInputElement | null) {
+  if (!input) return;
+  const active = input.ownerDocument.activeElement;
+  if (
+    active === null ||
+    active === input.ownerDocument.body ||
+    input.closest('[role="dialog"]')?.contains(active)
+  ) {
+    input.focus();
+  }
+}
 
 type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children"> & {
   readonly children: ReactNode;
@@ -31,17 +48,6 @@ export function CommandPaletteContent({
   testId,
   ...commandProps
 }: CommandPaletteContentProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Direct-open flows replace the initial palette view after the dialog has
-  // already moved focus. Reclaim it when the replacement input mounts so
-  // typing cannot continue in the composer behind the modal. Defer until the
-  // dialog has recorded the previous focus target for restoration on close.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
   return (
     <div className="contents" data-testid={testId}>
       <Command {...commandProps}>
@@ -49,7 +55,7 @@ export function CommandPaletteContent({
           <CommandInput
             autoFocus={false}
             {...inputProps}
-            ref={inputRef}
+            ref={claimFocusInOpenDialog}
             onKeyDown={(event) => {
               // Astrolabe: on a Mac, Ctrl+N and Ctrl+P move the highlight as the arrow keys do,
               // as macOS lists read them. The arrow is pressed for them, so every list (and the

@@ -4,7 +4,7 @@ import {
   resolveProjectSettings,
   type LegacyProjectSettingsFields,
 } from "@t3tools/shared/projectSettings";
-import type { ThreadPullRequestBadge } from "@t3tools/shared/threadPullRequests";
+import type { ThreadPullRequestBadge } from "@t3tools/client-runtime/thread-pull-requests";
 
 /**
  * Astrolabe: what a sidebar thread row's second line says. The first line names the thread

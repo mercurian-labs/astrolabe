@@ -18,11 +18,8 @@ import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands
 import { WorkspaceDock } from "./WorkspaceDock";
 import { WorkspaceSearchField } from "./WorkspaceSearchField";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
-import {
-  WORKSPACE_TAB_ICONS,
-  WORKSPACE_TAB_LABELS,
-  WORKSPACE_TOOLBAR,
-} from "./workspace-tabs-state";
+import { NAVIGATION_TAB_ICONS, WORKSPACE_TAB_LABELS } from "./navigation-tabs";
+import { WORKSPACE_TOOLBAR } from "./workspace-tabs-state";
 
 function ToolbarButton(props: {
   label: string;
@@ -95,8 +92,8 @@ export function WorkspaceToolbar(props: {
   const { state, dispatch } = workspace;
   const tab = state.tabs[state.selectedTab];
   const activeTab = {
-    label: WORKSPACE_TAB_LABELS[state.selectedTab].title,
-    icon: WORKSPACE_TAB_ICONS[state.selectedTab],
+    label: WORKSPACE_TAB_LABELS[state.selectedTab],
+    icon: NAVIGATION_TAB_ICONS[state.selectedTab],
   };
   const searching = tab.searchMode !== "resting";
   const expanded = tab.searchMode === "expanded" && !keyboardVisible;

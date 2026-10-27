@@ -1,5 +1,5 @@
-import { StackActions, useNavigation } from "@react-navigation/native";
-import { useLayoutEffect, useState } from "react";
+import { useNavigation } from "@react-navigation/native";
+import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -24,15 +24,8 @@ import { SettingsRow } from "./components/SettingsRow";
 import { SettingsScreen, SettingsScreenContent } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 
+// Without cloud config the app has no entry point here and appLinking drops the deep link.
 export function SettingsAuthRouteScreen() {
-  const navigation = useNavigation();
-
-  useLayoutEffect(() => {
-    if (!hasCloudPublicConfig()) {
-      navigation.dispatch(StackActions.replace("SettingsContent"));
-    }
-  }, [navigation]);
-
   return hasCloudPublicConfig() ? <ConfiguredSettingsAuthRouteScreen /> : null;
 }
 
@@ -125,7 +118,8 @@ function SignedInSections(props: {
   const navigation = useNavigation();
   const { user } = props;
   const onWaitlist = user.access === "waitlisted" || user.access === "declined";
-  const closeAccount = () => navigation.dispatch(StackActions.popTo("SettingsContent"));
+  // Account is a modal over the Settings tab, so closing it returns there.
+  const closeAccount = () => navigation.goBack();
 
   const confirmDelete = () => {
     Dialog.alert(

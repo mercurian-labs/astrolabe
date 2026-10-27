@@ -25,10 +25,9 @@ import { basenameOfPath } from "~/pierre-icons";
 import { AssistantCitationChip } from "../chat/AssistantCitationChip";
 import { FileTagChipContent } from "../chat/FileTagChip";
 import { getTimelinePageScrollKey } from "../chat/pageScrollController";
-import { SkillChipIcon } from "../chat/SkillInlineText";
+import { SkillChipPopover, skillPopoverDescription } from "../chat/SkillInlineText";
 import { WorkspaceEntryTooltip } from "../chat/WorkspaceEntryIcon";
 import { ContextChip } from "../ContextChip";
-import { ContextChipPopover } from "../contextChipParts";
 import {
   ComposerContextActionsContext,
   ComposerContextReferenceChip,
@@ -38,7 +37,6 @@ import type {
   ComposerCitationCommentRequest,
   ComposerPromptEditorProps,
 } from "../ComposerPromptEditorTiptap";
-import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerChipRegistry, type ComposerChipEntry } from "./composerChips";
 import { ComposerEditor, type ComposerEditorHost, type ComposerEditorMode } from "./composerEditor";
@@ -421,28 +419,14 @@ function SkillChip({ name, skills }: { name: string; skills: ReadonlyArray<Serve
   const skill = skills.find(
     (candidate) => candidate.name === name && isProviderSkillUserInvocable(candidate),
   );
-  const label = formatProviderSkillDisplayName(skill ?? { name });
-  const description =
-    skill?.description?.trim() ||
-    skill?.shortDescription?.trim() ||
-    "No description is available for this skill.";
   return (
-    <ContextChipPopover
-      kind="skill"
-      icon={<SkillChipIcon />}
-      label={label}
-      accessibleLabel={`Skill ${label}`}
-    >
-      <div className="space-y-3 p-2 text-sm">
-        <p className="font-medium">{label}</p>
-        <p>{description}</p>
-        {skill?.path && actions.environmentId ? (
-          <Button variant="outline" size="sm" onClick={() => actions.openMention(skill.path)}>
-            View instructions
-          </Button>
-        ) : null}
-      </div>
-    </ContextChipPopover>
+    <SkillChipPopover
+      label={formatProviderSkillDisplayName(skill ?? { name })}
+      description={skill ? skillPopoverDescription(skill) : null}
+      onViewInstructions={
+        skill?.path && actions.environmentId ? () => actions.openMention(skill.path) : undefined
+      }
+    />
   );
 }
 

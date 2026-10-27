@@ -1,4 +1,7 @@
+import { CLI_RELEASE_REPOSITORY } from "@t3tools/shared/cliRelease";
+
 import packageJson from "../../package.json" with { type: "json" };
+import { CLI_COMMAND } from "../cli/invocation.ts";
 import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 
 export type ServicePreflightResult =
@@ -23,8 +26,16 @@ export function runServicePreflight(input: {
     return {
       status: "blocked",
       version,
-      reason:
-        "This release requires a newer Astrolabe service launcher. Update it on the server machine.",
+      // A stale `astrolabe` earlier on PATH (an old npm/nvm global) makes `astrolabe service install`
+      // reinstall itself and report success, so name the exact install and the path check.
+      reason: [
+        `The installed service launcher speaks protocol ${input.launcherProtocol}, but ${CLI_COMMAND}@${version} requires protocol ${SERVICE_LAUNCHER_PROTOCOL}.`,
+        CLI_RELEASE_REPOSITORY === null
+          ? `On the server machine, install ${CLI_COMMAND}@${version}.`
+          : `On the server machine, install this exact CLI: \`curl -fsSL https://raw.githubusercontent.com/${CLI_RELEASE_REPOSITORY}/main/scripts/install.sh | ASTROLABE_VERSION=${version} sh\`.`,
+        `Check that \`${CLI_COMMAND} --version\` prints ${version} and that \`which -a ${CLI_COMMAND}\` lists no older ${CLI_COMMAND} (such as an npm or nvm install) first, then run \`~/.local/bin/${CLI_COMMAND} service install\` (the installer's default path).`,
+        `Updating the desktop app does not update this CLI, and \`${CLI_COMMAND} service update\` only repairs the service with whichever CLI runs it.`,
+      ].join(" "),
     };
   }
 

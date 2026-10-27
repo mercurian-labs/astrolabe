@@ -4,7 +4,11 @@ import { useResolveClassNames } from "uniwind";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { GlassSurface } from "../../components/ui/GlassSurface";
-import { WORKSPACE_TAB_LABELS, WORKSPACE_TOOLBAR, type WorkspaceTab } from "./workspace-tabs-state";
+import {
+  WORKSPACE_SEARCH_LABELS,
+  WORKSPACE_TOOLBAR,
+  type WorkspaceTab,
+} from "./workspace-tabs-state";
 
 export function WorkspaceSearchField({
   ref,
@@ -20,7 +24,7 @@ export function WorkspaceSearchField({
 }) {
   const inputStyle = useResolveClassNames("text-foreground font-sans text-base");
   const placeholderStyle = useResolveClassNames("text-foreground-muted");
-  const label = WORKSPACE_TAB_LABELS[props.tab].search;
+  const label = WORKSPACE_SEARCH_LABELS[props.tab];
   return (
     <GlassSurface
       className="min-w-0 flex-1"

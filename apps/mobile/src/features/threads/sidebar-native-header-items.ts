@@ -3,7 +3,6 @@ import type {
   NativeStackHeaderItemMenu,
 } from "@react-navigation/native-stack";
 
-import { type AccountMenu, accountHeaderItem } from "../cloud/accountMenu";
 import type { HomeListFilterMenu } from "../home/home-list-filter-menu";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 
@@ -35,7 +34,6 @@ function toNativeHeaderMenuItems(items: HomeListFilterMenu["items"]): NativeHead
 export function createSidebarHeaderItems(input: {
   readonly filterIcon: string;
   readonly filterMenu: HomeListFilterMenu;
-  readonly accountMenu: AccountMenu | null;
   readonly onOpenSettings: () => void;
 }): NativeStackHeaderItem[] {
   return [
@@ -50,6 +48,13 @@ export function createSidebarHeaderItems(input: {
         items: toNativeHeaderMenuItems(input.filterMenu.items),
       },
     }),
-    accountHeaderItem(input.accountMenu, input.onOpenSettings),
+    withNativeGlassHeaderItem({
+      type: "button",
+      axisBehavior: "horizontalOnly",
+      label: "Settings",
+      accessibilityLabel: "Open settings",
+      icon: sfSymbolIcon("gearshape"),
+      onPress: input.onOpenSettings,
+    }),
   ];
 }

@@ -30,7 +30,13 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AccountMenu } from "./AccountMenu";
-import { isRepositoriesPath, isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
+import {
+  isPullRequestsPath,
+  isRepositoriesPath,
+  isWikisPath,
+  useNavigateToMainApp,
+  useSectionPathname,
+} from "./mainAppLocation";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 /** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
@@ -51,22 +57,19 @@ interface AppSection {
  */
 export function useAppSections(): readonly AppSection[] {
   const pathname = useLocation({ select: (location) => location.pathname });
+  // Settings and Usage open over a section, which stays the one its button marks.
+  const sectionPathname = useSectionPathname();
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
   const pullRequestsSupported = usePullRequestsSupported();
 
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
-  const onPullRequests = pathname === "/pull-requests";
-  const onWikis = isWikisPath(pathname);
-  const onRepositories = isRepositoriesPath(pathname);
+  const onPullRequests = isPullRequestsPath(sectionPathname);
+  const onWikis = isWikisPath(sectionPathname);
+  const onRepositories = isRepositoriesPath(sectionPathname);
   const onThreads =
-    !onSettings &&
-    !onUsage &&
-    !onPullRequests &&
-    !onWikis &&
-    !onRepositories &&
-    !pathname.startsWith("/projects/");
+    !onPullRequests && !onWikis && !onRepositories && !sectionPathname.startsWith("/projects/");
 
   return [
     {

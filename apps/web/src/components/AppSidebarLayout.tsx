@@ -2,13 +2,12 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
-  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isElectron } from "../env";
@@ -38,15 +37,20 @@ import {
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
+import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import LegacyThreadSidebar from "./LegacySidebar";
-import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
-import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { AppIconRail } from "./sidebar/AppIconRail";
-import { SidebarBrandWidthProbe, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
 import { SidebarTabHistory } from "./sidebar/SidebarTabHistory";
-import { isRepositoriesPath, isWikisPath, MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import {
+  isAppModalPage,
+  isPullRequestsPath,
+  isRepositoriesPath,
+  isWikisPath,
+  useSectionPathname,
+} from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { RepositorySidebar } from "./repositories/RepositorySidebar";
 import { WikiSidebar } from "./wiki/WikiSidebar";
@@ -55,7 +59,6 @@ import { KeyboardNavigation } from "../keyboardNav/KeyboardNavigation";
 import { WhichKey } from "../whichKey/WhichKey";
 import { tabHistorySlot } from "../whichKey/handles";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
-import { useProjects } from "../state/entities";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -73,7 +76,9 @@ import {
   useSidebarVisibility,
 } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { useThreadRouteRef } from "../hooks/useThreadRouteTarget";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { registerCommands, registerMenuAction } from "../shortcuts/dispatcher";
+import { resolveThreadRouteRef } from "../threadRoutes";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
@@ -97,8 +102,7 @@ function readViewportWidth(): number {
   return window.innerWidth;
 }
 
-// getWindowFullscreenState is a synchronous IPC round trip, so the snapshot is cached
-// and only re-read when a subscription starts.
+// Cache the synchronous fullscreen IPC read until subscription.
 let windowFullscreenSnapshot: boolean | null = null;
 
 function macosDesktopBridge() {
@@ -147,7 +151,184 @@ function readInitialThreadSidebarWidth(): number {
   }
 }
 
+function readUsagePageOpen(router: AnyRouter) {
+  return router.state.location.pathname === "/usage";
+}
+
+function isKeybindingCaptureTarget(event: KeyboardEvent) {
+  return event.target instanceof HTMLElement && event.target.closest("[data-keybinding-capture]");
+}
+
+function readRoutePanelsOpen(router: AnyRouter) {
+  const routeThreadRef = resolveThreadRouteRef(router.state.matches.at(-1)?.params ?? {});
+  if (!routeThreadRef) return { terminalOpen: false, previewOpen: false };
+  return {
+    terminalOpen: selectThreadTerminalUiState(
+      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+      routeThreadRef,
+    ).terminalOpen,
+    previewOpen:
+      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, routeThreadRef) ===
+      "preview",
+  };
+}
+
+// Astrolabe: in a section with tabs (Agents, Wikis), the tab in front's own history.
+function goInTabHistory(event: KeyboardEvent, direction: "back" | "forward") {
+  const tabHistory = tabHistorySlot.get();
+  if (!tabHistory) return false;
+  if (!event.repeat) tabHistory.go(direction);
+  return true;
+}
+
+export function registerNavigationHistoryCommands(router: AnyRouter): () => void {
+  return registerCommands(
+    {
+      "navigation.back": (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!goInTabHistory(event, "back")) window.history.back();
+      },
+      "navigation.forward": (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!goInTabHistory(event, "forward")) window.history.forward();
+      },
+    },
+    {
+      when: (event) => !isKeybindingCaptureTarget(event),
+      context: () => ({
+        ...readRoutePanelsOpen(router),
+        usagePageOpen: readUsagePageOpen(router),
+      }),
+    },
+  );
+}
+
+// Escape leaves the pull requests page when no scope (a selection, a dialog,
+// a drag) claimed it, so it observes after every other scope.
+function registerPullRequestsEscapeCommand(router: AnyRouter): () => void {
+  return registerCommands(
+    {},
+    {
+      observe: (event, consumed) => {
+        if (consumed || event.repeat || event.isComposing || event.key !== "Escape") return;
+        if (router.state.location.pathname !== "/pull-requests") return;
+        event.preventDefault();
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLElement) activeElement.blur();
+        if (router.state.location.state.__TSR_index !== 0) {
+          window.history.back();
+          return;
+        }
+        void router.navigate({ to: "/" });
+      },
+    },
+  );
+}
+
+const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);
+
+// A held key undoes once. Module state: undoing an archive navigates, and the
+// hold must survive whatever that re-renders.
+let heldUndoKey: string | null = null;
+
+// Undoes the thread actions in the sidebar's notice. Settings and Usage own
+// mod+z while open. Captured so mod+z reaches it before the composer's own
+// undo handler consumes the key.
+function registerThreadUndoCommands(
+  router: AnyRouter,
+  readSidebarVisible: () => boolean,
+): () => void {
+  // Astrolabe: the other sections' sidebars replace the thread sidebar and its notice.
+  const threadSidebarShown = () => {
+    const { pathname } = router.state.location;
+    return (
+      !isAppModalPage(pathname) &&
+      !isWikisPath(pathname) &&
+      !isRepositoriesPath(pathname) &&
+      !isPullRequestsPath(pathname)
+    );
+  };
+  const unregister = registerCommands(
+    {},
+    {
+      capture: true,
+      when: threadSidebarShown,
+      onKeyDown: (event) => {
+        // Cancel a held key's repeats so they cannot fall through to the
+        // editor's own undo, even after the last notice is gone.
+        if (event.repeat) {
+          if (event.code !== heldUndoKey) return false;
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+        // A modifier tapped mid-hold leaves the held key repeating.
+        if (!MODIFIER_KEYS.has(event.key)) heldUndoKey = null;
+        const command = resolveShortcutCommand(
+          event,
+          appAtomRegistry.get(primaryServerKeybindingsAtom),
+          {
+            context: {
+              terminalFocus: isTerminalFocused(),
+              previewFocus: isPreviewFocused(),
+              ...readRoutePanelsOpen(router),
+              // A collapsed sidebar hides the notice, so text fields keep their own undo.
+              editableFocus:
+                isEditableFocused(event.target) &&
+                !(readSidebarVisible() && threadUndoClaimsShortcut()),
+              modelPickerOpen: isModelPickerOpen(),
+            },
+          },
+        );
+        if (command !== "thread.undo") {
+          if (!MODIFIER_KEYS.has(event.key)) releaseThreadUndoShortcut();
+          return false;
+        }
+        if (isCommandPaletteOpen() || isModelPickerOpen()) return false;
+        if (!undoLatestThreadAction()) return false;
+        heldUndoKey = event.code;
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      },
+    },
+  );
+  // Pastes from a menu, dictation and drops edit text without a keypress.
+  const onInput = () => {
+    if (threadSidebarShown()) releaseThreadUndoShortcut();
+  };
+  window.addEventListener("input", onInput, true);
+  return () => {
+    unregister();
+    window.removeEventListener("input", onInput, true);
+  };
+}
+
+/** Keyboard and menu commands that live as long as the app shell. */
+function registerAppShellCommands(router: AnyRouter, shellElement: Element): () => void {
+  // The provider mirrors the visibility it renders onto its wrapper, so the
+  // committed state is readable when a key arrives.
+  const readSidebarVisible = () =>
+    shellElement.closest('[data-slot="sidebar-wrapper"]')?.getAttribute("data-sidebar-state") ===
+    "expanded";
+  const disposers = [
+    registerThreadUndoCommands(router, readSidebarVisible),
+    registerNavigationHistoryCommands(router),
+    registerPullRequestsEscapeCommand(router),
+    registerMenuAction("open-settings", () => {
+      if (!/^\/settings(\/|$)/.test(router.state.location.pathname))
+        void router.navigate({ to: "/settings" });
+    }),
+  ];
+  return () => {
+    for (const dispose of disposers) dispose();
+  };
+}
+
 function SidebarControl() {
+  const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
@@ -170,12 +351,12 @@ function SidebarControl() {
         return;
       }
       if (
-        isRichTextBoldShortcut(event) &&
+        isRichTextBoldShortcut(event, window.getSelection()) &&
         event.target instanceof HTMLElement &&
         event.target.closest('[data-composer-rich-text="true"]')
       ) {
-        // The rich-text composer claims Mod+B for bold; the toggle stays
-        // available everywhere else, including the plain-text composer.
+        // The rich-text composer claims Mod+B only to bold selected text;
+        // the toggle stays available everywhere else.
         return;
       }
       if (
@@ -199,12 +380,20 @@ function SidebarControl() {
     };
   }, [keybindings, toggleSidebar, usagePageOpen]);
 
+  // The control lives as long as the shell, so it carries the shell's commands. Created
+  // once so re-renders never re-register them.
+  const [appShellCommandsRef] = useState(
+    () => (node: HTMLDivElement | null) =>
+      node === null ? undefined : registerAppShellCommands(router, node),
+  );
+
   // Astrolabe: beside the icon rail the toggle is the rail's (`AppIconRail`); the title bar keeps
-  // only the section's back and forward while the sidebar is collapsed (the sidebar's header holds
-  // them while it is open), where the main area's title bar content starts.
+  // only the section's back and forward while the sidebar is collapsed. It still carries the
+  // shell's commands.
   if (!isMobile) {
     return (
       <div
+        ref={appShellCommandsRef}
         className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-[calc(2.75rem+var(--workspace-titlebar-content-left))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
         data-sidebar-control=""
       >
@@ -219,6 +408,7 @@ function SidebarControl() {
 
   return (
     <div
+      ref={appShellCommandsRef}
       className={cn(
         "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
         isMobile && mobileSheetMounted && "hidden",
@@ -246,135 +436,7 @@ function SidebarControl() {
   );
 }
 
-function routePanelsOpen(routeThreadRef: ReturnType<typeof useThreadRouteRef>) {
-  if (!routeThreadRef) return { terminalOpen: false, previewOpen: false };
-  return {
-    terminalOpen: selectThreadTerminalUiState(
-      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
-      routeThreadRef,
-    ).terminalOpen,
-    previewOpen:
-      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, routeThreadRef) ===
-      "preview",
-  };
-}
-
-export function NavigationHistoryShortcuts() {
-  const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
-  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const routeThreadRef = useThreadRouteRef();
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.closest("[data-keybinding-capture]")
-      ) {
-        return;
-      }
-      const command = resolveShortcutCommand(event, keybindings, {
-        context: {
-          terminalFocus: isTerminalFocused(),
-          previewFocus: isPreviewFocused(),
-          ...routePanelsOpen(routeThreadRef),
-          editableFocus: isEditableFocused(event.target),
-          modelPickerOpen: isModelPickerOpen(),
-          usagePageOpen,
-        },
-      });
-      if (command !== "navigation.back" && command !== "navigation.forward") return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      // Astrolabe: in a section with tabs (Agents, Wikis), the tab in front's own history.
-      const tabHistory = tabHistorySlot.get();
-      if (tabHistory) {
-        if (!event.repeat) tabHistory.go(command === "navigation.back" ? "back" : "forward");
-        return;
-      }
-      if (command === "navigation.back") window.history.back();
-      else window.history.forward();
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, routeThreadRef, usagePageOpen]);
-
-  return null;
-}
-
-const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);
-
-// Undoes the thread actions in the sidebar's notice. Mounted wherever the
-// thread sidebar can show; Settings replaces it. Listens in the capture phase
-// so mod+z reaches it before the composer's own undo handler consumes the key.
-function ThreadUndoShortcut() {
-  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const routeThreadRef = useThreadRouteRef();
-  // A collapsed sidebar hides the notice, so text fields keep their own undo.
-  const noticeVisible = useSidebarVisibility();
-  // Outlives the effect: undoing an archive navigates, which re-runs it mid-hold.
-  const heldUndoKey = useRef<string | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      // A held key undoes once. Cancel its repeats so they cannot fall through
-      // to the editor's own undo, even after the last notice is gone.
-      if (event.repeat) {
-        if (event.code === heldUndoKey.current) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-        return;
-      }
-      // A modifier tapped mid-hold leaves the held key repeating.
-      if (!MODIFIER_KEYS.has(event.key)) heldUndoKey.current = null;
-      const command = resolveShortcutCommand(event, keybindings, {
-        context: {
-          terminalFocus: isTerminalFocused(),
-          previewFocus: isPreviewFocused(),
-          ...routePanelsOpen(routeThreadRef),
-          editableFocus:
-            isEditableFocused(event.target) && !(noticeVisible && threadUndoClaimsShortcut()),
-          modelPickerOpen: isModelPickerOpen(),
-        },
-      });
-      if (command !== "thread.undo") {
-        if (!MODIFIER_KEYS.has(event.key)) releaseThreadUndoShortcut();
-        return;
-      }
-      if (isCommandPaletteOpen() || isModelPickerOpen()) return;
-      if (undoLatestThreadAction()) {
-        heldUndoKey.current = event.code;
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-    // Pastes from a menu, dictation and drops edit text without a keypress.
-    const onInput = () => releaseThreadUndoShortcut();
-
-    window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("input", onInput, true);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("input", onInput, true);
-    };
-  }, [keybindings, noticeVisible, routeThreadRef]);
-
-  return null;
-}
-
-// Settings swaps the thread sidebar out of the tree. Keep the lightweight
-// project projection subscribed so returning to a draft never renders the
-// zero-project state while the environment snapshot reconnects.
-function ProjectProjectionRetention() {
-  useProjects();
-  return null;
-}
-
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
@@ -382,27 +444,19 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   }));
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
-  useThreadVisitedMigration();
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
-  const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  // Astrolabe: Wikis is a section of its own, beside the threads, with its own sidebar.
-  const isOnWikis = isWikisPath(pathname);
-  // Astrolabe: and Repositories, a repository's files and changes.
-  const isOnRepositories = isRepositoriesPath(pathname);
-  // Astrolabe: so is Pull Requests, whose page fills its sidebar with the list.
-  const isOnPullRequests = pathname === "/pull-requests";
-  // Astrolabe: Usage has no sidebar. It shows collapsed there, and the toggle is gone, while the
-  // other sections keep the open state the user left it in.
-  const isOnUsage = pathname === "/usage";
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Astrolabe: the section beside the threads (Wikis, Repositories, Changes), with its own
+  // sidebar. Under Settings or Usage, the page the modal opened over.
+  const sectionPathname = useSectionPathname();
+  const isOnWikis = isWikisPath(sectionPathname);
+  const isOnRepositories = isRepositoriesPath(sectionPathname);
+  const isOnPullRequests = isPullRequestsPath(sectionPathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const hasIconRail = !useIsMobile();
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
-  // Subscribed rather than read once: the clamp must track live window size,
-  // and a clamped drag ends with an unchanged width, which skips the re-render
-  // that would otherwise refresh a render-time snapshot.
+  // A clamped drag may not change width, so viewport changes need a separate subscription.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
   const [brandWidth, setBrandWidth] = useState(0);
   const sidebarMinimumWidth = resolveThreadSidebarMinimumWidth(brandWidth);
@@ -445,39 +499,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     ...windowControlsInsetStyle,
   } as CSSProperties;
 
-  useEffect(() => {
-    const onMenuAction = window.desktopBridge?.onMenuAction;
-    if (typeof onMenuAction !== "function") {
-      return;
-    }
-
-    const unsubscribe = onMenuAction((action) => {
-      if (action === "open-settings") {
-        const isSettingsRoute = /^\/settings(\/|$)/.test(pathname);
-        if (!isSettingsRoute) {
-          void navigate({ to: "/settings" });
-        }
-      }
-    });
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, [navigate, pathname]);
-
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        open={sidebarOpen && !isOnUsage}
-        onOpenChange={(open) => {
-          if (!isOnUsage) setSidebarOpen(open);
-        }}
+        defaultOpen
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
-        <ProjectProjectionRetention />
         {/* The icon rail's room in the layout; the sidebar opens beside it. */}
         {hasIconRail ? <div aria-hidden className="w-11 shrink-0" /> : null}
         <Sidebar
@@ -486,15 +516,13 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           data-app-sidebar=""
           role="navigation"
           aria-label={
-            isOnSettings
-              ? "Settings"
-              : isOnWikis
-                ? "Wikis"
-                : isOnRepositories
-                  ? "Repositories"
-                  : isOnPullRequests
-                    ? "Changes"
-                    : "Agents"
+            isOnWikis
+              ? "Wikis"
+              : isOnRepositories
+                ? "Repositories"
+                : isOnPullRequests
+                  ? "Changes"
+                  : "Agents"
           }
           resizable={{
             maxWidth: sidebarMaximumWidth,
@@ -511,12 +539,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           // open, through the title bar, as Obsidian's is; collapsed, the rail covers it.
           {...(hasIconRail ? { className: SIDEBAR_BESIDE_RAIL_CLASS } : {})}
         >
-          {isOnSettings ? (
-            <>
-              <SidebarChromeHeader isElectron={isElectron} />
-              <SettingsSidebarNav pathname={pathname} />
-            </>
-          ) : isOnWikis ? (
+          {isOnWikis ? (
             <WikiSidebar />
           ) : isOnRepositories ? (
             <RepositorySidebar />
@@ -536,14 +559,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         </Sidebar>
         {children}
         <AppIconRail />
+        <BackgroundThreadAnnouncer />
         <SidebarControl />
-        <NavigationHistoryShortcuts />
-        {/* Astrolabe: the undo notice lives in the thread sidebar, which the other sections'
-            sidebars replace. */}
-        {isOnSettings || isOnWikis || isOnRepositories || isOnPullRequests ? null : (
-          <ThreadUndoShortcut />
-        )}
-        <MainAppLocationTracker />
         {/* Astrolabe: the keyboard menu (mod+k, and Space as a leader key), and moving focus
             between the sidebar and the panes, and through the sidebar's list. */}
         <WhichKey />

@@ -75,8 +75,7 @@ function ConfiguredConnectOnboardingDialog() {
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [prefilledFromLinkState, setPrefilledFromLinkState] = useState(false);
-  // undefined until auth first settles, so the account already signed in at load
-  // never reads as a fresh sign-in.
+  // Start undefined so an existing account never looks like a fresh sign-in.
   const [observedAccount, setObservedAccount] = useState<string | null | undefined>(undefined);
 
   if (step === "publish" && sessionScopesKnown && !showPublishStep && !isApplying) {
@@ -85,9 +84,7 @@ function ConfiguredConnectOnboardingDialog() {
 
   const optOutAccounts = optOutState.optOutAccounts;
 
-  // A loaded-but-incomplete snapshot (signed in, user id not yet populated)
-  // must not be recorded as signed-out — the next render would then look
-  // like a fresh sign-in on a cold load.
+  // A signed-in snapshot without userId is incomplete; recording signed-out would fake a fresh sign-in.
   if (isLoaded && !(isSignedIn && !userId)) {
     const nextAccount = isSignedIn && userId ? userId : null;
     if (nextAccount !== observedAccount) {
@@ -105,10 +102,8 @@ function ConfiguredConnectOnboardingDialog() {
     setRequestedAccount(null);
   }
 
-  // A manageable session implies a primary environment, so when the scopes
-  // allow publishing, wait for the connection target too — otherwise the
-  // wizard could open on the devices step moments before the publish step
-  // becomes available and freeze there.
+  // Wait for the publish target before opening; otherwise the wizard can freeze on devices before publish
+  // becomes available.
   const publishStepDecided = !canManageRelay || controller.linkState.target !== null;
 
   if (requestedAccount !== null && openForAccount === null) {
@@ -162,8 +157,7 @@ function ConfiguredConnectOnboardingDialog() {
       return;
     }
     if (linkStateData === null || controller.linkState.error !== null) return;
-    // The wizard only ever enables — with both toggles off there is nothing to
-    // apply, and an existing link must not be torn down from onboarding.
+    // Onboarding only enables links; both toggles off must preserve existing links.
     if (!exposeEnvironment && !publishAgentActivity) {
       setStep("devices");
       return;
@@ -197,7 +191,7 @@ function ConfiguredConnectOnboardingDialog() {
           title="Set up remote access"
           description={
             <>
-              Mesh your devices together — publish this environment and connect the rest, all in one
+              Mesh your devices together. Publish this environment and connect the rest, all in one
               place.
             </>
           }

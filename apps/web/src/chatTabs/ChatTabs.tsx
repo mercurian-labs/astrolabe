@@ -3,6 +3,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useLayoutEffect } from "react";
 
 import { ThreadRouteView } from "~/components/ThreadRouteView";
+import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import type { ThreadRouteTarget } from "~/threadRoutes";
 import { ThreadPanesProvider } from "../panes/ThreadPanes";
@@ -29,7 +30,14 @@ function useRouteThreadRef(target: ThreadRouteTarget): ScopedThreadRef | null {
  * brings forward the tab already showing it (see `chatTabsStore`). A draft is keyed by the thread
  * it reserved, so its tab stays put when it is sent.
  */
-export function ChatTabs({ target }: { target: ThreadRouteTarget }) {
+export function ChatTabs({
+  target,
+  background = false,
+}: {
+  target: ThreadRouteTarget;
+  /** Under Settings or Usage: the chats stay mounted and inert, lending the keyboard menu nothing. */
+  background?: boolean;
+}) {
   const threadRef = useRouteThreadRef(target);
   const threadKey = threadRef ? scopedThreadKey(threadRef) : null;
   useLayoutEffect(() => {
@@ -40,14 +48,16 @@ export function ChatTabs({ target }: { target: ThreadRouteTarget }) {
   );
 
   return (
-    <ChatTabStripContext.Provider value={strip}>
-      {threadRef ? (
-        <ThreadPanesProvider threadRef={threadRef}>
-          <ThreadRouteView target={target} />
-        </ThreadPanesProvider>
-      ) : (
-        <ThreadRouteView target={target} />
-      )}
-    </ChatTabStripContext.Provider>
+    <BackgroundThreadContext value={background}>
+      <ChatTabStripContext.Provider value={strip}>
+        {threadRef ? (
+          <ThreadPanesProvider threadRef={threadRef}>
+            <ThreadRouteView target={target} background={background} />
+          </ThreadPanesProvider>
+        ) : (
+          <ThreadRouteView target={target} background={background} />
+        )}
+      </ChatTabStripContext.Provider>
+    </BackgroundThreadContext>
   );
 }

@@ -1,18 +1,29 @@
 import { expect, it } from "@effect/vitest";
 
 import { runServicePreflight } from "./servicePreflight.ts";
+import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 
-it.each([1, 2])("blocks legacy launcher protocol %i", (launcherProtocol) => {
-  expect(
-    runServicePreflight({
+// regression: #13239 a stale CLI shadowing the updated one kept "updating" to itself
+it.each([1, 2])(
+  "blocks legacy launcher protocol %i with exact recovery steps",
+  (launcherProtocol) => {
+    const result = runServicePreflight({
       databasePath: "/missing/state.sqlite",
       launcherProtocol,
-      version: "1.2.3",
-    }),
-  ).toEqual({
-    status: "blocked",
-    version: "1.2.3",
-    reason:
-      "This release requires a newer Astrolabe service launcher. Update it on the server machine.",
-  });
-});
+      version: "9.8.7",
+    });
+
+    expect(result).toMatchObject({ status: "blocked", version: "9.8.7" });
+    const reason = result.status === "blocked" ? result.reason : "";
+    expect(reason).toMatch(new RegExp(`\\b${launcherProtocol}\\b`));
+    expect(reason).toMatch(new RegExp(`\\b${SERVICE_LAUNCHER_PROTOCOL}\\b`));
+    expect(reason).toContain(
+      "curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | ASTROLABE_VERSION=9.8.7 sh",
+    );
+    expect(reason).toContain("astrolabe@9.8.7");
+    expect(reason).toContain("~/.local/bin/astrolabe service install");
+    expect(reason).toContain("astrolabe --version");
+    expect(reason).toContain("which -a astrolabe");
+    expect(reason).not.toMatch(/t3\.codes|T3CODE_VERSION|\bt3\b/);
+  },
+);

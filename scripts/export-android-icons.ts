@@ -1,17 +1,9 @@
 #!/usr/bin/env node
 
-// Renders the Android launcher, notification, and splash artwork from the Icon Composer sources.
-//
-// Icon Composer exports already contain a rounded-square silhouette, and Android masks
-// the central 72dp of a 108dp adaptive canvas, so exporting them as a foreground produces
-// a double-framed icon with the monogram cropped by the mask. Instead, each variant gets a
-// full-bleed background layer (the project's ground) and a transparent foreground that
-// draws the project's monogram and pivot at two thirds of the tile, inside the safe zone.
-//
-// The Android 12+ splash screen masks its icon to a circle covering the central two thirds
-// of a 288dp canvas, which is the same proportion the launcher crops. Composing the two
-// adaptive layers into one 288dp image therefore makes the splash frame the monogram
-// exactly like the launcher icon does.
+// Renders Android launcher, notification and splash art from the Icon Composer sources.
+// Android masks a 72dp safe area inside 108dp, so each variant gets a full-bleed background and a
+// transparent foreground with the monogram at two thirds of the tile. The 288dp splash crops the
+// same proportion, so composing both layers frames the monogram like the launcher does.
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
