@@ -115,7 +115,7 @@ export function useAppSections(): readonly AppSection[] {
       icon: <ChartNoAxesColumnIcon />,
       active: onUsage,
       open: () => void navigate({ to: "/usage" }),
-      foot: false,
+      foot: true,
     },
     {
       id: "settings",
@@ -129,10 +129,10 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: monogram, sections, and Settings (the account menu where sign-in is set
- * up). It stays when the sidebar collapses, and its title-bar cell holds the sidebar toggle so it
- * stays in reach (after the macOS window buttons, `--rail-toggle-left`). Narrow windows, where the
- * sidebar is a sheet, have no rail. It is the leftmost focus place (`keyboardNav/`).
+ * The far-left icon rail: monogram, sections, and at its foot Usage and Settings (the account menu
+ * where sign-in is set up). It stays when the sidebar collapses; its title-bar cell keeps the
+ * sidebar toggle in reach (after the macOS window buttons, `--rail-toggle-left`). Narrow windows,
+ * where the sidebar is a sheet, have no rail. It is the leftmost focus place (`keyboardNav/`).
  */
 export function AppIconRail() {
   const isMobile = useIsMobile();

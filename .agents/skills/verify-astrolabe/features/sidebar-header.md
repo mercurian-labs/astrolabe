@@ -47,9 +47,9 @@ actions at its right end.
   the filter's popup has a `Project settings for <name>` gear.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
-  (Agents, Wikis, Repositories, Changes when the server supports pull requests, Usage),
+  (Agents, Wikis, Repositories, Changes when the server supports pull requests),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
-  (`Check for updates`, a rail list row) and Settings sit at the foot. Where cloud sign-in is
+  (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a link (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
   Rail mark).
