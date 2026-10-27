@@ -337,8 +337,9 @@ through one of these values in the merge commit.
   are left out until Astrolabe publishes its own. The GNOME extension's `metadata.json` names no
   homepage, since upstream's linked to its repository.
 - **Maintainer infrastructure.** Upstream's shared task cache (`.task-cache.json`,
-  `infra/task-cache`) and relay preview stages run on T3 Tools' accounts. Astrolabe deletes
-  `.task-cache.json`, never deploys `infra/task-cache`, and keeps the jobs in `relay-preview.yml`,
+  `infra/task-cache`) and relay preview stages run on T3 Tools' accounts. Astrolabe's
+  `.task-cache.json` names an unreachable `.invalid` endpoint (upstream's installer tests read it),
+  never deploys `infra/task-cache`, and keeps the jobs in `relay-preview.yml`,
   `relay-preview-cleanup.yml` and `stale-needs-more-info.yml` at `if: false`.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
