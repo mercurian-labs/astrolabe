@@ -1040,7 +1040,17 @@ section {
   font-size: 0.9375rem;
   line-height: 1.45;
   color: var(--ink-3);
-  max-width: 18em;
+  max-width: 27em;
+  text-wrap: pretty;
+}
+.works__note a {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.2em;
+}
+.works__note a:hover {
+  text-decoration-color: currentColor;
 }
 .works__list {
   grid-column: span 5;
@@ -1049,9 +1059,11 @@ section {
 }
 .works__list li {
   display: grid;
-  place-items: center;
-  min-height: 4rem;
-  padding: 0.5rem;
+  place-content: center;
+  justify-items: center;
+  gap: 0.625rem;
+  min-height: 5.5rem;
+  padding: 0.75rem 0.5rem;
   overflow-wrap: anywhere;
   border-left: 1px solid var(--rule);
   font: 500 0.8125rem var(--mono);
@@ -1061,6 +1073,18 @@ section {
 }
 .works__list li:nth-child(n + 4) {
   border-top: 1px solid var(--rule);
+}
+/* Each agent's mark, in the page's ink rather than its brand colours, so it relights with the page.
+   Antigravity's mark is a raster, so it prints through a mask. */
+.works__mark {
+  width: 1.375rem;
+  height: 1.375rem;
+  fill: currentColor;
+}
+.works__mark--image {
+  background: currentColor;
+  -webkit-mask: var(--mark) center / contain no-repeat;
+  mask: var(--mark) center / contain no-repeat;
 }
 
 @media (max-width: 900px) {
@@ -1079,7 +1103,7 @@ section {
     border-top: 1px solid var(--rule);
   }
   .works__list li {
-    min-height: 4.5rem;
+    min-height: 5.5rem;
     font-size: 0.75rem;
   }
   .works__list li:nth-child(3n + 1) {

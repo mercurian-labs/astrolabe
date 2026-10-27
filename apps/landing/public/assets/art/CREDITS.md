@@ -22,6 +22,20 @@ are all rights reserved unless a row says otherwise. (DECISION pending, the same
 | `hemisphere.{webp,json}`, `hemisphere-{dark,light,olive}.webp` | astrolabe-site's `scripts/render-hemisphere.py`, from the same DEM. | As above. |
 | `astrolabe-static.svg` | astrolabe-site's `scripts/render-instrument.py` and `bake-static-instrument.py`. | Mercurian's own work. |
 
+## Agent marks
+
+The marks in the Works with strip (`src/data/agent-marks.json`, `assets/marks/`) belong to their
+owners: OpenAI (Codex), Anthropic (Claude Code), Anysphere (Cursor), xAI (Grok), the OpenCode
+project (OpenCode) and Google (Antigravity). They are used only to name the tools Astrolabe works
+with, printed in the page's ink rather than their brand colours, and are not covered by any license
+in this repository.
+
+| File | Source |
+| --- | --- |
+| `src/data/agent-marks.json` (Codex, Claude Code, Cursor) | The app's own icons, `apps/web/src/components/Icons.tsx` (`OpenAI`, `ClaudeAI`, `CursorIcon`). |
+| `src/data/agent-marks.json` (Grok, OpenCode) | The app's provider icons, `packages/provider-grok/src/client.ts` and `packages/provider-opencode/src/client.ts`. |
+| `assets/marks/antigravity.png` | The app's `AntigravityIcon` (`apps/web/src/components/Icons.tsx`), scaled to 64 px. |
+
 ## `assets/footer/`
 
 | File | Source | License |

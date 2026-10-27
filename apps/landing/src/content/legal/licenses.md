@@ -82,6 +82,10 @@ The names of features around the Beethoven basin come from the [Gazetteer of Pla
 
 The instrument is drawn from first principles, the way real astrolabes were made, not traced from a museum object or a photograph. Its star positions and the formulae for the sun's position are public astronomical data.
 
+### The agents' marks
+
+The marks beside Codex, Claude Code, Cursor, Grok, OpenCode and Antigravity belong to OpenAI, Anthropic, Anysphere, xAI, the OpenCode project and Google. We show them only to name the tools Astrolabe works with, printed in the page's ink, and no license here covers them.
+
 ### Fonts
 
 - **Fraunces**, copyright 2018 The Fraunces Project Authors ([github.com/undercasetype/Fraunces](https://github.com/undercasetype/Fraunces)).

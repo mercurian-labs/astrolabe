@@ -1,3 +1,6 @@
+---
+import marks from "../data/agent-marks.json";
+---
           <!-- ───────────────────────────────────────── [02] Value -->
           <section id="why" class="value" data-relight aria-labelledby="value-title">
               <div class="sky" data-sight>
@@ -60,15 +63,32 @@
             <div class="works">
               <div class="works__label">
                 <p class="tag">Works with</p>
-                <p class="works__note">The agents installed on your computer, signed in with your own accounts.</p>
+                <p class="works__note">
+                  The agents installed on your computer, signed in with your own accounts, and any agent that
+                  speaks <a href="https://agentclientprotocol.com">ACP, the Agent Client Protocol</a>.
+                </p>
               </div>
               <ul class="works__list" aria-label="Supported agents">
-                <li>Codex</li>
-                <li>Claude Code</li>
-                <li>Cursor</li>
-                <li>Grok</li>
-                <li>OpenCode</li>
-                <li>Antigravity</li>
+                {
+                  marks.agents.map((agent) => (
+                    <li>
+                      {"image" in agent ? (
+                        <i class="works__mark works__mark--image" style={`--mark:url("${agent.image}")`} aria-hidden="true" />
+                      ) : (
+                        <svg class="works__mark" viewBox={agent.viewBox} aria-hidden="true">
+                          {agent.paths.map((path) => (
+                            <path
+                              d={path.d}
+                              fill-rule={"evenodd" in path ? "evenodd" : undefined}
+                              fill-opacity={"faint" in path ? 0.3 : undefined}
+                            />
+                          ))}
+                        </svg>
+                      )}
+                      {agent.name}
+                    </li>
+                  ))
+                }
               </ul>
             </div>
           </section>
