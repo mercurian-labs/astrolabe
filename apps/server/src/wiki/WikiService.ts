@@ -730,15 +730,13 @@ const make = Effect.gen(function* () {
 
   const mainTip = (wiki: WikiRecord) =>
     revParse(wiki.root, mainRef(wiki)).pipe(
-      Effect.flatMap((tip) =>
-        tip === undefined
-          ? Effect.fail(
-              new WikiError({
-                reason: "invalid",
-                message: `The wiki's main branch ${wiki.mainBranch} has no commits.`,
-              }),
-            )
-          : Effect.succeed(tip),
+      Effect.filterOrFail(
+        (tip): tip is string => tip !== undefined,
+        () =>
+          new WikiError({
+            reason: "invalid",
+            message: `The wiki's main branch ${wiki.mainBranch} has no commits.`,
+          }),
       ),
     );
 
@@ -1478,16 +1476,14 @@ const make = Effect.gen(function* () {
       const oriented = orientResult(snapshot.index, input.map);
       return oriented === undefined ? undefined : { commit, ...oriented };
     }).pipe(
-      Effect.flatMap((oriented) =>
-        oriented === undefined
-          ? Effect.fail(
-              new WikiError({
-                reason: "not-found",
-                message: "No valid skill map has this name.",
-                wikiId: input.wikiId,
-              }),
-            )
-          : Effect.succeed(oriented),
+      Effect.filterOrFail(
+        (oriented) => oriented !== undefined,
+        () =>
+          new WikiError({
+            reason: "not-found",
+            message: "No valid skill map has this name.",
+            wikiId: input.wikiId,
+          }),
       ),
     );
 

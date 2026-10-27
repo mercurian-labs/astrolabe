@@ -82,11 +82,7 @@ export default Api.make(
     });
 
     // Connects on first query, so construction at plan time never dials out.
-    const db = yield* Drizzle.Postgres(
-      Effect.gen(function* () {
-        return yield* Config.Redacted("DATABASE_URL");
-      }),
-    );
+    const db = yield* Drizzle.Postgres(Config.Redacted("DATABASE_URL"));
 
     const health = Effect.gen(function* () {
       const tables = yield* db.$client.unsafe<{ count: string }>(

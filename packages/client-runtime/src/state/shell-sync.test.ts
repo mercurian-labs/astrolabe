@@ -603,15 +603,15 @@ describe("environment shell synchronization", () => {
         retryNow: Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
-        loadShell: () => Effect.succeed(Option.some(cachedSnapshot)),
+        loadShell: () => Effect.succeedSome(cachedSnapshot),
         saveShell: () => Effect.void,
-        loadThread: () => Effect.succeed(Option.none()),
+        loadThread: () => Effect.succeedNone,
         saveThread: () => Effect.void,
         removeThread: (_environmentId, threadId) =>
           Queue.offer(removed, threadId).pipe(Effect.asVoid),
-        loadServerConfig: () => Effect.succeed(Option.none()),
+        loadServerConfig: () => Effect.succeedNone,
         saveServerConfig: () => Effect.void,
-        loadVcsRefs: () => Effect.succeed(Option.none()),
+        loadVcsRefs: () => Effect.succeedNone,
         saveVcsRefs: () => Effect.void,
         removeVcsRefs: () => Effect.void,
         clearVcsRefs: () => Effect.void,
@@ -623,7 +623,7 @@ describe("environment shell synchronization", () => {
         Effect.provideService(
           ShellSnapshotLoader.ShellSnapshotLoader,
           ShellSnapshotLoader.ShellSnapshotLoader.of({
-            load: () => Effect.succeed(Option.some(httpSnapshot)),
+            load: () => Effect.succeedSome(httpSnapshot),
           }),
         ),
       );

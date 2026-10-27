@@ -43,8 +43,8 @@ export const layerSes = (from: string) =>
       // Carries the region and endpoint overrides too; only these two are typed.
       const aws = yield* Effect.context<Credentials.Credentials | HttpClient.HttpClient>();
       return Mailer.of({
-        send: (mail) =>
-          SES.sendEmail({
+        send: Effect.fn("Mailer.send")(function* (mail) {
+          yield* SES.sendEmail({
             FromEmailAddress: from,
             Destination: { ToAddresses: [mail.to] },
             Content: {
@@ -57,7 +57,8 @@ export const layerSes = (from: string) =>
             Effect.asVoid,
             Effect.mapError((cause) => new MailSendError({ cause })),
             Effect.provideContext(aws),
-          ),
+          );
+        }),
       });
     }),
   ).pipe(Layer.provide(AwsLive));
@@ -66,6 +67,8 @@ export const layerSes = (from: string) =>
 export const layerLog = Layer.succeed(
   Mailer,
   Mailer.of({
-    send: (mail) => Effect.logWarning(`mail to ${mail.to}: ${mail.subject}\n${mail.text}`),
+    send: Effect.fn("Mailer.send")(function* (mail) {
+      yield* Effect.logWarning(`mail to ${mail.to}: ${mail.subject}\n${mail.text}`);
+    }),
   }),
 );

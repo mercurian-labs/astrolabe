@@ -47,9 +47,9 @@ export const layer: Layer.Layer<ThreadLineageLoader, never, HttpClient.HttpClien
       RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
     );
     return ThreadLineageLoader.of({
-      load: (prepared, threadId) => {
+      load: Effect.fn("ThreadLineageLoader.load")(function* (prepared, threadId) {
         const endpoint = { params: { threadId } };
-        return executeAuthenticatedEnvironmentHttpRequest({
+        return yield* executeAuthenticatedEnvironmentHttpRequest({
           prepared,
           signer,
           remoteAuthorization,
@@ -63,7 +63,7 @@ export const layer: Layer.Layer<ThreadLineageLoader, never, HttpClient.HttpClien
               headers: withOrchestrationProtocolHeader(headers),
             }),
         }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
-      },
+      }),
     });
   }),
 );
