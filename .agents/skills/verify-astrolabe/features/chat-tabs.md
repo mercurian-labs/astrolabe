@@ -99,18 +99,18 @@ breadcrumb header is the row below.
 ## Driving it with the Browser panel
 
 ```
-preview_click  role=button[name=/^<title>, /]                 # sidebar row: "<title>, [<status>, ]<project>"
-preview_click  [data-testid=sidebar-row-card] >> nth=1          # or by position
+preview_act click  role=button[name=/^<title>, /]                 # sidebar row: "<title>, [<status>, ]<project>"
+preview_act click  [data-testid=sidebar-row-card] >> nth=1          # or by position
 preview_wait_for  locator=role=tab[name='<title>'][selected]
-preview_click  role=tab[name='<other title>']
-preview_click  role=button[name='Close <title>']
-preview_click  [data-testid=sidebar-row-card] >> nth=2  button="middle"   # new tab
-# preview_click sends no modifiers, so Option-click is Alt+Enter on the focused row:
+preview_act click  role=tab[name='<other title>']
+preview_act click  role=button[name='Close <title>']
+preview_act click  [data-testid=sidebar-row-card] >> nth=2  button="middle"   # new tab
+# preview_act click sends no modifiers, so Option-click is Alt+Enter on the focused row:
 # preview_evaluate document.querySelectorAll('[data-testid=sidebar-row-card]')[2].focus()
-# preview_press  key=Enter  modifiers=["Alt"]
-# or button="right", then preview_click role=button[name='Open in new tab']
-preview_click  [data-tab-history] >> role=button[name='Back']      # the tab in front's history
-preview_click  [data-tab-history] >> role=button[name='Forward']
+# preview_act press  key=Enter  modifiers=["Alt"]
+# or button="right", then preview_act click role=button[name='Open in new tab']
+preview_act click  [data-tab-history] >> role=button[name='Back']      # the tab in front's history
+preview_act click  [data-tab-history] >> role=button[name='Forward']
 # unscoped, a Browser tab in the right panel's own Back/Forward makes it ambiguous
 ```
 
@@ -149,7 +149,7 @@ must be true. Then `preview_snapshot save:true` with the strip in view.
 - Tab lists are per origin. Dev servers reusing a port share one list, so a
   walk can inherit tabs from another server's threads. Those never prune,
   because that environment never loads. Clear the key first when it matters.
-- Reorder uses HTML5 drag, and the whole strip takes the drop. `preview_drag`
+- Reorder uses HTML5 drag, and the whole strip takes the drop. `preview_act drag`
   drops at the target's centre, which lands after that tab. To test a drop at
   the start, dispatch `dragstart`, `dragover` and `drop` yourself with one
   `DataTransfer`, at a point between the strip's left edge and the first tab.
@@ -159,10 +159,10 @@ must be true. Then `preview_snapshot save:true` with the strip in view.
 - The stored value is zustand's wrapper: read
   `JSON.parse(localStorage['t3code:chat-tabs:v1']).state` (`keys`, `active`,
   `histories[<key in front>]`).
-- Middle-click is `preview_click button="middle"` (server browser tabs only), which
+- Middle-click is `preview_act click button="middle"` (server browser tabs only), which
   fires the row's or tab's `auxclick` (button 1). Elsewhere, dispatch
   `new MouseEvent('auxclick', {button: 1, bubbles: true})` on it. Option-click cannot
-  be sent (`preview_click` takes no modifiers): use Alt+Enter on the focused row.
+  be sent (`preview_act click` takes no modifiers): use Alt+Enter on the focused row.
 - Drag from the sidebar: the rows' pointer sensor accepts synthetic events, and the
   preview tools send no raw CDP input. From `preview_evaluate`, on the row card (not an
   action button) dispatch a `pointerdown` with `{pointerId: 1, isPrimary: true,

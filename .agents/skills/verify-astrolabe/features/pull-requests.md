@@ -170,13 +170,13 @@ a pull request link in a conversation. Each lands on the last list filters (loca
 ## Driving it with the Browser panel
 
 ```
-preview_click     role=navigation[name='Sections'] >> role=button[name='Changes']
+preview_act click     role=navigation[name='Sections'] >> role=button[name='Changes']
 preview_wait_for  [data-pull-request-key] > button
-preview_click     [data-pull-request-key] > button >> nth=1    # replaces the tab in front
-preview_click     [data-pull-request-key] > button >> nth=2   button="right"
-preview_click     role=button[name='Open in new tab']          # a second tab
+preview_act click     [data-pull-request-key] > button >> nth=1    # replaces the tab in front
+preview_act click     [data-pull-request-key] > button >> nth=2   button="right"
+preview_act click     role=button[name='Open in new tab']          # a second tab
 preview_evaluate  dispatch a click with metaKey / altKey on a row button
-preview_click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
+preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
 preview_evaluate  set the searchbox's value with the native setter, then dispatch input
 preview_navigate  /pull-requests?involvement=authored&state=open   # Filters shows 1
 ```

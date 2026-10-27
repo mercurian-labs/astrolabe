@@ -119,11 +119,11 @@ Command Palette. Rebind everything in Settings › Keybindings.
 ## Driving it with the Browser panel
 
 ```
-preview_press     key=k modifiers=["Meta"]                 # opens the menu
-preview_press     g                                        # into Go to
-preview_press     w                                        # runs: /wikis
-preview_click     role=heading[name='Wikis']               # Wikis only (no composer); on a chat use Cmd+K h
-preview_press     Space                                    # leader (wait 300 ms+)
+preview_act press     key=k modifiers=["Meta"]                 # opens the menu
+preview_act press     g                                        # into Go to
+preview_act press     w                                        # runs: /wikis
+preview_act click     role=heading[name='Wikis']               # Wikis only (no composer); on a chat use Cmd+K h
+preview_act press     Space                                    # leader (wait 300 ms+)
 ```
 
 Read the menu: `document.querySelector('[data-which-key]')?.innerText`. Prove it
@@ -135,7 +135,7 @@ rows `[...document.querySelectorAll('[data-command-palette] [data-slot=command-i
 The field shows no `:` in the Command Palette (a chevron leads it instead); the
 query is `':' + value`. The
 dialog's name stays `Search` in both modes: type with
-`preview_type role=dialog[name='Search'] >> role=combobox`.
+`preview_act type role=dialog[name='Search'] >> role=combobox`.
 
 Rules: back up `$home/userdata/keybindings.json` (the walk's `.t3`, never
 `~/.t3/userdata`) before editing it, append rules with a short `node -e` script,

@@ -98,15 +98,15 @@ Space `d` scrolls the place half a page.
 ## Driving it with the Browser panel
 
 ```
-preview_press     key=k modifiers=["Meta"]                    # Cmd+K, then
-preview_press     key=h                                       # h focuses a row (a click hands focus to the composer)
-preview_press     key=l modifiers=["Control"]                 # to the main area
-preview_press     key=h modifiers=["Control"]                 # back to the sidebar
-preview_press     j                                           # next row
-preview_press     Space                                       # leader
-preview_press     l                                           # focus right, arms
-preview_press     l                                           # again, within 500 ms
-preview_press     key=d modifiers=["Control"]                 # scroll down half a page
+preview_act press     key=k modifiers=["Meta"]                    # Cmd+K, then
+preview_act press     key=h                                       # h focuses a row (a click hands focus to the composer)
+preview_act press     key=l modifiers=["Control"]                 # to the main area
+preview_act press     key=h modifiers=["Control"]                 # back to the sidebar
+preview_act press     j                                           # next row
+preview_act press     Space                                       # leader
+preview_act press     l                                           # focus right, arms
+preview_act press     l                                           # again, within 500 ms
+preview_act press     key=d modifiers=["Control"]                 # scroll down half a page
 ```
 
 Read where focus is, by place and element:
@@ -242,14 +242,14 @@ dark: only one pill carries the bar.
 
 ## Gotchas
 
-- `preview_press` sends `modifiers:["Control"]` for Ctrl+H; on a Mac host Meta is
+- `preview_act press` sends `modifiers:["Control"]` for Ctrl+H; on a Mac host Meta is
   Cmd, which is not these keys.
 - For the leader, put focus on a row (Cmd+K `h`): a focused row takes Space as the
   leader, a focused button elsewhere presses it, and focus on the bare page sends Space
   into the composer through type-to-focus.
 - In the repeat window `h`/`l` are still focus moves: after Space `h` into the
   sidebar, `h` goes on to the rail. `j`/`k` there step the list at once.
-- Each `preview_press` is a round trip, and two of them straddle the 500 ms window in
+- Each `preview_act press` is a round trip, and two of them straddle the 500 ms window in
   practice: set Repeat window to 3000 ms before walking it, and reset it
   after.
 - The server resolves the default menu keys and shortcuts: a server started before

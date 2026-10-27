@@ -75,20 +75,20 @@ type `:q` and Enter.
 
 ## Driving it with the Browser panel
 
-The composer is CodeMirror: `preview_type` cannot target it. Insert text with
+The composer is CodeMirror: `preview_act type` cannot target it. Insert text with
 `preview_evaluate` (`ed.focus(); document.execCommand('insertText', false, '…')`
-on `[data-testid=composer-editor]`). Vim keys go through `preview_press`, one key
+on `[data-testid=composer-editor]`). Vim keys go through `preview_act press`, one key
 per call (`Escape`, `b`, `d`, `w`, `:`, `Enter`, `Space`).
 
 ```
-preview_click     role=switch[name='Vim keybindings']        # opens the :q gate
-preview_press     :   then q   then Enter                    # turns Vim on
+preview_act click     role=switch[name='Vim keybindings']        # opens the :q gate
+preview_act press     :   then q   then Enter                    # turns Vim on
 preview_wait_for  [data-testid=composer-editor]              # in a chat
-preview_press     Escape                                     # normal mode
-preview_press     :                                          # palette as ex line
-preview_type      role=dialog[name='Search'] >> role=combobox   text=s/hello/bye/
+preview_act press     Escape                                     # normal mode
+preview_act press     :                                          # palette as ex line
+preview_act type      role=dialog[name='Search'] >> role=combobox   text=s/hello/bye/
 preview_wait_for  text=Run in the editor                     # the row settles after typing
-preview_press     Enter                                      # runs in the editor
+preview_act press     Enter                                      # runs in the editor
 ```
 
 Read the composer's state:
@@ -160,21 +160,21 @@ under the text and a hit-test lands on the text.
   where type-to-focus sends the key into the composer. Clear any stray text.
 - Do not send from the composer on a seeded home unless a provider is configured:
   `:w` and Enter in insert mode start a real turn.
-- Locators for `preview_type` must be Playwright selectors; a bare CSS descendant
+- Locators for `preview_act type` must be Playwright selectors; a bare CSS descendant
   selector (`[data-testid=x] input`) is rejected. Use role locators or `>>`.
 - The palette's dialog is named `Search` in `:` mode too. Type into it with
-  `preview_type role=dialog[name='Search'] >> role=combobox`, or with
+  `preview_act type role=dialog[name='Search'] >> role=combobox`, or with
   `[data-testid=command-palette] >> role=combobox`.
 - Clear test drafts (`d` `d` in normal mode) and empty the vimrc before the next
   feature: it applies on every device on that server. A row's Keys field records
   held keys, so type `jk` as letters; Enter saves the form.
-- `preview_press` is slower than Vim's 200 ms wait for the second key of a mapping, so
+- `preview_act press` is slower than Vim's 200 ms wait for the second key of a mapping, so
   `j` `k` types "jk". Set **Escape key timeout** to 3000 for flow 5 and reset it after.
-- The option fields are number fields: `preview_type clear=true` does not clear them.
+- The option fields are number fields: `preview_act type clear=true` does not clear them.
   Click the field, press Meta+A, type the number, then Tab to save it.
 - The vimrc is the walk home's `userdata/vimrc` (or `dev/vimrc` under a dev URL
   without `--home-dir`), never `~/.t3/userdata/vimrc`.
-- `preview_press` does send modifiers (`modifiers: ["Meta"]`); `preview_click`
+- `preview_act press` does send modifiers (`modifiers: ["Meta"]`); `preview_act click`
   does not.
 
 ## Owns

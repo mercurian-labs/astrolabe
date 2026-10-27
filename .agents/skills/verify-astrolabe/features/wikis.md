@@ -93,14 +93,14 @@ must be registered first (the filter's **Add a folder**).
 ## Driving it with the Browser panel
 
 ```
-preview_click     role=navigation[name='Sections'] >> role=button[name='Wikis']
-preview_click     role=button[name='<document>, <wiki>']        # replaces the tab in front
+preview_act click     role=navigation[name='Sections'] >> role=button[name='Wikis']
+preview_act click     role=button[name='<document>, <wiki>']        # replaces the tab in front
 preview_evaluate  dispatch a click with altKey on a row          # new tab
 preview_evaluate  dispatch a click with metaKey on a row         # selects it (data-selected), opens nothing
-preview_click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
+preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
 preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
-preview_click     role=combobox[name='Filter documents by wiki']
-preview_click     role=button[name='Find or create a document']  # in an empty tab
+preview_act click     role=combobox[name='Filter documents by wiki']
+preview_act click     role=button[name='Find or create a document']  # in an empty tab
 ```
 
 **Proof:** read the arrangement from the DOM

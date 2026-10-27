@@ -105,10 +105,10 @@ route.
 ## Driving it with the Browser panel
 
 ```
-preview_click  role=button[name='Search threads']       # swaps the heading for the field
-preview_type   role=combobox[name='Search threads']  text=<title words>
-preview_click  role=combobox[name=/^Filter threads by project/]
-preview_click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
+preview_act click  role=button[name='Search threads']       # swaps the heading for the field
+preview_act type   role=combobox[name='Search threads']  text=<title words>
+preview_act click  role=combobox[name=/^Filter threads by project/]
+preview_act click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
 ```
 
 **Proof:** each action's result (the field focused and

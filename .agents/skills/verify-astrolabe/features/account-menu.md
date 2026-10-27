@@ -39,12 +39,12 @@ from `preview_evaluate` instead:
 
 ```
 preview_evaluate  document.querySelector('nav[aria-label="Sections"] button[aria-haspopup="menu"]').click()
-preview_click     role=menuitem[name='Sign in']        # signed out
+preview_act click     role=menuitem[name='Sign in']        # signed out
 preview_evaluate  document.querySelector('[aria-label="Sign-in code"]')?.textContent
 # approve it: scripts/cloud-kit.sh approve <code> <email>   (see SKILL.md, Cloud)
-preview_click     role=menuitem[name='Account']        # signed in: account dialog
-preview_click     role=menuitem[name='Workspaces']     # → /settings/workspaces
-preview_click     role=menuitem[name='Sign out']
+preview_act click     role=menuitem[name='Account']        # signed in: account dialog
+preview_act click     role=menuitem[name='Workspaces']     # → /settings/workspaces
+preview_act click     role=menuitem[name='Sign out']
 ```
 
 The trigger is the only rail button with `aria-haspopup="menu"`. On a narrow
