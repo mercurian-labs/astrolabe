@@ -1,6 +1,10 @@
+---
+import Frontispiece from "./Frontispiece.astro";
+import plate from "../data/lasilla-plate.json";
+---
           <!-- ───────────────────────────────────────── [06] Repositories -->
           <section class="surfaces" id="repositories" aria-labelledby="repositories-title">
-            <div class="head">
+            <div class="head head--plate head--plate-left">
               <div class="head__main">
                 <p class="tag">[06] Repositories</p>
                 <h2 id="repositories-title" class="h2" data-reveal>Your code, beside the agents.</h2>
@@ -10,6 +14,7 @@
                 work, instead of an editor or GitHub. It has its own section in the app and a tab on your
                 iPhone.
               </p>
+              <Frontispiece plate={plate} />
             </div>
 
             <article class="surface" aria-labelledby="surface-repositories">

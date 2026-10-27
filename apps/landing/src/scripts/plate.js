@@ -1,7 +1,8 @@
 // Astrolabe · drafting · the observatory plates, lit by the astrolabe's sun
 //
 // Four plates stand on the page: the Sphinx Observatory, La Silla's New Technology Telescope and Gemini
-// North as chapter plates between sections, and the Pic du Midi Observatory in the close. Each is a building printed in the page's own print from a photograph (by astrolabe-site's
+// North as frontispieces in the heads of [04], [06] and [08], and the Pic du Midi Observatory in the
+// close. Each is a building printed in the page's own print from a photograph (by astrolabe-site's
 // scripts/observatories/), and each figure (Plate.astro) names its textures' folder, their size and
 // relief: a geometry texture whose red and green carry the view-space normal's x (right) and y (up),
 // whose blue carries the relative depth and whose alpha is the building and its rock; a tone texture
@@ -39,11 +40,11 @@
 // page makes four. One shared context would have to copy its drawing into each plate's canvas on every
 // repaint; small contexts cost less than that and keep each plate's textures where it draws them. A
 // plate that falls more than 800 px off screen shrinks its canvas to one pixel, giving back its drawing
-// buffer (the largest thing it holds: some 6 MB for a band at 1440 px and DPR 2), and shows its still
-// until it comes back; its textures stay, so coming back costs one draw, not a reload. Repaints happen
-// only when the sun moves, the pointer moves or the iris turns, and only for a plate on screen in a
-// visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks under a mid-morning sun)
-// shows and there is no eyepiece.
+// buffer (the largest thing it holds: some 6 MB for a section head's plate at 1440 px and DPR 2), and
+// shows its still until it comes back; its textures stay, so coming back costs one draw, not a
+// reload. Repaints happen only when the sun moves, the pointer moves or the iris turns, and only for a
+// plate on screen in a visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks
+// under a mid-morning sun) shows and there is no eyepiece.
 
 import Twilight from "./twilight.js";
 
@@ -557,7 +558,7 @@ import Twilight from "./twilight.js";
 
       // The section's own approach fetches the photograph, before the pointer reaches the plate.
       figure
-        .closest("section, .chapter")
+        .closest("section")
         ?.addEventListener("pointerover", () => loadDuotone(), { once: true });
       sheet.addEventListener("pointerenter", (e) => track(e));
       sheet.addEventListener("pointermove", (e) => track(e));

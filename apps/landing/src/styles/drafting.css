@@ -4057,46 +4057,59 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── Chapter plates */
+/* ───────────────────────────────────────── Frontispieces */
 
-/* An observatory print between two sections, as an atlas sets a full-page plate between chapters: the
-   square stands in the middle of a ruled band as tall as itself, ruled down both sides with crosses at
-   its corners, and clips the art that runs off its edges. Its margin carries the observatory's place
-   on the globe, against the rule and level with the figure line. On a tablet or phone the square
-   stands alone. */
-.chapter {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+/* A section head faced by its observatory plate (Frontispiece.astro), as an atlas faces a chapter's
+   title with a plate: the square takes half the frame, ruled off from the head with crosses at its
+   corners, and clips the art that runs off its edges. The proposition stands at the top of the other
+   half and the explanation in a ruled cell at its foot. The plate sits right; .head--plate-left puts it
+   on the left, so the page alternates. On a tablet or phone the head comes first and the square
+   follows it, full width. */
+.head--plate {
+  grid-template-rows: 1fr auto;
+}
+.head--plate > .head__main {
+  grid-area: 1 / 1 / 2 / 7;
+}
+.head--plate > .head__aside {
+  grid-area: 2 / 1 / 3 / 7;
+  border-left: 0;
   border-top: 1px solid var(--rule);
+  padding-block: var(--pad) calc(var(--pad) + 0.25rem);
 }
-.chapter__at {
-  grid-area: 1 / 1 / 2 / 4;
-  display: grid;
-  align-content: start;
-  justify-items: end;
-  padding: calc(var(--pad) + 0.5rem) var(--pad);
-  color: var(--ink-3);
-}
-.chapter__plate {
-  grid-area: 1 / 4 / 2 / 10;
+.head__plate {
+  grid-area: 1 / 7 / 3 / 13;
   position: relative;
   aspect-ratio: 1;
   overflow: hidden;
-  border-inline: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+}
+.head--plate-left > :is(.head__main, .head__aside) {
+  grid-column: 7 / 13;
+  border-left: 1px solid var(--rule);
+}
+.head--plate-left > .head__plate {
+  grid-column: 1 / 7;
+  border-left: 0;
+}
+.plate__at {
+  display: block;
+  color: var(--ink-3);
 }
 @media (max-width: 900px) {
-  .chapter__at {
-    display: none;
+  .head--plate {
+    grid-template-rows: none;
   }
-  .chapter__plate {
-    grid-column: 1 / -1;
-    justify-self: center;
-    width: min(100%, 36rem);
+  .head--plate > :is(.head__main, .head__aside, .head__plate) {
+    grid-area: auto / 1 / auto / -1;
+    border-left: 0;
   }
-}
-@media (max-width: 560px) {
-  .chapter__plate {
-    border-inline: 0;
+  .head--plate > .head__aside {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .head__plate {
+    border-top: 1px solid var(--rule);
   }
 }
 

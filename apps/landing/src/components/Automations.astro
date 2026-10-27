@@ -1,6 +1,10 @@
+---
+import Frontispiece from "./Frontispiece.astro";
+import plate from "../data/gemini-plate.json";
+---
           <!-- ───────────────────────────────────────── [08] Automations -->
           <section class="auto" id="automations" aria-labelledby="auto-title">
-            <div class="head">
+            <div class="head head--plate">
               <div class="head__main">
                 <p class="tag">[08] Automations</p>
                 <h2 id="auto-title" class="h2" data-reveal>Agents that start themselves.</h2>
@@ -9,6 +13,7 @@
                 Run a task every morning, or whenever GitHub opens a pull request. An agent can watch its
                 pull request and wake when checks finish or someone comments.
               </p>
+              <Frontispiece plate={plate} />
             </div>
             <!-- One weekday, three ways an agent starts without you. Each row names the trigger and draws
                  its run on the shared day: the trigger's mark, the agent at work, done. Times are

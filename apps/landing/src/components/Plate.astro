@@ -9,6 +9,8 @@ interface Props {
     relief: number;
     box: number[];
     fig: string;
+    /** The observatory's latitude and longitude, set under the figure line. */
+    at?: string[];
     alt: string;
     credit: string;
     changes: string;
@@ -37,7 +39,10 @@ const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
       <i class="plate__lines" style={art("lines")}></i>
       <i class="plate__outline" style={art("outline")}></i>
     </div>
-    <figcaption class="plate__fig">{plate.fig}</figcaption>
+    <figcaption class="plate__fig">
+      {plate.fig}
+      {plate.at && <span class="plate__at">{plate.at.join(" · ")}</span>}
+    </figcaption>
     <p class="plate__credit">
       After a <a href={plate.source}>photograph by {plate.credit}</a>, {plate.changes} · <a href={plate.licenseUrl} rel="license">{plate.license}</a>
     </p>

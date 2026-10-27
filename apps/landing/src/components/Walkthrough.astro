@@ -1,6 +1,10 @@
+---
+import Frontispiece from "./Frontispiece.astro";
+import plate from "../data/sphinx-plate.json";
+---
           <!-- ───────────────────────────────────────── [04] Walkthrough -->
           <section class="story" id="how" aria-labelledby="story-title" data-story>
-            <div class="head">
+            <div class="head head--plate">
               <div class="head__main">
                 <p class="tag">[04] How the work moves</p>
                 <h2 id="story-title" class="h2" data-reveal>One task, three agents, one change.</h2>
@@ -9,6 +13,7 @@
                 A planning agent splits the work, hands the pieces out and gets the results back. Here is the
                 shape of it, a step at a time.
               </p>
+              <Frontispiece plate={plate} />
             </div>
             <div class="story__runway">
               <div class="story__stage">
