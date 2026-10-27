@@ -13,7 +13,7 @@ interface Props {
 // The launch switch. While true, every legal page carries the draft banner, a noindex tag and
 // "(draft)" in its title. Set it to false to publish; the build then fails while any page still
 // holds a [DECISION], [PENDING] or [VERIFY] marker.
-const DRAFT = true;
+const DRAFT = false;
 
 const { doc } = Astro.props;
 const { title, description, updated } = doc.frontmatter;

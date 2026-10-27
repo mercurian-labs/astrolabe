@@ -1,10 +1,10 @@
 ---
 title: Terms of Service
 description: The terms for Astrolabe's websites and the Astrolabe software Mercurian distributes, including your AI providers and the agents that act on your machine.
-updated: October 25, 2026
+updated: October 26, 2026
 ---
 
-**Effective date:** [DECISION: effective date, proposed: the day astrolabe.sh launches]
+**Effective date:** October 26, 2026
 
 These terms are an agreement between you and Mercurian, Inc. ("Mercurian", "we", "us"). Please read them with our [Privacy Policy](/privacy-policy).
 
