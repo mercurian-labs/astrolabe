@@ -16,11 +16,10 @@ import { menuKeysLabel } from "~/whichKey/leader";
 import { commandLabel } from "./KeybindingsSettings.logic";
 
 /**
- * Astrolabe: the Keybindings table's menu keys (the keyboard menu) and aliases (the Command
- * Palette), beside the shortcuts. Defaults live in code, not in the server's file, so a default is
- * removed with a `-command` rule and restored by deleting that rule; a user rule replaces every
- * default of its command and kind, so editing or adding one writes the command's other defaults of
- * that kind along with it.
+ * Menu keys (the keyboard menu) and aliases (the Command Palette) beside the shortcuts. Defaults
+ * live in code, so a `-command` rule removes one and deleting that rule restores it. A user rule
+ * replaces every default of its command and kind, so writing one writes the command's other
+ * defaults of that kind with it.
  */
 
 export type KeybindingTriggerKind = ResolvedKeybindingTrigger["kind"];

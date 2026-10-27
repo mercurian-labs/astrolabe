@@ -1,17 +1,8 @@
 /**
- * The index of one tree, kept so the next tree costs only what changed. Files'
- * facts are parsed once; edges are resolved per file, and a change re-resolves
- * the changed files plus the files whose references or imports could now land
- * differently. Those are recomputed from stored facts, never re-parsed.
- *
- * A reference narrows to candidates in order: the file's imports (to a module
- * the index holds), then the file's own definitions (Go: its package's), then
- * every definition of the name. What is left labels the edge: one candidate is
- * `exact`, several in one file `overload`, several across files `heuristic`.
- * A name bound to a module the index lacks is external: recorded, never drawn.
- * Only a bare call, construction, or base-type name, unbound, that nothing
- * defines and no builtin carries is a frontier: the name the code uses but has
- * not written. An unresolved member access draws nothing.
+ * One tree's index, kept so the next tree costs only what changed. Facts parse once; a change
+ * re-resolves, from stored facts, the changed files plus those whose references or imports could now
+ * land differently. A reference narrows to its imports, then the file's own definitions (Go: its
+ * package's), then every definition of the name. Unknown modules are external: recorded, never drawn.
  */
 import {
   compareText,

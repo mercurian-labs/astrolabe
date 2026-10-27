@@ -1,9 +1,7 @@
 /**
- * Which files an import names. Each file offers keys (its path, its dotted or
- * `::` module names, its package directory), each import asks for keys in order
- * of preference, and the first key some file offers wins. Keeping both sides
- * as keys lets a change re-resolve exactly the imports a new or deleted file
- * could answer.
+ * Which files an import names. Files offer keys (path, dotted or `::` module names, package
+ * directory), imports ask for keys in order of preference, and the first offered key wins. Keys on
+ * both sides let a change re-resolve exactly the imports a new or deleted file could answer.
  */
 import type { LanguageId } from "../parse/languages.ts";
 

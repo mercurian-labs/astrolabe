@@ -2,12 +2,10 @@ import { neighbourRegion, type FocusDirection, type RegionBox } from "./regions.
 import { focusListRow, isListRow, listDefaultRow } from "./placeLists";
 
 /**
- * Astrolabe: the places the focus moves (`focus.left` …) go between: the icon rail at the far
- * left, the sidebar on screen (Agents, Wikis or Pull Requests), the chat column, and each pane
- * (the right panel's, the Wikis area's, the Pull Requests area's). Never anything inside one. Each
- * place remembers what last had focus in it, and focus returns there. The place keys act from,
- * the one last focused or pressed in, wears `data-focused-place`, which marks its tab in front
- * (see `index.css`); the rail and the sidebar, with no tabs, show only their focused row's ring.
+ * The places focus moves (`focus.left` …) go between: icon rail, sidebar, chat column and each
+ * pane, never anything inside one. Each place remembers its last focus and focus returns there.
+ * The place keys act from (last focused or pressed in) wears `data-focused-place`, marking its
+ * front tab (`index.css`); the rail and sidebar have no tabs, so only their row's ring shows.
  */
 
 const RAIL = "[data-app-rail]";

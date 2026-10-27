@@ -58,12 +58,10 @@ const FILE_EDITOR_THEME = EditorView.theme({
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 
 /**
- * Astrolabe: a repository's file in the Repositories area, in the editor wikis use: Markdown with
- * its live preview, code in its language's colours, Vim when the device has it on. Edits save on
- * their own a moment after typing stops, through the same save as the thread's Files view, which
- * never writes over newer contents an agent or another editor saved. A file nobody may write here
- * (no write access, or too big to read whole) is read only. While an agent works in the same
- * checkout, the file says so.
+ * A repository file in the wiki editor (Markdown preview, code colours, Vim when on). Edits
+ * autosave after typing stops through the thread Files view's save, which never overwrites newer
+ * contents an agent or another editor saved. Files without write access or too big to read whole
+ * are read only, and the view says when an agent works in the same checkout.
  */
 export function RepositoryFileView({
   tabKey,

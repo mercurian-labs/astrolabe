@@ -30,7 +30,7 @@ resize and maximize still drive the panel itself.
   holds **Show every turn** / **Fold quiet turns** and, when the drawing overflows the panel,
   a minimap (`LineageMinimap`, an `aria-hidden` `.h-9` strip: the drawing's paths squeezed,
   a box for the scrolled view that follows `scroll` directly; press or drag to centre there —
-  `preview_click` at strip coordinates drives it). The turn the chat's minimap marks current
+  `preview_act click` at strip coordinates drives it). The turn the chat's minimap marks current
   gets a halo (`circle.fill-foreground/12`), or its fold's button a solid border; drive it
   by setting `.messages-timeline-scroll`'s `scrollTop`. Thread details' Lineage section has **Show lineage** (only when the
   thread has a fork, parent or merge-back), which opens or focuses the tab.
@@ -119,13 +119,13 @@ resize and maximize still drive the panel itself.
   others, Close tabs to the right, Split right, Split down. A lone tab cannot split.
   Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
   **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
-  Escape clears a selection. A middle-click (`preview_click button="middle"`) closes a
+  Escape clears a selection. A middle-click (`preview_act click button="middle"`) closes a
   tab, except a lone empty one.
 - **Dividers**: between panes, a 1px line with a 3px `role=separator` handle
   (`aria-orientation` vertical for a side-by-side split, horizontal for a stacked one)
   that turns the primary colour on hover or drag (`data-active`). Dragging it rewrites
   the branch's `weights`, which persist in the stored tree (the `.root` read below). It
-  is a pointer-capture drag: `preview_drag` from the separator to an element in the
+  is a pointer-capture drag: `preview_act drag` from the separator to an element in the
   neighbouring pane resizes it; read the new `weights` from `.root`.
 - **Maximize pane** / **Restore pane**: fills the panel, shown only beside other
   panes. Separate from T3 Code's **Maximize panel**, which fills the main area.
@@ -175,13 +175,13 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 `Pane actions`.
 
 ```
-preview_click  role=button[name='Toggle right panel']
-preview_click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
-preview_click  [data-pane-id] >> role=button[name='New tab']
-preview_click  role=menuitem[name=/^Files/]
-preview_click  [data-pane-id] >> role=button[name='Pane actions']
-preview_click  role=menuitem[name='Split right']
-preview_click  role=tab[name='<other chat>']                         # swaps the panel
+preview_act click  role=button[name='Toggle right panel']
+preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
+preview_act click  [data-pane-id] >> role=button[name='New tab']
+preview_act click  role=menuitem[name=/^Files/]
+preview_act click  [data-pane-id] >> role=button[name='Pane actions']
+preview_act click  role=menuitem[name='Split right']
+preview_act click  role=tab[name='<other chat>']                         # swaps the panel
 ```
 
 Read the panes:
@@ -231,9 +231,9 @@ reload both reads return the same result.
 
 ## Gotchas
 
-- `preview_click` sends no modifier keys: drive a Cmd-click with `preview_evaluate`
+- `preview_act click` sends no modifier keys: drive a Cmd-click with `preview_evaluate`
   dispatching `new MouseEvent('click', {bubbles: true, metaKey: true})` on the tab
-  (`[data-pane-tab]`). `preview_drag` drops at the target's centre; for a pane-edge drop,
+  (`[data-pane-tab]`). `preview_act drag` drops at the target's centre; for a pane-edge drop,
   dispatch dragstart/dragover/drop with one DataTransfer near the edge, as chat-tabs.md's
   Gotchas do.
 - Closing a terminal asks first: press `role=button[name='Confirm']`.

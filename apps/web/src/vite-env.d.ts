@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_HOSTED_APP_URL: string;
   readonly VITE_HOSTED_APP_CHANNEL: string;
   readonly VITE_T3CODE_AUTH_URL: string;
+  readonly VITE_RELEASE_CHANNEL: string;
   readonly VITE_RELAY_OTLP_TRACES_URL: string;
   readonly VITE_RELAY_OTLP_TRACES_DATASET: string;
   readonly VITE_RELAY_OTLP_TRACES_TOKEN: string;

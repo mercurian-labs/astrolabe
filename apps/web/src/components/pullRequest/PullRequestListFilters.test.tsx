@@ -54,6 +54,7 @@ function menu(overrides: Partial<Parameters<typeof PullRequestFiltersMenu>[0]>) 
     onInvolvement: () => undefined,
     filters: {},
     onFilters: () => undefined,
+    optionScope: [],
     host: undefined,
     hostOptions: [],
     onHost: () => undefined,

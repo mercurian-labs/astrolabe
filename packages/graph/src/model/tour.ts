@@ -1,14 +1,8 @@
 /**
- * The agent's tour of a turn: the visits its cursor makes, one container at a
- * time. A landing chooses the level for the survey; a visit to a closed
- * container whose contents the turn worked does not summarise it but opens
- * it, tells each worked symbol inside in play order (with the links they made,
- * to things inside or out), and closes it again before going on. Nested
- * containers open in turn (folder › file › class). Links between two closed
- * containers stay one ride at the outer level.
- *
- * Each visit carries the edges its plays draw at its own level, so the
- * renderer can light only the links of the visit it is telling.
+ * The agent's tour of a turn, one container at a time. A visit to a closed container the turn
+ * worked inside opens it, tells each worked symbol in play order, and closes it again. Links
+ * between two closed containers stay one ride at the outer level. Each visit carries its own edges,
+ * so the renderer lights only the visit it is telling.
  */
 import { openContainer } from "./level.ts";
 import {
@@ -45,11 +39,9 @@ export interface TourVisit extends Visit {
 const isLink = (visit: Visit) => visit.verb === "link" || visit.verb === "unlink";
 
 /**
- * The tour of `turn` at the level `closed`: its visits, each container the
- * turn worked inside opened into its own. `viewAt` derives the reading's view
- * at a closed set; `held` are the reading's notes (what an opening shows).
- * With `only`, the tour of those plays alone (what a working turn appended):
- * each visit groups, words, and gestures only its own plays.
+ * The tour of `turn` at the level `closed`. `viewAt` derives the view at a closed set; `held` are
+ * the reading's notes (what an opening shows). With `only`, the tour of those plays alone (what a
+ * working turn appended).
  */
 export function turnTour(
   turn: ThreadTurn,

@@ -98,14 +98,10 @@ const mainTextsAtom = Atom.family((key: string) => {
 });
 
 /**
- * The Graph surface. The thread told as an Atlas Graph over the wiki it worked in: each run a
- * turn, its moves the notes it read, wrote, and amended, and the links it added or removed. A
- * thread that handed work to child threads also gets a Work list: its children and the wiki
- * change requests they and it opened.
- *
- * The projection changes on every streamed token, so the story's inputs are reduced to strings
- * first (JSON for the calls and runs, NUL-joined labels) and parsed back behind memos keyed on
- * those strings: the story, and so the graph's layout, only changes when a wiki call does.
+ * The thread told as an Atlas Graph over the wiki it worked in, plus a Work list of child threads
+ * and their change requests. The projection changes on every streamed token, so the story's inputs
+ * are reduced to strings first and parsed back behind memos keyed on them: the story, and so the
+ * graph's layout, only changes when a wiki call does.
  */
 export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const { environmentId, threadId } = threadRef;

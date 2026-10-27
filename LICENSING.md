@@ -24,7 +24,7 @@ adapt a CC BY-SA 4.0 photograph and are CC BY-SA 4.0 too; `apps/landing/public/a
 lists every source of the site's art.
 
 Every build lists the third-party software it ships, with each license text, under **Settings →
-General → Open source licenses**. The list comes from `third-party-licenses.config.json`, the
+About → Legal → Open source licenses**. The list comes from `third-party-licenses.config.json`, the
 production dependencies, and each Rust helper's `THIRD-PARTY-NOTICES.txt`. Two dependencies in it
 aren't open source: Anthropic's Claude Agent SDK and Cursor's SDK, which come under their owners'
 own terms.

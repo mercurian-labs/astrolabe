@@ -21,11 +21,9 @@ const INVITED_TO = `SELECT organization_id FROM auth.invitation WHERE email = $2
 const INVITED_BY = `SELECT inviter_id FROM auth.invitation WHERE email = $2 AND status = 'pending'`;
 
 /**
- * Scopes each shape to its reader with subqueries, so one definition per
- * person holds across membership changes: Electric moves rows in and out as
- * people join, leave and are invited. Someone invited sees the workspace and
- * the inviter of a pending invitation before joining, once their address is
- * verified.
+ * Scopes each shape to its reader with subqueries, so one definition per person holds across
+ * membership changes (Electric moves rows as people join, leave and are invited). Once their
+ * address is verified, an invitee sees a pending invitation's workspace and inviter before joining.
  */
 export function defineShape(shape: WorkspaceShape, reader: ShapeReader): ShapeDefinition {
   const invited = reader.verifiedEmail !== null;

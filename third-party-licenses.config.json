@@ -29,6 +29,29 @@
       "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/kde-snap-shot"
     },
     {
+      "name": "opencode Office viewers",
+      "bundles": ["web"],
+      "license": "MIT",
+      "sourceUrl": "https://github.com/anomalyco/opencode",
+      "noticeFile": "apps/web/src/components/files/office/LICENSE.opencode"
+    },
+    {
+      "name": "QuickJS in pdf.js (quickjs-eval.wasm)",
+      "bundles": ["web"],
+      "license": "MIT",
+      "sourceUrl": "https://github.com/mozilla/pdf.js.quickjs",
+      "generatedNotices": [
+        {
+          "licenseId": "MIT",
+          "copyrights": [
+            "Copyright (c) 2017-2021 Fabrice Bellard",
+            "Copyright (c) 2017-2021 Charlie Gordon",
+            "Copyright (c) 2026 Mozilla Foundation"
+          ]
+        }
+      ]
+    },
+    {
       "bundles": ["desktop", "web"],
       "license": "MIT",
       "name": "Ionic keyboard assist",
@@ -190,6 +213,22 @@
     },
     {
       "bundles": ["ios", "android", "mobile"],
+      "license": "Apache-2.0",
+      "name": "wasm2c runtime (WABT)",
+      "version": "1.0.42",
+      "noticeFile": "apps/mobile/modules/t3-highlights/Vendor/wasm2c/LICENSE",
+      "sourceUrl": "https://github.com/WebAssembly/wabt/tree/1.0.42/wasm2c"
+    },
+    {
+      "bundles": ["ios", "android", "mobile"],
+      "license": "MIT",
+      "name": "SIMD Everywhere",
+      "version": "0.8.2",
+      "noticeFile": "apps/mobile/modules/t3-highlights/Vendor/simde/LICENSE",
+      "sourceUrl": "https://github.com/simd-everywhere/simde/tree/v0.8.2"
+    },
+    {
+      "bundles": ["ios", "android", "mobile"],
       "license": "MIT",
       "name": "RaTeX",
       "version": "0.1.15",
@@ -249,6 +288,124 @@
           "licenseId": "GPL-3.0-or-later",
           "preamble": [
             "The GNU Lesser General Public License, version 3, incorporates the terms of the GNU General Public License, version 3, which follows."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "entities",
+      "version": "8.1.0",
+      "license": "BSD-2-Clause",
+      "sourceUrl": "https://github.com/fb55/entities"
+    },
+    {
+      "name": "@nodable/entities",
+      "version": "2.1.1",
+      "sourceUrl": "https://github.com/nodable/val-parsers",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2026 Nodable"]
+      }
+    },
+    {
+      "name": "xml-naming",
+      "version": "0.1.0",
+      "sourceUrl": "https://github.com/NaturalIntelligence/xml-naming",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2026 Natural Intelligence"]
+      }
+    },
+    {
+      "name": "fast-xml-parser",
+      "version": "5.7.3",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/NaturalIntelligence/fast-xml-parser"
+    },
+    {
+      "name": "@betteroffice/xlsx",
+      "version": "0.3.0",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://github.com/openooxml/betteroffice",
+      "generatedNotice": {
+        "licenseId": "Apache-2.0"
+      }
+    },
+    {
+      "name": "@betteroffice/pptx",
+      "version": "0.2.0",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://github.com/openooxml/betteroffice",
+      "generatedNotice": {
+        "licenseId": "Apache-2.0"
+      }
+    },
+    {
+      "name": "@betteroffice/docx",
+      "version": "0.4.3",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://github.com/openooxml/betteroffice",
+      "generatedNotice": {
+        "licenseId": "Apache-2.0"
+      }
+    },
+    {
+      "name": "character-entities",
+      "version": "2.0.2",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/wooorm/character-entities",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>"]
+      }
+    },
+    {
+      "name": "saxes",
+      "version": "6.0.0",
+      "license": "ISC",
+      "sourceUrl": "https://github.com/lddubeau/saxes",
+      "generatedNotice": {
+        "licenseId": "ISC",
+        "copyrights": [
+          "Copyright (c) 2018-2021 Louis-Dominique Dubeau",
+          "Copyright (c) Contributors",
+          "Copyright (c) Isaac Z. Schlueter and Contributors"
+        ]
+      }
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.4.299",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://github.com/mozilla/pdf.js"
+    },
+    {
+      "name": "@betteroffice/fonts",
+      "version": "0.4.0",
+      "license": "Apache-2.0 AND OFL-1.1",
+      "generatedNotices": [
+        { "licenseId": "Apache-2.0" },
+        {
+          "licenseId": "OFL-1.1",
+          "copyrights": [
+            "Copyright 2012 The Caladea Project Authors (https://github.com/huertatipografica/Caladea)",
+            "Copyright 2013 The Carlito Project Authors (https://github.com/googlefonts/carlito), with Reserved Font Name \"Carlito\"",
+            "Copyright 2013 The Comic Relief Project Authors (https://github.com/loudifier/Comic-Relief)",
+            "Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)",
+            "Copyright 2014-2018 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries. Copyright 2019 Google LLC.",
+            "Copyright 2022 The Gelasio Project Authors (https://github.com/SorkinType/Gelasio)",
+            "Copyright 2014 The Heebo Project Authors (https://github.com/OdedEzer/heebo)",
+            "Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)",
+            "Digitized data copyright (c) 2010 Google Corporation with Reserved Font Arimo, Tinos and Cousine.",
+            "Copyright (c) 2012 Red Hat, Inc. with Reserved Font Name Liberation.",
+            "Copyright 2024 The Montserrat.Git Project Authors (https://github.com/JulietaUla/Montserrat.git)",
+            "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)",
+            "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/hebrew)",
+            "Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans)",
+            "Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)",
+            "Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)",
+            "Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)",
+            "Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries."
           ]
         }
       ]
@@ -792,6 +949,21 @@
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2017 [these people]"]
       }
+    },
+    {
+      "name": "sql.js",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/sql-js/sql.js"
+    },
+    {
+      "name": "tiff",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/image-js/tiff"
+    },
+    {
+      "name": "iobuffer",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/image-js/iobuffer"
     }
   ]
 }

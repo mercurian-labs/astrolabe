@@ -107,22 +107,10 @@ function menuAnchor() {
 }
 
 /**
- * Astrolabe: the keyboard menu, after LazyVim's leader key and which-key, over every page. Its
- * doors are the `whichKey.open` chord (⌘K / Ctrl+K by default), and the device's leader key
- * (Space unless set otherwise, or none) while focus is on no field or control or in a Vim
- * editor's normal and visual modes. Its rows are the keybindings' menu keys, each running
- * its command from the registry (`commands.ts`), which also runs Astrolabe's commands bound to
- * shortcuts, and lends itself to the Command Palette. It applies the server's vimrc too. The
- * chord shows the menu at once; the leader waits a moment, so a fast sequence runs without it
- * drawing. Open, it reads every key: a group key walks in, a command key runs and
- * closes it, Backspace goes up, Escape closes it, and so do a click elsewhere and the window
- * losing focus. Ctrl+N and Ctrl+P on a Mac, and the arrow keys in a group that does not bind
- * them (the root binds them to focus moves), move a cursor over the rows, which Enter or a click
- * chooses. It never times out. Focus stays where it was throughout. A repeatable command chosen
- * by its key (the focus moves' arrows and h/j/k/l) leaves the menu armed for the device's repeat
- * window (`menuRepeatWindowMs`): its key runs it again without the menu showing, each run
- * restarting the window, until another key (which the page then gets, Escape aside), a click,
- * or the window passing.
+ * The keyboard menu, after LazyVim's leader key and which-key. The `whichKey.open` chord shows it
+ * at once; the leader (outside fields, or in Vim normal/visual mode) waits a moment so a fast
+ * sequence runs without drawing. Focus stays put and it never times out. A repeatable command run
+ * by its key re-arms for `menuRepeatWindowMs`, until another key, a click or the window passing.
  */
 export function WhichKey() {
   const [menu] = useState(createWhichKeyMenu<KeyOrigin>);

@@ -59,10 +59,10 @@ preview_set_appearance  colorScheme=system
 preview_navigate   target={kind:'environment-port', port:<webPort>, path:'/settings/appearance'}
 preview_wait_for   text=Mercurian
 preview_evaluate   [...document.querySelectorAll('[data-theme-library-card]')].map(e => e.dataset.themeLibraryCard)
-preview_click      role=button[name='Duplicate Mercurian']        // the editor opens with Advanced on
+preview_act click      role=button[name='Duplicate Mercurian']        // the editor opens with Advanced on
 preview_wait_for   role=textbox[name='Focus bar hex value']
-preview_click      role=button[name='Close the theme editor']
-preview_press      key=a  modifiers=["Meta","Alt"]                // opens Change theme
+preview_act click      role=button[name='Close the theme editor']
+preview_act press      key=a  modifiers=["Meta","Alt"]                // opens Change theme
 ```
 
 **Proof:** `themeId` is `mercurian` on a fresh incognito profile, and the

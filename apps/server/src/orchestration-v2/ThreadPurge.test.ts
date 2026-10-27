@@ -126,7 +126,11 @@ const created = (thread: OrchestrationV2AppThread): OrchestrationV2DomainEvent =
   payload: thread,
 });
 
-const message = (threadId: ThreadId, id: string): OrchestrationV2DomainEvent => ({
+const message = (
+  threadId: ThreadId,
+  id: string,
+  text = `Use ${SECRET} for the deploy`,
+): OrchestrationV2DomainEvent => ({
   id: EventId.make(`event:message:${id}`),
   type: "message.updated",
   threadId,
@@ -140,7 +144,7 @@ const message = (threadId: ThreadId, id: string): OrchestrationV2DomainEvent => 
     runId: null,
     nodeId: null,
     role: "user",
-    text: `Use ${SECRET} for the deploy`,
+    text,
     attachments: [],
     streaming: false,
     createdAt: now,
@@ -328,6 +332,41 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
     // A retry after a crash finds nothing left to do.
     yield* purge(deletedId);
     assert.equal((yield* storedEvents(deletedId)).length, 2);
+  }).pipe(Effect.provide(layerTest([]))),
+);
+
+it.effect("leaves none of its messages' text in the search index", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const sink = yield* EventSink.EventSinkV2;
+    const deletedId = ThreadId.make("thread:purge-search-deleted");
+    const keptId = ThreadId.make("thread:purge-search-kept");
+    yield* sink.write({
+      events: [
+        created(makeThread(deletedId)),
+        message(deletedId, "message:search-deleted", "zebraquokka passphrase"),
+        created(makeThread(keptId)),
+        message(keptId, "message:search-kept", "ordinary weather report"),
+      ],
+    });
+    yield* deleteThread(deletedId);
+    yield* purge(deletedId);
+
+    const search = (term: string) => sql`
+      SELECT rowid FROM orchestration_v2_message_search
+      WHERE orchestration_v2_message_search MATCH ${term}
+    `;
+    assert.lengthOf(yield* search("quokka"), 0);
+    assert.lengthOf(yield* search("weather"), 1);
+    // A contentless index only marks deleted text; its segments must not hold it either.
+    const segments = yield* sql<{ readonly block: Uint8Array | null }>`
+      SELECT block FROM orchestration_v2_message_search_data
+      UNION ALL SELECT term FROM orchestration_v2_message_search_idx
+    `;
+    const stored = Buffer.concat(segments.map((row) => Buffer.from(row.block ?? []))).toString(
+      "latin1",
+    );
+    for (const trigram of ["zeb", "quo", "raq", "uok"]) assert.notInclude(stored, trigram);
   }).pipe(Effect.provide(layerTest([]))),
 );
 

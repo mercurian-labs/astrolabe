@@ -1,11 +1,8 @@
 /**
- * "lean": the flat reading on a stripped-down Three.js renderer. One
- * orthographic camera set straight from the flat view, no controls, no depth
- * test, no depth fade or cut. Node positions stay GPU-resident in the node
- * state's float textures; nodes are one instanced draw, ribbons one, beads one
- * Points draw, and labels our own glyph-quad layers over troika's SDF atlas
- * (see labelMesh.ts): one draw for ordinary labels, two for the outlined
- * prominent ones on top. A frame's label work is a compare per drawn label.
+ * "lean": the flat reading on a stripped-down Three.js renderer (one orthographic camera, no
+ * controls, no depth test or fade). Positions stay GPU-resident; nodes, ribbons, and beads are one
+ * draw each, and labels are glyph-quad layers over troika's SDF atlas (see labelMesh.ts), so a
+ * frame's label work is a compare per drawn label.
  */
 import { OrthographicCamera, Scene, WebGLRenderer } from "three";
 

@@ -18,13 +18,9 @@ export function safeAgentColor(color: unknown): string {
 }
 
 /**
- * Marks this awareness as an agent. The `user` field is what `yCollab` reads to draw the
- * named remote cursor; the `agent` field is what `readAgents` reads to attribute text.
- *
- * `awareness` must be bound to the same `Y.Doc` the agent writes with: attribution matches
- * the awareness client id against the client id on inserted Yjs items. Declare before the
- * agent's first write reaches other peers; text that arrives before this state is never
- * highlighted.
+ * Marks this awareness as an agent: `yCollab` reads `user` for the named cursor, `readAgents` reads
+ * `agent` to attribute text. Bind `awareness` to the `Y.Doc` the agent writes with (attribution
+ * matches client ids) and declare before its first write reaches peers; earlier text is never marked.
  */
 export function declareAgent(awareness: Awareness, presence: AgentPresence): void {
   const color = safeAgentColor(presence.color);

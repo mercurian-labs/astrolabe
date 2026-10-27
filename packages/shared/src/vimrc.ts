@@ -7,15 +7,10 @@ import type {
 } from "@t3tools/contracts";
 
 /**
- * Astrolabe: a vimrc for `@replit/codemirror-vim`: the lines its global `Vim` API can apply. Maps
- * and noremaps with their mode prefixes, unmaps of what the vimrc itself mapped (as in Vim, where a
- * built-in key is no mapping to remove), `set` for the options the package defines, and `"`
- * comments. Each line that cannot be applied comes back as an error on that line. Applying a
- * vimrc again first undoes what the last one did, so an edit never leaves stale mappings.
- *
- * The server checks a vimrc file with `checkVimrc` and edits it with the line-preserving
- * `upsertVimrcMapping`, `removeVimrcMapping`, and `setVimrcOption`; the web applies it to every
- * Vim editor with `createVimrcApplier`.
+ * Astrolabe: a vimrc of what `@replit/codemirror-vim`'s global `Vim` API can apply: maps and noremaps
+ * with mode prefixes, unmaps of the vimrc's own maps, `set` for the package's options, `"` comments.
+ * Unappliable lines come back as per-line errors. Reapplying first undoes the last application, so an
+ * edit never leaves stale mappings.
  */
 
 /** A mode as the package names it; none is Vim's `:map` (normal, visual, operator-pending). */

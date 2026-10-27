@@ -2,6 +2,8 @@ import { assert, it } from "@effect/vitest";
 import {
   CommandId,
   EventId,
+  GuestMessageId,
+  GuestShareId,
   MessageId,
   NodeId,
   type OrchestrationV2Run,
@@ -222,6 +224,44 @@ it.effect("cancels active work without reviving a run while disposing delegated 
       (event) => event.type === "run.updated" && event.payload.id === queuedRun.id,
     );
     assert.lengthOf(queuedRunUpdates, 1);
+  }).pipe(Effect.provide(IdAllocator.layer)),
+);
+
+it.effect("drops the guest share, its guest's name and messages, from the deleted thread", () =>
+  Effect.gen(function* () {
+    const base = makeProjection();
+    const projection: OrchestrationV2ThreadProjection = {
+      ...base,
+      thread: {
+        ...base.thread,
+        guestShare: {
+          id: GuestShareId.make("guest-share:delete-plan"),
+          host: "tunnel.example.test",
+          createdAt: "2026-09-01T00:00:00.000Z",
+          expiresAt: "2026-09-02T00:00:00.000Z",
+          guestName: "Guest Name",
+          messages: [
+            {
+              id: GuestMessageId.make("guest-message:delete-plan"),
+              text: "Guest secret text",
+              status: "pending",
+              submittedAt: "2026-09-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    };
+    const plan = yield* planThreadDeletion({
+      command,
+      projection,
+      attachmentIds: [],
+      now: deletedAt,
+      idAllocator: yield* IdAllocator.IdAllocatorV2,
+    });
+    const deletedEvent = plan.events.find((event) => event.type === "thread.deleted");
+    assert.isDefined(deletedEvent);
+    assert.notInclude(JSON.stringify(deletedEvent), "Guest");
+    assert.isNull(plan.events.reduce(applyToProjection, projection).thread.guestShare);
   }).pipe(Effect.provide(IdAllocator.layer)),
 );
 

@@ -58,12 +58,10 @@ import {
 } from "./pullRequestTabs";
 
 /**
- * Astrolabe: the Pull Requests main area, open pull requests in tabs that split, as the Wikis
- * area holds documents (see `wikiPanes`). The tabs mirror the page's own right-panel record
- * (`PULL_REQUESTS_PANEL_REF`), which the page opens, activates and closes pull requests through,
- * so the list, the URL and the panes stay one selection. T3 Code keeps that record for the
- * session only; each tab's key names its pull request in full, so the saved tabs put theirs back
- * when the panes load (`restorePullRequestTabs`). Each pane renders its front pull request.
+ * The Pull Requests main area: open pull requests in tabs that split, like `wikiPanes`. The tabs
+ * mirror the page's right-panel record (`PULL_REQUESTS_PANEL_REF`), so the list, URL and panes
+ * stay one selection. T3 Code keeps that record per session only, so each tab key names its pull
+ * request in full for `restorePullRequestTabs` to put back on load.
  */
 export interface PullRequestPanesProps {
   /** The detail of one open pull request; `active` says it is the focused pane's. */

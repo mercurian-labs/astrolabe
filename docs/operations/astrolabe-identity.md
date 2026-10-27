@@ -100,6 +100,22 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   the desktop app opens, and the `promptLinkDeepLink` default the hosted landing hands to the app.
 - `apps/server/src/cloud/bootService.ts`: background service unit name and launchd label.
 
+### Astrolabe features in upstream's shell
+
+Astrolabe's own feature modules rarely conflict. These upstream files carry its hooks:
+
+- `apps/web/src/routes/_chat.settings.change-requests.tsx` and `_chat.settings.workspaces.tsx`:
+  Settings opens as a modal over `_chat`, so Astrolabe's settings pages are `_chat.settings.*`
+  routes, listed in the nav groups in `settingsSearch.ts`. Regenerate `routeTree.gen.ts` after
+  renaming one.
+- `apps/web/src/components/KeybindingsUpdateToast.tsx`: the vimrc toasts.
+- `apps/mobile/src/features/workspace/workspace-tabs-state.ts`: upstream's configurable tab model,
+  with Astrolabe's Wikis, Repositories and Changes tabs added to it.
+- `packages/client-runtime/src/relay/cloudAccountService.ts` and
+  `apps/mobile/src/features/cloud/cloudAccountService.ts`: upstream types the account service on
+  Clerk. Astrolabe adapts it to the Mercurian account and keeps `@clerk/*` out of the dependency
+  tree.
+
 ### Home folder
 
 - `apps/server/src/os-jank.ts` (`resolveBaseDir`), `apps/server/src/cli/browser.ts`,
@@ -227,7 +243,8 @@ Upstream only hides a deleted thread. Astrolabe erases it: a `thread.purge` effe
 `planThreadDeletion` runs `apps/server/src/orchestration-v2/ThreadPurge.ts`, and that file has no
 upstream counterpart. Keep these smaller edits on every sync:
 
-- `ThreadDeletion.ts`: the tombstone on `thread.deleted` and the queued purge.
+- `ThreadDeletion.ts`: the tombstone on `thread.deleted`, which also clears `guestShare`, and the
+  queued purge.
 - `EffectOutbox.ts`, `EffectWorker.ts`, `runtimeLayer.ts`: the `thread.purge` request, its case,
   and the service with its sweep worker.
 - `OrchestrationEventStore.ts`: the prompt-hint key includes the thread id, so a subagent prompt
@@ -239,8 +256,11 @@ upstream counterpart. Keep these smaller edits on every sync:
 - `packages/client-runtime/src/state/threadDeletion.ts`: the confirmation copy all clients show.
 
 A new upstream table that stores thread content belongs in `THREAD_CONTENT_TABLES` in
-`ThreadPurge.ts`. Backfills run from the purge's sweep, never as migrations: the migration ids are
-shared with upstream, and the migrator skips every id below the highest one applied.
+`ThreadPurge.ts`. The message search index (`orchestration_v2_message_search`, FTS5) has no thread
+id, so it can't be listed there: deleting a message only marks its text deleted inside the index,
+and the purge runs the index's `optimize` after deleting messages so the text leaves the file.
+Backfills run from the purge's sweep, never as migrations: the migration ids are shared with
+upstream, and the migrator skips every id below the highest one applied.
 
 Deletion still leaves:
 
@@ -299,8 +319,8 @@ through one of these values in the merge commit.
   no Expo update URL and over-the-air updates are off, so a launch sends Expo nothing, and the
   in-app update check is hidden (it follows `Updates.isEnabled`). `eas submit` goes to Astrolabe's
   own App Store Connect app: upstream's `ascAppId` would submit to T3 Code's listing.
-- **Store listings and downloads.** Upstream's links install T3 Tools' apps. **Settings → General
-  → Mobile app** and its search entry show only the stores that have a URL, and nothing without
+- **Store listings and downloads.** Upstream's links install T3 Tools' apps. **Settings → About →
+  Mobile app** and its search entry show only the stores that have a URL, and nothing without
   one. The hosted app's "Or download the desktop app" and "Get Astrolabe" links need
   `DESKTOP_DOWNLOAD_URL`, the download page on `apps/landing`, which reads this repository's
   latest release. The mobile app links to no store. `apps/marketing` is upstream's own
@@ -312,10 +332,15 @@ through one of these values in the merge commit.
   `TRIAGE_REPOSITORY` is unset. The playbook text (both copies) still names upstream's repository
   and T3 Code; turning triage on means pointing it at Astrolabe's first.
 - **Remote-access troubleshooting.** The "More info" links in the CLI's reachability diagnosis,
-  server logs, **Settings → Connections** and the client's connection diagnosis pointed at
+  server logs, **Settings → Sharing & access** and the client's connection diagnosis pointed at
   upstream's copy of `docs/user/t3-connect-troubleshooting.md`, which describes T3 Connect. They
   are left out until Astrolabe publishes its own. The GNOME extension's `metadata.json` names no
   homepage, since upstream's linked to its repository.
+- **Maintainer infrastructure.** Upstream's shared task cache (`.task-cache.json`,
+  `infra/task-cache`) and relay preview stages run on T3 Tools' accounts. Astrolabe's
+  `.task-cache.json` names an unreachable `.invalid` endpoint (upstream's installer tests read it),
+  never deploys `infra/task-cache`, and keeps the jobs in `relay-preview.yml`,
+  `relay-preview-cleanup.yml` and `stale-needs-more-info.yml` at `if: false`.
 
 Sign-in (`app.astrolabe.sh`) and the Apple team (`SC9Q89Q4B6`) are Mercurian's. These are still
 upstream's:
@@ -338,8 +363,8 @@ upstream's:
   into them, and if some has to move, it keeps T3 Tools' MIT notice.
 - Every other `package.json` declares `"license": "MIT"`, private ones included. Upstream declares
   it only in `apps/server`; the line in the rest is ours, so keep it when upstream edits next to it,
-  and give a new upstream package the same line in the merge commit. The `t3-review-diff` and
-  `t3-terminal` podspecs say MIT where upstream's say `UNLICENSED`.
+  and give a new upstream package the same line in the merge commit. The `t3-review-diff`,
+  `t3-terminal` and `t3-highlights` podspecs say MIT where upstream's say `UNLICENSED`.
 - `LICENSING.md`, `TRADEMARKS.md` and the "Licensing of contributions" section at the end of
   `CONTRIBUTING.md` are Astrolabe's. Keep that section when upstream rewrites the guide.
 - `.github/SECURITY.md` is Astrolabe's: upstream's sends vulnerability reports to T3 Tools. Keep
@@ -362,13 +387,14 @@ merging upstream doc changes.
 Then look for new links to upstream's services ([Upstream services](#upstream-services)):
 
 ```sh
-git grep -nE 't3\.codes|pingdotgg|u\.expo\.dev|apps\.apple\.com|play\.google\.com' \
+git grep -nE 't3\.codes|pingdotgg|pinglabs|u\.expo\.dev|apps\.apple\.com|play\.google\.com' \
   -- apps packages scripts infra .env.example ':!*.test.*' ':!**/fixtures/**' ':!apps/marketing' \
   ':!.repos' | grep -vE '^[^:]+:[0-9]+:\s*(//|\*|/\*|#)'
 ```
 
 Expected hits: the triage playbook text, the model manifest URL, the `t3.json` schema URL, the
-GNOME extension's `snap-shot@t3.codes` uuid, the mobile `deps` README, and maintainer scripts that quote upstream's repository.
+GNOME extension's `snap-shot@t3.codes` uuid, the mobile `deps` README, maintainer scripts that quote upstream's repository,
+and upstream's task cache in `infra/task-cache`.
 
 Expected exceptions:
 

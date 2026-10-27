@@ -1,10 +1,8 @@
 // Astrolabe · drafting · the download page
 //
-// Resolves every `[data-asset]` link against the latest release and tells the page which of four
-// states it is in (data-release): pending while GitHub is asked, ready with a release, none before
-// the first release, unavailable when GitHub can't be reached (the links stay on the releases page).
-// The visitor's platform is read before the first paint by the page's inline script; this refines
-// it with the architecture where the browser will say (Chromium on Linux).
+// Points `[data-asset]` links at the latest release. data-release is pending, ready, none (no
+// release yet) or unavailable (GitHub unreachable, so links stay on the releases page). The inline
+// script picks the platform before first paint; this adds the architecture Chromium gives on Linux.
 
 import { NoRelease, RELEASES_URL, assetFor, fetchRelease } from "./releases.js";
 
@@ -52,7 +50,7 @@ async function load() {
     for (const link of links) link.href = assetFor(release, link.dataset.asset)?.url ?? release.url;
     for (const link of page.querySelectorAll("[data-release-link]")) link.href = release.url;
     set("version", release.tag);
-    set("published", release.published ? dateFormat.format(new Date(release.published)) : "—");
+    set("published", release.published ? dateFormat.format(new Date(release.published)) : "–");
     page.dataset.release = "ready";
   } catch (error) {
     if (error instanceof NoRelease) {
@@ -68,7 +66,7 @@ async function load() {
       set("version", "See GitHub");
       page.dataset.release = "unavailable";
     }
-    set("published", "—");
+    set("published", "–");
   }
 }
 

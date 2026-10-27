@@ -37,30 +37,40 @@ type Request =
  */
 export function Device(props: { readonly userCode: string | null }) {
   const userCode = props.userCode?.trim().toUpperCase() ?? null;
-  const [request, setRequest] = useState<Request>({ kind: "loading" });
+  const [lookup, setLookup] = useState<{ readonly userCode: string; readonly request: Request }>();
   const [outcome, setOutcome] = useState<"approved" | "denied" | null>(null);
   const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userCode) {
-      setRequest({ kind: "missing" });
-      return;
-    }
-    setRequest({ kind: "loading" });
+    if (!userCode) return;
+    let current = true;
     void authClient.device({ query: { user_code: userCode } }).then(({ data, error }) => {
+      if (!current) return;
       if (error || !data) {
-        setRequest({
-          kind: "error",
-          message: errorMessage(error, "We couldn't find that code. It may have expired."),
+        setLookup({
+          userCode,
+          request: {
+            kind: "error",
+            message: errorMessage(error, "We couldn't find that code. It may have expired."),
+          },
         });
         return;
       }
       const clientId =
         "client_id" in data && typeof data.client_id === "string" ? data.client_id : null;
-      setRequest({ kind: "found", status: data.status, clientId });
+      setLookup({ userCode, request: { kind: "found", status: data.status, clientId } });
     });
+    return () => {
+      current = false;
+    };
   }, [userCode]);
+
+  const request: Request = !userCode
+    ? { kind: "missing" }
+    : lookup?.userCode === userCode
+      ? lookup.request
+      : { kind: "loading" };
 
   const answer = async (approve: boolean) => {
     if (!userCode) return;

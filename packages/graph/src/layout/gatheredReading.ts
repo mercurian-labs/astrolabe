@@ -1,9 +1,7 @@
 /**
- * The thread's reading, gathered: for each checkpoint, the notes the reading
- * shows are drawn into a cluster that grows from the previous checkpoint's.
- * Checkpoint k needs k−1's cluster, so checkpoints are gathered in order and
- * cached; jumping to k walks 0..k once. A pick never regathers: it lights
- * and grows notes where they stand.
+ * Each checkpoint's reading gathers into a cluster grown from the previous checkpoint's, so
+ * checkpoints are gathered in order and cached (jumping to k walks 0..k once). A pick never
+ * regathers: it lights and grows notes where they stand.
  */
 import type { Memory } from "../model/memory.ts";
 import { closedKey } from "../model/level.ts";

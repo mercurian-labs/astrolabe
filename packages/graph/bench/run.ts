@@ -1,16 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off - A host script: it drives a browser and writes result files.
 /**
- * The bench runner: opens the bench page in headed Chromium with the GPU on,
- * runs a matrix, writes `bench/results/<date>.json` and `.md`, and exits 1
- * when the p95 render time of any cell regressed past the threshold against
- * `bench/baseline.json`. It uses a running dev server (it starts none):
- *
- *   node bench/run.ts [--url http://localhost:5187] [--modes 3d,flat,lean,pixi]
- *     [--sizes 600,3000,10000] [--scenarios load,rest,glide,story,pan,zoom,hover]
- *     [--runs 3] [--threshold 0.15] [--quick] [--write-baseline]
- *
- * `--quick` is every mode at 600 notes, glide, pan, and rest, one run.
- * `--write-baseline` saves the run as the new baseline instead of comparing.
+ * Opens the bench page in headed Chromium (GPU on), runs a matrix, writes `bench/results/<date>.*`,
+ * and exits 1 when any cell's p95 render time regressed past `--threshold` against
+ * `bench/baseline.json`. Needs a running dev server; it starts none. `--quick` is every mode at 600
+ * notes, one run; `--write-baseline` saves the run as the baseline instead of comparing.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

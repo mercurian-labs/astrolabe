@@ -1,9 +1,7 @@
-// Astrolabe · drafting
-//
-// Motion here plays once on arrival or answers the pointer, and every loop stops when it settles.
-// One rAF, woken by scroll, maps scroll position to the effects that need it (the manifesto's ink,
-// the thread figure, the header). With reduced motion every finished state
-// shows at once and every interaction still works; without this script the page reads as a document.
+// Astrolabe · drafting. Motion plays once on arrival or answers the pointer; every loop stops when
+// it settles. One scroll-woken rAF maps scroll position to the effects that need it (manifesto ink,
+// thread figure, header). Reduced motion shows every finished state at once with interaction intact;
+// without this script the page reads as a document.
 
 const root = document.documentElement;
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
@@ -96,15 +94,10 @@ const once = (targets, onEnter, options) => {
 };
 once($$("[data-reveal]"), (el) => el.classList.add("is-in"), { threshold: 0.2 });
 
-/* ───────────────────────────── The astrolabe's sighting: a crosshair, rulers and a readout of the true altitude
-   and azimuth under the pointer, which instrument.js reads back through the plate's projection
-   (window.astrolabeSight). With JavaScript and a fine pointer that hovers, the sighting mark is the
-   pointer: CSS hides the system cursor while the field is sighting (.takes-cursor.is-sighting), the
-   mark sits exactly on the pointer, and the guides and readout ease after it. Over the field's own
-   controls (the Now button) the field stops sighting and the system cursor comes back; so it does
-   when the pointer leaves, the window blurs or the tab hides. The instrument's hit areas (the rete's
-   handle, its stars) are the instrument itself, so they keep the mark. Runs one rAF per pointer
-   move while the guides settle, and nothing at rest. */
+/* ───────────────────────────── The astrolabe's sighting: crosshair, rulers and a true altitude and
+   azimuth readout (instrument.js inverts the projection via window.astrolabeSight). With a fine hovering
+   pointer the mark is the pointer and CSS hides the cursor; controls, leave, blur and a hidden tab
+   give it back, the rete's hit areas keep it. One rAF per move while guides settle, none at rest. */
 
 const field = $("[data-sight]");
 if (field) {

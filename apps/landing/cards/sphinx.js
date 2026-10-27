@@ -1,10 +1,7 @@
-// Astrolabe · share cards · the Sphinx (see sphinx.html for the query).
-//
-// The print is src/scripts/plate.js's shader, less the eyepiece, under one frozen light; keep the two
-// in step when the plate changes. By day it is the page's day print under a low sun. At night the page
-// itself lights the building only by the sky, which leaves it a silhouette; the card keeps the night's
-// inks and lamps but lights the building with a low moon, so it keeps its modelling: ivory grain where
-// the light falls, the night paper where it does not, and the two upper windows printed flat in rust.
+// Astrolabe · share cards · the Sphinx (see sphinx.html for the query). The print is
+// src/scripts/plate.js's shader less the eyepiece, under one frozen light; keep the two in step.
+// At night the page lights the building only by sky (a silhouette); the card uses a low moon so it
+// keeps its modelling, with the two upper windows printed flat in rust.
 
 import Twilight from "/src/scripts/twilight.js";
 import { done, fonts, params } from "./frame.js";

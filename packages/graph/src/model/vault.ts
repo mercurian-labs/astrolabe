@@ -1,12 +1,8 @@
 /**
- * Turns a flat vault of Markdown notes into a `Memory`. The index script reads
- * the files and hands their text here; nothing in this module touches a disk.
- *
- * - A note is a top-level `*.md` file; its name is the filename without `.md`.
- * - `[[Target]]`, `[[Target|alias]]`, `[[Target#heading]]`, and embeds all link to `Target`.
- * - A target no file holds is a red link and becomes a frontier note.
- * - A `*.skillmap.md` file is a lens, never a note: its YAML frontmatter lists
- *   typed edges `{ from, type, to, rationale }` and a `types` vocabulary.
+ * A flat vault of Markdown notes as a `Memory`; nothing here touches a disk. A note is a top-level
+ * `*.md` file; `[[Target]]` in any form (alias, heading, embed) links to `Target`, and a target no
+ * file holds is a red link. A `*.skillmap.md` file is a lens, never a note: its frontmatter lists
+ * typed edges and a `types` vocabulary.
  */
 import { parse as parseYaml } from "yaml";
 

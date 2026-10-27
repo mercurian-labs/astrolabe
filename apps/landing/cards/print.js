@@ -1,22 +1,7 @@
-// Astrolabe · share cards · the two-ink print
-//
-// The footer's ground (src/scripts/footer.js), lifted out of the page so a card can be printed at an
-// exact size: Beethoven basin's height (public/assets/footer/terrain.webp) under a low sun, ivory and
-// olive grain thresholded against the same seeded noise. Keep the ground in step with the footer's
-// shader when the print changes.
-//
-// What a card says is a second impression in the same ink and the same grain: the plate (the
-// wordmark, the line, the monogram) is flat, inked at one density and cut by the noise like the
-// ground, with the ground knocked out a few pixels round it so the letters keep their edge. Nothing
-// is lit, raised or shadowed.
-//
-// The day print is the same ground read the other way, as relight.js prints it by day: dark ink where
-// the ground is darker than the paper, so level ground stays paper and the walls turned from the sun
-// fill with ink.
-//
-// print(canvas, { ink: "night" | "day", plate, sun?, ground?, gain? }) draws once. `plate` is a canvas
-// the size of this one: red the ivory (or ink) cover, green the rust. `ground` is { scale, offset }
-// (CSS px per texel, and where the data's top left sits), defaulting to cover.
+// Astrolabe · share cards · the two-ink print. The ground is the footer's (src/scripts/footer.js)
+// lifted out to print at an exact size; keep it in step with the footer's shader. The plate is inked
+// flat in the same grain, the ground knocked out round it so letters keep their edge; day inverts.
+// `plate` is a same-size canvas (red = ivory/ink cover, green = rust); `ground` defaults to cover.
 
 const RAD = Math.PI / 180;
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);

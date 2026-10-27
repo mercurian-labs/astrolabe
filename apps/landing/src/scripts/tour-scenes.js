@@ -1,22 +1,7 @@
-// The hero tour's script: three scenarios played over one drawn window (HeroWindow.astro).
-//
-// The main one, "Add Apple Pay to checkout", plays once on arrival: Claude plans the work and hands
-// two tasks to two subagents, Codex and a second Claude, each in a worktree of its own; their
-// results land back in its thread; it brings the wiki's Payments page up to date; and the two pull
-// requests and the wiki change merge as one change group. The two examples play when their prompt
-// chip is clicked: Codex hands a fix to Claude for review, and Claude schedules a nightly task whose
-// run shows up the next morning.
-//
-// Each phase is a list of { at, type, payload } events, `at` in ms from the phase's start, and
-// names the tour segment it fills. Types:
-//   show / hide   payload: a data-k key, or a list of them
-//   swap          payload: { from, to }, one part giving way to another in the same place
-//   press         payload: a data-p key, a control pressed
-//   section       payload: "agents" | "wikis" | "changes", the rail's section
-//   thread        payload: a thread id, the chat on show (its tab in front, its row marked)
-//   cpane         payload: "group" | "pr", the tab in front in Changes
-//   edits         payload: "live" | "settled" | "accepted", how the wiki draws the agent's words
-//   merge         payload: "off" | "on", the change group's Merge with the code switch
+// The hero tour's script: three scenarios over one drawn window (HeroWindow.astro); the main one plays
+// on arrival, each example when its prompt chip is clicked. A phase is { at, type, payload } events
+// (`at` ms from phase start). Types: show/hide (data-k keys), swap { from, to }, press (data-p),
+// section, thread, cpane ("group" | "pr"), edits ("live" | "settled" | "accepted"), merge ("off" | "on").
 
 const send = (draft) => [
   { at: 0, type: "show", payload: "placeholder" },

@@ -1,13 +1,7 @@
 /**
- * The cursor's popover: the shown turn's moves in the play-by-play's words,
- * riding beside the agent's cursor, since attention is already there. The
- * rows the cursor is telling (or the chosen play) are lit, and the list
- * scrolls to keep them in view; the rest of the turn is scrollback. Each row
- * is a door: choosing it puts the cursor on that move and the map lights it,
- * choosing it again lets go. A heading chooses every move under it.
- *
- * `AtlasGraph` renders it while its host opens it (`popover`); it is placed
- * by the cursor's position (see `popoverPlace`), never by React.
+ * The cursor's popover: the shown turn's moves beside the agent's cursor, since attention is
+ * already there. Each row is a door: choosing it puts the cursor on that move, choosing it again
+ * lets go. Placed by the cursor's position (see `popoverPlace`), never by React.
  */
 import { useEffect, useMemo, useRef, type Ref } from "react";
 

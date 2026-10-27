@@ -4,14 +4,15 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { GlassSurface } from "../../components/ui/GlassSurface";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import {
-  WORKSPACE_DOCK,
-  WORKSPACE_TABS,
-  WORKSPACE_TAB_ICONS,
+  NAVIGATION_TAB_ICONS,
   WORKSPACE_TAB_LABELS,
-} from "./workspace-tabs-state";
+  useEnabledNavigationTabs,
+} from "./navigation-tabs";
+import { WORKSPACE_DOCK } from "./workspace-tabs-state";
 
 export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
   const workspace = useWorkspaceTabs()!;
+  const tabs = useEnabledNavigationTabs();
   return (
     <View
       className="w-full flex-row items-center justify-between"
@@ -19,19 +20,19 @@ export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
     >
       <GlassSurface
         style={{
-          width: WORKSPACE_DOCK.tabWidth * WORKSPACE_TABS.length,
+          width: WORKSPACE_DOCK.tabWidth * tabs.length,
           height: WORKSPACE_DOCK.height,
           borderRadius: WORKSPACE_DOCK.height / 2,
         }}
       >
         <View className="flex-1 flex-row p-1" accessibilityRole="tablist">
-          {WORKSPACE_TABS.map((tab) => {
+          {tabs.map((tab) => {
             const selected = workspace.state.selectedTab === tab;
             return (
               <Pressable
                 key={tab}
                 accessibilityRole="tab"
-                accessibilityLabel={WORKSPACE_TAB_LABELS[tab].title}
+                accessibilityLabel={WORKSPACE_TAB_LABELS[tab]}
                 accessibilityState={{ selected }}
                 onPress={() => {
                   if (selected) return;
@@ -45,7 +46,7 @@ export function WorkspaceDock(props: { readonly onNewTask: () => void }) {
                 }
               >
                 <SymbolView
-                  name={WORKSPACE_TAB_ICONS[tab]}
+                  name={NAVIGATION_TAB_ICONS[tab]}
                   size={23}
                   tintColorClassName={selected ? "accent-focus" : "accent-icon"}
                 />

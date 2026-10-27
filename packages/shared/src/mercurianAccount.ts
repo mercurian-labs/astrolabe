@@ -2,14 +2,10 @@
 import * as Schema from "effect/Schema";
 
 /**
- * Astrolabe accounts, as every client sees them. People sign in on the
- * app.astrolabe.sh pages and the client never handles a password.
- *
- * The hosted web app is served from the pages' origin and shares their session cookie. Every other
- * client (local, LAN and Tailscale web, the desktop shell, mobile) can't
- * receive that cookie, so it signs in with a device code approved on
- * app.astrolabe.sh and keeps the session token itself. Relay access always
- * goes through a short-lived token from `/api/auth/token`.
+ * Astrolabe accounts: people sign in on app.astrolabe.sh pages and clients never handle a password.
+ * The hosted web app shares those pages' session cookie; every other client (local, LAN and Tailscale
+ * web, desktop, mobile) can't, so it signs in with an approved device code and keeps the session
+ * token itself. Relay access always goes through a short-lived token from `/api/auth/token`.
  */
 export type CloudAccountAccess = "waitlisted" | "member" | "approved" | "declined";
 

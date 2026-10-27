@@ -9,13 +9,10 @@ import {
 } from "@mercurian/graph";
 
 /**
- * The Graph surface's turn strip as state: which turn the graph shows, whether
- * playback walks the thread, and the move chosen in the shown turn. By default
- * the strip is live: the graph shows the working turn (else the last) and moves
- * on when the next run starts. Picking a turn, stepping, playing, or choosing a
- * move pins the graph to a turn; Live lets go of all of it. The thread's
- * checkpoints are the graph's only history, so a pinned turn is an index into
- * them, and the host clamps it as the thread changes.
+ * Which turn the graph shows, whether playback walks the thread, and the chosen move. Live by
+ * default (the working turn, else the last, moving on with each run); picking, stepping, playing
+ * or choosing a move pins a turn until Live. Checkpoints are the graph's only history, so a pinned
+ * turn indexes into them and the host clamps it as the thread changes.
  */
 export interface TurnStrip {
   /** The turn the reader pinned, or null: live. */

@@ -1,12 +1,8 @@
 /**
- * The graph's colors come from CSS custom properties on its container, so a
- * dark theme is a variable swap and the host's theme owns the palette:
- *
- *   --atlas-paper   the ground, and what receded and far things fade toward
- *   --atlas-ink     notes, lines, and labels
- *   --atlas-accent  the one accent: the turn's worked notes, new and broken marks
- *   --atlas-warning a muted amber for design warnings: failure flow, crossed boundaries
- *   --atlas-lens-1 … --atlas-lens-6  one tint per skill map, by the map's position
+ * Colors come from CSS custom properties on the container, so the host's theme owns the palette:
+ * --atlas-paper (ground, what receded things fade to), --atlas-ink (notes, lines, labels),
+ * --atlas-accent (worked notes, new and broken marks), --atlas-warning (failure flow, crossed
+ * boundaries), --atlas-lens-1 to --atlas-lens-6 (one per skill map, by position).
  */
 import { Color } from "three";
 

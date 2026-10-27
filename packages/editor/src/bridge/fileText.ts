@@ -14,11 +14,9 @@ interface Edit {
 }
 
 /**
- * The edits that turn `from` into `to`, as ranges of `from`. The diff gets fast-diff's
- * semantic cleanup, so a rewritten phrase is one replacement rather than a scatter of
- * shared letters (each edit becomes one change-log op and one ghost), and nothing wider:
- * an edit that only inserts or only deletes stays that, so untouched characters keep
- * their Yjs items.
+ * The edits that turn `from` into `to`, as ranges of `from`. Semantic cleanup makes a rewritten
+ * phrase one replacement (one change-log op, one ghost) instead of scattered shared letters, and no
+ * wider: a pure insert or delete stays one, so untouched characters keep their Yjs items.
  */
 function textEdits(from: string, to: string): Edit[] {
   const edits: Edit[] = [];
@@ -90,19 +88,10 @@ export interface FileTextOptions {
 }
 
 /**
- * Applies a file change to `text` as one Yjs transaction: the edits from `previous` (the
- * file text the bridge last flushed) to `next` (the file text now). When `text` has moved
- * on from `previous`, for example because the user typed since the last flush, the edits
- * are mapped onto the current text: user edits outside the regions the file write changed
- * survive, and user edits inside a region it replaced or deleted are deleted with it,
- * because the file write owns that region.
- *
- * With `options.log`, the same transaction appends one change-log entry for the write,
- * holding each op's inserted range and the buffer text it deleted (user characters
- * included), which the editor shows as ghosts.
- *
- * Returns the index in `text` just after the last applied edit, which is where a writer's
- * cursor belongs, or `null` when there was nothing to apply.
+ * Applies `previous` → `next` file text to `text` as one Yjs transaction, mapped onto anything the
+ * user typed since the last flush: user edits outside the changed regions survive, those inside a
+ * region the write replaced go with it. `options.log` also appends one change-log entry (the ghosts).
+ * Returns the index after the last edit (where a writer's cursor belongs), or `null` if none applied.
  */
 export function applyFileText(
   text: Y.Text,

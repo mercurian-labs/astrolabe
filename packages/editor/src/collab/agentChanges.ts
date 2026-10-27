@@ -74,11 +74,9 @@ function insertedRuns(event: Y.YTextEvent, agentClients: ReadonlySet<number>): I
   }
   if (!agentWrote) return [];
 
-  // `event.changes.added` stays empty for Y.Text events, so walk the items and ask
-  // `event.adds`, which compares each item's clock with the pre-transaction state vector.
-  // The walk reads the private `_start` / `right` item list: no public Yjs API yields the
-  // text's items with their client ids (per-client history needs `gc: false` snapshots),
-  // which is why package.json pins `yjs` to an exact version.
+  // `event.changes.added` stays empty for Y.Text events, so walk the items and ask `event.adds`.
+  // The walk reads the private `_start` / `right` item list (no public Yjs API yields the text's
+  // items with client ids), which is why package.json pins `yjs` to an exact version.
   const runs: InsertedRun[] = [];
   let index = 0;
   for (let item = event.target._start; item !== null; item = item.right) {
@@ -215,11 +213,10 @@ function clockPositions(ranges: DecorationSet, carves: readonly ClockCarve[]) {
   return positions;
 }
 
-// Agent ranges live in CodeMirror positions and map through every change. Every change
-// cuts the ranges it lands in before mapping (so each piece's first clock stays true), and
-// any insertion carves itself out of the ranges it lands in, so text typed inside an
-// agent's insertion is never attributed to the agent; agent insertions are added back by
-// `addAgentRanges`, and an entry leaving the log carves out exactly its write's characters.
+// Agent ranges are CodeMirror positions mapped through every change. A change first cuts the ranges
+// it lands in (so each piece's first clock stays true) and an insertion carves itself out, so text
+// typed inside an agent's insertion is never the agent's. `addAgentRanges` adds agent insertions
+// back; an entry leaving the log carves out exactly its write's characters.
 const agentRangesField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(ranges, tr) {
@@ -353,23 +350,10 @@ const agentChangesTheme = EditorView.baseTheme({
 });
 
 /**
- * Agent changes in `text`: highlights what agent peers insert, in each agent's colour, and
- * shows the agent change log (`applyFileText` with a `log` author records it) as ghosts
- * for what each write deleted, dimmed once no agent presence carries the entry's turn.
- * Agents are the awareness states declared with `declareAgent`. Use alongside
- * `yCollab(text, …)` on the same view: ranges are recorded when Yjs applies the agent's
- * update and handed to the view once the transaction settles, by which point `yCollab`
- * has already applied the change. Review it with the commands this module exports, or add
- * `agentChangeBar()`.
- *
- * Attribution only sees agents that `awareness` knows about when their text arrives: an
- * insertion that lands before the agent's awareness state is never highlighted, and nothing
- * re-scans later. Each agent's awareness must be bound to the `Y.Doc` it writes with, since
- * its awareness client id is what matches the inserted items.
- *
- * Colours here pass through `safeAgentColor`, but y-codemirror.next writes remote
- * `user.color` / `user.colorLight` straight into style attributes, so a provider must
- * sanitise remote awareness colours before `yCollab` reads them.
+ * Highlights agent insertions in each agent's colour and shows the change log as ghosts, dimmed once
+ * no presence carries the entry's turn. Use with `yCollab(text, …)` on the same view. Text arriving
+ * before its agent's awareness state is never attributed; nothing re-scans. y-codemirror.next writes
+ * remote `user.color` into style attributes, so providers must sanitise awareness colours first.
  */
 export function agentChanges(text: Y.Text, awareness: Awareness): Extension {
   const recorder = ViewPlugin.define((view) => {
@@ -494,11 +478,9 @@ function editorBand(view: EditorView, insets: Insets): Band {
 }
 
 /**
- * The `yMargin` that, with `EditorView.scrollIntoView(pos, { y: "start", yMargin })`, puts a
- * position `height` tall at the middle of `band` inside the scrolling `container` (both in
- * client coordinates): CodeMirror then scrolls so the position's top sits `yMargin` below the
- * container's top. When the band is too short for the centre, the position goes to the
- * band's top; with no insets this is the container's own centre.
+ * The `yMargin` for `EditorView.scrollIntoView(pos, { y: "start", yMargin })` that centres a
+ * position `height` tall in `band` inside the scrolling `container` (client coordinates). A band too
+ * short to centre in puts it at the band's top; with no insets this is the container's centre.
  */
 export function placementMargin(band: Band, container: Band, height: number): number {
   const centred = (band.top + band.bottom) / 2 - height / 2;
@@ -619,24 +601,10 @@ function cursorKey(state: Record<string, unknown> | undefined) {
 }
 
 /**
- * Keeps agent cursors in view while `isOn()` is true: when an agent presence's cursor moves
- * to a position that is not visible, the view scrolls to centre it. Agents move their cursor
- * to where they are about to write before the write lands (`parkAgentCursor`), so the write
- * lands where the person is already looking. Visible means inside the editor's box in the
- * window, minus the `insets` the host's chrome covers, and the scroll centres the position
- * in that band rather than in the window. The scroll is the browser's smooth scroll of the
- * scroller and its scrolling ancestors up to the window, each taking what its range allows
- * (instant under reduced motion), checked once more after it settles. A cursor move within view scrolls
- * nothing, the caret, selection, and focus are never touched, and log changes, reviews, and
- * the user's own edits never scroll.
- *
- * The follower starts from the cursors as they are when it mounts, reacts only to agents'
- * awareness changes, and scrolls in a microtask, never inside an editor update (a change
- * can arrive from yCollab's own cursor sync, which runs in one).
- *
- * Presentation never moves the scroll position on a remote change (live-preview spec,
- * principle 5); this is the one exception, and the person switches it on. Needs
- * `agentChanges` on the same view.
+ * While `isOn()`, scrolls an agent cursor that moves out of view to the centre of the visible band
+ * (the editor box minus host `insets`); agents park the cursor before writing, so writes land in view.
+ * Scrolls in a microtask, never inside an editor update, and never touches caret, selection or focus.
+ * Opt-in exception to remote changes never scrolling (live-preview principle 5); needs `agentChanges`.
  */
 export function followAgentChanges(options: FollowOptions): Extension {
   const { isOn, insets = () => NO_INSETS, scroll: scrollBy = nativeScroll } = options;

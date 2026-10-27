@@ -1,9 +1,7 @@
 /**
- * The code a story's play changed, shown as the agent changed it: the file at
- * the turn's commit, landed in a read-only code view as an edit over the file
- * at the commit's parent, so the change is highlighted with the agent's cursor
- * after it, scrolled to the symbol. The code story's counterpart of
- * `noteEdits.tsx`; the files come from git through `codeFiles.ts`.
+ * The code a story's play changed, shown as the agent changed it: the file at the turn's commit
+ * lands as an edit over the file at the commit's parent, so the change is highlighted with the
+ * agent's cursor after it. The code story's counterpart of `noteEdits.tsx`.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {

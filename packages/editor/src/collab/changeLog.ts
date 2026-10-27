@@ -161,12 +161,10 @@ export function originRuns(text: Y.Text, from: number, to: number): OriginRun[] 
 }
 
 /**
- * The stored op for one applied edit of a write, where `text` already holds the edit. `from`
- * sticks to the first inserted character (or, with nothing inserted, to the character after
- * the deletion), so typing at the anchor lands before it; `to` sticks to the last inserted
- * character, so typing at the end of the insertion does not grow it. An anchor at the very
- * end of the text sticks to the character before it instead (`assoc` -1), since an end
- * position would follow everything later appended.
+ * The stored op for one applied edit, where `text` already holds it. `from` sticks to the first
+ * inserted character (else the one after the deletion) so typing at the anchor lands before it; `to`
+ * sticks to the last inserted so typing at its end does not grow it. At the text's very end the anchor
+ * sticks to the character before (`assoc` -1), since an end position follows everything appended.
  */
 export function agentChangeOp(
   text: Y.Text,

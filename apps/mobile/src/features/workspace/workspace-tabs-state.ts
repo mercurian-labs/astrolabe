@@ -1,45 +1,42 @@
-import type { AppSymbolName } from "../../components/ui/AppSymbol";
-import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import {
+  NAVIGATION_TAB_ORDER,
+  navigationCustomizationAvailable,
+  resolveNavigationTabOrder,
+  type NavigationTab,
+} from "./navigation-tab-order";
 
-export type WorkspaceTab = "threads" | "pullRequests" | "wikis" | "repositories";
-
-/** The roots in the order the tab bar shows them. */
-export const WORKSPACE_TABS: ReadonlyArray<WorkspaceTab> = [
-  "threads",
-  "pullRequests",
-  "wikis",
-  "repositories",
-];
-
-/**
- * The roots iPhone shows. Wikis and Repositories wait on their own iPad sidebar design, so the
- * iPad sidebar picker, and the tab bar a compact iPad window shows, keep Agents and Changes.
- */
-export function workspaceTabsFor(device: "phone" | "pad"): ReadonlyArray<WorkspaceTab> {
-  return device === "pad"
-    ? WORKSPACE_TABS.filter((tab) => tab !== "wikis" && tab !== "repositories")
-    : WORKSPACE_TABS;
+export function resolveWorkspaceTabOrder(saved: readonly unknown[] | undefined) {
+  return navigationCustomizationAvailable()
+    ? resolveNavigationTabOrder(saved)
+    : NAVIGATION_TAB_ORDER;
 }
 
-/** Each root's name, and the label its search goes by. */
-export const WORKSPACE_TAB_LABELS: Readonly<
-  Record<WorkspaceTab, { readonly title: string; readonly search: string }>
-> = {
-  threads: { title: "Agents", search: "Search threads" },
-  // Astrolabe: pull requests and the wikis' change requests, as web's Change Requests section.
-  pullRequests: { title: "Changes", search: "Search changes" },
-  wikis: { title: "Wikis", search: "Search wikis" },
-  repositories: { title: "Repositories", search: "Search files" },
-};
+export type WorkspaceTab = NavigationTab;
+/** Lists with their own search: the searchable tabs and the Settings list. */
+export type WorkspaceSearchTab = WorkspaceTab | "settings";
 
-/** Each root's glyph where the app draws its own tabs rather than UIKit's. */
-export const WORKSPACE_TAB_ICONS: Readonly<Record<WorkspaceTab, AppSymbolName>> = {
-  threads: "text.bubble",
-  pullRequests: PullRequestGlyph.pullRequest,
-  wikis: "book",
-  repositories: "folder",
+/** Astrolabe: Wikis and Repositories wait on their own iPad and Android design. */
+export function registeredWorkspaceTabs(device: "iphone" | "other"): readonly WorkspaceTab[] {
+  return device === "iphone"
+    ? NAVIGATION_TAB_ORDER
+    : NAVIGATION_TAB_ORDER.filter((tab) => tab !== "wikis" && tab !== "repositories");
+}
+
+/** The label each list's search goes by. Usage has no search of its own. */
+export const WORKSPACE_SEARCH_LABELS: Readonly<Record<WorkspaceSearchTab, string>> = {
+  threads: "Search threads",
+  pullRequests: "Search changes",
+  wikis: "Search wikis",
+  repositories: "Search files",
+  usage: "Search threads",
+  settings: "Search settings",
 };
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
+
+/** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
+export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
+  return settingsOpen || tab === "threads" || tab === "pullRequests";
+}
 
 export interface WorkspaceTabState {
   readonly query: string;
@@ -51,7 +48,7 @@ export interface WorkspaceTabState {
 export interface WorkspaceTabsState {
   readonly selectedTab: WorkspaceTab;
   readonly selectionRevision: number;
-  readonly tabs: Readonly<Record<WorkspaceTab, WorkspaceTabState>>;
+  readonly tabs: Readonly<Record<WorkspaceSearchTab, WorkspaceTabState>>;
 }
 
 function emptyTab(): WorkspaceTabState {
@@ -67,17 +64,19 @@ export function initialWorkspaceTabsState(): WorkspaceTabsState {
       pullRequests: emptyTab(),
       wikis: emptyTab(),
       repositories: emptyTab(),
+      usage: emptyTab(),
+      settings: emptyTab(),
     },
   };
 }
 
 export type WorkspaceTabsAction =
   | { readonly type: "select"; readonly tab: WorkspaceTab }
-  | { readonly type: "search"; readonly tab?: WorkspaceTab }
-  | { readonly type: "query"; readonly query: string; readonly tab?: WorkspaceTab }
-  | { readonly type: "expand"; readonly tab?: WorkspaceTab }
-  | { readonly type: "cancel"; readonly tab?: WorkspaceTab }
-  | { readonly type: "scroll"; readonly tab: WorkspaceTab; readonly offset: number };
+  | { readonly type: "search"; readonly tab?: WorkspaceSearchTab }
+  | { readonly type: "query"; readonly query: string; readonly tab?: WorkspaceSearchTab }
+  | { readonly type: "expand"; readonly tab?: WorkspaceSearchTab }
+  | { readonly type: "cancel"; readonly tab?: WorkspaceSearchTab }
+  | { readonly type: "scroll"; readonly tab: WorkspaceSearchTab; readonly offset: number };
 
 export function workspaceTabsReducer(
   state: WorkspaceTabsState,
@@ -92,6 +91,7 @@ export function workspaceTabsReducer(
           selectionRevision: state.selectionRevision + 1,
         };
   const tab = action.tab ?? state.selectedTab;
+  if (tab === "usage") return state;
   const current = state.tabs[tab];
   let next: WorkspaceTabState;
   switch (action.type) {
@@ -130,8 +130,43 @@ export const WORKSPACE_TOOLBAR = { height: 48, expandedGap: 10, edge: 16, gap: 8
 /** `tabWidth` is one tab's share of the dock's tab group. */
 export const WORKSPACE_DOCK = { height: 48, tabWidth: 88, gap: 12, bottomGap: 6 };
 
+export function workspaceDockBottomClearance(input: {
+  readonly bottomInset: number;
+  readonly keyboardHeight: number;
+}) {
+  return 64 + Math.max(input.bottomInset, input.keyboardHeight) + 16;
+}
+
+export function workspaceSearchBottomClearance(input: {
+  readonly bottomInset: number;
+  readonly bottomBarInset?: number;
+  readonly keyboardHeight: number;
+}) {
+  const bottom = input.bottomBarInset ?? Math.max(input.bottomInset, 12);
+  // AboveKeyboard lifts the field to an 8-point gap above the keyboard.
+  return (
+    Math.max(bottom, input.keyboardHeight > 0 ? input.keyboardHeight + 8 : 0) +
+    WORKSPACE_TOOLBAR.height +
+    16
+  );
+}
+
 export function workspaceToolbarHeight(mode: WorkspaceSearchMode): number {
   return mode === "expanded"
     ? WORKSPACE_TOOLBAR.height * 2 + WORKSPACE_TOOLBAR.expandedGap
     : WORKSPACE_TOOLBAR.height;
+}
+
+export const NATIVE_WORKSPACE_TAB_SLOTS = [
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "settings",
+] as const;
+
+export function workspaceTabForNativeSlot(order: readonly WorkspaceTab[], slot: string) {
+  if (slot === "settings") return "settings";
+  const index = NATIVE_WORKSPACE_TAB_SLOTS.findIndex((candidate) => candidate === slot);
+  return order[index] ?? null;
 }

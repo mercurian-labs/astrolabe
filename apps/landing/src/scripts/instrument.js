@@ -1,15 +1,7 @@
-// Astrolabe · drafting · the closing instrument
-//
-// A working astrolabe set to the visitor's sky now. The plate is engraved here for the latitude the
-// time zone suggests (places.js); the rete turns to local sidereal time, the sun sits on the ecliptic
-// at today's longitude, and the rule lies across the sun to read local apparent time on the limb.
-// The maths is in sky.js.
-//
-// Motion: one sweep of the rete into place on arrival, then a redraw at most once a minute and none
-// while the tab is hidden. A drag anywhere in the field turns the rete; it, the arrow keys and "Now"
-// wind time; the pointer sights true altitude and azimuth through the inverse projection. Parts turn as transforms on SVG groups;
-// nothing repaints in a loop. With reduced motion it arrives set; without JavaScript the static
-// drawing in the page shows instead.
+// Astrolabe · drafting · the closing instrument: an astrolabe set to the visitor's sky now, engraved
+// for the latitude the time zone suggests (places.js); maths in sky.js. One sweep into place on
+// arrival, then at most one redraw a minute and none while hidden; parts turn as SVG group transforms,
+// nothing repaints in a loop. Reduced motion arrives set; without JavaScript the static drawing shows.
 
 import Places from "./places.js";
 import Sky from "./sky.js";
@@ -546,14 +538,10 @@ import Sky from "./sky.js";
     scheduleMinute();
   });
 
-  /* ─────────── Turning the rete. A press anywhere in the field, except on its controls, grips the
-     disc: the angle the pointer sweeps around the centre winds sidereal time, so a clockwise drag
-     moves time forward (in the south, where the rete is mirrored, the disc still follows the hand).
-     Close to the pin that angle swings wildly, so inside a small dead zone horizontal movement turns
-     it instead. A mouse or pen grips at once. A touch waits to see which way it goes: the field is
-     touch-action: pan-y pinch-zoom (drafting.css), so the browser keeps vertical swipes and pinches
-     for the page and cancels the pointer, and a drag that leads sideways turns the rete. The field
-     is full width on a phone, so it must never trap the page's scroll. */
+  /* ─────────── Turning the rete. A press anywhere in the field except its controls grips the disc; the
+     angle swept around the centre winds sidereal time (near the pin, horizontal movement instead). A
+     touch waits: the field is touch-action: pan-y pinch-zoom (drafting.css) and full width on a phone,
+     so it must never trap the page's scroll; only a drag that leads sideways turns the rete. */
 
   const toLocal = (event) => {
     const m = svg.getScreenCTM();

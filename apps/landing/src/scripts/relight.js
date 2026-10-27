@@ -1,37 +1,7 @@
-// Astrolabe · drafting · the instrument's ground, lit by its sun
-//
-// The instrument's field ([02]) stands on a close crop of Mercury (scripts/render-relight.py exports
-// its normals and height). Each time the working astrolabe's represented moment changes (it announces that with an
-// `astrolabe:time` event), the page takes its palette from the sun's altitude (twilight.js) and
-// this shader prints the ground in the page's two-ink grain under that sun: the print's up is north,
-// so a sun at azimuth A and altitude h lights it along (cos h sin A, cos h cos A, sin h). Shadows are
-// cast by marching toward the sun through the height. The grain is thresholded against a fixed noise
-// texture laid on the canvas's own pixels, so a moving light only flips the grains whose shade
-// crosses their threshold; nothing shimmers.
-//
-// The ground's brightness is absolute (direct sun plus skylight, falling through twilight) and the
-// paper's comes from the palette, so the grain is whatever prints one on the other: dark ink where the
-// ground is darker than the paper, ivory where it is lighter. By day that is ink in the shadows; at
-// dusk the ground goes dark before the paper does; through nautical twilight the paper falls past it
-// and the ink turns over; at night a little ivory picks out what the skylight finds.
-//
-// Repaints happen only when the moment changes (a drag, the eased return to now, the minute) and only
-// while the section is on screen and the tab visible; otherwise the change waits for the next look.
-// The data loads when the section comes near. Without WebGL (or with `?gl=0`) the static print (CSS
-// masks) shows and the palette still follows the sun.
-//
-// `?ground=hemisphere` swaps the flat ground for Mercury's limb rising from the foot of the field
-// (scripts/render-hemisphere.py exports the visible cap: view-space normals with the sphere's
-// curvature kept, height, and the disc). The planet is lit in the frame of an observer watching the
-// sun's path: a northern observer faces south, so the view's x (right) is west, y (up) the zenith and
-// z (towards the viewer) north, and a sun at azimuth A and altitude h lights the cap along
-// (−cos h sin A, sin h, k cos h cos A), normalised. Morning lights it from the left, noon from high
-// up, evening from the right; as the sun sets the terminator sweeps across and the planet goes dark.
-// The depth is compressed (k = 1/3): at full strength the noon sun, standing in the south, would sit
-// behind the planet and light only the top of the limb, which the instrument covers. A southern
-// observer faces north and the instrument is mirrored, so the frame turns about the zenith:
-// (cos h sin A, sin h, −k cos h cos A), morning on the right. The limb is drawn from the globe's
-// circle, crisp at any DPR.
+// Astrolabe · drafting · the instrument's ground ([02]): a crop of Mercury in the two-ink grain under
+// the astrolabe's sun, redrawn on `astrolabe:time`. The grain thresholds against fixed noise on the
+// canvas's own pixels so a moving light flips only grains crossing it; nothing shimmers. Repaints only
+// on change while on screen in a visible tab; without WebGL (or `?gl=0`) the static print shows.
 
 import Twilight from "./twilight.js";
 
@@ -201,7 +171,7 @@ import Twilight from "./twilight.js";
       gl_FragColor = printGround(ground, 0.62 * (1.0 - hOlive) + 0.08);
     }`;
 
-  // The cap, in view space (x right, y up, z towards the viewer; see the top of the file). The
+  // The cap, in view space (x right, y up, z towards the viewer; see toward()). The
   // globe's own normal s is rebuilt from the circle: it is the local vertical, for the skylight and
   // for the shadows, which march toward the sun across the tangent plane and allow for the surface
   // falling away over the curve.
@@ -397,7 +367,9 @@ import Twilight from "./twilight.js";
   };
 
   // Toward a point in the sky at azimuth `az`, altitude `alt`: east, north, up for the flat ground's
-  // print (north up the page); the observer's view (x, y, z) for the hemisphere.
+  // print (north up the page). For the hemisphere a northern observer faces south (x west, y zenith,
+  // z north; mirrored in the south), and depth is cut to 1/3 so the noon sun, standing in the south,
+  // does not sit behind the planet and light only the limb the instrument covers.
   function toward(alt, az) {
     const ca = Math.cos(alt * RAD);
     const east = ca * Math.sin(az * RAD);

@@ -1,10 +1,8 @@
 /**
- * CORS for `/api/auth/*` and `/api/workspaces/*`. Every origin may call with a bearer token:
- * self-hosted pages (localhost, LAN, Tailscale) and the desktop renderer
- * (`astrolabe://app`) run on origins nobody can list, and without a cookie
- * a caller can only act with a token it already holds. Only trusted origins
- * (the hosted web app) get `Allow-Credentials`, so browsers send the
- * session cookie cross-origin to nobody else.
+ * CORS for `/api/auth/*` and `/api/workspaces/*`. Any origin may call with a bearer token:
+ * self-hosted pages and the desktop renderer (`astrolabe://app`) run on unlistable origins, and
+ * a cookieless caller can only use a token it already holds. Only trusted origins (the hosted
+ * web app) get `Allow-Credentials`, so browsers send the session cookie cross-origin to no one else.
  */
 const ALLOW_HEADERS = "content-type, authorization";
 // The bearer plugin returns new session tokens in set-auth-token; the

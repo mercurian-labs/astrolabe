@@ -323,7 +323,7 @@ function KeybindingAddButton({
           aria-hidden
           className="px-1 text-muted-foreground/60 group-focus-within/cell:invisible group-hover/cell:invisible"
         >
-          —
+          –
         </span>
       ) : null}
       <span

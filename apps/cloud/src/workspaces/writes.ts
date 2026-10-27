@@ -96,12 +96,10 @@ const decodeInput = Object.fromEntries(
 };
 
 /**
- * Runs one write in a transaction the cloud owns and returns its txid, the
- * id Electric reports when the change reaches a client's shapes. Better Auth
- * works inside it through its adapter context: its writes, our hooks' writes
- * and the rules' reads all see one transaction, and anything queued for after
- * commit, such as an invitation email, waits for it. A write that changed
- * nothing has no txid.
+ * Runs one write in a cloud-owned transaction and returns its txid, the id Electric reports when
+ * the change reaches a client's shapes. Better Auth joins it through its adapter context, so its
+ * writes, our hooks' writes and the rules' reads share one transaction, and after-commit work
+ * (such as an invitation email) waits for it. A write that changed nothing has no txid.
  */
 export const makeWorkspaceWriter = (deps: {
   readonly db: NodePgDatabase<typeof schema.authRelations>;

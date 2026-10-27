@@ -1,6 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import * as DateTime from "effect/DateTime";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -38,8 +37,9 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
   const { environmentId, cwd, source: sourceKind } = tab;
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
   const { resolvedTheme } = useTheme();
+  const previewInput = canReadFiles ? { cwd } : undefined;
   const preview = useEnvironmentQuery(
-    canReadFiles ? reviewEnvironment.diffPreview({ environmentId, input: { cwd } }) : null,
+    previewInput ? reviewEnvironment.diffPreview({ environmentId, input: previewInput }) : null,
   );
   const refresh = preview.refresh;
   useEffect(() => {
@@ -61,7 +61,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       baseRef: lazySource?.baseRef ?? null,
       ignoreWhitespace: false,
       theme: resolvedTheme,
-      revision: preview.data ? DateTime.formatIso(preview.data.generatedAt) : undefined,
+      previewInput,
       preview: renderablePatch,
     },
   );

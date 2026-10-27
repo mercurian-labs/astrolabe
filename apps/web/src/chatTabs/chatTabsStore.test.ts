@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   arriveAt,
+  isChatTabGone,
   moveKey,
   neighbourOf,
   openNewTab,
@@ -138,5 +139,25 @@ describe("a change group's threads opening beside the chat in front", () => {
   it("open at the end with no tab in front", () => {
     const layout: ChatTabsLayout = { keys: ["a"], active: null, histories: {} };
     expect(openTabsBesideFront(layout, ["x"]).keys).toEqual(["a", "x"]);
+  });
+});
+
+describe("a tab whose thread the shell does not list", () => {
+  const missing = { live: true, shell: null, hasDraft: false } as const;
+
+  it("stays open until its thread family read settles, as cold connect omits older threads", () => {
+    expect(isChatTabGone({ ...missing, familyRead: "pending" })).toBe(false);
+    expect(isChatTabGone({ ...missing, familyRead: "failed" })).toBe(false);
+  });
+
+  it("closes once a settled family read leaves it out too", () => {
+    expect(isChatTabGone({ ...missing, familyRead: "settled" })).toBe(true);
+  });
+
+  it("closes at once for a thread the shell lists as deleted, and never while not live", () => {
+    const deleted = { deletedAt: "2026-10-27T00:00:00.000Z" };
+    expect(isChatTabGone({ ...missing, shell: deleted, familyRead: "pending" })).toBe(true);
+    expect(isChatTabGone({ ...missing, live: false, familyRead: "settled" })).toBe(false);
+    expect(isChatTabGone({ ...missing, hasDraft: true, familyRead: "settled" })).toBe(false);
   });
 });

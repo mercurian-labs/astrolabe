@@ -1,9 +1,7 @@
-// Astrolabe · drafting · the page's light before it paints
-//
-// Layout.astro inlines this file, with sky.js, places.js and twilight.js, as a classic script in the
-// head (imports and exports stripped), so a visit at night opens on a dark page with no flash of
-// day. It sets the palette for the real sky now, or at `?t=` / `&tz=`; from then on the working
-// astrolabe drives it (relight.js). Without script the page keeps the day palette in drafting.css.
+// Astrolabe · drafting · the page's light before it paints. Layout.astro inlines this file (with
+// sky.js, places.js and twilight.js, imports stripped) as a classic head script, so a night visit
+// opens dark with no flash of day. It sets the palette for now or `?t=` / `&tz=`; then relight.js
+// drives it. Without script the page keeps drafting.css's day palette.
 
 import Places from "./places.js";
 import Sky from "./sky.js";

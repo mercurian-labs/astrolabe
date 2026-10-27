@@ -1,10 +1,7 @@
 /**
- * Critically damped springs over a flat array of values: node offsets (three
- * values per node), or style channels (one per node). A spring reaches its
- * target without overshoot, and once within tolerance it snaps to the target
- * and leaves the active set, so a settled field costs nothing per frame.
- *
- * Each step uses the closed-form solution, so it is stable for any frame time.
+ * Critically damped springs over a flat array of values: no overshoot, and a spring within
+ * tolerance snaps and leaves the active set, so a settled field costs nothing per frame. Each step
+ * uses the closed-form solution, so it is stable for any frame time.
  */
 export class SpringField {
   readonly count: number;

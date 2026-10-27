@@ -1,14 +1,8 @@
 /**
- * A codebase's declared boundaries: named layers (path prefixes) and the
- * dependencies allowed between them, read from `.atlas/boundaries.json`.
- *
- *   { "layers": [{ "name": "model", "paths": ["src/model"] }, …],
- *     "allowed": [["render", "model"], …] }
- *
- * A layer's paths are prefixes relative to the folder holding `.atlas/`; the
- * story carries them repository-relative, as its notes' paths are. A link from
- * one layer into another that no allowed pair names is a violation; a link
- * inside one layer never is.
+ * Declared boundaries from `.atlas/boundaries.json`:
+ * `{ "layers": [{ "name", "paths": [prefix] }], "allowed": [[from, to]] }`. Paths are relative to the
+ * folder holding `.atlas/`; the story carries them repository-relative. A cross-layer link no allowed
+ * pair names is a violation; a link inside one layer never is.
  */
 import type { CodeEdge, CodeSymbol } from "./model/code.ts";
 import type { Boundaries } from "./model/graph.ts";

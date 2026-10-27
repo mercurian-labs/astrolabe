@@ -19,16 +19,10 @@ import {
 } from "./keybindings.ts";
 
 /**
- * Astrolabe: the triggers a keybinding rule can have beside a shortcut, and how rules of every
- * kind merge with their defaults. A rule's `key` says its kind:
- *
- * - `menu g w`: menu keys, pressed in the keyboard menu once ⌘K or the leader key opens it;
- * - `:q[uit]`: an alias, a short name typed in the Command Palette, in Vim's notation (the
- *   bracketed tail is optional, so `q`, `qu`, and `quit` all name it);
- * - anything else: a shortcut, as upstream reads it.
- *
- * A user rule replaces the defaults of its own command and kind only: a shortcut for `chat.new`
- * leaves its menu keys alone. A `-command` rule removes the matching rule instead.
+ * Astrolabe: a rule's `key` gives its kind: `menu g w` (keyboard-menu keys, after ⌘K or the leader),
+ * `:q[uit]` (a Command Palette alias in Vim notation, bracketed tail optional), or a shortcut as
+ * upstream reads it. A user rule replaces only its own command's defaults of the same kind; a
+ * `-command` rule removes the matching rule instead.
  */
 
 /** The keyboard menu's default keys and the Command Palette's default aliases. */
@@ -217,11 +211,9 @@ export const DEFAULT_RESOLVED_TRIGGERS: ReadonlyArray<ResolvedKeybindingTrigger>
 );
 
 /**
- * Every rule of a keybindings file merged with the defaults, as clients receive them. Shortcuts
- * merge as upstream merges them (a command's own shortcuts replace its default ones); menu keys
- * and aliases merge the same way, each kind on its own. Then each `-command` rule
- * removes the rules of that command with the same trigger (and the same `when`, if it gives
- * one), defaults and user rules alike.
+ * Every rule of a keybindings file merged with the defaults, as clients receive them: each kind
+ * merges on its own the way upstream merges shortcuts (a command's own replace its defaults), then
+ * each `-command` rule removes that command's rules with the same trigger (and `when`, if given).
  */
 export function resolveKeybindingRules(rules: ReadonlyArray<KeybindingRule>): {
   readonly keybindings: ResolvedKeybindingsConfig;

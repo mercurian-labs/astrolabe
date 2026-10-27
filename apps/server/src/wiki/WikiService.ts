@@ -1,11 +1,7 @@
 /**
- * WikiService - local wikis: git repositories of flat, linked markdown notes.
- *
- * The registered folder is the checkout of the main line, which the user may also edit by hand.
- * Every change reaches main through a change request (CR): a branch `refs/heads/cr/<id>` plus a
- * metadata ref (see `wikiStorage.ts`). Amendments are commits built on a private index, so the
- * user's checkout is touched only when a person merges, and then only through git's two-tree
- * checkout, which refuses to overwrite local edits. One writer per wiki at a time.
+ * Local wikis: git repositories of linked markdown notes whose registered folder is main's
+ * hand-editable checkout. Changes reach main only via change requests built on a private index;
+ * merges use git's two-tree checkout, which refuses to overwrite local edits. One writer per wiki.
  *
  * @module WikiService
  */
@@ -730,15 +726,13 @@ const make = Effect.gen(function* () {
 
   const mainTip = (wiki: WikiRecord) =>
     revParse(wiki.root, mainRef(wiki)).pipe(
-      Effect.flatMap((tip) =>
-        tip === undefined
-          ? Effect.fail(
-              new WikiError({
-                reason: "invalid",
-                message: `The wiki's main branch ${wiki.mainBranch} has no commits.`,
-              }),
-            )
-          : Effect.succeed(tip),
+      Effect.filterOrFail(
+        (tip): tip is string => tip !== undefined,
+        () =>
+          new WikiError({
+            reason: "invalid",
+            message: `The wiki's main branch ${wiki.mainBranch} has no commits.`,
+          }),
       ),
     );
 
@@ -1478,16 +1472,14 @@ const make = Effect.gen(function* () {
       const oriented = orientResult(snapshot.index, input.map);
       return oriented === undefined ? undefined : { commit, ...oriented };
     }).pipe(
-      Effect.flatMap((oriented) =>
-        oriented === undefined
-          ? Effect.fail(
-              new WikiError({
-                reason: "not-found",
-                message: "No valid skill map has this name.",
-                wikiId: input.wikiId,
-              }),
-            )
-          : Effect.succeed(oriented),
+      Effect.filterOrFail(
+        (oriented) => oriented !== undefined,
+        () =>
+          new WikiError({
+            reason: "not-found",
+            message: "No valid skill map has this name.",
+            wikiId: input.wikiId,
+          }),
       ),
     );
 

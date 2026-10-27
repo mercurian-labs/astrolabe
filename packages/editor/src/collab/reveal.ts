@@ -134,14 +134,10 @@ export function prefersReducedMotion() {
 }
 
 /**
- * Reveals agent writes as they arrive, while `isOn()` is true: each range a new log entry
- * inserted is drawn from its start over 150 to 800 milliseconds (8 ms a character), its
- * ranges at once, and the ghosts of the write fade in. The document itself lands at once;
- * only the drawing catches up, and since the hidden text keeps its layout, nothing on the
- * page moves while it does. A reveal finishes at once when the user's selection touches
- * the hidden part, when an edit lands in it, when its entry leaves the log, and when it
- * falls inside a range the live preview replaces. Reduced motion turns it off. Needs
- * `agentChanges` on the same view.
+ * While `isOn()`, draws each new log entry's inserted ranges in from their start over 150 to 800 ms
+ * (8 ms a character) and fades its ghosts in; the document lands at once and hidden text keeps its
+ * layout, so nothing moves. Finishes early on a selection or edit in the hidden part, the entry leaving
+ * the log, or a live-preview replace over it. Off under reduced motion. Needs `agentChanges`.
  */
 export function revealAgentChanges(options: RevealOptions = {}): Extension {
   const isOn = options.isOn ?? (() => true);

@@ -8,11 +8,10 @@ import { forgetEnteredRow, handleListKey, isListRow, roveTo } from "./placeLists
 const TAB_BUTTONS = "[data-pane-tab], [data-chat-tab]";
 
 /**
- * Astrolabe: the page's keyboard navigation between places and through their lists (the
- * sidebar's rows, the icon rail's buttons). It follows focus and the pointer (what each place last
- * had focused, for the focus moves to return to, and which place keys act from, which
- * `regions.ts` marks), and reads the lists' keys ahead of the rows (`placeLists.ts`). The
- * commands themselves are in the registry (`commands.ts`).
+ * Page keyboard navigation between places and through their lists. It tracks focus and pointer
+ * (what each place last focused, for focus moves to return to, and the place keys act from, marked
+ * by `regions.ts`) and reads list keys ahead of the rows (`placeLists.ts`); commands are in
+ * `commands.ts`.
  */
 export function KeyboardNavigation() {
   useEffect(() => {

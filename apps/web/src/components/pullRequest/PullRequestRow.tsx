@@ -119,7 +119,7 @@ function PullRequestRowImpl({
   showProvider: boolean;
   environmentLabel?: string;
   matchedElsewhere?: boolean;
-  /** Used by the list's shared visibility observer to defer optional line-count reads. */
+  /** Visibility key for deferred line-count reads. */
   statsKey?: string;
   statsRef?: RefCallback<HTMLDivElement>;
   /**
@@ -144,7 +144,7 @@ function PullRequestRowImpl({
    */
   layout?: "row" | "card";
 }) {
-  const { Icon, providerName } = getSourceControlPresentationForKind(entry.provider);
+  const { Icon, providerName, terminology } = getSourceControlPresentationForKind(entry.provider);
   const glyph = (
     <PullRequestRowGlyph
       state={entry.state}
@@ -198,6 +198,7 @@ function PullRequestRowImpl({
       <PullRequestSpeedActions
         entry={entry}
         hostActions={hostActions}
+        terminology={terminology}
         onActed={onActed}
         closing={closing}
         sweeping={sweeping}

@@ -1,20 +1,7 @@
-// Astrolabe · drafting · twilight
-//
-// The page's palette as a function of the sun's altitude at the instrument's represented time: the
-// working astrolabe in [02] is the page's light switch. Above the horizon it is the day paper and
-// ink; through civil twilight (0° to −6°) the paper warms and dims; through nautical (−6° to −12°) it
-// falls toward the night; through astronomical (−12° to −18°) it deepens; below −18° it is night:
-// ivory and olive on charcoal, a shade above the night bands' (the hero's print, the footer), so
-// they still stand apart on a dark page. Colours are mixed in OKLab.
-//
-// The inks turn over once, at FLIP: above it the paper stays light enough for the dark ink, below it
-// dark enough for the ivory, and it jumps across the middle greys where neither ink reads (the page
-// crossfades that one step). The softer inks are the ink moved toward the paper only as far as their
-// contrast allows, so every step keeps body text at 4.5:1 (scripts/twilight-contrast.mjs checks).
-//
-// The altitude is quantised to whole degrees and the page is written only when the step changes, so
-// turning the rete restyles the page a few times a second at most, and never outside the bands.
-// `node` can import this file.
+// Astrolabe · drafting · twilight: the page's palette as a function of the sun's altitude at the
+// instrument's time, mixed in OKLab, with night a shade above the night bands so they stand apart. The
+// inks turn over once, at FLIP, skipping the middle greys where neither reads; every step keeps body
+// text at 4.5:1 (scripts/twilight-contrast.mjs). Altitude is quantised to whole degrees to limit restyles.
 
 const Twilight = (() => {
   const FLIP = -10;

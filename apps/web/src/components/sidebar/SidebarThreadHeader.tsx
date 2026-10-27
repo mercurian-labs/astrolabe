@@ -1,13 +1,8 @@
 /**
- * Astrolabe: the sidebar's title row, upstream's search row with the section's name in it. The
- * name ("Agents", "Wikis") heads the list, with search, the scope filter and new item as icon
- * buttons at the row's end. Search opens upstream's own search field in the name's place, and the
- * field stays while it has focus or holds a query; Escape on an empty field, leaving it empty, or
- * picking a result puts the name back.
- *
- * The scope picker itself is passed in: its combobox state lives with the rest of the sidebar's
- * scope logic. The scope icon swaps to the project favicon while a project is selected, so the
- * header still names the scope.
+ * The sidebar's title row: upstream's search row with the section's name heading the list and
+ * search, scope filter and new item as icon buttons. Search swaps in upstream's field while it has
+ * focus or a query. The scope picker is passed in because its combobox state lives with the
+ * sidebar's scope logic; its icon becomes the project favicon so the header still names the scope.
  */
 import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
@@ -114,9 +109,7 @@ export function SidebarThreadHeader({
     [newItemLabel, newThreadDisabled],
   );
   const resultsVisible = isSearching && searchResultCount > 0;
-  // Results shrink as the query narrows, so the active index can outrun the
-  // list; pointing aria-activedescendant at a removed option strands the
-  // screen reader on nothing.
+  // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   const newThreadLabel = newThreadShortcutLabel
     ? `${newItemLabel} (${newThreadShortcutLabel})`
@@ -129,7 +122,7 @@ export function SidebarThreadHeader({
       <div
         ref={fieldShown ? searchFieldRef : undefined}
         className={cn(
-          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground redesign:focus-within:bg-sidebar-row-hover redesign:focus-within:text-sidebar-foreground redesign:focus-within:ring-1 redesign:focus-within:ring-inset redesign:focus-within:ring-ring/70",
           !fieldShown && "hidden",
         )}
       >

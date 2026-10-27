@@ -1,16 +1,8 @@
 /**
- * Lean's labels: glyph quads in one instanced mesh per layer, drawn straight
- * from troika's SDF glyph atlas. Troika typesets each name once (off the main
- * thread, cached by name); a label slot then owns a fixed run of glyph
- * instances, written when the slot takes a name and never again while it
- * holds it. Where each label sits, how big it is, and how opaque it is live in
- * a small per-slot texture, and CSS pixels reach world units through one
- * uniform, so a frame costs a pass over the drawn labels comparing a few
- * floats: a zoom rewrites only anchors that moved, a story only opacities
- * that changed, and an unchanged frame uploads nothing.
- *
- * The ordinary layer draws fills; the prominent layer draws an outline pass
- * in paper and then its fills, on top of the ordinary ones.
+ * Lean's labels: glyph quads in one instanced mesh per layer, from troika's SDF atlas. A slot's
+ * glyphs are written once when it takes a name; position, size, and opacity live in a per-slot
+ * texture, so a frame compares a few floats per label and an unchanged frame uploads nothing. The
+ * prominent layer draws a paper outline pass, then its fills, over the ordinary layer.
  */
 import {
   BufferAttribute,

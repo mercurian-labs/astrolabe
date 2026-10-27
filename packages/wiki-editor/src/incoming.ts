@@ -5,12 +5,9 @@ export function wikilinkNoteName(target: string): string | null {
 }
 
 /**
- * What a fresh read of the note does to the buffer that shows it. `baseline` is the text the
- * buffer was loaded from, `buffer` the text in it now, `incoming` the text just read.
- * - `keep`: nothing changed underneath.
- * - `adopt`: the read caught up with the buffer (our own save landed); it becomes the baseline.
- * - `reload`: the buffer has no edits, so it takes the new text.
- * - `conflict`: the buffer has edits and the note changed underneath; never clobber them.
+ * What a fresh read (`incoming`) does to a buffer loaded from `baseline` and now holding `buffer`:
+ * `keep` (nothing changed underneath), `adopt` (our own save landed; it becomes the baseline), `reload`
+ * (no edits, take the new text), `conflict` (edits and an underlying change; never clobber them).
  */
 export type IncomingNoteAction = "keep" | "adopt" | "reload" | "conflict";
 

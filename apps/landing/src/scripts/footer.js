@@ -1,17 +1,7 @@
-// Astrolabe · footer
-//
-// The night band printed on Beethoven basin, with a naming lens. The crop's height comes as 16 bits
-// (public/assets/footer/terrain.webp, see the README), and a WebGL2 shader makes the two-ink print
-// from it as relight.js does: normals from the height, Lambert light under a low west-northwest sun
-// with shadows marched toward it, and ivory and olive grain thresholded against fixed noise. The
-// wordmark is part of the print, a plate of brighter stock standing off the basin and casting its
-// shadow on it. Under the pointer the lens draws the graticule on the ground, and the DOM beside it
-// shows the coordinates, the three nearest named features from the IAU Gazetteer, leader lines and
-// crater rims at their true size, the readout placed clear of the letters.
-//
-// WebGL is set up only when the band comes near the viewport. It repaints only on change (a pointer
-// move, then while the lens settles) and only while on screen in a visible tab; with reduced motion
-// the lens snaps. Without WebGL2 the static print (CSS masks) shows, fetched only then.
+// Astrolabe · footer: the night band printed on Beethoven basin, with a naming lens. A WebGL2 shader
+// prints the 16-bit height (public/assets/footer/terrain.webp) as relight.js does; the lens shows
+// coordinates and the nearest IAU Gazetteer features. WebGL starts only near the viewport and repaints
+// only on change while visible; reduced motion snaps the lens; without WebGL2 a static print shows.
 
 const RAD = Math.PI / 180;
 const NIGHT = [0x1e, 0x1c, 0x1a].map((v) => v / 255);
@@ -541,13 +531,10 @@ class Foot {
     return n;
   }
 
-  /* Pointer: the lens lives on the stage, the open print under the links. A mouse moves it while it
-     hovers; a touch places it with a tap and moves it with a sideways drag (the band is
-     touch-action: pan-y, so vertical swipes still scroll the page), and the lens stays where the
-     finger left it until a tap lands outside the stage. With a fine pointer that hovers, the lens's
-     centre mark is the pointer: CSS hides the system cursor while the stage is sighting, the mark
-     sits exactly on the pointer and the lens eases after it. Leaving the stage, a blurred window or
-     a hidden tab gives the system cursor back. */
+  /* Pointer: a mouse moves the lens while hovering; a touch places it with a tap and drags it sideways
+     (the band is touch-action: pan-y so vertical swipes still scroll), and it stays until a tap lands
+     outside the stage. With a fine hovering pointer the lens's centre mark is the pointer (CSS hides
+     the cursor); leaving the stage, a blurred window or a hidden tab gives the cursor back. */
   listen() {
     const fine = matchMedia("(hover: hover) and (pointer: fine)");
     const takeOver = () =>

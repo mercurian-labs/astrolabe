@@ -139,19 +139,10 @@ const contract = (symbol: CodeSymbol) => ({
 });
 
 /**
- * A delta's events, in the order the graph's replay needs: writes (a new
- * folder, file, or definition, each after its container), then amends, then
- * links, then unlinks. Writes and amends carry the symbol's name, file, kind,
- * and parent. A folder or file is never amended: what changed inside it says so.
- * Links and unlinks are per kind: a link is made when an edge of that kind
- * first stands between the pair and broken when it goes; the graph flattens
- * the kinds of a pair for drawing. Each carries the edge's resolution (an
- * unlink, the resolution the edge had), so a story whose memory starts empty
- * still says which links are exact. A standing link whose resolution changed
- * (a second candidate appeared, or one went) is linked again with the new one,
- * so a replay's resolutions match the index at every checkpoint. A removed symbol emits nothing (the memory
- * has no delete), and a symbol whose own text is unchanged is untouched even
- * when the diff's hunks run through it.
+ * A delta's events in replay order: writes (each after its container), amends, links, unlinks. Folders
+ * and files are never amended. Links are per kind and carry the edge's resolution (unlinks the old
+ * one); a standing link whose resolution changed is relinked so replays match the index at every
+ * checkpoint. Removed symbols emit nothing (memory has no delete); text-unchanged symbols are untouched.
  */
 export function turnEvents(delta: CodeDelta): ReadonlyArray<ThreadEvent> {
   const events: Array<ThreadEvent> = [];
@@ -194,11 +185,9 @@ export function areaOf(path: string, roots: ReadonlyArray<string>): string {
 }
 
 /**
- * The story's memory: the first commit's folders, files, definitions, red
- * links, and links. Two lenses, over everything the run ever held: Packages
- * types each note's tie to its parent by the note's area; Relationships types
- * every link by its kind (the graph tints a lens by its slot, so this one is for
- * filtering by kind).
+ * The story's memory: the first commit's folders, files, definitions, red links and links, with two
+ * lenses over everything the run ever held: Packages types each parent tie by the note's area;
+ * Relationships types every link by kind, for filtering (the graph tints a lens by its slot).
  */
 export function storyMemory(
   id: string,

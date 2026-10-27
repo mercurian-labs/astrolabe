@@ -1,16 +1,8 @@
 /**
- * Every node carries its name. Labels are SDF text (troika Text) that face the
- * camera, keep a near-constant size on screen, and fade with distance from the
- * camera: returning as it comes closer. A hovered, picked, or worked note's
- * label stays at full strength. The story's notes' labels, and a hovered or
- * picked note's, are outlined in paper and drawn over everything, so they read
- * across any line; the story's are also exempt from the fade and the cutoff.
- *
- * Labels are pooled: only the labels within the draw budget (in view, inside
- * the label window, at most LABEL_BUDGET of them, prominent first) own a Text,
- * and a note keeps its Text while it stays in the budget, so a memory of any
- * size owns only as many as it shows. A Text given a new name stays hidden
- * until it has typeset. Labels update only when a frame is drawn.
+ * Every node carries its name: camera-facing troika SDF text at near-constant screen size, fading
+ * with distance. Story, hovered, and picked labels are outlined in paper and drawn over everything.
+ * Only labels in the draw budget own a pooled Text, so a memory of any size owns only as many as it
+ * shows. A Text given a new name stays hidden until it has typeset.
  */
 import { Group, Vector3, type Camera, type Color } from "three";
 import { BatchedText, Text } from "troika-three-text";

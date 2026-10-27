@@ -1,11 +1,12 @@
 import type { EnvironmentId, PullRequestLinkedThreadsResult } from "@t3tools/contracts";
 
+import type { CommandPaletteUiAction } from "./components/CommandPalette.logic";
+import { requestCommandPalette } from "./commandPaletteStore";
+
 export interface CommandPaletteLinkedThreads {
   readonly environmentId: EnvironmentId;
   readonly threads: PullRequestLinkedThreadsResult["threads"];
 }
-
-const COMMAND_PALETTE_OPEN_EVENT = "t3code:open-command-palette";
 
 export interface CommandPaletteOpenDetail {
   // Astrolabe: or the file picker, which the keyboard menu's `f` opens.
@@ -14,40 +15,26 @@ export interface CommandPaletteOpenDetail {
   readonly linkedThreads?: CommandPaletteLinkedThreads;
 }
 
-// Astrolabe: a request made before the palette mounts (Vim's `:` just after a page load) waits
-// for it, instead of being lost along with the key that asked.
-let listeners = 0;
-let pendingOpen: CommandPaletteOpenDetail | null = null;
-
-export function openCommandPalette(detail?: CommandPaletteOpenDetail): void {
-  if (listeners === 0) {
-    pendingOpen = detail ?? {};
-    return;
-  }
-  window.dispatchEvent(
-    new CustomEvent(COMMAND_PALETTE_OPEN_EVENT, detail ? { detail } : undefined),
-  );
+export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void {
+  requestCommandPalette(commandPaletteOpenAction(detail));
 }
 
-export function onOpenCommandPalette(
-  listener: (detail: CommandPaletteOpenDetail) => void,
-): () => void {
-  const handler = (event: Event) => {
-    listener((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? {});
-  };
-  window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, handler);
-  listeners += 1;
-  if (pendingOpen !== null) {
-    const detail = pendingOpen;
-    pendingOpen = null;
-    listener(detail);
+function commandPaletteOpenAction(detail: CommandPaletteOpenDetail): CommandPaletteUiAction {
+  if (detail.open === "new-thread-in") return { _tag: "OpenNewThreadIn" };
+  if (detail.open === "add-project") return { _tag: "OpenAddProject" };
+  // Astrolabe: the keyboard menu, which never opens over the palette, opens the file picker.
+  if (detail.open === "files") return { _tag: "ToggleMode", mode: "files" };
+  if (detail.query !== undefined) {
+    return {
+      _tag: "OpenSearch",
+      query: detail.query,
+      ...(detail.linkedThreads ? { linkedThreads: detail.linkedThreads } : {}),
+    };
   }
-  return () => {
-    window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, handler);
-    listeners -= 1;
-  };
+  return { _tag: "SetOpen", open: true };
 }
 
+/** True while the palette popup is on screen, including its closing animation. */
 export function isCommandPaletteOpen(): boolean {
   return (
     typeof document !== "undefined" && document.querySelector("[data-command-palette]") !== null

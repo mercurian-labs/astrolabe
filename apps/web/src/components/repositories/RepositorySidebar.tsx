@@ -107,12 +107,10 @@ function useCheckouts(repository: EnvironmentProject | null): ReadonlyArray<Chec
 }
 
 /**
- * Astrolabe: the Repositories section's sidebar, built as the Wikis sidebar is: the title row
- * (search, the project filter narrowed to repositories, Add a repository), then the list. The
- * list leads with what is moving (a checkout's uncommitted changes, its branch against its
- * base, its change requests) and then the files its commits changed most recently; the filter's
- * Tree choice shows the whole file tree instead. Search goes to a file by name. A row opens in
- * the focused pane's tab in front, as a document's does; with the modifier, in a new tab.
+ * The Repositories sidebar, built like the Wikis one: title row (search, repository filter, Add),
+ * then a list leading with what is moving (uncommitted changes, branch against base, change
+ * requests) and then recently changed files; the filter's Tree choice shows the whole tree. A row
+ * opens in the focused pane's front tab, or with the modifier in a new tab.
  */
 export function RepositorySidebar() {
   const repositories = useRepositories();

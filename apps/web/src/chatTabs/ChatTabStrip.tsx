@@ -1,7 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
+import type { OrchestrationV2ThreadFamily, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { MessagesSquare } from "lucide-react";
 import {
   createContext,
@@ -17,6 +20,7 @@ import {
 
 import { resolveComposerProviderSelection } from "~/components/ChatView.logic";
 import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
+import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { isElectron } from "~/env";
@@ -35,11 +39,13 @@ import {
 } from "~/panes/tabGroups";
 import { sortProviderInstanceEntries, type ProviderInstanceEntry } from "~/providerInstances";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { readThreadShell, useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { providerEntriesByEnvironmentAtom } from "~/state/server";
 import { environmentShell } from "~/state/shell";
+import { threadFamilies } from "~/state/threads";
 import {
   buildDraftThreadRouteParams,
   buildThreadRouteParams,
@@ -50,7 +56,7 @@ import { insertIndex, insertionLineX, startTabDragPreview } from "../panes/drag"
 import { preventTabMiddleButtonDefault, TabCloseButton, TabTitle } from "../panes/TabParts";
 import { historyTarget } from "~/tabNavigation.logic";
 import { chatTabsSlot, tabHistorySlot } from "../whichKey/handles";
-import { neighbourOf, useChatTabsStore } from "./chatTabsStore";
+import { isChatTabGone, neighbourOf, useChatTabsStore } from "./chatTabsStore";
 import { registerThreadTabDrop } from "./threadTabDrop";
 
 /** Where a chat's tab leads: its server thread, or its draft while it is one. */
@@ -128,6 +134,8 @@ export function ChatTabStrip({
   const [insertAt, setInsertAt] = useState<{ index: number; x: number } | null>(null);
   // Astrolabe: the chat in front's right panel, where a tab group's marker shows the group's tab.
   const panes = useContext(RightPanelHostContext)?.controller ?? null;
+  // Under Settings or Usage the strip lends nothing to the keyboard menu or the history arrows.
+  const background = useContext(BackgroundThreadContext);
   // Astrolabe: the strip in runs, a change group's threads together behind its marker, as a
   // pane's strip shows them (`tabGroups`).
   const groupsOf = useTabGroupLookup();
@@ -250,28 +258,26 @@ export function ChatTabStrip({
       drop: (dropped, x, front) => handle.current.openDropped(dropped, x, front),
     });
   }, []);
-  useEffect(
-    () =>
-      chatTabsSlot.register({
-        keys,
-        activeKey,
-        select: (key) => handle.current.select(key),
-        close: (key) => handle.current.close(key),
-      }),
-    [activeKey, keys],
-  );
+  useEffect(() => {
+    if (background) return;
+    return chatTabsSlot.register({
+      keys,
+      activeKey,
+      select: (key) => handle.current.select(key),
+      close: (key) => handle.current.close(key),
+    });
+  }, [activeKey, background, keys]);
   const canGoBack = activeKey !== null && historyTarget(histories, activeKey, "back") !== null;
   const canGoForward =
     activeKey !== null && historyTarget(histories, activeKey, "forward") !== null;
-  useEffect(
-    () =>
-      tabHistorySlot.register({
-        canGoBack,
-        canGoForward,
-        go: (direction) => handle.current.goInHistory(direction),
-      }),
-    [canGoBack, canGoForward],
-  );
+  useEffect(() => {
+    if (background) return;
+    return tabHistorySlot.register({
+      canGoBack,
+      canGoForward,
+      go: (direction) => handle.current.goInHistory(direction),
+    });
+  }, [background, canGoBack, canGoForward]);
 
   // The tab in front scrolls into view, again as the tabs change around it.
   useEffect(() => {
@@ -284,12 +290,10 @@ export function ChatTabStrip({
   }, [activeKey, keys]);
 
   /**
-   * Astrolabe: a tab group's marker here, for its run of chats (`run`). It shows the group's tab
-   * beside a chat of the group, opening its right panel, and in front there: beside the chat in
-   * front when that chat is in the group, else beside the run's first chat, which comes to the
-   * front first. The group's tab is its shared run's (`groupPanelRuns.ts`), so it opens beside
-   * every thread in the group, and never beside a thread outside it. It closes the run's chats,
-   * leaving the panels' runs as they are, and drags the run along the strip only.
+   * A tab group's marker for its run of chats. It opens the group's tab beside the front chat if
+   * that chat is in the group, else beside the run's first chat, brought to front. The tab is the
+   * group's shared run (`groupPanelRuns.ts`), so it never opens beside a thread outside the group.
+   * Close closes the run's chats and leaves the panels' runs; drag moves the run along the strip.
    */
   const runActions = (
     group: EnvironmentChangeGroup,
@@ -448,6 +452,35 @@ export function ChatTabStrip({
   );
 }
 
+const NO_FAMILY_READ: Atom.Atom<AsyncResult.AsyncResult<OrchestrationV2ThreadFamily, unknown>> =
+  Atom.make(AsyncResult.initial<never, never>(true)).pipe(Atom.withLabel("chat-tab:no-family"));
+
+/**
+ * Cold connect leaves older settled threads and idle subagents out of the shell. A tab showing one
+ * mounts its family, which brings the row back and decides whether the thread is gone. Held once
+ * needed, since the row it brings in would otherwise unmount it.
+ */
+function useUnlistedThreadFamilyRead(
+  ref: ScopedThreadRef | null,
+  unlisted: boolean,
+): ThreadFamilyRead {
+  const [needed, setNeeded] = useState(false);
+  if (unlisted && !needed && ref !== null) setNeeded(true);
+  const environmentId = needed ? (ref?.environmentId ?? null) : null;
+  const threadId = needed ? (ref?.threadId ?? null) : null;
+  useEffect(() => {
+    if (environmentId === null || threadId === null) return;
+    return threadFamilies.mount(appAtomRegistry, environmentId, threadId);
+  }, [environmentId, threadId]);
+  return threadFamilyRead(
+    useAtomValue(
+      environmentId !== null && threadId !== null
+        ? threadFamilies.familyAtom(environmentId, threadId)
+        : NO_FAMILY_READ,
+    ),
+  );
+}
+
 /** What a tab asks of its strip, by its key. */
 interface ChatTabActions {
   /** Where the tab leads now, or null for a chat gone. */
@@ -476,18 +509,23 @@ const ChatTab = memo(function ChatTab({
   const live = isThreadRouteSnapshotAuthoritative(
     useEnvironmentQuery(ref ? environmentShell.stateAtom(ref.environmentId) : null).data?.status,
   );
-  const exists = shell !== null && shell.deletedAt == null;
-  const route: ChatRoute | null = exists
-    ? { kind: "thread", key: tabKey }
-    : draftId
-      ? { kind: "draft", draftId }
-      : null;
-  useEffect(() => actions.route(tabKey, route), [actions, route, tabKey]);
+  const familyRead = useUnlistedThreadFamilyRead(ref, shell === null && draftId === null);
   // A chat deleted, or a draft discarded, closes its tab once its environment's threads are known.
   // The chat in front leaves through ThreadRouteView's own redirect first.
-  const gone = live && route === null;
+  const gone =
+    ref === null ? live : isChatTabGone({ live, shell, hasDraft: draftId !== null, familyRead });
+  const route: ChatRoute | null =
+    shell !== null && shell.deletedAt == null
+      ? { kind: "thread", key: tabKey }
+      : draftId
+        ? { kind: "draft", draftId }
+        : ref !== null && shell === null && !gone
+          ? { kind: "thread", key: tabKey }
+          : null;
+  useEffect(() => actions.route(tabKey, route), [actions, route, tabKey]);
+  // Read again at close: a family read already cached can settle before its rows mount.
   useEffect(() => {
-    if (gone && !active) useChatTabsStore.getState().close(tabKey);
+    if (gone && !active && chatRouteOf(tabKey) === null) useChatTabsStore.getState().close(tabKey);
   }, [active, gone, tabKey]);
   // A thread not yet sent has no title of its own.
   const title = shell?.title ?? "New thread";

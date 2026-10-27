@@ -123,20 +123,10 @@ export type LabelSide = "right" | "left";
 const STACK_TRIES = 3;
 
 /**
- * Of the candidate labels, the ones a frame draws. Forced labels (the shown
- * turn's story, a hover, a pick) come first and are never cut by the budget
- * or by an ordinary label: one that would collide with another forced label
- * reads on its node's other side, else stacks a label height above or below
- * (up to STACK_TRIES each way), and only then gives way. The rest follow,
- * highest priority first, each kept only when its box overlaps no label kept
- * before it, up to `budget`. A label reads on its node's right; one whose box
- * would cross the frame's right edge (`frameWidth`) reads on the left when
- * that fits inside the frame, and an ordinary one is cut otherwise; a forced
- * one takes whichever side shows more of it. The box tested is the box drawn,
- * and `placed` hears where each kept label goes: its side, and how far it
- * stacked (CSS pixels, down positive). `candidates` is reordered in place
- * and truncated to what is kept; returns how many were cut. `box` writes a
- * candidate's screen box on a side into its argument.
+ * Forced labels (story, hover, pick) come first and are never cut by the budget: on collision one
+ * flips sides, then stacks up to STACK_TRIES each way. The rest are kept, highest priority first,
+ * if they overlap nothing kept, up to `budget`. Labels past the right edge read on the left.
+ * Reorders and truncates `candidates` in place; returns how many were cut.
  */
 export function placeLabels(
   candidates: Array<number>,

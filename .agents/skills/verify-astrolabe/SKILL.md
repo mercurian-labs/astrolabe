@@ -148,14 +148,17 @@ when the feature needs a real thread. Then:
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
   Tools take Playwright selectors: a bare CSS descendant selector
   (`[data-x] input`) is rejected; chain with `>>` or use roles.
-- `preview_press` sends modifiers (`modifiers: ["Meta"]` for Cmd+K) and one key per
-  call; `preview_click` sends none, but takes `button: "middle"` or `"right"`.
-  Keyboard flows (Vim, the keyboard menu) are driven with `preview_press`.
+- Page input is one tool, `preview_act`, with an `action` (`click`, `type`, `press`,
+  `hover`, `select`, `drag`, `upload`, `scroll`). The feature files write
+  `preview_act click` for `preview_act` with `action: "click"`.
+- `preview_act press` sends modifiers (`modifiers: ["Meta"]` for Cmd+K) and one key per
+  call; `preview_act click` sends none, but takes `button: "middle"` or `"right"`.
+  Keyboard flows (Vim, the keyboard menu) are driven with `preview_act press`.
 - Opening a chat focuses its composer, so keys "to the page" type into the draft.
   Clicking a heading or `document.activeElement.blur()` is not enough: focus lands on
   the page and type-to-focus sends the next printable key (Space too) into the composer.
   Open the keyboard menu with Cmd+K, which works from the composer, or move focus to a
-  row first with Cmd+K `h`. `preview_press` names the space bar `Space` (a literal
+  row first with Cmd+K `h`. `preview_act press` names the space bar `Space` (a literal
   space is rejected).
 - `preview_snapshot` returns a very large tree. Use `preview_wait_for` to
   settle and `preview_evaluate` for targeted reads (tab lists, localStorage),

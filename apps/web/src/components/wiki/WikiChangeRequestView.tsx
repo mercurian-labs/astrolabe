@@ -20,6 +20,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { ensureLocalApi } from "~/localApi";
 import { useThreadShell } from "~/state/entities";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
+import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -509,6 +510,7 @@ function FileChange({
           theme: resolveDiffThemeName(resolvedTheme),
           overflow: "wrap",
           disableFileHeader: true,
+          preferredHighlighter: PREFERRED_HIGHLIGHTER,
         }}
       />
     </div>

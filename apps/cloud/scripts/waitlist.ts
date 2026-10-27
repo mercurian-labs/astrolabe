@@ -1,14 +1,8 @@
 // @effect-diagnostics globalConsole:off - a command-line tool prints its results.
 /**
- * Waitlist approvals from a terminal; apps/admin is the same over the tailnet.
- * Members who asked to own an organization are in the same queue.
- *
- *   node scripts/waitlist.ts list
- *   node scripts/waitlist.ts approve someone@example.com
- *   node scripts/waitlist.ts decline someone@example.com
- *
- * Needs DATABASE_URL. Approving emails the person when MAIL_FROM is set
- * (through SES); otherwise the mail goes to the log.
+ * Waitlist approvals from a terminal (apps/admin does the same over the tailnet), including
+ * members asking to own an organization: `node scripts/waitlist.ts list|approve|decline <email>`.
+ * Needs DATABASE_URL. Approval emails go through SES when MAIL_FROM is set, else to the log.
  */
 import * as Effect from "effect/Effect";
 import { Pool } from "pg";

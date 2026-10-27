@@ -1,15 +1,8 @@
 /**
- * Astrolabe's code reads upstream T3 Code's `T3CODE_*` variables, and people set `ASTROLABE_*`.
- * Each entry point (server CLI, desktop main, dev runner) calls this once, before anything reads
- * the environment, so the rest of the code keeps upstream's names.
- *
- * - `ASTROLABE_X` sets `T3CODE_X`.
- * - `T3CODE_HOME`, `T3CODE_PORT` and `T3CODE_HOST` choose state and sockets, so values inherited
- *   from a shell set up for T3 Code are dropped. Otherwise Astrolabe could open T3 Code's database
- *   or take its port.
- *
- * The first Astrolabe process marks the environment, so a server that Astrolabe spawns keeps the
- * `T3CODE_*` values its parent set.
+ * People set `ASTROLABE_*`; the code reads upstream's `T3CODE_*`. Each entry point calls this once,
+ * before anything reads the environment: `ASTROLABE_X` sets `T3CODE_X`, and inherited `T3CODE_HOME`,
+ * `_PORT` and `_HOST` are dropped so Astrolabe never opens T3 Code's database or takes its port. The
+ * first process marks the environment, so a server Astrolabe spawns keeps its parent's values.
  */
 const PREFIX = "ASTROLABE_";
 const APPLIED = "ASTROLABE_ENV_APPLIED";

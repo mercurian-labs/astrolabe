@@ -1,9 +1,7 @@
 /**
- * The folders the indexed files sit in, from the story's root down, as symbols:
- * every folder on the path from a `--paths` root to an indexed file is a note,
- * and the root folder has no parent. A Go folder holding `.go` files and a Rust
- * module folder (holding `mod.rs`, `lib.rs`, or `main.rs`, or named like a
- * sibling `x.rs`) are packages; every other folder is a folder.
+ * The indexed files' folders as symbols, from the story's root down: every folder from a `--paths`
+ * root to an indexed file is a note; the root has no parent. A Go folder holding `.go` files and a
+ * Rust module folder (`mod.rs`, `lib.rs`, `main.rs`, or named like a sibling `x.rs`) are packages.
  */
 import type { CodeSymbol } from "../model/code.ts";
 import type { LanguageId } from "../parse/languages.ts";

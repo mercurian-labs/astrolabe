@@ -11,12 +11,12 @@ A remote access connection goes through four parts, in this order:
 3. **The host's tunnel** (cloudflared on the host) carries the request to the host.
 4. **T3 Code on the host** answers.
 
-When a connection fails, open **Settings > Connections**, find the environment,
+When a connection fails, open **Settings > Environments**, find the environment,
 and select **Details**. The first part marked as failed is the cause. Find its
 section below.
 
 To see the host's side, run `astrolabe connect status` on the host, or open
-**Settings > Connections** on the host. Both check the host's remote access
+**Settings > Sharing & access** on the host. Both check the host's remote access
 address from the host, and say why it fails. `astrolabe connect` runs the same check
 when it finishes setup. This check cannot test another device's network. For a
 problem on one device, use **Details** on that device.
@@ -110,7 +110,7 @@ the host.
   account on this device and on the host. On the host, run `astrolabe connect logout`,
   then `astrolabe connect`.
 - **Remote access is off on the host, or the host only publishes agent activity.**
-  On the host, open **Settings > Connections** and turn **Remote access** on, or
+  On the host, open **Settings > Sharing & access** and turn **Remote access** on, or
   run `astrolabe connect`.
 - **The host was linked, but the server did not apply the link yet.** Run
   `astrolabe service restart` on the host, or restart `astrolabe serve`.

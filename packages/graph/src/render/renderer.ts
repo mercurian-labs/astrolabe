@@ -1,9 +1,7 @@
 /**
- * What `AtlasGraph` asks of a renderer. Four modes share one component: "3d"
- * and "flat" are the Atlas renderer's two cameras, which glide into each
- * other; "lean" (a stripped-down 2D renderer on Three) and "pixi" (the same
- * on Pixi.js) each own their own canvas. Everything a renderer draws comes
- * from the shared model and layout; a renderer only decides how to draw it.
+ * What `AtlasGraph` asks of a renderer. "3d" and "flat" are the Atlas renderer's two cameras, which
+ * glide into each other; "lean" (Three) and "pixi" (Pixi.js) are 2D renderers with their own
+ * canvas. Everything comes from the shared model and layout; a renderer only decides how to draw.
  */
 import type { TourInner, TourVisit } from "../model/tour.ts";
 import type { GraphLayout } from "../layout/forceLayout.ts";
@@ -155,11 +153,9 @@ export interface GraphRenderer {
   /** Frame these shown notes (universe indices) at the reading density now, following or not. */
   frame(indices: ReadonlyArray<number>): void;
   /**
-   * The checkpoint's moves at the level shown, in play order: what the
-   * agent's cursor tours when the checkpoint lands. Clears the last
-   * checkpoint's gestures, unless `appended` is given: the same turn grew
-   * while the agent works, and the cursor goes on to tell `appended`, the
-   * tour of the new plays alone.
+   * The checkpoint's moves at the level shown, in play order, for the cursor's tour. Clears the
+   * last checkpoint's gestures, unless `appended` is given: the same turn grew while the agent
+   * works, and the cursor goes on to tell `appended`, the tour of the new plays alone.
    */
   setMoves(visits: ReadonlyArray<TourVisit>, appended?: ReadonlyArray<TourVisit> | null): void;
   /** The host shows the turn's moves in a popover beside the cursor: its chip gives way. */

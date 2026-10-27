@@ -3,12 +3,10 @@ import { APIError } from "better-auth/api";
 import { signJWT, type JwtOptions } from "better-auth/plugins/jwt";
 
 /**
- * Runs before Better Auth deletes an account (which cascades its sessions,
- * sign-in methods, passkeys and memberships). An organization you own with
- * other people in it must be handed over first; one you're alone in goes
- * with you. Linked machines are unlinked through the relay so their tunnels
- * are torn down; if the relay can't be reached the deletion stops and can
- * be retried.
+ * Runs before Better Auth deletes an account, which cascades its sessions, sign-ins, passkeys
+ * and memberships. An owned organization with other members must be handed over first; one
+ * you're alone in goes with you. Linked machines are unlinked through the relay to tear down
+ * their tunnels; if the relay is unreachable the deletion stops and can be retried.
  */
 export const beforeDeleteAccount =
   (input: {

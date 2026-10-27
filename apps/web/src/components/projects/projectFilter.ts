@@ -4,11 +4,10 @@ import { wikiScopeKey } from "../wiki/wikiTabs";
 import { storedName } from "./storedChoice";
 
 /**
- * Astrolabe: the project filter every section's list shares. A project is a repository or a
- * wiki, so the filter lists All projects, then Repositories and each repository, then Wikis and
- * each wiki. The two headings are choices too, meaning every project of that kind. A wiki's
- * checkout is a project in T3 Code's sense; it is listed once, as the wiki. A section that lists
- * one kind offers only that kind, its heading standing for all of them.
+ * The project filter every section's list shares. A project is a repository or a wiki: All, then
+ * Repositories and each repository, then Wikis and each wiki, the headings meaning every project
+ * of that kind. A wiki's checkout is a T3 Code project but is listed once, as the wiki; a section
+ * listing one kind offers only that kind.
  */
 export type ProjectFilterChoice =
   | { readonly kind: "all" }

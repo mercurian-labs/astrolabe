@@ -1,17 +1,8 @@
 /**
- * The graph's two shader programs. Both read node positions and radii from one
- * float texture (`uPos`: x, y, z, radius) and node style from another
- * (`uStyle`: visibility, emphasis, glow, hover), indexed by node.
- *
- * Nodes are billboards shaded as spheres: a lit disc with a hard edge (MSAA
- * smooths it), a hollow ring for a frontier node, an accent hairline for a
- * note the current turn worked. A codebase's notes take their kind's shape (see
- * `shapes.ts`), shaded the same way; the rings stay circles around them. Behind the focal plane they lift toward paper, so
- * overlapping discs separate. Edges are ribbons sampled along their length:
- * two rim vertices per sample pushed apart along the screen-space
- * perpendicular by a world-unit width, so far edges thin out, and a landing
- * wave can travel them; the width grows a little with attention. Everything
- * fades toward the paper with depth, edges faster (the fade is squared).
+ * Both programs read node position and radius from `uPos` and style from `uStyle`, indexed by node.
+ * Nodes are billboards shaded as spheres (a codebase's in their kind's shape); edges are ribbons
+ * widened in screen space by a world-unit width, so far edges thin and a landing wave can travel
+ * them. Everything fades toward paper with depth, edges faster (squared).
  */
 
 import { CONTAINER_RING, SHAPES } from "./shapes.ts";

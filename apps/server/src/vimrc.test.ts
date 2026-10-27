@@ -135,10 +135,9 @@ it.layer(NodeServices.layer)("vimrc", (it) => {
       "",
       Effect.gen(function* () {
         const vimrc = yield* Vimrc.Vimrc;
-        yield* Effect.all(
-          ["a", "b", "c", "d"].map((keys) =>
-            vimrc.upsertMapping({ mode: "normal", keys, does: "x", recursive: false }),
-          ),
+        yield* Effect.forEach(
+          ["a", "b", "c", "d"],
+          (keys) => vimrc.upsertMapping({ mode: "normal", keys, does: "x", recursive: false }),
           { concurrency: "unbounded" },
         );
         const lines = (yield* readFile).trim().split("\n");

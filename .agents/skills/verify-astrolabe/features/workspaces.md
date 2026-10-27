@@ -35,18 +35,18 @@ pages works too (`<API>/device?user_code=<code>`, codes from
 ## Driving it with the Browser panel
 
 ```
-preview_click  main >> role=button[name="New workspace"]
-preview_type   role=dialog >> role=textbox[name="Name"]   text=Acme
-preview_click  role=dialog >> role=button[name="Create workspace"]
+preview_act click  main >> role=button[name="New workspace"]
+preview_act type   role=dialog >> role=textbox[name="Name"]   text=Acme
+preview_act click  role=dialog >> role=button[name="Create workspace"]
 preview_wait_for  text="Who can create teams"
-preview_click  main >> role=button[name="Invite"]
-preview_type   role=dialog >> role=textbox[name="Email"]  text=ben@example.test
-preview_click  role=dialog >> role=button[name="Send invitation"]
+preview_act click  main >> role=button[name="Invite"]
+preview_act type   role=dialog >> role=textbox[name="Email"]  text=ben@example.test
+preview_act click  role=dialog >> role=button[name="Send invitation"]
 # after the second person accepts (a pending invitation only offers Revoke):
-preview_click  #workspace-people >> role=combobox[name="Role"]   then role=option[name="Admin"]
-preview_click  #workspace-teams >> role=button[name="Manage"] >> nth=0   # rename, owners, "Delete team…"
-preview_click  #workspace-leave >> role=button[name="Hand over…"]        # needs a second person
-preview_click  #workspace-leave >> role=button[name="Delete…"]
+preview_act click  #workspace-people >> role=combobox[name="Role"]   then role=option[name="Admin"]
+preview_act click  #workspace-teams >> role=button[name="Manage"] >> nth=0   # rename, owners, "Delete team…"
+preview_act click  #workspace-leave >> role=button[name="Hand over…"]        # needs a second person
+preview_act click  #workspace-leave >> role=button[name="Delete…"]
 ```
 
 **New workspace** shows only for an approved account that owns no workspace
@@ -78,11 +78,11 @@ Postgres (`auth.organization`, `auth.member`, `auth.team`, `auth.team_owner`).
   settles.
 - Closing every tab of the incognito profile drops its pairing and cloud
   session; mint a new pairing token and type it into `/pair`.
-- Names and the workspace name save on blur. `preview_press Enter` may not
+- Names and the workspace name save on blur. `preview_act press Enter` may not
   reach a focused input; dispatch the key from `preview_evaluate`
   (`el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))`)
   or click elsewhere, then confirm in Postgres.
-- `preview_type` has left stray text in a field; read the input's value back
+- `preview_act type` has left stray text in a field; read the input's value back
   before submitting a dialog.
 - Signing out on the emulator can take around ten seconds while the sign-out
   request waits behind the live polls; wait for the gear before judging.

@@ -15,7 +15,7 @@ export const DELETED_THREAD_TITLE = "Deleted thread";
 /**
  * What a deleted thread keeps: ids, lineage, settings and timestamps. The
  * worktree path and branch stay because worktree cleanup on delete reads them;
- * the title, pull request links and failure text go.
+ * the title, pull request links, guest share and failure text go.
  */
 export function threadTombstone(
   thread: OrchestrationV2ThreadProjection["thread"],
@@ -30,6 +30,7 @@ export function threadTombstone(
     ...(thread.limitRecovery === undefined ? {} : { limitRecovery: null }),
     ...(thread.titleRegeneration === undefined ? {} : { titleRegeneration: null }),
     ...(thread.rollbackFailure === undefined ? {} : { rollbackFailure: null }),
+    ...(thread.guestShare === undefined ? {} : { guestShare: null }),
   };
 }
 

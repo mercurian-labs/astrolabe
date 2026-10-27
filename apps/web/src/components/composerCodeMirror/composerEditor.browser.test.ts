@@ -24,7 +24,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { vimInsertMode } from "@mercurian/editor/vim";
 
-import { onOpenCommandPalette } from "~/commandPaletteBus";
+import { openCommandPalette } from "~/commandPaletteBus";
 import { handleLeaderRequests, pendingExOrigin, releaseExOrigin } from "~/whichKey/doors";
 import { exLineGroups } from "~/whichKey/exPalette";
 
@@ -35,6 +35,9 @@ import {
 } from "~/composer-logic";
 import { ComposerChipRegistry, composerChipsField } from "./composerChips";
 import { ComposerEditor, type ComposerEditorHost, type ComposerEditorMode } from "./composerEditor";
+
+// No palette is mounted here, so the store would only queue the open.
+vi.mock("~/commandPaletteBus", () => ({ openCommandPalette: vi.fn() }));
 
 const editors: ComposerEditor[] = [];
 
@@ -800,8 +803,7 @@ describe("Vim mode", () => {
 
   it("opens the palette as the ex line on : in normal mode, and runs the editor's own commands back in the draft", async () => {
     using _cleanup = cleanup();
-    const opened: unknown[] = [];
-    const stop = onOpenCommandPalette((detail) => opened.push(detail));
+    vi.mocked(openCommandPalette).mockClear();
     const { editor } = mount("hello world", { vim: true });
     const form = document.createElement("form");
     const submitted = vi.fn((event: Event) => event.preventDefault());
@@ -812,8 +814,7 @@ describe("Vim mode", () => {
     press(editor, "Escape");
 
     press(editor, ":");
-    stop();
-    expect(opened).toEqual([{ query: ":" }]);
+    expect(vi.mocked(openCommandPalette).mock.calls).toEqual([[{ query: ":" }]]);
     // Vim's own ex line stayed shut.
     expect(editor.view.dom.querySelector(".cm-panels input")).toBeNull();
     const origin = pendingExOrigin();

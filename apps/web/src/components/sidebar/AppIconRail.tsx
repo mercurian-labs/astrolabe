@@ -30,7 +30,13 @@ import {
 } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AccountMenu } from "./AccountMenu";
-import { isRepositoriesPath, isWikisPath, useNavigateToMainApp } from "./mainAppLocation";
+import {
+  isPullRequestsPath,
+  isRepositoriesPath,
+  isWikisPath,
+  useNavigateToMainApp,
+  useSectionPathname,
+} from "./mainAppLocation";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 /** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
@@ -51,22 +57,19 @@ interface AppSection {
  */
 export function useAppSections(): readonly AppSection[] {
   const pathname = useLocation({ select: (location) => location.pathname });
+  // Settings and Usage open over a section, which stays the one its button marks.
+  const sectionPathname = useSectionPathname();
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
   const pullRequestsSupported = usePullRequestsSupported();
 
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
-  const onPullRequests = pathname === "/pull-requests";
-  const onWikis = isWikisPath(pathname);
-  const onRepositories = isRepositoriesPath(pathname);
+  const onPullRequests = isPullRequestsPath(sectionPathname);
+  const onWikis = isWikisPath(sectionPathname);
+  const onRepositories = isRepositoriesPath(sectionPathname);
   const onThreads =
-    !onSettings &&
-    !onUsage &&
-    !onPullRequests &&
-    !onWikis &&
-    !onRepositories &&
-    !pathname.startsWith("/projects/");
+    !onPullRequests && !onWikis && !onRepositories && !sectionPathname.startsWith("/projects/");
 
   return [
     {
@@ -112,7 +115,7 @@ export function useAppSections(): readonly AppSection[] {
       icon: <ChartNoAxesColumnIcon />,
       active: onUsage,
       open: () => void navigate({ to: "/usage" }),
-      foot: false,
+      foot: true,
     },
     {
       id: "settings",
@@ -126,19 +129,10 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: the monogram, then the app's sections (Agents, Wikis, Repositories,
- * Change Requests and Usage), and Settings at the foot, which is the account menu wherever sign-in
- * is set up. It runs from below the title bar to the
- * window's bottom edge and stays when the sidebar collapses; the sidebar opens beside it (see
- * `AppSidebarLayout`). The cell above it is the rail's part of the title bar, drawn as the rail,
- * and holds the sidebar's toggle, which so stays in reach while the sidebar is collapsed; in the
- * macOS desktop app, whose window buttons take that corner, the toggle sits just after them
- * (`--rail-toggle-left`). The title bar's bottom border stops at it, so the cell and the rail read as
- * one column; the rail's edge starts at that border's row, so the two lines meet square at the
- * sidebar's corner. Narrow windows, where the sidebar is a sheet, have no rail (the toggle sits
- * in the title bar there).
- * It is the leftmost of the places the focus moves go between, its buttons a list walked with
- * `j`/`k` (see `keyboardNav/`).
+ * The far-left icon rail: monogram, sections, and at its foot Usage and Settings (the account menu
+ * where sign-in is set up). It stays when the sidebar collapses; its title-bar cell keeps the
+ * sidebar toggle in reach (after the macOS window buttons, `--rail-toggle-left`). Narrow windows,
+ * where the sidebar is a sheet, have no rail. It is the leftmost focus place (`keyboardNav/`).
  */
 export function AppIconRail() {
   const isMobile = useIsMobile();

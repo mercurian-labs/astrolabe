@@ -1,9 +1,6 @@
-// Astrolabe · drafting · the sky
-//
-// The maths behind the hero instrument, kept apart from the drawing so it can be checked on its own
-// (`node` can import this file). Angles are degrees, times are Dates (UTC inside). Accuracy is what
-// an astrolabe can show and better: sidereal time to well under a second, the sun to about 0.01°,
-// star places precessed to the date. Altitudes are geometric, with no refraction.
+// Astrolabe · drafting · the sky: the hero instrument's maths, kept apart from drawing so `node` can
+// import and check it. Angles in degrees, times as Dates (UTC inside). Sidereal time to well under a
+// second, the sun to about 0.01°, stars precessed to the date; altitudes are geometric, no refraction.
 
 const Sky = (() => {
   const RAD = Math.PI / 180;
@@ -69,11 +66,9 @@ const Sky = (() => {
     return { ha, dec };
   }
 
-  // The plate's projection, as astrolabes are made: stereographic from the pole opposite the
-  // observer's onto the equator, which has radius 1. North of the equator that is from the south
-  // pole, with the north pole at the centre; `hemi` is 1 there and -1 in the south, where the
-  // instrument is the mirror image. Hour angle 0 (the meridian, where the sun stands at noon) is
-  // straight up, and the sky turns clockwise in the north. y grows downward, as in SVG.
+  // Stereographic from the pole opposite the observer's onto the equator (radius 1), as astrolabes
+  // are made; `hemi` is 1 in the north and -1 in the south, where the instrument is mirrored. Hour
+  // angle 0 (the meridian) is straight up, the sky turns clockwise in the north, y grows down (SVG).
   function toPlate(ha, dec, hemi) {
     const r = tan((90 - hemi * dec) / 2);
     const a = hemi * ha;

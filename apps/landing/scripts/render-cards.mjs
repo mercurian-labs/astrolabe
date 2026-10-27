@@ -1,17 +1,7 @@
-// Astrolabe · share cards · renderer
-//
-// Prints the link-preview cards and the share assets from the HTML templates in cards/, at each
-// asset's exact size, in headless Chromium with software WebGL (SwiftShader), so the grain comes out
-// the same on every machine. Cards are not rendered at build time: run this after changing a
-// template, the art or the headline, and commit what it writes.
-//
-//   node apps/landing/scripts/render-cards.mjs            # everything
-//   node apps/landing/scripts/render-cards.mjs og/card    # only outputs whose path contains this
-//
-// Writes public/og/ (served, under 300 KB each so WhatsApp shows the large preview), public/icons/
-// and public/favicon.svg, and share/ (uploaded by hand: GitHub's social preview under the repository's
-// Settings → General → Social preview, the X and LinkedIn header and the avatar on the accounts).
-// Needs the Playwright Chromium (`vp exec playwright install chromium` if missing).
+// Astrolabe · share cards · renderer: `node apps/landing/scripts/render-cards.mjs [path-filter]`.
+// Headless Playwright Chromium with SwiftShader WebGL so the grain matches on every machine. Not run
+// at build: rerun after changing a template, art or headline, and commit the output. public/og/ stays
+// under 300 KB each so WhatsApp shows the large preview; share/ is uploaded to the accounts by hand.
 
 import * as NodeHttp from "node:http";
 import * as NodeFSP from "node:fs/promises";

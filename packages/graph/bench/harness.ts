@@ -1,19 +1,8 @@
 /**
- * The bench harness: runs a scenario on a mode and a memory size in the real
- * AtlasGraph, in the page, and measures it. Every run starts from the
- * reference workload (the synthetic thread's reading at checkpoint
- * REFERENCE_CHECKPOINT: what the graph draws by default, nothing searched,
- * filtered, lensed, picked, selected, or hovered, following, fitted, its
- * landing story fallen, at rest), whatever ran before; a warm-up run is
- * discarded; the medians of N runs are reported. The whole memory is the
- * opt-in view whose cost is linear in the memory; the bench does not measure it.
- *
- * Per rendered frame, through the renderer's bench driver: render ms (around
- * the render call only), prep ms, draw calls, labels drawn and cut, edges,
- * beads, and GPU ms where a timer query is available. Around each step: the
- * presented-frame delta (rAF to rAF), long animation frames where the browser
- * reports them, and the JS heap where it exposes it. At rest: frames rendered
- * and timers fired by a graph built under the counter, which should be 0.
+ * Runs a scenario on a mode and memory size in the real AtlasGraph and measures it. Every run
+ * starts from the reference workload (REFERENCE_CHECKPOINT's reading, untouched and at rest),
+ * whatever ran before; a warm-up run is discarded and the medians of N runs are reported. At rest,
+ * a graph built under the counter should fire 0 frames and 0 timers.
  */
 import type { SyntheticSize } from "../fixtures/synthetic.ts";
 import type { AtlasGraphHandle } from "../src/AtlasGraph.tsx";
@@ -187,13 +176,10 @@ function atReference(handle: AtlasGraphHandle): boolean {
 }
 
 /**
- * Put the graph in the reference workload for `mode` and `size`: the thread's
- * reading at REFERENCE_CHECKPOINT, nothing picked or hovered, following,
- * fitted, and at rest, whatever ran before (a pan or zoom pauses following,
- * and a renderer hand-over keeps that). A reading that lands anew (a new
- * memory, or a checkpoint the last run moved off) lights its story, so the
- * reset waits `landingMs` for it to fall. Throws when the graph cannot get
- * there, rather than measure off it.
+ * Put the graph in the reference workload for `mode` and `size`, whatever ran before (a pan or zoom
+ * pauses following, and a renderer hand-over keeps that). A reading that lands anew lights its
+ * story, so the reset waits `landingMs` for it to fall. Throws when the graph cannot get there,
+ * rather than measure off it.
  */
 export async function reset(
   host: BenchHost,

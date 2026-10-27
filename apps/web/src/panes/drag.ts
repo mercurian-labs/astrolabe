@@ -93,12 +93,10 @@ const BLANK =
 let preview: { readonly element: HTMLElement; readonly stop: () => void } | null = null;
 
 /**
- * Draws a tab's drag preview in the page: a pill with the tab's icon and title, held under the
- * pointer where it grabbed the tab, with a count and stacked cards behind it when `count` tabs
- * travel. The browser's own snapshot of a tab takes the strip around it (square corners, the
- * tab in front's feet), so it is replaced by a blank image. A tab group's marker is its own
- * preview, as it stands, on a card's fill. Ends on drop, on the drag's end, or with
- * `stopTabDragPreview`.
+ * Draws a tab's drag preview in the page: a pill with the tab's icon and title under the grab
+ * point, with a count and stacked cards when `count` tabs travel. The browser's own snapshot takes
+ * the strip around the tab, so it is replaced by a blank image; a group marker previews as itself.
+ * Ends on drop, on drag end, or with `stopTabDragPreview`.
  */
 export function startTabDragPreview(event: DragEvent<HTMLElement>, count = 1) {
   stopTabDragPreview();

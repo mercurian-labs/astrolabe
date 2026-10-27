@@ -11,11 +11,10 @@ import { t3ToolResultIndicatesFailure } from "@t3tools/client-runtime/t3ToolSumm
 import type { StoryRun } from "~/threadTurns";
 
 /**
- * A thread told as an Atlas Graph over the wikis it worked in. Each run is a turn; its moves are
- * the run's completed wiki tool calls in order: a read rises a note into view, an amendment
- * writes a note the wiki did not have or amends one it did, and the links the amendment added
- * or removed (comparing the note's links before and after) are links and unlinks. The memory is
- * the wiki's main line as its index has it.
+ * A thread told as an Atlas Graph over its wikis: each run is a turn whose moves are its completed
+ * wiki tool calls in order. A read brings a note into view; an amendment writes or amends a note,
+ * and links it added or removed (comparing before and after) become links and unlinks. The memory
+ * is the wiki's main line as its index has it.
  */
 
 const WIKI_TOOLS = [

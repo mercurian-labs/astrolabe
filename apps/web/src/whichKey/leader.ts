@@ -88,11 +88,10 @@ export function menuKeysLabel(sequence: readonly string[]): string {
 const MODIFIERS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsLock", "Fn"]);
 
 /**
- * The key the open menu reads from a keydown: its `key` when pressed plainly, `CHORD` for the
- * menu's chord, the cursor keys for Ctrl+N and Ctrl+P on a Mac (as macOS lists move; on other
- * platforms they are app shortcuts), and an empty key (which nothing is bound to) for any other
- * chord. Null for a key the menu ignores: a modifier alone, a held key (the arrows
- * excepted, which step), or one composing text.
+ * The key the open menu reads from a keydown: `key` when pressed plainly, `CHORD` for the menu's
+ * chord, cursor keys for Ctrl+N/Ctrl+P on a Mac (as macOS lists move; elsewhere they are app
+ * shortcuts), and an empty key for any other chord. Null for keys the menu ignores: a bare
+ * modifier, a held key (except arrows, which step), or one composing text.
  */
 export function menuKeyOf(
   event: KeyPress,

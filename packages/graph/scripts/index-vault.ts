@@ -1,12 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off - A one-shot host script: it reads a vault from disk and writes one JSON fixture.
 /**
- * Index a vault into an Atlas Graph fixture. Reads only; never writes into the vault.
- *
+ * Index a vault into an Atlas Graph fixture; never writes into the vault. Only top-level files are
+ * read, and each note's last change comes from the vault's git history when it has one.
  *   node scripts/index-vault.ts <vault-dir> [out-file] [memory-id]
- *
- * Only top-level files are read, so a `research/` folder or any other
- * subfolder is ignored. Each note's last change comes from the vault's git
- * history when it has one.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";

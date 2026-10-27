@@ -1374,9 +1374,7 @@ function BrowserKeybindingNotice() {
   );
 }
 
-// Rows come from a hook so they are cached on the server keybindings alone. Built
-// inline, the compiler joins them to the query's cache scope (filtering might
-// mutate them), and every keystroke rebuilds and re-renders every row.
+// Cache rows in a separate hook so the compiler does not rebuild them per search keystroke.
 function useKeybindingCatalog() {
   const serverConfig = useSettingsScope().environment?.serverConfig;
   // Astrolabe: with the commands a removal left unbound, and the menu and alias triggers.

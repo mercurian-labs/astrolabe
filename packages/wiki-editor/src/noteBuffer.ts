@@ -101,14 +101,10 @@ function load(source: string): Loaded {
 export type WikiNoteAuthor = AgentPresence;
 
 /**
- * The editing buffer of the note on screen. Reads of the note arrive through `receive`.
- *
- * A read of a change request's head that carries someone else's amendment lands live: the
- * agent peer applies the difference from the version it last wrote (never from the buffer)
- * onto the buffer as it stands, attributed and reviewable, and the person's unsaved edits stay
- * in place. Any other read replaces the buffer only while it has no unsaved edits, so a change
- * on the server never clobbers what the person is typing. A reload starts a new session, which
- * remounts the editor.
+ * The editing buffer of the note on screen; reads arrive through `receive`. A read of a change
+ * request's head carrying someone else's amendment lands live: the agent peer applies the diff from
+ * the version it last wrote onto the buffer, attributed, keeping unsaved edits. Other reads replace
+ * the buffer only with no unsaved edits; a reload starts a new session, which remounts the editor.
  */
 export class WikiNoteBuffer {
   private loaded: Loaded | null = null;

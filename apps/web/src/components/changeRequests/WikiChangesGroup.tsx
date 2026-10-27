@@ -17,7 +17,7 @@ import {
   useFocusedChangeRequestTabKey,
 } from "../pullRequest/pullRequestTabs";
 import { Button } from "../ui/button";
-import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
+import { CountedSectionHeader } from "./CountedSectionHeader";
 import { TooltipProvider } from "../ui/tooltip";
 import { useWikiOverviews } from "../wiki/wikiEnvironment";
 import { changeRequestWikiScope } from "../wiki/wikiScope";
@@ -38,11 +38,9 @@ const NO_KEYS: readonly string[] = [];
 const isOpenChange = (item: WikiChangeItem) => item.changeRequest.status === "open";
 
 /**
- * Astrolabe: the wikis' change requests in the Change Requests sidebar, a group of their own
- * beside the pull requests': the open ones as cards, then the merged and closed ones on a folded
- * shelf of slim rows, as Wikis kept them. They are every wiki's, or the one wiki the section's
- * project filter picked. The section's search narrows them by title; a click shows one in the
- * focused pane's tab in front, as a pull request's row does.
+ * Wiki change requests as their own group in the Change Requests sidebar: open ones as cards, then
+ * merged and closed ones on a folded shelf. They follow the section's project filter (one wiki or
+ * all) and search (by title); a click shows one in the focused pane's front tab, like a PR row.
  */
 export function WikiChangesGroup({
   query,
@@ -167,15 +165,13 @@ export function WikiChangesGroup({
         className="relative flex flex-col gap-px pb-2"
       >
         <li className="mx-0.5 flex h-8 list-none items-center gap-1">
-          <CollapsibleSectionHeader
+          <CountedSectionHeader
             onClick={() => setOpenExpanded((expanded) => !expanded)}
             expanded={openExpanded}
             tone="muted"
-          >
-            {scoped
-              ? `Wiki changes · ${scoped.wiki.name} · ${open.length}`
-              : `Wiki changes · ${open.length}`}
-          </CollapsibleSectionHeader>
+            label={scoped ? `Wiki changes · ${scoped.wiki.name}` : "Wiki changes"}
+            count={open.length}
+          />
           {scoped ? (
             <Button
               size="icon-xs"
@@ -191,13 +187,13 @@ export function WikiChangesGroup({
         {settled.length > 0 ? (
           <>
             <li className="mx-0.5 h-8 list-none">
-              <CollapsibleSectionHeader
+              <CountedSectionHeader
                 onClick={() => setSettledExpanded((expanded) => !expanded)}
                 expanded={settledExpanded || searching}
                 tone="muted"
-              >
-                {`Merged and closed · ${settled.length}`}
-              </CollapsibleSectionHeader>
+                label="Merged and closed"
+                count={settled.length}
+              />
             </li>
             {settledExpanded || searching ? settled.map(row) : null}
           </>

@@ -1,11 +1,7 @@
 /**
- * A thread over a synthetic memory, to play its story at scale. Each turn
- * reads one to four notes, mostly within one cluster and now and then from a
- * far one (so the gathering travels), amends some of what it read, sometimes
- * writes a red link (filling it where it stands), adds one to three links
- * (some across clusters), and now and then removes one. Every event names a
- * note the memory has at that turn, or reaches toward a new red link.
- * Deterministic for a memory and seed.
+ * A thread over a synthetic memory, to play its story at scale. Turns mostly work within one
+ * cluster, now and then a far one so the gathering travels. Every event names a note the memory has
+ * at that turn, or reaches toward a new red link. Deterministic for a memory and seed.
  */
 import type { Memory, MemoryNote } from "../src/model/memory.ts";
 import type { ThreadEvent, ThreadRecord, ThreadTurn } from "../src/model/thread.ts";

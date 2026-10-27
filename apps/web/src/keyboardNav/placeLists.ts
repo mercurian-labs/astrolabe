@@ -5,16 +5,10 @@ import { sidebarSectionSlot } from "~/whichKey/handles";
 import { listMoveForKey, moveListCursor } from "./listCursor.logic";
 
 /**
- * Astrolabe: moving through a place's list from the keyboard: the sidebar's rows (the Agents,
- * Wikis and Pull Requests sidebars draw them) and the icon rail's buttons. While a row has focus:
- * `j`/`k` (and the arrows) step to the next or previous row, `gg`/`G` (and Home/End) jump to
- * the ends, Enter does what a click does (shows the row in the tab in front), Alt+Enter what an
- * Option-click does (opens it in a new tab) and Mod+Enter what a Mod-click does, `/` opens the
- * sidebar's search, and Escape hands focus to the place on the right. Group headers, folded rows
- * and controls inside a row are passed over. Each list is a roving tab stop: the row last focused
- * is its one stop in the tab order. The row reached by a key shows its focus ring
- * (`:focus-visible`), which marks where Enter would go beside the row showing now
- * (`aria-current`).
+ * Keyboard movement through a place's list (sidebar rows, icon rail buttons): `j`/`k`/arrows step,
+ * `gg`/`G`/Home/End jump, Enter, Alt+Enter and Mod+Enter act as click, Option-click and Mod-click,
+ * `/` searches and Escape focuses the place to the right. Headers, folded rows and in-row controls
+ * are skipped; each list is a roving tab stop whose key-reached row shows `:focus-visible`.
  */
 
 interface PlaceList {

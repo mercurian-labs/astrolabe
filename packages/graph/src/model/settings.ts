@@ -88,11 +88,9 @@ export const DEFAULT_SETTINGS: GraphSettings = {
 };
 
 /**
- * The reading depth a memory starts at: 0 for a codebase (any note, or any
- * note a thread writes, has a parent), whose reading is the worked notes and
- * the ends of the links the turns made; 1 for a plain memory, whose worked
- * notes bring their neighbours. The host sets it when the memory changes;
- * the setting still raises or lowers it after.
+ * 0 for a codebase (its reading is the worked notes and the ends of links the turns made), 1 for a
+ * plain memory, whose worked notes bring their neighbours. The host sets it when the memory
+ * changes; the setting still raises or lowers it after.
  */
 export function defaultDepth(memory: Memory, thread: ThreadRecord | null): number {
   const parented =

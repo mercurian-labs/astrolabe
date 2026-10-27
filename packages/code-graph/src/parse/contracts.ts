@@ -296,11 +296,9 @@ function errorType(node: Node | null | undefined): Omit<FailureSite, "kind"> | n
 const baseOf = (path: string) => path.split("::").at(-1) ?? path;
 
 /**
- * Where the file throws and catches error types, syntactically: TypeScript
- * `throw new X`; Python `raise X(…)` and `except X` (tuples and `as` too); Rust
- * `Err(X…)` and `Err(X…)` match arms; Go `return …, X{…}` (or `&X{…}`) as the
- * last of several returned values (`errors.New` names no type). A TypeScript
- * `catch (e)` names no type, so it catches nothing here, and Go has no catch.
+ * Where the file throws and catches error types, syntactically: TS `throw new X`; Python `raise X(…)`
+ * and `except X` (tuples, `as`); Rust `Err(X…)` values and match arms; Go `return …, X{…}` or `&X{…}`
+ * as the last of several returns. TS `catch (e)` names no type and Go has no catch, so neither catches.
  */
 export function failureSites(language: LanguageId, root: Node): ReadonlyArray<FailureSite> {
   const sites: Array<FailureSite> = [];

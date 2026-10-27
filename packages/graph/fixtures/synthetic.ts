@@ -1,9 +1,7 @@
 /**
- * Larger memories to feel the scale: clustered notes linking mostly within
- * their cluster, hubs by preferential attachment, about a tenth of the notes
- * red links, and a few orphans. Deterministic for a given seed and size, and
- * generated in one pass per note (O(n)), so 100,000 notes take well under a
- * second.
+ * Larger memories to feel the scale: clustered notes, hubs by preferential attachment, about a
+ * tenth red links, and a few orphans. Deterministic for a seed and size, and one pass per note so
+ * 100,000 notes take well under a second.
  */
 import type { LensEdge, Memory, MemoryLink, MemoryNote } from "../src/model/memory.ts";
 

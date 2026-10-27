@@ -37,13 +37,10 @@ import {
 } from "~/tabNavigation.logic";
 
 /**
- * Astrolabe: what a click on a Pull Requests sidebar row does to the panes, as a click on a
- * document does in Wikis (see `wikiPanes.ts`). A click shows the pull request in the focused
- * pane's tab in front, which remembers what it showed, for back and forward; Option-click and
- * the middle button open a new tab, as Mod-click does. One open already comes to
- * the front where it is. The tabs mirror the page's right-panel record (`PullRequestPanes`), so
- * every change goes through the record: a replace is one record change that swaps the surface in
- * place.
+ * A Pull Requests sidebar click, as in Wikis (`wikiPanes.ts`): it shows the pull request in the
+ * focused pane's front tab with back/forward history; Option-click, middle-click and Mod-click
+ * open a new tab, and one already open comes to the front. The tabs mirror the page's right-panel
+ * record (`PullRequestPanes`), so every change goes through it; a replace is one record change.
  */
 
 const HISTORY_STORAGE_KEY = "astrolabe:pull-request-tab-history:v1";
@@ -432,11 +429,10 @@ export function stepPullRequestTab(direction: HistoryDirection) {
 }
 
 /**
- * Astrolabe: a review's Guide gets the window for its tour, as T3 Code hid the pull request list
- * for it. Called as the tour of `surfaceId` comes on screen: when that pull request is the
- * focused pane's tab in front, `hideList` folds the sidebar's list away, and the pane is
- * maximized, as its Maximize pane does, when other panes share the area. As in T3 Code, nothing
- * comes back as the tour leaves. `panes` are the attached ones unless a test passes its own.
+ * A review's Guide gets the window for its tour, as T3 Code hid the pull request list for it: when
+ * `surfaceId` is the focused pane's front tab, `hideList` folds the sidebar list and the pane is
+ * maximized if others share the area. As in T3 Code, nothing comes back as the tour leaves.
+ * `panes` are the attached ones unless a test passes its own.
  */
 export function maximizeForGuide(
   surfaceId: string,

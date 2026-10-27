@@ -36,7 +36,6 @@ function unwrapAngleBrackets(raw: string) {
 
 const SCHEME = /^([a-z][a-z0-9+.-]*):/i;
 const NETWORK_PATH = /^[/\\]{2}/;
-// eslint-disable-next-line no-control-regex -- control characters are exactly what we look for
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /**

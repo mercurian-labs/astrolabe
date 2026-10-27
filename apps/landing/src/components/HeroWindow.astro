@@ -1,16 +1,8 @@
 ---
-// The hero's drawn window: Agents, Wikis and Changes in one app frame, driven by scripts/tour.js
-// from the scene data in scripts/tour-scenes.js. As written (no script) it is the main tour's
-// finished Agents state: the planner's thread with both subagents done and their results landed.
-// Anything named data-k is a part the tour shows or hides; data-gone marks a part the finished
-// still leaves out; data-only names the threads a part belongs to, and data-off hides it while
-// another thread is on show.
-//
-// Subagents are drawn the way the app draws them (V2LifecycleRow, MessagesTimeline): a round mark
-// with the provider's logo and a state dot, the task's title, its latest progress or result, and
-// its elapsed time; several started together sit under one "N subagents" row; a finished one
-// lands back in the parent as a row of its own. Children never appear in the sidebar, and their
-// first message reads "Sent by another agent".
+// The hero's drawn window, driven by scripts/tour.js from scripts/tour-scenes.js; without script it
+// is the main tour's finished Agents state. data-k marks a part the tour toggles, data-gone one the
+// finished state leaves out, data-only the threads a part belongs to (data-off hides it otherwise).
+// Subagents are drawn as the app draws them (V2LifecycleRow, MessagesTimeline), never in the sidebar.
 
 const SHOWN = "plan";
 const off = (ids: string) => (ids.split(" ").includes(SHOWN) ? undefined : true);

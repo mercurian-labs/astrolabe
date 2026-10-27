@@ -11,11 +11,10 @@ import { primaryServerConfigAtom } from "../state/server";
 export type SidebarStageBackdropVariant = "nightly" | "dev";
 export type EnvironmentIdentificationPillLabel = "Dev" | "Nightly";
 
-// Dev wears the approved olive/stone terrain, the same flat map as the dev app icon's ground: a
-// ring-rich crop east of the icon's (x 3040, y 880, at source scale) recoloured into a dark olive
-// ramp, so white marks and controls read over it. Nightly wears an astrolabe's rete (its circles, ecliptic ring and
-// star pointers in brass) on the nightly icon's charcoal, pivoting on the brand's rust dot. Both
-// strips cover wider sidebars by scaling.
+// Dev wears the olive/stone terrain of the dev app icon's ground (a ring-rich crop east of the
+// icon's, x 3040 y 880 at source scale) recoloured dark so white marks read over it. Nightly wears
+// an astrolabe's rete in brass on the nightly icon's charcoal, pivoting on the brand's rust dot.
+// Both strips cover wider sidebars by scaling.
 const STAGE_ART_URLS: Record<SidebarStageBackdropVariant, string> = {
   dev: devTerrainStripUrl,
   nightly: nightlyReteUrl,

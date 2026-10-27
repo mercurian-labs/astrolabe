@@ -19,8 +19,8 @@ actions at its right end.
 ## Sub-features
 
 - No brand link in the header row; the rail's monogram tile (`[data-app-rail-mark]`, as large
-  as a rail button, 8px corners) heads the rail. Where the open sidebar meets the rail and the
-  title bar, `[data-app-rail-corner]` rounds the join with the tab's 8px radius. With the
+  as a rail button, 6px corners) heads the rail. Where the open sidebar meets the rail and the
+  title bar, `[data-app-rail-corner]` rounds the join with the tab's 6px radius (`--radius-md`). With the
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
   corner the same way, where the rail's edge meets the title bar's bottom border (strips,
   and the Settings and Usage headers).
@@ -47,9 +47,9 @@ actions at its right end.
   the filter's popup has a `Project settings for <name>` gear.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
-  (Agents, Wikis, Repositories, Changes when the server supports pull requests, Usage),
+  (Agents, Wikis, Repositories, Changes when the server supports pull requests),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
-  (`Check for updates`, a rail list row) and Settings sit at the foot. Where cloud sign-in is
+  (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a link (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
   Rail mark).
@@ -105,10 +105,10 @@ route.
 ## Driving it with the Browser panel
 
 ```
-preview_click  role=button[name='Search threads']       # swaps the heading for the field
-preview_type   role=combobox[name='Search threads']  text=<title words>
-preview_click  role=combobox[name=/^Filter threads by project/]
-preview_click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
+preview_act click  role=button[name='Search threads']       # swaps the heading for the field
+preview_act type   role=combobox[name='Search threads']  text=<title words>
+preview_act click  role=combobox[name=/^Filter threads by project/]
+preview_act click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
 ```
 
 **Proof:** each action's result (the field focused and

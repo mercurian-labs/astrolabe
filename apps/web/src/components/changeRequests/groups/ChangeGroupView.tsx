@@ -59,11 +59,10 @@ import {
 } from "./useChangeGroupActions";
 
 /**
- * Astrolabe: a change group's tab. Its members, code and documentation, and the threads working
- * on it, each with why it is there and a way to open it beside; its state; Merge with the code;
- * what an agent suggested; and the agent's help: updating documentation that fell behind the
- * code, drafting documentation the code has none of, and looking for members and threads the
- * rules cannot see. Each member is reviewed and merged in its own tab.
+ * A change group's tab: its code and documentation members and the threads working on it (each
+ * with why it is there), its state, Merge with the code, agent suggestions, and agent help for
+ * stale or missing documentation and for members the rules cannot see. Each member is reviewed
+ * and merged in its own tab.
  */
 export function ChangeGroupView({
   tab,

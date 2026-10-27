@@ -1,10 +1,8 @@
 import type { Pool } from "pg";
 
 /**
- * The waitlist, as the internal admin page (apps/admin) and
- * scripts/waitlist.ts see it: waitlisted accounts, and members (who joined
- * through an invitation) asking for an organization of their own. Decisions
- * only move accounts that are in a state the decision makes sense for, so a
+ * Waitlisted accounts and members asking for an organization of their own, as apps/admin and
+ * scripts/waitlist.ts see them. A decision only moves accounts in a state it applies to, so a
  * repeated or stale click is a no-op.
  */
 export interface WaitlistEntry {

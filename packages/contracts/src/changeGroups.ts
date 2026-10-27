@@ -5,12 +5,10 @@ import { IsoDateTime, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.t
 import { WikiChangeRequestId, WikiId } from "./wiki.ts";
 
 /**
- * Astrolabe: change groups. A change group is a set of change requests in different projects
- * that are one effort, such as a pull request and the wiki change request documenting it, and
- * the threads working on it. Rules add members and threads on their own (a thread's, its
- * coordinator's children's, its forks'); what people decide on top (members or threads added or
- * removed, suggestions dismissed, merging together) is kept by the environment, under the
- * group's id: the thread the group started from.
+ * Astrolabe: change groups. One effort's change requests across projects (a PR and the wiki change
+ * documenting it) plus the threads working on it. Rules add members and threads (a thread's, its
+ * coordinator's children's, its forks'); people's decisions on top are kept by the environment under
+ * the group's id, which is the thread the group started from.
  */
 
 /**

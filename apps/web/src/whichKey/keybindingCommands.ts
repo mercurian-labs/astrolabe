@@ -20,11 +20,9 @@ export function shortcutForCommand(
 }
 
 /**
- * Runs a keybinding command through the app's own shortcut handlers: presses its shortcut on
- * the page, as the keyboard would, so whatever listens for the command runs as it always does
- * (`sidebar.toggle`, `chat.new`, `view.reopenClosed`, …). The key lands on the page rather
- * than the focused element, so a focused editor does not take it as typing. False when the
- * command has no shortcut to press.
+ * Runs a keybinding command by pressing its shortcut on the page, so whatever listens for it runs
+ * as usual (`sidebar.toggle`, `chat.new`, …). The key lands on the page, not the focused element,
+ * so a focused editor does not take it as typing. False when the command has no shortcut.
  */
 export function runKeybindingCommand(
   keybindings: ResolvedKeybindingsConfig,

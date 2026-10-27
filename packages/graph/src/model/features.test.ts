@@ -21,11 +21,10 @@ import { buildUniverse } from "./universe.ts";
 import { denseView, deriveView, EdgeDirection, NodeFlag } from "./view.ts";
 
 /**
- * A small codebase in two layers. src/model/a.ts: parse takes Input, gives
- * Shape, and throws ParseError; validate throws ParseError too; A, B, and C
- * implement Shape; f, g, and h call round in a cycle; hub calls eight
- * helpers. src/view/v.ts: render calls parse and catches ParseError; leak (in
- * the model) calls render, which the layers do not allow.
+ * A small codebase in two layers. src/model/a.ts: parse takes Input, gives Shape, and throws
+ * ParseError, as does validate; A, B, C implement Shape; f, g, h call in a cycle; hub calls eight
+ * helpers. src/view/v.ts: render calls parse and catches ParseError; leak (model) calls render,
+ * which the layers forbid.
  */
 const note = (id: string, kind: NoteKind, parent: string, extra: Partial<MemoryNote> = {}) => ({
   id,

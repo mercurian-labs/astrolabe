@@ -18,12 +18,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 const SETTINGS_SHORTCUT = isElectron ? (isMacPlatform(navigator.platform) ? "⌘," : "Ctrl+,") : null;
 
 /**
- * Settings and the cloud account behind one button: a gear until you sign in,
- * your avatar after. Builds without sign-in keep a plain Settings button, so
- * callers render this only when `hasCloudPublicConfig()`.
- *
- * `side` is where the menu opens: right of the icon rail, or above the narrow
- * sidebar's footer. `onNavigate` runs before any row leaves the page.
+ * Settings and the cloud account behind one button: a gear until sign-in, then the avatar. Builds
+ * without sign-in keep a plain Settings button, so render this only when `hasCloudPublicConfig()`.
+ * `side` is where the menu opens (right of the rail, or above the narrow sidebar's footer);
+ * `onNavigate` runs before any row leaves the page.
  */
 export function AccountMenu({
   side,

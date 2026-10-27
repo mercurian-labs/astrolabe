@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useRef, useState, type PointerEvent } from "react";
+import { Fragment, useContext, useEffect, useRef, useState, type PointerEvent } from "react";
 
+import { BackgroundThreadContext } from "../components/chat/backgroundThread";
 import { cn } from "../lib/utils";
 import { resizePanes } from "./arrangement";
 import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
@@ -42,17 +43,18 @@ export function PaneTree({
   const { controller, tabs } = usePanesHost();
   const layoutKey = usePanesLayoutKey();
   const root = useRef<HTMLDivElement>(null);
-  useEffect(
-    () =>
-      panesSlot.register({
-        controller,
-        tabs,
-        layoutKey,
-        element: () => root.current,
-        ...(panel ? { panel } : {}),
-      }),
-    [controller, layoutKey, panel, tabs],
-  );
+  // Not while the thread sits inert under Settings or Usage.
+  const background = useContext(BackgroundThreadContext);
+  useEffect(() => {
+    if (background) return;
+    return panesSlot.register({
+      controller,
+      tabs,
+      layoutKey,
+      element: () => root.current,
+      ...(panel ? { panel } : {}),
+    });
+  }, [background, controller, layoutKey, panel, tabs]);
   // Maximizing ends once the pane is gone or the last one left, so a later split shows every
   // pane rather than maximizing again.
   const maximized =
