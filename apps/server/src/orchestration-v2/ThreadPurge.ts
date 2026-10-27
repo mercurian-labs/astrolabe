@@ -418,6 +418,19 @@ const make = Effect.gen(function* () {
       ),
   );
 
+  // The search index has no thread id, and a contentless delete only marks the
+  // text deleted; rewriting the segments drops it. Absent on SQLite without FTS5.
+  const optimizeMessageSearch = Effect.gen(function* () {
+    const index = yield* sql`
+      SELECT 1 FROM sqlite_master WHERE name = 'orchestration_v2_message_search'
+    `;
+    if (index.length === 0) return;
+    yield* sql`
+      INSERT INTO orchestration_v2_message_search (orchestration_v2_message_search)
+      VALUES ('optimize')
+    `;
+  });
+
   const deleteCheckpointRefs = Effect.fn("ThreadPurge.deleteCheckpointRefs")(function* (
     groups: CheckpointRefGroups,
   ) {
@@ -504,6 +517,14 @@ const make = Effect.gen(function* () {
       yield* erase(current);
       erased.push(current);
       next = planned.value.parentThreadId;
+    }
+    // A retry erases again, so an interrupted purge still optimizes.
+    if (erased.length > 0) {
+      yield* withSecureDelete(optimizeMessageSearch).pipe(
+        Effect.mapError(
+          (cause) => new ThreadPurgeError({ operation: "erase", threadId: input.threadId, cause }),
+        ),
+      );
     }
 
     // Files after the records, so a git or disk failure never keeps the transcript.
