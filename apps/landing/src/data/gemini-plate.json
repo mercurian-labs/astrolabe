@@ -1,5 +1,5 @@
 {
-  "comment": "Fig. 19 of astrolabe-site's observatory plates (lab/observatories/plates/plates.json, maunakea-2, at 5fc6ae3), made by its scripts/observatories/ (plates_maunakea.py). The plate is a 1000-unit square; box is the art's x, y, width, height in it. The ridge and the annex run off both sides.",
+  "comment": "Fig. 19 of astrolabe-site's observatory plates (lab/observatories/plates/plates.json, maunakea-2, at 984a435), made by its scripts/observatories/ (plates_maunakea.py). The plate is a 1000-unit square; box is the art's x, y, width, height in it. The ridge and the annex run off both sides.",
   "assets": "/assets/art/gemini",
   "size": [1024, 618],
   "relief": 170.67,

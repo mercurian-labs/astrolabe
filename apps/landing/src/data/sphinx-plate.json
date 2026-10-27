@@ -1,5 +1,5 @@
 {
-  "comment": "Fig. 5 of astrolabe-site's observatory plates (lab/observatories/plates.json, sphinx-1), made by its scripts/observatories/. The plate is a 1000-unit square; box is the art's x, y, width, height in it.",
+  "comment": "Fig. 5 of astrolabe-site's observatory plates (lab/observatories/plates.json, sphinx-1, at 984a435), made by its scripts/observatories/. The plate is a 1000-unit square; box is the art's x, y, width, height in it.",
   "assets": "/assets/art/sphinx",
   "size": [1024, 936],
   "relief": 170.67,

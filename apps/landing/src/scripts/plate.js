@@ -128,6 +128,8 @@ import Twilight from "./twilight.js";
     uniform vec3 u_duoDark;      // the duotone's ends: shadows, highlights (the olive, softened, between)
     uniform vec3 u_duoLight;
     uniform vec4 u_lamp;         // the lamps' rust, and how far they are up (0 by day)
+    uniform float u_dusk;        // 0 by day, 1 from 4° below the horizon until the inks turn over
+    uniform float u_moon;        // 1 once the inks have turned over: the snow takes the moonlight
 
     const float DAY_Y = 0.947;   // the day paper's luminance; the building is measured against it
 
@@ -187,8 +189,16 @@ import Twilight from "./twilight.js";
       float paper = u_y.x;
       float dark = u_y.y < paper ? clamp((paper - body) / (paper - u_y.y), 0.0, 1.0) : 0.0;
       float light = u_y.z > paper ? clamp((body - paper) / (u_y.z - paper), 0.0, 1.0) : 0.0;
+      // Snow: ground whiter than any building (an albedo near two). By day it is the paper itself, without
+      // the tooth below; at dusk, when the building darkens against the paper, it holds the paper's light.
+      // Once the inks have turned over it is the brightest thing on the plate, moonlit: an ivory stipple,
+      // thicker the more it faces the sky, over a body no darker than the paper.
+      float snow = smoothstep(0.92, 0.99, tone.b);
+      float moon = snow * u_moon;
+      dark *= 1.0 - snow * u_dusk;
+      light = max(light, moon * (0.3 + 0.4 * sky));
       // The paper's tooth: even a face square to the sun keeps a few grains, as the Mercury prints do.
-      dark = max(pow(dark, 1.15) * 0.8, u_y.y < paper ? 0.035 : 0.0);
+      dark = max(pow(dark, 1.15) * 0.8, u_y.y < paper ? 0.035 * (1.0 - snow) : 0.0);
 
       // Grains at the print's resolution (two per CSS px), averaged where a device px holds several.
       vec2 cell = floor(gl_FragCoord.xy) * u_sub;
@@ -211,7 +221,7 @@ import Twilight from "./twilight.js";
       float aLight = inkLight * k * u_alpha.y * g.a;
       float aOlive = oliveCover * k * u_alpha.z * g2.a * (1.0 - aDark - aLight);
       vec4 grain = vec4(u_dark * aDark + u_ivory * aLight + u_olive * aOlive, aDark + aLight + aOlive);
-      gl_FragColor = grain + u_body * g.a * (1.0 - grain.a);
+      gl_FragColor = grain + u_body * g.a * (1.0 - moon) * (1.0 - grain.a);
 
       // The eyepiece: inside the aperture the photograph in continuous tone. Its edge is decided grain
       // by grain over about a CSS px, so it is as crisp as the print and has the print's tooth.
@@ -472,6 +482,9 @@ import Twilight from "./twilight.js";
       // The lamps: up from just after sunset, full at −9°, a degree before the inks turn over.
       const rust = Twilight.hex(palette.inverted ? palette.vars["--rust-text"] : RUST);
       gl.uniform4f(u.u_lamp, ...rust, 0.96 * smooth(-0.5, -9, alt));
+      // The same dusk as the drawn lines' (--plate-dusk), and the night after it.
+      gl.uniform1f(u.u_dusk, palette.inverted ? 0 : smooth(0.5, -4, alt));
+      gl.uniform1f(u.u_moon, palette.inverted ? 1 : 0);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
