@@ -23,9 +23,14 @@ if (process.env.ASTROLABE_ENV_APPLIED !== "1") {
   process.env.ASTROLABE_ENV_APPLIED = "1";
 }
 
-const { version } = JSON.parse(
+// Astrolabe: the build stamps CLI_RELEASE_REPOSITORY (packages/shared/src/cliRelease.ts)
+// into package.json. Without it, and without a mirror, there is nothing to download.
+const { version, astrolabe: { releaseRepository = "" } = {} } = JSON.parse(
   fs.readFileSync(path.join(import.meta.dirname, "../package.json"), "utf8"),
 );
+const releaseBaseUrl =
+  process.env.T3CODE_RELEASE_BASE_URL ||
+  (releaseRepository && `https://github.com/${releaseRepository}/releases/download`);
 
 const SUPPORTED = ["darwin-arm64", "linux-arm64", "linux-x64", "win32-arm64", "win32-x64"];
 
@@ -81,9 +86,7 @@ async function download(url, file) {
 
 async function install(dir, key) {
   const archive = `t3-${version}-${key}.${process.platform === "win32" ? "zip" : "tar.gz"}`;
-  const base = (
-    process.env.T3CODE_RELEASE_BASE_URL || "https://github.com/pingdotgg/t3code/releases/download"
-  ).replace(/\/+$/, "");
+  const base = releaseBaseUrl.replace(/\/+$/, "");
   const sums = await (await get(`${base}/v${version}/SHA256SUMS`)).text();
   const expected = /^([0-9a-f]{64})\s+\*?(.+)$/im;
   const line = sums
@@ -144,14 +147,30 @@ function publish(staging, dir) {
 
 async function main() {
   const key = `${process.platform}-${process.arch}`;
+  // Releases ship macOS and Linux only for now. Drop this when the Windows jobs return to release.yml.
+  if (process.platform === "win32") {
+    throw new Error(
+      "Astrolabe for Windows is coming soon. macOS and Linux builds are at https://astrolabe.sh/download",
+    );
+  }
   if (!SUPPORTED.includes(key)) {
     throw new Error(
-      `no Astrolabe CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).\n` +
-        "The desktop app is at https://github.com/pingdotgg/t3code/releases",
+      `no Astrolabe CLI build is available for ${key} (supported: ${SUPPORTED.join(", ")}).` +
+        (releaseRepository
+          ? `\nThe desktop app is at https://github.com/${releaseRepository}/releases`
+          : ""),
     );
   }
   const dir = path.join(t3Home(), "runtime", "versions", version);
-  if (!isComplete(dir)) await install(dir, key);
+  if (!isComplete(dir)) {
+    if (!releaseBaseUrl) {
+      throw new Error(
+        `Astrolabe publishes no release of ${version} to download yet. ` +
+          "Set ASTROLABE_RELEASE_BASE_URL to a mirror of the release archives.",
+      );
+    }
+    await install(dir, key);
+  }
 
   // A service launcher talks to its server over IPC; pass that channel and
   // signals through. In a terminal, Ctrl-C already reaches the child directly,

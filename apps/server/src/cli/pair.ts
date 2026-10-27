@@ -27,6 +27,7 @@ import { Command, Flag, GlobalFlag } from "effect/cli";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import { hasCloudPublicConfig } from "../cloud/publicConfig.ts";
 import * as ServerConfig from "../config.ts";
 import { resolveBaseDir } from "../os-jank.ts";
 import {
@@ -72,7 +73,9 @@ export class NoRunningServerError extends Schema.TaggedError<NoRunningServerErro
       ...(this.inLinkedWorktree
         ? ["In a linked worktree, pass --base-dir to pair with a server outside it."]
         : []),
-      "Start one with `npx @mercurian/astrolabe serve`, or turn on remote access for this machine: `npx @mercurian/astrolabe connect`.",
+      hasCloudPublicConfig
+        ? "Start one with `npx @mercurian/astrolabe serve`, or turn on remote access for this machine: `npx @mercurian/astrolabe connect`."
+        : "Start one with `npx @mercurian/astrolabe serve`.",
     ].join("\n");
   }
 }

@@ -1,6 +1,7 @@
 {
   "name": "@t3tools/source-control-testing",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./TestSourceControlHost": {

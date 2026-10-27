@@ -54,6 +54,7 @@ import {
   sortProviderInstanceEntries,
 } from "../../providerInstances";
 import { usePrimaryCloudLinkState } from "../../cloud/primaryCloudLinkState";
+import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { requestConfirmDialog } from "../../confirmDialog";
 import { webhookAddress } from "@t3tools/client-runtime/webhook-address";
 import { Link } from "@tanstack/react-router";
@@ -987,7 +988,11 @@ function WebhookEndpointField({
   if (!task || !endpoint) {
     return <p className="text-sm text-muted-foreground">The URL appears after you save.</p>;
   }
-  const { address: url, copyable, note } = webhookAddress(endpoint, httpBaseUrl);
+  const {
+    address: url,
+    copyable,
+    note,
+  } = webhookAddress(endpoint, httpBaseUrl, hasCloudPublicConfig());
   const rotateUrl = async () => {
     const confirmed =
       (await requestConfirmDialog("Rotate this webhook URL?\nThe current URL stops working.", {

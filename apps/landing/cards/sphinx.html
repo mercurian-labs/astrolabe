@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- Astrolabe · share cards · the Sphinx
+     [11]'s plate as a card: the Sphinx Observatory on its rock at the Jungfraujoch, printed by a port of
+     src/scripts/plate.js's shader under one frozen light, with the plate's drawn lines over it, on the
+     page's own paper (drafting.css, its palette set by twilight.js). The line is split either side of
+     the building, so the centre square (every square crop) is the plate alone. Query: `ink` night |
+     day, `line` (split at its first full stop), `alt` and `az` for the light. -->
+<html lang="en" class="js">
+  <head>
+    <meta charset="utf-8" />
+    <title>Astrolabe · Sphinx</title>
+    <link rel="stylesheet" href="/src/styles/drafting.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      .sx {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        background: var(--paper) var(--noise);
+        color: var(--ink);
+      }
+      /* The art's box: 805 × 736 units of the plate's 1000, as tall as the card allows and standing on
+         its foot (the rock fades out before the bottom edge). Placed by sphinx.js. */
+      .sx__art {
+        position: absolute;
+      }
+      .sx__art > * {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .sx__lines,
+      .sx__outline {
+        background: var(--ink);
+        -webkit-mask: var(--art) center / 100% 100% no-repeat;
+        mask: var(--art) center / 100% 100% no-repeat;
+      }
+      /* The drawn edges as [11] prints them: full ink by day, faint ivory after dark. */
+      .sx__lines {
+        opacity: calc(0.92 - 0.5 * var(--night, 0));
+      }
+      .sx__outline {
+        opacity: calc(0.95 - 0.2 * var(--night, 0));
+      }
+      .sx > .cross {
+        transform: scale(1.4);
+      }
+      .sx .cross::before,
+      .sx .cross::after {
+        background: var(--ink-3);
+      }
+      /* The tags keep to the wings, so a square crop cuts none of them. */
+      .sx__tag {
+        position: absolute;
+        margin: 0;
+        font-size: 13.5px;
+        letter-spacing: 0.06em;
+        color: var(--ink-2);
+      }
+      .sx__tag--tl {
+        left: 40px;
+        top: 32px;
+      }
+      /* The licence's attribution, on the card because the card travels without the page. Lower right,
+         clear of the title X lays over the lower left. */
+      .sx__credit {
+        right: 40px;
+        bottom: 28px;
+        font-size: 11.5px;
+        text-align: right;
+        color: var(--ink-3);
+      }
+      .wing {
+        position: absolute;
+        top: 150px;
+        margin: 0;
+        font-family: var(--serif);
+        font-weight: 380;
+        font-size: 64px;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        font-variation-settings:
+          "opsz" 96,
+          "SOFT" 30,
+          "WONK" 0;
+        color: var(--ink);
+      }
+      .wing--left {
+        left: 56px;
+      }
+      .wing--right {
+        right: 56px;
+        text-align: right;
+      }
+      /* The name in the upper right: the lower left is where X lays its title over the image. */
+      .mark {
+        position: absolute;
+        right: 40px;
+        top: 30px;
+        width: 172px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sx">
+      <div class="sx__art">
+        <canvas></canvas>
+        <i class="sx__lines" style="--art: url(&quot;/assets/art/sphinx/lines.webp&quot;)"></i>
+        <i class="sx__outline" style="--art: url(&quot;/assets/art/sphinx/outline.webp&quot;)"></i>
+      </div>
+      <span class="cross cross--tl" aria-hidden="true"></span>
+      <span class="cross cross--tr" aria-hidden="true"></span>
+      <span class="cross cross--bl" aria-hidden="true"></span>
+      <span class="cross cross--br" aria-hidden="true"></span>
+      <p class="tag sx__tag sx__tag--tl">Fig. 3 · Sphinx Observatory<br />Jungfraujoch · 3,571 m</p>
+      <p class="tag sx__tag sx__credit">After a photograph by Roy Egloff<br />CC BY-SA 4.0</p>
+      <p class="wing wing--left"></p>
+      <p class="wing wing--right"></p>
+      <img class="mark" alt="" />
+    </div>
+    <script type="module" src="./sphinx.js"></script>
+  </body>
+</html>

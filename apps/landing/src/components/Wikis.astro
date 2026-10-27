@@ -1,0 +1,127 @@
+          <!-- ───────────────────────────────────────── [05] Wikis -->
+          <section class="surfaces" id="wikis" aria-labelledby="wikis-title">
+            <div class="head">
+              <div class="head__main">
+                <p class="tag">[05] Wikis</p>
+                <h2 id="wikis-title" class="h2" data-reveal>Memory your agents share.</h2>
+              </div>
+              <p class="body head__aside" data-reveal>
+                They write down what they worked out; you accept each change. A wiki is a folder of linked
+                Markdown in git, with its own section in the app and a tab on your iPhone, so the next agent
+                starts from what the last one learned.
+              </p>
+            </div>
+
+            <article class="surface surface--flip" aria-labelledby="surface-wikis">
+              <div class="surface__title">
+                <p class="tag">Live edits</p>
+                <h3 id="surface-wikis" class="h3">Every edit is an amendment.</h3>
+              </div>
+              <div class="surface__ui">
+          <figure class="window">
+            <div class="app app--poster app--doc" role="img" aria-label="The Wikis section of Astrolabe. The sidebar lists an engineering wiki's documents under a row for one open change; the document Rounding is open, and Claude is replacing a sentence in it with its own cursor, above a bar to accept or revert its changes.">
+              <div class="tb">
+                <div class="tb__cap">
+                  <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <svg class="ico"><use href="#i-panel" /></svg>
+                  <span class="spacer"></span>
+                  <svg class="ico ico--sm"><use href="#i-left" /></svg>
+                  <svg class="ico ico--sm ico--faint"><use href="#i-right" /></svg>
+                </div>
+                <div class="tb__strip tb__strip--pane">
+                  <span class="lights lights--crop" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Rounding</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="tab"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Ledger</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Ledger owns rounding</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <svg class="ico ico--muted"><use href="#i-plus" /></svg>
+                  <span class="spacer"></span>
+                  <svg class="ico ico--muted"><use href="#i-more" /></svg>
+                </div>
+              </div>
+              <div class="pb">
+                <nav class="rail" aria-hidden="true">
+                  <span class="rail__mark"><svg><use href="#b-monogram" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-msgs" /></svg></span>
+                  <span class="rail__item is-active"><svg class="ico"><use href="#i-book" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-repo" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-pr" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-usage" /></svg></span>
+                  <span class="rail__fill"></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-settings" /></svg></span>
+                </nav>
+                <i class="pb__corner" aria-hidden="true"></i>
+                <aside class="side">
+                  <div class="side__head">
+                    <span class="side__title">Wikis</span>
+                    <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
+                  </div>
+                  <div class="opens"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span>Open changes · 1</span><svg class="ico ico--xs"><use href="#i-right" /></svg></div>
+                  <ul class="side__list side__list--slim">
+                    <li class="slim is-active"><span class="tile">EN</span><span>Rounding</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Ledger</span><em>3d</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Invoices</span><em>3d</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Currencies</span><em>1w</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Reconciliation</span><em>2w</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Webhooks</span><em>2w</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>On call</span><em>1mo</em></li>
+                  </ul>
+                </aside>
+                <div class="pane pane--doc">
+                  <div class="doc__bar">
+                    <span class="doc__name">Rounding</span>
+                    <span class="doc__scope">In “Ledger owns rounding” · <span class="doc__working">agent working</span></span>
+                    <span class="spacer"></span>
+                    <span class="mini mini--ghost">Discard edits</span>
+                    <span class="mini mini--solid">Save to change request</span>
+                  </div>
+                  <article class="doc">
+                    <h4>Rounding</h4>
+                    <p>
+                      Money is stored in minor units: cents, pence, yen. Every amount that reaches the
+                      <a>Ledger</a> is already an integer, so rounding happens before a value is written,
+                      never after.
+                    </p>
+                    <h5>Where it happens</h5>
+                    <p class="doc__changed">
+                      <span class="doc__gone">Each invoice line rounds its own total.</span>
+                      <span class="doc__insert"
+                        ><span class="doc__typed">Rounding happens once, in the ledger, using half to even. Invoices pass exact totals and let the ledger round them, so a long invoice no longer drifts a cent per line.</span
+                        ><span class="cursor" aria-hidden="true"><span class="cursor__flag">Claude</span></span
+                        ><span class="doc__rest"></span
+                      ></span>
+                    </p>
+                    <h5>Why half to even</h5>
+                    <p>
+                      Rounding half up nudges totals upward across many entries. Half to even matches
+                      how existing entries were written, which <a>Reconciliation</a> depends on.
+                    </p>
+                  </article>
+                  <div class="cbar">
+                    <span class="cbar__count">1 agent change</span>
+                    <span class="cbar__btn">Previous</span>
+                    <span class="cbar__btn">Next</span>
+                    <span class="cbar__btn">Accept all</span>
+                    <span class="cbar__btn">Revert all</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </figure>
+              </div>
+              <div class="surface__desc">
+                <p>
+                  Ask Claude to bring a page up to date and you watch it edit: its words tinted, what it
+                  removes ghosted, its cursor named. Your own saves wait for its turn to end.
+                </p>
+                <p>
+                  Each one collects in a change request. Revert any one on its own; the wiki changes
+                  only when a person merges, and each merge is pushed to a mirror you own.
+                </p>
+                <p class="surface__note">
+                  Agents edit through the app's wiki tools, none of which can merge. So far we have
+                  tried this with Claude.
+                </p>
+                <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+              </div>
+            </article>
+          </section>

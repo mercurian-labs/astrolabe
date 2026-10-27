@@ -1,6 +1,7 @@
 {
   "name": "@t3tools/shared",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./astrolabeEnv": {

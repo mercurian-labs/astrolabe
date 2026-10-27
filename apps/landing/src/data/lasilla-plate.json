@@ -1,0 +1,15 @@
+{
+  "comment": "Fig. 20 of astrolabe-site's observatory plates (lab/observatories/plates/plates.json, lasilla-p1, at 5fc6ae3), made by its scripts/observatories/ (plates_eso.py). The plate is a 1000-unit square; box is the art's x, y, width, height in it. The rock crown runs off both sides. The lab's box stands 60 units lower; raised here so the credit line clears the building on a phone.",
+  "assets": "/assets/art/lasilla",
+  "size": [1024, 644],
+  "relief": 170.67,
+  "box": [-18.5, 326.6, 1023.0, 643.4],
+  "fig": "Fig. 4 · New Technology Telescope · La Silla · 2,400 m · 1989",
+  "alt": "A print of ESO's New Technology Telescope on its crown of granite at La Silla, lit by the astrolabe's sun",
+  "credit": "ESO/José Francisco Salgado (josefrancisco.org)",
+  "changes": "isolated and printed",
+  "source": "https://www.eso.org/public/images/jfs-ls-2011_8538/",
+  "at": ["29°15′ S", "70°44′ W"],
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+}

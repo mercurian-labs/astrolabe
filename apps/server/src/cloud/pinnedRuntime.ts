@@ -184,6 +184,11 @@ const installFromArchive = Effect.fn("cloud.pinned_runtime.install_archive")(fun
   }
   const httpClient = input.httpClient;
   const baseUrl = cliReleaseDownloadBaseUrl(input.version, input.releaseBaseUrl);
+  if (baseUrl === null) {
+    return yield* new PinnedRuntimeInstallError({
+      step: `finding a release of astrolabe ${input.version} to download: Astrolabe publishes none yet. Set ASTROLABE_RELEASE_BASE_URL to a mirror of the release archives`,
+    });
+  }
   const fileName = cliArchiveFileName(input.version, platformKey);
 
   input.onProgress?.({ stage: "download", received: 0, total: undefined });

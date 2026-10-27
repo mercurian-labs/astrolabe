@@ -416,6 +416,94 @@ describe("environment shell synchronization", () => {
     }),
   );
 
+  it.effect("drops a cached transcript only when the server says the thread was deleted", () =>
+    Effect.gen(function* () {
+      const thread = (id: string) => ({ ...v2ThreadShell, id: ThreadId.make(id) });
+      // The active shell never lists archived threads.
+      const cachedSnapshot: OrchestrationV2ShellSnapshot = {
+        ...v2ShellSnapshot,
+        snapshotSequence: 1,
+        threads: [
+          thread("kept"),
+          thread("archived-away"),
+          thread("archived-now"),
+          thread("deleted"),
+        ],
+        archivedThreads: [],
+      };
+      const httpSnapshot: OrchestrationV2ShellSnapshot = {
+        ...v2ShellSnapshot,
+        snapshotSequence: 2,
+        threads: [thread("kept"), thread("archived-now"), thread("deleted")],
+        archivedThreads: [],
+      };
+      const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
+      const removed = yield* Queue.unbounded<ThreadId>();
+      const client = {
+        [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () => Stream.fromQueue(events),
+      } as unknown as WsRpcProtocolClient;
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make(Option.some(session(client))),
+        prepared: yield* SubscriptionRef.make(Option.some(PREPARED)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+      const cache = Persistence.EnvironmentCacheStore.of({
+        loadShell: () => Effect.succeed(Option.some(cachedSnapshot)),
+        saveShell: () => Effect.void,
+        loadThread: () => Effect.succeed(Option.none()),
+        saveThread: () => Effect.void,
+        removeThread: (_environmentId, threadId) =>
+          Queue.offer(removed, threadId).pipe(Effect.asVoid),
+        loadServerConfig: () => Effect.succeed(Option.none()),
+        saveServerConfig: () => Effect.void,
+        loadVcsRefs: () => Effect.succeed(Option.none()),
+        saveVcsRefs: () => Effect.void,
+        removeVcsRefs: () => Effect.void,
+        clearVcsRefs: () => Effect.void,
+        clear: () => Effect.void,
+      });
+      const shellState = yield* makeEnvironmentShellState().pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.provideService(Persistence.EnvironmentCacheStore, cache),
+        Effect.provideService(
+          ShellSnapshotLoader.ShellSnapshotLoader,
+          ShellSnapshotLoader.ShellSnapshotLoader.of({
+            load: () => Effect.succeed(Option.some(httpSnapshot)),
+          }),
+        ),
+      );
+      // A thread missing from a fresh snapshot may only have been archived.
+      yield* SubscriptionRef.changes(shellState).pipe(
+        Stream.filter(
+          (state) => Option.isSome(state.snapshot) && state.snapshot.value.snapshotSequence === 2,
+        ),
+        Stream.runHead,
+      );
+
+      yield* Queue.offerAll(events, [
+        {
+          kind: "thread.removed",
+          sequence: 3,
+          location: "active",
+          threadId: ThreadId.make("archived-now"),
+        },
+        {
+          kind: "thread.removed",
+          sequence: 4,
+          location: "active",
+          threadId: ThreadId.make("deleted"),
+          deleted: true,
+        },
+      ]);
+      expect(yield* Queue.take(removed)).toBe("deleted");
+      expect(yield* Queue.size(removed)).toBe(0);
+    }),
+  );
+
   it.effect("applies authoritative lower-sequence HTTP resets over client-ahead cache", () =>
     Effect.gen(function* () {
       const cachedSnapshot: OrchestrationV2ShellSnapshot = {

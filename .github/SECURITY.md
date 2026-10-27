@@ -1,8 +1,9 @@
 # Security policy
 
-Report security vulnerabilities affecting T3 Code or T3 Tools-operated infrastructure to
-[security@ping.gg](mailto:security@ping.gg). Please do not disclose them publicly until we have had
-a reasonable opportunity to investigate and remediate them.
+Report security vulnerabilities in Astrolabe to Mercurian at
+[security@mercurian.ai](mailto:security@mercurian.ai). Please don't disclose them publicly until we
+have had a reasonable chance to investigate and fix them.
 
-See the [full security policy](https://t3.codes/security-policy) for reporting details, scope,
-and safe harbor terms for good-faith research.
+Astrolabe is built on [T3 Code](https://github.com/pingdotgg/t3code). If a vulnerability also
+affects T3 Code, report it to T3 Tools as well, following
+[their security policy](https://github.com/pingdotgg/t3code/blob/main/.github/SECURITY.md).

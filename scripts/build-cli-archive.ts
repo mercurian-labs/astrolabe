@@ -15,6 +15,7 @@ import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/cli";
+import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -115,6 +116,26 @@ const runCommand = Effect.fn("runCommand")(function* (
   if (exitCode !== 0) {
     return yield* new CliArchiveCommandFailedError({ command: label, exitCode });
   }
+});
+
+// The executable embeds Node, and with it V8, OpenSSL, ICU and libuv, so Node's license (which
+// carries theirs) ships beside it. Official Node installs keep it next to bin/; otherwise it comes
+// from the tag of the version the executable is built with.
+const stageNodeLicense = Effect.fn("stageNodeLicense")(function* (target: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const version = `v${rootPackageJson.engines.node}`;
+  const local = path.join(path.dirname(yield* HostProcess.ExecutablePath), "..", "LICENSE");
+  if (process.version === version && (yield* fs.exists(local))) {
+    return yield* fs.copyFile(local, target);
+  }
+  const text = yield* HttpClient.get(
+    `https://raw.githubusercontent.com/nodejs/node/${version}/LICENSE`,
+  ).pipe(
+    Effect.flatMap(HttpClientResponse.filterStatusOk),
+    Effect.flatMap((response) => response.text),
+  );
+  yield* fs.writeFileString(target, text);
 });
 
 const requireInput = Effect.fn("requireInput")(function* (inputPath: string, hint: string) {
@@ -483,6 +504,10 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
 
   yield* Effect.log(`[cli-archive] Staging ${stem}...`);
   yield* fs.copyFile(builtExecutable, path.join(contentDir, executableName));
+  // Astrolabe's own notice (Mercurian's and T3 Tools' copyright lines) and Node's. The client's
+  // third-party-licenses.json covers the bundled packages.
+  yield* fs.copyFile(path.join(repoRoot, "LICENSE"), path.join(contentDir, "LICENSE"));
+  yield* stageNodeLicense(path.join(contentDir, "LICENSE.node.txt"));
   yield* stageWebClient(webClient, path.join(contentDir, "client"));
   yield* fs.copy(resourceMonitorDir, path.join(contentDir, "resource-monitor"));
   yield* stageRuntimeExternals({
@@ -570,7 +595,13 @@ const command = Command.make(
 
 if (import.meta.main) {
   Command.run(command, { version: "0.0.0" }).pipe(
-    Effect.provide(Layer.mergeAll(Logger.layer([Logger.consolePretty()]), NodeServices.layer)),
+    Effect.provide(
+      Layer.mergeAll(
+        Logger.layer([Logger.consolePretty()]),
+        NodeServices.layer,
+        FetchHttpClient.layer,
+      ),
+    ),
     NodeRuntime.runMain,
   );
 }

@@ -1,3 +1,4 @@
+import { APP_STORE_URL, GOOGLE_PLAY_URL } from "~/branding";
 import { AndroidIcon, AppleIcon } from "../Icons";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
@@ -6,21 +7,13 @@ import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
 const stores = [
-  {
-    label: "iPhone and iPad",
-    store: "App Store",
-    url: "https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824",
-    Icon: AppleIcon,
-  },
-  {
-    label: "Android",
-    store: "Google Play",
-    url: "https://play.google.com/store/apps/details?id=com.t3tools.t3code",
-    Icon: AndroidIcon,
-  },
-];
+  { label: "iPhone and iPad", store: "App Store", url: APP_STORE_URL, Icon: AppleIcon },
+  { label: "Android", store: "Google Play", url: GOOGLE_PLAY_URL, Icon: AndroidIcon },
+].flatMap((store) => (store.url === null ? [] : [{ ...store, url: store.url }]));
 
+/** Hidden until Astrolabe has a store listing to link. */
 export function MobileAppSettingsRow() {
+  if (stores.length === 0) return null;
   return (
     <SettingsRow
       {...searchableSetting("mobile-app")}

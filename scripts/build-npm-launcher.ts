@@ -22,6 +22,7 @@ import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { CLI_RELEASE_REPOSITORY } from "@t3tools/shared/cliRelease";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
@@ -43,11 +44,18 @@ export class NpmLauncherCommandFailedError extends Schema.TaggedError<NpmLaunche
   }
 }
 
-/** package.json for the launcher. `engines` asks for `import.meta.dirname` and `fetch`. */
+/**
+ * package.json for the launcher. `engines` asks for `import.meta.dirname` and `fetch`.
+ * `astrolabe.releaseRepository` tells the launcher where to download from; it is left out
+ * while CLI_RELEASE_REPOSITORY is unset, and the launcher then refuses to download.
+ */
 export function npmLauncherPackageManifest(version: string) {
   return {
     name: NPM_LAUNCHER_PACKAGE_NAME,
     version,
+    ...(CLI_RELEASE_REPOSITORY === null
+      ? {}
+      : { astrolabe: { releaseRepository: CLI_RELEASE_REPOSITORY } }),
     description:
       "Astrolabe CLI. Downloads the self-contained executable for this platform from the GitHub Release.",
     license: serverPackageJson.license,
@@ -86,6 +94,11 @@ export const buildNpmLauncher = Effect.fn("buildNpmLauncher")(function* (input: 
   );
   yield* fs.chmod(path.join(stageDir, "bin", launcherScript), 0o755);
   yield* fs.copyFile(path.join(sourceDir, "bin.mjs"), path.join(stageDir, "dist/bin.mjs"));
+  // The tarball is built with tar, not npm pack, so nothing adds the license unless we do.
+  yield* fs.copyFile(
+    yield* path.fromFileUrl(new URL("../LICENSE", import.meta.url)),
+    path.join(stageDir, "LICENSE"),
+  );
   const readme = yield* path.fromFileUrl(new URL("../apps/server/README.md", import.meta.url));
   if (yield* fs.exists(readme)) {
     yield* fs.copyFile(readme, path.join(stageDir, "README.md"));

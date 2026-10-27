@@ -6,9 +6,9 @@ on:
       - "v*.*.*"
       - "!v*-nightly.*"
       - "!v*-preview.*"
-  schedule:
-    # Avoid minute zero, when GitHub scheduled jobs are busiest.
-    - cron: "8,38 * * * *"
+  # Astrolabe: no `schedule:` trigger. Upstream cuts a nightly every 30 minutes
+  # when main has changed; Astrolabe releases only on a tag push or a manual
+  # dispatch. The `schedule` checks below stay so restoring the cron is enough.
   workflow_dispatch:
     inputs:
       channel:
@@ -37,8 +37,9 @@ concurrency:
   queue: max
 
 permissions:
-  # The Windows desktop jobs read this run's artifact list to wait for the
-  # Linux CLI archive they embed (see release-desktop.yml).
+  # release-desktop.yml asks for this so its Windows jobs can wait for the Linux
+  # CLI archive they embed. Windows is not built here, but a called workflow
+  # cannot ask for more than its caller grants, so the grant stays.
   actions: read
   contents: read
   id-token: none
@@ -50,7 +51,7 @@ jobs:
   # have already run. Scheduled runs also decide here whether a nightly is due.
   resolve_commit:
     name: Resolve release commit
-    if: github.repository == 'pingdotgg/t3code'
+    if: github.repository == 'mercurian-labs/astrolabe'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
@@ -200,7 +201,7 @@ jobs:
             echo "release_channel=stable" >> "$GITHUB_OUTPUT"
             echo "version=$version" >> "$GITHUB_OUTPUT"
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
-            echo "name=T3 Code v$version" >> "$GITHUB_OUTPUT"
+            echo "name=Astrolabe v$version" >> "$GITHUB_OUTPUT"
             echo "cli_dist_tag=latest" >> "$GITHUB_OUTPUT"
             if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
@@ -382,6 +383,12 @@ jobs:
     environment:
       name: production
     outputs:
+      # Astrolabe deploys no relay or sign-in service yet. With neither
+      # RELAY_DOMAIN (or RELAY_API_ZONE_NAME) nor AUTH_URL set, every output is
+      # empty and `configured` is false: clients build with remote access and
+      # sign-in hidden (hasCloudPublicConfig in apps/web/src/cloud/publicConfig.ts),
+      # and nothing reads the relay's Alchemy state or its tracing artifact.
+      configured: ${{ steps.public_config.outputs.configured }}
       auth_url: ${{ steps.public_config.outputs.auth_url }}
       relay_url: ${{ steps.public_config.outputs.relay_url }}
     env:
@@ -391,7 +398,45 @@ jobs:
       RELAY_API_ZONE_NAME: ${{ vars.RELAY_API_ZONE_NAME }}
       AUTH_URL: ${{ vars.AUTH_URL }}
     steps:
+      - id: public_config
+        name: Resolve production relay public config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          relay_domain="${RELAY_DOMAIN:-}"
+          if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
+            relay_domain="relay.$RELAY_API_ZONE_NAME"
+          fi
+          if [[ -z "$relay_domain" && -z "${AUTH_URL:-}" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "No relay or auth configuration; building clients without remote access or sign-in."
+            exit 0
+          fi
+          # Remote access needs both; one without the other is a mistake.
+          required=(
+            relay_domain
+            AUTH_URL
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required relay deployment configuration: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          {
+            echo "configured=true"
+            echo "auth_url=$AUTH_URL"
+            echo "relay_url=https://$relay_domain"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.public_config.outputs.configured == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve_commit.outputs.ref }}
@@ -401,6 +446,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
+        if: steps.public_config.outputs.configured == 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -416,6 +462,7 @@ jobs:
       # Redacted values are persisted as
       # {"__redacted__": "<value>"}; the token is masked before it is written.
       - name: Read production relay tracing config
+        if: steps.public_config.outputs.configured == 'true'
         shell: bash
         working-directory: infra/relay
         run: |
@@ -436,40 +483,13 @@ jobs:
           } > "$RUNNER_TEMP/relay-client-tracing.env"
 
       - name: Upload relay client tracing config
+        if: steps.public_config.outputs.configured == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing.env
           if-no-files-found: error
           retention-days: 1
-
-      - id: public_config
-        name: Resolve production relay public config
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          relay_domain="${RELAY_DOMAIN:-}"
-          if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
-            relay_domain="relay.$RELAY_API_ZONE_NAME"
-          fi
-          required=(
-            relay_domain
-            AUTH_URL
-          )
-          missing=()
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              missing+=("$name")
-            fi
-          done
-          if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required relay deployment configuration: %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-
-          echo "auth_url=$AUTH_URL" >> "$GITHUB_OUTPUT"
-          echo "relay_url=https://$relay_domain" >> "$GITHUB_OUTPUT"
 
   # The platform-independent JS (server bundle, web client, Electron main) is
   # built exactly once here and handed to every platform job as `js-bundle`.
@@ -518,12 +538,14 @@ jobs:
         run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
 
       - name: Download relay client tracing config
+        if: needs.relay_public_config.outputs.configured == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
+        if: needs.relay_public_config.outputs.configured == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
@@ -548,7 +570,7 @@ jobs:
       # other repositories report "dev" telemetry.
       - name: Build JS bundle
         env:
-          T3CODE_TELEMETRY_CHANNEL: ${{ github.repository == 'pingdotgg/t3code' && needs.preflight.outputs.release_channel || 'dev' }}
+          T3CODE_TELEMETRY_CHANNEL: ${{ github.repository == 'mercurian-labs/astrolabe' && needs.preflight.outputs.release_channel || 'dev' }}
         run: vp run build:desktop
 
       # Two paths under apps/ so the artifact root is apps/; consumers download
@@ -564,13 +586,10 @@ jobs:
           retention-days: 1
 
   # One job per platform and architecture (see release-desktop.yml), each
-  # gated only on the JS bundle. Windows targets build on Linux and run their
-  # native checks on a Windows runner of their own architecture.
-  # The Windows jobs also embed the same-arch Linux CLI archive as the WSL
-  # runtime; they wait for that artifact partway through instead of for the
-  # whole Linux job. Every job builds the desktop app; all but macOS x64 also
-  # build the CLI archive for their platform, so a target either ships fully or
-  # not at all.
+  # gated only on the JS bundle. Every job builds the desktop app; all but
+  # macOS x64 also build the CLI archive for their platform, so a target either
+  # ships fully or not at all. Windows is not built; see the note after the
+  # Linux jobs.
   desktop_mac_arm64:
     name: Desktop macOS arm64
     needs: [preflight, relay_public_config, build_bundle]
@@ -583,6 +602,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: macOS arm64
       runner: blacksmith-12vcpu-macos-26
       platform: mac
@@ -604,6 +624,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: macOS x64
       runner: blacksmith-12vcpu-macos-26
       platform: mac
@@ -628,6 +649,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: Linux x64
       runner: blacksmith-32vcpu-ubuntu-2404
       platform: linux
@@ -651,6 +673,7 @@ jobs:
       release_channel: ${{ needs.preflight.outputs.release_channel }}
       auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
+      relay_client_tracing: ${{ needs.relay_public_config.outputs.configured == 'true' }}
       label: Linux arm64
       runner: blacksmith-16vcpu-ubuntu-2404-arm
       platform: linux
@@ -660,54 +683,14 @@ jobs:
       resource_key: linux-arm64
       cli_archive: true
 
-  # The Windows jobs start with the other platforms and wait for the same-arch
-  # Linux CLI archive after their other setup. Packaging is mostly CPU and
-  # small-file work, which Linux runners do faster than Windows ones, so both
-  # Windows targets build and sign on Linux and only the native checks run on
-  # Windows.
-  desktop_win_x64:
-    name: Desktop Windows x64
-    needs: [preflight, relay_public_config, build_bundle]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build_bundle.result == 'success' }}
-    uses: ./.github/workflows/release-desktop.yml
-    secrets: inherit
-    with:
-      version: ${{ needs.preflight.outputs.version }}
-      ref: ${{ needs.preflight.outputs.ref }}
-      release_channel: ${{ needs.preflight.outputs.release_channel }}
-      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
-      relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
-      label: Windows x64
-      runner: blacksmith-16vcpu-ubuntu-2404
-      verify_runner: windows-2025
-      platform: win
-      target: nsis
-      arch: x64
-      rust_target: x86_64-pc-windows-msvc
-      resource_key: win32-x64
-      cli_archive: true
-
-  desktop_win_arm64:
-    name: Desktop Windows arm64
-    needs: [preflight, relay_public_config, build_bundle]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build_bundle.result == 'success' }}
-    uses: ./.github/workflows/release-desktop.yml
-    secrets: inherit
-    with:
-      version: ${{ needs.preflight.outputs.version }}
-      ref: ${{ needs.preflight.outputs.ref }}
-      release_channel: ${{ needs.preflight.outputs.release_channel }}
-      auth_url: ${{ needs.relay_public_config.outputs.auth_url }}
-      relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
-      label: Windows arm64
-      runner: blacksmith-16vcpu-ubuntu-2404
-      verify_runner: windows-11-arm
-      platform: win
-      target: nsis
-      arch: arm64
-      rust_target: aarch64-pc-windows-msvc
-      resource_key: win32-arm64
-      cli_archive: true
+  # Astrolabe: Windows does not ship yet, so the desktop_win_x64 and
+  # desktop_win_arm64 jobs are not run. release-desktop.yml keeps every Windows
+  # path (Linux-hosted packaging, the native verify job on windows-2025 and
+  # windows-11-arm, the embedded Linux CLI archive for WSL, Azure Trusted
+  # Signing). Shipping Windows again means restoring those two jobs from
+  # upstream's release.yml, adding them to `release`'s needs and condition, and
+  # restoring the Windows updater-manifest merge and the `*.exe` asset line in
+  # `release`.
 
   release:
     name: Publish GitHub Release
@@ -723,10 +706,8 @@ jobs:
         desktop_mac_x64,
         desktop_linux_x64,
         desktop_linux_arm64,
-        desktop_win_x64,
-        desktop_win_arm64,
       ]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.quality.result == 'success' && needs.test.result == 'success' && needs.test_web.result == 'success' && needs.test_server.result == 'success' && needs.desktop_mac_arm64.result == 'success' && needs.desktop_mac_x64.result == 'success' && needs.desktop_linux_x64.result == 'success' && needs.desktop_linux_arm64.result == 'success' && needs.desktop_win_x64.result == 'success' && needs.desktop_win_arm64.result == 'success' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.quality.result == 'success' && needs.test.result == 'success' && needs.test_web.result == 'success' && needs.test_server.result == 'success' && needs.desktop_mac_arm64.result == 'success' && needs.desktop_mac_x64.result == 'success' && needs.desktop_linux_x64.result == 'success' && needs.desktop_linux_arm64.result == 'success' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
@@ -769,7 +750,7 @@ jobs:
         continue-on-error: true
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          PACKAGE_NAME: com.t3tools.t3code
+          PACKAGE_NAME: com.mercurian.astrolabe
           APK_OUTPUT_DIR: release-assets
         run: |
           if [ -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]; then
@@ -824,21 +805,6 @@ jobs:
             fi
           done
 
-      - name: Merge Windows updater manifests
-        if: needs.preflight.outputs.release_channel != 'preview'
-        run: |
-          shopt -s nullglob
-          for x64_manifest in release-assets/*-win-x64.yml; do
-            arm64_manifest="${x64_manifest%-x64.yml}-arm64.yml"
-            merged_manifest="${x64_manifest%-win-x64.yml}.yml"
-            if [[ -f "$arm64_manifest" ]]; then
-              node scripts/merge-update-manifests.ts --platform win "$x64_manifest" "$arm64_manifest" "$merged_manifest"
-              rm -f "$x64_manifest" "$arm64_manifest"
-            else
-              mv "$x64_manifest" "$merged_manifest"
-            fi
-          done
-
       # Updater manifests and blockmaps are what electron-updater consumes.
       # They are only listed for channels an updater is meant to follow.
       - id: release_files
@@ -851,7 +817,6 @@ jobs:
             echo 'release-assets/*.zip'
             echo 'release-assets/*.AppImage'
             echo 'release-assets/*.deb'
-            echo 'release-assets/*.exe'
             if [[ "${{ needs.preflight.outputs.release_channel }}" != "preview" ]]; then
               echo 'release-assets/*.blockmap'
               echo 'release-assets/*.yml'
@@ -878,7 +843,7 @@ jobs:
           > [!WARNING]
           > **This is a preview build. Do not install it unless you know exactly why you are here.**
           >
-          > Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, are never offered as updates, and are not supported. If you want T3 Code, install the [latest release](https://github.com/pingdotgg/t3code/releases/latest) or a nightly instead.
+          > Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, are never offered as updates, and are not supported. If you want Astrolabe, install the [latest release](https://github.com/${{ github.repository }}/releases/latest) instead.
 
           Built from `${{ needs.preflight.outputs.ref }}`.
           EOF
@@ -957,40 +922,40 @@ jobs:
             exit 1
           fi
 
-  publish_aur:
-    name: Publish AUR package
-    needs: [preflight, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
-    uses: ./.github/workflows/publish-aur.yml
-    with:
-      release_tag: ${{ needs.preflight.outputs.tag }}
-    secrets:
-      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+  # Astrolabe: no AUR publish. publish-aur.yml and packaging/aur still package
+  # upstream's `t3code-bin` from pingdotgg/t3code's AppImage; see that workflow.
 
-  # Vercel builds the hosted web app while the desktop jobs run. `--skip-domain`
-  # keeps the custom domains (the channel and router domains) on the previous
-  # deployment until deploy_web aliases them, after the GitHub Release. It does
-  # still move the project's own *.vercel.app production hostname at build time.
-  # That hostname sits behind Vercel SSO and is not a user channel, so the
-  # npm-before-client order in docs/operations/release.md holds for users.
-  build_web:
-    name: Build hosted web app
-    needs: [preflight, relay_public_config]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
+  # Astrolabe: the hosted web app (app.astrolabe.sh) is the Cloudflare Worker
+  # `astrolabe-app` (apps/web/wrangler.jsonc), one channel. Only stable releases
+  # deploy it: they are what npm's `latest` dist-tag and `npx
+  # @mercurian/astrolabe` install, and the hosted app has to stay compatible
+  # with that server, so nightly and preview servers never replace it. It
+  # deploys after npm so the hosted client never runs ahead of the server users
+  # can install. Without CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID it skips
+  # its steps and passes; nothing waits on it.
+  deploy_web:
+    name: Deploy hosted web app
+    needs: [preflight, relay_public_config, release, publish_cli]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
+    timeout-minutes: 15
     env:
-      T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
-      T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      T3CODE_WEB_ROUTER_URL: ${{ vars.T3CODE_WEB_ROUTER_URL }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
+      - id: cloudflare
+        name: Check Cloudflare configuration
+        shell: bash
+        run: |
+          if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets are not set; skipping the hosted web app deploy."
+          fi
+
       - name: Checkout
+        if: steps.cloudflare.outputs.configured == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.preflight.outputs.ref }}
@@ -1000,6 +965,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Vite+
+        if: steps.cloudflare.outputs.configured == 'true'
         uses: voidzero-dev/setup-vp@v1
         with:
           node-version-file: package.json
@@ -1010,12 +976,14 @@ jobs:
               - --filter=@t3tools/web...
 
       - name: Download relay client tracing config
+        if: steps.cloudflare.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
         uses: actions/download-artifact@v8
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing
 
       - name: Load relay client tracing config
+        if: steps.cloudflare.outputs.configured == 'true' && needs.relay_public_config.outputs.configured == 'true'
         shell: bash
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
@@ -1023,247 +991,31 @@ jobs:
           echo "::add-mask::$tracing_token"
           cat "$config_path" >> "$GITHUB_ENV"
 
-      - name: Align package versions to release version
-        run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
-
-      - name: Refresh release lockfile
-        run: vp install --lockfile-only --ignore-scripts
-
-      - id: deploy
-        name: Build staged deployment
-        shell: bash
+      # The same relay and sign-in switch as every other client: both unset
+      # builds a pairing-only app. VITE_HOSTED_APP_CHANNEL marks the build as
+      # the hosted app whatever origin serves it.
+      - name: Build hosted web app
+        if: steps.cloudflare.outputs.configured == 'true'
+        env:
+          APP_VERSION: ${{ needs.preflight.outputs.version }}
+          T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
+          T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
+          VITE_HOSTED_APP_URL: https://app.astrolabe.sh
+          VITE_HOSTED_APP_CHANNEL: latest
         run: |
-          set -euo pipefail
+          vp run --filter @t3tools/web build
+          node scripts/apply-web-brand-assets.ts --channel latest
+          cp apps/web/cloudflare/_headers apps/web/dist/_headers
 
-          if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" || -z "${VERCEL_PROJECT_ID:-}" ]]; then
-            echo "Missing one or more required Vercel secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID." >&2
-            exit 1
-          fi
+      - name: Deploy hosted web app
+        if: steps.cloudflare.outputs.configured == 'true'
+        working-directory: apps/web
+        run: vp dlx wrangler@4.151.3 deploy
 
-          router_url="${T3CODE_WEB_ROUTER_URL:-https://app.t3.codes}"
-          if [[ "${{ needs.preflight.outputs.release_channel }}" == "stable" ]]; then
-            channel_name="latest"
-          else
-            channel_name="nightly"
-          fi
-
-          echo "Building hosted web app for $channel_name channel."
-          deployment_output="$(
-            vp dlx vercel@53.1.1 deploy \
-              --archive=tgz \
-              --prod \
-              --skip-domain \
-              --yes \
-              --token "$VERCEL_TOKEN" \
-              --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}" \
-              --build-env "APP_VERSION=${{ needs.preflight.outputs.version }}" \
-              --build-env "T3CODE_AUTH_URL=${T3CODE_AUTH_URL:-}" \
-              --build-env "T3CODE_RELAY_URL=${T3CODE_RELAY_URL:-}" \
-              --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_URL=${T3CODE_RELAY_CLIENT_OTLP_TRACES_URL:-}" \
-              --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET=${T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET:-}" \
-              --build-env "T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=${T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN:-}" \
-              --build-env "VITE_HOSTED_APP_URL=$router_url" \
-              --build-env "VITE_HOSTED_APP_CHANNEL=$channel_name"
-          )"
-          printf '%s\n' "$deployment_output"
-          # Vercel can print lockfile warnings to stdout before the deployment URL.
-          deployment_url="$(printf '%s\n' "$deployment_output" | grep -E '^https://[[:alnum:].-]+\.vercel\.app$')"
-          if [[ "$deployment_url" == *$'\n'* ]]; then
-            echo "Vercel returned multiple deployment URLs." >&2
-            exit 1
-          fi
-          echo "Staged $deployment_url."
-          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-
-  deploy_web:
-    name: Deploy hosted web app
-    needs: [preflight, build_web, release, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 10
-    env:
-      DEPLOYMENT_URL: ${{ needs.build_web.outputs.deployment_url }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      T3CODE_WEB_ROUTER_URL: ${{ vars.T3CODE_WEB_ROUTER_URL }}
-      T3CODE_WEB_LATEST_DOMAIN: ${{ vars.T3CODE_WEB_LATEST_DOMAIN }}
-      T3CODE_WEB_NIGHTLY_DOMAIN: ${{ vars.T3CODE_WEB_NIGHTLY_DOMAIN }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Alias channel
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "$DEPLOYMENT_URL" ]]; then
-            echo "Build hosted web app did not report a deployment URL." >&2
-            exit 1
-          fi
-
-          router_url="${T3CODE_WEB_ROUTER_URL:-https://app.t3.codes}"
-          latest_domain="${T3CODE_WEB_LATEST_DOMAIN:-latest.app.t3.codes}"
-          nightly_domain="${T3CODE_WEB_NIGHTLY_DOMAIN:-nightly.app.t3.codes}"
-          router_domain="${router_url#http://}"
-          router_domain="${router_domain#https://}"
-          router_domain="${router_domain%%/*}"
-
-          if [[ "${{ needs.preflight.outputs.release_channel }}" == "stable" ]]; then
-            channel_domain="$latest_domain"
-            channel_name="latest"
-          else
-            channel_domain="$nightly_domain"
-            channel_name="nightly"
-          fi
-
-          vercel_scope_args=(--scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}")
-
-          echo "Aliasing $DEPLOYMENT_URL to $channel_domain."
-          vp dlx vercel@53.1.1 alias set "$DEPLOYMENT_URL" "$channel_domain" \
-            --token "$VERCEL_TOKEN" \
-            "${vercel_scope_args[@]}"
-
-          if [[ "$channel_name" == "latest" && -n "$router_domain" && "$router_domain" != "$channel_domain" ]]; then
-            echo "Aliasing $DEPLOYMENT_URL to router domain $router_domain."
-            vp dlx vercel@53.1.1 alias set "$DEPLOYMENT_URL" "$router_domain" \
-              --token "$VERCEL_TOKEN" \
-              "${vercel_scope_args[@]}"
-          fi
-
-  # Same split as the web app: build a production deployment early, then
-  # promote it to t3.codes once the release it links to exists. As above, the
-  # project's own *.vercel.app hostname moves at build time.
-  build_marketing:
-    name: Build marketing site
-    needs: [preflight]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
-      project_id: ${{ steps.deploy.outputs.project_id }}
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=@t3tools/marketing...
-
-      - id: deploy
-        name: Build staged deployment
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" ]]; then
-            echo "Missing one or more required Vercel secrets: VERCEL_TOKEN, VERCEL_ORG_ID." >&2
-            exit 1
-          fi
-
-          VERCEL_PROJECT_ID="$(
-            curl --fail --silent --show-error \
-              --header "Authorization: Bearer $VERCEL_TOKEN" \
-              "https://api.vercel.com/v9/projects/t3code-marketing?teamId=$VERCEL_ORG_ID" \
-              | jq --exit-status --raw-output '.id'
-          )"
-          export VERCEL_PROJECT_ID
-
-          deployment_output="$(
-            vp dlx vercel@53.1.1 deploy \
-              --archive=tgz \
-              --prod \
-              --skip-domain \
-              --yes \
-              --token "$VERCEL_TOKEN" \
-              --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}"
-          )"
-          printf '%s\n' "$deployment_output"
-          # Vercel can print lockfile warnings to stdout before the deployment URL.
-          deployment_url="$(printf '%s\n' "$deployment_output" | grep -E '^https://[[:alnum:].-]+\.vercel\.app$')"
-          if [[ "$deployment_url" == *$'\n'* ]]; then
-            echo "Vercel returned multiple deployment URLs." >&2
-            exit 1
-          fi
-          echo "Staged $deployment_url."
-          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-          echo "project_id=$VERCEL_PROJECT_ID" >> "$GITHUB_OUTPUT"
-
-  deploy_marketing:
-    name: Deploy marketing site
-    needs: [preflight, build_marketing, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_marketing.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 10
-    env:
-      DEPLOYMENT_URL: ${{ needs.build_marketing.outputs.deployment_url }}
-      VERCEL_PROJECT_ID: ${{ needs.build_marketing.outputs.project_id }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Promote marketing site
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "$DEPLOYMENT_URL" ]]; then
-            echo "Build marketing site did not report a deployment URL." >&2
-            exit 1
-          fi
-
-          echo "Promoting $DEPLOYMENT_URL."
-          vp dlx vercel@53.1.1 promote "$DEPLOYMENT_URL" \
-            --yes \
-            --token "$VERCEL_TOKEN" \
-            --scope "${VERCEL_TEAM_SLUG:-$VERCEL_ORG_ID}"
+  # Astrolabe: no marketing jobs. Upstream's build_marketing/deploy_marketing
+  # promote apps/marketing (T3 Code's own site, Vercel project
+  # `t3code-marketing`) on nightlies. Astrolabe's site is apps/landing, which
+  # deploys outside this workflow.
 
   finalize:
     name: Finalize release
@@ -1343,82 +1095,3 @@ jobs:
           git add apps/server/package.json apps/desktop/package.json apps/web/package.json packages/contracts/package.json pnpm-lock.yaml
           git commit -m "chore(release): prepare $RELEASE_TAG"
           git push origin HEAD:main
-
-  announce_discord:
-    name: Announce release on Discord
-    if: |
-      always() && !cancelled() &&
-      needs.preflight.result == 'success' &&
-      needs.preflight.outputs.release_channel != 'preview' &&
-      needs.relay_public_config.result == 'success' &&
-      needs.release.result == 'success' &&
-      needs.deploy_web.result == 'success' &&
-      (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
-    needs: [preflight, relay_public_config, release, deploy_web, finalize]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=@t3tools/scripts...
-
-      - name: Read published release notes
-        if: needs.preflight.outputs.is_prerelease == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
-          RELEASE_CHANNEL: ${{ needs.preflight.outputs.release_channel }}
-        run: |
-          if [ "$RELEASE_CHANNEL" = 'nightly' ]; then
-            if ! gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > "$RUNNER_TEMP/discord-release-notes.md"; then
-              : > "$RUNNER_TEMP/discord-release-notes.md"
-              echo '::warning::Could not read published release notes; announcing without a changelog.'
-            fi
-          else
-            : > "$RUNNER_TEMP/discord-release-notes.md"
-          fi
-
-      - name: Announce prerelease on Discord
-        if: needs.preflight.outputs.is_prerelease == 'true'
-        continue-on-error: true
-        env:
-          DISCORD_MENTION_ROLE_ID: ${{ secrets.DISCORD_RELEASE_NIGHTLY_ROLE_ID }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
-        run: |
-          node scripts/notify-discord-release.ts prerelease \
-            --role-id "$DISCORD_MENTION_ROLE_ID" \
-            --release-name "${{ needs.preflight.outputs.release_name }}" \
-            --release-version "${{ needs.preflight.outputs.version }}" \
-            --tag "${{ needs.preflight.outputs.tag }}" \
-            --release-url "https://github.com/${{ github.repository }}/releases/tag/${{ needs.preflight.outputs.tag }}" \
-            --release-notes-file "$RUNNER_TEMP/discord-release-notes.md"
-
-      - name: Announce latest release on Discord
-        if: needs.preflight.outputs.make_latest == 'true'
-        continue-on-error: true
-        env:
-          DISCORD_MENTION_ROLE_ID: ${{ secrets.DISCORD_RELEASE_LATEST_ROLE_ID }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
-        run: |
-          node scripts/notify-discord-release.ts latest \
-            --role-id "$DISCORD_MENTION_ROLE_ID" \
-            --release-name "${{ needs.preflight.outputs.release_name }}" \
-            --release-version "${{ needs.preflight.outputs.version }}" \
-            --tag "${{ needs.preflight.outputs.tag }}" \
-            --release-url "https://github.com/${{ github.repository }}/releases/tag/${{ needs.preflight.outputs.tag }}"

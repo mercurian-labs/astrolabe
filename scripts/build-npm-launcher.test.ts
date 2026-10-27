@@ -13,6 +13,8 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeEvents from "node:events";
 import * as NodeHttp from "node:http";
 
+import { CLI_RELEASE_REPOSITORY } from "@t3tools/shared/cliRelease";
+
 import { buildNpmLauncher } from "./build-npm-launcher.ts";
 
 const VERSION = "1.2.3";
@@ -117,6 +119,14 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         assert.equal(manifest.name, "@mercurian/astrolabe");
         assert.equal(manifest.version, VERSION);
         assert.deepStrictEqual(manifest.bin, { astrolabe: "./bin/astrolabe.mjs" });
+        // Downloads come from Astrolabe's releases, and npm provenance only accepts a
+        // package whose repository is the one whose workflow publishes it.
+        assert.deepStrictEqual(manifest.astrolabe, {
+          releaseRepository: "mercurian-labs/astrolabe",
+        });
+        assert.deepInclude(manifest.repository, {
+          url: "https://github.com/mercurian-labs/astrolabe",
+        });
         // Nothing for npm to resolve, so nothing that can lag behind the launcher.
         assert.isUndefined(manifest.dependencies);
         assert.isUndefined(manifest.optionalDependencies);
@@ -217,5 +227,34 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
           [],
         );
       }),
+  );
+
+  // Once CLI_RELEASE_REPOSITORY is set, the launcher downloads from it instead.
+  it.effect.skipIf(
+    HostProcess.Platform.defaultValue() === "win32" || CLI_RELEASE_REPOSITORY !== null,
+  )("downloads nothing while Astrolabe publishes no releases and no mirror is set", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-npm-launcher-test-" });
+      const output = yield* buildNpmLauncher({
+        version: VERSION,
+        outputDir: path.join(root, "out"),
+      });
+      const manifest = yield* decodeManifest(
+        yield* fs.readFileString(path.join(output.packageDir, "package.json")),
+      );
+      assert.isUndefined(manifest.astrolabe);
+
+      const home = path.join(root, "home");
+      const result = yield* run(
+        process.execPath,
+        [path.join(output.packageDir, "bin/astrolabe.mjs"), "--version"],
+        { cwd: root, env: { PATH: process.env.PATH, ASTROLABE_HOME: home } },
+      );
+      assert.equal(result.exitCode, 1);
+      assert.include(result.stderr, "Astrolabe publishes no release of 1.2.3 to download yet.");
+      assert.isFalse(yield* fs.exists(home));
+    }),
   );
 });

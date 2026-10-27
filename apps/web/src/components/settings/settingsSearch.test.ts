@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
+import { APP_STORE_URL, GOOGLE_PLAY_URL } from "~/branding";
 
 import {
   filterAvailableSettingsSearchItems,
   getSettingsSearchTargetScope,
   getThreadAutoSettlementSearchAvailability,
   isSettingsSearchScopeAvailable,
+  isSettingsSectionAvailable,
   searchSettings,
   SETTINGS_SEARCH_ITEMS,
   type SettingsSearchItem,
@@ -84,6 +86,15 @@ describe("searchSettings", () => {
     expect(searchSettings("update track")).toEqual([]);
   });
 
+  // The Mobile app row links Astrolabe's store listings once they exist.
+  it.skipIf(APP_STORE_URL !== null || GOOGLE_PLAY_URL !== null)(
+    "hides the Mobile app row while Astrolabe has no store listing",
+    () => {
+      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === "mobile-app")).toBe(true);
+      expect(searchSettings("App Store")).toEqual([]);
+    },
+  );
+
   it("hides settings whose controls are unavailable", () => {
     const available = filterAvailableSettingsSearchItems({
       hasCloudPublicConfig: false,
@@ -116,6 +127,28 @@ describe("searchSettings", () => {
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
   });
+
+  it.each([false, true])(
+    "never offers a result in a hidden section (cloud config %s)",
+    (hasCloudPublicConfig) => {
+      const available = filterAvailableSettingsSearchItems({
+        hasCloudPublicConfig,
+        hasEnvironment: true,
+        hasProviderSettingsEnvironment: true,
+        hasMacProviderSettingsEnvironment: true,
+        canManageLocalBackend: true,
+        isWslSettingsRowVisible: true,
+        hasThreadAutoSettlement: true,
+        managedTunnelActive: true,
+      });
+      const sections = new Set(available.map((item) => item.to));
+      for (const section of sections) {
+        expect(isSettingsSectionAvailable(section, { hasCloudPublicConfig })).toBe(true);
+      }
+      expect(sections.has("/settings/workspaces")).toBe(hasCloudPublicConfig);
+      expect(sections.has("/settings/connections")).toBe(true);
+    },
+  );
 
   it("finds keybinding commands by label, command id, and default key", () => {
     expect(searchSettings("toggle sidebar")[0]?.id).toBe("keybinding-sidebar.toggle");

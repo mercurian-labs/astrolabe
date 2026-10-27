@@ -1,6 +1,34 @@
 {
   "customNotices": [
     {
+      "bundles": ["desktop", "server", "web"],
+      "license": "MIT",
+      "name": "Astrolabe (based on T3 Code)",
+      "noticeFile": "LICENSE",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe"
+    },
+    {
+      "bundles": ["desktop", "server"],
+      "license": "MIT AND Unicode-3.0",
+      "name": "Rust crates in the resource monitor",
+      "noticeFile": "native/resource-monitor/THIRD-PARTY-NOTICES.txt",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/resource-monitor"
+    },
+    {
+      "bundles": ["desktop"],
+      "license": "MIT AND Unicode-3.0 AND Zlib",
+      "name": "Rust crates in the Hyprland window capture helper (Linux)",
+      "noticeFile": "native/hyprland-snap-shot/THIRD-PARTY-NOTICES.txt",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/hyprland-snap-shot"
+    },
+    {
+      "bundles": ["desktop"],
+      "license": "MIT AND Unicode-3.0 AND Zlib",
+      "name": "Rust crates in the KDE window capture helper (Linux)",
+      "noticeFile": "native/kde-snap-shot/THIRD-PARTY-NOTICES.txt",
+      "sourceUrl": "https://github.com/mercurian-labs/astrolabe/tree/main/native/kde-snap-shot"
+    },
+    {
       "bundles": ["desktop", "web"],
       "license": "MIT",
       "name": "Ionic keyboard assist",
@@ -206,6 +234,25 @@
     }
   ],
   "packageOverrides": [
+    {
+      "name": "heic-to",
+      "license": "LGPL-3.0-or-later",
+      "sourceUrl": "https://github.com/hoppergee/heic-to/tree/v1.5.2",
+      "generatedNotices": [
+        {
+          "licenseId": "LGPL-3.0-or-later",
+          "preamble": [
+            "heic-to is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n\nheic-to is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.\n\nheic-to bundles WebAssembly builds of libheif (https://github.com/strukturag/libheif) and libde265 (https://github.com/strukturag/libde265), both under the GNU Lesser General Public License, version 3. Astrolabe loads heic-to unmodified, as a separate file, only to preview HEIC images. Its source, for the version Astrolabe ships, is at https://github.com/hoppergee/heic-to/tree/v1.5.2."
+          ]
+        },
+        {
+          "licenseId": "GPL-3.0-or-later",
+          "preamble": [
+            "The GNU Lesser General Public License, version 3, incorporates the terms of the GNU General Public License, version 3, which follows."
+          ]
+        }
+      ]
+    },
     {
       "name": "remark-math",
       "version": "6.0.0",

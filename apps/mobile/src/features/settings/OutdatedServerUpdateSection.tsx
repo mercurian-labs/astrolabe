@@ -15,7 +15,7 @@ import {
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsActionRow } from "./components/SettingsActionRow";
 import { SettingsSection } from "./components/SettingsSection";
-import { findEnvironmentUpdate } from "./environment-maintenance";
+import { canCheckEnvironmentUpdates, findEnvironmentUpdate } from "./environment-maintenance";
 
 export function OutdatedServerUpdateSection({
   environmentId,
@@ -108,13 +108,15 @@ export function OutdatedServerUpdateSection({
           </Text>
         ) : null}
       </View>
-      <SettingsActionRow
-        icon="arrow.clockwise"
-        label="Check for updates"
-        disabled={busy}
-        loading={checking}
-        onPress={() => void check()}
-      />
+      {canCheckEnvironmentUpdates ? (
+        <SettingsActionRow
+          icon="arrow.clockwise"
+          label="Check for updates"
+          disabled={busy}
+          loading={checking}
+          onPress={() => void check()}
+        />
+      ) : null}
       {release?.targetVersion ? (
         <SettingsActionRow
           icon="arrow.up.circle"

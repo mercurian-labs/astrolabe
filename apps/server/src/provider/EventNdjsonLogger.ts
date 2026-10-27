@@ -190,6 +190,35 @@ function providerLogPath(directory: string, prefix: string, threadSegment: strin
   return NodePath.join(directory, `${prefix}${threadSegment}.log`);
 }
 
+/**
+ * Deletes one thread's log and its rotations. A sink still open on it writes
+ * to the unlinked file until the store closes; a deleted thread sends nothing.
+ */
+export const removeThreadProviderEventLogs = Effect.fn(
+  "EventNdjsonLogger.removeThreadProviderEventLogs",
+)(function* (filePath: string, threadId: ThreadId) {
+  const segment = toSafeThreadAttachmentSegment(threadId);
+  if (segment === null) return;
+  const fs = yield* FileSystem.FileSystem;
+  const directory = NodePath.dirname(filePath);
+  if (!(yield* fs.exists(directory))) return;
+  const logName = NodePath.basename(
+    providerLogPath(directory, providerLogPrefix(filePath), segment),
+  );
+  const names = (yield* fs.readDirectory(directory)).filter(
+    (name) =>
+      name === logName ||
+      (name.startsWith(`${logName}.`) && /^\d+$/u.test(name.slice(logName.length + 1))),
+  );
+  yield* Effect.forEach(
+    names,
+    (name) => fs.remove(NodePath.join(directory, name), { force: true }),
+    {
+      discard: true,
+    },
+  );
+});
+
 export function shouldPersistProviderEvent(stream: EventNdjsonStream, event: unknown): boolean {
   if (stream === "orchestration" || typeof event !== "object" || event === null) {
     return true;

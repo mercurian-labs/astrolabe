@@ -1,0 +1,44 @@
+        <!-- ───────────────────────────────────────── Header -->
+        <header class="mast" data-mast>
+          <div class="mast__bar">
+            <div class="mast__lead">
+              <a class="mast__brand" href="/#top" aria-label="Astrolabe home">
+                <img class="mast__mark" src="/assets/brand/wordmark-small.svg" alt="" width="140" height="26" />
+                <img class="mast__mark mast__mark--night" src="/assets/brand/wordmark-small-dark.svg" alt="" width="140" height="26" />
+              </a>
+              <!-- The page's light, from the working astrolabe's sun (twilight.js sets data-twilight). -->
+              <a class="mast__sky" href="/#why" title="Turn the astrolabe to change the light" aria-label="The page's light follows the astrolabe's sun. Turn the astrolabe to change it">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <g class="mast__day"><circle cx="10" cy="10" r="3.4" /><path d="M10 2.6v2M10 15.4v2M2.6 10h2M15.4 10h2M4.8 4.8l1.4 1.4M13.8 13.8l1.4 1.4M4.8 15.2l1.4-1.4M13.8 6.2l1.4-1.4" /></g>
+                  <g class="mast__dusk"><path d="M2.5 14h15M5.4 14a4.6 4.6 0 0 1 9.2 0M10 5.6v1.9M4.4 8.4l1.3 1.3M15.6 8.4l-1.3 1.3" /></g>
+                  <g class="mast__night"><path d="M8.79 4.46A6 6 0 1 0 15.48 11.58A5 5 0 0 1 8.79 4.46Z" /></g>
+                </svg>
+              </a>
+            </div>
+            <nav class="mast__nav" aria-label="Primary">
+              <a class="mast__link px" href="/#agents"><span class="roll"><span>Agents</span><span aria-hidden="true">Agents</span></span></a>
+              <a class="mast__link px" href="/#wikis"><span class="roll"><span>Wikis</span><span aria-hidden="true">Wikis</span></span></a>
+              <a class="mast__link px" href="/#changes"><span class="roll"><span>Changes</span><span aria-hidden="true">Changes</span></span></a>
+              <a class="mast__link px" href="/#automations"><span class="roll"><span>Automations</span><span aria-hidden="true">Automations</span></span></a>
+              <a class="mast__link px" href="/#anywhere"><span class="roll"><span>Anywhere</span><span aria-hidden="true">Anywhere</span></span></a>
+              <a class="mast__link px" href="/download"><span class="roll"><span>Download</span><span aria-hidden="true">Download</span></span></a>
+            </nav>
+            <a class="mast__cta px px--on-rust" href="/download">
+              <span class="roll"><span>Try Astrolabe</span><span aria-hidden="true">Try Astrolabe</span></span>
+              <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+            </a>
+            <button class="mast__menu" type="button" aria-expanded="false" aria-controls="menu">
+              <span class="mast__menu-label">Menu</span><i class="burger" aria-hidden="true"></i>
+            </button>
+          </div>
+          <nav id="menu" class="menu" aria-label="Menu" hidden>
+            <a href="/#agents"><span>Agents</span><span class="tag">[03]</span></a>
+            <a href="/#wikis"><span>Wikis</span><span class="tag">[05]</span></a>
+            <a href="/#repositories"><span>Repositories</span><span class="tag">[06]</span></a>
+            <a href="/#changes"><span>Changes</span><span class="tag">[07]</span></a>
+            <a href="/#automations"><span>Automations</span><span class="tag">[08]</span></a>
+            <a href="/#anywhere"><span>Anywhere</span><span class="tag">[09]</span></a>
+            <a href="/download"><span>Download</span><span class="tag">macOS · Linux</span></a>
+            <a class="menu__cta" href="/download"><span>Try Astrolabe</span><svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+          </nav>
+        </header>

@@ -1,0 +1,20 @@
+---
+import Plate from "./Plate.astro";
+import plate from "../data/picdumidi-plate.json";
+---
+          <!-- ───────────────────────────────────────── Close -->
+          <section class="close" aria-labelledby="close-title">
+            <div class="close__copy">
+              <h2 id="close-title" class="display display--close" data-reveal>Start with a question.</h2>
+              <p class="close__line" data-reveal>Open Astrolabe on your repository and put two agents on it.</p>
+              <a class="btn btn--rust px px--on-rust" href="/download">
+                <span class="roll"><span>Download Astrolabe</span><span aria-hidden="true">Download Astrolabe</span></span>
+                <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+              </a>
+            </div>
+            <div class="close__art">
+              <Plate plate={plate} class="plate--wide" />
+              <span class="cross cross--tl" aria-hidden="true"></span>
+              <span class="cross cross--br" aria-hidden="true"></span>
+            </div>
+          </section>

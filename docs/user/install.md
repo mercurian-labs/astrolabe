@@ -10,20 +10,15 @@ launch T3 Code and configure providers afterwards.
 
 ## Command line
 
+On macOS (Apple silicon) and Linux:
+
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
+curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh
 ```
 
 This installs the `astrolabe` binary to `~/.local/bin`. If your shell reports `command not found`
 afterwards, that directory is not on your `PATH` yet; the installer prints the
-line to add. Set `ASTROLABE_CHANNEL=nightly` to install the nightly train, or
-`ASTROLABE_VERSION` to pin an exact version.
+line to add. Set `ASTROLABE_VERSION` to pin an exact version.
 
 | Task                                             | Command                                                                        |
 | ------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -42,18 +37,18 @@ If `astrolabe` or `astrolabe start` reports an already running server, connect t
 instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
-To try T3 Code once without installing it, run `npx @mercurian/astrolabe@latest` instead (needs
-Node.js for `npx`).
+To try Astrolabe once without installing it, run `npx @mercurian/astrolabe@latest` instead
+(needs Node.js for `npx`).
 
-### Intel Macs
+### Build from source
 
-There is no `astrolabe` executable for Intel Macs (the desktop app is available). To
-run a server there, build it from source with Node.js 24 and `vp`
-([Install vp](https://github.com/pingdotgg/t3code#install-vp)):
+There is no `astrolabe` executable for Intel Macs or Windows yet (the desktop app runs on Intel
+Macs). To run a server there, build it with Node.js 24 and `vp`
+([Install vp](../../README.md#install-vp)):
 
 ```bash
-git clone https://github.com/pingdotgg/t3code
-cd t3code && vp i && vp run build:desktop
+git clone https://github.com/mercurian-labs/astrolabe
+cd astrolabe && vp i && vp run build:desktop
 node apps/server/dist/bin.mjs
 ```
 
@@ -62,20 +57,15 @@ update it with `git pull` and a rebuild.
 
 ## Desktop app
 
-Download a release from [GitHub Releases](https://github.com/pingdotgg/t3code/releases),
-or use a package manager:
+Download it from [astrolabe.sh/download](https://astrolabe.sh/download) or
+[GitHub Releases](https://github.com/mercurian-labs/astrolabe/releases): a `.dmg` for macOS
+(Apple silicon or Intel), and an AppImage or `.deb` for Linux (x64 or arm64). Windows is coming
+later.
 
-| Platform           | Install                            |
-| ------------------ | ---------------------------------- |
-| Windows            | `winget install T3Tools.T3Code`    |
-| macOS              | `brew install --cask t3-code`      |
-| Debian, Ubuntu     | `sudo apt install ./T3-Code-*.deb` |
-| Arch Linux         | `yay -S t3code-bin`                |
-| Arch Linux nightly | `yay -S t3code-nightly-bin`        |
-
-The `.deb` updates itself like the other desktop builds. It asks for your
-password to install each update. If your desktop has no password prompt, the
-update fails. Download the new `.deb` and install it the same way.
+On Debian or Ubuntu, install the `.deb` with `sudo apt install ./Astrolabe-*.deb`. It updates
+itself like the other desktop builds and asks for your password to install each update. If your
+desktop has no password prompt, the update fails; download the new `.deb` and install it the
+same way.
 
 ### The `astrolabe` command
 
@@ -108,18 +98,9 @@ command cannot reach the app, start or update the desktop app and try again.
 
 ## Mobile app
 
-Install T3 Code from the
-[App Store](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824) or
-[Google Play](https://play.google.com/store/apps/details?id=com.t3tools.t3code).
-The phone connects to a server on another machine. Follow
+Astrolabe's mobile app isn't in the App Store or Google Play yet. The phone
+connects to a server on another machine; follow
 [remote access](./remote-access.md) to connect it through remote access or a pairing URL.
-
-Store links and QR codes are also available in **Settings → General → Mobile app**
-on web and desktop. The store apps work with both stable and Nightly servers. Test builds are optional:
-
-- **iPhone and iPad:** TestFlight is invite-only.
-- **Android:** download an APK from the
-  [Android beta releases](https://github.com/pingdotgg/t3code/releases?q=android-beta-).
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and

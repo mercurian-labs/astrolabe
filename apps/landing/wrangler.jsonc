@@ -1,0 +1,18 @@
+// astrolabe.sh: an assets-only Worker serving `astro build`'s dist/, deployed by
+// .github/workflows/deploy-landing.yml. Response headers live in public/_headers.
+{
+  "name": "astrolabe-site",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": "./dist",
+    // Astro writes /download/index.html and the site links /download: serve each page at its
+    // slashless address and redirect the slashed one to it.
+    "html_handling": "drop-trailing-slash",
+    // Serves dist/404.html once the site has one; until then a plain 404.
+    "not_found_handling": "404-page",
+  },
+  "routes": [{ "pattern": "astrolabe.sh", "custom_domain": true }],
+  // The custom domain is the site's only address.
+  "workers_dev": false,
+  "preview_urls": false,
+}

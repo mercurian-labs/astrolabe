@@ -1,6 +1,7 @@
 {
   "name": "@t3tools/tailscale",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     ".": {

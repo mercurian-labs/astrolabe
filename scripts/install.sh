@@ -2,7 +2,7 @@
 # Installs the T3 Code CLI from a GitHub Release archive. Needs only sh, tar,
 # sha256sum or shasum, and curl or wget; no Node, npm, or compiler.
 #
-#   curl -fsSL https://t3.codes/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh
 #
 # Environment:
 #   ASTROLABE_CHANNEL           release train to follow: stable, nightly, or preview
@@ -24,8 +24,10 @@ T3CODE_HOME="${ASTROLABE_HOME:-}"
 T3CODE_INSTALL_BIN_DIR="${ASTROLABE_INSTALL_BIN_DIR:-${T3CODE_INSTALL_BIN_DIR:-}}"
 T3CODE_RELEASE_BASE_URL="${ASTROLABE_RELEASE_BASE_URL:-${T3CODE_RELEASE_BASE_URL:-}}"
 
-repo="pingdotgg/t3code"
-base_url="${T3CODE_RELEASE_BASE_URL:-https://github.com/${repo}/releases/download}"
+# Astrolabe's release repository: the same value as CLI_RELEASE_REPOSITORY in
+# packages/shared/src/cliRelease.ts. Empty turns downloads off.
+repo="mercurian-labs/astrolabe"
+base_url="${T3CODE_RELEASE_BASE_URL:-${repo:+https://github.com/${repo}/releases/download}}"
 t3_home="${T3CODE_HOME:-$HOME/.astrolabe}"
 bin_dir="${T3CODE_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 
@@ -33,6 +35,8 @@ fail() {
   printf '\nastrolabe install: %s\n' "$1" >&2
   exit 1
 }
+[ -n "$base_url" ] ||
+  fail "Astrolabe publishes no CLI releases yet. Set ASTROLABE_RELEASE_BASE_URL to a mirror of the release archives."
 
 # ANSI stays on stderr, so `curl ... | sh` still gets progress.
 interactive=false
@@ -160,6 +164,7 @@ if [ -z "$version" ]; then
     nightly | preview) tag_pattern="v\([0-9][^\"]*-${channel}\.[0-9]*\.[0-9]*\)" ;;
     *) fail "ASTROLABE_CHANNEL must be stable, nightly, or preview" ;;
   esac
+  [ -n "$repo" ] || fail "there is no release list to search; set ASTROLABE_VERSION"
   tmp_index="$(mktemp)"
   fetch "https://api.github.com/repos/${repo}/releases?per_page=100" "$tmp_index"
   version="$(sed -n "s/.*\"tag_name\": *\"${tag_pattern}\".*/\1/p" "$tmp_index" | head -n 1)"

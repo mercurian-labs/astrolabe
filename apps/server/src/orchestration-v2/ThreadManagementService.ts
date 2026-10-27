@@ -863,8 +863,21 @@ const make = Effect.gen(function* () {
     // A restart cuts a run and continues it as a new run. Follow that chain,
     // so a cut run is not the answer while its continuation is pending.
     // Runs per matching event and is already covered by the waitForThread span.
-    const outcome = Effect.fnUntraced(function* (runs: ReadonlyArray<OrchestrationV2Run>) {
+    const outcome = Effect.fnUntraced(function* (
+      runs: ReadonlyArray<OrchestrationV2Run>,
+      deleted = false,
+    ) {
       const current = runs.find((candidate) => candidate.id === selectedRun.id);
+      // Deleting cancels the thread's runs, and its purge may already have
+      // removed them.
+      if (deleted) {
+        const run = current ?? selectedRun;
+        return {
+          run: isTerminalRunStatus(run.status) ? run : { ...run, status: "cancelled" as const },
+          pending: false,
+          settled: true,
+        };
+      }
       if (current === undefined) {
         return yield* new ThreadManagementRunNotFoundError({
           threadId: input.threadId,
@@ -876,6 +889,21 @@ const make = Effect.gen(function* () {
         isTerminalRunStatus(run.status) && (yield* orchestrator.restartContinuationPending(run));
       return { run, pending, settled: isTerminalRunStatus(run.status) && !pending };
     });
+    // Unlike the first read, a thread deleted during the wait settles it.
+    const waitedRecords = ensureProjectionTranscript(input.threadId).pipe(
+      Effect.andThen(orchestrator.getThreadRecords(input.threadId, ["runs"])),
+      Effect.mapError(loadError),
+      Effect.filterOrFail(
+        (projection) => projection.thread.projectId === input.projectId,
+        () =>
+          new ThreadManagementThreadNotFoundError({
+            projectId: input.projectId,
+            threadId: input.threadId,
+          }),
+      ),
+    );
+    const outcomeOf = (projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs">) =>
+      outcome(projection.runs, projection.thread.deletedAt !== null);
     const initial = yield* outcome(target.runs);
     if (initial.settled) {
       return { threadId: input.threadId, run: initial.run, timedOut: false };
@@ -908,11 +936,7 @@ const make = Effect.gen(function* () {
         ? Stream.fromEffect(orchestrator.awaitRestartContinuation(initial.run))
         : Stream.empty,
     ).pipe(
-      Stream.mapEffect(() =>
-        getProjectThreadRecords(input, ["runs"]).pipe(
-          Effect.flatMap((current) => outcome(current.runs)),
-        ),
-      ),
+      Stream.mapEffect(() => waitedRecords.pipe(Effect.flatMap(outcomeOf))),
       Stream.filter((current) => current.settled),
       Stream.runHead,
       Effect.timeoutOption(Duration.millis(Math.max(1, input.timeoutMs))),
@@ -924,7 +948,7 @@ const make = Effect.gen(function* () {
     // The run may have reached a terminal status while the timeout was
     // winning the race; the final projection read decides what actually
     // happened, so only a still-active run counts as timed out.
-    const final = yield* outcome((yield* getProjectThreadRecords(input, ["runs"])).runs);
+    const final = yield* outcomeOf(yield* waitedRecords);
     return { threadId: input.threadId, run: final.run, timedOut: !final.settled };
   });
 

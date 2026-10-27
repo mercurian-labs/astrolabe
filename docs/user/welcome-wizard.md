@@ -3,10 +3,11 @@
 T3 Code shows a setup flow when you open a new installation. Existing
 workspaces skip this flow.
 
-The hosted app at app.t3.codes does not open setup. With no computer connected,
-it asks you to sign in to your Astrolabe account, then to run `npx @mercurian/astrolabe connect` on your
-computer. From home, it adds compatible computers linked to your account and
-opens the app.
+The hosted app at app.astrolabe.sh does not open setup. With no computer connected,
+it asks you to run `npx @mercurian/astrolabe pair` on your computer and add the
+pairing link. Once Astrolabe accounts are live, it will instead ask you to sign in
+and run `npx @mercurian/astrolabe connect`, then add compatible computers linked
+to your account.
 
 Close setup while no import is running to go straight to the app. You can connect
 computers and agents later from Settings, or open `/welcome` to run setup again.
@@ -21,7 +22,7 @@ browser.
 
 You can add more computers before continuing:
 
-- **Remote access** connects computers that are signed in to your account.
+- **Remote access** (not available yet) connects computers that are signed in to your account.
   [Install the CLI](./install.md#command-line) and run `astrolabe connect` on each
   computer you want to add, then start T3 Code or run `astrolabe serve` so the
   computer stays available.

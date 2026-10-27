@@ -1,0 +1,21 @@
+# Cloudflare Workers static assets headers (apps/landing/wrangler.jsonc). Anything without a
+# Cache-Control below gets the platform default, `public, max-age=0, must-revalidate`, so pages
+# revalidate on every visit.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000
+
+# Astro's content-hashed bundles.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Art, fonts and data under stable names, replaced in place by a new render.
+/assets/*
+  Cache-Control: public, max-age=86400
+
+/lab/*
+  X-Robots-Tag: noindex

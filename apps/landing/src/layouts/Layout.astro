@@ -1,0 +1,98 @@
+---
+import Sprite from "../components/Sprite.astro";
+import "../styles/drafting.css";
+import { description as siteDescription, headline } from "../site.js";
+import bootSource from "../scripts/sky-boot.js?raw";
+import placesSource from "../scripts/places.js?raw";
+import skySource from "../scripts/sky.js?raw";
+import twilightSource from "../scripts/twilight.js?raw";
+
+interface Props {
+  /** The page's own title; the site's headline when absent. */
+  title?: string;
+  description?: string;
+  /** Keeps the page out of search results (the legal drafts). */
+  noindex?: boolean;
+  /** The page's share card under public/, rendered by scripts/render-cards.mjs (always 1200 × 630). */
+  image?: { src: string; alt: string };
+}
+
+const {
+  title = `Astrolabe · ${headline}`,
+  description = siteDescription,
+  noindex = false,
+  image = {
+    src: "/og/card-night.jpg",
+    alt: `Astrolabe, printed in ivory on a two-ink print of Mercury's Beethoven basin, over the line "${headline}"`,
+  },
+} = Astro.props;
+// The page's one address (no trailing slash, as the site links), and its card's, on the public origin.
+const canonical = new URL(Astro.url.pathname.replace(/(.)\/$/, "$1"), Astro.site).href;
+const imageUrl = new URL(image.src, Astro.site).href;
+
+// The modules as one classic script for the head (scripts/sky-boot.js): imports, exports, comment
+// lines and indentation dropped, in a block so its names stay out of the page's scope.
+const classic = (source: string) =>
+  source
+    .replace(/^(import .*|export default \w+;)$/gm, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/^\s+/gm, "");
+const boot = `{\n${[skySource, placesSource, twilightSource, bootSource].map(classic).join("")}}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Astrolabe" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={imageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={image.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+    <meta name="twitter:image:alt" content={image.alt} />
+    <link rel="canonical" href={canonical} />
+    <meta name="color-scheme" content="light" />
+    {/* Rust as served, for unfurlers (Discord's strip); the head script below sets it to the page's
+        paper before the first paint, and twilight.js keeps it there. */}
+    <meta name="theme-color" content="#a0492a" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="preload" href="/assets/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/plex-sans.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/plex-mono-500.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      // .js turns on the interactive states; .motion turns on the moving ones.
+      document.documentElement.classList.add("js");
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("motion");
+    </script>
+    <script is:inline set:html={boot} />
+  </head>
+  <body>
+    <Sprite />
+
+    <a class="skip" href="#main">Skip to content</a>
+
+    <div class="sheet">
+      <div class="page">
+        <slot />
+      </div>
+    </div>
+    <script>
+      import "../scripts/drafting.js";
+    </script>
+  </body>
+</html>

@@ -1,5 +1,18 @@
-const CLI_RELEASE_REPOSITORY = "pingdotgg/t3code";
-export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases`;
+/**
+ * The GitHub repository whose releases carry Astrolabe's CLI archives, as
+ * `owner/name`. Everything that downloads a runtime reads it: the npm
+ * launcher, `astrolabe update`, the background service, SSH installs, the
+ * install scripts and mobile's update check. Null turns all of them off.
+ * Never upstream's pingdotgg/t3code, whose archives are T3 Code's builds.
+ * `T3CODE_RELEASE_BASE_URL` can still point downloads at a mirror.
+ * scripts/install.sh and install.ps1 carry their own copy of this value.
+ */
+export const CLI_RELEASE_REPOSITORY = "mercurian-labs/astrolabe" as string | null;
+
+export function cliReleasesPageUrl(repository = CLI_RELEASE_REPOSITORY): string | null {
+  return repository === null ? null : `https://github.com/${repository}/releases`;
+}
+
 export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
 export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
 
@@ -46,13 +59,15 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
   return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
 }
 
-const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;
-
+/** Null while there is neither a mirror nor a release repository to download from. */
 export function cliReleaseDownloadBaseUrl(
   version: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
+  baseUrl?: string | undefined,
+  repository = CLI_RELEASE_REPOSITORY,
+): string | null {
+  const releasesPage = cliReleasesPageUrl(repository);
+  const base = baseUrl?.trim() || (releasesPage && `${releasesPage}/download`);
+  return base ? `${base.replace(/\/+$/, "")}/v${version}` : null;
 }
 
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
@@ -82,8 +97,13 @@ export function cliReleaseChannelOf(version: string): CliReleaseChannel {
  * Callers walk pages until a channel match turns up; a busy nightly train can push the newest
  * preview or stable release past any single page.
  */
-export function cliReleaseIndexPageUrl(page: number): string {
-  return `https://api.github.com/repos/${CLI_RELEASE_REPOSITORY}/releases?per_page=100&page=${page}`;
+export function cliReleaseIndexPageUrl(
+  page: number,
+  repository = CLI_RELEASE_REPOSITORY,
+): string | null {
+  return repository === null
+    ? null
+    : `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`;
 }
 
 /**

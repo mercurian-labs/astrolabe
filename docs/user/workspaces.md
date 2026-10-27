@@ -4,6 +4,9 @@ A workspace holds the people you work with; teams inside it hold the work you
 share. Your own threads need neither: they stay on your computers until you
 publish them. Workspaces need an Astrolabe account.
 
+> **Not available yet.** Astrolabe sign-in isn't live, so current builds don't
+> show Workspaces.
+
 ## Start or join one
 
 Open **Settings → Workspaces** (on mobile, **Settings → Workspaces** under

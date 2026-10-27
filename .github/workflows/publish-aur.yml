@@ -1,6 +1,14 @@
 name: Publish AUR package
 
 # See packaging/aur/README.md.
+#
+# Astrolabe: off. packaging/aur still builds upstream's `t3code-bin` and
+# `t3code-nightly-bin` from pingdotgg/t3code's `T3-Code-*.AppImage`, and
+# release.yml no longer calls this workflow. Turning it on needs an Astrolabe
+# package (name, PKGBUILD sources and desktop entry pointing at
+# mercurian-labs/astrolabe's `Astrolabe-*-x86_64.AppImage`), an AUR account
+# that owns it, its SSH key as the AUR_SSH_PRIVATE_KEY secret, then this gate
+# and the publish_aur job in release.yml.
 
 on:
   workflow_call:
@@ -37,7 +45,7 @@ concurrency:
 jobs:
   publish:
     name: Validate and publish
-    if: github.repository == 'pingdotgg/t3code'
+    if: false
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30
     container:

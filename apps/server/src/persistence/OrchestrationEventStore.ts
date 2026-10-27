@@ -454,7 +454,7 @@ const makeEventStore = Effect.gen(function* () {
               : encoded.type === "turn-item.updated" && encoded.payload.type === "subagent"
                 ? encoded.payload
                 : undefined;
-          const promptKey = subagent === undefined ? undefined : `${event.type}:${subagent.id}`;
+          const promptKey = subagent && `${event.threadId}:${event.type}:${subagent.id}`;
           const hint = promptKey === undefined ? undefined : promptHints.get(promptKey);
           const payloadJson = yield* encodeJson(encoded.payload);
           // Progress ticks repeat an unchanged prompt, so store it once and point

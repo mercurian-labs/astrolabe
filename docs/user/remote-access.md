@@ -5,6 +5,11 @@ machine. That machine must stay running and reachable while you work.
 
 ## Connect through your Astrolabe account
 
+> **Not available yet.** Astrolabe accounts and the remote access service aren't
+> live, so current builds don't offer this. Use
+> [direct pairing](#pair-over-a-lan-or-private-network) over your network or
+> Tailscale instead.
+
 Remote access makes an environment available to your other devices without setting
 up router forwarding. In the desktop app on the host, open **Settings →
 Connections**, sign in, and turn on **Remote access** for that environment.
@@ -21,7 +26,7 @@ server with `astrolabe serve`. Saving your sign-in alone does not make the machi
 reachable.
 
 On your other device, sign in to the same Astrolabe account and choose the
-environment. On the app.t3.codes home page with no computer added yet, signing
+environment. On the app.astrolabe.sh home page with no computer added yet, signing
 in adds compatible computers linked to your account. Over SSH, the CLI prints a
 browser link and a short code. Open the link on any device, confirm the code
 matches, and approve. The CLI continues on its own, so you do not need to forward
@@ -151,7 +156,7 @@ If that port is already in use, choose another with
 
 ### Hosted web app
 
-[app.t3.codes](https://app.t3.codes) needs an HTTPS endpoint. It connects directly
+[app.astrolabe.sh](https://app.astrolabe.sh) needs an HTTPS endpoint. It connects directly
 to your server; a hosted pairing link does not make an unreachable backend
 reachable or convert HTTP to HTTPS.
 

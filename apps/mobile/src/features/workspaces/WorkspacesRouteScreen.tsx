@@ -14,7 +14,7 @@ import {
   type WorkspaceTeam,
   type WorkspaceView,
 } from "@t3tools/client-runtime/workspaces";
-import { useMemo, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -58,6 +58,20 @@ type Screen =
  * name> link.
  */
 export function WorkspacesRouteScreen() {
+  const navigation = useNavigation();
+
+  // Deep-linkable (settings/workspaces, w/<slug>); workspaces need Astrolabe sign-in, so a build
+  // without cloud config sends the link to Settings instead.
+  useLayoutEffect(() => {
+    if (!hasCloudPublicConfig()) {
+      navigation.dispatch(StackActions.replace("SettingsContent"));
+    }
+  }, [navigation]);
+
+  return hasCloudPublicConfig() ? <ConfiguredWorkspacesRouteScreen /> : null;
+}
+
+function ConfiguredWorkspacesRouteScreen() {
   const account = useCloudAccountState();
   const sync = useWorkspaceSync();
   const insets = useSafeAreaInsets();
@@ -86,18 +100,6 @@ export function WorkspacesRouteScreen() {
     </SettingsScreen>
   );
 
-  if (!hasCloudPublicConfig()) {
-    // Without the cloud's addresses the account never loads; say why.
-    return frame(
-      "Workspaces",
-      undefined,
-      <SettingsSection title="Sign-in isn't set up">
-        <Text className="px-4 py-3 text-sm text-foreground-muted">
-          Workspaces and teams need Astrolabe sign-in, which this build doesn't include.
-        </Text>
-      </SettingsSection>,
-    );
-  }
   if (account.status === "loading") return frame("Workspaces", undefined, <AppActivityIndicator />);
   if (account.status === "signedOut" || sync === null) {
     return frame(

@@ -1,0 +1,119 @@
+---
+import type { MarkdownInstance } from "astro";
+import Layout from "../layouts/Layout.astro";
+import Footer from "./Footer.astro";
+import Header from "./Header.astro";
+import "../styles/legal.css";
+
+interface Props {
+  /** A document in src/content/legal: its frontmatter carries title, description and updated. */
+  doc: MarkdownInstance<Record<string, string>>;
+}
+
+// The launch switch. While true, every legal page carries the draft banner, a noindex tag and
+// "(draft)" in its title. Set it to false to publish; the build then fails while any page still
+// holds a [DECISION], [PENDING] or [VERIFY] marker.
+const DRAFT = false;
+
+const { doc } = Astro.props;
+const { title, description, updated } = doc.frontmatter;
+
+// The three documents, in the order the switcher lists them. The app links to these paths.
+const docs = [
+  { href: "/privacy-policy", label: "Privacy Policy" },
+  { href: "/terms-of-service", label: "Terms of Service" },
+  { href: "/licenses", label: "Licenses" },
+];
+const here = Astro.url.pathname.replace(/\/$/, "");
+
+// The draft's markers stay plain text in the Markdown, so counsel reads them as written. On the page
+// each is marked to be scanned for: [DECISION: …] is Venkat's to decide, [PENDING: <branch>] waits on
+// a fix in flight, [VERIFY: …] is a fact to confirm. A marker never holds a link or another bracket.
+const KINDS = {
+  DECISION: "to decide",
+  PENDING: "waiting on a fix",
+  VERIFY: "to confirm",
+};
+type Kind = keyof typeof KINDS;
+const counts: Record<Kind, number> = { DECISION: 0, PENDING: 0, VERIFY: 0 };
+const html = (await doc.compiledContent())
+  .replace(/\[(DECISION|PENDING|VERIFY)\b([^\]]*)\]/g, (_, kind: Kind, rest: string) => {
+    counts[kind] += 1;
+    return `<mark class="flag flag--${kind.toLowerCase()}">[<span class="flag__kind">${kind}</span>${rest}]</mark>`;
+  })
+  // Wide tables scroll inside the column rather than widening the page.
+  .replace(/<table>/g, '<div class="legal__table" tabindex="0" role="region" aria-label="Table"><table>')
+  .replace(/<\/table>/g, "</table></div>");
+
+const markers = counts.DECISION + counts.PENDING + counts.VERIFY;
+if (!DRAFT && markers > 0) {
+  throw new Error(`${title} still has ${markers} open marker(s); resolve them before publishing.`);
+}
+
+const contents = doc.getHeadings().filter((heading) => heading.depth === 2);
+---
+
+<Layout
+  title={DRAFT ? `${title} (draft) · Astrolabe` : `${title} · Astrolabe`}
+  description={description}
+  noindex={DRAFT}
+  image={{ src: `/og/page-${here.slice(1)}.jpg`, alt: `${title}, Astrolabe, printed on a two-ink print of Mercury` }}
+>
+  <Header />
+
+  <main id="main" class="legal">
+    <div class="legal__head">
+      <nav class="legal__docs" aria-label="Legal documents">
+        {
+          docs.map((item) => (
+            <a href={item.href} aria-current={item.href === here ? "page" : undefined}>
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+      <h1 class="legal__title">{title}</h1>
+      <p class="tag">Last updated {updated}</p>
+    </div>
+
+    {
+      DRAFT && (
+        <aside class="legal__draft" aria-labelledby="legal-draft">
+          <p class="legal__draft-title" id="legal-draft">Draft, not in effect</p>
+          <p>
+            This is a working draft for review by Mercurian and its counsel. It is not in effect yet. The
+            highlighted marks are facts Mercurian has still to supply.
+          </p>
+          <ul class="legal__legend" aria-label="Marks in this draft">
+            {(Object.keys(KINDS) as Kind[]).filter((kind) => counts[kind] > 0).map((kind) => (
+              <li>
+                <mark class={`flag flag--${kind.toLowerCase()}`}>
+                  [<span class="flag__kind">{kind}</span>]
+                </mark>{" "}
+                {counts[kind]} {KINDS[kind]}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )
+    }
+
+    <div class="legal__body">
+      <nav class="legal__toc" aria-labelledby="legal-toc">
+        <p class="tag" id="legal-toc">Contents</p>
+        <ol>
+          {
+            contents.map((heading) => (
+              <li>
+                <a href={`#${heading.slug}`}>{heading.text}</a>
+              </li>
+            ))
+          }
+        </ol>
+      </nav>
+      <article class="legal__doc" set:html={html} />
+    </div>
+  </main>
+
+  <Footer />
+</Layout>

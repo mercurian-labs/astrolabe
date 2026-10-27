@@ -187,6 +187,25 @@ rules to connected environments that support shared settings. Offline environmen
 and older servers keep their previous values. Changing a rule does not reopen
 already settled threads.
 
+## Delete a thread
+
+Choose **Delete** from a thread's menu. This can't be undone; to put a thread away and keep it,
+archive it instead. Deleting removes the conversation, meaning its messages, reasoning, tool
+output and diffs, along with its attachments, HTML pages, terminal history, checkpoints, provider
+logs and subagent threads. What remains is a record of the thread's ids, dates, settings, branch
+and worktree path, so links to it show it as deleted. Your other devices drop their saved copy
+when they hear of the deletion, or when you next open the thread there.
+
+A fork still shows the history of the thread it came from, so that history stays on the machine
+until you delete the fork too. Threads deleted by earlier versions are removed a few minutes after
+the environment updates. A database kept from a version before 0.1.0 holds its own copy until you
+remove it; see [Reclaim database space](./background-service.md#reclaim-database-space).
+
+The thread's folder or worktree stays, and so do the files the agent changed. To remove
+worktrees with their threads, see [Storage cleanup](./project-settings.md#storage-cleanup).
+Your agent's own session history, such as Codex's in `~/.codex` or Claude's in `~/.claude`,
+is kept by the agent, not by T3 Code, and deleting a thread doesn't touch it.
+
 ## Link a pull request
 
 The server finds the PR for each unsettled thread's saved branch, even when your

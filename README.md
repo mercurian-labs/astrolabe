@@ -1,19 +1,15 @@
-# T3 Code
+# Astrolabe
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+Astrolabe is an agent development environment. Run Claude Code, Codex and the rest side by side, hand work from one agent to the next, and ship what you and your agents build as one change, code and docs together.
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+It works with the subscriptions you already have for Claude Code, Codex, Cursor, Grok Build, OpenCode and Google Antigravity. If they're set up on your computer, Astrolabe can run them. Your prompts and code go from your computer to those providers, never through us.
 
-## "Wait, what are you selling me?"
-
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
-
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+Astrolabe is made by [Mercurian, Inc.](https://mercurian.ai) and is built on [T3 Code](https://github.com/pingdotgg/t3code). Learn more at [astrolabe.sh](https://astrolabe.sh).
 
 ## Installation
 
 > [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
+> Astrolabe currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 > - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
@@ -24,14 +20,10 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 
 ### Command line
 
+On macOS (Apple silicon) and Linux:
+
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
+curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh
 ```
 
 Then run `astrolabe` to start the server and open the local web app. `astrolabe service install` keeps it running in the background, `astrolabe update` moves to a newer release, and `astrolabe --help` has the full reference.
@@ -40,55 +32,19 @@ To try it once without installing, run `npx @mercurian/astrolabe@latest` instead
 
 ### Desktop app
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+Download the desktop app for macOS or Linux from [astrolabe.sh/download](https://astrolabe.sh/download) or [GitHub Releases](https://github.com/mercurian-labs/astrolabe/releases). Windows is coming later.
 
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### Windows (`scoop`)
+On Debian or Ubuntu, install the `.deb` with:
 
 ```bash
-scoop install extras/t3code
+sudo apt install ./Astrolabe-*.deb
 ```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Debian, Ubuntu (`.deb`)
-
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
-
-```bash
-sudo apt install ./T3-Code-*.deb
-```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
 
 ## Some notes
 
-We are very very early in this project. Expect bugs.
+We're early. Expect bugs, and tell us about them in [Issues](https://github.com/mercurian-labs/astrolabe/issues).
 
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
+Sign-in, workspaces, remote access through our relay and the phone apps are not available yet. Direct remote access over your own network or Tailscale works today.
 
 ## Documentation
 
@@ -104,38 +60,18 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - [Keeping app and server in sync](./docs/user/updating.md)
 - [Source control integrations](./docs/user/source-control.md)
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
+- [Run Astrolabe as a background service](./docs/user/background-service.md)
 
 Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
 
-## If you REALLY want to contribute still.... read this first
+## Contributing
 
-### Install `vp`
+We're mostly not accepting contributions yet. Small fixes may be considered; big features will not be, and the cloud directories (`apps/cloud`, `apps/auth`, `apps/admin`, `infra/cloud`) take no outside contributions for now. Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR, and [SECURITY.md](./.github/SECURITY.md) before reporting a vulnerability.
 
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
+To build from source, install the [`vp`](https://viteplus.dev/guide/) command-line tool (`curl -fsSL https://vite.plus | bash` on macOS and Linux), then run `vp i`.
 
-#### macOS / Linux
+## License
 
-```bash
-curl -fsSL https://vite.plus | bash
-```
+The Astrolabe app is open source under the [MIT License](./LICENSE). The code behind Mercurian's hosted services, in the cloud directories above, is under [FSL-1.1-MIT](./apps/cloud/LICENSE), which becomes MIT two years after each release. [LICENSING.md](./LICENSING.md) says which license covers what, and [TRADEMARKS.md](./TRADEMARKS.md) covers the Astrolabe and Mercurian names and marks.
 
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
-
-```bash
-vp i
-```
-
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
-
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+Questions? Write to [hello@mercurian.ai](mailto:hello@mercurian.ai).

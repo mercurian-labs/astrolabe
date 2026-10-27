@@ -1,0 +1,14 @@
+---
+// A frontispiece: one observatory print set square beside a section's heading, as an atlas faces a
+// chapter's title with its plate. The plate's figure line carries the observatory's place on the globe.
+import type { ComponentProps } from "astro/types";
+import Plate from "./Plate.astro";
+
+type Props = { plate: ComponentProps<typeof Plate>["plate"] };
+const { plate } = Astro.props;
+---
+              <div class="head__plate">
+                <Plate plate={plate} />
+                <span class="cross cross--tl" aria-hidden="true"></span>
+                <span class="cross cross--br" aria-hidden="true"></span>
+              </div>

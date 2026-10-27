@@ -1,0 +1,59 @@
+name: Deploy landing site
+
+# astrolabe.sh is apps/landing, served by the assets-only Cloudflare Worker
+# `astrolabe-site` (apps/landing/wrangler.jsonc). The site depends on no other
+# workspace package, so only its own files, the workspace install inputs and
+# this workflow trigger a deploy.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/landing/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .github/workflows/deploy-landing.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: landing-production
+  cancel-in-progress: false
+
+jobs:
+  deploy_landing:
+    name: Deploy astrolabe.sh
+    # A manual run from another branch would deploy that branch to production.
+    if: github.repository == 'mercurian-labs/astrolabe' && github.ref == 'refs/heads/main'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@mercurian/landing...
+
+      - name: Build landing site
+        run: vp run --filter @mercurian/landing build
+
+      - name: Deploy landing site
+        working-directory: apps/landing
+        run: vp dlx wrangler@4.151.3 deploy
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

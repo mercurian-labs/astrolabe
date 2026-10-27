@@ -1928,6 +1928,8 @@ export const OrchestrationV2ShellStreamItem = Schema.Union([
     sequence: NonNegativeInt,
     location: Schema.Literals(["active", "archive"]),
     threadId: ThreadId,
+    /** Set when the thread was deleted, not archived, so clients drop their cached copy. */
+    deleted: Schema.optional(Schema.Literal(true)),
   }),
 ]);
 export type OrchestrationV2ShellStreamItem = typeof OrchestrationV2ShellStreamItem.Type;

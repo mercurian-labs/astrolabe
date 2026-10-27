@@ -7,8 +7,8 @@ Mercurian deployment.
 
 ## Public application configuration
 
-Remote access is disabled in a fresh clone. To build against the production deployment, copy the
-repository-root example:
+Remote access is disabled in a fresh clone. The production deployment isn't live yet, so
+`.env.example` keeps its values commented out; once it is, uncomment them and copy the file:
 
 ```sh
 cp .env.example .env
