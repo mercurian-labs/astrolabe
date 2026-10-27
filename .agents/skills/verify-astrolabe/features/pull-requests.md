@@ -17,11 +17,11 @@ thread's own Pull request tab. Shown only when a connected server reports
   review) are unchanged.
 - **Wiki changes** (web, `components/changeRequests/WikiChangesGroup.tsx`): the wikis' change
   requests in their own group above the pull requests (`ul[aria-label='Wiki changes']`):
-  "Wiki changes · N" (`Wiki changes · <wiki> · N` with a clear button,
+  "Wiki changes" with its count at the right (`Wiki changes · <wiki>` with a clear button,
   `button "Show every wiki's changes, not only <wiki>'s"`, when this section's own wiki,
   `astrolabe:change-request-wiki-scope:v1`, picks one: set by Filter by project, or copied
   once from Wikis' filter when Wikis' "Open changes · N" row is clicked), open ones as cards
-  (`[data-testid=wiki-sidebar-row]`), then a folded "Merged and closed · N" shelf of slim
+  (`[data-testid=wiki-sidebar-row]`), then a folded "Merged and closed" shelf (count at the right) of slim
   rows. The section search narrows them by title. A click shows one in the focused
   pane's tab in front (`showChangeRequestTab`), Option-click a new tab, Cmd/Shift
   select, drag places them; a pull request row over a wiki change replaces it, and
@@ -43,7 +43,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   `<title>, change request in <wiki>`.
 - **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
   server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`):
-  `ul[aria-label="Change groups"]` heads the list (a collapsible `button "Groups · N"`; merged groups are hidden),
+  `ul[aria-label="Change groups"]` heads the list (a collapsible `button "Groups N"`, the count at the right in the new design and "Groups · N" in the classic one; merged groups are hidden),
   each card `button "<title>, change group, <state>"` with a primary-colour dot, its members as
   buttons (`<member>, in <group>`) and `button "N threads in <group>"`. A group needs two
   members (or a decision); its id is the root thread. Its threads: the root, those that opened

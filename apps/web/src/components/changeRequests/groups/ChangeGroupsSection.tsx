@@ -15,10 +15,10 @@ import {
 import { PullRequestGlyph } from "../../pullRequest/pullRequestIcons";
 import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../../sidebar/SidebarCard";
 import { Badge } from "../../ui/badge";
-import { CollapsibleSectionHeader } from "../../ui/collapsible-section-header";
 import { wikiScopeKey } from "../../wiki/wikiTabs";
 import { changeRequestWikiScope } from "../../wiki/wikiScope";
 import { useChangeRequestKind, type ChangeRequestKind } from "../changeRequestKind";
+import { CountedSectionHeader } from "../CountedSectionHeader";
 import { changeGroupStateVariant } from "./changeGroupPresentation";
 import { changeGroupTabKey } from "./changeGroupTabs";
 import { changeGroupMemberTabKey } from "./useChangeGroupActions";
@@ -65,13 +65,13 @@ export function ChangeGroupsSection({
   return (
     <ul role="presentation" aria-label="Change groups" className="flex flex-col gap-px pb-2">
       <li className="mx-0.5 flex h-8 list-none items-center">
-        <CollapsibleSectionHeader
+        <CountedSectionHeader
           onClick={() => setExpanded((open) => !open)}
           expanded={expanded}
           tone="muted"
-        >
-          {`Groups · ${shown.length}`}
-        </CollapsibleSectionHeader>
+          label="Groups"
+          count={shown.length}
+        />
       </li>
       {expanded
         ? shown.map((group) => (

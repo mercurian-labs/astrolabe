@@ -17,7 +17,7 @@ import {
   useFocusedChangeRequestTabKey,
 } from "../pullRequest/pullRequestTabs";
 import { Button } from "../ui/button";
-import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
+import { CountedSectionHeader } from "./CountedSectionHeader";
 import { TooltipProvider } from "../ui/tooltip";
 import { useWikiOverviews } from "../wiki/wikiEnvironment";
 import { changeRequestWikiScope } from "../wiki/wikiScope";
@@ -165,15 +165,13 @@ export function WikiChangesGroup({
         className="relative flex flex-col gap-px pb-2"
       >
         <li className="mx-0.5 flex h-8 list-none items-center gap-1">
-          <CollapsibleSectionHeader
+          <CountedSectionHeader
             onClick={() => setOpenExpanded((expanded) => !expanded)}
             expanded={openExpanded}
             tone="muted"
-          >
-            {scoped
-              ? `Wiki changes · ${scoped.wiki.name} · ${open.length}`
-              : `Wiki changes · ${open.length}`}
-          </CollapsibleSectionHeader>
+            label={scoped ? `Wiki changes · ${scoped.wiki.name}` : "Wiki changes"}
+            count={open.length}
+          />
           {scoped ? (
             <Button
               size="icon-xs"
@@ -189,13 +187,13 @@ export function WikiChangesGroup({
         {settled.length > 0 ? (
           <>
             <li className="mx-0.5 h-8 list-none">
-              <CollapsibleSectionHeader
+              <CountedSectionHeader
                 onClick={() => setSettledExpanded((expanded) => !expanded)}
                 expanded={settledExpanded || searching}
                 tone="muted"
-              >
-                {`Merged and closed · ${settled.length}`}
-              </CollapsibleSectionHeader>
+                label="Merged and closed"
+                count={settled.length}
+              />
             </li>
             {settledExpanded || searching ? settled.map(row) : null}
           </>
