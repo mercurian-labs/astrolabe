@@ -1,10 +1,10 @@
 ---
 title: Privacy Policy
 description: What Astrolabe keeps on your machine, what it sends and to whom, and what our websites see.
-updated: October 26, 2026
+updated: October 27, 2026
 ---
 
-**Effective date:** October 26, 2026
+**Effective date:** October 27, 2026
 
 ## The short version
 
