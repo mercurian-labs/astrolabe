@@ -42,7 +42,7 @@ The names Astrolabe and Mercurian, and the Astrolabe wordmark, monogram and symb
 
 ## Third-party software
 
-Astrolabe includes open-source software from many authors, under their own licenses, such as MIT, Apache 2.0, BSD and ISC. Each build lists every package, its version and its license, with the license text, in **Settings → General → Open source licenses**. The desktop app, the command-line downloads and the npm package also carry Astrolabe's own license file.
+Astrolabe includes open-source software from many authors, under their own licenses, such as MIT, Apache 2.0, BSD and ISC. Each build lists every package, its version and its license, with the license text, in **Settings → About → Legal → Open source licenses**. The desktop app, the command-line downloads and the npm package also carry Astrolabe's own license file.
 
 Not everything Astrolabe ships is open source. The server includes Anthropic's Claude Agent SDK, which is subject to [Anthropic's legal agreements](https://code.claude.com/docs/en/legal-and-compliance), and Cursor's SDK, which is subject to [Cursor's terms](https://cursor.com/terms-of-service). Those terms, not the MIT License, apply to them.
 

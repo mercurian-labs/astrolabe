@@ -68,7 +68,7 @@ You send it at your direction, under your own account and your agreement with th
 
 A few provider requests happen without you starting a turn:
 
-- **Titles and commit messages.** Astrolabe asks a provider to write thread titles, branch names, commit messages, pull request text and review guides. By default it asks Codex (OpenAI), even for threads that run on another provider, and another enabled provider if Codex is off. That provider receives the thread's first message and its images, or the diff. You can change this in Settings → General → Text generation model.
+- **Titles and commit messages.** Astrolabe asks a provider to write thread titles, branch names, commit messages, pull request text and review guides. By default it asks Codex (OpenAI), even for threads that run on another provider, and another enabled provider if Codex is off. That provider receives the thread's first message and its images, or the diff. For a thread forked from another, it also receives the parent thread's title and up to 8,000 characters of its conversation before the fork. You can change this in Settings → Threads → Text generation model.
 - **Usage limits.** To show how much of your plan you have left, the server calls some providers' usage services with your saved credentials: Claude on Linux, Cursor, Grok, OpenCode Go and Antigravity. It checks at startup, when you change settings, and every 5 minutes by default.
 - **Switching providers.** If you move a thread to another provider, Astrolabe sends the new provider earlier messages from the thread so it can carry on.
 - **Signing in to a provider inside Astrolabe.** If you sign in to ChatGPT or Cursor from Astrolabe, the tokens are stored on your machine. When you sign in to ChatGPT, OpenAI sees the request come from Astrolabe, with an ID for your Astrolabe server. Signing in to Cursor creates a Cursor API key named after Astrolabe.
@@ -80,7 +80,7 @@ A few provider requests happen without you starting a turn:
 - **Wiki mirrors.** If you give a wiki a git remote, Astrolabe pushes the wiki's full history there after every merge.
 - **Expo cloud devices.** If you set up Expo cloud simulators, Astrolabe uses your Expo token to start them on your Expo account.
 - **Theme search.** Searching for an editor theme in Settings sends your search to the Open VSX registry.
-- **Telemetry export.** If you set an OpenTelemetry endpoint in Settings → Diagnostics, Astrolabe sends traces, metrics and logs to that endpoint. It's empty by default.
+- **Telemetry export.** If you set an OpenTelemetry endpoint in Settings → Maintenance → Diagnostics, Astrolabe sends traces, metrics and logs to that endpoint. It's empty by default.
 - **Webhooks.** A scheduled task's webhook address lets anyone who has it, and can reach your server, start that task. The request's content goes into the agent's prompt.
 
 ### 3.3 The browser inside Astrolabe
@@ -98,10 +98,10 @@ These happen without a specific action from you. None of them include your promp
 - **Desktop update checks.** The desktop app checks Astrolabe's releases on GitHub 15 seconds after it opens and then every 4 minutes. Each check carries a random ID the updater creates for your installation. Setting the environment variable `ASTROLABE_DISABLE_AUTO_UPDATE` turns this off.
 - **Server update checks.** When a server you connect to is older than your client and wasn't installed by the desktop app, the client asks npm every 5 minutes whether the newer `@mercurian/astrolabe` is published.
 - **Downloads.** The `@mercurian/astrolabe` launcher downloads Astrolabe's server from Astrolabe's GitHub Releases the first time you run each version. `astrolabe update` and installing Astrolabe on a remote machine over SSH download it the same way. On first use, Astrolabe also downloads tools it needs: a headless Chrome from Google, Codex from GitHub, Antigravity's agent server from Google, and device tools from npm.
-- **Provider lists.** To keep provider versions, model lists and prices current, the server fetches lists from GitHub (including a model list from T3 Code's public repository), npm, the Agent Client Protocol registry and Meta. These requests carry only package and list names. You can turn them off in Settings → General → Provider update checks.
+- **Provider lists.** To keep provider versions, model lists and prices current, the server fetches lists from GitHub (including a model list from T3 Code's public repository), npm, the Agent Client Protocol registry and Meta. These requests carry only package and list names. You can turn them off in Settings → Maintenance → Provider update checks.
 - **Link icons.** When a chat or a preview tab shows a link to a public website, Astrolabe asks Google's favicon service for that site's icon, so Google learns the site's name. Some tool activity loads a site's icon from the site itself. Images in messages load straight from the websites that host them. There's no setting to turn these off yet.
 - **Spell-check dictionaries (Linux desktop).** The desktop app's spell checker downloads its dictionaries from Google the first time it needs them. On macOS it uses the system's.
-- **Your server's public description.** Anyone who can reach your Astrolabe server can read its ID, machine name, operating system and Astrolabe version without signing in. By default the server only accepts connections from your own computer. If you open it to your network or your tailnet, anyone who can reach it there can read this too.
+- **Your server's public description.** Anyone who can reach your Astrolabe server can read its ID, machine name, operating system and Astrolabe version without signing in. By default the server only accepts connections from your own computer. The exception is the optional background service (`astrolabe service install`), which also accepts connections from devices on your private network, such as your local network or your tailnet. When it runs, or if you open a server to your network or your tailnet, anyone who can reach it there can read this too.
 
 ### 3.5 Links you share
 
@@ -112,7 +112,7 @@ These happen without a specific action from you. None of them include your promp
 
 You can reach your machine from a browser on another device by pairing it with your server:
 
-- **Local network.** Pairing over your local network uses plain HTTP unless you set up HTTPS yourself, so anyone on that network could read the traffic.
+- **Local network.** The background service accepts connections from your local network and your tailnet by default. Setting `T3CODE_HOST=127.0.0.1` in its `service.env` file keeps it on your computer only. Other servers do only if you open them to your network. Each device still has to pair first. Pairing over your local network uses plain HTTP unless you set up HTTPS yourself, so anyone on that network could read the traffic.
 - **Tailscale and SSH.** These connect through your own tailnet or SSH host. No Mercurian server is involved.
 
 Once paired, your server sets a sign-in cookie in that browser for its own address.

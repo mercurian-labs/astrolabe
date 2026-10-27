@@ -42,7 +42,7 @@ Some parts of what Astrolabe installs aren't open source. For example, it uses A
 Agents in Astrolabe don't just write text. They act.
 
 - **What agents can do.** An agent can read and change files, run commands, use the network, use your saved credentials and signed-in browser sessions, and act on websites and services. It acts with the permissions of the user account that runs the Astrolabe server.
-- **Permission modes.** You choose how much an agent may do without asking: Supervised, Auto-accept edits, Auto or Full access. In Full access, agents run commands and change files without asking first. New threads start in Full access unless you choose another default in Settings → General → Permissions.
+- **Permission modes.** You choose how much an agent may do without asking: Supervised, Auto-accept edits, Auto or Full access. In Full access, agents run commands and change files without asking first. New threads start in Full access unless you choose another default in Settings → Threads → Permissions.
 - **Astrolabe doesn't sandbox agents.** Any approval prompts or sandbox come from the provider's own agent and the mode you choose. Full access removes them.
 - **Agents can start without you at the keyboard.** A device you've paired, a scheduled task, a webhook or an outside agent you approve can start a turn. It runs on your machine with the same permissions.
 - **You are responsible for what your agents do,** at your direction or under the modes and settings you choose, including what they send or publish on your behalf. Their output and actions can be wrong, insecure or different from what you intended. Review them before you rely on, publish or deploy them.
