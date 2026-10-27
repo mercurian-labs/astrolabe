@@ -1,3 +1,4 @@
+import type { ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -203,4 +204,20 @@ export function neighbourOf(keys: readonly string[], key: string): string | null
   const at = keys.indexOf(key);
   if (at === -1) return null;
   return keys[at + 1] ?? keys[at - 1] ?? null;
+}
+
+/**
+ * Whether a tab's chat is gone, so the tab closes. Cold connect leaves older settled threads and
+ * idle subagents out of the shell, so a thread missing there is gone only once a settled read of
+ * its family leaves it out too.
+ */
+export function isChatTabGone(input: {
+  readonly live: boolean;
+  readonly shell: { readonly deletedAt?: unknown } | null;
+  readonly hasDraft: boolean;
+  readonly familyRead: ThreadFamilyRead;
+}): boolean {
+  if (!input.live || input.hasDraft) return false;
+  if (input.shell !== null) return input.shell.deletedAt != null;
+  return input.familyRead === "settled";
 }
