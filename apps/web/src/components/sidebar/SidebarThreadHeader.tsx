@@ -1,13 +1,8 @@
 /**
- * Astrolabe: the sidebar's title row, upstream's search row with the section's name in it. The
- * name ("Agents", "Wikis") heads the list, with search, the scope filter and new item as icon
- * buttons at the row's end. Search opens upstream's own search field in the name's place, and the
- * field stays while it has focus or holds a query; Escape on an empty field, leaving it empty, or
- * picking a result puts the name back.
- *
- * The scope picker itself is passed in: its combobox state lives with the rest of the sidebar's
- * scope logic. The scope icon swaps to the project favicon while a project is selected, so the
- * header still names the scope.
+ * The sidebar's title row: upstream's search row with the section's name heading the list and
+ * search, scope filter and new item as icon buttons. Search swaps in upstream's field while it has
+ * focus or a query. The scope picker is passed in because its combobox state lives with the
+ * sidebar's scope logic; its icon becomes the project favicon so the header still names the scope.
  */
 import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {

@@ -3,11 +3,10 @@ import { useId, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 
 /*
- * The composer's four signature controls, from the branding repository's approved masters
- * (identity/astrolabe/controls). Each action shape is drawn in the current color with a
- * transparent ring cut around a shared pivot, and the pivot takes --pivot: brand rust in the
- * Mercurian theme, the current color elsewhere. They appear only in the composer's primary
- * button; the same actions elsewhere (a queued message's Steer) keep T3 Code's Lucide icons.
+ * From the branding repository's approved masters. Each action shape is drawn in the current
+ * color with a transparent ring cut around a shared pivot, which takes --pivot (brand rust in the
+ * Mercurian theme). Only the composer's primary button uses them; the same actions elsewhere
+ * (a queued message's Steer) keep T3 Code's Lucide icons.
  */
 
 function ControlIcon({

@@ -18,7 +18,6 @@ import {
   View,
   type ScrollViewProps,
 } from "react-native";
-import { ScrollViewMarker } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -26,6 +25,7 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { scopedProjectKey } from "../../lib/scopedEntities";
+import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import { useProjects } from "../../state/entities";
 import { changeRequestProjectKindAtom, changeRequestWikiScopeAtom } from "../../state/wiki";
 import { useWorkspaceState } from "../../state/workspace";
@@ -44,14 +44,14 @@ import {
 function WikiScrollView(props: ScrollViewProps) {
   const insets = useSafeAreaInsets();
   return (
-    <ScrollViewMarker>
+    <NativeScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         {...props}
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
         contentOffset={props.contentOffset ?? { x: 0, y: -insets.top }}
       />
-    </ScrollViewMarker>
+    </NativeScrollViewMarker>
   );
 }
 

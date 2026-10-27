@@ -1,9 +1,7 @@
 /**
- * The design-level features' model: what each toggle does to the memory a
- * graph reads, the declared layers and the links that cross them, which
- * throwing functions nothing above catches, and the shapes the shown graph
- * makes (hubs, strategies, cycles). Every function here runs on a change of
- * memory, toggle, or view, never per frame.
+ * The design-level features: what each toggle does to the memory, layers and the links crossing
+ * them, uncaught throws, and the shapes the shown graph makes. Every function here runs on a change
+ * of memory, toggle, or view, never per frame.
  */
 import type { Boundaries, LinkKind, Memory, MemoryLink, MemoryLens } from "./memory.ts";
 import type { DesignFeatures } from "./settings.ts";
@@ -24,14 +22,10 @@ const KIND_MEANINGS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The memory and thread a graph reads, with a thread's re-resolutions made
- * plain (`resolveRelinks`) and `features` applied. Data-flow
- * links (accepts, returns) read as references while their feature is off;
- * failure links (throws, catches) are gone entirely while theirs is, events
- * and all. On, the Relationships lens holds every such link by its kind.
- * Returns the very objects given when nothing changes, so a memory without
- * the new kinds is untouched. A host shows its play-by-play from the same
- * thread, so plays line up with the graph's.
+ * The memory and thread a graph reads, relinks resolved and `features` applied: data-flow links
+ * read as references while their feature is off, and failure links are gone, events and all.
+ * Returns the very objects given when nothing changes. Hosts show their play-by-play from the same
+ * thread so plays line up with the graph.
  */
 export function applyFeatures(
   memory: Memory,
@@ -289,11 +283,9 @@ const POLYMORPHIC_IN: ReadonlySet<string> = new Set(["implements", "inherits"]);
 const CYCLIC: ReadonlySet<string> = new Set(["calls", "imports"]);
 
 /**
- * The three recognisers over the shown graph: hubs (shown degree at least
- * HUB_DEGREE and HUB_OVER_MEDIAN times the median), strategies (an interface
- * that STRATEGY_IMPLEMENTERS or more shown nodes implement or inherit), and
- * cycles (a strongly connected set of at least CYCLE_SIZE shown nodes over
- * calls and imports).
+ * Hubs (shown degree at least HUB_DEGREE and HUB_OVER_MEDIAN times the median), strategies (an
+ * interface STRATEGY_IMPLEMENTERS or more shown nodes implement or inherit), and cycles (a strongly
+ * connected set of at least CYCLE_SIZE shown nodes over calls and imports).
  */
 export function silhouettes(
   shown: ShownLinks,
@@ -416,11 +408,9 @@ function stronglyConnected(
 }
 
 /**
- * The shown graph's typed links for the recognisers and the uncaught check:
- * each standing link on a shown edge whose two ends show as themselves, and
- * every shown node's count of shown edges. Links resolved by name alone
- * (heuristic, as `resolutionOf` says now) are left out, and so are edges
- * whose every standing link is one.
+ * Standing links on shown edges whose ends show as themselves, plus each shown node's shown-edge
+ * count. Links resolved by name alone (heuristic, per `resolutionOf`) are left out, and so are
+ * edges whose every standing link is one.
  */
 export function shownLinks(
   universe: Pick<Universe, "edges" | "edgeLinks" | "edgeMarks" | "indexOf">,

@@ -162,11 +162,9 @@ function documentRow(
 }
 
 /**
- * Astrolabe: every wiki's documents as the Search Palette's rows, newest first, for it to match
- * as it matches threads; a pick shows the document in the Wikis section's tab in front, as `:e`
- * and a sidebar row's click do.
- * Asks for the wikis only while `enabled`, and builds the rows only when they change, not per
- * keystroke.
+ * Every wiki's documents as Search Palette rows, newest first; a pick shows the document in the
+ * Wikis section's front tab, as `:e` and a sidebar click do. Asks for the wikis only while
+ * `enabled`, and rebuilds rows only when they change, not per keystroke.
  */
 export function useDocumentSearchRows(enabled: boolean): ReadonlyArray<CommandPaletteActionItem> {
   const { overviews } = useWikiOverviews(enabled);

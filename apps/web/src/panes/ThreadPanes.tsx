@@ -25,11 +25,10 @@ function deviceStorage(): StorageLike | null {
 }
 
 /**
- * Gives a thread's view its right panel as panes: one controller following the thread on
- * screen, its arrangement loaded and saved as the thread changes, so ChatView stays mounted
- * across the switch as T3 Code keeps it. Inside, ChatView draws its panel as `RightPanelPanes`,
- * and the panel shows the shared runs of the change groups the thread works in
- * (`GroupPanelRunsSync`).
+ * A thread view's right panel as panes: one controller follows the on-screen thread, loading and
+ * saving its arrangement as the thread changes, so ChatView stays mounted across the switch as in
+ * T3 Code. ChatView draws the panel as `RightPanelPanes`, showing the shared runs of the thread's
+ * change groups (`GroupPanelRunsSync`).
  */
 export function ThreadPanesProvider({
   threadRef,

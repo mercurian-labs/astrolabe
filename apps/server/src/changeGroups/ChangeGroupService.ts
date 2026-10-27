@@ -32,11 +32,10 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 
 /**
- * Astrolabe: change groups on this environment. The rules that gather a group's members live in
- * `@t3tools/shared/changeGroups`, so the server and every client derive the same groups; this
- * service keeps what people decided about each group (`change-groups.json` in the state
- * directory) and keeps an armed group's promise: once its code has merged, its documentation
- * merges too, as the person who armed it asked.
+ * Change groups on this environment. Membership rules live in `@t3tools/shared/changeGroups` so
+ * the server and every client derive the same groups; this service keeps per-group decisions
+ * (`change-groups.json` in the state directory) and, once an armed group's code has merged,
+ * merges its documentation too, as the person who armed it asked.
  */
 export class ChangeGroupService extends Context.Service<
   ChangeGroupService,

@@ -290,12 +290,10 @@ export function ChatTabStrip({
   }, [activeKey, keys]);
 
   /**
-   * Astrolabe: a tab group's marker here, for its run of chats (`run`). It shows the group's tab
-   * beside a chat of the group, opening its right panel, and in front there: beside the chat in
-   * front when that chat is in the group, else beside the run's first chat, which comes to the
-   * front first. The group's tab is its shared run's (`groupPanelRuns.ts`), so it opens beside
-   * every thread in the group, and never beside a thread outside it. It closes the run's chats,
-   * leaving the panels' runs as they are, and drags the run along the strip only.
+   * A tab group's marker for its run of chats. It opens the group's tab beside the front chat if
+   * that chat is in the group, else beside the run's first chat, brought to front. The tab is the
+   * group's shared run (`groupPanelRuns.ts`), so it never opens beside a thread outside the group.
+   * Close closes the run's chats and leaves the panels' runs; drag moves the run along the strip.
    */
   const runActions = (
     group: EnvironmentChangeGroup,

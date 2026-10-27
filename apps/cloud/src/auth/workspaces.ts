@@ -11,12 +11,10 @@ import { adminAc, defaultStatements, ownerAc } from "better-auth/plugins/organiz
 import * as Schema from "effect/Schema";
 
 /**
- * Workspaces are Better Auth organizations; the product calls them workspaces.
- * Roles follow the Workspaces note: one owner, admins, members, no guests.
- * Members get the team and invitation permissions here so the plugin lets
- * them through; the hooks below then apply the workspace's policies and
- * team ownership, so the plugin's own endpoints and ours enforce one set of
- * rules.
+ * Workspaces are Better Auth organizations with one owner, admins and members (no guests).
+ * Members get the team and invitation permissions so the plugin lets them through; the hooks
+ * below then apply workspace policies and team ownership, so the plugin's endpoints and ours
+ * enforce one set of rules.
  */
 export const workspaceAccess = createAccessControl(defaultStatements);
 

@@ -221,7 +221,7 @@ export function ThreadPullRequestBadgeControl({
   status: PrStatusIndicator | null;
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
-  /** Astrolabe: in place of the number, as a sidebar thread row's "PR #130 open". */
+  /** Astrolabe: shown in place of the number, such as a sidebar thread row's "PR #<n> open". */
   text?: string | undefined;
 }) {
   const presentation = resolveThreadPullRequestBadgePresentation({ badge, number, url, status });

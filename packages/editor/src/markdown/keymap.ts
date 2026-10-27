@@ -538,11 +538,9 @@ function adjacentCell(
 }
 
 /**
- * Tab / Shift-Tab. Each range is handled on its own: a caret in a table's source moves to
- * the start of the next or previous cell's text, across rows, staying put at either end;
- * every other range gets the list behaviour (indent the items it touches, else insert or
- * remove an indent). Both parts land in one transaction. With no caret in a table this is
- * exactly the list command.
+ * Tab / Shift-Tab, per range in one transaction: a caret in a table's source moves to the next or
+ * previous cell's text across rows (staying put at either end); every other range gets the list
+ * behaviour. With no caret in a table this is exactly the list command.
  */
 function tabCommand(direction: 1 | -1): StateCommand {
   const list = indentCommand(direction);

@@ -6,14 +6,10 @@ export const MERCURIAN_THEME_ID = "mercurian";
 export const PICKER_HIDDEN_THEME_IDS: ReadonlySet<string> = new Set(["iris"]);
 
 /**
- * Astrolabe's own palette, a built-in like any other so the theme editor,
- * imports, and mixes keep working over it. It starts from Nikita Prokopov's
- * Alabaster pair (MIT, github.com/tonsky/vscode-theme-alabaster and
- * github.com/tonsky/sublime-scheme-alabaster): Alabaster's flat greys in light
- * and Alabaster Dark's teal-black in dark, with the brand's ink as the accent,
- * charcoal in light and ivory in dark, and Alabaster Dark's amber kept for
- * warnings. Rust is not a theme color: it belongs to the marks and the composer
- * controls' pivot (see --pivot in apps/web/src/index.css).
+ * Astrolabe's palette, a built-in so the theme editor, imports and mixes work over it. Based on Nikita
+ * Prokopov's Alabaster pair (MIT; github.com/tonsky/vscode-theme-alabaster, sublime-scheme-alabaster)
+ * with the brand ink as accent and Alabaster Dark's amber for warnings. Rust is not a theme color: it
+ * belongs to the marks and the composer controls' pivot (see --pivot in apps/web/src/index.css).
  */
 export const MERCURIAN_THEME: ThemeDefinition = {
   id: MERCURIAN_THEME_ID,

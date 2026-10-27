@@ -1,15 +1,9 @@
 import * as Schema from "effect/Schema";
 
 /**
- * Workspaces and teams on the wire between the cloud and every client.
- * Better Auth calls a workspace an organization, so rows keep its names;
- * only what people read says "workspace".
- *
- * Reads arrive as Electric shapes the cloud scopes to the caller
- * (`WORKSPACE_PATHS.shape`). Writes go to `WORKSPACE_PATHS.write`, which runs
- * them in one transaction and returns its id, so a client can wait for the
- * change to arrive through its shapes. A write that changed nothing returns
- * a null txid and there is nothing to wait for.
+ * Workspaces and teams on the wire. Better Auth calls a workspace an organization, so rows keep its
+ * names. Reads are Electric shapes the cloud scopes to the caller; writes run in one transaction
+ * whose id the client waits to see arrive through its shapes (a no-op write returns a null txid).
  */
 export const WORKSPACE_PATHS = {
   write: "/api/workspaces/write",

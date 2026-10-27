@@ -1,9 +1,6 @@
 /**
- * The bench's measuring pieces: percentiles, long animation frames (observed
- * and folded), overlap counting among label rectangles, bead motion by
- * presented frame, and a counter for the timers, intervals, and animation
- * frames that fire while the graph is meant to be at rest. Each takes what it
- * touches (a timer target, an observer class) so a test can hand it a fake.
+ * The bench's measuring pieces. Each takes what it touches (a timer target, an observer class) so a
+ * test can hand it a fake.
  */
 
 export interface Distribution {
@@ -111,11 +108,9 @@ function toLongFrame(entry: ObservedEntry): LongFrameEntry {
 }
 
 /**
- * Observe long animation frames from now; the returned stop takes the window's
- * end. The browser queues a frame's entry after the frame, so stop first lets
- * the last frames land (`drain`: a frame and a macrotask), takes the records
- * still queued, then disconnects, and keeps the entries overlapping the
- * window. Null where the browser reports no long animation frames.
+ * Observe long animation frames from now; the returned stop takes the window's end. The browser
+ * queues a frame's entry after the frame, so stop drains (a frame and a macrotask) before taking
+ * the queued records, then keeps the entries overlapping the window. Null where unsupported.
  */
 export function observeLongFrames(
   start: number,
@@ -169,12 +164,10 @@ export function overlapCount(boxes: Rectangles): number {
 }
 
 /**
- * Beads moving through a link hold, by presented frame. A rendered frame moved
- * the beads when a bead was visible and the positions' checksum changed from
- * the frame rendered before it; a presented frame in the hold counts as moving
- * when a frame that moved them rendered since the last presented one. Every
- * presented frame in the hold is in the denominator, so a dropped or unrendered
- * frame counts against the share.
+ * Beads moving through a link hold, by presented frame: a presented frame counts as moving when a
+ * frame rendered since the last one changed a visible bead's position checksum. Every presented
+ * frame in the hold is in the denominator, so a dropped or unrendered frame counts against the
+ * share.
  */
 export class BeadMotion {
   #last: number | null = null;
@@ -235,11 +228,9 @@ export interface TimerCounter {
 }
 
 /**
- * The rest step's proof that an idle graph asks for nothing. Install it before
- * the code under test is built, so every timeout, interval, and animation
- * frame that code schedules is wrapped; then every one that fires inside the
- * window counts, whenever it was scheduled. Callbacks tagged `harnessWait`
- * pass through unwrapped.
+ * The rest step's proof that an idle graph asks for nothing. Install it before the code under test
+ * is built so every timeout, interval, and animation frame it schedules is wrapped, and counted
+ * when it fires inside the window. Callbacks tagged `harnessWait` pass through unwrapped.
  */
 export function installTimerCounter(target: TimerTarget): TimerCounter {
   const { setTimeout, setInterval, requestAnimationFrame } = target;

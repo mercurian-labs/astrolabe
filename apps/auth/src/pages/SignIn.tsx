@@ -21,11 +21,9 @@ type Step =
   | { readonly kind: "two-factor" };
 
 /**
- * Signing in and signing up are one page. A provider or an emailed code signs
- * in, creating a waitlisted account the first time; the code proves the
- * address before any account exists. A passkey or a password signs in an
- * existing account, and only a password asks for a second step (an emailed
- * code, or an authenticator code), as the server requires.
+ * Signing in and signing up are one page. A provider or an emailed code signs in, creating a
+ * waitlisted account the first time; the code proves the address before any account exists. A
+ * passkey or password signs in an existing account, and only a password needs a second step.
  */
 export function SignIn(props: { readonly returnTo: string | null }) {
   const [step, setStep] = useState<Step>({ kind: "start" });
@@ -345,13 +343,16 @@ function TwoFactorStep(props: { readonly onBack: () => void; readonly onSignedIn
     if (error) setError(errorMessage(error, "We couldn't send a code."));
   };
 
-  // One code per visit: a second send would replace the first while it's in the inbox.
+  // One code per visit (the step opens on "email"): a second send would replace the first while
+  // it's in the inbox. The ref holds across StrictMode's second effect run.
   const autoSent = useRef(false);
   useEffect(() => {
-    if (method !== "email" || autoSent.current) return;
+    if (autoSent.current) return;
     autoSent.current = true;
-    void sendEmailCode();
-  }, [method]);
+    void authClient.twoFactor.sendOtp().then(({ error }) => {
+      if (error) setError(errorMessage(error, "We couldn't send a code."));
+    });
+  }, []);
 
   const verify = async (event: FormEvent) => {
     event.preventDefault();

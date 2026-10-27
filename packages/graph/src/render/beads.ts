@@ -1,12 +1,8 @@
 /**
- * Beads travelling the links a turn made, the AI Coding Dictionary's bead
- * system adapted: a pool of 320 points, eight per link, each running along
- * its link at its own speed and brightening through the middle of the run.
- * Direction is the link's: a link from A to B runs A → B; a link the turn
- * added both ways splits its beads, half each way.
- *
- * Beads exist only while the turn's story is lit. With no lanes the pool is
- * empty, and the renderer stops asking for frames.
+ * Beads travelling the links a turn made (the AI Coding Dictionary's bead system): a pool of 320
+ * points, eight per link, running in the link's direction (a link added both ways splits them).
+ * Beads exist only while the story is lit; with no lanes the pool is empty and the renderer stops
+ * asking for frames.
  */
 import { Vector3 } from "three";
 

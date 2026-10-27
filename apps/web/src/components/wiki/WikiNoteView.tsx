@@ -65,14 +65,10 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
 }
 
 /**
- * One note, editable. Edits stay in the buffer until saved to a change request.
- *
- * Read inside a change request, every new version of the note that is not the person's own
- * save is an amendment (by the thread's agent, mostly) and lands live in the open document,
- * attributed to the amendment's actor and reviewable from the change bar, without touching the
- * person's unsaved edits. While that thread's turn runs, Save waits for the turn to end and then
- * commits the buffer, which already holds both. Read from main, a change reloads the note only
- * while there are no unsaved edits, and otherwise says so.
+ * One note, editable; edits stay in the buffer until saved to a change request. Inside one, every
+ * version that is not the person's own save is an amendment that lands live, attributed and
+ * reviewable, without touching unsaved edits; Save waits for the thread's turn to end, then commits
+ * the buffer holding both. Read from main, a change reloads the note only with no unsaved edits.
  */
 export function WikiNoteView({
   environmentId,

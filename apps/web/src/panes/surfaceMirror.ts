@@ -13,12 +13,10 @@ import {
 import { findLeaf, leafWithTab, leaves } from "./tree";
 
 /**
- * T3 Code keeps a thread's right-panel surfaces (browser pages, terminals, Diff, Files, pull
- * requests, devices) in one record per thread: which are open, which is in front, and whether
- * the panel shows. Everything in T3 Code opens, reads and closes surfaces through that record.
- * The right panel's panes mirror it rather than intercept it: a surface in the record is a tab, the record's
- * active surface is that tab shown, and closing either closes both. The functions here are the
- * two directions of that mirror; the panes decide only where each surface tab stands.
+ * T3 Code keeps a thread's right-panel surfaces in one record (open ones, the front one, whether
+ * the panel shows) and does everything through it. The panes mirror the record rather than
+ * intercept it: a surface is a tab, the active surface is that tab shown, and closing either
+ * closes both. The panes decide only where each surface tab stands.
  */
 export interface PanelRecord {
   readonly isOpen: boolean;
@@ -47,20 +45,10 @@ function surfacePane(
 }
 
 /**
- * Brings the panes in line with the record after T3 Code changed it, from `previous` (null on
- * first load) to `record`:
- *
- * - A surface gone from the record closes its tab; one that arrives in the same change takes its
- *   place, as a file opened from the Files explorer replaces it.
- * - Every surface in the record has a tab. A new one opens in the pane asked from, else beside
- *   the others, else in the focused pane.
- * - The record's active surface comes to the front of its pane when it changes or the panel
- *   opens. Pane focus stays where it was, unless the surface opened in the pane asked from. As a
- *   thread loads (`previous` null), a document the pane was left showing (a wiki page, a change
- *   group) stays in front: the record, which knows only surfaces, did not choose otherwise.
- *
- * A closed panel is not drawn, so its tabs simply stay where they stood until it opens again.
- * `consumedTarget` says whether a new surface landed in `targetPaneId`.
+ * Syncs the panes to the record after T3 Code changed it (`previous` is null on first load). A
+ * surface replacing a closed one in the same change takes its place; a new one opens in the pane
+ * asked from, else beside the others, else in the focused pane. On first load a document left in
+ * front stays, since the record knows only surfaces. `consumedTarget`: it landed in `targetPaneId`.
  */
 export function followRecord(
   current: Arrangement,
@@ -131,10 +119,9 @@ function visibleSurfaces(arrangement: Arrangement, record: PanelRecord): string[
 }
 
 /**
- * The surface the record should have in front for the panes as they stand, the other direction
- * of the mirror: the one in the focused pane, else the one already active while it stays shown,
- * else the first shown. The surface the record names is the one T3 Code renders, so only it is
- * live; another shown surface waits for its pane to take focus. Whether the panel shows stays
+ * The other direction of the mirror: the surface the record should have in front is the focused
+ * pane's, else the active one while shown, else the first shown. T3 Code renders only the record's
+ * surface, so other shown surfaces wait for their pane's focus. Whether the panel shows stays
  * T3 Code's to say.
  */
 export function activeSurfaceFor(arrangement: Arrangement, record: PanelRecord): string | null {

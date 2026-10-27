@@ -197,12 +197,10 @@ function relocate(state: EditorState, pos: number, value: ActiveCell): CellLocat
 }
 
 /**
- * The active cell, mapped through changes. It is cleared when its table is deleted or
- * reparsed away, and when a selection other than a caret inside its table is made in the
- * outer editor, so a click elsewhere or a select-all leaves the cell. A caret set inside
- * another cell of the table by a transaction with no user event (an undo restoring its
- * selection) takes the active cell with it; the browser's own selection reads carry a
- * `select` event and never move it.
+ * The active cell, mapped through changes. Cleared when its table goes or when the outer editor gets
+ * any selection but a caret inside the table (a click elsewhere, select-all). A caret set in another
+ * cell with no user event (an undo restoring selection) moves it; the browser's own selection reads
+ * carry a `select` event and never do.
  */
 export const activeCell = StateField.define<ActiveCell | null>({
   create: () => null,
@@ -358,12 +356,10 @@ const cellEditorSetup = Facet.define<Extension, Extension>({
 });
 
 /**
- * A modal editing layer (Vim) that cell editors run too, so modes stay consistent between
- * the outer editor and the active cell. `idle` says whether a key in the child should keep
- * its cell meaning (Escape leaves the cell, `j`/`k` at the edge move between rows): true in
- * normal mode with no command pending. `start` runs once the child has the layer (`from` is
- * the cell editor it replaces, when it replaces one); `stop` runs before the child loses it
- * or closes.
+ * A modal layer (Vim) that cell editors run too, so modes match the outer editor. `idle` (normal
+ * mode, nothing pending) says a key keeps its cell meaning: Escape leaves, `j`/`k` at the edge change
+ * rows. `start` runs once the child has the layer (`from` is the cell editor it replaces, if any);
+ * `stop` runs before the child loses it or closes.
  */
 export interface CellModalLayer {
   extension: Extension;
@@ -378,11 +374,9 @@ export const cellModalLayer = Facet.define<CellModalLayer, CellModalLayer | null
 });
 
 /**
- * With a modal layer, the keys a cell keeps for itself ahead of the layer's own handling.
- * While a row, column, or rectangle is selected, Backspace, Delete, and Escape run the
- * cell's own bindings in any mode (the selection deletes or clears, Escape collapses it).
- * In an idle (normal-mode) cell, Escape leaves the cell and `j`/`k` move to the row below
- * or above; in any other mode the layer has them (Escape then returns to normal mode).
+ * Keys a cell keeps ahead of its modal layer. With a row, column or rectangle selected, Backspace,
+ * Delete and Escape run the cell's bindings in any mode. In an idle cell Escape leaves and `j`/`k`
+ * change rows; in other modes the layer has them (Escape returns to normal mode).
  */
 function modalCellKeys(cell: CellEditor, layer: CellModalLayer): Extension {
   return Prec.highest(
@@ -1250,12 +1244,10 @@ function layoutHandles(view: EditorView, wrapper: HTMLElement) {
 }
 
 /**
- * A grip pressed: released without moving, it selects its row or column; dragged, a drop
- * indicator follows the pointer between body rows (never above the header) or between
- * columns, and the release moves the row or column there in one transaction. The grip
- * captures the pointer, so a release outside the window still lands. Escape, a cancelled
- * pointer, the window losing focus, and the widget going away cancel. The header row's
- * grip does not drag.
+ * A grip pressed: a click selects its row or column; a drag shows a drop indicator between body rows
+ * (never above the header) or columns and moves it there in one transaction on release. The grip
+ * captures the pointer so a release outside the window still lands; Escape, pointercancel, blur or the
+ * widget going away cancel. The header row's grip does not drag.
  */
 function startGripDrag(
   view: EditorView,
@@ -1359,14 +1351,10 @@ const within = (rect: CellRect, row: number, column: number) =>
   rect.top <= row && row <= rect.bottom && rect.left <= column && column <= rect.right;
 
 /**
- * A left press in a cell: while the button is down, the pointer crossing into another cell
- * of the same table selects the rectangle from the pressed cell (the anchor, made active
- * with the caret after its text) to the cell under the pointer, and each further crossing
- * updates it. A press that never leaves its cell stays a click. The release ends the drag
- * and the rectangle stays; the window losing focus or the widget going away cancel it.
- * Crossings are found by the cells' own `mouseover`, so the pointer is not captured.
- * `inEditor` says the press began in the active cell's editor, whose own mouse selection
- * the rectangle then ends.
+ * A left press in a cell: crossing into another cell of the table while held selects the rectangle
+ * from the pressed (anchor, active) cell to the one under the pointer; a press that never leaves stays
+ * a click. Crossings come from the cells' own `mouseover`, so the pointer is not captured. `inEditor`
+ * says the press began in the active cell's editor, whose own mouse selection the rectangle then ends.
  */
 function startCellDrag(
   view: EditorView,
@@ -1470,13 +1458,10 @@ interface TableDom {
 const tableDoms = new WeakMap<HTMLElement, TableDom>();
 
 /**
- * A GFM table drawn as a real `<table>` replacing the table's lines. It is redrawn only
- * when what it renders from changes: the table's source text, whether KaTeX has loaded
- * (when a cell holds math), the document's definitions (when a cell holds a link or
- * image), and which cell is active. An edit that keeps the table's shape patches the
- * existing DOM, so the active cell's child editor survives the keystrokes it forwards.
- * Each cell carries its row and column, so a click finds the cell however far the table
- * has moved since the DOM was built.
+ * A GFM table drawn as a real `<table>`, redrawn only when its source, KaTeX loading (math cells),
+ * the document's definitions (link or image cells) or the active cell change. A shape-keeping edit
+ * patches the DOM so the active cell's child editor survives the keystrokes it forwards. Cells carry
+ * their row and column so a click finds its cell however far the table has moved.
  */
 export class TableWidget extends WidgetType {
   readonly source: string;

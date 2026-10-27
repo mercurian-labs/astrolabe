@@ -1,9 +1,7 @@
 /**
- * The seam between the flat controller and a 2D drawing library. The
- * controller owns everything the graph does (targets, springs, the story,
- * beads, framing, the pointer); a drawer only draws the frame it is handed.
- * "lean" draws it with Three.js, "pixi" with Pixi.js. Everything it is handed
- * is per slot of the controller's working set, never per note of the memory.
+ * The seam between the flat controller and a 2D drawing library: the controller owns everything the
+ * graph does, a drawer ("lean" on Three.js, "pixi" on Pixi.js) only draws the frame it is handed.
+ * Everything handed over is per slot of the working set, never per note of the memory.
  */
 import type { GraphView } from "../../model/view.ts";
 import type { BeadSet } from "../beads.ts";

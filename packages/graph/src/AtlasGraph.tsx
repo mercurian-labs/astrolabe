@@ -1,14 +1,8 @@
 /**
- * The Atlas Graph: a memory drawn as a web in space beside a thread, showing
- * the thread's reading. A thin React component around a `GraphRenderer`: it
- * derives the universe, layout, reading, and view from its props and hands
- * them over; the renderer owns every frame. `mode` picks the renderer: "3d"
- * and "flat" are the Atlas renderer's two cameras, "lean" and "pixi" are 2D
- * renderers on Three and on Pixi. Switching between renderer families keeps
- * the selection, the pick, the play, and the flat view.
- *
- * Import `@mercurian/graph/styles.css` once for the overlays, and set the
- * `--atlas-*` custom properties (see `render/theme.ts`) on an ancestor.
+ * A thin React wrapper around a `GraphRenderer`: it derives universe, layout, reading, and view
+ * from props; the renderer owns every frame. Switching renderer families keeps selection, pick,
+ * play, and flat view. Hosts import `@mercurian/graph/styles.css` once and set the `--atlas-*`
+ * properties (see `render/theme.ts`) on an ancestor.
  */
 import {
   useCallback,
@@ -665,12 +659,10 @@ export function AtlasGraph(props: AtlasGraphProps) {
       (drilled?.opened ?? []).filter((each) => each !== index),
       [index],
     );
-  // The tour opens a container to tell inside it, and closes it again; the
-  // camera glides in and back out only while it follows the agent.
-  // The tour opens and closes only what it opened, on the drill as it stands (the reader may
-  // have opened or closed others meanwhile); a container already open it tells inside and
-  // leaves open. Back at the landing's own level with nothing of the reader's open, nothing is
-  // drilled any more: the survey is the level again.
+  // The tour opens a container to tell inside it and closes only what it opened, on the drill as it
+  // stands (the reader may have changed it meanwhile). Back at the landing's level with nothing of
+  // the reader's open, the survey is the level again. The camera glides in and out only while
+  // following.
   const tourOpened = useRef<{ key: string; containers: Set<number> }>({
     key: "",
     containers: new Set(),

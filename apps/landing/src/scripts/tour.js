@@ -1,16 +1,7 @@
-// The hero's tour: one controller plays the scene data in tour-scenes.js over the drawn window
-// (components/HeroWindow.astro).
-//
-// The window's state is a set of shown parts (data-k) plus a few attributes on its root: the rail's
-// section, the thread on show, the Changes tab in front, the wiki's edits and the merge switch. Each
-// event changes that state; starting a phase rebuilds it from every event before. One pending
-// timeout waits for the next event, and the running segment's fill is one transform animation that
-// pauses with it. Once a scenario ends nothing is scheduled and nothing animates.
-//
-// States: poster (waiting to be seen), playing, paused (out of view or a hidden tab), exploring
-// (unlocked: the rail, the tabs and the sidebar's rows answer; each segment replays the main
-// scenario from its phase, and each example prompt plays its scenario). With reduced motion nothing
-// plays: a segment or a chip shows its finished state at once.
+// The hero's tour: one controller plays tour-scenes.js over the drawn window (HeroWindow.astro). State
+// is the shown parts (data-k) plus a few root attributes; starting a phase rebuilds it from every
+// earlier event. One pending timeout and one transform animation drive playback, and nothing is
+// scheduled once a scenario ends. Reduced motion shows each segment's finished state at once.
 
 import { scenarios } from "./tour-scenes.js";
 

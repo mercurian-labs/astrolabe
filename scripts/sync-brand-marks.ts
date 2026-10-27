@@ -1,17 +1,9 @@
 #!/usr/bin/env node
 
-// Copies Astrolabe's approved marks from the branding repository into the places the product
-// draws them, split into the layers the product colours separately: the lettering ("ink",
-// #292724 in the masters) and the rust pivot, full stop and loading dots ("dots", #A0492A).
-//
-// - Web: duotone masks in apps/web/src/assets/brand, and the boot screen's loading wordmark in
-//   apps/web/public/brand (the small drawing: at its 224px width the mark is under 48px tall).
-// - Mobile: the same layers as react-native-svg data in astrolabeMarkLayers.ts.
-// - Icons: each channel's Icon Composer layers (mark.svg, pivot.svg) from the branding icon
-//   package's square tiles. Run `vp run icons:export` and `vp run icons:export:android` after.
-//
-// Usage: node scripts/sync-brand-marks.ts <branding-repo>, then
-// `vp fmt apps/mobile/src/components/brand/astrolabeMarkLayers.ts`.
+// Copies Astrolabe's approved marks from the branding repository into the product, split into
+// the layers it colours separately: lettering ("ink", #292724) and pivot, full stop and loading
+// dots ("dots", #A0492A). Usage: `node scripts/sync-brand-marks.ts <branding-repo>`, then `vp fmt`
+// astrolabeMarkLayers.ts and run `vp run icons:export` and `vp run icons:export:android`.
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -167,7 +159,8 @@ const syncBrandMarks = Effect.fn("brandMarks.sync")(function* (brandingRoot: str
     );
   }
 
-  // The boot screen's loading wordmark: dots two and three blink on their own layers.
+  // The boot screen's loading wordmark, from the small drawing (at its 224px width the mark is
+  // under 48px tall): dots two and three blink on their own layers.
   const loading = splitMark(yield* read("wordmark-loading-small.svg"));
   const inDot = (dot: string) => (element: Element) => loadingDot(element) === dot;
   outputs.push(

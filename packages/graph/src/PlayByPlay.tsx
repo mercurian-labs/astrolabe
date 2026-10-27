@@ -1,17 +1,8 @@
 /**
- * A checkpoint's play-by-play: the moves its turn made, numbered, in plain
- * words. Selecting a play shows it on the graph (pass the selection to
- * `AtlasGraph`'s `play`); selecting it again, or Escape, clears it. The host
- * owns the selection and clears it when the checkpoint changes.
- *
- * In a codebase the plays are a tree: a row per file with its moves counted,
- * collapsed, and inside it each symbol's moves with its links below. A file
- * row selects every play in it and opens it; a symbol row selects its moves;
- * a link row selects that link. The file holding the selected play opens by
- * itself, so playback stays visible.
- *
- * `notes` are the notes as they stood before the turn (`memoryBefore`), so a
- * link to a note nobody had written yet reads as reaching toward a red link.
+ * A checkpoint's play-by-play. Selecting a play shows it on the graph (as `AtlasGraph`'s `play`);
+ * selecting it again, or Escape, clears it; the host owns the selection. In a codebase the plays
+ * are a file, symbol, link tree whose selected file opens by itself. `notes` are as they stood
+ * before the turn, so a link to an unwritten note reads as reaching toward a red link.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 

@@ -47,11 +47,10 @@ import {
 } from "./VimrcSettings.logic";
 
 /**
- * Astrolabe: Settings › Keybindings › Vim, the server's vimrc as controls: its key mappings, a row
- * each, and the three options worth a control. Each change rewrites only its own lines of the
- * file (the server keeps the rest), and goes to every environment the page edits, as keybindings
- * do; the file itself opens from the section's header. Lines the vimrc cannot apply are reported
- * in the keybindings toast, not here.
+ * Settings › Keybindings › Vim: the server's vimrc as controls (a row per mapping, plus three
+ * options). Each change rewrites only its own lines (the server keeps the rest) and goes to every
+ * environment the page edits, as keybindings do. Unappliable lines are reported in the keybindings
+ * toast, not here.
  */
 
 const NO_GROUPING: Intl.NumberFormatOptions = { useGrouping: false };

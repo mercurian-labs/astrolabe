@@ -1,12 +1,8 @@
 /**
- * The web in space. A memory links in cycles, so it is settled by forces, not
- * ranked. The layout is computed once per memory and set of forces: the
- * simulation runs a fixed tick budget synchronously and is stopped in the call
- * that creates it, so nothing moves after it returns. Starting points come
- * from each note's id, so the same memory settles into the same shape.
- *
- * The flat layout is the same web settled with z pinned to 0, seeded from the
- * spatial layout's x and y so the two read as one shape seen two ways.
+ * A memory links in cycles, so it is settled by forces, not ranked. The simulation runs a fixed
+ * tick budget synchronously and stops before returning, and starts come from note ids, so a memory
+ * always settles the same. The flat layout pins z to 0 and seeds from the spatial x and y, so the
+ * two read as one shape.
  */
 import {
   forceCollide,
@@ -65,11 +61,9 @@ export const collisionRadius = (degree: number, linkDistance: number) =>
   1.6 * nodeRadius(degree) + 0.25 * linkDistance;
 
 /**
- * The radius a node is drawn at: a share of the spacing scaled by the node
- * size (capped), times the degree scale, and never past its collision radius.
- * That last cap is what guarantees drawn nodes never overlap at rest, for any
- * node size, without solving the layout again: two drawn radii sum to at most
- * two collision radii, which the layout holds apart.
+ * Never past the collision radius: two drawn radii then sum to at most two collision radii, which
+ * the layout holds apart, so drawn nodes never overlap at rest for any node size without solving
+ * the layout again.
  */
 export const drawnRadius = (
   degree: number,

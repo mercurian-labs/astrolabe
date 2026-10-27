@@ -1,11 +1,7 @@
 /**
- * What the wiki service keeps on disk, and how it reads git's output.
- *
- * - The registry (`<stateDir>/wikis.json`) lists the wikis this environment knows.
- * - A change request's metadata is a commit under `refs/wiki/change-requests/<id>` whose
- *   tree holds `change-request.json`; each update is a child commit, so history is kept.
- *
- * Everything else (amendments, files, indexes) is derived from the repository.
+ * What the wiki service keeps on disk: the registry (`<stateDir>/wikis.json`) and change request
+ * metadata, a commit under `refs/wiki/change-requests/<id>` holding `change-request.json` with one
+ * child commit per update. Everything else (amendments, files, indexes) derives from the repo.
  *
  * @module wikiStorage
  */

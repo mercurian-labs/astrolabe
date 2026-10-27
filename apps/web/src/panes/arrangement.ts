@@ -318,11 +318,10 @@ function moveTab(
 }
 
 /**
- * Moves several tabs, in the order given, into a pane's tabs at `index` (the end by default),
- * as dropping a selection of tabs on a strip does. `index` is counted before the move, as the
- * insertion line shows it. `activeKey` (the first by default; one of the pane's own tabs keeps a
- * moved run from taking the front) becomes active and the pane takes focus; panes the tabs leave
- * empty close.
+ * Moves several tabs, in order, into a pane at `index` (default the end), as dropping a tab
+ * selection on a strip does; `index` counts before the move, as the insertion line shows it.
+ * `activeKey` (default the first; one of the pane's own tabs keeps a moved run from taking the
+ * front) becomes active and the pane takes focus; panes left empty close.
  */
 export function moveTabs(
   arrangement: Arrangement,

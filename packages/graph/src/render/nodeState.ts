@@ -1,17 +1,8 @@
 /**
- * Per-node state on the GPU: two float textures the node and edge shaders
- * both read, written only while something moves.
- *
- * - `positions`: rest position from the layout, plus the node's own spring
- *   offset (the reading's gathering, a drag, or the glide between layouts),
- *   plus its wobble while it travels; and the drawn radius, a spring so a note
- *   grows as the turn links it.
- * - `style`: visibility, emphasis, glow, and hover. Emphasis, glow, and hover
- *   are springs; a note entering the view rises on an expo-out ease instead.
- *
- * `step` reports whether anything still moves, so the loop sleeps at rest.
- * A node moves only when its own offset target changes; hover, pick, and a
- * play change ink, size, and prominence, never a target.
+ * Per-node state in two float textures both shaders read, written only while something moves:
+ * `positions` (rest plus spring offset and wobble, and the drawn radius) and `style` (visibility,
+ * emphasis, glow, hover). `step` reports whether anything moves, so the loop sleeps at rest; hover,
+ * pick, and a play never change a target.
  */
 import { DataTexture, FloatType, NearestFilter, RGBAFormat, Vector3 } from "three";
 

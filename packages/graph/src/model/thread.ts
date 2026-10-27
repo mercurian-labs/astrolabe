@@ -35,11 +35,9 @@ export type ThreadEvent =
       readonly doc?: string;
     }
   /**
-   * The agent wrote a note for the first time; a red link of that name turns
-   * written. The note is labelled `name` (its id when absent) and laid out with
-   * `group` when given, since a note the memory lacks has no other source for
-   * either; in a codebase it lands in `parent`, as `noteKind`. Writing a
-   * container (a new file or folder) is an event too.
+   * The agent wrote a note for the first time; a red link of that name turns written. `name`,
+   * `group`, `parent`, and `noteKind` are here because a note the memory lacks has no other source
+   * for them. Writing a container (a new file or folder) is an event too.
    */
   | {
       readonly kind: "write";
@@ -158,11 +156,9 @@ export const firstParagraph = (doc: string) =>
   (doc.trim().split(/\n\s*\n/)[0] ?? "").replace(/\s+/g, " ").trim();
 
 /**
- * `thread` with each `link` event for a link that already stands (same ends,
- * same kind) rewritten as the `resolve` it is: the record re-resolved the
- * link, it did not add one. Standing follows the memory's links, then each
- * link and unlink in order (an unlink naming no kind removes every kind of
- * that connection). Returns `thread` itself when nothing is rewritten.
+ * `thread` with each `link` event for an already-standing link (same ends and kind) rewritten as
+ * the `resolve` it is. Standing follows the memory's links, then each link and unlink in order (an
+ * unlink with no kind removes every kind). Returns `thread` itself when nothing is rewritten.
  */
 export function resolveRelinks(memory: Memory, thread: ThreadRecord): ThreadRecord {
   const key = (from: string, to: string, kind: string | undefined) =>

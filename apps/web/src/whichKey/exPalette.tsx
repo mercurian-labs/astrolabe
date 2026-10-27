@@ -37,12 +37,10 @@ import { appCommandsSlot } from "./handles";
 import { menuKeysLabel } from "./leader";
 
 /**
- * Astrolabe: the command palette as Vim's ex line, the Command Palette. A query starting with `:`
- * is a command line. A line naming a command's alias (`exCommands.ts`) runs that command; any
- * other line lists the commands and upstream's actions it matches, and a line typed from a Vim
- * editor runs in that editor first, so its own commands (`:s/a/b/`, `:%s`, `:12`) keep working.
- * A bare `:` lists every command with its alias or menu keys, and its shortcut. `:` in an
- * editor's normal mode, and the keyboard menu's `:`, open the palette this way.
+ * The Command Palette as Vim's ex line: a query starting with `:` is a command line. An alias
+ * (`exCommands.ts`) runs its command; other lines list matching commands and actions, and a line
+ * from a Vim editor runs there first so its own commands (`:s/a/b/`, `:%s`, `:12`) keep working.
+ * A bare `:` lists every command with its alias or menu keys and shortcut.
  */
 
 const ITEM_ICON_CLASS = "size-4 shrink-0 text-muted-foreground/85";

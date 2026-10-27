@@ -32,11 +32,10 @@ import type {
 import { runKeybindingCommand, shortcutForCommand } from "./keybindingCommands";
 
 /**
- * Astrolabe: the client's command registry. Every command the keyboard menu, the Command
- * Palette, and a shortcut can run has one entry here: its label (which may depend on where it
- * runs: "New thread" or "New document"), whether it can run now, and how. Astrolabe's own
- * commands act on the surfaces on screen (`handles.ts`) and the app's sections; upstream's run
- * through their own shortcut handlers (`runKeybindingCommand`), so they need a shortcut.
+ * The client's command registry: one entry per command the keyboard menu, Command Palette and
+ * shortcuts run, with its label (which may depend on where it runs), whether it can run now, and
+ * how. Astrolabe's commands act on the on-screen surfaces (`handles.ts`); upstream's run through
+ * their shortcut handlers (`runKeybindingCommand`), so they need a shortcut.
  */
 export interface AppCommandContext {
   /** The sidebar section's title row, while one is mounted (Agents, Wikis): its new button. */
@@ -333,11 +332,10 @@ function astrolabeCommand(
 }
 
 /**
- * What full screen does to the focused pane: it fills the content area once it fills its panes'
- * room (maximized, or alone) and, in a thread's right panel (`panelMaximized` not null), the
- * panel is maximized over the chat column too. Pressed again it restores both. `change` says
- * whether to toggle the pane's maximizing and what to set the panel to; null with nothing to do
- * (a lone pane in the Wikis or Pull Requests area already fills it).
+ * Full screen for the focused pane: once maximized or alone it fills the content area, and in a
+ * thread's right panel (`panelMaximized` not null) the panel maximizes over the chat column too;
+ * pressed again it restores both. `change` is null with nothing to do (a lone pane in the Wikis or
+ * Pull Requests area already fills it).
  */
 export function fullScreenState(pane: {
   readonly alone: boolean;

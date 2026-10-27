@@ -1,11 +1,8 @@
 /**
- * The Atlas Graph's input shapes, mirrored from @mercurian/graph
- * (packages/graph/src/model/memory.ts and thread.ts). They are copied, not
- * imported: that package exports only its root, and importing the root makes
- * this package typecheck the graph's React and Three.js sources. Keep them
- * identical to the originals, but for a note's optional `range`, which the code
- * story adds for its code view (the graph reads ranges from events); the story
- * tests replay the emitted values through the graph's own model.
+ * The Atlas Graph's input shapes, copied from @mercurian/graph (src/model/memory.ts, thread.ts)
+ * because importing its root would typecheck the graph's React and Three.js sources. Keep them
+ * identical, but for a note's optional `range` (the code view's); story tests replay the emitted
+ * values through the graph's own model.
  */
 
 /** What a note is, when the memory is a codebase; absent for a vault's notes. */

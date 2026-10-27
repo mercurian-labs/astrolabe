@@ -1,13 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off - A small Node HTTP entry point and its log.
 /**
- * Mercurian's internal admin site, reachable only on the tailnet under its
- * machine's tailnet name: it listens on loopback, and `tailscale serve` in front of it
- * is the only way in and names the operator on every request.
- *
- *   DATABASE_URL  the cloud Postgres
- *   AUTH_URL      where approval emails send people to sign in
- *   MAIL_FROM     SES sender; without it approval emails go to the log
- *   PORT          defaults to 4320
+ * Internal admin site. It listens on loopback, so `tailscale serve` is the only way in and
+ * names the operator on every request. Env: DATABASE_URL (cloud Postgres), AUTH_URL (sign-in
+ * link in approval emails), MAIL_FROM (SES sender; unset logs the mail), PORT (default 4320).
  */
 import * as NodeHttp from "node:http";
 

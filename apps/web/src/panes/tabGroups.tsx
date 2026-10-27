@@ -15,14 +15,10 @@ import { surfaceIdOf } from "./arrangement";
 import { useTabGroupNumber } from "./tabGroupNumbers";
 
 /**
- * Astrolabe: tab groups. A change group's tabs (its threads' chats, its pull requests, its wiki
- * change requests, the group's own tab) stand together in a pane's strip, and its threads' chats
- * in the chat tabs, behind a marker, a small tab with a stack and the group's number
- * (`tabGroupNumbers`), underlined in the theme's primary colour as Chrome's tab groups are
- * (`tabGroupRuns` makes the runs). The marker shows the group's own tab, drags the run whole, and
- * its menu collapses the run, merges the group with the code, and closes its tabs. A tab group is
- * always a change group: there are no hand-made ones, and dragging tabs never changes who is in
- * one.
+ * Tab groups: a change group's tabs stand together behind a marker (a stack and the group's
+ * number), underlined in the primary colour like Chrome's. The marker shows the group's tab, drags
+ * the run whole, and its menu collapses, merges or closes. A tab group is always a change group:
+ * there are no hand-made ones, and dragging tabs never changes membership.
  */
 
 /**
@@ -123,11 +119,10 @@ export interface TabGroupRunActions {
 }
 
 /**
- * A change group's run of tabs in a strip, a pane's or the chat tabs': its marker, then the tabs
- * it shows (`shownKeys`, drawn by `renderTab`), with a line in the theme's primary colour
- * (`--tab-group`) along the strip's foot from the marker to the run's end, which rises around the
- * tab in front (`index.css`). Collapsed, the strip shows the marker and only its tab in front if
- * the run holds it; dragged by its marker, the marker alone.
+ * A change group's run in a strip: its marker, then its shown tabs (`renderTab`), with a
+ * `--tab-group` line along the strip's foot that rises around the front tab (`index.css`).
+ * Collapsed, it shows the marker plus its front tab if the run holds it; while dragged, the
+ * marker alone.
  */
 export function TabGroupRun({
   group,

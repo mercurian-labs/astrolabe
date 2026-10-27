@@ -61,13 +61,10 @@ const vimWindowHost = Facet.define<
 >({ combine: (values) => values[0] ?? null });
 
 /**
- * `<C-w>h`, `<C-w>j`, `<C-w>k`, `<C-w>l` in normal mode, which Vim moves between windows with:
- * here they go to the host's `window` (see `vimHostKeys`), and do nothing in an editor without
- * one, as the package's `<C-w>` did. They are one entry of Vim's own keymap, `<C-w><character>`,
- * standing where the package's do-nothing `<C-w>` stood, so they are default keys: a vimrc can
- * map onto them (`nnoremap <C-h> <C-w>h`) or over them (`nmap <C-w>h …`), and undoing its
- * mappings never removes them. `<C-w>` with an arrow or with Ctrl held (`<C-w><C-l>`) maps onto
- * them, as Vim reads those too.
+ * `<C-w>h/j/k/l` go to the host's `window` (see `vimHostKeys`), doing nothing without one. They are
+ * one entry of Vim's own keymap, `<C-w><character>`, replacing the package's no-op `<C-w>`, so a
+ * vimrc can map onto or over them and undoing its mappings never removes them. `<C-w>` with an
+ * arrow or with Ctrl held (`<C-w><C-l>`) maps onto them too, as Vim reads those.
  */
 function defineWindowKeys() {
   // The package's `<C-w>` (normal mode) does nothing, but as a full match it would end the key
@@ -146,12 +143,10 @@ function defineScreenLineKeys() {
 }
 
 /**
- * Vim's shared configuration, done once and scoped: each addition acts only in editors that
- * run this layer and otherwise does what the package did before, so another Vim editor on
- * the page is unaffected. Undo and redo go to the editor's `vimHistory`; `U` undoes in
- * normal mode; `:w` (through the package's save hook) and `:q` do nothing, since the
- * document is always saved through Yjs; `<C-w>` with a direction goes to the host.
- * The window keys come first, before any other mapping, so they stand among Vim's defaults.
+ * Vim's shared configuration, done once and scoped to editors running this layer, so another Vim
+ * editor on the page is unaffected. Undo/redo go to `vimHistory`; `U` undoes in normal mode; `:w`
+ * and `:q` do nothing since Yjs always saves. The window keys are defined first so they stand among
+ * Vim's defaults.
  */
 function configureVim() {
   if (configured) return;
@@ -513,12 +508,10 @@ const panelCells = new WeakMap<
 >();
 
 /**
- * Vim mode for an Atlas editor: modal editing with the mode in a panel at the bottom (unless
- * `panel` is false, for a host that shows the mode itself through `data-vim-mode`, as
- * `vimNormalModeFont` does), the selection drawn so visual mode shows it, `u`,
- * `U`, and `Ctrl-r` on `history`, and the same layer in table cell editors. Vim's keys take
- * precedence in normal, visual, and operator-pending modes; in insert mode every other
- * binding still runs.
+ * Vim mode for an Atlas editor: the mode in a bottom panel (unless `panel` is false and the host
+ * reads `data-vim-mode`), a drawn selection for visual mode, `u`/`U`/`Ctrl-r` on `history`, and the
+ * same layer in table cells. Vim's keys win in normal, visual and operator-pending modes; in insert
+ * mode every other binding still runs.
  */
 export function vimMode(
   history: VimHistory,
@@ -613,11 +606,10 @@ export interface VimHostKeys {
 }
 
 /**
- * Offers the host its leader key, Space unless it says otherwise (in normal and visual mode), and
- * `:` (in normal mode) ahead of Vim. A key the host declines stays Vim's: Space moves right, `:`
- * opens Vim's ex line. Only when Vim has nothing pending, so `3:`, `d<Space>`, and visual `:`
- * (with its `'<,'>` range) are always Vim's. Vim's window keys (`<C-w>h` …) go to `window`, as
- * keys of Vim's own (see `defineWindowKeys`). Does nothing in an editor without Vim.
+ * Offers the host its leader key (Space by default, normal and visual) and `:` (normal) ahead of
+ * Vim; a declined key stays Vim's. Only when Vim has nothing pending, so `3:`, `d<Space>` and visual
+ * `:` are always Vim's. `<C-w>h` and friends go to `window` as Vim's own keys (see
+ * `defineWindowKeys`). Does nothing in an editor without Vim.
  */
 export function vimHostKeys(host: VimHostKeys): Extension {
   return [host.window ? vimWindowHost.of(host.window) : [], hostKeyHandler(host)];

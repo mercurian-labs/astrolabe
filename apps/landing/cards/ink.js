@@ -1,9 +1,7 @@
-// Astrolabe · share cards · the plate: what a card says, as one canvas for print.js to ink
-//
-// Marks (the brand's SVGs, ivory letters and a rust dot) are drawn where their <img> sits; lines of
-// type are drawn from their element, with the element's own font settings, through an SVG
-// foreignObject that carries Fraunces inline (a font an SVG image can load). Red is the ivory (or
-// ink) cover, green the rust. The elements stay in the page, hidden, for layout.
+// Astrolabe · share cards · the plate: what a card says, as one canvas for print.js to ink.
+// Marks (the brand SVGs) are drawn where their <img> sits; type goes through an SVG foreignObject
+// carrying Fraunces inline, the one font an SVG image can load. Red is the ivory (or ink) cover,
+// green the rust. The elements stay in the page, hidden, for layout.
 
 import { loadImage } from "./print.js";
 

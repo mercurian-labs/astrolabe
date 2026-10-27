@@ -14,13 +14,10 @@ import {
 } from "~/tabNavigation.logic";
 
 /**
- * The chats open as tabs across the main area, by scoped thread key, in strip order. The tab in
- * front is the route's thread, so the list holds only which chats are open and where. Showing a
- * thread anywhere (a sidebar row, the command palette, a fork, a new thread) shows it in the tab
- * in front, as a browser's tab follows a link, unless it is open in another tab already, which
- * comes to the front instead; a new tab opens only when asked for (`openNew`). Each tab walks
- * back and forward through what it showed (`histories`, under the key it shows now). The tabs
- * are the device's, kept across reloads.
+ * Open chat tabs by scoped thread key, in strip order; the front tab is the route's thread.
+ * Showing a thread anywhere loads it into the front tab, like a browser following a link, unless
+ * another tab already has it, which comes forward; only `openNew` opens a tab. Each tab keeps
+ * back/forward `histories` under its current key. Tabs are per device and survive reloads.
  */
 export interface ChatTabsLayout {
   readonly keys: readonly string[];

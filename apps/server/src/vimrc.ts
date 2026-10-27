@@ -1,11 +1,7 @@
 /**
- * Vimrc - Astrolabe: the vimrc file beside keybindings.json, which every Vim editor of this
- * server's clients applies.
- *
- * The file is plain vimrc text, one directive per line, so a user can edit it by hand: the
- * watcher picks a save up and streams it to clients. Settings edits it a line at a time
- * (`@t3tools/shared/vimrc`), keeping comments and every line it does not change, including lines
- * the vimrc cannot apply, which are reported as issues on the served state.
+ * The vimrc beside keybindings.json, applied by every Vim editor of this server's clients. Plain
+ * text so users can hand-edit it (the watcher streams saves); Settings edits it a line at a time,
+ * keeping comments and every unchanged line, including unappliable ones reported as issues.
  *
  * @module Vimrc
  */

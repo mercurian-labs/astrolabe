@@ -7,11 +7,10 @@ import { useAppearancePreferences } from "../../features/settings/appearance/App
 import { BRAND_RUST } from "./AstrolabeMarks";
 
 /*
- * The composer's four signature controls, ported from apps/web's ComposerControlIcons (the
- * branding repository's identity/astrolabe/controls). Each action shape is drawn in the icon
- * color with a transparent ring cut around a shared pivot. The pivot is brand rust in the
- * Mercurian theme and the icon color elsewhere. They appear only in the composer's primary
- * button; the same actions elsewhere keep their system symbols.
+ * Ported from apps/web's ComposerControlIcons. Each action shape is drawn in the icon color with
+ * a transparent ring cut around a shared pivot, which is brand rust in the Mercurian theme and the
+ * icon color elsewhere. Only the composer's primary button uses them; the same actions elsewhere
+ * keep their system symbols.
  */
 
 export type ComposerControl = "send" | "stop" | "queue" | "steer";

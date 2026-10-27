@@ -306,13 +306,10 @@ interface Folds {
 }
 
 /**
- * Replacements that hide line breaks, which a view plugin may not provide. Frontmatter
- * collapses to a "Properties" line and `[!type]-` callout bodies fold under their header,
- * while no selection is in them and the user has not unfolded them by clicking; a
- * clicked-open block shows an open chevron on its first line that folds it again. Tables
- * and, once KaTeX has loaded, closed `$$` blocks are drawn as block widgets while no
- * selection is on their lines; a `$$` block being edited keeps its rendered formula as a
- * preview below its closing fence.
+ * Replacements that hide line breaks, which a view plugin may not provide: folded frontmatter and
+ * `[!type]-` callouts (until selected or clicked open, with a chevron to refold), and tables and
+ * closed `$$` blocks (once KaTeX loads) as block widgets while unselected. A `$$` block being edited
+ * keeps its rendered formula as a preview below its closing fence.
  */
 function buildFolds(state: EditorState): Folds {
   const index = documentIndex(state);

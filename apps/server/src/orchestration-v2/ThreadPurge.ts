@@ -292,11 +292,10 @@ const make = Effect.gen(function* () {
   });
 
   /**
-   * Keeps the thread row, its first thread.created and its last
-   * thread.deleted, all rewritten to the tombstone first. Like compaction,
-   * every removed event is followed by the retained thread.deleted, so a
-   * client replaying from any cursor still ends with the thread deleted.
-   * Events go last, so leftover events mean an interrupted erase.
+   * Keeps the thread row, its first thread.created and its last thread.deleted, all rewritten to
+   * the tombstone first. As in compaction, every removed event is followed by the retained
+   * thread.deleted, so replay from any cursor ends deleted. Events go last, so leftover events
+   * mean an interrupted erase.
    */
   const erase = Effect.fn("ThreadPurge.erase")(
     function* (threadId: ThreadId) {

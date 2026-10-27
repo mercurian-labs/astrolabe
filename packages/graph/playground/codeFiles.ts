@@ -1,15 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off - A dev-server plugin: it reads code stories' files from their git repositories.
 /**
- * The code stories' files, read from git at each turn's commit, for the
- * playground's code view (see `codeEdits.tsx`). Each story fixture says where it
- * was read from (`source: { repo, paths }`); the plugin registers those at
- * start and serves only files under a story's paths.
- *
- *   GET /__code/file?story=<memory id>&ref=<sha>&path=<path>
- *       the file's text at the commit; 404 when the repository or the file is missing
- *   GET /__code/file?...&parent=1
- *       the file's text at the commit's first parent; empty (with `x-code-missing: 1`)
- *       when the file did not exist there
+ * Serves code stories' files from git at each turn's commit, only under a story's registered paths.
+ *   GET /__code/file?story=<memory id>&ref=<sha>&path=<path>  404 when the repo or file is missing
+ *   GET /__code/file?...&parent=1  at the first parent; empty, `x-code-missing: 1`, when new there
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";

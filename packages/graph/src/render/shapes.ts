@@ -1,14 +1,7 @@
 /**
- * Node shapes, for every renderer: each shape is a gauge, 1 on its outline,
- * less inside, growing linearly from its centre, so whatever a shader did
- * with a disc's distance (the outline, a frontier's hollow, the amended dot,
- * the sphere's shading) works on any shape. A shape's reach is its farthest
- * point: the rings outside a node keep their circles and stand out by it.
- *
- * Sizes match the disc's visual weight: the rounded square and the hexagon
- * have its area; the diamond and the triangle, whose points read large, a
- * little less; a constant's square is deliberately small. The triangle is
- * centred on its centroid, where the eye puts it.
+ * Each shape is a gauge (1 on its outline, growing linearly from its centre) so whatever a shader
+ * does with a disc's distance works on any shape. A shape's reach is its farthest point. Sizes
+ * match the disc's visual weight, and the triangle centres on its centroid, where the eye puts it.
  */
 import { NodeShape } from "../model/kinds.ts";
 

@@ -1,18 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off - A dev-server plugin: it owns a scratch folder of note files on disk.
 /**
- * The playground's workspace: a folder of note files the dev server owns
- * (`.workspace/`, seeded from the vault, which is only ever read). Whatever
- * writes a file there, the scripted thread or a person in a shell, reaches
- * every open playground as a change event, so the editor shows an agent's
- * work the way agents actually do it: by writing files.
- *
- *   GET  /__workspace/events  a stream of { note, previous, text } per change,
- *                             or { note, text, reset: true } when the playground
- *                             moved the thread and the file was set, not edited
- *   POST /__workspace/show    { start, to }: write the thread's events up to
- *                             position `to` as the agent would, from where the
- *                             files stand when that is between `start` and `to`,
- *                             else from `start`, set quietly
+ * The playground's workspace: note files the dev server owns in `.workspace/`, seeded from the
+ * vault, which is only ever read. Any write there reaches every open playground as a change event.
+ *   GET  /__workspace/events  a stream of { note, previous, text }, or { note, text, reset: true }
+ *   POST /__workspace/show    { start, to }: write the thread's events up to `to` as an agent would
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

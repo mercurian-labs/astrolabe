@@ -1,17 +1,8 @@
 /**
- * The agent's cursor on the map: the editor's agent cursor's twin. It always
- * exists. With nothing to do it is parked at the canvas's bottom-right corner,
- * labelled "Agent". When a checkpoint lands it travels from wherever it is to
- * each visit of the turn in play order, rests there, and travels home to the
- * park; it never fades, pops, or hurries. It stops beside a note, never on
- * it, its tip pointing at the note; along a link it rides the link and stops
- * just short of the far note. A floating label beside it says what it is
- * doing, in the play-by-play's words, from the moment it sets off.
- *
- * Everything here is in screen pixels, read from the scene each frame, so the
- * cursor follows notes as they glide and the park stays put under pan and
- * zoom. A travel takes its eased duration, longer for a long way so that no
- * frame at 120 Hz moves it more than about 12 pixels.
+ * The agent's cursor on the map, twin of the editor's. It always exists, parked at the
+ * bottom-right; when a checkpoint lands it travels to each visit in play order and home, never
+ * fading, popping, or hurrying, and stops beside a note, never on it. It works in screen pixels
+ * read each frame; a long travel lengthens so no 120 Hz frame moves it more than about 12 pixels.
  */
 import type { Visit } from "../model/plays.ts";
 import type { TourInner, TourVisit } from "../model/tour.ts";
@@ -401,14 +392,9 @@ export const POPOVER_INSET = 8;
 export const POPOVER_CLEARANCE = CURSOR_PIXELS + 6;
 
 /**
- * The cursor's popover beside its caret, never over it or the note it visits
- * (it keeps out of the POPOVER_CLEARANCE box around the tip): past the caret's
- * back on the side its label sits (outward from the note), else the other side
- * when that one fits; when neither side fits (a narrow panel, the cursor
- * mid-frame), above or below the box, whichever has more room. Always inside
- * the frame: where the room is shorter than the popover, it says the height
- * it may take (`maxHeight`). A frame too narrow for it across pins it to the
- * left inset (the host's styles cap its width to the frame).
+ * Outside the POPOVER_CLEARANCE box around the tip: past the caret on its label's side, else the
+ * other side, else above or below, whichever has more room. Always inside the frame: when room is
+ * short it sets `maxHeight`, and a frame too narrow pins it to the left inset.
  */
 export function popoverPlace(
   cursor: { readonly x: number; readonly y: number; readonly outward: Point },

@@ -1,15 +1,7 @@
 /**
- * "pixi": the flat reading drawn with Pixi.js v8 on its own canvas. The
- * shared flat controller runs the graph; this drawer turns each frame into
- * Pixi scene objects: nodes as tinted sprites cut from three textures (body,
- * ring, amended mark), edges as one Graphics redrawn per frame, beads as
- * sprites, labels as BitmapText from IBM Plex Mono (a second font, stroked
- * in paper, for the outlined prominent labels, drawn on top).
- *
- * Pixi never runs its own loop: the application's ticker never starts, and
- * the system ticker (texture GC) is stepped only when a frame is drawn, so
- * the graph at rest costs zero frames and no animation-frame callbacks.
- * Draw calls are counted by wrapping the WebGL context's draw functions.
+ * "pixi": the flat reading drawn by Pixi.js v8 on its own canvas from the shared flat controller.
+ * Pixi never runs its own loop: the application's ticker never starts and the system ticker
+ * (texture GC) steps only when a frame is drawn, so the graph at rest costs no frame callbacks.
  */
 import {
   AccessibilitySystem,
@@ -52,6 +44,7 @@ import { documentFaces } from "./fonts.ts";
 
 /** The labels' characters: printable ASCII, Latin-1, and the punctuation notes use. */
 // The kinds' shape glyphs ride in the cursor's chip.
+// oxlint-disable-next-line t3code/no-em-dash-copy -- A glyph set the labels draw from, not copy.
 const CHARS: Array<string | Array<string>> = [[" ", "~"], ["¡", "ÿ"], "–—‘’“”…→·●■◆⬢▲▪◎"];
 /** Glyphs are rasterised this much above the device pixel ratio, so a grown label stays crisp. */
 const GLYPH_HEADROOM = 1.3;

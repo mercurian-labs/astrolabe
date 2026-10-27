@@ -121,11 +121,10 @@ const fadeStyle = (drawn: boolean, delay: number): CSSProperties => ({
 });
 
 /**
- * The Lineage surface: the viewed thread's fork family as a railway diagram, left to right. A
- * solid line is history carried verbatim; a dotted one is a fork's context carried back
- * summarized. Quiet stretches fold into a count that unfolds on click. A checkpoint on the viewed
- * thread scrolls the chat to its turn, and the turn the chat shows is marked; anything of another
- * thread opens that thread in a chat tab.
+ * The viewed thread's fork family as a railway diagram, left to right: solid lines carry history
+ * verbatim, dotted ones a fork's context summarized back. Quiet stretches fold into a count. A
+ * checkpoint on the viewed thread scrolls the chat to its turn; anything of another thread opens
+ * that thread in a chat tab.
  */
 export default function LineagePanel({
   threadRef,

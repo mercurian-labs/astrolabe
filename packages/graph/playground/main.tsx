@@ -1,9 +1,7 @@
 /**
- * The Atlas Graph playground: the almagest memory with a scripted thread, a
- * synthetic memory of 600 to 100,000 notes with a synthetic thread, or a code
- * story (a codebase's symbols, told over a run of commits), under every
- * control the graph takes. The debug readout counts frames so the rule
- * "still at rest" can be checked.
+ * The Atlas Graph playground: the almagest memory, a synthetic memory of 600 to 100,000 notes, or a
+ * code story, under every control the graph takes. The debug readout counts frames so "still at
+ * rest" can be checked.
  */
 import "@fontsource/ibm-plex-mono/400.css";
 import labelFont from "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff?url";

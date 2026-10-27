@@ -49,11 +49,9 @@ export const FOLLOW_CONE = (28 * Math.PI) / 180;
 export const FOLLOW_ROOM = 1.6;
 
 /**
- * Turn just enough to bring `points` forward: rotate the camera about its
- * target until the points' mean direction sits within the follow cone, then
- * stop. The target never changes; the distance grows only when a note lies so
- * far out that it would otherwise pass behind the camera. Returns null when
- * the points are already forward, so the camera stays put.
+ * Turn the camera about its fixed target just until `points`' mean direction sits within the follow
+ * cone. Distance grows only when a note would otherwise pass behind the camera. Null when the
+ * points are already forward, so the camera stays put.
  */
 export function followView(view: CameraView, points: ReadonlyArray<Vector3>): CameraView | null {
   if (points.length === 0) return null;
@@ -109,11 +107,9 @@ export interface ZoomLimits {
 }
 
 /**
- * Zoom is free within a quarter to four times the reading density, and never
- * closer to it than a framed reading needs: when the whole reading only fits
- * further out (a narrow viewport, a large reading), the far limit (and the
- * orthographic least zoom) extends to the fit, so clamping never pulls a
- * framed note back out of view. The near limits stay the density's.
+ * Zoom is free within a quarter to four times the reading density. When the whole reading only fits
+ * further out, the far limit (and the orthographic least zoom) extends to the fit, so clamping
+ * never pulls a framed note back out of view. The near limits stay the density's.
  */
 export function zoomLimits(input: {
   readonly densityDistance: number;
@@ -299,11 +295,9 @@ export function flatViewAt(from: FlatCamera, to: FlatCamera, t: number): FlatCam
 }
 
 /**
- * Where a landing centres on the turn's story: the centroid of its notes, or,
- * when they spread further than `reach` from it (half a frame at the reading
- * density), their densest part: the note with the most others within `reach`,
- * and the centroid of those. The rest of the story, and of the reading, lies
- * beyond the frame, reached by panning. Null for no notes.
+ * The story notes' centroid, or when they spread further than `reach` (half a frame at reading
+ * density), the centroid of the note with the most others within `reach` and those others; the rest
+ * is reached by panning. Null for no notes.
  */
 export function storyCentre(points: ReadonlyArray<Vector3>, reach: number): Vector3 | null {
   if (points.length === 0) return null;

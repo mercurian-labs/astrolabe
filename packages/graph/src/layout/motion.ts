@@ -1,17 +1,8 @@
 /**
- * How nodes move. The graph is still at rest and organic in motion; a running
- * turn alone moves nothing. Everything here is a pure function of a node's
- * index and time, or a small state machine that reports when it has settled,
- * so the render loop can sleep the moment nothing moves.
- *
- * - Each node has its own spring (stiffness 19–78, damping 17), so a group in
- *   transition arrives at slightly different times instead of in lockstep.
- * - Notes entering the view rise with an expo-out ease, staggered outward from
- *   the centroid of the notes rising with them. A rise is ink, not travel.
- * - A node travelling to a new target drifts on a two-sine wobble whose
- *   strength follows its journey: nothing as it sets off, nothing as it
- *   lands, so a landed node reads exactly its target. A node whose target did
- *   not change never moves.
+ * Everything here is a pure function of a node's index and time, or a small state machine that
+ * reports when it has settled, so the render loop can sleep the moment nothing moves. A travelling
+ * node's wobble is zero at both ends, so a landed node reads exactly its target; a node whose
+ * target did not change never moves.
  */
 
 /** A deterministic value in [0, 1) from any number. */
@@ -66,11 +57,9 @@ export function wobble(traits: NodeTraits, axis: 0 | 1 | 2, t: number): number {
 export const DRIFT_GAP = 2;
 
 /**
- * How strongly a travelling node wobbles, 0–1, from how far along its
- * journey it is (0 setting off, 1 arrived) and how long the journey is (in
- * layout units). It swells and fades with the journey: 0 as the node sets
- * off, 0 as it lands, so the wobble never kicks in or cuts out, and a short
- * hop does not wobble.
+ * How strongly a travelling node wobbles, 0 to 1, from its progress (0 setting off, 1 arrived) and
+ * journey length in layout units. It is 0 at both ends so the wobble never kicks in or cuts out,
+ * and a short hop does not wobble.
  */
 export function travelDrift(progress: number, journey: number): number {
   if (journey < DRIFT_GAP || progress <= 0 || progress >= 1) return 0;

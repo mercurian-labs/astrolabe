@@ -1,14 +1,10 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
 
 /**
- * Astrolabe: the keyboard menu's model, after LazyVim's which-key. A menu is a tree of groups;
- * each row has keys that either open a further group or run a command. The menu reads the keys
- * that follow its door one at a time, never times out, and closes only on Escape (or Backspace at
- * the root), on losing focus, or when a key runs a command. A cursor also walks the rows (the
- * cursor keys, the arrows where the group does not bind them, Enter), as does the mouse. A
- * repeatable command run from the menu by its key arms a repeat window after it, as tmux's
- * `bind -r`: its group's repeatable keys keep running without the menu until any other key, a
- * click, or the window passing. See `WhichKey.tsx` for the doors.
+ * The keyboard menu's model, after LazyVim's which-key: a tree of groups whose keys open a group
+ * or run a command. It never times out and closes only on Escape (or root Backspace), focus loss,
+ * or a command. A repeatable command run by its key arms a repeat window like tmux's `bind -r`:
+ * the group's repeatable keys keep running until another key, a click, or the window passes.
  */
 
 /** The menu's own chord (⌘K, Ctrl+K) as a row's key. */
@@ -155,11 +151,10 @@ function choose(state: WhichKeyState, item: WhichKeyItem | undefined): WhichKeyS
 }
 
 /**
- * Reads one key. `key` is a `KeyboardEvent.key` for a key pressed without ⌘, Ctrl or Alt, or
- * `CHORD` for the menu's own chord pressed again, which in a group goes back to the root and
- * at the root chooses the row it is a key of. The cursor keys move the cursor (wrapping, and
- * showing the menu), as ArrowDown and ArrowUp do unless the group binds them, and Enter chooses
- * the row it is on.
+ * Reads one key: a `KeyboardEvent.key` pressed without ⌘, Ctrl or Alt, or `CHORD` for the menu's
+ * chord again, which goes back to the root from a group and at the root chooses its own row. The
+ * cursor keys move the cursor (wrapping and showing the menu), as do the arrows unless the group
+ * binds them; Enter chooses the cursor's row.
  */
 export function pressWhichKey(
   state: WhichKeyState,
@@ -231,11 +226,10 @@ export function pressRepeat(root: WhichKeyGroup, path: readonly string[], key: s
 }
 
 /**
- * The page's one menu: its state, held outside React so the doors (a window listener, an
- * editor's leader key) and the popover share it, and where it was opened from (`origin`, which its
- * commands may act on). While the menu is open but not yet shown, each change restarts the pause
- * that shows it. Closed, it may be armed: in the repeat window after a repeatable command, the
- * group it ran from, until `repeatMs` passes without one of its repeatable keys.
+ * The page's one menu, held outside React so the doors (a window listener, an editor's leader key)
+ * and the popover share it, with its `origin` for commands to act on. While open but not shown,
+ * each change restarts the pause before showing. Closed, it may stay armed on the group a
+ * repeatable command ran from, until `repeatMs` passes without one of its repeatable keys.
  */
 export function createWhichKeyMenu<Origin = null>() {
   let state: WhichKeyState | null = null;

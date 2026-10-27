@@ -1,9 +1,7 @@
 /**
- * Small receded tags over the graph, each naming a cluster of notes ("hub",
- * "cycle: 3") near its members' centroid on screen. DOM, not canvas: a few
- * at most, hoverable, and the same in every renderer. A renderer places them
- * on each frame it draws, so they cost nothing at rest and nothing at all
- * while there are none.
+ * Small receded tags naming clusters ("hub", "cycle: 3") near their centroid on screen. DOM, not
+ * canvas: a few at most, hoverable, the same in every renderer, and placed only on drawn frames so
+ * they cost nothing at rest.
  */
 
 /** A tag: its words and the notes it names (universe indices). */

@@ -1,17 +1,8 @@
 /**
- * The level a codebase's reading is told at. A container is open (a region
- * around its notes) or closed (one node for the notes inside it). The level
- * follows the span of the story: the turn's story set (what it wrote or
- * amended, and the ends of the links it made) has a lowest common container
- * L, which opens, with its children shown one level below it, each child
- * that is a container closed. Everything outside L closes at the level just
- * below where it meets L's line, so the reading persists, collapsed. When the
- * shown things would not fit one frame at the reading density, the level
- * goes up one container at a time. A plain memory has no containers: nothing
- * is ever closed.
- *
- * Every function here is pure over the universe and a reading; the host
- * keeps the closed set and changes it as the reader drills in and out.
+ * The level a codebase's reading is told at. The story set's lowest common container opens with its
+ * children shown, and everything outside closes where it meets that line, so the reading persists
+ * collapsed; when that would not fit one frame, the level goes up. Pure over the universe and
+ * reading; the host keeps the closed set as the reader drills in and out.
  */
 import { pairKey } from "./memory.ts";
 import type { Reading } from "./reading.ts";
@@ -83,11 +74,9 @@ export function lowestCommon(universe: Universe, focus: ReadonlyArray<number>): 
 }
 
 /**
- * The closed set for level `open` (a container, or -1 for the top): each
- * reading note shows as the child of the container where its line meets
- * `open`'s line (closed, when that child is a container and not the note
- * itself). Notes inside `open` show as `open`'s children; `open` and its
- * ancestors are regions.
+ * The closed set for level `open` (a container, or -1 for the top): each reading note shows as the
+ * child of the container where its line meets `open`'s, closed when that child is a container.
+ * Notes inside `open` show as its children; `open` and its ancestors are regions.
  */
 export function levelClosed(
   universe: Universe,
@@ -160,13 +149,10 @@ export function spanLevel(
 const FILLED_KINDS: ReadonlySet<string> = new Set(["folder", "package"]);
 
 /**
- * `closed` with the folders that hold the story opened while the frame can
- * hold what shows, the one holding the most of the story first: a story
- * spanning the repository's top (a package landing beside a lockfile) reads
- * as its named folders rather than one node. The order does not depend on
- * `capacity` and the first opening that would overfill stops it, so a wider
- * frame opens everything a narrower one did, and more. Files and anything
- * below them stay the reader's drill.
+ * `closed` with the story's folders opened, fullest first, while the frame holds what shows, so a
+ * story spanning the repository's top reads as named folders. The order ignores `capacity` and the
+ * first overfill stops it, so a wider frame opens a superset of a narrower one's. Files and below
+ * stay the reader's drill.
  */
 function fillFrame(
   universe: Universe,

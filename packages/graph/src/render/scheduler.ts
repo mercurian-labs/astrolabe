@@ -1,14 +1,8 @@
 /**
- * The on-demand render loop. Nothing draws unless something asked:
- *
- * - `invalidate()` asks for one frame (a state change, a resize, a font arriving);
- * - `animate(animation)` keeps frames coming while the animation reports it is
- *   still moving (springs, a camera flight, orbit damping, a crossfade);
- * - `beforeFrame(task)` runs work on the next frame without forcing a draw
- *   (hover picking): the frame draws only if the task says something changed.
- *
- * When every animation has settled and nothing is invalid, no frame is
- * requested at all: the graph at rest costs zero frames per second.
+ * The on-demand render loop: `invalidate()` asks for one frame, `animate()` keeps frames coming
+ * while the animation still moves, and `beforeFrame()` runs work next frame and draws only if it
+ * reports a change. With everything settled no frame is requested: the graph at rest costs zero
+ * frames.
  */
 export interface Animation {
   /** Advance by `dt` seconds; return true while still moving. */

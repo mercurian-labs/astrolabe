@@ -1,13 +1,9 @@
 // @effect-diagnostics anyUnknownInErrorContext:off - Alchemy runtimes expose framework-owned any requirements.
 /**
- * The cloud API as an Alchemy-hosted ECS service: Alchemy bundles this file
- * with its own startup code, which serves `fetch` and supplies bindings.
- * ECS hosting only ships Bun startup code today, so the image is Bun; keep
- * the code to Effect and Node APIs (tests run on Node) so it can move to
- * Node once Alchemy supports it.
- *
- * Astrolabe sign-in (`/api/auth/*` and its pages, built from apps/auth)
- * comes from apps/cloud; `/health` proves the API reaches Postgres and Electric.
+ * The cloud API as an Alchemy-hosted ECS service; Alchemy bundles this file with startup code
+ * that serves `fetch` and supplies bindings. ECS hosting only ships Bun startup today, so keep
+ * to Effect and Node APIs (tests run on Node) to move to Node once Alchemy supports it.
+ * Sign-in comes from apps/cloud; `/health` proves the API reaches Postgres and Electric.
  */
 import page from "@mercurian/auth/page";
 import { makeCloudApp } from "@mercurian/cloud/app";

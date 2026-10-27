@@ -1,19 +1,8 @@
 /**
- * What happened to a note, told by one gesture per verb when the agent's
- * cursor reaches it, then still:
- *
- * - written: the note draws itself into existence, a ring closing into a
- *   filled dot, and one ripple expanding to three radii and fading;
- * - amended: one sweep around the note, like a hand rewriting it, and the
- *   fill refreshes (a brief brighten that settles);
- * - read: a glance, a halo that brightens and fades, no ink change;
- * - removed: the fill drains to an outline and the outline fades.
- *
- * A gesture is drawn as marks over the note (discs and arcs in the paper,
- * ink, or story colour), so no renderer's node drawing changes for it. Each
- * runs for its own length on the renderer's clock and then leaves the note
- * at rest, except a removed note, which stays drained. A written note the
- * cursor has not reached yet waits drawn as a faint outline.
+ * One gesture per verb when the cursor reaches a note: written draws in with a ripple, amended
+ * sweeps and brightens, read glances, removed drains to a fading outline. Gestures are marks over
+ * the note, so no renderer's node drawing changes, and each leaves the note at rest (a removed one
+ * stays drained). An unreached written note waits as a faint outline.
  */
 
 export type GestureVerb = "write" | "amend" | "read" | "remove";

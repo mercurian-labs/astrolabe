@@ -1,20 +1,8 @@
 /**
- * A renderer's working set: the notes and edges a view shows, each held in a
- * slot of the renderer's own. Every buffer a renderer keeps (positions,
- * springs, styles, instances, labels, picking) is sized to its slots, never
- * to the memory, so a frame costs what shows.
- *
- * A note keeps its slot for as long as it shows, so it keeps its spring and
- * style from view to view and never re-glides. A note that leaves the view
- * keeps its slot while it fades, and gives it up at the first view after its
- * fade has finished; a note that returns before then takes up its old slot. A
- * new note takes a free slot, or the capacity grows with headroom so a
- * checkpoint step rarely reallocates; a working set that shrinks well below
- * its capacity is compacted. Either way the renderer is told which slot each
- * kept note moved from, so it carries their state across.
- *
- * The whole memory is just a view where every note shows: then the slots are
- * the universe, which is the opt-in cost of showing it.
+ * The notes and edges a view shows, each in a slot of the renderer's own; every renderer buffer is
+ * sized to its slots, never to the memory. A note keeps its slot while it shows and while it fades
+ * out, so it never re-glides. Capacity grows with headroom and compacts when well under, and the
+ * renderer is told where each kept note moved from.
  */
 import { kindShape } from "../model/kinds.ts";
 import type { PlayFocus } from "../model/plays.ts";

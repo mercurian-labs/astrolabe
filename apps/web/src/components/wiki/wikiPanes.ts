@@ -32,11 +32,9 @@ import { pullRequestTargetOfKey } from "../pullRequest/pullRequestTabs";
 import { parseWikiTabKey, sameWikiTab, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 /**
- * The Wikis area's tabs and splits: one arrangement on the device, as Obsidian keeps one
- * workspace, holding documents from every server and wiki. It lives outside React so the
- * sidebar, links and deep links can open documents into it. Each tab walks back and forward
- * through what it showed, as Obsidian's do (its history, under the key it shows now, is kept
- * beside the arrangement).
+ * The Wikis area's tabs and splits: one device-wide arrangement, like Obsidian's workspace, holding
+ * documents from every server and wiki. It lives outside React so the sidebar, links and deep links
+ * can open documents into it. Each tab's back/forward history is kept beside the arrangement.
  */
 const STORAGE_KEY = "astrolabe:wiki-panes:v1";
 const HISTORY_STORAGE_KEY = "astrolabe:wiki-tab-history:v1";

@@ -1,22 +1,8 @@
 /**
- * The reading gathers its notes to the front. Every note keeps its home, the
- * rest position the home layout gave it, which never changes. Per
- * checkpoint, the notes the reading shows are drawn together into a cluster
- * by a small force solve (the AI Coding Dictionary's search repack): each
- * note is then offset from its home to its place in the cluster, and springs
- * there on its own spring. A note leaving the reading springs home.
- *
- * Stability is measured against homes and against the cluster's growth: a note
- * already in the previous checkpoint's cluster starts where it stood, and the
- * cluster is pulled toward its previous centre, so it grows around what was
- * there instead of reshuffling. A new arrival starts at its home.
- *
- * Every length is a share of the home layout's spacing, so a gathered reading
- * sits about as densely as the home layout does, whatever the memory's size.
- * In a containment tree (a codebase) the containers above the members are
- * groups: bottom up, each group's children pack around the group's middle,
- * then the top level gathers like a flat reading, so a file's symbols stay
- * together in its region.
+ * The reading gathers its notes to the front: each note springs from its fixed home to its place in
+ * a small force-solved cluster, and back home when it leaves. Notes already clustered start where
+ * they stood and the cluster is pulled to its previous centre, so it grows instead of reshuffling.
+ * Lengths are shares of the home spacing, so density holds at any memory size.
  */
 import {
   forceCollide,
@@ -302,12 +288,9 @@ export function gather(input: GatherInput): Gathering {
 }
 
 /**
- * Gather a containment tree's members: every container above a member is a
- * group. Bottom up, each group's children (members and inner groups) pack
- * around the group's middle, starting where they stood in the previous
- * cluster (else where their homes put them relative to the group's home);
- * the group's radius is what they fill. Then the top level gathers like a
- * flat reading, and each member lands at its groups' places plus its own.
+ * Bottom up, each group's children pack around its middle, starting where they stood last (else
+ * where their homes put them), and fill the group's radius. Then the top level gathers like a flat
+ * reading, and each member lands at its groups' places plus its own.
  */
 function gatherTree(
   input: GatherInput,

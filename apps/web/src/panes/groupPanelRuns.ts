@@ -11,13 +11,10 @@ import { allTabs, closeTab, surfaceIdOf, surfaceKey, type Arrangement } from "./
 import { findLeaf, leafWithTab, leaves, mapLeaf } from "./tree";
 
 /**
- * Astrolabe: a change group's shared run in its threads' right panels. Beside every thread in a
- * group, the group's tabs other than chats (its own tab, its pull requests, its wiki change
- * requests) are one run the group owns: opened or closed beside one of its threads, they open or
- * close beside all of them. Which are open is the group's, kept here on the device; where they
- * stand, and which tab is in front, stay each thread's own. A thread's panel catches up with its
- * groups' runs as it shows and while it is on screen (`reconcilePanelRuns`), quietly: a closed
- * panel stays closed, and the tab in front stays in front.
+ * A change group's shared run in its threads' right panels: the group's non-chat tabs open or
+ * close beside all its threads together. Which are open is the group's (kept on the device);
+ * placement and the front tab stay per thread. `reconcilePanelRuns` catches panels up quietly as
+ * they show: a closed panel stays closed and the front tab stays in front.
  */
 
 /** A pull request as a thread's right panel names it, its server being the thread's. */
@@ -267,13 +264,10 @@ export interface PanelRunsChange {
 }
 
 /**
- * Brings a thread's panel and its groups' runs in line, both ways. First the panel's own changes
- * since it last caught up go into the runs: a group's tab it opened opens in its run, one it closed
- * closes there. The first time the panel catches up with a group (the thread just showed, or just
- * joined it), what it holds that the run never had (such as a pull request opened before the
- * group formed) joins the run, and what the run closed since closes. Then the panel takes the
- * runs as they stand: an entry closed in its run closes here, and one open there but missing
- * here opens where the run stands (`placeRunTabs`), a pull request through the thread's record.
+ * Syncs a thread's panel and its groups' runs both ways. The panel's opens and closes since the
+ * last catch-up go into the runs; on first catching up with a group, tabs the run never had join
+ * it and what it closed since closes. Then the panel takes the runs: closed entries close here and
+ * missing open ones open where the run stands (`placeRunTabs`), a pull request via the record.
  */
 export function reconcilePanelRuns(input: PanelRunsInput): PanelRunsChange {
   let { arrangement, runs } = input;

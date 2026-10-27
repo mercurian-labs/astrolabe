@@ -1,6 +1,6 @@
 import type { Mail } from "./Mailer.ts";
 
-const signature = "\n\nIf you didn't ask for this, you can ignore this email.\n\n— Astrolabe";
+const signature = "\n\nIf you didn't ask for this, you can ignore this email.\n\nAstrolabe";
 
 export type CodePurpose =
   | "sign-in"
@@ -38,5 +38,5 @@ export const invitationMail = (input: {
 export const approvedMail = (to: string, signInUrl: string): Mail => ({
   to,
   subject: "You're in: your Astrolabe account is ready",
-  text: `You're off the waitlist. Sign in to start: ${signInUrl}\n\n— Astrolabe`,
+  text: `You're off the waitlist. Sign in to start: ${signInUrl}\n\nAstrolabe`,
 });

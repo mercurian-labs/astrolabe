@@ -1,9 +1,7 @@
 /**
- * The meshes the graph draws with, one draw call each: every node is an
- * instance of one billboard quad, every edge an instance of one ribbon (a
- * strip of samples along its length, so a landing wave can travel it, plus an
- * arrowhead at each end, collapsed unless arrows are on), and the story's
- * beads are one point cloud.
+ * One draw call each: nodes as instances of one billboard quad, edges as instances of one ribbon
+ * (sampled so a landing wave can travel it, arrowheads collapsed unless arrows are on), and the
+ * story's beads as one point cloud.
  */
 import {
   BufferAttribute,

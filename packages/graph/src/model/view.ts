@@ -1,12 +1,8 @@
 /**
- * What the graph shows, decided purely from the reading, the picked note, the
- * filters, and the lenses. `deriveView` names the shown notes and the edges
- * among them, with their targets, and nothing else: it costs the reading and
- * the links of its notes, never the size of the memory (unless the whole
- * memory is what shows). A renderer lays a view out over slots of its own as
- * a dense `GraphView` (see `expandView`) and eases toward its targets.
- *
- * Emphasis runs from receded (surroundings, frontier) to front (worked notes).
+ * What the graph shows, decided purely from the reading, pick, filters, and lenses. It costs the
+ * reading and its notes' links, never the size of the memory (unless the whole memory shows). A
+ * renderer lays a view over slots of its own (see `expandView`). Emphasis runs from receded
+ * (surroundings, frontier) to front (worked notes).
  */
 import { localGraph, neighborsOf, pairKey, type MemoryIndex, type MemoryLens } from "./memory.ts";
 import { kindShape } from "./kinds.ts";

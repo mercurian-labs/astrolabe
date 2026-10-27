@@ -1,12 +1,8 @@
 /**
- * The flat renderers' shared controller. It runs the graph exactly as the
- * Atlas renderer's Flat mode does (the same targets, springs, story, beads,
- * framing, following, zoom limits, label windows, and pointer rules) on a
- * plain 2D camera: a centre and a scale, pan by dragging empty space, zoom
- * with the wheel toward the pointer. It draws nothing itself; a `FlatDrawer`
- * (Three for "lean", Pixi for "pixi") draws the frame it hands over. Like
- * the Atlas renderer, it holds what shows in slots of its own (see
- * `WorkingSet`) and speaks to the host in universe indices.
+ * The flat renderers' shared controller: runs the graph exactly as the Atlas renderer's Flat mode
+ * does, on a plain 2D camera (a centre and a scale). It draws nothing itself; a `FlatDrawer` (Three
+ * for "lean", Pixi for "pixi") draws the frame it hands over. It holds what shows in slots (see
+ * `WorkingSet`) and speaks universe indices.
  */
 import { TagLayer, type GraphTag } from "../tags.ts";
 import { Vector3 } from "three";
@@ -177,11 +173,10 @@ export class FlatRenderer implements GraphRenderer {
   #inViewCount = 0;
   #labelCount = 0;
   /**
-   * While the universe grows within one landing (a working turn writes files):
-   * where each seated note stands, by universe index, fixed. The grown layout
-   * and gathering move nothing already settled; a note new to the view is
-   * placed once, at its group's edge, and held there too. The next landing
-   * lets go, and the reading regathers.
+   * While the universe grows within one landing (a working turn writes files): each seated note's
+   * fixed position, by universe index, so the grown layout moves nothing already settled. A note
+   * new to the view is placed once and held too. The next landing lets go and the reading
+   * regathers.
    */
   #held: Map<number, readonly [number, number, number]> | null = null;
   /** How many arrivals each group (by parent, universe index) has taken while held. */
@@ -1018,14 +1013,10 @@ export class FlatRenderer implements GraphRenderer {
   }
 
   /**
-   * While held, each shown note not yet held is placed once and held there:
-   * where the regathered reading puts it, moved by however far the reading
-   * as a whole stands from its regathering (the mean offset of the held notes
-   * the gathering also places), so arrivals keep the gathering's arrangement
-   * (a folder opened by a new level packs as it would) beside notes that did
-   * not move. One that would land on a held note, or that the gathering does
-   * not place, goes to its group's edge instead (see `edgePlace`). The
-   * settled notes never make room.
+   * Each shown note not yet held lands where the regathered reading puts it, shifted by the held
+   * notes' mean offset from their regathered places, so arrivals keep the gathering's arrangement
+   * beside notes that did not move. A collision with a held note, or no gathered place, sends it to
+   * its group's edge (see `edgePlace`). Settled notes never make room.
    */
   #placeArrivals(graph: Graph): void {
     const held = this.#held;

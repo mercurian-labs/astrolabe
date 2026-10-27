@@ -1,10 +1,7 @@
 /**
- * The story of a turn landing: the links it made or broke light while the
- * turn runs, hold through the landing window, then go dark. It never stays lit
- * at rest.
- *
- * Times are in seconds on any one clock. The renderer asks `lit(now)` when it
- * sets edge targets and wakes at `endsAt(now)` to let the story fall.
+ * The links a landing turn made or broke light while it runs, hold through the landing window, then
+ * go dark, never staying lit at rest. Times are seconds on any one clock; the renderer asks
+ * `lit(now)` and wakes at `endsAt(now)` to let the story fall.
  */
 import { LANDING_SECONDS } from "../layout/motion.ts";
 

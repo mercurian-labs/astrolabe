@@ -1,12 +1,6 @@
 /**
- * Index a git tree, or tell a run of commits as an Atlas Graph story.
- *
- *   node src/cli.ts index <repo> [ref] --out index.json [--paths <pathspec...>]
- *   node src/cli.ts story <repo> <fromRef>..<toRef> --out story.json [--paths <pathspec...>]
- *                         [--id <memory-id>] [--title <title>] [--max-bytes <n>]
- *                         [--boundaries <.atlas/boundaries.json>]
- *
- * Reads the repository through git only; it never checks anything out.
+ * Index a git tree, or tell a run of commits as an Atlas Graph story (see USAGE). Reads the
+ * repository through git only; it never checks anything out.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

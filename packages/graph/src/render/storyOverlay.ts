@@ -1,10 +1,7 @@
 /**
- * The story's marks over a camera that is not flat-on (the Atlas renderer's
- * 3D and flat views): the gestures, the cursor's caret, and its chip, drawn
- * in a screen-space overlay after the scene. The overlay's plane is CSS
- * pixels with y up (a screen point (x, y) sits at (x, height − y)), so a caret
- * is a screen-facing billboard beside its note's projected position, and the
- * chip's words are troika text.
+ * The story's marks (gestures, caret, chip) over a camera that is not flat-on, drawn in a
+ * screen-space overlay after the scene. The overlay's plane is CSS pixels with y up (screen (x, y)
+ * sits at (x, height - y)), so a caret is a screen-facing billboard beside its note.
  */
 import { OrthographicCamera, Scene, type Color, type WebGLRenderer } from "three";
 import { Text } from "troika-three-text";

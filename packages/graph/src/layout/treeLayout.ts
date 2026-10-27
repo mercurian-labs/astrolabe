@@ -1,16 +1,8 @@
 /**
- * The home layout of a containment tree (a codebase): every note sits inside
- * its container's disc. Bottom up, each container's children settle as a
- * small graph of their own, a leaf as a dot the size its degree gives it and
- * a container as the disc its own children pack into, pulled together by
- * whether links run between their descendants; the container's disc is the
- * extent they take. The roots settle the same way, and each note lands at its
- * container's place plus its own. Containment is not a force: notes in two
- * containers meet only through their containers' links.
- *
- * Past FORCE_LAYOUT_LIMIT notes (or in a level too large to settle) each
- * level is packed instead: largest first, each on a spiral where it overlaps
- * nothing, nested by the same tree.
+ * The home layout of a containment tree: bottom up, each container's children settle as a small
+ * graph inside its disc, pulled together by links between their descendants. Containment is not a
+ * force: notes in two containers meet only through their containers' links. Past
+ * FORCE_LAYOUT_LIMIT, or a level too large to settle, levels are spiral-packed instead.
  */
 import {
   forceCollide,

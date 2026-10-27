@@ -23,12 +23,10 @@ function useRouteThreadRef(target: ThreadRouteTarget): ScopedThreadRef | null {
 }
 
 /**
- * The main area beside T3 Code's sidebar: the chat in front, with the open chats as tabs across
- * the top of its column, and its own header, drawer and right panel. ChatView draws the strip
- * (see `ChatTabStripContext`), so the right panel runs the full height beside it as T3 Code's
- * does. The route's thread is the one in front; showing a thread shows it in the tab in front, or
- * brings forward the tab already showing it (see `chatTabsStore`). A draft is keyed by the thread
- * it reserved, so its tab stays put when it is sent.
+ * The main area beside the sidebar: the front chat with open chats as tabs atop its column, plus
+ * its own header, drawer and right panel. ChatView draws the strip (`ChatTabStripContext`) so the
+ * right panel runs full height beside it. The route's thread is the front tab (see
+ * `chatTabsStore`); a draft is keyed by the thread it reserved, so its tab stays put when sent.
  */
 export function ChatTabs({
   target,

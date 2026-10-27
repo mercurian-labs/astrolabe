@@ -90,12 +90,10 @@ const defined = <T>(entries: Record<string, T | undefined>): Record<string, T> =
   >;
 
 /**
- * Astrolabe accounts. Every client signs in on the app.astrolabe.sh
- * pages; web keeps the cookie, native apps and the CLI keep a bearer token,
- * and the relay gets a short-lived JWT from `/api/auth/token`.
- *
- * The database and secret are the caller's: Alchemy's BetterAuth supplies
- * them in the API, tests pass an in-memory database.
+ * Astrolabe accounts. Every client signs in on the app.astrolabe.sh pages; web keeps the
+ * cookie, native apps and the CLI keep a bearer token, and the relay gets a short-lived JWT
+ * from `/api/auth/token`. The caller supplies the database and secret (Alchemy's BetterAuth
+ * in the API, an in-memory database in tests).
  */
 export const authOptions = (config: AuthConfig, deps: AuthDeps) => {
   const authUrl = config.baseUrl ?? "http://localhost:4310";
@@ -163,10 +161,9 @@ export const authOptions = (config: AuthConfig, deps: AuthDeps) => {
       },
     },
     hooks: { before: accessGate },
-    // Every password sign-in asks for a second step: an emailed code, or an
-    // authenticator code if one is set up. Better Auth only challenges
-    // password sign-ins, so turning it on for everyone leaves email-code,
-    // passkey and provider sign-ins direct. Removing an authenticator falls
+    // Every password sign-in asks for a second step: an emailed code, or an authenticator code
+    // if one is set up. Better Auth only challenges password sign-ins, so enabling it for everyone
+    // leaves email-code, passkey and provider sign-ins direct. Removing an authenticator falls
     // back to emailed codes rather than switching the step off.
     databaseHooks: {
       user: {

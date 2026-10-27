@@ -1,11 +1,8 @@
 /**
- * The GitHub repository whose releases carry Astrolabe's CLI archives, as
- * `owner/name`. Everything that downloads a runtime reads it: the npm
- * launcher, `astrolabe update`, the background service, SSH installs, the
- * install scripts and mobile's update check. Null turns all of them off.
- * Never upstream's pingdotgg/t3code, whose archives are T3 Code's builds.
- * `T3CODE_RELEASE_BASE_URL` can still point downloads at a mirror.
- * scripts/install.sh and install.ps1 carry their own copy of this value.
+ * The `owner/name` repository whose releases carry Astrolabe's CLI archives, read by everything that
+ * downloads a runtime (null turns them all off). Never upstream's pingdotgg/t3code, whose archives
+ * are T3 Code's builds. `T3CODE_RELEASE_BASE_URL` can point at a mirror; scripts/install.sh and
+ * install.ps1 carry their own copy of this value.
  */
 export const CLI_RELEASE_REPOSITORY = "mercurian-labs/astrolabe" as string | null;
 

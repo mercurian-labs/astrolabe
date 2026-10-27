@@ -1,9 +1,7 @@
 /**
- * The Atlas Graph bench page: pick a matrix of modes × memory sizes ×
- * scenarios, run it on the real AtlasGraph at a fixed 1400 × 900 CSS px
- * viewport, and read, copy, or download the results. `window.atlasBench.run`
- * runs a matrix for the Playwright runner (bench/run.ts). Nothing else runs
- * in the page while a bench runs.
+ * The bench page: runs a matrix of modes, memory sizes, and scenarios on the real AtlasGraph at a
+ * fixed 1400 × 900 CSS px viewport. `window.atlasBench.run` is the Playwright runner's entry
+ * (bench/run.ts). Nothing else runs in the page while a bench runs.
  */
 import "@fontsource/ibm-plex-mono/400.css";
 import labelFont from "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff?url";

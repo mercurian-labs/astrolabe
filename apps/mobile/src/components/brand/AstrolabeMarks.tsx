@@ -37,12 +37,12 @@ function InkLayer(props: {
   readonly color: ColorValue | undefined;
   readonly colorClassName: string | undefined;
 }) {
-  return props.layer.nodes.map((node, nodeIndex) => (
-    <G key={nodeIndex} transform={node.transform ?? undefined}>
-      {node.children.map((child, childIndex) =>
+  return props.layer.nodes.map((node) => (
+    <G key={node.transform ?? "none"} transform={node.transform ?? undefined}>
+      {node.children.map((child) =>
         "d" in child ? (
           <ThemedPath
-            key={childIndex}
+            key={child.d}
             d={child.d}
             fillRule={child.evenOdd ? "evenodd" : "nonzero"}
             fill="currentColor"
@@ -56,19 +56,19 @@ function InkLayer(props: {
 }
 
 function DotsLayer(props: { readonly layer: MarkLayer }) {
-  return props.layer.nodes.map((node, nodeIndex) => (
-    <G key={nodeIndex} transform={node.transform ?? undefined}>
-      {node.children.map((child, childIndex) =>
+  return props.layer.nodes.map((node) => (
+    <G key={node.transform ?? "none"} transform={node.transform ?? undefined}>
+      {node.children.map((child) =>
         "circle" in child ? (
           <Circle
-            key={childIndex}
+            key={child.circle.join(" ")}
             cx={child.circle[0]}
             cy={child.circle[1]}
             r={child.circle[2]}
             fill={BRAND_RUST}
           />
         ) : (
-          <Path key={childIndex} d={child.d} fill={BRAND_RUST} />
+          <Path key={child.d} d={child.d} fill={BRAND_RUST} />
         ),
       )}
     </G>

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 
 import { authClient } from "./auth";
 import { safeReturnUrl } from "./config";
@@ -24,9 +24,9 @@ export function App() {
 
   // Only the first session read shows the loading page. Later re-reads (after
   // signing in) must not unmount a page midway through its steps.
-  const loaded = useRef(false);
-  if (!session.isPending) loaded.current = true;
-  if (!loaded.current) return <Page>{<Spinner />}</Page>;
+  const [loaded, setLoaded] = useState(false);
+  if (!loaded && !session.isPending) setLoaded(true);
+  if (!loaded && session.isPending) return <Page>{<Spinner />}</Page>;
 
   const signedIn = session.data !== null;
   if (needsSession && !signedIn) {

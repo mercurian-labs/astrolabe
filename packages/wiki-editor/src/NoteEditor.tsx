@@ -46,11 +46,9 @@ const WIKI_EDITOR_THEME = EditorView.theme({
 const EXTENSIONS = [WIKI_EDITOR_THEME, agentChangeBar()];
 
 /**
- * A note in the Atlas editor. Mod-click on a wikilink opens that note, and so does a plain
- * click (a tap) while the note is read-only, as a reading view's links are followed. Switching
- * `readOnly` keeps the editor and its scroll. Escape stays with the editor instead of leaving
- * the page. Amendments that land live are marked in their author's colour, and the change bar
- * under the note steps through, accepts, or reverts them.
+ * A note in the Atlas editor. Mod-click on a wikilink opens it, as does a plain click (a tap) while
+ * read-only. Switching `readOnly` keeps the editor and its scroll; Escape stays with the editor.
+ * Live amendments show in their author's colour; the change bar steps through, accepts or reverts them.
  */
 export function WikiNoteEditor({
   session,

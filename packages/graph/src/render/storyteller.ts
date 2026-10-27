@@ -1,12 +1,8 @@
 /**
- * The agent's cursor telling a turn, shared by every renderer: the tour of the
- * landing turn's visits (travel, ride, open, close), the gestures it leaves on
- * the notes it reaches, what the tour has told (lit quietly once told, the
- * visit being told in full with its beads), and the parked cursor with its
- * chip. A renderer hosts it: it says where notes are on screen and how a
- * screen point maps onto the plane its marks draw on, and draws what each
- * frame returns. The cursor works in screen pixels; marks come back in the
- * host's plane (world units on a flat camera, overlay pixels over a 3D one).
+ * The agent's cursor telling a turn, shared by every renderer. The host says where notes are on
+ * screen and how screen points map to its drawing plane, and draws what each frame returns: the
+ * cursor works in screen pixels, marks come back in the host's plane (world units when flat,
+ * overlay pixels over 3D).
  */
 import type { PlayFocus, PlayLink } from "../model/plays.ts";
 import { sameVisits } from "../model/plays.ts";
@@ -108,13 +104,10 @@ export class Storyteller {
   }
 
   /**
-   * The checkpoint's moves at the level shown; returns whether they changed
-   * (the story relights then). With `appended`, the moves are the same
-   * turn's, grown while the agent works, and `appended` is the tour of the
-   * new plays alone (`turnTour` with `only`): the cursor goes on to tell it,
-   * in order, after whatever it is telling now, without telling the earlier
-   * moves again or redrawing what they left. Otherwise a new checkpoint: the
-   * cursor heads home, and the host's landing starts the tour.
+   * Returns whether the moves changed (the story relights then). With `appended` (the same turn
+   * grown, `turnTour` with `only`), the cursor tells it after what it is telling, without retelling
+   * or redrawing earlier moves. Otherwise the cursor heads home and the host's landing starts the
+   * tour.
    */
   setMoves(
     visits: ReadonlyArray<TourVisit>,

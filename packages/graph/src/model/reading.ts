@@ -1,19 +1,8 @@
 /**
- * The thread's reading at a checkpoint, derived from the record up to it.
- * Nothing is stored per checkpoint: stepping to any checkpoint replays the
- * turns before it, and only what they changed.
- *
- * At checkpoint `k` (the end of turn `k`):
- * - the memory is the starting memory with turns `0..k` applied: written notes,
- *   filled red links, added and removed links, and red links reached toward;
- * - `now` holds the notes turn `k` touched, `earlier` the notes earlier turns
- *   touched, and `around` their neighbors within `depth` links, receded;
- * - marks say what the thread did: new and amended notes, new and broken links.
- *
- * The memory at `k` is an overlay over one index of everything the thread ever
- * holds (built once per memory and thread): the notes not written yet and the
- * links not standing yet, or no longer, are hidden from it. A step costs the
- * turns' events and the links they touch, never the size of the memory.
+ * The reading at checkpoint `k` is replayed from the record, never stored: the memory with turns
+ * `0..k` applied, its `now`, `earlier`, and `around` notes, and marks. The memory is an overlay
+ * over one index of everything the thread ever holds, so a step costs the turns' events and the
+ * links they touch, never the size of the memory.
  */
 import {
   indexMemory,

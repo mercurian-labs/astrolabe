@@ -1,9 +1,7 @@
 /**
- * A scripted thread over the almagest memory: a conversation designing the
- * Atlas Graph, ten turns, each ending in a checkpoint. Between them the turns
- * read notes, amend notes, write a note that fills a red link, add links,
- * remove a link, and reach toward new red links, so one playback exercises
- * every surfacing rule.
+ * A scripted ten-turn thread over the almagest memory, designing the Atlas Graph. Its turns read,
+ * amend, write (filling a red link), link, unlink, and reach toward new red links, so one playback
+ * exercises every surfacing rule.
  */
 import type { ThreadRecord } from "../src/model/thread.ts";
 

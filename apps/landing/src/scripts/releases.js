@@ -1,9 +1,6 @@
-// Astrolabe · drafting · the desktop releases
-//
-// The download page reads the latest GitHub release in the browser, so a new release shows without a
-// rebuild. The page renders every link to the releases page and swaps in the asset URLs once the
-// release arrives; if GitHub is slow, limited (60 requests an hour per visitor) or down, the links
-// stay on the releases page.
+// Astrolabe · drafting · the desktop releases. The download page reads the latest GitHub release in
+// the browser so a new release shows without a rebuild. Links start on the releases page and swap to
+// asset URLs once it arrives; if GitHub is slow, rate-limited (60/hour per visitor) or down, they stay.
 
 /** The one place the repository is named. */
 export const REPO = "mercurian-labs/astrolabe";

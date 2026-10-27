@@ -1,12 +1,8 @@
 /**
- * The home layout for memories too large to settle by forces on the main
- * thread (more than FORCE_LAYOUT_LIMIT notes): placed, not simulated. Each
- * layout group (a note's `group`, else a hashed stand-in) is a ball of
- * cubic-lattice slots one pitch apart (a sunflower disc when flat), filled
- * most-linked first so hubs sit at the centre, and every note is nudged off
- * its slot so no lattice shows. The groups sit on a coarser lattice (a larger
- * sunflower when flat) far enough apart never to touch. Deterministic from
- * ids, one pass plus a sort per group: 100,000 notes in well under a second.
+ * The home layout past FORCE_LAYOUT_LIMIT, where forces cannot settle on the main thread: placed,
+ * not simulated. Each group is a ball of lattice slots filled most-linked first, every note nudged
+ * off its slot so no lattice shows, and groups sit far enough apart never to touch. Deterministic
+ * from ids; 100,000 notes in well under a second.
  */
 import type { LayoutForces } from "../model/settings.ts";
 import type { Universe } from "../model/universe.ts";

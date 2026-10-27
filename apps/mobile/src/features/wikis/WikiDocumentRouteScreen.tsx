@@ -69,11 +69,10 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
 }
 
 /**
- * One wiki document, read first: a tap on a link follows it, and Edit turns the page into the
- * editor. Edits stay on the phone until saved to a change request. Read inside a change
- * request, each amendment an agent makes lands live in the page, marked as the agent's, beside
- * the person's unsaved edits; a save into a change request whose agent is mid-turn waits for
- * the turn to end. Links open the next document on top, read from the same place.
+ * One wiki document, read first; Edit turns the page into the editor and edits stay on the phone
+ * until saved to a change request. Inside a change request, an agent's amendments land live beside
+ * the person's unsaved edits, and a save while the agent is mid-turn waits for the turn to end.
+ * Links open the next document on top, read from the same place.
  */
 export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
   const navigation = useNavigation();

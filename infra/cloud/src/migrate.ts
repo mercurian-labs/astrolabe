@@ -1,11 +1,9 @@
 // @effect-diagnostics anyUnknownInErrorContext:off - drizzle-orm/effect-postgres types its query errors as any.
 /**
- * Applies the cloud database's migrations, then exits. Runs as a one-off ECS
- * task during deploy (see alchemy.run.ts), because the database is only
- * reachable from inside its network. Exit code 0 lets the deploy continue.
- *
- * Each folder keeps its own ledger table, so the relay's upstream migrations
- * merge in unchanged next to ours. The auth folder comes from apps/cloud.
+ * Applies the cloud database's migrations and exits, as a one-off ECS task during deploy (see
+ * alchemy.run.ts) because the database is only reachable inside its network. Exit 0 lets the
+ * deploy continue. Each folder keeps its own ledger table, so the relay's upstream migrations
+ * merge in unchanged next to ours; the auth folder comes from apps/cloud.
  */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";

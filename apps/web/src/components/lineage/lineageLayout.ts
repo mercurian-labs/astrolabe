@@ -1,11 +1,8 @@
 /**
- * The Lineage tab's drawing in columns and lanes: a thread's fork family told left to right.
- *
- * Every checkpoint (one per turn) takes its own column, in the order the family's turns were
- * asked, so a fork's turns sit between its parent's and a merge-back lands on the turn that took
- * it. The viewed thread runs along lane 0. The others take lanes above it (negative) and below
- * it (positive): a thread's forks alternate sides when it is the viewed thread, and keep moving
- * away from it otherwise, each on the nearest lane free for the columns it spans.
+ * Lays out a fork family in columns and lanes. Each checkpoint takes its own column in the order
+ * turns were asked, so a fork's turns sit between its parent's and a merge-back lands on the turn
+ * that took it. The viewed thread is lane 0 (negative lanes above); its forks alternate sides and
+ * others' keep moving away, each on the nearest lane free for the columns it spans.
  */
 
 /** One turn of a thread, as the lineage draws it. */

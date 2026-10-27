@@ -3,12 +3,9 @@ import { create } from "zustand";
 import { LIVE_STRIP, turnStripReducer, type TurnStrip, type TurnStripAction } from "./turnStrip";
 
 /**
- * The Graph surface's reading state per thread (by `scopedThreadKey`), kept
- * outside the panel so a remount (a tab switch, the panel moving into a wide
- * pane) shows what the reader had: the strip (pinned turn, playback, chosen
- * move) and whether the cursor's popover is open. Only Live, a rollback that
- * took the pinned turn, or the thread settling a pinned live turn resets it.
- * Nothing here persists across a reload.
+ * The Graph surface's reading state per thread, kept outside the panel so a remount (tab switch,
+ * moving into a wide pane) keeps the strip and popover. Only Live, a rollback that took the pinned
+ * turn, or the thread settling a pinned live turn resets it. Nothing persists across a reload.
  */
 export interface GraphPanelState {
   readonly strip: TurnStrip;

@@ -34,10 +34,9 @@ const stack = beforeAll(
   }),
   { timeout: 900_000 },
 );
-// test/integration.sh sets NO_DESTROY and tears the stage down itself: at the
-// end of the file this destroy can't reach the harness's sidecar (it waits out
-// a 300s headers timeout and leaves the stage up). Without the sidecar
-// (`sidecar: false`) the dev session ends with beforeAll and destroys the
+// test/integration.sh sets NO_DESTROY and tears the stage down itself: this end-of-file destroy
+// can't reach the harness's sidecar (it waits out a 300s headers timeout and leaves the stage up),
+// and without the sidecar (`sidecar: false`) the dev session ends with beforeAll and destroys the
 // stage mid-suite.
 afterAll.skipIf(!!process.env.NO_DESTROY)(destroy(Stack), { timeout: 600_000 });
 
@@ -65,6 +64,7 @@ const signIn = (api: string, email: string) =>
     });
     expect(sent.status).toBe(200);
     const code = yield* Effect.promise(async () => {
+      // oxlint-disable-next-line t3code/no-polling-loop-in-tests -- the deployed stack's dev mailbox is an HTML page with no change signal to await.
       for (let attempt = 0; attempt < 30; attempt++) {
         const html = await (await fetch(`${api}/dev/mailbox`)).text();
         const mine = html.split("<article>").find((article) => article.includes(email));
@@ -139,6 +139,7 @@ const readShape = (api: string, token: string, shape: string) =>
 const eventuallyRows = (api: string, token: string, shape: string, count: number) =>
   Effect.gen(function* () {
     let rows: Array<unknown> = [];
+    // oxlint-disable-next-line t3code/no-polling-loop-in-tests -- the deployed Electric replicates the write on its own schedule; re-reading the shape is how a client sees it land.
     for (let attempt = 0; attempt < 30; attempt++) {
       rows = (yield* readShape(api, token, shape)).rows;
       if (rows.length === count) return rows;

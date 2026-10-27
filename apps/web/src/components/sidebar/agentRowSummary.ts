@@ -7,23 +7,17 @@ import {
 import type { ThreadPullRequestBadge } from "@t3tools/client-runtime/thread-pull-requests";
 
 /**
- * Astrolabe: what a sidebar thread row's second line says. The first line names the thread
- * (project picture, title, age); the second shows only what sets it apart from the rows around
- * it: an unsent draft, a branch that is not the default one, its pull request, and its agent when
- * that is not the one its project's new threads start with. A row with none of these takes one
- * line. The hover card keeps the full context (repository, machine, branch, model).
- *
- * The default branch is known only from the row's own git status, which a row fetches once it
- * nears the viewport. Until then, and for a local thread whose checkout has moved to another
- * branch, only main and master count as default; so in a repository whose default is another
- * name, a row on it shows its branch until the status arrives, then drops to one line.
+ * A sidebar thread row's second line: only what sets it apart (unsent draft, non-default branch,
+ * pull request, an agent other than the project's usual one), else the row is one line. Until the
+ * row's git status arrives (fetched near the viewport), or when a local checkout moved branch, only
+ * main and master count as default, so a row on another default branch shows it until then.
  */
 
 export interface AgentRowSummary {
   readonly draft: boolean;
   /** The branch without its repository-name prefix; `worktree` when the thread has its own. */
   readonly branch: { readonly text: string; readonly worktree: boolean } | null;
-  /** "PR #130 open", "3 PRs merged", "2 stacked PRs open". */
+  /** "PR #<n> open", "3 PRs merged", "2 stacked PRs open". */
   readonly pullRequest: string | null;
   /** The agent's display name. */
   readonly agent: string | null;
@@ -167,11 +161,10 @@ export function usualAgentKey(thread: {
 }
 
 /**
- * The agent each listed project's threads usually run with, by `usualAgentKey`: the default its
- * new threads start with (the project's own, else its environment's), or, when settings name
- * none, the one most of the environment's listed threads run with. Instance ids are driver slugs
- * that repeat across environments, so counts stay per environment; a tie goes to the id that
- * sorts first, so the choice does not move as rows reorder.
+ * Each listed project's usual agent, by `usualAgentKey`: its new-thread default (project's, else
+ * environment's), or when settings name none, the one most of the environment's listed threads
+ * use. Instance ids are driver slugs repeated across environments, so counts stay per environment;
+ * ties go to the id sorting first so the choice holds as rows reorder.
  */
 export function resolveUsualAgentInstanceIds(
   listedThreads: ReadonlyArray<

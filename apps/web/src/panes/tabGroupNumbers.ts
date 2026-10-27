@@ -7,15 +7,10 @@ import type { PaneArrangementStore } from "./panesHost";
 import { arrangementStorageKey, parseArrangement } from "./persistence";
 
 /**
- * Astrolabe: tab groups' numbers, one numbering across the window, on each group's marker in
- * every pane, section and the chat tabs. A group takes the lowest free number when a strip first
- * shows it, and keeps it while any tab it was shown holding is open on the device: in any pane
- * arrangement, the chat tabs, or a group's shared run beside its threads (`groupPanelRuns.ts`);
- * then the number is free again. Kept on the device, so numbers survive a reload.
- *
- * A group is known by the tabs it was seen with rather than by looking its tabs up again: the
- * change groups arrive from the servers after a reload, and a release made before they do would
- * free every number.
+ * One window-wide numbering for tab group markers. A group takes the lowest free number when a
+ * strip first shows it and keeps it, across reloads, while any tab it was shown holding is open
+ * anywhere on the device. Groups are known by the tabs they were seen with, not looked up again,
+ * because change groups arrive after a reload and releasing before then would free every number.
  */
 export interface TabGroupNumber {
   readonly n: number;

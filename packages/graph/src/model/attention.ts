@@ -1,12 +1,8 @@
 /**
- * Edges lit by attention. At rest no edge is drawn, in any reading, so no
- * label ever has a line under it. Only what the reader attends to (a hover, a
- * pick, a search, a shown lens) or the story of a turn landing lights links,
- * and the story's light is transient. The story lights only what the turn
- * made: the links it made or broke, in full (or, with a play selected, that
- * play's link). It never lights a note's neighbourhood; lighting a note's
- * links is a hover's look, for a real pointer or a pick. The lit levels are
- * the AI Coding Dictionary's.
+ * At rest no edge is drawn, so no label ever has a line under it. Only attention (hover, pick,
+ * search, a shown lens) or a landing turn's transient story lights links, and the story lights only
+ * the links the turn made or broke, never a note's neighbourhood. The lit levels are the AI Coding
+ * Dictionary's.
  */
 import type { PlayFocus } from "./plays.ts";
 import { NodeFlag, type GraphView } from "./view.ts";

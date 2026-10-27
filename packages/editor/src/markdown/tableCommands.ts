@@ -1319,11 +1319,9 @@ function entryElement(label: string, disabled: boolean) {
 }
 
 /**
- * Opens the cell menu for a right-clicked cell at the pointer: Row and Column submenus
- * and the two sort entries, with the entries that do not apply to that cell left out.
- * Submenus open on hover, click, or ArrowRight; ArrowUp and ArrowDown move within a
- * level, ArrowLeft closes a submenu, Enter chooses, Escape closes the menu. Focus stays
- * in the cell editor: the menu keeps its own keyboard position.
+ * Opens the cell menu at the pointer (Row and Column submenus and the two sorts, minus entries that
+ * do not apply). Submenus open on hover, click or ArrowRight; ArrowLeft closes one, Enter chooses,
+ * Escape closes. Focus stays in the cell editor: the menu keeps its own keyboard position.
  */
 function openCellMenu(view: EditorView, target: CellTarget, event: MouseEvent) {
   closeCellMenu();

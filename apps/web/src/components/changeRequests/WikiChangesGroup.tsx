@@ -38,11 +38,9 @@ const NO_KEYS: readonly string[] = [];
 const isOpenChange = (item: WikiChangeItem) => item.changeRequest.status === "open";
 
 /**
- * Astrolabe: the wikis' change requests in the Change Requests sidebar, a group of their own
- * beside the pull requests': the open ones as cards, then the merged and closed ones on a folded
- * shelf of slim rows, as Wikis kept them. They are every wiki's, or the one wiki the section's
- * project filter picked. The section's search narrows them by title; a click shows one in the
- * focused pane's tab in front, as a pull request's row does.
+ * Wiki change requests as their own group in the Change Requests sidebar: open ones as cards, then
+ * merged and closed ones on a folded shelf. They follow the section's project filter (one wiki or
+ * all) and search (by title); a click shows one in the focused pane's front tab, like a PR row.
  */
 export function WikiChangesGroup({
   query,

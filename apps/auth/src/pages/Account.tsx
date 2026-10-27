@@ -104,11 +104,14 @@ function SignInMethods(props: { readonly email: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const { data, error } = await authClient.listAccounts();
-    if (error) return setError(errorMessage(error, "We couldn't load your sign-in methods."));
-    setAccounts(data ?? []);
-  }, []);
+  const load = useCallback(
+    () =>
+      authClient.listAccounts().then(({ data, error }) => {
+        if (error) return setError(errorMessage(error, "We couldn't load your sign-in methods."));
+        setAccounts(data ?? []);
+      }),
+    [],
+  );
   useEffect(() => void load(), [load]);
 
   const hasPassword = accounts?.some((account) => account.providerId === "credential") ?? false;
@@ -272,11 +275,14 @@ function Passkeys() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const { data, error } = await authClient.passkey.listUserPasskeys();
-    if (error) return setError(errorMessage(error, "We couldn't load your passkeys."));
-    setPasskeys(data ?? []);
-  }, []);
+  const load = useCallback(
+    () =>
+      authClient.passkey.listUserPasskeys().then(({ data, error }) => {
+        if (error) return setError(errorMessage(error, "We couldn't load your passkeys."));
+        setPasskeys(data ?? []);
+      }),
+    [],
+  );
   useEffect(() => void load(), [load]);
 
   const add = async () => {
@@ -400,11 +406,14 @@ function Sessions(props: { readonly currentToken: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const { data, error } = await authClient.listSessions();
-    if (error) return setError(errorMessage(error, "We couldn't load your sessions."));
-    setSessions(data ?? []);
-  }, []);
+  const load = useCallback(
+    () =>
+      authClient.listSessions().then(({ data, error }) => {
+        if (error) return setError(errorMessage(error, "We couldn't load your sessions."));
+        setSessions(data ?? []);
+      }),
+    [],
+  );
   useEffect(() => void load(), [load]);
 
   const revoke = async (token: string) => {

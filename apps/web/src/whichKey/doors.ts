@@ -81,11 +81,9 @@ const WINDOW_COMMANDS = {
 } as const;
 
 /**
- * The keyboard menu's doors in a Vim editor of the app's (the composer, a wiki note): the leader
- * key in normal and visual mode opens the menu, and `:` in normal mode opens the palette as the
- * ex line, with `write` as that editor's `:w`. Without Vim, or with no leader key, the keys stay
- * Vim's. Vim's window keys (`<C-w>h` …) move focus between the sidebar and the panes, as the
- * focus moves do.
+ * Menu doors in the app's Vim editors: the leader key in normal and visual mode opens the menu,
+ * and `:` in normal mode opens the palette as the ex line with `write` as `:w`. Without Vim or a
+ * leader key, the keys stay Vim's. `<C-w>h` and friends move focus between sidebar and panes.
  */
 export function appVimKeys(write: (view: EditorView) => EditorWrite | null): Extension {
   const origin = (view: EditorView): KeyOrigin => ({

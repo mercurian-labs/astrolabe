@@ -1,9 +1,7 @@
 /**
- * Astrolabe: a strip's tabs in runs, as tab groups show them (`tabGroups.tsx`), in a pane's strip
- * and in the chat tabs alike: neighbouring tabs of one change group stand together behind its
- * marker. A thread's chat can be in several groups: it joins the run before it when that run's
- * group is one of its own, else starts a run of the group it shares with the tab after it, else
- * of its first group.
+ * A strip's tabs in runs (`tabGroups.tsx`): neighbouring tabs of one change group stand together
+ * behind its marker. A chat in several groups joins the run before it if that group is one of its
+ * own, else starts a run of the group it shares with the next tab, else of its first group.
  */
 export interface TabRun<G> {
   /** The run's group; null for a tab in none. */

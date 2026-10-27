@@ -1,50 +1,7 @@
-// Astrolabe · drafting · the observatory plates, lit by the astrolabe's sun
-//
-// Four plates stand on the page: the Sphinx Observatory, La Silla's New Technology Telescope and Gemini
-// North as frontispieces in the heads of [04], [06] and [08], and the Pic du Midi Observatory in the
-// close. Each is a building printed in the page's own print from a photograph (by astrolabe-site's
-// scripts/observatories/), and each figure (Plate.astro) names its textures' folder, their size and
-// relief: a geometry texture whose red and green carry the view-space normal's x (right) and y (up),
-// whose blue carries the relative depth and whose alpha is the building and its rock; a tone texture
-// with the photograph's dark detail (red), the recesses (green) and the albedo over two (blue: snow
-// brighter than masonry, rock darker); and two line masks coloured by CSS. Each time the working
-// astrolabe's moment changes (`astrolabe:time`), this shader lights the normals from its sun and prints
-// them as relight.js prints Mercury: the building's brightness against the paper's, thresholded against
-// fixed noise, dark ink where it is darker than the paper and ivory where it is lighter, the olive off
-// register in the shadow side and the recesses, with the shadows the building casts on itself marched
-// through the depth.
-//
-// The frame: we stand with our back to the sun's side of the sky, as the photographers did, so a
-// northern observer faces north: the view's x is east, y the zenith, z (towards us) south, and a sun
-// at azimuth A, altitude h lights the plate along (cos h sin A, sin h, −cos h cos A): morning from the
-// right, noon from high in front, evening from the left. A southern observer faces south.
-//
-// Under the pointer an eyepiece opens onto the photograph itself in continuous tone (the duotone,
-// registered texel for texel with the plate), coloured here from the page's palette: paper through
-// olive to ink by day, charcoal through olive to ivory at night. It is drawn in the same pass; the
-// drawn lines step out of it through CSS masks and a hairline ring frames it. With a fine
-// pointer it opens like an iris on enter (0.45 s), follows the pointer exactly, closes on leave
-// (0.35 s) and takes the cursor, which comes back over the credit's links, on leave, blur and a hidden
-// tab. On touch a tap opens it there, a sideways drag moves it (vertical swipes scroll) and a tap
-// elsewhere closes it. Its photograph loads on the first approach to its section, never with the page.
-//
-// After sunset the windows light up in the page's rust: the glass of their panes (packed into the tone
-// texture's alpha by astrolabe-site's scripts/observatories/windows.py) is printed flat in rust, grain
-// by grain like the other inks and under the drawn lines. The lamps come up through civil and nautical
-// twilight and are full before the page's inks turn over at −10°; the eyepiece shows them lit too. Rust
-// is the page's fill rust before the turn and its night rust (--rust-text) after it.
-//
-// Nothing of a plate loads until the page comes within 800 px of it: not its still print or line masks
-// (drafting.css holds their masks back until .plate--near), not its textures, not its WebGL context.
-// Each plate then has its own context, so a visit that never scrolls down makes none and the whole
-// page makes four. One shared context would have to copy its drawing into each plate's canvas on every
-// repaint; small contexts cost less than that and keep each plate's textures where it draws them. A
-// plate that falls more than 800 px off screen shrinks its canvas to one pixel, giving back its drawing
-// buffer (the largest thing it holds: some 6 MB for a section head's plate at 1440 px and DPR 2), and
-// shows its still until it comes back; its textures stay, so coming back costs one draw, not a
-// reload. Repaints happen only when the sun moves, the pointer moves or the iris turns, and only for a
-// plate on screen in a visible tab. DPR is capped at 2. Without WebGL the static print (CSS masks
-// under a mid-morning sun) shows and there is no eyepiece.
+// Astrolabe · drafting · the observatory plates: buildings (textures from astrolabe-site's
+// scripts/observatories/) lit by the astrolabe's sun and printed as relight.js prints Mercury, with
+// an eyepiece onto the photograph and rust windows after sunset. Nothing loads until 800 px away; one
+// WebGL context per plate (sharing copies every repaint); far off, the canvas drops to 1 px (frees ~6 MB).
 
 import Twilight from "./twilight.js";
 
@@ -293,7 +250,8 @@ import Twilight from "./twilight.js";
     return stops[stops.length - 1][1];
   }
 
-  // Toward a point in the sky at azimuth `az`, altitude `alt`, in the plate's view (top of file).
+  // Toward azimuth `az`, altitude `alt` in the plate's view: we stand with our back to the sun's side
+  // of the sky, as the photographers did, so x is east, y the zenith, z south (mirrored in the south).
   function toward(alt, az, south) {
     const ca = Math.cos(alt * RAD);
     const east = ca * Math.sin(az * RAD);

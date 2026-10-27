@@ -9,14 +9,10 @@ import {
 } from "@t3tools/contracts";
 
 /**
- * Astrolabe: change groups, derived. A thread's change requests are one effort; so are those of
- * a coordinator's children (`subagent`) and of a thread's forks (`fork`), each rule as the
- * environment's settings allow. Titles that share an issue key (`M-123`) join too. What people
- * decided on top (`ChangeGroupDecisions`) moves members in and out: a change request is in one
- * group at a time. A group's threads are the ones working on the effort: those that opened its
- * change requests, their family, threads on its pull requests' branches, threads naming its issue
- * key, and those people or agents added; a thread can be in several groups. The server and every
- * client derive the same groups from the same data.
+ * Astrolabe: change groups, derived identically by the server and every client from the same data.
+ * Settings-gated rules group a thread's change requests, a coordinator's children's, forks', and
+ * titles sharing an issue key (`M-123`); `ChangeGroupDecisions` move members, one group each. A thread
+ * can be in several groups: openers, their family, PR-branch threads, issue-key namers and additions.
  */
 
 export interface ChangeGroupThread {

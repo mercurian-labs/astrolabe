@@ -229,12 +229,9 @@ export function grewFrom(previous: Universe, next: Universe): boolean {
 }
 
 /**
- * `next` reindexed so that it grew from `previous` (see `grewFrom`): the notes
- * and edges `previous` held keep their indices and what is new follows, in
- * `next`'s order. A thread whose working turn writes a file grows its
- * universe; keeping the indices lets the renderer, the cursor's tour, and the
- * gestures it left carry on rather than start again. `next` as it is when it
- * is not a superset of `previous` (another key, a rolled-back turn).
+ * `next` reindexed so what `previous` held keeps its indices and the new follows, so the renderer,
+ * the cursor's tour, and its gestures carry on as a working turn grows the universe. Returns `next`
+ * as is when it is not a superset of `previous` (another key, a rolled-back turn).
  */
 export function growUniverse(previous: Universe | null, next: Universe): Universe {
   if (previous === null || previous.key !== next.key || grewFrom(previous, next)) return next;

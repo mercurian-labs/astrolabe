@@ -1,10 +1,6 @@
 /**
- * What a thread's turns do to the notes' files. The record says which note a
- * play touched; this says what it wrote there, so the playground can put the
- * writes on disk the way an agent does and let the editor show them.
- *
- * Every event counts toward a position, reads included, so a position is the
- * number of the thread's events that have happened: the checkpoint `c` ends at
+ * What a thread's turns write into the notes' files, so the playground can put them on disk the way
+ * an agent does. A position counts every event, reads included: checkpoint `c` ends at
  * `turnEnd(thread, c)`, and play `p` of it has happened at `turnStart + p + 1`.
  */
 import type { ThreadEvent, ThreadRecord } from "../src/model/thread.ts";

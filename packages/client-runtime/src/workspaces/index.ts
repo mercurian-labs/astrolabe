@@ -54,11 +54,9 @@ const IDLE_MS = 5_000;
 const ARRIVAL_TIMEOUT_MS = 10_000;
 
 /**
- * Workspaces and teams on this device: one Electric-synced collection per
- * shape, each scoped by the cloud to the signed-in person. A collection only
- * syncs while something reads it. Writes go to the cloud, which answers with
- * the transaction's id; a write resolves once that transaction reaches the
- * collection it changes, so what is on screen is never behind what was done.
+ * Workspaces and teams on this device: one Electric-synced collection per shape, scoped by the
+ * cloud to the signed-in person, syncing only while read. A write resolves once the cloud's
+ * transaction id reaches the collection it changes, so the screen is never behind what was done.
  */
 export function createWorkspaceSync(options: {
   readonly connection: CloudConnection;

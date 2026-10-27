@@ -1,12 +1,7 @@
 /**
- * Playback walks the thread play by play: on arriving at a checkpoint it
- * shows the turn's first play, holds, then the next, through the last; then it
- * clears the selection and holds one settle beat with the whole turn's story
- * lit, and moves on to the next checkpoint. A turn with no plays is one settle
- * beat. After the last checkpoint's settle beat, playback ends.
- *
- * Pure: the host keeps the step it last showed, holds it for `holdSeconds`,
- * and asks for `nextStep`. Resuming after a pause continues from the step
+ * Playback shows each checkpoint's plays one hold each, then one settle beat with the whole turn's
+ * story lit, then moves on; it ends after the last settle beat. Pure: the host holds the shown step
+ * for `holdSeconds` and asks for `nextStep`, so resuming after a pause continues from the step
  * after the one shown.
  */
 import { isMove, type ThreadRecord } from "./thread.ts";

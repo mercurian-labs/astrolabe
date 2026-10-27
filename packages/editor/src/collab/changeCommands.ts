@@ -70,11 +70,9 @@ export function acceptAgentChange(view: EditorView, id: string): boolean {
 }
 
 /**
- * Text a revert put back, with the origin it had before the write deleted it: `[from, to)`
- * in the current document held `client`'s characters from clock `clock` on. Restored text
- * is inserted by the user's client, so only this record lets a later step of the same turn
- * revert remove an earlier write's own characters again, or find an anchor item that now
- * lives only as restored text.
+ * Text a revert put back, with its origin before the write deleted it: `[from, to)` now holds
+ * `client`'s characters from `clock` on. Restored text is inserted by the user's client, so only this
+ * record lets a later revert in the same turn remove an earlier write's characters or find its anchor.
  */
 interface Restored {
   from: number;
@@ -122,11 +120,10 @@ function anchorOf(op: AgentChangeOp, restored: readonly Restored[]) {
 }
 
 /**
- * Reverts `entry` in one user edit: deletes the characters its write inserted (its client's
- * items with a clock in its clock range, so text the user typed inside stays, and so does a
- * later write nested inside), and restored text its write owned, and puts each op's deleted
- * text back at its anchor (dismissed deletions too). Returns what `restored` becomes: the
- * pieces left, mapped, plus every run this revert put back.
+ * Reverts `entry` in one user edit: deletes its write's inserted items (by client and clock range, so
+ * user text and later nested writes inside stay) and the restored text it owned, and puts each op's
+ * deleted text back at its anchor, dismissed ones too. Returns the new `restored`: pieces left, mapped,
+ * plus every run this revert put back.
  */
 function revertEntry(
   view: EditorView,

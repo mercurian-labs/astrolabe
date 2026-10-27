@@ -100,11 +100,9 @@ function formatDeviceAuthorizationPrompt(
 }
 
 /**
- * Opens the approval page each time Enter is pressed. Reading keys puts the
- * terminal in raw mode, so Ctrl+C or Ctrl+D arrives as a key instead of
- * SIGINT; it fails with `QuitError` so the caller stops waiting. Input that
- * only ends, as a script's or an agent's shell does, stops the reading and
- * leaves the code waiting for approval elsewhere.
+ * Opens the approval page each time Enter is pressed. Raw mode delivers Ctrl+C or Ctrl+D as a
+ * key instead of SIGINT, so it fails with `QuitError` to stop the caller waiting. Input that just
+ * ends (a script's or an agent's shell) stops the reading and leaves approval to happen elsewhere.
  */
 const openBrowserOnEnter = Effect.fn("cloud.cli.open_browser_on_enter")(function* (url: string) {
   const terminal = yield* Terminal.Terminal;

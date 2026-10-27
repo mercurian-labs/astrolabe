@@ -55,13 +55,10 @@ function surfaceOf(ref: ScopedThreadRef, surfaceId: string): RightPanelSurface |
 }
 
 /**
- * One thread's right-panel panes at a time: its arrangement, loaded from and saved to the device, kept in
- * line with T3 Code's right-panel record in both directions (see `surfaceMirror.ts`).
- *
- * T3 Code's own changes to the record arrive through the store subscription and move the panes.
- * The panes' changes write the record back through ChatView's own handlers where it gave them
- * (`panel`), so activating a surface does everything ChatView does when its strip is clicked.
- * While the panes write, the subscription only takes note, so neither side echoes the other.
+ * One thread's right-panel panes at a time, saved on the device and mirrored both ways with T3
+ * Code's right-panel record (`surfaceMirror.ts`). Pane changes write back through ChatView's own
+ * handlers (`panel`) so activating a surface does what clicking its strip does; while the panes
+ * write, the store subscription only takes note, so neither side echoes the other.
  */
 export interface PanesController {
   load(ref: ScopedThreadRef, threadKey: string): void;

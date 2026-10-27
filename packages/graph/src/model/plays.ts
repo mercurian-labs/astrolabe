@@ -67,12 +67,9 @@ export interface NoteLookup {
 }
 
 /**
- * The plays of a turn, one per event, in order. `notes` holds the notes as
- * they stood before the turn; a note the turn writes counts as written for the
- * plays after it. A link to a note nobody has written is a reach toward a red
- * link. A note is named as the turn leaves it: the name a write or amend of
- * the turn gives it, else its name before the turn, else its id. Only the
- * turn's own notes are looked up.
+ * One play per event, in order. `notes` are as they stood before the turn; a note the turn writes
+ * counts as written for later plays, and a link to an unwritten note reaches toward a red link.
+ * Notes are named as the turn leaves them. Only the turn's own notes are looked up.
  */
 export function describePlays(
   turn: ThreadTurn,
@@ -201,13 +198,9 @@ const COUNT_WORDS: ReadonlyArray<readonly [Play["kind"], string]> = [
 ];
 
 /**
- * A turn's plays as a tree, when its notes sit in a containment tree (a
- * codebase): grouped by the file each play's note lives in (the nearest
- * file, package, or folder above it), then by symbol, each symbol's links
- * below it. Null when no note the turn touches has a container, so a plain
- * memory keeps its flat list. Amends of a container never show: a file is
- * its symbols. Parents and kinds are the turn's (a write's `parent`) or the
- * notes' as they stood before it.
+ * A turn's plays grouped by the file each note lives in, then by symbol with its links below. Null
+ * when no touched note has a container, so a plain memory keeps its flat list. Amends of a
+ * container never show: a file is its symbols. Parents and kinds are the turn's, else as before it.
  */
 export function playTree(
   turn: ThreadTurn,
@@ -422,11 +415,9 @@ const VISIT_VERBS: ReadonlyArray<readonly [MoveVerb, string]> = [
 ];
 
 /**
- * The cursor's visits for `turn`'s moves: each shown thing once for all its
- * note moves, each pair of shown things once for all the links between them,
- * in the order of each one's first play. A single move reads as its play
- * ("+ wrote PR Review"); several read like the file row ("wrote 6, amended 1
- * in attention.test.ts", "linked plays.ts to playEdge, +4 more").
+ * The cursor's visits for `turn`'s moves: each shown thing once for all its note moves, each pair
+ * once for all the links between them, in first-play order. A single move reads as its play;
+ * several read like the file row ("wrote 6, amended 1 in attention.test.ts").
  */
 export function turnVisits(
   turn: ThreadTurn,
@@ -696,11 +687,9 @@ export type PlayRow =
 const STRUCTURE_KINDS: ReadonlySet<NoteKind> = new Set(["folder", "package"]);
 
 /**
- * A turn's plays as the cursor's popover lists them: in turn order, each in
- * the play-by-play's words, under a heading wherever the container its note
- * sits in changes (a folder, in a story told at file level). Writing a folder
- * is how a file comes to sit in it, not a move of its own, so it has no row.
- * A memory whose notes sit in no container has no headings.
+ * A turn's plays as the cursor's popover lists them: in turn order, under a heading wherever the
+ * note's container changes. Writing a folder is how a file comes to sit in it, not a move of its
+ * own, so it has no row.
  */
 export function playRows(
   turn: ThreadTurn,

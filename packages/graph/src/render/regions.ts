@@ -1,13 +1,7 @@
 /**
- * Containers drawn as regions: a faint disc around what a container holds,
- * nested at every level (folder › file › class), behind everything else. A
- * region is not a node: no dot, no label in the label pool, nothing to pick.
- * Its circle follows its notes every drawn frame, computed innermost first
- * from where they are drawn now, so it moves with them as they glide.
- *
- * The tint alternates by depth: an even level darkens the paper a breath with
- * ink, an odd level lifts it back toward paper, so nested regions read as
- * bands without any of them becoming chrome.
+ * Containers drawn as faint nested regions behind everything. A region is not a node: no dot, no
+ * pooled label, nothing to pick. Its circle follows its notes every drawn frame, innermost first.
+ * The tint alternates by depth (even darkens, odd lifts toward paper) so nesting reads as bands.
  */
 import {
   BufferAttribute,
@@ -104,12 +98,9 @@ function alphaFor(
 }
 
 /**
- * The region tints for a paper and ink (`#rrggbb`): the alphas that give the
- * even levels' fill and the rim the same lightness step from the paper as the
- * reference appearance gives them, so a dark palette (ivory ink on near-black)
- * draws its regions as quietly as the playground's light one rather than as
- * bright rings. The odd levels' lift is a share of the way back to paper and
- * needs no adjusting.
+ * Alphas giving the even levels' fill and rim the reference lightness step from the paper
+ * (`#rrggbb`), so a dark palette draws its regions as quietly as the light one rather than as
+ * bright rings. The odd levels' lift is a share of the way back to paper and needs no adjusting.
  */
 export function regionTints(
   paper: string,

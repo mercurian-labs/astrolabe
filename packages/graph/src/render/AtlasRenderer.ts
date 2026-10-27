@@ -1,14 +1,8 @@
 /**
- * The Atlas Graph's renderer: one WebGLRenderer, one scene, two cameras (the
- * spatial reading's perspective camera and the flat reading's orthographic
- * one), and an on-demand loop. It draws nothing unless something moved: a
- * view change, a hover, a camera flight, orbit damping, or a drag.
- *
- * The host hands it a universe and a layout once, then views (what is shown
- * and how prominently) and settings as they change. It reports hovers, picks,
- * background clicks, and whether it is following the agent, all by universe
- * index. Inside, everything is drawn from slots sized to what shows (see
- * `WorkingSet`): no buffer, and no loop per frame, is the size of the memory.
+ * One WebGLRenderer, one scene, the spatial and flat cameras, and an on-demand loop that draws
+ * nothing unless something moved. It talks to the host in universe indices and draws from slots
+ * sized to what shows (see `WorkingSet`): no buffer, and no per-frame loop, is the size of the
+ * memory.
  */
 import { TagLayer, type GraphTag } from "./tags.ts";
 import {

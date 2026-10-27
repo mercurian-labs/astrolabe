@@ -4,11 +4,10 @@ import type { AppCommand } from "./commands";
 import { CHORD, type WhichKeyGroup, type WhichKeyItem } from "./menu";
 
 /**
- * Astrolabe: the keyboard menu, built from the menu keys in the keybindings (defaults in
- * `DEFAULT_TRIGGER_KEYBINDINGS`, after LazyVim's letters). Each sequence's last key runs its
- * command from the registry (`commands.ts`); the keys before it open groups. The built-in
- * prefixes keep their names; a prefix a user made shows as `+` and its count of entries, as
- * which-key shows one. Every key at a level that runs the same command shares one row.
+ * The keyboard menu, built from the keybindings' menu keys (defaults in
+ * `DEFAULT_TRIGGER_KEYBINDINGS`): a sequence's last key runs its command, earlier keys open
+ * groups. Built-in prefixes keep their names; user-made ones show as `+` and their entry count, as
+ * which-key does. Keys at one level running the same command share a row.
  */
 
 /** Names of the built-in groups at the menu's root. */
