@@ -37,6 +37,28 @@ export function fit(el, width, max) {
   return size;
 }
 
+// Sets the line either side of the picture, each half on two lines. It splits at the first full
+// stop, or at the space nearest the middle when the line is one sentence.
+export function wings(line) {
+  const stop = line.indexOf(". ");
+  const at = stop >= 0 ? stop + 1 : middleSpace(line);
+  for (const [el, half] of [
+    [document.querySelector(".wing--left"), line.slice(0, at).trim()],
+    [document.querySelector(".wing--right"), line.slice(at).trim()],
+  ]) {
+    const space = half.lastIndexOf(" ");
+    el.append(half.slice(0, space), document.createElement("br"), half.slice(space + 1));
+  }
+}
+
+function middleSpace(line) {
+  let best = line.length;
+  for (let i = line.indexOf(" "); i >= 0; i = line.indexOf(" ", i + 1)) {
+    if (Math.abs(i - line.length / 2) < Math.abs(best - line.length / 2)) best = i;
+  }
+  return best;
+}
+
 export async function fonts() {
   await Promise.all([
     document.fonts.load('380 40px "Fraunces"'),
