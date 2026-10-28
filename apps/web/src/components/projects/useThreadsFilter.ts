@@ -6,6 +6,7 @@ import { useWikiOverviews } from "../wiki/wikiEnvironment";
 import { wikiScopeKey } from "../wiki/wikiTabs";
 import { projectFilterOptions, type ProjectFilterOption } from "./projectFilter";
 import {
+  filterAsShown,
   filterHasProject,
   filterKindState,
   filterProjectGroupKeys,
@@ -13,8 +14,7 @@ import {
   THREAD_STATUS_FILTER_LABELS,
   THREAD_STATUS_FILTERS,
   threadMatchesStatuses,
-  toggleFilterKind,
-  toggleFilterProject,
+  toggleFilterPick,
   toggleFilterStatus,
   useStoredThreadsFilter,
   type ThreadsFilter,
@@ -109,10 +109,12 @@ export function useThreadsFilter<Group extends ProjectGroup>({
     }),
   );
 
-  const scopedGroupKeys = filterProjectGroupKeys(filter, [
+  const filterGroups = [
     ...keysOf.repositories.map((key) => ({ key, kind: "repositories" as const })),
     ...keysOf.wikis.map((key) => ({ key, kind: "wikis" as const })),
-  ]);
+  ];
+  const scopedGroupKeys = filterProjectGroupKeys(filter, filterGroups);
+  const shown = filterAsShown(filter, filterGroups);
   const scopedProjectKeys =
     scopedGroupKeys === null
       ? null
@@ -147,12 +149,12 @@ export function useThreadsFilter<Group extends ProjectGroup>({
         return checked(scopedGroupKeys === null);
       case "repositories":
       case "wikis":
-        return filterKindState(filter, item.kind, keysOf[item.kind]);
+        return filterKindState(shown, item.kind, keysOf[item.kind]);
       case "repository":
       case "wiki": {
         const group = groupOf(item);
         const kind = item.kind === "repository" ? "repositories" : "wikis";
-        return checked(group !== null && filterHasProject(filter, group.projectKey, kind));
+        return checked(group !== null && filterHasProject(shown, group.projectKey, kind));
       }
     }
   };
@@ -169,13 +171,21 @@ export function useThreadsFilter<Group extends ProjectGroup>({
         return update({ ...filter, projects: [], kinds: [] });
       case "repositories":
       case "wikis":
-        return update(toggleFilterKind(filter, item.kind, keysOf[item.kind]));
+        return update(
+          toggleFilterPick(filter, { kind: "kind", projectKind: item.kind }, filterGroups),
+        );
       case "repository":
       case "wiki": {
         const group = groupOf(item);
         if (group === null) return;
         const kind = item.kind === "repository" ? "repositories" : "wikis";
-        return update(toggleFilterProject(filter, group.projectKey, kind, keysOf[kind]));
+        return update(
+          toggleFilterPick(
+            filter,
+            { kind: "project", projectKind: kind, key: group.projectKey },
+            filterGroups,
+          ),
+        );
       }
     }
   };

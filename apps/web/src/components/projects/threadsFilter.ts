@@ -77,7 +77,7 @@ export function filterKindState(
   return keysOfKind.some((key) => filter.projects.includes(key)) ? "partial" : "unchecked";
 }
 
-export function toggleFilterProject(
+function toggleFilterProject(
   filter: ThreadsFilter,
   key: string,
   kind: ThreadsFilterKind,
@@ -93,7 +93,7 @@ export function toggleFilterProject(
   return { ...filter, projects: toggled(filter.projects, key) };
 }
 
-export function toggleFilterKind(
+function toggleFilterKind(
   filter: ThreadsFilter,
   kind: ThreadsFilterKind,
   keysOfKind: ReadonlyArray<string>,
@@ -116,13 +116,57 @@ export const toggleFilterStatus = (
  */
 export function filterProjectGroupKeys(
   filter: ThreadsFilter,
-  groups: ReadonlyArray<{ readonly key: string; readonly kind: ThreadsFilterKind }>,
+  groups: ReadonlyArray<FilterGroup>,
 ): ReadonlySet<string> | null {
   const kept = groups.filter(
     (group) => filter.kinds.includes(group.kind) || filter.projects.includes(group.key),
   );
   if (kept.length === 0 && filter.kinds.length === 0) return null;
   return new Set(kept.map((group) => group.key));
+}
+
+type FilterGroup = { readonly key: string; readonly kind: ThreadsFilterKind };
+type ProjectPick =
+  | { readonly kind: "kind"; readonly projectKind: ThreadsFilterKind }
+  | { readonly kind: "project"; readonly projectKind: ThreadsFilterKind; readonly key: string };
+
+/**
+ * The filter as its checkboxes read it. Every project is in while none is picked, so All
+ * projects shows each kind and project ticked rather than none of them.
+ */
+export function filterAsShown(
+  filter: ThreadsFilter,
+  groups: ReadonlyArray<FilterGroup>,
+): ThreadsFilter {
+  if (filterProjectGroupKeys(filter, groups) !== null) return filter;
+  const kinds = (["repositories", "wikis"] as const).filter((kind) =>
+    groups.some((group) => group.kind === kind),
+  );
+  return { ...filter, projects: [], kinds };
+}
+
+/**
+ * Ticks or unticks a kind or a project from the boxes as shown, so unticking one under All
+ * projects keeps the rest. Ticking every project, or unticking the last, is All projects again.
+ */
+export function toggleFilterPick(
+  filter: ThreadsFilter,
+  pick: ProjectPick,
+  groups: ReadonlyArray<FilterGroup>,
+): ThreadsFilter {
+  const keysOf = (kind: ThreadsFilterKind) =>
+    groups.filter((group) => group.kind === kind).map((group) => group.key);
+  const shown = filterAsShown(filter, groups);
+  const next =
+    pick.kind === "kind"
+      ? toggleFilterKind(shown, pick.projectKind, keysOf(pick.projectKind))
+      : toggleFilterProject(shown, pick.key, pick.projectKind, keysOf(pick.projectKind));
+  const kept = filterProjectGroupKeys(next, groups);
+  const nothingPicked = kept === null || kept.size === 0;
+  if (nothingPicked || groups.every((group) => kept.has(group.key))) {
+    return { ...next, projects: [], kinds: [] };
+  }
+  return next;
 }
 
 /** A filter read back from storage, keeping only what it still understands. */
