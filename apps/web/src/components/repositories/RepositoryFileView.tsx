@@ -41,6 +41,7 @@ const FILE_EDITOR_THEME = EditorView.theme({
     "--atlas-md-focus-ring": "var(--ring)",
     "--atlas-selection": "color-mix(in oklab, var(--ring) 30%, transparent)",
     "--atlas-selection-unfocused": "color-mix(in oklab, var(--muted-foreground) 20%, transparent)",
+    "--atlas-caret": "var(--foreground)",
   },
   "&.cm-focused": { outline: "none" },
   "&.cm-code .cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "13px" },

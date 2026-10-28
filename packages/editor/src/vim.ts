@@ -447,7 +447,8 @@ const cellSupport = vimSupport(false);
 /**
  * The selection and insert-mode caret, drawn by CodeMirror's layers: Vim hides the native
  * selection outside insert mode, so a visual selection shows only through these. A host colours
- * the selection with `--atlas-selection` (focused) and `--atlas-selection-unfocused`.
+ * the selection with `--atlas-selection` (focused) and `--atlas-selection-unfocused`, and the
+ * caret with `--atlas-caret`, since a `currentColor` caret went unpainted in the desktop composer.
  */
 const drawnSelection: Extension = [
   drawSelection(),
@@ -458,8 +459,7 @@ const drawnSelection: Extension = [
     "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
       background: "var(--atlas-selection, #d7d4f0)",
     },
-    // In the text's colour, as the native caret it replaces.
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "currentColor" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--atlas-caret, currentColor)" },
   }),
 ];
 
