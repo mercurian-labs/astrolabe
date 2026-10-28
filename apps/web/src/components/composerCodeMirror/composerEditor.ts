@@ -160,9 +160,10 @@ const composerTheme = EditorView.theme({
     // Astrolabe: Vim's drawn selection (see `vimMode`).
     "--atlas-selection": "color-mix(in oklab, var(--ring) 30%, transparent)",
     "--atlas-selection-unfocused": "color-mix(in oklab, var(--muted-foreground) 20%, transparent)",
+    "--atlas-caret": "var(--foreground)",
   },
   "&.cm-focused": { outline: "none" },
-  // The editor element carries the prompt's font, leading, wrapping, and size limits.
+  // The editor element carries the prompt's font, leading, and size limits.
   ".cm-scroller": {
     fontFamily: "inherit",
     lineHeight: "inherit",
@@ -170,7 +171,6 @@ const composerTheme = EditorView.theme({
     flexGrow: "1",
   },
   "&.cm-editor .cm-content": { padding: "0", caretColor: "currentColor" },
-  ".cm-lineWrapping": { whiteSpace: "inherit" },
   ".cm-line": { padding: "0" },
   // Vim's ex line (`:`) opens beneath the draft.
   ".cm-panels": { backgroundColor: "transparent", color: "inherit" },
