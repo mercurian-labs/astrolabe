@@ -163,7 +163,7 @@ export function AppIconRail() {
       {/* The sidebar's toggle, centred in the cap, or just after the macOS window buttons. */}
       <div
         data-app-rail-toggle=""
-        className="fixed top-[var(--workspace-controls-top)] left-(--rail-toggle-left,--spacing(1.5)) z-50 flex h-(--workspace-topbar-height) items-center"
+        className="fixed top-[var(--workspace-controls-top)] left-(--rail-toggle-left,--spacing(1.5)) z-50 flex h-(--workspace-topbar-height) items-center [-webkit-app-region:no-drag]"
       >
         <SidebarMenu>
           <SidebarToggleItem />
