@@ -953,8 +953,8 @@ section {
     border-left: 0;
   }
   .tour__caption {
-    padding-top: 0;
     border-left: 0;
+    border-top: 1px solid var(--rule);
     font-size: 0.875rem;
   }
 }
