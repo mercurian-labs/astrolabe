@@ -507,6 +507,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         defaultOpen
         style={sidebarProviderStyle}
       >
+        {isElectron ? (
+          // The window's one drag rectangle, first in the DOM so every titlebar control's
+          // no-drag lands after it (see `.drag-region` in index.css).
+          <div
+            aria-hidden
+            data-titlebar-drag-surface=""
+            className="pointer-events-none fixed inset-x-0 top-0 h-(--workspace-topbar-height) [-webkit-app-region:drag]"
+          />
+        ) : null}
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
         {/* The icon rail's room in the layout; the sidebar opens beside it. */}
         {hasIconRail ? <div aria-hidden className="w-11 shrink-0" /> : null}
