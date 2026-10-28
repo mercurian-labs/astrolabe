@@ -1306,6 +1306,7 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey: hiddenKey,
         isSearching: false,
         scopedProjectKeys,
+        statuses: [],
         findThread,
       }),
     ).toEqual({ pendingKey: hiddenKey, widensScope: true });
@@ -1319,6 +1320,7 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey: hiddenKey,
         isSearching: false,
         scopedProjectKeys,
+        statuses: [],
         findThread,
       }),
     ).toEqual({ pendingKey: null, widensScope: false });
@@ -1334,10 +1336,26 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey,
         isSearching: false,
         scopedProjectKeys,
+        statuses: [],
         findThread,
       });
     resolve("environment-test:unlisted");
     expect(resolve(hiddenKey)).toEqual({ pendingKey: hiddenKey, widensScope: true });
+  });
+
+  it("widens for a newly opened thread only the status filter hides", () => {
+    const idle = makeThreadFixture({ projectId: ProjectId.make("project-scoped") });
+    const resolve = (statuses: ReadonlyArray<"needs-you" | "working">) =>
+      resolveSidebarRouteReveal({
+        reveal: { observedKey: "environment-test:other", pendingKey: null },
+        routeKey: hiddenKey,
+        isSearching: false,
+        scopedProjectKeys,
+        statuses,
+        findThread: (key: string) => (key === hiddenKey ? idle : undefined),
+      });
+    expect(resolve(["needs-you"]).widensScope).toBe(true);
+    expect(resolve([]).widensScope).toBe(false);
   });
 
   it("holds a pending reveal without widening while searching", () => {
@@ -1347,6 +1365,7 @@ describe("resolveSidebarRouteReveal", () => {
         routeKey: hiddenKey,
         isSearching: true,
         scopedProjectKeys,
+        statuses: [],
         findThread,
       }),
     ).toEqual({ pendingKey: hiddenKey, widensScope: false });
