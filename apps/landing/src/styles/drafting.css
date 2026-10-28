@@ -867,10 +867,10 @@ section {
   transform: none !important;
   background: var(--ink-4);
 }
-.tour[data-state="ready"] .tour__phase {
+.tour:is([data-state="ready"], [data-state="playing"]) .tour__phase {
   cursor: pointer;
 }
-.tour[data-state="ready"] .tour__phase:hover .tag {
+.tour:is([data-state="ready"], [data-state="playing"]) .tour__phase:hover .tag {
   color: var(--ink);
 }
 .tour__phase .tag {
