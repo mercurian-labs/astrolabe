@@ -4,7 +4,7 @@
 // keeps its modelling, with the two upper windows printed flat in rust.
 
 import Twilight from "/src/scripts/twilight.js";
-import { done, fonts, params } from "./frame.js";
+import { done, fonts, params, wings } from "./frame.js";
 
 const ink = params.get("ink") === "day" ? "day" : "night";
 const W = innerWidth;
@@ -252,16 +252,7 @@ async function printPlate(canvas, plate, palette) {
   gl.finish();
 }
 
-// The line either side of the building, each half on two lines, as on the instrument card.
-const line = params.get("line") ?? "";
-const halves = [line.slice(0, line.indexOf(". ") + 1), line.slice(line.indexOf(". ") + 2)];
-for (const [el, half] of [
-  [document.querySelector(".wing--left"), halves[0]],
-  [document.querySelector(".wing--right"), halves[1]],
-]) {
-  const at = half.lastIndexOf(" ");
-  el.append(half.slice(0, at), document.createElement("br"), half.slice(at + 1));
-}
+wings(params.get("line") ?? "");
 
 done(
   (async () => {
