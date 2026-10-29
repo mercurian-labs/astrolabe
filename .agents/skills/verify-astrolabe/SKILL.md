@@ -160,6 +160,12 @@ when the feature needs a real thread. Then:
   Open the keyboard menu with Cmd+K, which works from the composer, or move focus to a
   row first with Cmd+K `h`. `preview_act press` names the space bar `Space` (a literal
   space is rejected).
+- Read `aria-disabled` / `disabled` before clicking a menu item or button you expect to be
+  enabled (Split right on a lone tab, Back with no history). A click on a disabled control
+  waits out its whole timeout and the next call can find the automation host
+  reconnecting; `preview_status` then a `requestAnimationFrame` probe confirms the tab
+  survived. Where a popup covers a copy of the same control (an empty state's **Add a
+  folder**), scope the locator to `role=dialog`.
 - `preview_snapshot` returns a very large tree. Use `preview_wait_for` to
   settle and `preview_evaluate` for targeted reads (tab lists, localStorage),
   and take a snapshot only to look or to save evidence. If a snapshot times out,

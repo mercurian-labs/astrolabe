@@ -92,9 +92,10 @@ thread's own Pull request tab. Shown only when a connected server reports
   (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a repository
   is the list's `projectId` scope. Repositories (all or one) hides Wiki changes; Wikis (all or
   one) hides the pull requests, Sort and Filters, and an empty wiki says `No change requests in
-  <wiki> yet`. The Agents filter (`projects/useThreadsProjectFilter.ts`, combobox `Filter
-  threads by project: <name>`) lists the same, a wiki only once its folder is a project (one
-  added through Wikis → Add a folder is). Filters still holds Host (with several hosts) and
+  <wiki> yet`. The Agents filter (`projects/useThreadsFilter.ts`, `Filter threads`; see
+  [sidebar-header.md](sidebar-header.md)) lists the same projects, a wiki only once its folder
+  is a project (one added through Wikis → Add a folder is), but picks several and adds status
+  rows; this filter stays single-pick. Filters still holds Host (with several hosts) and
   upstream's Project, which mirrors the same scope.
   Mobile's Filters → Project lists All projects, "Repositories" and each repository, then
   "Wikis" and `<wiki> · Wiki`; the menu scrolls, so walk it with two short `scroll down 0.3`

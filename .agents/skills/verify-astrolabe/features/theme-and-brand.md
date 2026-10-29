@@ -24,7 +24,7 @@ spelling live in
   (`[data-theme-color-role=focusBar]`, under Brand & content, with Advanced on).
   The editor paints its draft on the live app, so the bar changes as the row is
   edited.
-- The page title reads "Astrolabe (Alpha)" while booting and "Astrolabe (Dev)" once loaded in dev
+- The page title reads "Astrolabe (Beta)" while booting and "Astrolabe (Dev)" once loaded in dev
   (a server version can set another stage label). Brand marks and the
   wordmark appear on the boot screen and the welcome wizard, and the monogram heads the icon rail.
   The monogram also replaces T3's glyph in the chat timeline: on the plain "Created thread" row

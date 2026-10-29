@@ -30,7 +30,8 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   with unsaved edits, makes way for a new tab. Option/Alt-click, middle-click, the
   row's right-click **Open in new tab**, or Alt+Enter open a new tab after the one in
   front. Mod-click (Cmd on macOS, Ctrl elsewhere) and Shift-click select rows
-  (`sidebarRowSelection.ts`, `data-selected` with the selected fill; Escape clears);
+  (`sidebarRowSelection.ts`, `data-selected` with the selected fill; Escape clears; with a row focused the first
+  Escape moves focus to the right (keyboard-nav.md) and a second clears);
   a selected row's right-click is **Open N in new tabs**. Rows are `draggable`: dropped on
   a pane's strip they open at the insertion line, on its content in a new pane
   (`placeWikiTabs` → `placeTabs`), the selection with them. Right-click **Open to the

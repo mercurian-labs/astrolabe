@@ -24,16 +24,32 @@ actions at its right end.
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
   corner the same way, where the rail's edge meets the title bar's bottom border (strips,
   and the Settings and Usage headers).
-- Title row: heading **Agents**, then **Search threads**, **Filter threads by
-  project**, **New thread**. The filter is a combobox (`projects/useThreadsProjectFilter.ts`
-  over the shared `projects/projectFilter.ts`). Its popup has a `Search projects` field, then
-  All projects, a **Repositories** heading and each repository, a **Wikis** heading and each
-  wiki (a wiki's checkout is listed once, as the wiki; a heading shows only when it has
-  entries), and a last **New project** row. A heading is a choice too. Once something is
-  picked the trigger is named `Filter threads by project: <label>` (`Repositories`, `Wikis`
-  or the project). A picked heading is kept in localStorage
-  `astrolabe:threads-project-kind:v1` (All projects clears it), and an empty list then reads
-  "No threads in your repositories yet" (or "your wikis"). Search is upstream's integrated search: the
+- Title row: heading **Agents**, then **Search threads**, **Filter threads**, **New thread**.
+  The filter is a multi-select combobox (`projects/useThreadsFilter.ts` over the pure model in
+  `projects/threadsFilter.ts` and the shared `projects/projectFilter.ts`; pills and checkboxes
+  in `projects/ThreadsFilterParts.tsx`). Its trigger always shows the filter icon and is named
+  `Filter threads`, or `Filter threads (filtered)` with a dot while anything is picked. Its
+  popup has a `Search filters` field (placeholder `Filter...`; "No matching filters." when
+  nothing matches), then a **Status** group (Needs you, Working, Errored, each with the count
+  of visible threads in the picked projects) and a **Projects** group: All projects, a
+  **Repositories** heading and each repository, a **Wikis** heading and each wiki (a wiki's
+  checkout is listed once, as the wiki; a heading shows only when it has entries), and a last
+  **New project** row. Every row is a checkbox and picking keeps the popup open. Values in one
+  group widen, the two groups narrow. With no project picked, All projects and every row under
+  it show ticked; unticking one keeps the rest, and ticking every project or unticking the
+  last is All projects again. A heading stands for every project of its kind, including later
+  ones; unticking one project under a ticked heading turns it into picks of the others and
+  the heading shows a minus (partial). The filter is kept in localStorage
+  `astrolabe:threads-filter:v1` as `{projects, kinds, statuses}` (removed when empty; the old
+  single pick is not read). An empty list reads "No threads match these filters".
+- **Pills** (`[aria-label='Thread filters']`, under the title row): **Needs you** is a
+  one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
+  visible thread needs you; one pill names the picked projects (up to three icons, the names,
+  or `N projects` past two) and one the other statuses. A pill's body opens the popup, its ×
+  (`Remove filter: <label>`) clears that dimension, and **Clear** (with two or more pills)
+  clears all. Opening a thread the filter hides (search, the palette, a link, a reload onto
+  it) clears the whole filter. A thread row's menu offers `Filter by <project>` (that project
+  alone) or `Show all projects`. Search is upstream's integrated search: the
   button gives way to upstream's field, `combobox "Search threads"` (and a **Clear
   thread search** button while it holds a query). Typing replaces the list with
   `listbox "Thread search results"` (or a status: "Searching thread messages…",
@@ -107,15 +123,28 @@ route.
 ```
 preview_act click  role=button[name='Search threads']       # swaps the heading for the field
 preview_act type   role=combobox[name='Search threads']  text=<title words>
-preview_act click  role=combobox[name=/^Filter threads by project/]
+preview_act click  role=combobox[name=/^Filter threads/]   # popup stays open across picks
+preview_act click  role=option[name=/^<project>/]           # under All projects: unticks it, keeps the rest
+preview_evaluate   localStorage['astrolabe:threads-filter:v1']
+preview_act click  role=button[name=/^Remove filter: /]     # the pill's ×
 preview_act click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
 ```
 
+The trigger is a `role=combobox` button, and status rows carry their count in their name
+(`Working3`), so match them with a leading regex. Clicking the trigger through
+`preview_evaluate` (`.click()`) does not open Base UI's popup; use `preview_act click`. Read
+the boxes from the drawn checkbox: `[...document.querySelectorAll('[role=option]')].map(o =>
+[o.textContent, o.querySelector('svg.lucide-check') ? 'x' : o.querySelector('svg.lucide-minus')
+? '-' : ' '])`. The sidebar's own search looks only inside the filter ("No threads found"
+for a hidden thread), so prove the reveal from the Search palette instead: Cmd+K `/`, type
+the hidden thread's title, Enter; the stored filter is gone and its row shows.
+
 **Proof:** each action's result (the field focused and
 `[role=listbox][aria-label="Thread search results"] [role=option]` rows as you
-type, the project filter list with its `Search projects` field, All projects, the Repositories
-and Wikis headings and the New project row, the trigger's name after picking a heading, the
-picker or a new `/draft/` URL), plus a saved screenshot of the rows. Rows in the accessibility
+type, the filter popup with its `Search filters` field, the Status and Projects groups and
+the New project row, every box ticked under All projects, the stored filter and the pill
+after a pick, the row count dropping to the picked projects and returning after the pill's ×,
+the picker or a new `/draft/` URL), plus a saved screenshot of the rows and pills. Rows in the accessibility
 tree are not proof they paint: for `[data-app-rail-mark]`, `[data-app-rail-toggle] button` and
 the first search result, take the `getBoundingClientRect` centre (nonzero height) and check
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
