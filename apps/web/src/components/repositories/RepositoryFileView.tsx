@@ -22,9 +22,9 @@ import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFi
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
-import type { RepositoryTab } from "./repositoryTabs";
+import type { CheckedOutRepositoryTab } from "./repositoryTabs";
 
-type FileTab = Extract<RepositoryTab, { kind: "file" }>;
+type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
 // rebuild the editor's styles.

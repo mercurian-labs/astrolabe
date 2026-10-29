@@ -1,0 +1,310 @@
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
+import {
+  EllipsisIcon,
+  GitBranchIcon,
+  GitBranchPlusIcon,
+  PinIcon,
+  Trash2Icon,
+  UndoIcon,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
+
+import { requestConfirmDialog } from "~/confirmDialog";
+import { useEnvironmentQuery } from "~/state/query";
+import { useAtomCommand } from "~/state/use-atom-command";
+import { vcsEnvironment } from "~/state/vcs";
+import { refreshProjectWorktrees, worktreeEnvironment } from "~/state/worktrees";
+import {
+  SidebarHeaderIconButton,
+  SidebarPickerAction,
+  SidebarPickerFooter,
+} from "../sidebar/SidebarThreadHeader";
+import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  ComboboxTrigger,
+} from "../ui/combobox";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
+
+const target = (repository: EnvironmentProject) => ({
+  environmentId: repository.environmentId,
+  projectId: repository.id,
+});
+
+/**
+ * A worktree's header in the Repositories sidebar: its branch (or commit), how many files it has
+ * uncommitted, what holds it, and Keep and Delete. Its contents collapse under it.
+ */
+export function WorktreeHeader({
+  repository,
+  worktree,
+  expanded,
+  onToggle,
+}: {
+  readonly repository: EnvironmentProject;
+  readonly worktree: ProjectWorktree;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+}) {
+  const holds = worktree.holds.filter((hold) => hold.kind !== "main");
+  const accessory = (
+    <span className="flex shrink-0 items-center gap-1.5 text-3xs text-sidebar-muted-foreground/70">
+      {worktree.isMain ? <span>main checkout</span> : null}
+      {worktree.changedFiles > 0 ? (
+        <span className="tabular-nums">{`${worktree.changedFiles} changed`}</span>
+      ) : null}
+      {holds.length > 0 ? (
+        <Tooltip>
+          <TooltipTrigger render={<span />}>
+            <PinIcon aria-label="Held" className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup side="right">
+            {holds.map((hold) => (
+              <div key={hold.kind + hold.label} className="text-xs">
+                {hold.label}
+              </div>
+            ))}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
+    </span>
+  );
+  return (
+    <li className="mx-0.5 flex h-8 list-none items-center gap-1">
+      <CollapsibleSectionHeader
+        onClick={onToggle}
+        expanded={expanded}
+        tone="muted"
+        accessory={accessory}
+      >
+        <span className="flex items-center gap-1.5">
+          <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+          {worktree.alias}
+        </span>
+      </CollapsibleSectionHeader>
+      {worktree.isMain ? null : <WorktreeMenu repository={repository} worktree={worktree} />}
+    </li>
+  );
+}
+
+function WorktreeMenu({
+  repository,
+  worktree,
+}: {
+  readonly repository: EnvironmentProject;
+  readonly worktree: ProjectWorktree;
+}) {
+  const setKept = useAtomCommand(worktreeEnvironment.setKept);
+  const remove = useRemoveWorktree();
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`${worktree.alias} worktree actions`}
+            className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          />
+        }
+      >
+        <EllipsisIcon className="size-3.5" />
+      </MenuTrigger>
+      <MenuPopup side="bottom" align="end">
+        <MenuItem
+          onClick={async () => {
+            await setKept({
+              environmentId: repository.environmentId,
+              input: { projectId: repository.id, path: worktree.path, kept: !worktree.kept },
+            });
+            refreshProjectWorktrees(repository.environmentId, repository.id);
+          }}
+        >
+          <PinIcon />
+          {worktree.kept ? "Stop keeping" : "Keep for this branch"}
+        </MenuItem>
+        <MenuItem variant="destructive" onClick={() => void remove(repository, worktree)}>
+          <Trash2Icon />
+          Delete worktree…
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/** Deletes a worktree, asking first when the server names something it would cost. */
+function useRemoveWorktree() {
+  const remove = useAtomCommand(worktreeEnvironment.remove);
+  return async (repository: EnvironmentProject, worktree: ProjectWorktree) => {
+    const run = (confirmed: boolean) =>
+      remove({
+        environmentId: repository.environmentId,
+        input: { projectId: repository.id, path: worktree.path, confirmed },
+      });
+    const asked = await run(false);
+    if (asked._tag === "Success" && !asked.value.removed) {
+      const confirmed = await requestConfirmDialog(
+        [`Delete the ${worktree.alias} worktree?`, ...asked.value.warnings].join("\n"),
+        { variant: "destructive" },
+      );
+      if (confirmed === true) await run(true);
+    }
+    refreshProjectWorktrees(repository.environmentId, repository.id);
+  };
+}
+
+/**
+ * Work branches set aside when their worktree took another branch: open the branch to have it
+ * back, or discard it. When the branch has moved on, it stays until someone decides.
+ */
+export function SetAsideRows({
+  repository,
+  setAside,
+}: {
+  readonly repository: EnvironmentProject;
+  readonly setAside: ProjectWorktreeListResult["setAside"];
+}) {
+  const openBranch = useOpenBranch();
+  const discard = useAtomCommand(worktreeEnvironment.discardSetAside);
+  if (setAside.length === 0) return null;
+  return (
+    <>
+      {setAside.map((entry) => (
+        <li
+          key={entry.ref}
+          className="mx-0.5 flex h-8 list-none items-center gap-1.5 px-2 text-xs text-sidebar-muted-foreground"
+        >
+          <UndoIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{`Set-aside work on ${entry.branch}`}</span>
+          <button
+            type="button"
+            className="cursor-pointer rounded px-1 hover:text-sidebar-foreground"
+            onClick={() => void openBranch(target(repository), entry.branch)}
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer rounded px-1 hover:text-destructive-foreground"
+            onClick={async () => {
+              const confirmed = await requestConfirmDialog(
+                `Discard the work set aside on ${entry.branch}?`,
+                { variant: "destructive" },
+              );
+              if (confirmed !== true) return;
+              await discard({
+                environmentId: repository.environmentId,
+                input: { projectId: repository.id, branch: entry.branch },
+              });
+              refreshProjectWorktrees(repository.environmentId, repository.id);
+            }}
+          >
+            Discard
+          </button>
+        </li>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Opens a branch in a worktree (its own, a free one, or a new one), or makes a new branch from
+ * the main checkout's branch in a worktree of its own.
+ */
+export function OpenBranchPicker({
+  repository,
+  worktrees,
+  onOpened,
+}: {
+  readonly repository: EnvironmentProject;
+  readonly worktrees: ReadonlyArray<ProjectWorktree>;
+  readonly onOpened: (worktree: ProjectWorktree) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const refs = useEnvironmentQuery(
+    open
+      ? vcsEnvironment.listRefs({
+          environmentId: repository.environmentId,
+          input: {
+            cwd: repository.workspaceRoot,
+            refKind: "local",
+            limit: 100,
+            ...(query.trim() ? { query: query.trim() } : {}),
+          },
+        })
+      : null,
+  );
+  const openBranch = useOpenBranch();
+  const createWorktree = useCreateWorktree();
+  const branches = (refs.data?.refs ?? []).map((ref) => ref.name);
+  const base = worktrees.find((worktree) => worktree.isMain)?.branch ?? "HEAD";
+  const name = query.trim();
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+  const placedOn = (branch: string) => worktrees.some((worktree) => worktree.branch === branch);
+  return (
+    <Combobox
+      items={branches}
+      filteredItems={branches}
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : close())}
+      value={null}
+      onValueChange={async (branch: string | null) => {
+        if (!branch) return;
+        close();
+        const worktree = await openBranch(target(repository), branch);
+        if (worktree) onOpened(worktree);
+      }}
+    >
+      <ComboboxTrigger render={<SidebarHeaderIconButton label="Open a branch in a worktree" />}>
+        <GitBranchPlusIcon className="size-4" />
+      </ComboboxTrigger>
+      <ComboboxPopup align="end" className="min-w-56 max-w-[min(18rem,var(--available-width))]">
+        <ComboboxSearchInput
+          aria-label="Find or name a branch"
+          placeholder="Find or name a branch..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <ComboboxEmpty>{refs.isPending ? "Reading branches…" : "No such branch."}</ComboboxEmpty>
+        <ComboboxList>
+          {(branch: string) => (
+            <ComboboxItem key={branch} hideIndicator value={branch}>
+              <GitBranchIcon className="size-3.5 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate text-sm">{branch}</span>
+              {placedOn(branch) ? <BranchNote>in a worktree</BranchNote> : null}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+        {name.length > 0 && !branches.includes(name) ? (
+          <SidebarPickerFooter>
+            <SidebarPickerAction
+              icon={GitBranchPlusIcon}
+              onClick={async () => {
+                close();
+                const worktree = await createWorktree(target(repository), name, base);
+                if (worktree) onOpened(worktree);
+              }}
+            >
+              {`New branch ${name} from ${base}`}
+            </SidebarPickerAction>
+          </SidebarPickerFooter>
+        ) : null}
+      </ComboboxPopup>
+    </Combobox>
+  );
+}
+
+function BranchNote({ children }: { readonly children: ReactNode }) {
+  return <span className="shrink-0 text-xs text-muted-foreground">{children}</span>;
+}

@@ -1,4 +1,5 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import type { ProjectWorktree } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
@@ -13,6 +14,7 @@ import {
   SettingsIcon,
 } from "lucide-react";
 import {
+  Fragment,
   useReducer,
   useRef,
   useState,
@@ -24,11 +26,11 @@ import { openCommandPalette } from "~/commandPaletteBus";
 import { isElectron } from "~/env";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
-import { useThreadShells } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useProjectPathSearch } from "~/state/queries";
 import { reviewEnvironment } from "~/state/review";
 import { vcsEnvironment } from "~/state/vcs";
+import { useProjectWorktrees } from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { changeRequestKindStore } from "../changeRequests/changeRequestKind";
@@ -62,72 +64,65 @@ import {
   useComboboxFilter,
 } from "../ui/combobox";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useSectionFocusedKey } from "~/panes/sectionPanes";
 import { repositoryPanes } from "./repositoryPanes";
-import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
-import { fileName, folderOf, repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
+import { OpenBranchPicker, SetAsideRows, WorktreeHeader } from "./RepositoryWorktrees";
+import { repositoryScope, repositoryView } from "./repositoryScope";
+import {
+  checkoutOf,
+  fileName,
+  folderOf,
+  parseRepositoryTabKey,
+  repositoryTabKey,
+  type RepositoryCheckout,
+  type RepositoryTab,
+} from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
   `${project.environmentId}:${project.id}`;
 
-/** A checkout of a repository: its own, or a thread's working tree. */
-interface Checkout {
-  readonly cwd: string;
-  readonly label: string;
-}
-
-/** The repository's checkouts: its own first, then each thread's working tree, newest first. */
-function useCheckouts(repository: EnvironmentProject | null): ReadonlyArray<Checkout> {
-  const threads = useThreadShells();
-  if (repository === null) return [];
-  const seen = new Set([repository.workspaceRoot]);
-  const own: Checkout[] = [{ cwd: repository.workspaceRoot, label: "Repository checkout" }];
-  const trees = threads
-    .filter(
-      (thread) =>
-        thread.environmentId === repository.environmentId &&
-        thread.projectId === repository.id &&
-        thread.worktreePath !== null &&
-        thread.archivedAt === null,
-    )
-    .toSorted((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-  for (const thread of trees) {
-    if (thread.worktreePath === null || seen.has(thread.worktreePath)) continue;
-    seen.add(thread.worktreePath);
-    own.push({
-      cwd: thread.worktreePath,
-      label: thread.branch ? `${thread.title} · ${thread.branch}` : thread.title,
-    });
-  }
-  return own;
-}
-
 /**
- * The Repositories sidebar, built like the Wikis one: title row (search, repository filter, Add),
- * then a list leading with what is moving (uncommitted changes, branch against base, change
- * requests) and then recently changed files; the filter's Tree choice shows the whole tree. A row
- * opens in the focused pane's front tab, or with the modifier in a new tab.
+ * The Repositories sidebar: title row (search, open a branch, repository filter, Add), then the
+ * filtered repository's worktrees, main checkout first, each with what is moving there or its file
+ * tree. The focused tab's worktree leads: recent files, the open tree, and what search reads.
  */
 export function RepositorySidebar() {
   const repositories = useRepositories();
   const scope = repositoryScope.useValue();
   const view = repositoryView.useValue();
   const scoped = repositories.find((repository) => repositoryKey(repository) === scope) ?? null;
-  const checkouts = useCheckouts(scoped);
-  const storedCheckout = repositoryCheckout.useValue();
-  const checkout =
-    checkouts.find((candidate) => candidate.cwd === storedCheckout) ?? checkouts[0] ?? null;
+  const listed = useProjectWorktrees(
+    scoped ? { environmentId: scoped.environmentId, projectId: scoped.id } : null,
+  );
+  const worktrees = listed?.worktrees ?? NO_WORKTREES;
+  const focusedKey = useSectionFocusedKey(repositoryPanes);
+  const focusedTab = focusedKey === null ? null : parseRepositoryTabKey(focusedKey);
+  const focused =
+    scoped && focusedTab && focusedTab.projectId === scoped.id
+      ? (worktrees.find((worktree) => holdsCheckout(worktree, focusedTab.checkout)) ?? null)
+      : null;
+  const active = focused ?? worktrees.find((worktree) => worktree.isMain) ?? worktrees[0] ?? null;
+  // Paths whose section someone opened or closed against its default.
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  const expanded = (worktree: ProjectWorktree) =>
+    (view === "list" || worktrees.length === 1 || worktree.path === active?.path) !==
+    toggled.has(worktree.path);
+  const toggle = (worktree: ProjectWorktree) =>
+    setToggled((current) => {
+      const next = new Set(current);
+      if (!next.delete(worktree.path)) next.add(worktree.path);
+      return next;
+    });
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const search = useProjectPathSearch(
     {
       environmentId: scoped?.environmentId ?? null,
-      cwd: checkout?.cwd ?? null,
+      cwd: active?.path ?? null,
       query: searchQuery,
       kind: "file",
     },
@@ -140,8 +135,8 @@ export function RepositorySidebar() {
     setActiveIndex(0);
   };
   const openResult = (path: string) => {
-    if (!scoped || !checkout) return;
-    repositoryPanes.show(fileKey(scoped, checkout.cwd, path));
+    if (!scoped || !active) return;
+    repositoryPanes.show(fileKey(scoped, checkoutOf(active), path));
     clearSearch();
   };
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -171,7 +166,24 @@ export function RepositorySidebar() {
               title="Repositories"
               searchNoun="file"
               hasProjects
-              projectScope={<RepositoryFilter repositories={repositories} scoped={scoped} />}
+              projectScope={
+                <>
+                  {scoped ? (
+                    <OpenBranchPicker
+                      repository={scoped}
+                      worktrees={worktrees}
+                      onOpened={(worktree) =>
+                        setToggled((current) => {
+                          const next = new Set(current);
+                          next.delete(worktree.path);
+                          return next;
+                        })
+                      }
+                    />
+                  ) : null}
+                  <RepositoryFilter repositories={repositories} scoped={scoped} />
+                </>
+              }
               onNewThread={() => openCommandPalette({ open: "add-repository" })}
               newThreadDisabled={false}
               newThreadShortcutLabel={null}
@@ -198,12 +210,12 @@ export function RepositorySidebar() {
             {repositories.length === 0 ? (
               <EmptyRepositories />
             ) : searching ? (
-              scoped && checkout ? (
+              scoped && active ? (
                 <ul role="presentation" className="flex flex-col gap-px">
                   {results.map((entry, index) => (
                     <FileRow
                       key={entry.path}
-                      tab={fileTab(scoped, checkout.cwd, entry.path)}
+                      tab={fileTab(scoped, checkoutOf(active), entry.path)}
                       highlighted={index === activeIndex}
                       detail={folderOf(entry.path)}
                       onOpened={clearSearch}
@@ -216,39 +228,79 @@ export function RepositorySidebar() {
               ) : (
                 <SidebarNote>Pick a repository in the filter to find its files.</SidebarNote>
               )
-            ) : scoped && checkout ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-2">
-                {checkouts.length > 1 ? (
-                  <CheckoutPicker
-                    checkouts={checkouts}
-                    value={checkout.cwd}
-                    onChange={(cwd) =>
-                      repositoryCheckout.set(cwd === scoped.workspaceRoot ? null : cwd)
-                    }
-                  />
-                ) : null}
-                {view === "tree" ? (
-                  // The tree's virtualized list is `height: 100%`, and the sidebar's scroll area
-                  // only gives its content a min-height, so the list collapsed to nothing. The
-                  // tree fills an absolutely placed box instead, whose height is definite.
-                  <div className="relative -mx-2 min-h-0 flex-1">
-                    <div className="absolute inset-0 flex flex-col">
-                      <FileBrowserPanel
-                        key={`${scoped.environmentId}:${checkout.cwd}`}
-                        environmentId={scoped.environmentId}
-                        cwd={checkout.cwd}
-                        projectName={scoped.title}
-                        selectedPath={null}
-                        selectedPathRevealId={0}
-                        onOpenFile={(path) =>
-                          repositoryPanes.show(fileKey(scoped, checkout.cwd, path))
-                        }
-                        workspaceMutationId={null}
+            ) : scoped && view === "tree" ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                {worktrees.map((worktree) => (
+                  <Fragment key={worktree.path}>
+                    <ul role="presentation">
+                      <WorktreeHeader
+                        repository={scoped}
+                        worktree={worktree}
+                        expanded={expanded(worktree)}
+                        onToggle={() => toggle(worktree)}
                       />
-                    </div>
-                  </div>
+                    </ul>
+                    {expanded(worktree) ? (
+                      // The tree's virtualized list is `height: 100%`, and the sidebar's scroll
+                      // area only gives its content a min-height, so the list collapsed to
+                      // nothing. Each tree fills an absolutely placed box, whose height is definite.
+                      <div className="relative -mx-2 min-h-40 flex-1">
+                        <div className="absolute inset-0 flex flex-col">
+                          <FileBrowserPanel
+                            key={`${scoped.environmentId}:${worktree.path}`}
+                            environmentId={scoped.environmentId}
+                            cwd={worktree.path}
+                            projectName={`${scoped.title} · ${worktree.alias}`}
+                            selectedPath={
+                              worktree.path === focused?.path && focusedTab?.kind === "file"
+                                ? focusedTab.path
+                                : null
+                            }
+                            selectedPathRevealId={0}
+                            onOpenFile={(path) =>
+                              repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
+                            }
+                            workspaceMutationId={null}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </Fragment>
+                ))}
+                {listed ? (
+                  <ul role="presentation" className="flex flex-col gap-px">
+                    <SetAsideRows repository={scoped} setAside={listed.setAside} />
+                  </ul>
+                ) : null}
+              </div>
+            ) : scoped ? (
+              <div className="flex flex-col gap-1">
+                {worktrees.map((worktree) => (
+                  <ul key={worktree.path} role="presentation" className="flex flex-col gap-px">
+                    <WorktreeHeader
+                      repository={scoped}
+                      worktree={worktree}
+                      expanded={expanded(worktree)}
+                      onToggle={() => toggle(worktree)}
+                    />
+                    {expanded(worktree) ? (
+                      <RepositoryList
+                        repository={scoped}
+                        cwd={worktree.path}
+                        checkout={checkoutOf(worktree)}
+                        showStatus
+                        showChanges={worktree.isMain}
+                        showRecent={worktree.path === active?.path}
+                      />
+                    ) : null}
+                  </ul>
+                ))}
+                {listed ? (
+                  <ul role="presentation" className="flex flex-col gap-px">
+                    <SetAsideRows repository={scoped} setAside={listed.setAside} />
+                  </ul>
                 ) : (
-                  <RepositoryList repository={scoped} cwd={checkout.cwd} showStatus />
+                  <SidebarNote>Reading worktrees…</SidebarNote>
                 )}
               </div>
             ) : view === "tree" ? (
@@ -256,12 +308,21 @@ export function RepositorySidebar() {
             ) : (
               <div className="flex flex-col gap-3">
                 {repositories.map((repository) => (
-                  <RepositoryList
+                  <ul
                     key={repositoryKey(repository)}
-                    repository={repository}
-                    cwd={repository.workspaceRoot}
-                    heading
-                  />
+                    role="presentation"
+                    aria-label={repository.title}
+                    className="flex flex-col gap-px"
+                  >
+                    <RepositoryList
+                      repository={repository}
+                      cwd={repository.workspaceRoot}
+                      checkout={{ cwd: repository.workspaceRoot }}
+                      heading
+                      showChanges
+                      showRecent
+                    />
+                  </ul>
                 ))}
               </div>
             )}
@@ -273,17 +334,27 @@ export function RepositorySidebar() {
   );
 }
 
+const NO_WORKTREES: ReadonlyArray<ProjectWorktree> = [];
+
+/** Whether a worktree holds what a tab reads: its branch, or its folder. */
+const holdsCheckout = (worktree: ProjectWorktree, checkout: RepositoryCheckout) =>
+  "branch" in checkout ? worktree.branch === checkout.branch : worktree.path === checkout.cwd;
+
 type FileTab = Extract<RepositoryTab, { kind: "file" }>;
 
-const fileTab = (repository: EnvironmentProject, cwd: string, path: string): FileTab => ({
+const fileTab = (
+  repository: EnvironmentProject,
+  checkout: RepositoryCheckout,
+  path: string,
+): FileTab => ({
   kind: "file",
   environmentId: repository.environmentId,
   projectId: repository.id,
-  cwd,
+  checkout,
   path,
 });
-const fileKey = (repository: EnvironmentProject, cwd: string, path: string) =>
-  repositoryTabKey(fileTab(repository, cwd, path));
+const fileKey = (repository: EnvironmentProject, checkout: RepositoryCheckout, path: string) =>
+  repositoryTabKey(fileTab(repository, checkout, path));
 
 function SidebarNote({ children }: { readonly children: string }) {
   return (
@@ -309,49 +380,28 @@ function EmptyRepositories() {
   );
 }
 
-/** Which checkout the list and tree read: the repository's own, or a thread's working tree. */
-function CheckoutPicker({
-  checkouts,
-  value,
-  onChange,
-}: {
-  readonly checkouts: ReadonlyArray<Checkout>;
-  readonly value: string;
-  readonly onChange: (cwd: string) => void;
-}) {
-  const items = checkouts.map((checkout) => ({ value: checkout.cwd, label: checkout.label }));
-  return (
-    <Select items={items} value={value} onValueChange={(next) => next && onChange(next)}>
-      <SelectTrigger size="sm" aria-label="Checkout" className="mx-0.5 w-auto">
-        <GitBranchIcon className="size-3.5 shrink-0 opacity-70" />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
-  );
-}
-
 /**
- * One repository's list: with `showStatus`, its checkout's uncommitted changes and its branch
- * against its base; a row into its change requests; then the files its commits changed most
- * recently. With `heading`, under the repository's name, as in the list of every repository.
+ * One checkout's rows: with `showStatus`, its uncommitted changes and its branch against its
+ * base; with `showChanges`, a row into the repository's change requests; with `showRecent`, the
+ * files its commits changed most recently. With `heading`, under the repository's name, as in the
+ * list of every repository.
  */
 function RepositoryList({
   repository,
   cwd,
+  checkout,
   heading = false,
   showStatus = false,
+  showChanges = false,
+  showRecent = false,
 }: {
   readonly repository: EnvironmentProject;
   readonly cwd: string;
+  readonly checkout: RepositoryCheckout;
   readonly heading?: boolean;
   readonly showStatus?: boolean;
+  readonly showChanges?: boolean;
+  readonly showRecent?: boolean;
 }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(true);
@@ -361,10 +411,12 @@ function RepositoryList({
       : null,
   );
   const recent = useEnvironmentQuery(
-    reviewEnvironment.recentFiles({
-      environmentId: repository.environmentId,
-      input: { cwd, limit: heading ? 8 : 40 },
-    }),
+    showRecent
+      ? reviewEnvironment.recentFiles({
+          environmentId: repository.environmentId,
+          input: { cwd, limit: heading ? 8 : 40 },
+        })
+      : null,
   );
   const uncommitted = status.data?.workingTree.files ?? [];
   const uncommittedPaths = new Set(uncommitted.map((file) => file.path));
@@ -375,7 +427,7 @@ function RepositoryList({
       kind: "diff",
       environmentId: repository.environmentId,
       projectId: repository.id,
-      cwd,
+      checkout,
       source,
     });
   const openChangeRequests = () => {
@@ -390,7 +442,7 @@ function RepositoryList({
     });
   };
   return (
-    <ul role="presentation" aria-label={repository.title} className="flex flex-col gap-px">
+    <>
       {heading ? (
         <li className="mx-0.5 flex h-8 list-none items-center gap-1">
           <CollapsibleSectionHeader
@@ -404,7 +456,9 @@ function RepositoryList({
       ) : null}
       {heading && !expanded ? null : (
         <>
-          <LinkRow icon={FolderGit2Icon} label="Changes" onClick={openChangeRequests} />
+          {showChanges ? (
+            <LinkRow icon={FolderGit2Icon} label="Changes" onClick={openChangeRequests} />
+          ) : null}
           {showStatus && uncommitted.length > 0 ? (
             <>
               <SectionLabel>{`Uncommitted · ${uncommitted.length}`}</SectionLabel>
@@ -416,7 +470,7 @@ function RepositoryList({
               {uncommitted.map((file) => (
                 <FileRow
                   key={file.path}
-                  tab={fileTab(repository, cwd, file.path)}
+                  tab={fileTab(repository, checkout, file.path)}
                   detail={folderOf(file.path)}
                   trailing={`+${file.insertions} −${file.deletions}`}
                 />
@@ -433,25 +487,25 @@ function RepositoryList({
               onClick={() => repositoryPanes.show(diffKey("branch-range"))}
             />
           ) : null}
-          {recentFiles.length > 0 ? (
+          {showRecent && recentFiles.length > 0 ? (
             <>
               {heading ? null : <SectionLabel>Recently changed</SectionLabel>}
               {recentFiles.map((file) => (
                 <FileRow
                   key={file.path}
-                  tab={fileTab(repository, cwd, file.path)}
+                  tab={fileTab(repository, checkout, file.path)}
                   detail={folderOf(file.path)}
                   note={file.subject}
                   trailing={compactTime(file.changedAt)}
                 />
               ))}
             </>
-          ) : recent.isPending ? (
+          ) : showRecent && recent.isPending ? (
             <SidebarNote>Reading recent changes…</SidebarNote>
           ) : null}
         </>
       )}
-    </ul>
+    </>
   );
 }
 
@@ -641,7 +695,6 @@ function RepositoryFilter({
       onValueChange={(item: FilterOption | null) => {
         if (!item) return;
         repositoryScope.set(item.kind === "repository" ? repositoryKey(item.repository) : null);
-        repositoryCheckout.set(null);
       }}
     >
       <ComboboxTrigger

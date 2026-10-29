@@ -23,9 +23,9 @@ import { DiffFileLoadingBoundary } from "../diffs/DiffFileLoadingBoundary";
 import { useReviewFilePatches } from "../diffs/useReviewFilePatches";
 import { Button } from "../ui/button";
 import { repositoryPanes } from "./repositoryPanes";
-import { repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
+import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs";
 
-type DiffTab = Extract<RepositoryTab, { kind: "diff" }>;
+type DiffTab = Extract<CheckedOutRepositoryTab, { kind: "diff" }>;
 
 /**
  * Astrolabe: a checkout's changes in the Repositories area: its uncommitted changes, or its
@@ -113,7 +113,9 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        <span className="shrink-0 font-mono">{cwd.slice(cwd.lastIndexOf("/") + 1)}</span>
+        <span className="shrink-0 font-mono">
+          {"branch" in tab.checkout ? tab.checkout.branch : cwd.slice(cwd.lastIndexOf("/") + 1)}
+        </span>
       </div>
       {target === null ? null : (
         <AnnotatableCodeView
