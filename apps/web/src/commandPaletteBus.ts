@@ -9,8 +9,8 @@ export interface CommandPaletteLinkedThreads {
 }
 
 export interface CommandPaletteOpenDetail {
-  // Astrolabe: or the file picker, which the keyboard menu's `f` opens.
-  readonly open?: "add-project" | "new-thread-in" | "files";
+  // Astrolabe: or the file picker, which the keyboard menu's `f` opens, or adding a wiki.
+  readonly open?: "add-project" | "add-wiki" | "new-thread-in" | "files";
   readonly query?: string;
   readonly linkedThreads?: CommandPaletteLinkedThreads;
 }
@@ -22,6 +22,7 @@ export function openCommandPalette(detail: CommandPaletteOpenDetail = {}): void 
 function commandPaletteOpenAction(detail: CommandPaletteOpenDetail): CommandPaletteUiAction {
   if (detail.open === "new-thread-in") return { _tag: "OpenNewThreadIn" };
   if (detail.open === "add-project") return { _tag: "OpenAddProject" };
+  if (detail.open === "add-wiki") return { _tag: "OpenAddProject", target: "wiki" };
   // Astrolabe: the keyboard menu, which never opens over the palette, opens the file picker.
   if (detail.open === "files") return { _tag: "ToggleMode", mode: "files" };
   if (detail.query !== undefined) {
