@@ -33,7 +33,7 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
   in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
-- **Worktrees**: `button "Open a branch in a worktree"` (beside the filter, with a
+- **Worktrees**: `combobox "Open a branch in a worktree"` (beside the filter, with a
   repository picked) lists local branches; a pick puts the branch in its worktree, else a
   free one (no main checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder.
   A name that is no branch offers "New branch <name> from <main's branch>". A free

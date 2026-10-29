@@ -35,6 +35,20 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
+- **Worktrees** (with a wiki picked): `combobox "Work on a change request in a worktree"`
+  beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
+  worktree (shared with Repositories: its own, a free one, or a new `t3-<8 hex>`), and
+  a typed title offers "New change request “<title>” in a worktree". The filter's foot
+  toggles **Show the file trees** / **Show as list** (`astrolabe:wiki-view:v1`). Tree
+  mode drops the document list and the **Open changes** row for one collapsible section
+  per worktree (main under the wiki's main branch, a change request's under its title),
+  each a `FileBrowserPanel`; the focused tab's worktree opens on its own. A note clicked
+  in a tree opens as `wiki-note:<env>:<wiki>:<change request id or empty>:<name>`, other
+  files as repository file tabs; tree rows open on a plain click only (no middle-click
+  or modifiers). A change request worktree's menu adds **Save edits to the change
+  request** when it has unsaved edits (`wiki.saveWorktree`, one amendment, worktree left
+  clean). An amendment landing on a change request moves its worktree's files, and is
+  refused, naming the files, when they overlap unsaved edits there.
 - **Main area**: one arrangement on the device (localStorage
   `astrolabe:wiki-panes:v1`). A plain click on a row (or Enter on a focused row)
   replaces what the focused pane's tab in front shows; a document already open in
