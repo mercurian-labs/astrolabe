@@ -1,7 +1,7 @@
 import type { ChangeGroupDecisions } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyChangeGroupChange } from "./ChangeGroupService.ts";
+import { applyChangeGroupChange, foldThreadBranches } from "./ChangeGroupService.ts";
 
 const empty: ChangeGroupDecisions = {
   groupId: "thread-1",
@@ -74,5 +74,23 @@ describe("a change group's decisions", () => {
     expect(applyChangeGroupChange(armed, { type: "title", title: "Search" }, at).title).toBe(
       "Search",
     );
+  });
+});
+
+describe("a thread's branches", () => {
+  it("keep every branch it moved through, once each, in order", () => {
+    const folded = foldThreadBranches({ t1: ["main"] }, [
+      { threadId: "t1", branch: "feature" },
+      { threadId: "t1", branch: null },
+      { threadId: "t1", branch: "main" },
+      { threadId: "t2", branch: "fix" },
+      { threadId: "t1", branch: "later" },
+    ]);
+    expect(folded).toEqual({ t1: ["main", "feature", "later"], t2: ["fix"] });
+  });
+
+  it("stay the same record when no event names a new branch", () => {
+    const threads = { t1: ["main"] };
+    expect(foldThreadBranches(threads, [{ threadId: "t1", branch: "main" }])).toBe(threads);
   });
 });

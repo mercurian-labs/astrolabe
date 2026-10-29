@@ -24,8 +24,10 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
+import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -59,6 +61,36 @@ type ChangeGroupStore = typeof ChangeGroupStore.Type;
 const ChangeGroupStoreJson = fromJsonStringPretty(ChangeGroupStore);
 const decodeStore = Schema.decodeEffect(ChangeGroupStoreJson);
 const encodeStore = Schema.encodeEffect(ChangeGroupStoreJson);
+
+/**
+ * Every branch each thread has worked on, folded from its `thread.created` and
+ * `thread.metadata-updated` events up to `sequence`, so a thread that moved on from a pull
+ * request's branch still joins that pull request's group.
+ */
+const ThreadBranchStore = Schema.Struct({
+  version: Schema.Literal(1),
+  sequence: Schema.Number,
+  threads: Schema.Record(Schema.String, Schema.Array(Schema.String)),
+});
+type ThreadBranchStore = typeof ThreadBranchStore.Type;
+const ThreadBranchStoreJson = fromJsonStringPretty(ThreadBranchStore);
+const decodeThreadBranches = Schema.decodeEffect(ThreadBranchStoreJson);
+const encodeThreadBranches = Schema.encodeEffect(ThreadBranchStoreJson);
+
+/** Adds each event's branch to its thread's, in order, once each; the same object when none is new. */
+export function foldThreadBranches(
+  threads: Readonly<Record<string, ReadonlyArray<string>>>,
+  changes: ReadonlyArray<{ readonly threadId: string; readonly branch: string | null }>,
+): Readonly<Record<string, ReadonlyArray<string>>> {
+  let next: Record<string, ReadonlyArray<string>> | null = null;
+  for (const { threadId, branch } of changes) {
+    const known = (next ?? threads)[threadId] ?? [];
+    if (branch === null || known.includes(branch)) continue;
+    next ??= { ...threads };
+    next[threadId] = [...known, branch];
+  }
+  return next ?? threads;
+}
 
 const storeError = (cause: unknown) =>
   new ChangeGroupError({ message: `Change groups could not be read or saved: ${String(cause)}` });
@@ -132,7 +164,11 @@ const make = Effect.gen(function* () {
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const wikis = yield* WikiService.WikiService;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const eventStore = yield* EventStore.EventStoreV2;
   const storePath = path.join(config.stateDir, "change-groups.json");
+  const branchesPath = path.join(config.stateDir, "thread-branches.json");
+  const branchCache = yield* Ref.make<ThreadBranchStore | undefined>(undefined);
+  const branchLock = yield* Semaphore.make(1);
   const cache = yield* Ref.make<ChangeGroupStore | undefined>(undefined);
   const lock = yield* Semaphore.make(1);
 
@@ -149,9 +185,62 @@ const make = Effect.gen(function* () {
     return store;
   });
 
-  const list: ChangeGroupService["Service"]["list"] = load.pipe(
-    Effect.map((store) => ({ decisions: store.decisions })),
+  const writeAtomically = (filePath: string, contents: string) =>
+    writeFileStringAtomically({ filePath, contents: `${contents}\n` }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.mapError(storeError),
+    );
+
+  /** Each thread's branches, caught up with the events since the last read. */
+  const threadBranches = branchLock.withPermits(1)(
+    Effect.gen(function* () {
+      const cached = yield* Ref.get(branchCache);
+      const stored: ThreadBranchStore =
+        cached ??
+        ((yield* fileSystem.exists(branchesPath).pipe(Effect.mapError(storeError)))
+          ? yield* fileSystem
+              .readFileString(branchesPath)
+              .pipe(Effect.flatMap(decodeThreadBranches), Effect.mapError(storeError))
+          : { version: 1, sequence: 0, threads: {} });
+      // Both reads stop at one sequence, so an event landing meanwhile is read next time.
+      const upto = yield* eventStore.latestSequence().pipe(Effect.mapError(storeError));
+      if (upto <= stored.sequence) {
+        yield* Ref.set(branchCache, stored);
+        return stored.threads;
+      }
+      const read = (eventType: "thread.created" | "thread.metadata-updated") =>
+        eventStore
+          .read({ afterSequence: stored.sequence, throughSequence: upto, eventType })
+          .pipe(Stream.runCollect, Effect.mapError(storeError));
+      const events = [
+        ...(yield* read("thread.created")),
+        ...(yield* read("thread.metadata-updated")),
+      ]
+        .toSorted((a, b) => a.sequence - b.sequence)
+        .flatMap(({ event }) =>
+          event.type === "thread.created" || event.type === "thread.metadata-updated"
+            ? [{ threadId: event.payload.id as string, branch: event.payload.branch }]
+            : [],
+        );
+      const threads = foldThreadBranches(stored.threads, events);
+      const next: ThreadBranchStore = { version: 1, sequence: upto, threads };
+      // Most events move no branch; the file is written only when one did.
+      if (threads !== stored.threads) {
+        yield* writeAtomically(
+          branchesPath,
+          yield* encodeThreadBranches(next).pipe(Effect.mapError(storeError)),
+        );
+      }
+      yield* Ref.set(branchCache, next);
+      return threads;
+    }),
   );
+
+  const list: ChangeGroupService["Service"]["list"] = Effect.gen(function* () {
+    const store = yield* load;
+    return { decisions: store.decisions, threadBranches: yield* threadBranches };
+  });
 
   const update: ChangeGroupService["Service"]["update"] = (input) =>
     lock.withPermits(1)(
@@ -189,6 +278,7 @@ const make = Effect.gen(function* () {
 
   const groups: ChangeGroupService["Service"]["groups"] = Effect.gen(function* () {
     const snapshot = yield* projections.getShellSnapshot().pipe(Effect.mapError(storeError));
+    const branches = yield* threadBranches;
     // Archived threads leave their groups, as the clients' do.
     const threads: ChangeGroupThread[] = snapshot.threads
       .filter((thread) => thread.archivedAt === null)
@@ -198,6 +288,7 @@ const make = Effect.gen(function* () {
         lineage: thread.lineage,
         pullRequests: thread.pullRequests ?? [],
         branch: thread.branch,
+        ...(branches[thread.id] === undefined ? {} : { branches: branches[thread.id] }),
       }));
     const { wikis: summaries } = yield* wikis.list.pipe(Effect.mapError(storeError));
     const names = new Map(summaries.map((wiki) => [wiki.wikiId as string, wiki.name]));
@@ -208,7 +299,7 @@ const make = Effect.gen(function* () {
       wikiName: names.get(changeRequest.wikiId) ?? "Wiki",
       changeRequest,
     }));
-    const { decisions } = yield* list;
+    const { decisions } = yield* load;
     const { changeGroupGrouping } = yield* settings.getSettings.pipe(Effect.mapError(storeError));
     return deriveChangeGroups({ threads, wikiChanges, decisions, settings: changeGroupGrouping });
   });

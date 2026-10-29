@@ -37,6 +37,7 @@ function groupInputs(input: {
   readonly environmentId: EnvironmentId;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly overviews: ReadonlyArray<WikiOverview>;
+  readonly threadBranches?: Readonly<Record<string, ReadonlyArray<string>>>;
 }) {
   const { environmentId } = input;
   return {
@@ -48,6 +49,9 @@ function groupInputs(input: {
         lineage: thread.lineage,
         pullRequests: thread.pullRequests,
         branch: thread.branch,
+        ...(input.threadBranches?.[thread.id] === undefined
+          ? {}
+          : { branches: input.threadBranches[thread.id] }),
       })),
     wikiChanges: input.overviews
       .filter((overview) => overview.environmentId === environmentId)
@@ -66,6 +70,8 @@ export function environmentChangeGroups(input: {
   readonly overviews: ReadonlyArray<WikiOverview>;
   readonly decisions: ReadonlyArray<ChangeGroupDecisions>;
   readonly settings: ChangeGroupGroupingSettings | null;
+  /** Every branch each thread has worked on, as the environment's change groups list says. */
+  readonly threadBranches?: Readonly<Record<string, ReadonlyArray<string>>>;
 }): ReadonlyArray<EnvironmentChangeGroup> {
   const { environmentId } = input;
   const groups = deriveChangeGroups({

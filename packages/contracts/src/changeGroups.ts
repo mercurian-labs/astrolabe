@@ -143,6 +143,10 @@ export type ChangeGroupListInput = typeof ChangeGroupListInput.Type;
 
 export const ChangeGroupListResult = Schema.Struct({
   decisions: Schema.Array(ChangeGroupDecisions),
+  /** Every branch each thread has worked on, by thread id, so clients group as the server does. */
+  threadBranches: Schema.Record(Schema.String, Schema.Array(Schema.String)).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 export type ChangeGroupListResult = typeof ChangeGroupListResult.Type;
 

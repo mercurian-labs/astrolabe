@@ -274,7 +274,9 @@ const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
 const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProjectService));
 // Astrolabe: change groups read the same wikis and threads (one wiki service per server).
 const layerChangeGroupServiceProvided = ChangeGroupService.layer.pipe(
-  Layer.provide(Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer)),
+  Layer.provide(
+    Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer, layerEventStoreProvided),
+  ),
 );
 // Astrolabe: a repository's worktrees as buckets for branches.
 const layerProjectWorktreeServiceProvided = ProjectWorktreeService.layer.pipe(
