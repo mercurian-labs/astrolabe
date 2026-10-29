@@ -160,6 +160,19 @@ import {
   ChangeGroupListResult,
   ChangeGroupUpdateInput,
 } from "./changeGroups.ts";
+import {
+  ProjectWorktree,
+  ProjectWorktreeCreateInput,
+  ProjectWorktreeDiscardSetAsideInput,
+  ProjectWorktreeError,
+  ProjectWorktreeListInput,
+  ProjectWorktreeListResult,
+  ProjectWorktreeOpenInput,
+  ProjectWorktreeOpenResult,
+  ProjectWorktreeRemoveInput,
+  ProjectWorktreeRemoveResult,
+  ProjectWorktreeSetKeptInput,
+} from "./worktrees.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ServerRemoveVimMappingInput,
@@ -488,6 +501,12 @@ export const WS_METHODS = {
   reviewGetRecentFiles: "review.getRecentFiles",
   changeGroupsList: "changeGroups.list",
   changeGroupsUpdate: "changeGroups.update",
+  worktreesList: "worktrees.list",
+  worktreesOpen: "worktrees.open",
+  worktreesCreate: "worktrees.create",
+  worktreesRemove: "worktrees.remove",
+  worktreesSetKept: "worktrees.setKept",
+  worktreesDiscardSetAside: "worktrees.discardSetAside",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -1553,6 +1572,38 @@ const WsChangeGroupsUpdateRpc = Rpc.make(WS_METHODS.changeGroupsUpdate, {
   error: Schema.Union([ChangeGroupError, EnvironmentAuthorizationError]),
 });
 
+const worktreeError = Schema.Union([ProjectWorktreeError, EnvironmentAuthorizationError]);
+const WsWorktreesListRpc = Rpc.make(WS_METHODS.worktreesList, {
+  payload: ProjectWorktreeListInput,
+  success: ProjectWorktreeListResult,
+  error: worktreeError,
+});
+const WsWorktreesOpenRpc = Rpc.make(WS_METHODS.worktreesOpen, {
+  payload: ProjectWorktreeOpenInput,
+  success: ProjectWorktreeOpenResult,
+  error: worktreeError,
+});
+const WsWorktreesCreateRpc = Rpc.make(WS_METHODS.worktreesCreate, {
+  payload: ProjectWorktreeCreateInput,
+  success: ProjectWorktree,
+  error: worktreeError,
+});
+const WsWorktreesRemoveRpc = Rpc.make(WS_METHODS.worktreesRemove, {
+  payload: ProjectWorktreeRemoveInput,
+  success: ProjectWorktreeRemoveResult,
+  error: worktreeError,
+});
+const WsWorktreesSetKeptRpc = Rpc.make(WS_METHODS.worktreesSetKept, {
+  payload: ProjectWorktreeSetKeptInput,
+  success: Schema.Void,
+  error: worktreeError,
+});
+const WsWorktreesDiscardSetAsideRpc = Rpc.make(WS_METHODS.worktreesDiscardSetAside, {
+  payload: ProjectWorktreeDiscardSetAsideInput,
+  success: Schema.Void,
+  error: worktreeError,
+});
+
 const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
   payload: ReviewRecentFilesInput,
   success: ReviewRecentFilesResult,
@@ -2339,6 +2390,12 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
 export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsChangeGroupsListRpc,
   WsChangeGroupsUpdateRpc,
+  WsWorktreesListRpc,
+  WsWorktreesOpenRpc,
+  WsWorktreesCreateRpc,
+  WsWorktreesRemoveRpc,
+  WsWorktreesSetKeptRpc,
+  WsWorktreesDiscardSetAsideRpc,
   WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,

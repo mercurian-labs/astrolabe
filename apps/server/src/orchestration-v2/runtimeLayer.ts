@@ -1,6 +1,7 @@
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as ChangeGroupService from "../changeGroups/ChangeGroupService.ts";
+import * as ProjectWorktreeService from "../worktrees/ProjectWorktreeService.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -275,6 +276,10 @@ const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProje
 const layerChangeGroupServiceProvided = ChangeGroupService.layer.pipe(
   Layer.provide(Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer)),
 );
+// Astrolabe: a repository's worktrees as buckets for branches.
+const layerProjectWorktreeServiceProvided = ProjectWorktreeService.layer.pipe(
+  Layer.provide(Layer.mergeAll(layerProjectService, ProjectionStore.layer)),
+);
 const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -376,6 +381,7 @@ export const layerProduction = Layer.mergeAll(
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,
   layerChangeGroupServiceProvided,
+  layerProjectWorktreeServiceProvided,
   layerThreadLaunchProvided,
   layerThreadLifecycleProvided,
   layerScheduledTaskProvided,

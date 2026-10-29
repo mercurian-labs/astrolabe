@@ -56,6 +56,12 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.gitPreparePullRequestThread]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateWorktree]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsRemoveWorktree]: AuthSourceControlWriteScope,
+  // Astrolabe: opening a branch can switch a free worktree and set its work aside.
+  [WS_METHODS.worktreesOpen]: AuthSourceControlWriteScope,
+  [WS_METHODS.worktreesCreate]: AuthSourceControlWriteScope,
+  [WS_METHODS.worktreesRemove]: AuthSourceControlWriteScope,
+  [WS_METHODS.worktreesSetKept]: AuthSourceControlWriteScope,
+  [WS_METHODS.worktreesDiscardSetAside]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,

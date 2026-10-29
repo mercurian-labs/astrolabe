@@ -245,6 +245,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
+import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1247,7 +1248,14 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
+    const worktrees = yield* ProjectWorktreeService.ProjectWorktreeService;
     return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.worktreesList]: (input) => worktrees.list(input),
+      [WS_METHODS.worktreesOpen]: (input) => worktrees.open(input),
+      [WS_METHODS.worktreesCreate]: (input) => worktrees.create(input),
+      [WS_METHODS.worktreesRemove]: (input) => worktrees.remove(input),
+      [WS_METHODS.worktreesSetKept]: (input) => worktrees.setKept(input),
+      [WS_METHODS.worktreesDiscardSetAside]: (input) => worktrees.discardSetAside(input),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
