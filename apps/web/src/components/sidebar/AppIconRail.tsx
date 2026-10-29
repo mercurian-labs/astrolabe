@@ -175,7 +175,7 @@ export function AppIconRail() {
         <div
           aria-hidden
           data-app-rail-corner=""
-          className="pointer-events-none fixed top-[calc(var(--workspace-topbar-height)-1px)] left-[calc(--spacing(11)-1px)] z-30 size-2.25 bg-sidebar"
+          className="pointer-events-none fixed top-[calc(var(--workspace-topbar-height)-1px)] left-[calc(--spacing(11)-1px)] z-30 size-[calc(var(--radius-md)+1px)] bg-sidebar"
         >
           <span className="absolute inset-0 rounded-tl-md border-t border-l border-border bg-(--astrolabe-canvas)" />
         </div>
@@ -186,7 +186,7 @@ export function AppIconRail() {
         <div
           aria-hidden
           data-app-rail-corner="collapsed"
-          className="pointer-events-none fixed top-[calc(var(--workspace-topbar-height)-1px)] left-[calc(--spacing(11)-1px)] z-30 size-2.25"
+          className="pointer-events-none fixed top-[calc(var(--workspace-topbar-height)-1px)] left-[calc(--spacing(11)-1px)] z-30 size-[calc(var(--radius-md)+1px)]"
         />
       )}
       <nav
