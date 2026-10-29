@@ -9,10 +9,24 @@ The sidebar leads with what is moving: a repository's uncommitted changes, its b
 its base, and the files its commits changed most recently. Pick one repository in the filter to
 see all of that for it; with every repository, each shows its latest files.
 
-- **Search** finds a file by name in the repository you picked.
-- **Show the file tree**, in the filter, swaps the list for the whole tree.
-- **Checkout** appears when a thread works in its own copy of the repository. Pick the thread's
-  copy to read and edit what its agent is changing.
+- **Search** finds a file by name in the repository you picked, in the worktree of the tab
+  you're on.
+- **Show the file tree**, in the filter, swaps the list for each worktree's file tree.
+
+## Worktrees and branches
+
+A repository you picked lists each of its worktrees under the branch checked out there, the
+repository's own checkout first. Tabs follow the branch, not the folder: if a worktree later
+holds another branch, its old tabs offer to open their branch again.
+
+- **Open a branch**, beside the filter, puts a branch in a worktree: the one it is already in, else
+  a free one, else a new one. Type a new name to make a branch from the main checkout's branch.
+- A worktree is free unless a thread uses it, a terminal is open in it, it is the repository's
+  own checkout, or you chose **Keep for this branch** in its menu.
+- When a free worktree takes another branch, its uncommitted work is set aside on its branch and
+  comes back when you open that branch again. If the branch has new commits by then, the work is
+  kept under **Set-aside work** for you to open or discard.
+- **Delete worktree…**, in a worktree's menu, says first what you would lose. Its branch stays.
 
 ## Edit
 
