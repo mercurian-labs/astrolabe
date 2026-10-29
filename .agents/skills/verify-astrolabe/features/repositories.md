@@ -21,32 +21,46 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   **Add a repository**.
 - **List** (default): with every repository, one group each (collapsible header), a
   **Changes →** row (Changes scoped to that repository) and its eight
-  most recently committed files. With one repository: **Changes →**, then
-  **Uncommitted · N** with **Review uncommitted changes →** and each changed file
-  (`+a −d`), **Changes against `<base>` →** off the default branch, then **Recently
-  changed** (40 files; `review.getRecentFiles`, `git log --name-only`, deleted files and
-  files already under Uncommitted left out). File rows are `button "<path>"` by role (a
+  most recently committed files. With one repository: one collapsible section per git
+  worktree (`ProjectWorktreeService`, `worktrees.list`), headed by its branch (or short
+  commit when detached), the main checkout first and marked **main checkout**, with "N
+  changed" and a pin when held (tooltip: the holds). Under each: **Uncommitted · N** with
+  **Review uncommitted changes →** and each changed file (`+a −d`), **Changes against
+  `<base>` →** off the default branch. **Changes →** only under the main checkout, and
+  **Recently changed** (40 files; `review.getRecentFiles`, `git log --name-only`) only
+  under the focused tab's worktree (else main). File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
   in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
-- **Checkout picker** (`combobox "Checkout"`, only with a thread working tree):
-  "Repository checkout", then each thread's working tree as `<thread> · <branch>`
-  (`astrolabe:repository-checkout:v1`). List, tree and search read the chosen one.
-- **Tree** (**Show the file tree**): T3 Code's file browser (`FileBrowserPanel`,
-  @pierre/trees) on the chosen checkout, only once a repository is picked; with every
-  repository the sidebar reads "Pick a repository in the filter to see its files." The
-  panel is `[data-file-browser-panel="<env>:<cwd>"]` and is keyed by that pair, so a new
-  repository or checkout remounts it on the new root. Toolbar: **Refresh workspace
-  files**, the field `Search <repo> files`, **Expand all folders** / **Collapse all
+- **Worktrees**: `button "Open a branch in a worktree"` (beside the filter, with a
+  repository picked) lists local branches; a pick puts the branch in its worktree, else a
+  free one (no main checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder.
+  A name that is no branch offers "New branch <name> from <main's branch>". A free
+  worktree's uncommitted work is set aside as `refs/astrolabe/set-aside/<branch>` (row
+  **Set-aside work on <branch>**, **Open** / **Discard**) and comes back when the branch
+  opens again, unless the branch moved (warning toast; the row stays). Each non-main
+  section has `button "<branch> worktree actions"`: **Keep for this branch** / **Stop
+  keeping**, **Delete worktree…** (a confirm dialog lists what would be lost; the work is
+  set aside). Tabs of a linked worktree are keyed by branch
+  (`repo-file:<env>:<project>:branch:<branch>:<path>`); main-checkout and detached tabs
+  by folder. A branch tab with no worktree reads "<branch> is not checked out in any
+  worktree." with **Open <branch>**.
+- **Tree** (**Show the file tree**): one collapsible section per worktree, each with T3
+  Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree; the focused
+  tab's worktree opens on its own. With every repository the sidebar reads "Pick a
+  repository in the filter to see its files." Each panel is
+  `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. Toolbar:
+  **Refresh workspace files**, the field `Search <repo> · <branch> files`, **Expand all folders** / **Collapse all
   folders** (only with folders). Rows live in `file-tree-container`'s open shadow root as
   `[role=treeitem]` with `data-item-type` (`folder` / `file`) and `data-item-path`. The
   tree fills an absolutely placed box so its virtualized list gets a height. Rows in the
   accessibility tree are no proof they paint (a 0px-tall list had them all), and the
   panel's attribute changes with its props even if its rows do not (a tree once kept the
   first repository's files), so Walk 4 and 5 hit-test a row and compare row paths.
-- **Search**: the header's search finds files by name in the scoped repository
-  (`projects.searchEntries`); with every repository it asks for one.
+- **Search**: the header's search finds files by name in the scoped repository's
+  focused-tab worktree, else its main checkout (`projects.searchEntries`); with every
+  repository it asks for one.
 - **Main area**: one arrangement on the device (localStorage
   `astrolabe:repository-panes:v1`, removed while it is the starting single empty tab) and
   each tab's Back/Forward history (`astrolabe:repository-tab-history:v1`); a reload keeps
@@ -117,13 +131,17 @@ repository**. With the **server** project that makes two repositories.
 
    `panel` ends in `:<scratch path>`, `hostHeight` > 0 and `painted` is true. Expand a
    folder (`aria-expanded` turns `true`) and open the `.ts` file: `.cm-code` appears.
+   With several worktrees there is one `file-tree-container` per open section; run the
+   check on each (`document.querySelectorAll(...)[i]`).
 
 5. Pick the other repository in the filter (**server** on a clean home; the tree stays),
    wait for `[data-file-browser-panel$=':<its path>'] >> role=treeitem` and run the check
-   again: `paths` are its top-level entries, not step 4's, and `painted` is true. With a
-   thread on its own worktree, pick it in `combobox "Checkout"` and check again: `panel`
-   ends in that worktree's path and its rows paint. Save the sidebar with `preview_snapshot`
-   `save: true`.
+   again: `paths` are its top-level entries, not step 4's, and `painted` is true. Back on
+   the scratch repository, **Open a branch in a worktree** → another branch: a second
+   section appears; expand it and check again: `panel` ends in that worktree's path and
+   its rows paint. Save the sidebar with `preview_snapshot` `save: true`.
+   Worktree reuse, set-aside, Keep and Delete: make the worktree dirty, open another
+   branch, then reopen the first: the edits come back.
 6. Search a file name; Enter opens it.
 7. In a thread, add a **Diff** tab to the right panel, right-click it, **Open in
    Repositories**: the URL is `/repositories`, the filter names the thread's repository.

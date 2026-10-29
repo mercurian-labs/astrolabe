@@ -1,7 +1,10 @@
 import { FileCodeIcon, FileDiffIcon, GitBranchIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { reviewEnvironment } from "~/state/review";
 import { useProjectWorktrees } from "~/state/worktrees";
+import { getProjectFileQueryAtom } from "../files/projectFilesQueryState";
 import { Button } from "../ui/button";
 
 import { RepositoryDiffView } from "./RepositoryDiffView";
@@ -46,17 +49,36 @@ function CheckedOut({
   readonly tab: RepositoryTab;
   readonly children: (tab: CheckedOutRepositoryTab) => ReactNode;
 }) {
-  const branch = "branch" in tab.checkout ? tab.checkout.branch : null;
-  const worktrees = useProjectWorktrees(
-    branch === null ? null : { environmentId: tab.environmentId, projectId: tab.projectId },
-  );
+  const worktrees = useProjectWorktrees({
+    environmentId: tab.environmentId,
+    projectId: tab.projectId,
+  });
   const openBranch = useOpenBranch();
   const [opening, setOpening] = useState(false);
-  if ("cwd" in tab.checkout) return children({ ...tab, cwd: tab.checkout.cwd });
-  if (worktrees === null) return null;
-  const named = tab.checkout.branch;
-  const holder = worktrees.worktrees.find((worktree) => worktree.branch === named);
-  if (holder) return children({ ...tab, cwd: holder.path });
+  const { checkout } = tab;
+  const holder =
+    worktrees?.worktrees.find((worktree) =>
+      "branch" in checkout ? worktree.branch === checkout.branch : worktree.path === checkout.cwd,
+    ) ?? null;
+  const cwd = "cwd" in checkout ? checkout.cwd : (holder?.path ?? null);
+  const revision = holder?.head ?? null;
+  const seen = useRef({ cwd, revision });
+  // oxlint-disable-next-line t3code/react-effect-budget -- a reused worktree changes files under the same folder; its new commit re-reads what this tab shows
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = { cwd, revision };
+    if (cwd === null || before.cwd !== cwd || before.revision === revision) return;
+    if (tab.kind === "file") {
+      appAtomRegistry.refresh(getProjectFileQueryAtom(tab.environmentId, cwd, tab.path));
+    } else {
+      appAtomRegistry.refresh(
+        reviewEnvironment.diffPreview({ environmentId: tab.environmentId, input: { cwd } }),
+      );
+    }
+  }, [cwd, revision, tab]);
+  if (cwd !== null) return children({ ...tab, cwd });
+  if (worktrees === null || "cwd" in checkout) return null;
+  const named = checkout.branch;
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
       <p role="status">{named} is not checked out in any worktree.</p>

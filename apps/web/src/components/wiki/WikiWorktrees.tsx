@@ -66,7 +66,9 @@ export function WikiWorktreeTrees({
     owner ? { environmentId: owner.environmentId, projectId: owner.id } : null,
   );
   const saveWorktree = useAtomCommand(wikiEnvironment.saveWorktree);
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  // Sections someone opened or closed; a worktree that takes the focus opens again.
+  const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [focusedPath, setFocusedPath] = useState<string | null>(null);
   if (owner === null) return <Note>This wiki has no project, so it has no worktrees.</Note>;
   if (listed === null) return <Note>Reading worktrees…</Note>;
   const { wiki } = overview;
@@ -91,15 +93,18 @@ export function WikiWorktreeTrees({
       ) ?? null)
     : null;
   const active = focusedWorktree ?? listed.worktrees.find((worktree) => worktree.isMain) ?? null;
+  if ((active?.path ?? null) !== focusedPath) {
+    setFocusedPath(active?.path ?? null);
+    if (active && chosen.has(active.path)) {
+      const next = new Map(chosen);
+      next.delete(active.path);
+      setChosen(next);
+    }
+  }
   const expanded = (worktree: ProjectWorktree) =>
-    (listed.worktrees.length === 1 || worktree.path === active?.path) !==
-    toggled.has(worktree.path);
+    chosen.get(worktree.path) ?? (listed.worktrees.length === 1 || worktree.path === active?.path);
   const toggle = (worktree: ProjectWorktree) =>
-    setToggled((current) => {
-      const next = new Set(current);
-      if (!next.delete(worktree.path)) next.add(worktree.path);
-      return next;
-    });
+    setChosen((current) => new Map(current).set(worktree.path, !expanded(worktree)));
   const selectedPath =
     focusedHere?.kind === "note"
       ? (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   Fragment,
+  useEffect,
   useReducer,
   useRef,
   useState,
@@ -24,12 +25,14 @@ import {
 
 import { openCommandPalette } from "~/commandPaletteBus";
 import { isElectron } from "~/env";
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
 import { useEnvironmentQuery } from "~/state/query";
 import { useProjectPathSearch } from "~/state/queries";
 import { reviewEnvironment } from "~/state/review";
 import { vcsEnvironment } from "~/state/vcs";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { useProjectWorktrees } from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -105,17 +108,22 @@ export function RepositorySidebar() {
       ? (worktrees.find((worktree) => holdsCheckout(worktree, focusedTab.checkout)) ?? null)
       : null;
   const active = focused ?? worktrees.find((worktree) => worktree.isMain) ?? worktrees[0] ?? null;
-  // Paths whose section someone opened or closed against its default.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  // Sections someone opened or closed; a worktree that takes the focus opens again.
+  const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [focusedPath, setFocusedPath] = useState(active?.path ?? null);
+  if ((active?.path ?? null) !== focusedPath) {
+    setFocusedPath(active?.path ?? null);
+    if (active && chosen.has(active.path)) {
+      const next = new Map(chosen);
+      next.delete(active.path);
+      setChosen(next);
+    }
+  }
   const expanded = (worktree: ProjectWorktree) =>
-    (view === "list" || worktrees.length === 1 || worktree.path === active?.path) !==
-    toggled.has(worktree.path);
+    chosen.get(worktree.path) ??
+    (view === "list" || worktrees.length === 1 || worktree.path === active?.path);
   const toggle = (worktree: ProjectWorktree) =>
-    setToggled((current) => {
-      const next = new Set(current);
-      if (!next.delete(worktree.path)) next.add(worktree.path);
-      return next;
-    });
+    setChosen((current) => new Map(current).set(worktree.path, !expanded(worktree)));
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -173,11 +181,7 @@ export function RepositorySidebar() {
                       repository={scoped}
                       worktrees={worktrees}
                       onOpened={(worktree) =>
-                        setToggled((current) => {
-                          const next = new Set(current);
-                          next.delete(worktree.path);
-                          return next;
-                        })
+                        setChosen((current) => new Map(current).set(worktree.path, true))
                       }
                     />
                   ) : null}
@@ -291,6 +295,8 @@ export function RepositorySidebar() {
                         showStatus
                         showChanges={worktree.isMain}
                         showRecent={worktree.path === active?.path}
+                        changedFiles={worktree.changedFiles}
+                        head={worktree.head}
                       />
                     ) : null}
                   </ul>
@@ -394,6 +400,8 @@ function RepositoryList({
   showStatus = false,
   showChanges = false,
   showRecent = false,
+  changedFiles,
+  head,
 }: {
   readonly repository: EnvironmentProject;
   readonly cwd: string;
@@ -402,6 +410,9 @@ function RepositoryList({
   readonly showStatus?: boolean;
   readonly showChanges?: boolean;
   readonly showRecent?: boolean;
+  /** The worktree list's count and commit; when either moves, the status and recent files reread. */
+  readonly changedFiles?: number;
+  readonly head?: string | null;
 }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(true);
@@ -418,6 +429,18 @@ function RepositoryList({
         })
       : null,
   );
+  const refreshStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
+  const reread = useStableCallback(() => {
+    void refreshStatus({
+      environmentId: repository.environmentId,
+      input: { cwd, localOnly: true },
+    });
+    recent.refresh();
+  });
+  // oxlint-disable-next-line t3code/react-effect-budget -- the server's cached status misses edits made outside the app and branch switches; reread when the worktree list sees either
+  useEffect(() => {
+    if (showStatus && changedFiles !== undefined && head !== undefined) reread();
+  }, [showStatus, changedFiles, head, reread]);
   const uncommitted = status.data?.workingTree.files ?? [];
   const uncommittedPaths = new Set(uncommitted.map((file) => file.path));
   const recentFiles = (recent.data?.files ?? []).filter((file) => !uncommittedPaths.has(file.path));
