@@ -42,6 +42,7 @@ const WIKI_EDITOR_THEME = EditorView.theme({
     // Vim's drawn selection (see `vimMode`).
     "--atlas-selection": "color-mix(in oklab, var(--ring) 30%, transparent)",
     "--atlas-selection-unfocused": "color-mix(in oklab, var(--muted-foreground) 20%, transparent)",
+    "--atlas-caret": "var(--foreground)",
   },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "inherit" },
