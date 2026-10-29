@@ -63,7 +63,8 @@ timeline or the composer).
   tab; any other Alt chord stays the page's), Mod+Enter Mod-clicks it (Agents:
   toggles selection, in Wikis and PRs too); `/` opens the sidebar's search; Escape focuses the place to the right;
   Space opens the keyboard menu. Keys act only with the row itself focused, not a
-  control in it. The right panel's launcher letters leave a focused row its list keys
+  control in it (nor the Agents filter's pills above the list, `[aria-label='Thread
+  filters']`, which are plain buttons: `j`/`k` do nothing there and Space presses them). The right panel's launcher letters leave a focused row its list keys
   (`gg`, `G`). The reached row shows the rows' light keyboard ring (`:focus-visible`:
   a 1px `--ring` inset edge and a 3px `--ring`/24% band, as inputs have), apart from
   the current row's fill. Rows are a roving tab stop: after a row has focus, only it

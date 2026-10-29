@@ -4,7 +4,7 @@ A wiki is a folder of linked notes that you and your agents keep together: plain
 
 ## Add a wiki
 
-Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter picks one wiki or all of them, as the project filter does for threads, and holds **Add a folder**, which registers a git repository you already have, and **New wiki**, which creates an empty one. A wiki's settings (its folder, mirror, and removing it) open from the gear on its row in the filter.
+Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a folder**, which registers a git repository you already have, and **New wiki**, which creates an empty one. A wiki's settings (its folder, mirror, and removing it) open from the gear on its row in the filter.
 
 Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, and files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them. Adding a wiki also adds its folder as a project, so you can start threads in it.
 
@@ -22,7 +22,7 @@ A document can open beside a conversation, and a conversation beside a document.
 
 ## Change requests
 
-Change requests are listed in **Changes** in the icon rail, beside your pull requests: open ones first, then a folded **Merged and closed** shelf. The wiki filter in Wikis narrows them to one wiki. Each opens as a tab there, and its documents open beside it.
+Change requests are listed in **Changes** in the icon rail, beside your pull requests: open ones first, then a folded **Merged and closed** shelf. When the Wikis filter picks a single wiki, **Open changes** in Wikis narrows them to that wiki. Each opens as a tab there, and its documents open beside it.
 
 Nothing reaches a wiki without someone merging it. Every edit, yours or an agent's, lands as an amendment in a change request. The change request shows each amendment, what it changed, and whether it merges cleanly. You can revert any single amendment, close a change request, reopen it, or merge it. Only you merge; agents cannot.
 

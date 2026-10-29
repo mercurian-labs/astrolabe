@@ -105,11 +105,9 @@ import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
 import {
   projectGroupsSpanEnvironments,
-  resolveSidebarProjectScopeKey,
   getSidebarProjectSettingsKey,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
-import { useUiStateStore } from "../uiStateStore";
 import {
   getThreadKeysToDeselectAfterDelete,
   useThreadSelectionStore,
@@ -133,14 +131,12 @@ import {
 } from "../state/environments";
 import {
   readThreadShell,
-  useAllEnvironmentProjectSnapshotsReady,
   useProjects,
   useServerConfigs,
   useQuietThreadShells,
 } from "../state/entities";
 import { environmentPresentations } from "../state/presentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { environmentProjects } from "../state/projects";
 import { threadEnvironment } from "../state/threads";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
@@ -213,7 +209,13 @@ import { createSidebarListMotion } from "./Sidebar.motion";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFilterIcon } from "./projects/ProjectFilterIcon";
 import { searchProjectFilterOptions } from "./projects/projectFilter";
-import { useThreadsProjectFilter } from "./projects/useThreadsProjectFilter";
+import { threadMatchesStatuses, type ThreadStatusFilter } from "./projects/threadsFilter";
+import {
+  ThreadsFilterCheckbox,
+  ThreadsFilterPills,
+  ThreadStatusFilterIcon,
+} from "./projects/ThreadsFilterParts";
+import { useThreadsFilter } from "./projects/useThreadsFilter";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
 import {
@@ -226,6 +228,8 @@ import { Button } from "./ui/button";
 import {
   Combobox,
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxSearchInput,
   ComboboxItem,
   ComboboxList,
@@ -339,6 +343,7 @@ type SidebarOptimisticDrop = {
 interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly scopedProjectKeys: ReadonlySet<string> | null;
+  readonly statuses: ReadonlyArray<ThreadStatusFilter>;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
@@ -347,6 +352,8 @@ interface SidebarThreadPartitionInput {
   // tracker's expiry version are inputs: a new key repartitions.
   readonly clockKey: string;
 }
+
+const NO_STATUS_FILTERS: ReadonlyArray<ThreadStatusFilter> = [];
 
 function threadShellKey(thread: Pick<SidebarThreadSummary, "environmentId" | "id">): string {
   return scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
@@ -397,6 +404,8 @@ function routeThreadOnly(
 function useSidebarThreads(input: {
   readonly projectScopeKey: string | null;
   readonly scopedProjectKeys: ReadonlySet<string> | null;
+  /** Astrolabe: the filter's statuses (`threadsFilter`); none keeps every thread. */
+  readonly statuses: ReadonlyArray<ThreadStatusFilter>;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly threads: readonly EnvironmentThreadShell[];
@@ -407,6 +416,7 @@ function useSidebarThreads(input: {
   const {
     projectScopeKey,
     scopedProjectKeys,
+    statuses,
     serverConfigs,
     optimisticDrop,
     threads,
@@ -448,6 +458,7 @@ function useSidebarThreads(input: {
   const partition = partitionSidebarThreads({
     threads,
     scopedProjectKeys,
+    statuses,
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
@@ -458,7 +469,9 @@ function useSidebarThreads(input: {
     partition;
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
-    scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
+    // Astrolabe: older pages are fetched by project alone, so a status filter lists only loaded ones.
+    scopes:
+      statuses.length > 0 ? [] : olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
     expanded: settledShelfExpanded,
     visibleCount: settledVisibleCount,
   });
@@ -557,9 +570,18 @@ function useSidebarThreads(input: {
 }
 
 function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
-  const { threads, scopedProjectKeys, serverConfigs, optimisticDrop, workingShelfEnabled } = input;
+  const {
+    threads,
+    scopedProjectKeys,
+    statuses,
+    serverConfigs,
+    optimisticDrop,
+    workingShelfEnabled,
+  } = input;
   const preciseNow = new Date().toISOString();
-  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys);
+  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter((thread) =>
+    threadMatchesStatuses(thread, statuses),
+  );
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
@@ -917,15 +939,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const environmentMachineById = useEnvironmentMachines();
   const projectGroupsRef = useRef(projectGroups);
-  const persistedProjectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
-  const setPersistedProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
     reduceSidebarProjectScopeMenuState,
     { open: false, query: "" },
   );
   const projectScopeFilter = useComboboxFilter();
-  const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
-  const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
   const headerSearchRef = useRef<HTMLDivElement | null>(null);
   // Safari may click after Ctrl+click opens settings; suppress that selection until the picker reopens.
   const suppressNextScopeChangeRef = useRef(false);
@@ -977,28 +995,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeThreadRef = resolveActiveThreadRouteRef(routeTarget, routeDraftThread);
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
 
-  // A selection made under one scope can hold threads the next scope hides.
-  const setProjectScopeKey = (key: string | null) => {
-    clearSelection();
-    setPersistedProjectScopeKey(key);
-  };
-  // A scope whose project is gone reads as all projects once every snapshot has
-  // loaded. The stored key is left alone, so the scope returns with its project.
-  const chosenProjectScopeKey = resolveSidebarProjectScopeKey({
-    groups: projectGroups,
-    key: persistedProjectScopeKey,
-    settings: projectGroupingSettings,
-    canClearMissingScope: allProjectSnapshotsReady && allProjectConfigsReady,
-  });
-  // Astrolabe: the project filter every section shares, repositories then wikis, with a kind
-  // heading for each (`useThreadsProjectFilter`). {value, label} items let Base UI drive the
-  // combobox selection contract while the popup search filters the same collection.
-  const projectFilter = useThreadsProjectFilter({
-    groups: projectGroups,
-    scopeKey: chosenProjectScopeKey,
-    setScopeKey: setProjectScopeKey,
-  });
   const threads = useQuietThreadShells();
+  // Astrolabe: the thread list's filter, statuses and any number of projects
+  // (`useThreadsFilter`). A selection made under one filter can hold threads the next hides.
+  const projectFilter = useThreadsFilter({
+    groups: projectGroups,
+    threads,
+    onChange: clearSelection,
+  });
   const routeRowThreadKey =
     routeThreadRef === null
       ? null
@@ -1023,15 +1027,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     routeKey: routeRowThreadKey,
     isSearching: isSearchingThreads,
     scopedProjectKeys: projectFilter.scopedProjectKeys,
+    statuses: projectFilter.statuses,
     findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
   });
-  const projectScopeKey = revealWidensScope ? null : chosenProjectScopeKey;
-  // Astrolabe: widening also drops the filter's kind (Repositories, Wikis) back to All projects.
-  const widenProjectFilter = useEffectEvent(() => {
-    const all = projectFilter.items.find((item) => item.kind === "all");
-    if (all) projectFilter.choose(all);
-    else setProjectScopeKey(null);
-  });
+  // Astrolabe: widening clears the whole filter, statuses included.
+  const widenProjectFilter = useEffectEvent(() => projectFilter.clear());
   // The widened scope outlives the reveal, so it is written back to the persisted
   // scope. Route changes arrive from history, links and the palette, and only this
   // component holds the project groups that decide a widening, so no single
@@ -1055,17 +1055,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     return environmentLabelById.get(thread.environmentId) ?? null;
   };
-  const projectScopeItems = projectFilter.items;
-  type ProjectScopeItem = (typeof projectScopeItems)[number];
-  const selectedProjectScopeItem = revealWidensScope
-    ? (projectScopeItems.find((item) => item.kind === "all") ?? projectFilter.selected)
-    : projectFilter.selected;
-  const filteredProjectScopeItems = searchProjectFilterOptions(
-    projectScopeItems,
+  // String values let Base UI drive the multi-select while the popup's search filters the same
+  // collection, shown under a heading per dimension.
+  const filterItemValues = projectFilter.items.map((item) => item.value);
+  const filterItemByValue = new Map(projectFilter.items.map((item) => [item.value, item]));
+  const filteredFilterItems = searchProjectFilterOptions(
+    projectFilter.items,
     projectScopeMenuState.query,
     (item, query) => projectScopeFilter.contains(item, query, (candidate) => candidate.label),
   );
   const scopedProjectKeys = revealWidensScope ? null : projectFilter.scopedProjectKeys;
+  const filterStatuses = revealWidensScope ? NO_STATUS_FILTERS : projectFilter.statuses;
+  const filterGroups = [
+    { label: "Status", items: filteredFilterItems.filter((item) => item.kind === "status") },
+    { label: "Projects", items: filteredFilterItems.filter((item) => item.kind !== "status") },
+  ];
   const threadSearch = useThreadSearch(
     searchEnvironmentIds,
     threadSearchQuery,
@@ -1172,6 +1176,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     // Astrolabe: the settled tail restarts when the filter's kind changes too.
     projectScopeKey: revealWidensScope ? "all" : projectFilter.resetKey,
     scopedProjectKeys,
+    statuses: filterStatuses,
     serverConfigs,
     optimisticDrop,
     projectByKey,
@@ -2465,7 +2470,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 projectFilter: threadProjectGroup
                   ? {
                       label: threadProjectGroup.displayName,
-                      isActive: projectScopeKey === threadProjectGroup.projectKey,
+                      isActive: projectFilter.isOnlyProject(threadProjectGroup.projectKey),
                     }
                   : null,
                 isPinned,
@@ -2507,13 +2512,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         }
         switch (clicked.value) {
           case "filter-by-project":
-            if (threadProjectGroup) {
-              setProjectScopeKey(
-                projectScopeKey === threadProjectGroup.projectKey
-                  ? null
-                  : threadProjectGroup.projectKey,
-              );
-            }
+            if (threadProjectGroup) projectFilter.toggleOnlyProject(threadProjectGroup.projectKey);
             return;
           case "project-settings":
             if (threadProjectGroup)
@@ -2785,51 +2784,57 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
               projectScope={
-                <Combobox
-                  items={projectScopeItems}
-                  filteredItems={filteredProjectScopeItems}
+                <Combobox<string, true>
+                  multiple
+                  items={filterItemValues}
+                  filteredItems={filteredFilterItems.map((item) => item.value)}
                   autoHighlight
-                  itemToStringLabel={(item: ProjectScopeItem) => item.label}
-                  isItemEqualToValue={(a: ProjectScopeItem, b: ProjectScopeItem) =>
-                    a.value === b.value
+                  itemToStringLabel={(value: string) =>
+                    filterItemByValue.get(value)?.label ?? value
                   }
                   open={projectScopeMenuState.open}
                   onOpenChange={(open) => {
                     if (open) suppressNextScopeChangeRef.current = false;
                     dispatchProjectScopeMenu({ type: "open-changed", open });
                   }}
-                  onItemHighlighted={(item: ProjectScopeItem | undefined) => {
+                  onItemHighlighted={(value: string | undefined) => {
+                    const item = value === undefined ? undefined : filterItemByValue.get(value);
                     highlightedProjectScopeKeyRef.current =
                       item?.kind === "repository" ? item.repository.projectKey : null;
                   }}
-                  value={selectedProjectScopeItem}
-                  onValueChange={(item: ProjectScopeItem | null) => {
+                  value={projectFilter.selectedValues}
+                  onValueChange={(values: string[]) => {
                     if (suppressNextScopeChangeRef.current) {
                       suppressNextScopeChangeRef.current = false;
                       return;
                     }
-                    if (!item) return;
-                    projectFilter.choose(item);
+                    // A toggle is the one value added or removed.
+                    const value =
+                      values.find(
+                        (candidate) => !projectFilter.selectedValues.includes(candidate),
+                      ) ??
+                      projectFilter.selectedValues.find((candidate) => !values.includes(candidate));
+                    const item = value === undefined ? undefined : filterItemByValue.get(value);
+                    if (item) projectFilter.toggle(item);
                   }}
                 >
                   <ComboboxTrigger
                     render={
                       <SidebarHeaderIconButton
                         label={
-                          selectedProjectScopeItem.kind === "all"
-                            ? "Filter threads by project"
-                            : `Filter threads by project: ${selectedProjectScopeItem.label}`
+                          projectFilter.isActive ? "Filter threads (filtered)" : "Filter threads"
                         }
                       />
                     }
                   >
-                    {selectedProjectScopeItem.kind === "all" ? (
-                      <ListFilterIcon className="size-4" />
-                    ) : (
-                      <span className="flex shrink-0">
-                        <ProjectFilterIcon option={selectedProjectScopeItem} />
-                      </span>
-                    )}
+                    <ListFilterIcon className="size-4" />
+                    {/* Astrolabe: the pills name the filter; the dot keeps it seen from the collapsed titlebar. */}
+                    {projectFilter.isActive ? (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+                      />
+                    ) : null}
                   </ComboboxTrigger>
                   <ComboboxPopup
                     align="start"
@@ -2838,8 +2843,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     className="min-w-56 max-w-[min(18rem,var(--available-width))] overflow-hidden"
                   >
                     <ComboboxSearchInput
-                      aria-label="Search projects"
-                      placeholder="Search projects..."
+                      aria-label="Search filters"
+                      placeholder="Filter..."
                       value={projectScopeMenuState.query}
                       onKeyDown={(event) => {
                         if (
@@ -2863,49 +2868,68 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         })
                       }
                     />
-                    <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+                    <ComboboxEmpty>No matching filters.</ComboboxEmpty>
                     <ComboboxList>
-                      {(item: (typeof projectScopeItems)[number]) => {
-                        // A repository's row keeps its machine and settings; a wiki's and a
-                        // heading's show only their icon.
-                        const project = item.kind === "repository" ? item.repository : null;
-                        return (
-                          <ComboboxItem
-                            key={item.value}
-                            hideIndicator
-                            value={item}
-                            onContextMenu={(event) => {
-                              if (project) handleProjectSettings(event, project);
-                            }}
-                          >
-                            <ProjectFilterIcon option={item} />
-                            <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-                            {project && showProjectEnvironments ? (
-                              <ProjectEnvironmentBadge
-                                group={project}
-                                primaryEnvironmentId={primaryEnvironmentId}
-                                machineByEnvironmentId={environmentMachineById}
-                              />
-                            ) : null}
-                            {project ? (
-                              <Button
-                                size="icon-xs"
-                                variant="ghost-muted"
-                                tabIndex={-1}
-                                aria-hidden="true"
-                                title={`Project settings for ${project.displayName}`}
-                                className="ml-auto"
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={(event) => {
-                                  void handleProjectSettings(event, project);
-                                }}
-                              >
-                                <SettingsIcon className="size-3.5" />
-                              </Button>
-                            ) : null}
-                          </ComboboxItem>
-                        );
-                      }}
+                      {filterGroups.map((group) =>
+                        group.items.length === 0 ? null : (
+                          <ComboboxGroup key={group.label}>
+                            <ComboboxGroupLabel>{group.label}</ComboboxGroupLabel>
+                            {group.items.map((item) => {
+                              // A repository's row keeps its machine and settings; the rest show
+                              // only their icon, and a status its count.
+                              const project = item.kind === "repository" ? item.repository : null;
+                              return (
+                                <ComboboxItem
+                                  key={item.value}
+                                  hideIndicator
+                                  value={item.value}
+                                  onContextMenu={(event) => {
+                                    if (project) handleProjectSettings(event, project);
+                                  }}
+                                >
+                                  <ThreadsFilterCheckbox check={projectFilter.checkOf(item)} />
+                                  {item.kind === "status" ? (
+                                    <ThreadStatusFilterIcon status={item.status} />
+                                  ) : (
+                                    <ProjectFilterIcon option={item} />
+                                  )}
+                                  <span className="min-w-0 flex-1 truncate text-sm">
+                                    {item.label}
+                                  </span>
+                                  {item.kind === "status" ? (
+                                    <span className="text-muted-foreground text-xs tabular-nums">
+                                      {projectFilter.statusCounts[item.status]}
+                                    </span>
+                                  ) : null}
+                                  {project && showProjectEnvironments ? (
+                                    <ProjectEnvironmentBadge
+                                      group={project}
+                                      primaryEnvironmentId={primaryEnvironmentId}
+                                      machineByEnvironmentId={environmentMachineById}
+                                    />
+                                  ) : null}
+                                  {project ? (
+                                    <Button
+                                      size="icon-xs"
+                                      variant="ghost-muted"
+                                      tabIndex={-1}
+                                      aria-hidden="true"
+                                      title={`Project settings for ${project.displayName}`}
+                                      className="ml-auto"
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                      onClick={(event) => {
+                                        void handleProjectSettings(event, project);
+                                      }}
+                                    >
+                                      <SettingsIcon className="size-3.5" />
+                                    </Button>
+                                  ) : null}
+                                </ComboboxItem>
+                              );
+                            })}
+                          </ComboboxGroup>
+                        ),
+                      )}
                     </ComboboxList>
                     {/* Astrolabe: adding a project is the picker's last row, not a header button. */}
                     <SidebarNewProjectRow
@@ -2935,6 +2959,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onClearSearch={clearThreadSearch}
               title="Agents"
             />
+            {projectGroups.length > 0 ? (
+              <ThreadsFilterPills
+                pickedProjects={projectFilter.pickedProjectItems}
+                otherStatuses={projectFilter.statuses.filter((status) => status !== "needs-you")}
+                needsYou={{
+                  on: projectFilter.statuses.includes("needs-you"),
+                  count: projectFilter.statusCounts["needs-you"],
+                }}
+                onToggleNeedsYou={() => projectFilter.toggleStatus("needs-you")}
+                onOpen={() => dispatchProjectScopeMenu({ type: "open-changed", open: true })}
+                onClearProjects={projectFilter.clearProjects}
+                onClearOtherStatuses={projectFilter.clearOtherStatuses}
+                onClear={projectFilter.clear}
+              />
+            ) : null}
           </SidebarGroup>
         }
       >
@@ -3339,8 +3378,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     Add project
                   </button>
                 </>
-              ) : selectedProjectScopeItem.kind !== "all" ? (
-                `No threads in ${selectedProjectScopeItem.kind === "repositories" || selectedProjectScopeItem.kind === "wikis" ? `your ${selectedProjectScopeItem.label.toLowerCase()}` : selectedProjectScopeItem.label} yet`
+              ) : projectFilter.isActive && !revealWidensScope ? (
+                "No threads match these filters"
               ) : (
                 "No threads yet"
               )}

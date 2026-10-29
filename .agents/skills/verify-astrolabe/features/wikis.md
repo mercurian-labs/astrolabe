@@ -8,13 +8,25 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 
 ## Sub-features
 
-- **Sidebar**: heading **Wikis** with **Search documents**, **Filter documents by wiki**
-  (combobox, named `Filter documents by wiki: <wiki>` once one is picked, kept in
-  `astrolabe:wiki-scope:v1`: All wikis, each wiki with a settings gear, **Add a
-  folder**, **New wiki**) and **New document**. With no wikis, the sidebar's empty
+- **Sidebar**: heading **Wikis** with **Search documents**, **Filter documents** and **New
+  document**. The filter (`wiki/wikiFilter.ts`, the menu and pills in `WikiSidebar.tsx`) is a
+  multi-select `role=combobox` named `Filter documents`, or `Filter documents (filtered)` with
+  a dot. Its popup (`Search filters`) has a **Status** group, **Has changes** with its count
+  (documents an open change request touches), and a **Wikis** group: All wikis, each wiki
+  with a settings gear; then **Add a folder**, **New wiki**. Rows are checkboxes and picking
+  keeps it open; with no wiki picked every wiki shows ticked, unticking one keeps the rest,
+  and ticking every one or unticking the last is All wikis. Kept in
+  `astrolabe:wiki-filter:v1` as `{wikis, changed}` (the old `astrolabe:wiki-scope:v1` is
+  not read). Pills (`[aria-label='Document filters']`): **Has changes** one tap
+  (`aria-pressed`) while on or any document has changes, one for the picked wikis (× is
+  `Remove filter: <names>`), and **Clear** with both. An empty list reads "No documents
+  match these filters". A wiki just added shows alone, unless it is the first. Opening a
+  document the filter hides (a link, Search, another section) clears the filter; a filter
+  changed under the open document, or a reload, keeps it. With no wikis, the sidebar's empty
   state has its own **Add a folder** and **New wiki**. Change requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
-  kind and that section's wiki to the Wikis section's own choice and goes there. Documents (newest first) use the settled threads'
+  kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
+  every wiki) and goes there. Documents (newest first) use the settled threads'
   slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
   card: wiki, machine, links and the open changes holding it. A wiki change request
@@ -30,7 +42,8 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   with unsaved edits, makes way for a new tab. Option/Alt-click, middle-click, the
   row's right-click **Open in new tab**, or Alt+Enter open a new tab after the one in
   front. Mod-click (Cmd on macOS, Ctrl elsewhere) and Shift-click select rows
-  (`sidebarRowSelection.ts`, `data-selected` with the selected fill; Escape clears);
+  (`sidebarRowSelection.ts`, `data-selected` with the selected fill; Escape clears; with a row focused the first
+  Escape moves focus to the right (keyboard-nav.md) and a second clears);
   a selected row's right-click is **Open N in new tabs**. Rows are `draggable`: dropped on
   a pane's strip they open at the insertion line, on its content in a new pane
   (`placeWikiTabs` → `placeTabs`), the selection with them. Right-click **Open to the
@@ -99,7 +112,9 @@ preview_evaluate  dispatch a click with altKey on a row          # new tab
 preview_evaluate  dispatch a click with metaKey on a row         # selects it (data-selected), opens nothing
 preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
 preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
-preview_act click     role=combobox[name='Filter documents by wiki']
+preview_act click     role=combobox[name=/^Filter documents/]   # rows: role=option; click a
+                                                                # wiki row by its measured x,y,
+                                                                # its name carries the icon text
 preview_act click     role=button[name='Find or create a document']  # in an empty tab
 ```
 
@@ -142,7 +157,8 @@ a screenshot of the section.
 `components/sidebar/SidebarTabHistory.tsx` (Back/Forward), `panes/panesHost.ts`,
 `panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
 `NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Repositories and
-Changes), `components/projects/storedChoice.ts` (behind `astrolabe:wiki-scope:v1`; shared
-with Repositories and the project filter), the Wikis branches in `AppSidebarLayout.tsx` and
+Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
+`astrolabe:wiki-filter:v1`; storedChoice is shared with Repositories and the Agents filter),
+`projects/ThreadsFilterParts.tsx` (the pills, shared with Agents), the Wikis branches in `AppSidebarLayout.tsx` and
 `sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
 `WikiChangesSection.tsx` is pull-requests.md's).

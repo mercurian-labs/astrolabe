@@ -9,33 +9,33 @@ Settings. Builds without sign-in keep a plain Settings button.
 
 - **No cloud config** (`T3CODE_AUTH_URL` or `T3CODE_RELAY_URL` unset): a plain
   Settings button that goes to `/settings`. No menu, no account dialogs.
-- **Loading** (session not known yet): web shows the gear with only
-  **Settings**; mobile shows the plain Settings button.
+- **Loading** (session not known yet): the gear with only **Settings**.
 - **Signed out**: a gear named "Settings". Menu: **Sign in**, **Settings**.
   Sign in opens "Sign in to Astrolabe" with a device code
-  (`[aria-label="Sign-in code"]`).
-- **Signed in**: web shows initials (or the photo) and the trigger is named
-  after the user's name, else email; mobile shows a person icon. Menu: a header
-  with name and email (web), **Account**, **Workspaces**, **Settings**, then
-  **Sign out**.
+  (`[aria-label="Sign-in code"]`); the hosted static app redirects to the sign-in
+  page instead (`cloud/account.ts`).
+- **Signed in**: initials (or the photo), and the trigger is named after the
+  user's name, else email. Menu: a header with name and email, **Account**,
+  **Workspaces**, **Settings**, then **Sign out**.
 - **Waitlisted or declined**: the email line reads "On the waitlist".
 - **Settings shortcut**: ⌘, (Ctrl+, off macOS) only in the desktop app. The
   browser keeps that key, so the Browser panel never shows it.
 - **Reverse**: Sign out returns the trigger to the gear and the menu to Sign in.
 
-Account opens the account dialog on web (`nav[aria-label="Account"]` with
-Account, Mobile clients and Remote access) and the Account screen on mobile.
+Account opens the account dialog (`nav[aria-label="Account"]` with Account,
+Mobile clients and Remote access).
 
 ## How to get to it (user POV)
 
 Web: the foot of the icon rail; on narrow windows the sidebar footer, where
-Settings-type pages show **Back** beside it. Mobile: the right of each header
-(iOS toolbar and sidebar headers, Android headers).
+Settings-type pages show **Back** beside it. Mobile has no account menu; see
+Mobile below.
 
 ## Driving it with the Browser panel
 
-Locator clicks on the rail can time out at the scroll step; click the trigger
-from `preview_evaluate` instead:
+With cloud config only (without it the rail's Settings is a plain link with no
+`aria-haspopup`, and the query below returns null). Locator clicks on the rail can
+time out at the scroll step; click the trigger from `preview_evaluate` instead:
 
 ```
 preview_evaluate  document.querySelector('nav[aria-label="Sections"] button[aria-haspopup="menu"]').click()
@@ -63,9 +63,13 @@ the trigger is in `[data-sidebar=footer]`.
 
 ## Mobile
 
-Walk with `test-t3-mobile`. Tap the header's right button: a native menu with
-the same rows. Sign in opens Account plus the browser sheet; approve with
-`scripts/cloud-kit.sh approve-latest astrolabe-mobile <email>`. After signing
+Walk with `test-t3-mobile`. The phone has no account menu (the v0.1.3 sync
+removed it): the Android header's gear and the Settings tab lead to Settings,
+whose **Account** row opens the Account screen (`SettingsAuthRouteScreen.tsx`,
+`settings/auth`). Signed out it offers **Sign in** and then shows the code
+(`Sign-in code`) under "Approve this code"; approve with
+`scripts/cloud-kit.sh approve-latest astrolabe-mobile <email>`. Signed in it shows
+the email, **Sign out** and **Delete account** (or **Leave the waitlist**). After signing
 in, a "Set up remote access" sheet can appear; close it.
 
 ## Owns
@@ -73,6 +77,5 @@ in, a "Set up remote access" sheet can appear; close it.
 `apps/web/src/components/sidebar/AccountMenu.tsx`, its mounts in
 `AppIconRail.tsx` and `SidebarChrome.tsx`,
 `apps/web/src/components/clerk/CloudAccountDialogs.tsx`,
-`apps/mobile/src/features/cloud/accountMenu.tsx` and the headers that render it.
-No tests cover the menu itself yet; `useAccountMenu` (mobile) is the cheapest
-first one.
+and on mobile `apps/mobile/src/features/settings/SettingsAuthRouteScreen.tsx`.
+No tests cover the menu itself yet.

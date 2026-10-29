@@ -11,8 +11,9 @@ them. `/w/<short name>` opens a workspace there.
 **Settings → Workspaces**, the account menu's **Workspaces** row (see
 [account-menu.md](account-menu.md)), or a `/w/<short name>` link, which
 redirects to `/settings/workspaces?w=<short name>`. It needs an Astrolabe
-account; signed out it offers **Sign in**, and a build without cloud addresses
-says sign-in isn't set up.
+account; signed out it offers **Sign in**. A build without cloud addresses hides
+it: the settings nav and search leave Workspaces out, and `/settings/workspaces` (and so
+`/w/<short name>`) redirects to `/settings/general`.
 
 ## Setup
 
@@ -103,9 +104,9 @@ disappears on sign-out.
 ## Owns
 
 `apps/web/src/components/workspaces/`, `apps/web/src/cloud/workspaces.ts`,
-`apps/web/src/routes/settings.workspaces.tsx`, `apps/web/src/routes/w.$slug.tsx`,
+`apps/web/src/routes/_chat.settings.workspaces.tsx`, `apps/web/src/routes/w.$slug.tsx`,
 `packages/client-runtime/src/workspaces/`, `apps/cloud/src/workspaces/`,
-`apps/cloud/src/auth/workspaces.ts`, `apps/mobile/src/features/workspaces/`.
+`apps/cloud/src/auth/workspaces.ts`, `apps/cloud/src/auth/access.ts` (who may create one), `apps/mobile/src/features/workspaces/`.
 
 Tests: `apps/cloud/src/workspaces/*.test.ts` and
 `apps/cloud/src/auth/workspaces.test.ts` (rules and the write path on PGlite),

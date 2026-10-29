@@ -4,7 +4,7 @@ Cmd+K (Ctrl+K off Apple) opens a which-key menu of the app's commands, hanging
 from the main area's top-right corner. The device's leader key (Space by default)
 opens it too, when you are not typing and in Vim's normal mode. The palette is one
 key further: **Search** is the menu's `/`, Cmd+K again, or Cmd+/ (Ctrl+/ off Apple)
-anywhere but the terminal; the **Command Palette** is its `:` (or Cmd+P anywhere).
+anywhere but the terminal; the **Command Palette** is its `:` (or Cmd+P anywhere but the terminal).
 The menu, the Command Palette and shortcuts run the
 same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live in
 `keybindings.json`.
@@ -72,7 +72,7 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   Delete or a modifier), or None; stored as `leaderKey` in
   `localStorage['t3code:client-settings:v1']` (unset reads the old
   `spaceLeaderEnabled`). It fires when focus is not in a text field, a control
-  (`tabindex>=0`) or a dialog, not with Shift or a held key, and in a Vim editor's
+  (`tabindex>=0`) or a dialog, not on a held key (nor with Shift when the leader is Space), and in a Vim editor's
   normal/visual mode. It also fires on a focused sidebar row, icon-rail button, or
   pane or chat tab (`[data-pane-tab]`, `[data-chat-tab]`), where Space would
   otherwise press it. Cmd+K always works; in the terminal Cmd+K stays the

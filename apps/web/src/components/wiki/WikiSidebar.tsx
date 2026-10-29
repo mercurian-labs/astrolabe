@@ -1,4 +1,4 @@
-import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { ContextMenuItem, EnvironmentId, ThreadId, WikiId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useNavigate } from "@tanstack/react-router";
@@ -18,6 +18,7 @@ import {
 import {
   memo,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -48,6 +49,8 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import {
   filterSidebarProjectScopeItems,
   reduceSidebarProjectScopeMenuState,
+  type SidebarProjectScopeMenuAction,
+  type SidebarProjectScopeMenuState,
 } from "../Sidebar.logic";
 import {
   SIDEBAR_ROW_ACTIVE_CLASS,
@@ -72,8 +75,18 @@ import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
 import {
+  FilterPill,
+  FilterPills,
+  namesOrCount,
+  OneTapFilterPill,
+  PillIcons,
+  ThreadsFilterCheckbox,
+} from "../projects/ThreadsFilterParts";
+import {
   Combobox,
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxItem,
   ComboboxList,
   ComboboxPopup,
@@ -88,10 +101,26 @@ import { AddWikiFolderDialog, NewWikiDialog } from "./WikiDialogs";
 import { useWikiEnvironment, useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
-import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
-import { WikiSettingsDialog } from "./WikiSettingsDialog";
-import { changeRequestWikiScope, useWikiScope } from "./wikiScope";
 import {
+  focusedWikiTabKey,
+  openWikiTab,
+  placeWikiTabs,
+  showWikiTab,
+  useFocusedWikiTab,
+} from "./wikiPanes";
+import { WikiSettingsDialog } from "./WikiSettingsDialog";
+import {
+  EMPTY_WIKI_FILTER,
+  filterWikiKeys,
+  storeWikiFilter,
+  toggleFilterWiki,
+  useStoredWikiFilter,
+  wikiFilterKeepsDocument,
+  type WikiFilter,
+} from "./wikiFilter";
+import { changeRequestWikiScope } from "./wikiScope";
+import {
+  parseWikiTabKey,
   searchWikiSidebarItems,
   tabShowsDocument,
   wikiScopeKey,
@@ -109,6 +138,11 @@ const SELECTION_SECTION = "wikis";
 const NO_KEYS: readonly string[] = [];
 
 const entryKey = (entry: WikiSidebarEntry) => wikiTabKey(wikiSidebarEntryTab(entry));
+
+const keyOfTab = (tab: WikiTab | null) => (tab === null ? null : wikiTabKey(tab));
+// The document focused as the page loaded counts as seen, so a reload keeps the filter; one
+// opened after, from a link, the palette or another section, is new.
+let seenFocusedKey = keyOfTab(parseWikiTabKey(focusedWikiTabKey()));
 
 /** What a row's drag and menu do, for the rows to share. */
 export interface WikiRowActions {
@@ -134,7 +168,7 @@ function compactTimeLabel(timestamp: string | null): string {
  */
 export function WikiSidebar() {
   const { overviews, loading } = useWikiOverviews();
-  const [scope, setScope] = useWikiScope(overviews);
+  const filter = useStoredWikiFilter();
   const focused = useFocusedWikiTab();
   const { isMobile, setOpenMobile } = useSidebar();
   const [finding, setFinding] = useState(false);
@@ -142,16 +176,79 @@ export function WikiSidebar() {
   const [settingsFor, setSettingsFor] = useState<WikiOverview | null>(null);
   const { environmentId: addEnvironmentId } = useWikiEnvironment(undefined);
   const navigate = useNavigate();
-  // Change requests live in the Change Requests section; this lists the documents, with the
-  // open changes' count as the way there.
-  const allLists = wikiSidebarItems(overviews, scope);
-  const changes = allLists.changes;
-  const lists = { ...allLists, changes: [], settled: [] };
-  const { documents } = lists;
+  const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
+    open: false,
+    query: "",
+  });
+  // Astrolabe: the wikis picked, and whether only documents with open changes show.
+  const kept = filterWikiKeys(
+    filter,
+    overviews.map((overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId)),
+  );
+  const filterActive = kept !== null || filter.changed;
+  // The one wiki picked, for what still takes a single wiki (Change Requests, a new document).
+  const scope = kept?.size === 1 ? [...kept][0]! : null;
   const scoped =
     overviews.find(
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
     ) ?? null;
+  const inKeptWiki = (item: { readonly environmentId: EnvironmentId; readonly wikiId: WikiId }) =>
+    kept === null || kept.has(wikiScopeKey(item.environmentId, item.wikiId));
+  const keeps = (document: WikiDocumentItem) =>
+    wikiFilterKeepsDocument(filter, kept, {
+      wikiKey: wikiScopeKey(document.environmentId, document.wiki.wikiId),
+      changes: document.changes,
+    });
+  // Change requests live in the Change Requests section; this lists the documents, with the
+  // open changes' count as the way there.
+  const allLists = wikiSidebarItems(overviews, null);
+  const inKeptWikiOf = (item: {
+    readonly environmentId: EnvironmentId;
+    readonly wiki: { readonly wikiId: WikiId };
+  }) => inKeptWiki({ environmentId: item.environmentId, wikiId: item.wiki.wikiId });
+  const changes = allLists.changes.filter(inKeptWikiOf);
+  const changedCount = allLists.documents.filter(
+    (document) => inKeptWikiOf(document) && document.changes.length > 0,
+  ).length;
+  const lists = {
+    ...allLists,
+    documents: allLists.documents.filter(keeps),
+    changes: [],
+    settled: [],
+  };
+  const { documents } = lists;
+  const setFilter = (next: WikiFilter) => storeWikiFilter(next);
+  // A wiki just added is shown alone, unless it is the first, when alone is every wiki and the
+  // pick would narrow the list once a second arrives.
+  const showAddedWiki = (key: string) =>
+    setFilter(overviews.length === 0 ? EMPTY_WIKI_FILTER : { wikis: [key], changed: false });
+
+  // Astrolabe: a document opened from a link, the palette or another section clears a filter that
+  // hides it. Undecided until the wikis load; a filter changed under the open document stays.
+  const focusedKey = keyOfTab(focused);
+  const focusedDocument =
+    focused?.kind === "note"
+      ? allLists.documents.find((document) =>
+          tabShowsDocument(focused, {
+            environmentId: document.environmentId,
+            wikiId: document.wiki.wikiId,
+            name: document.name,
+          }),
+        )
+      : undefined;
+  const hidesFocused =
+    focused === null
+      ? false
+      : loading
+        ? null
+        : !inKeptWiki(focused) || (focusedDocument !== undefined && !keeps(focusedDocument));
+  const clearForOpened = useEffectEvent(() => storeWikiFilter(EMPTY_WIKI_FILTER));
+  // oxlint-disable-next-line t3code/react-effect-budget -- documents open from links, the palette and other sections, outside any handler here; widening is written back to the stored filter
+  useEffect(() => {
+    if (hidesFocused === null || focusedKey === seenFocusedKey) return;
+    seenFocusedKey = focusedKey;
+    if (hidesFocused) clearForOpened();
+  }, [focusedKey, hidesFocused]);
 
   // Astrolabe: the rows as they show, for Shift-click's ranges and what a selected row carries.
   const shown = useRef<{ keys: readonly string[]; tabs: ReadonlyMap<string, WikiTab> }>({
@@ -301,11 +398,15 @@ export function WikiSidebar() {
               searchNoun="document"
               hasProjects
               projectScope={
-                <WikiScopeFilter
+                <WikiFilterMenu
                   overviews={overviews}
-                  scope={scope}
-                  scoped={scoped}
-                  onScope={setScope}
+                  filter={filter}
+                  kept={kept}
+                  active={filterActive}
+                  changedCount={changedCount}
+                  menu={menu}
+                  dispatchMenu={dispatchMenu}
+                  onFilter={setFilter}
                   onSettings={setSettingsFor}
                   onAdd={setAdding}
                 />
@@ -328,6 +429,16 @@ export function WikiSidebar() {
               activeSearchResultIndex={activeIndex}
               onClearSearch={clearSearch}
             />
+            {overviews.length > 0 ? (
+              <WikiFilterPills
+                overviews={overviews}
+                filter={filter}
+                kept={kept}
+                changedCount={changedCount}
+                onOpen={() => dispatchMenu({ type: "open-changed", open: true })}
+                onFilter={setFilter}
+              />
+            ) : null}
           </SidebarGroup>
         }
       >
@@ -386,7 +497,7 @@ export function WikiSidebar() {
                       type="button"
                       className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                       onClick={() => {
-                        // Into Change Requests narrowed as Wikis is: the one wiki, or every wiki.
+                        // Into Change Requests narrowed as Wikis is: the one wiki, else every wiki.
                         changeRequestKindStore.set("wikis");
                         changeRequestWikiScope.set(scope);
                         void navigate({
@@ -428,8 +539,10 @@ export function WikiSidebar() {
                     <EmptyStateButton onClick={() => setAdding("new")}>New wiki</EmptyStateButton>
                   </div>
                 </>
-              ) : scoped ? (
+              ) : scoped && !filter.changed ? (
                 `No documents in ${scoped.wiki.name} yet`
+              ) : filterActive ? (
+                "No documents match these filters"
               ) : (
                 "No documents yet"
               )}
@@ -451,13 +564,13 @@ export function WikiSidebar() {
             environmentId={addEnvironmentId}
             open={adding === "folder"}
             onOpenChange={(next) => setAdding(next ? "folder" : null)}
-            onAdded={(wiki) => setScope(wikiScopeKey(addEnvironmentId, wiki.wikiId))}
+            onAdded={(wiki) => showAddedWiki(wikiScopeKey(addEnvironmentId, wiki.wikiId))}
           />
           <NewWikiDialog
             environmentId={addEnvironmentId}
             open={adding === "new"}
             onOpenChange={(next) => setAdding(next ? "new" : null)}
-            onCreated={(wiki) => setScope(wikiScopeKey(addEnvironmentId, wiki.wikiId))}
+            onCreated={(wiki) => showAddedWiki(wikiScopeKey(addEnvironmentId, wiki.wikiId))}
           />
         </>
       ) : null}
@@ -485,132 +598,184 @@ function EmptyStateButton({ onClick, children }: { onClick: () => void; children
   );
 }
 
+const CHANGED_VALUE = "changed";
+const ALL_WIKIS_VALUE = "all";
+const CHANGED_LABEL = "Has changes";
+
+function ChangedIcon({ className }: { readonly className?: string }) {
+  return (
+    <FilePenLineIcon
+      aria-hidden
+      className={cn("size-4 shrink-0 text-muted-foreground", className)}
+    />
+  );
+}
+
 /**
- * The filter by wiki, as the thread list's filter by project: all wikis or one, each wiki's
- * settings from its row, and adding a wiki from the foot of the list.
+ * The Wikis filter, as the thread list's: documents with open changes, then every wiki or several,
+ * each wiki's settings from its row, and adding a wiki from the foot of the list. Picking keeps
+ * the list open.
  */
-function WikiScopeFilter({
+function WikiFilterMenu({
   overviews,
-  scope,
-  scoped,
-  onScope,
+  filter,
+  kept,
+  active,
+  changedCount,
+  menu,
+  dispatchMenu,
+  onFilter,
   onSettings,
   onAdd,
 }: {
   readonly overviews: ReadonlyArray<WikiOverview>;
-  readonly scope: string | null;
-  readonly scoped: WikiOverview | null;
-  readonly onScope: (scope: string | null) => void;
+  readonly filter: WikiFilter;
+  readonly kept: ReadonlySet<string> | null;
+  readonly active: boolean;
+  readonly changedCount: number;
+  readonly menu: SidebarProjectScopeMenuState;
+  readonly dispatchMenu: (action: SidebarProjectScopeMenuAction) => void;
+  readonly onFilter: (next: WikiFilter) => void;
   readonly onSettings: (overview: WikiOverview) => void;
   readonly onAdd: (kind: "folder" | "new") => void;
 }) {
   const { isMobile, open: sidebarOpen } = useSidebar();
-  const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
-    open: false,
-    query: "",
-  });
-  const filter = useComboboxFilter();
-  const items = [
-    { value: "all", label: "All wikis" },
-    ...overviews.map((overview) => ({
-      value: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
-      label: overview.wiki.name,
-    })),
-  ];
-  const filtered = filterSidebarProjectScopeItems({
-    items,
-    query: menu.query,
-    matches: (item, query) => filter.contains(item, query, (candidate) => candidate.label),
-  });
+  const comboboxFilter = useComboboxFilter();
   const overviewByKey = new Map(
     overviews.map((overview) => [
       wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
       overview,
     ]),
   );
-  const selected = items.find((item) => item.value === (scope ?? "all")) ?? items[0];
+  const wikiKeys = [...overviewByKey.keys()];
+  const labelOf = (value: string) =>
+    value === CHANGED_VALUE
+      ? CHANGED_LABEL
+      : value === ALL_WIKIS_VALUE
+        ? "All wikis"
+        : (overviewByKey.get(value)?.wiki.name ?? value);
+  const values = [CHANGED_VALUE, ALL_WIKIS_VALUE, ...wikiKeys];
+  const filtered = filterSidebarProjectScopeItems({
+    items: values.map((value) => ({ value })),
+    query: menu.query,
+    matches: (item, query) => comboboxFilter.contains(item.value, query, labelOf),
+  }).map((item) => item.value);
+  // With no wiki picked every wiki is in, so each shows ticked.
+  const checked = (value: string) =>
+    value === CHANGED_VALUE
+      ? filter.changed
+      : value === ALL_WIKIS_VALUE
+        ? kept === null
+        : kept === null || kept.has(value);
+  const selected = values.filter(checked);
+  const toggle = (value: string) => {
+    if (value === CHANGED_VALUE) onFilter({ ...filter, changed: !filter.changed });
+    else if (value === ALL_WIKIS_VALUE) onFilter({ ...filter, wikis: [] });
+    else onFilter(toggleFilterWiki(filter, value, wikiKeys));
+  };
   const closeAnd = (then: () => void) => {
     dispatchMenu({ type: "open-changed", open: false });
     then();
   };
+  const groups = [
+    { label: "Status", values: filtered.filter((value) => value === CHANGED_VALUE) },
+    { label: "Wikis", values: filtered.filter((value) => value !== CHANGED_VALUE) },
+  ];
   return (
-    <Combobox
-      items={items}
+    <Combobox<string, true>
+      multiple
+      items={values}
       filteredItems={filtered}
       autoHighlight
-      itemToStringLabel={(item) => item.label}
-      isItemEqualToValue={(a, b) => a.value === b.value}
+      itemToStringLabel={labelOf}
       open={menu.open}
       onOpenChange={(open) => dispatchMenu({ type: "open-changed", open })}
       value={selected}
-      onValueChange={(item) => {
-        if (!item) return;
-        onScope(item.value === "all" ? null : item.value);
+      onValueChange={(next: string[]) => {
+        // A toggle is the one value added or removed.
+        const value =
+          next.find((candidate) => !selected.includes(candidate)) ??
+          selected.find((candidate) => !next.includes(candidate));
+        if (value !== undefined) toggle(value);
       }}
     >
       <ComboboxTrigger
         render={
           <SidebarHeaderIconButton
-            label={
-              scoped ? `Filter documents by wiki: ${scoped.wiki.name}` : "Filter documents by wiki"
-            }
+            label={active ? "Filter documents (filtered)" : "Filter documents"}
           />
         }
       >
-        {scoped ? (
-          <span className="flex shrink-0">
-            <WikiIcon environmentId={scoped.environmentId} wiki={scoped.wiki} className="size-4" />
-          </span>
-        ) : (
-          <ListFilterIcon className="size-4" />
-        )}
+        <ListFilterIcon className="size-4" />
+        {/* Astrolabe: the pills name the filter; the dot keeps it seen from the collapsed titlebar. */}
+        {active ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+          />
+        ) : null}
       </ComboboxTrigger>
       <ComboboxPopup
         align={!isMobile && !sidebarOpen ? "start" : "end"}
         className="min-w-56 max-w-[min(18rem,var(--available-width))] overflow-hidden"
       >
         <ComboboxSearchInput
-          aria-label="Search wikis"
-          placeholder="Search wikis..."
+          aria-label="Search filters"
+          placeholder="Filter..."
           value={menu.query}
           onChange={(event) => dispatchMenu({ type: "query-changed", query: event.target.value })}
         />
-        <ComboboxEmpty>No matching wikis.</ComboboxEmpty>
+        <ComboboxEmpty>No matching filters.</ComboboxEmpty>
         <ComboboxList>
-          {(item: (typeof items)[number]) => {
-            const overview = overviewByKey.get(item.value) ?? null;
-            return (
-              <ComboboxItem key={item.value} hideIndicator value={item}>
-                {overview ? (
-                  <WikiIcon
-                    environmentId={overview.environmentId}
-                    wiki={overview.wiki}
-                    className="size-4 shrink-0"
-                  />
-                ) : (
-                  <BookOpenIcon className="size-4 shrink-0" />
-                )}
-                <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-                {overview ? (
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    tabIndex={-1}
-                    aria-hidden="true"
-                    title={`Settings for ${overview.wiki.name}`}
-                    className="ml-auto"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeAnd(() => onSettings(overview));
-                    }}
-                  >
-                    <SettingsIcon className="size-3.5" />
-                  </Button>
-                ) : null}
-              </ComboboxItem>
-            );
-          }}
+          {groups.map((group) =>
+            group.values.length === 0 ? null : (
+              <ComboboxGroup key={group.label}>
+                <ComboboxGroupLabel>{group.label}</ComboboxGroupLabel>
+                {group.values.map((value) => {
+                  const overview = overviewByKey.get(value) ?? null;
+                  return (
+                    <ComboboxItem key={value} hideIndicator value={value}>
+                      <ThreadsFilterCheckbox check={checked(value) ? "checked" : "unchecked"} />
+                      {value === CHANGED_VALUE ? (
+                        <ChangedIcon />
+                      ) : overview ? (
+                        <WikiIcon
+                          environmentId={overview.environmentId}
+                          wiki={overview.wiki}
+                          className="size-4 shrink-0"
+                        />
+                      ) : (
+                        <BookOpenIcon className="size-4 shrink-0" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm">{labelOf(value)}</span>
+                      {value === CHANGED_VALUE ? (
+                        <span className="text-muted-foreground text-xs tabular-nums">
+                          {changedCount}
+                        </span>
+                      ) : null}
+                      {overview ? (
+                        <Button
+                          size="icon-xs"
+                          variant="ghost-muted"
+                          tabIndex={-1}
+                          aria-hidden="true"
+                          title={`Settings for ${overview.wiki.name}`}
+                          className="ml-auto"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeAnd(() => onSettings(overview));
+                          }}
+                        >
+                          <SettingsIcon className="size-3.5" />
+                        </Button>
+                      ) : null}
+                    </ComboboxItem>
+                  );
+                })}
+              </ComboboxGroup>
+            ),
+          )}
         </ComboboxList>
         <SidebarPickerFooter>
           <SidebarPickerAction
@@ -625,6 +790,68 @@ function WikiScopeFilter({
         </SidebarPickerFooter>
       </ComboboxPopup>
     </Combobox>
+  );
+}
+
+/** The Wikis filter in force: Has changes as one tap, then the wikis picked. */
+function WikiFilterPills({
+  overviews,
+  filter,
+  kept,
+  changedCount,
+  onOpen,
+  onFilter,
+}: {
+  readonly overviews: ReadonlyArray<WikiOverview>;
+  readonly filter: WikiFilter;
+  readonly kept: ReadonlySet<string> | null;
+  readonly changedCount: number;
+  readonly onOpen: () => void;
+  readonly onFilter: (next: WikiFilter) => void;
+}) {
+  const picked =
+    kept === null
+      ? []
+      : overviews.filter((overview) =>
+          kept.has(wikiScopeKey(overview.environmentId, overview.wiki.wikiId)),
+        );
+  const showChanged = filter.changed || changedCount > 0;
+  const count = (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0);
+  if (!showChanged && count === 0) return null;
+  return (
+    <FilterPills label="Document filters" count={count} onClear={() => onFilter(EMPTY_WIKI_FILTER)}>
+      {showChanged ? (
+        <OneTapFilterPill
+          on={filter.changed}
+          label={CHANGED_LABEL}
+          count={changedCount}
+          icon={<ChangedIcon className="size-3.5" />}
+          onToggle={() => onFilter({ ...filter, changed: !filter.changed })}
+        />
+      ) : null}
+      {picked.length > 0 ? (
+        <FilterPill
+          label={namesOrCount(
+            picked.map((overview) => overview.wiki.name),
+            "wikis",
+          )}
+          onOpen={onOpen}
+          onRemove={() => onFilter({ ...filter, wikis: [] })}
+        >
+          <PillIcons>
+            {picked.slice(0, 3).map((overview) => (
+              <span key={overview.wiki.wikiId} className="flex rounded-xs bg-sidebar">
+                <WikiIcon
+                  environmentId={overview.environmentId}
+                  wiki={overview.wiki}
+                  className="size-3.5"
+                />
+              </span>
+            ))}
+          </PillIcons>
+        </FilterPill>
+      ) : null}
+    </FilterPills>
   );
 }
 
