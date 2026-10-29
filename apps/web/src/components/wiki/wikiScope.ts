@@ -5,7 +5,7 @@ import { wikiScopeKey } from "./wikiTabs";
 
 /**
  * Astrolabe: the wiki a section's list is narrowed to (its `wikiScopeKey`), or none, kept on the
- * device. Each section keeps its own, so narrowing Wikis never narrows Change Requests.
+ * device. Change Requests keeps its own, so narrowing Wikis (`wikiFilter`) never narrows it.
  */
 function wikiScopeStore(storageKey: string) {
   const store = storedChoice<string | null>({
@@ -27,9 +27,5 @@ function wikiScopeStore(storageKey: string) {
   return { ...store, useScope };
 }
 
-/** The Wikis section's wiki filter. */
-const wikisSectionScope = wikiScopeStore("astrolabe:wiki-scope:v1");
 /** The wiki the Change Requests section's project filter picked. */
 export const changeRequestWikiScope = wikiScopeStore("astrolabe:change-request-wiki-scope:v1");
-
-export const useWikiScope = wikisSectionScope.useScope;

@@ -60,9 +60,72 @@ const pillClass =
   "inline-flex h-6 min-w-0 max-w-full items-center rounded-full border text-xs font-medium";
 
 /**
- * Astrolabe: the filter in force, one pill per dimension, under the sidebar's title row. Needs you
- * is always offered while any thread needs you, so it is one tap rather than a trip to the menu.
+ * Astrolabe: a section's filter in force, one pill per dimension, under the sidebar's title row,
+ * with Clear once there are two.
  */
+export function FilterPills({
+  label,
+  count,
+  onClear,
+  children,
+}: {
+  readonly label: string;
+  /** How many dimensions are filtering, for Clear. */
+  readonly count: number;
+  readonly onClear: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1 px-1 pt-1" aria-label={label}>
+      {children}
+      {count >= 2 ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="h-6 cursor-pointer rounded-full px-2 text-xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
+        >
+          Clear
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** A filter that is one tap on or off, offered while it would match something. */
+export function OneTapFilterPill({
+  on,
+  label,
+  count,
+  icon,
+  onToggle,
+}: {
+  readonly on: boolean;
+  readonly label: string;
+  readonly count: number;
+  readonly icon: ReactNode;
+  readonly onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      className={cn(
+        pillClass,
+        "cursor-pointer gap-1 px-2",
+        on
+          ? "border-warning/60 bg-warning/12 text-sidebar-foreground"
+          : "border-dashed border-sidebar-border text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+      )}
+    >
+      {icon}
+      {label}
+      <span className="tabular-nums opacity-70">{count}</span>
+    </button>
+  );
+}
+
+/** The Agents filter's pills: Needs you as one tap, then the projects and the other statuses. */
 export function ThreadsFilterPills({
   pickedProjects,
   otherStatuses,
@@ -88,39 +151,33 @@ export function ThreadsFilterPills({
     (pickedProjects.length > 0 ? 1 : 0) +
     (otherStatuses.length > 0 ? 1 : 0);
   if (!showNeedsYou && pillCount === 0) return null;
-  const projectLabel =
-    pickedProjects.length <= 2
-      ? pickedProjects.map((item) => item.label).join(", ")
-      : `${pickedProjects.length} projects`;
   return (
-    <div className="flex flex-wrap items-center gap-1 px-1 pt-1" aria-label="Thread filters">
+    <FilterPills label="Thread filters" count={pillCount} onClear={onClear}>
       {showNeedsYou ? (
-        <button
-          type="button"
-          aria-pressed={needsYou.on}
-          onClick={onToggleNeedsYou}
-          className={cn(
-            pillClass,
-            "cursor-pointer gap-1 px-2",
-            needsYou.on
-              ? "border-warning/60 bg-warning/12 text-sidebar-foreground"
-              : "border-dashed border-sidebar-border text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-          )}
-        >
-          <ThreadStatusFilterIcon status="needs-you" className="size-3.5" />
-          {THREAD_STATUS_FILTER_LABELS["needs-you"]}
-          <span className="tabular-nums opacity-70">{needsYou.count}</span>
-        </button>
+        <OneTapFilterPill
+          on={needsYou.on}
+          label={THREAD_STATUS_FILTER_LABELS["needs-you"]}
+          count={needsYou.count}
+          icon={<ThreadStatusFilterIcon status="needs-you" className="size-3.5" />}
+          onToggle={onToggleNeedsYou}
+        />
       ) : null}
       {pickedProjects.length > 0 ? (
-        <FilterPill label={projectLabel} onOpen={onOpen} onRemove={onClearProjects}>
-          <span className="flex shrink-0 -space-x-1">
+        <FilterPill
+          label={namesOrCount(
+            pickedProjects.map((item) => item.label),
+            "projects",
+          )}
+          onOpen={onOpen}
+          onRemove={onClearProjects}
+        >
+          <PillIcons>
             {pickedProjects.slice(0, 3).map((item) => (
               <span key={item.value} className="flex rounded-xs bg-sidebar [&_svg]:size-3.5">
                 <ProjectFilterIcon option={item} />
               </span>
             ))}
-          </span>
+          </PillIcons>
         </FilterPill>
       ) : null}
       {otherStatuses.length > 0 ? (
@@ -134,20 +191,21 @@ export function ThreadsFilterPills({
           ))}
         </FilterPill>
       ) : null}
-      {pillCount >= 2 ? (
-        <button
-          type="button"
-          onClick={onClear}
-          className="h-6 cursor-pointer rounded-full px-2 text-xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
-        >
-          Clear
-        </button>
-      ) : null}
-    </div>
+    </FilterPills>
   );
 }
 
-function FilterPill({
+/** The picks' names, or how many past two. */
+export const namesOrCount = (names: ReadonlyArray<string>, noun: string) =>
+  names.length <= 2 ? names.join(", ") : `${names.length} ${noun}`;
+
+/** Up to three picks' icons, overlapping. */
+export function PillIcons({ children }: { readonly children: ReactNode }) {
+  return <span className="flex shrink-0 -space-x-1">{children}</span>;
+}
+
+/** A dimension's pill: its body opens the filter, its × clears the dimension. */
+export function FilterPill({
   label,
   onOpen,
   onRemove,
