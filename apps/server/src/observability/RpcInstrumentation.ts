@@ -240,6 +240,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiAmend]: "wiki",
   [WS_METHODS.wikiTransform]: "wiki",
   [WS_METHODS.wikiRevertAmendment]: "wiki",
+  [WS_METHODS.wikiSaveWorktree]: "wiki",
   [WS_METHODS.wikiMerge]: "wiki",
   [WS_METHODS.wikiSetChangeRequestStatus]: "wiki",
   [WS_METHODS.wikiSetMirror]: "wiki",

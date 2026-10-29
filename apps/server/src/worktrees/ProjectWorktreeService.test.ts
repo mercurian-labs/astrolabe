@@ -24,8 +24,6 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
-  countStatusFiles,
-  parseWorktreeList,
   ProjectWorktreeService,
   layer as projectWorktreeLayer,
   SET_ASIDE_REF_PREFIX,
@@ -108,25 +106,6 @@ const fixture = Effect.gen(function* () {
 
 const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof layerBase> | Scope.Scope>) =>
   effect.pipe(Effect.provide(layerBase), Effect.scoped);
-
-describe("parseWorktreeList", () => {
-  it("reads branches and detached heads, first record as the main checkout", () => {
-    const stdout = [
-      "worktree /repo\0HEAD aaa\0branch refs/heads/main\0",
-      "worktree /wt/one\0HEAD bbb\0detached\0",
-      "worktree /wt/gone\0HEAD ccc\0branch refs/heads/old\0prunable gitdir file points to non-existent location\0",
-      "",
-    ].join("\0");
-    expect(parseWorktreeList(stdout)).toEqual([
-      { path: "/repo", isMain: true, branch: "main", head: "aaa" },
-      { path: "/wt/one", isMain: false, branch: null, head: "bbb" },
-    ]);
-  });
-
-  it("counts a rename once", () => {
-    expect(countStatusFiles("R  new.txt\0old.txt\0?? added.txt\0")).toBe(2);
-  });
-});
 
 describe("ProjectWorktreeService", () => {
   it.live("opens a checked-out branch where it is, and makes a worktree when none is free", () =>

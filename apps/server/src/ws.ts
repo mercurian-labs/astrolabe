@@ -1276,6 +1276,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
       [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
+      [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
       [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),

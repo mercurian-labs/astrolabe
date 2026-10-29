@@ -409,6 +409,7 @@ import {
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
+  WikiSaveWorktreeInput,
   WikiSetChangeRequestStatusInput,
   WikiSetMirrorInput,
   WikiSummary,
@@ -596,6 +597,7 @@ export const WS_METHODS = {
   wikiAmend: "wiki.amend",
   wikiTransform: "wiki.transform",
   wikiRevertAmendment: "wiki.revertAmendment",
+  wikiSaveWorktree: "wiki.saveWorktree",
   wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
@@ -2050,6 +2052,12 @@ const WsWikiRevertAmendmentRpc = Rpc.make(WS_METHODS.wikiRevertAmendment, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiSaveWorktreeRpc = Rpc.make(WS_METHODS.wikiSaveWorktree, {
+  payload: WikiSaveWorktreeInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiMergeRpc = Rpc.make(WS_METHODS.wikiMerge, {
   payload: WikiChangeRequestTarget,
   success: WikiMergeResult,
@@ -2413,6 +2421,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiAmendRpc,
   WsWikiTransformRpc,
   WsWikiRevertAmendmentRpc,
+  WsWikiSaveWorktreeRpc,
   WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,

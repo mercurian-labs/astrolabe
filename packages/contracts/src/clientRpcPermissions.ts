@@ -43,6 +43,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.wikiAmend]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiTransform]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiRevertAmendment]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiSaveWorktree]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiMerge]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiSetChangeRequestStatus]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiSetMirror]: AuthSourceControlWriteScope,
