@@ -11,6 +11,8 @@ import {
   LinkIcon,
   FolderPlusIcon,
   ListFilterIcon,
+  ListIcon,
+  ListTreeIcon,
   SettingsIcon,
   UsersIcon,
 } from "lucide-react";
@@ -100,6 +102,7 @@ import { isTurnRunning, noteNameOfFile } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
+import { WikiWorktreePicker, WikiWorktreeTrees, wikiView } from "./WikiWorktrees";
 import {
   focusedWikiTabKey,
   openWikiTab,
@@ -169,6 +172,7 @@ export function WikiSidebar() {
   const { overviews, loading } = useWikiOverviews();
   const filter = useStoredWikiFilter();
   const focused = useFocusedWikiTab();
+  const view = wikiView.useValue();
   const { isMobile, setOpenMobile } = useSidebar();
   const [finding, setFinding] = useState(false);
   const [settingsFor, setSettingsFor] = useState<WikiOverview | null>(null);
@@ -392,17 +396,20 @@ export function WikiSidebar() {
               searchNoun="document"
               hasProjects
               projectScope={
-                <WikiFilterMenu
-                  overviews={overviews}
-                  filter={filter}
-                  kept={kept}
-                  active={filterActive}
-                  changedCount={changedCount}
-                  menu={menu}
-                  dispatchMenu={dispatchMenu}
-                  onFilter={setFilter}
-                  onSettings={setSettingsFor}
-                />
+                <>
+                  {scoped ? <WikiWorktreePicker overview={scoped} /> : null}
+                  <WikiFilterMenu
+                    overviews={overviews}
+                    filter={filter}
+                    kept={kept}
+                    active={filterActive}
+                    changedCount={changedCount}
+                    menu={menu}
+                    dispatchMenu={dispatchMenu}
+                    onFilter={setFilter}
+                    onSettings={setSettingsFor}
+                  />
+                </>
               }
               onNewThread={() => setFinding(true)}
               newThreadDisabled={overviews.length === 0}
@@ -482,6 +489,17 @@ export function WikiSidebar() {
                   No documents found
                 </p>
               )
+            ) : view === "tree" ? (
+              scoped ? (
+                <WikiWorktreeTrees overview={scoped} focused={focused} />
+              ) : (
+                <p
+                  role="status"
+                  className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
+                >
+                  Pick a wiki in the filter to see its files.
+                </p>
+              )
             ) : (
               <ul role="presentation" className="relative flex flex-col gap-px">
                 {changes.length > 0 ? (
@@ -520,7 +538,11 @@ export function WikiSidebar() {
               </ul>
             )}
           </TooltipProvider>
-          {documents.length === 0 && changes.length === 0 && !loading && !isSearching ? (
+          {documents.length === 0 &&
+          changes.length === 0 &&
+          !loading &&
+          !isSearching &&
+          view === "list" ? (
             <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
               {overviews.length === 0 ? (
                 <>
@@ -613,6 +635,7 @@ function WikiFilterMenu({
 }) {
   const { isMobile, open: sidebarOpen } = useSidebar();
   const comboboxFilter = useComboboxFilter();
+  const view = wikiView.useValue();
   const overviewByKey = new Map(
     overviews.map((overview) => [
       wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
@@ -750,6 +773,12 @@ function WikiFilterMenu({
           )}
         </ComboboxList>
         <SidebarPickerFooter>
+          <SidebarPickerAction
+            icon={view === "tree" ? ListIcon : ListTreeIcon}
+            onClick={() => closeAnd(() => wikiView.set(view === "tree" ? "list" : "tree"))}
+          >
+            {view === "tree" ? "Show as list" : "Show the file trees"}
+          </SidebarPickerAction>
           <SidebarPickerAction
             icon={FolderPlusIcon}
             onClick={() => closeAnd(() => openCommandPalette({ open: "add-wiki" }))}

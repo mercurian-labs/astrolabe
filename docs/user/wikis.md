@@ -32,6 +32,12 @@ When the thread that wrote a change request has pull requests, the change reques
 
 A skill map warns you when a change breaks a link one of its edges depends on. The warning stays in the map's history, even after you repair the link.
 
+## Work on several change requests at once
+
+**Show the file trees**, in the wiki filter, lists the wiki's worktrees, each with its files: the wiki folder under its main branch, and one per change request you put in a worktree, under that change request's title. **Work on a change request in a worktree**, beside the filter, puts an open change request in a worktree of its own, or opens a new one there when you type a title. Worktrees are shared with Repositories, so a free one is reused and its unsaved work is set aside, as described there.
+
+A note opened from a change request's worktree reads from that change request. When an amendment lands on a change request, its worktree's files follow; if you have unsaved edits in the same files there, the amendment stops and names them. Edits made directly in a change request's worktree, by you or an agent working there, land as one amendment with **Save edits to the change request** in the worktree's menu.
+
 ## Agents in wikis
 
 Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own change request on the wiki, one per thread, which you review and merge like any other.

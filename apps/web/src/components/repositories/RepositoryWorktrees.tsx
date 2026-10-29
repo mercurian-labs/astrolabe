@@ -34,7 +34,10 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
 
-const target = (repository: EnvironmentProject) => ({
+/** What the worktree controls need of a project: a repository's or a wiki's. */
+type WorktreeOwner = Pick<EnvironmentProject, "environmentId" | "id">;
+
+const target = (repository: WorktreeOwner) => ({
   environmentId: repository.environmentId,
   projectId: repository.id,
 });
@@ -48,11 +51,17 @@ export function WorktreeHeader({
   worktree,
   expanded,
   onToggle,
+  label = worktree.alias,
+  menuItems,
 }: {
-  readonly repository: EnvironmentProject;
+  readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
   readonly expanded: boolean;
   readonly onToggle: () => void;
+  /** What to call it, when its branch says less than something else (a change request's title). */
+  readonly label?: string;
+  /** More actions for its menu, above Keep and Delete. */
+  readonly menuItems?: ReactNode;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
   const accessory = (
@@ -87,10 +96,14 @@ export function WorktreeHeader({
       >
         <span className="flex items-center gap-1.5">
           <GitBranchIcon aria-hidden className="size-3 shrink-0" />
-          {worktree.alias}
+          {label}
         </span>
       </CollapsibleSectionHeader>
-      {worktree.isMain ? null : <WorktreeMenu repository={repository} worktree={worktree} />}
+      {worktree.isMain ? null : (
+        <WorktreeMenu repository={repository} worktree={worktree} label={label}>
+          {menuItems}
+        </WorktreeMenu>
+      )}
     </li>
   );
 }
@@ -98,9 +111,13 @@ export function WorktreeHeader({
 function WorktreeMenu({
   repository,
   worktree,
+  label,
+  children,
 }: {
-  readonly repository: EnvironmentProject;
+  readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
+  readonly label: string;
+  readonly children?: ReactNode;
 }) {
   const setKept = useAtomCommand(worktreeEnvironment.setKept);
   const remove = useRemoveWorktree();
@@ -110,7 +127,7 @@ function WorktreeMenu({
         render={
           <button
             type="button"
-            aria-label={`${worktree.alias} worktree actions`}
+            aria-label={`${label} worktree actions`}
             className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           />
         }
@@ -118,6 +135,7 @@ function WorktreeMenu({
         <EllipsisIcon className="size-3.5" />
       </MenuTrigger>
       <MenuPopup side="bottom" align="end">
+        {children}
         <MenuItem
           onClick={async () => {
             await setKept({
@@ -130,7 +148,7 @@ function WorktreeMenu({
           <PinIcon />
           {worktree.kept ? "Stop keeping" : "Keep for this branch"}
         </MenuItem>
-        <MenuItem variant="destructive" onClick={() => void remove(repository, worktree)}>
+        <MenuItem variant="destructive" onClick={() => void remove(repository, worktree, label)}>
           <Trash2Icon />
           Delete worktree…
         </MenuItem>
@@ -142,7 +160,7 @@ function WorktreeMenu({
 /** Deletes a worktree, asking first when the server names something it would cost. */
 function useRemoveWorktree() {
   const remove = useAtomCommand(worktreeEnvironment.remove);
-  return async (repository: EnvironmentProject, worktree: ProjectWorktree) => {
+  return async (repository: WorktreeOwner, worktree: ProjectWorktree, label: string) => {
     const run = (confirmed: boolean) =>
       remove({
         environmentId: repository.environmentId,
@@ -151,7 +169,7 @@ function useRemoveWorktree() {
     const asked = await run(false);
     if (asked._tag === "Success" && !asked.value.removed) {
       const confirmed = await requestConfirmDialog(
-        [`Delete the ${worktree.alias} worktree?`, ...asked.value.warnings].join("\n"),
+        [`Delete the ${label} worktree?`, ...asked.value.warnings].join("\n"),
         { variant: "destructive" },
       );
       if (confirmed === true) await run(true);
@@ -167,8 +185,11 @@ function useRemoveWorktree() {
 export function SetAsideRows({
   repository,
   setAside,
+  branchLabel = (branch) => branch,
 }: {
-  readonly repository: EnvironmentProject;
+  readonly repository: WorktreeOwner;
+  /** What to call a branch, when something else says more (a change request's title). */
+  readonly branchLabel?: (branch: string) => string;
   readonly setAside: ProjectWorktreeListResult["setAside"];
 }) {
   const openBranch = useOpenBranch();
@@ -182,7 +203,7 @@ export function SetAsideRows({
           className="mx-0.5 flex h-8 list-none items-center gap-1.5 px-2 text-xs text-sidebar-muted-foreground"
         >
           <UndoIcon aria-hidden className="size-3.5 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{`Set-aside work on ${entry.branch}`}</span>
+          <span className="min-w-0 flex-1 truncate">{`Set-aside work on ${branchLabel(entry.branch)}`}</span>
           <button
             type="button"
             className="cursor-pointer rounded px-1 hover:text-sidebar-foreground"
@@ -195,7 +216,7 @@ export function SetAsideRows({
             className="cursor-pointer rounded px-1 hover:text-destructive-foreground"
             onClick={async () => {
               const confirmed = await requestConfirmDialog(
-                `Discard the work set aside on ${entry.branch}?`,
+                `Discard the work set aside on ${branchLabel(entry.branch)}?`,
                 { variant: "destructive" },
               );
               if (confirmed !== true) return;
