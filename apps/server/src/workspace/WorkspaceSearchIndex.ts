@@ -6,6 +6,7 @@ import type {
   FileItem,
   FileFinder as FileFinderType,
   GrepCursor,
+  GrepMatch,
   MixedItem,
   MixedSearchResult,
   Result,
@@ -18,14 +19,16 @@ import * as LayerMap from "effect/LayerMap";
 import * as Schema from "effect/Schema";
 
 import type {
+  ProjectContentMatch,
   ProjectEntry,
   ProjectEntryKind,
   ProjectListEntriesResult,
   ProjectSearchContentsInput,
-  ProjectSearchContentsResult,
   ProjectSearchEntriesResult,
 } from "@t3tools/contracts";
 import { isProjectFaviconPath } from "@t3tools/shared/projectFavicon";
+
+import type { ContentSearchPathFilter } from "./contentSearchGlobs.ts";
 
 // fff-node's native library stays external; single-executables require disk packages instead of importing them.
 const requireForFff = NodeModule.createRequire(import.meta.url);
@@ -36,8 +39,7 @@ const WORKSPACE_INDEX_PAGE_SIZE = WORKSPACE_INDEX_MAX_ENTRIES + 2;
 const WORKSPACE_INDEX_SCAN_TIMEOUT = "15 seconds";
 const WORKSPACE_INDEX_SCAN_TIMEOUT_MS = 15_000;
 const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
-const CONTENT_SEARCH_TIME_BUDGET_MS = 250;
-const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
+export const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
 
 export class WorkspaceSearchIndexCreateFailed extends Schema.TaggedError<WorkspaceSearchIndexCreateFailed>()(
   "WorkspaceSearchIndexCreateFailed",
@@ -104,6 +106,30 @@ export class WorkspaceSearchIndexDestroyFailed extends Schema.TaggedError<Worksp
   }
 }
 
+/** Where an indexed content search resumes: fff's file offset, then matches already returned from it. */
+export interface IndexedContentSearchPosition {
+  readonly offset: number;
+  readonly skip: number;
+}
+
+export interface IndexedContentSearchInput extends Pick<
+  ProjectSearchContentsInput,
+  "query" | "limit" | "caseSensitive" | "wholeWord" | "useRegex"
+> {
+  readonly contextLines: number;
+  readonly pathFilter: ContentSearchPathFilter | null;
+  readonly start: IndexedContentSearchPosition;
+  /** `performance.now()` time after which no further page is fetched. */
+  readonly deadline: number;
+}
+
+export interface IndexedContentSearchResult {
+  readonly matches: ReadonlyArray<ProjectContentMatch>;
+  readonly next: IndexedContentSearchPosition | null;
+  readonly limited: boolean;
+  readonly regexFallbackError?: string;
+}
+
 export class WorkspaceSearchIndex extends Context.Service<
   WorkspaceSearchIndex,
   {
@@ -115,8 +141,8 @@ export class WorkspaceSearchIndex extends Context.Service<
       imageOnly?: boolean,
     ) => Effect.Effect<ProjectSearchEntriesResult, WorkspaceSearchIndexSearchFailed>;
     readonly searchContents: (
-      input: Omit<ProjectSearchContentsInput, "cwd">,
-    ) => Effect.Effect<ProjectSearchContentsResult, WorkspaceSearchIndexSearchFailed>;
+      input: IndexedContentSearchInput,
+    ) => Effect.Effect<IndexedContentSearchResult, WorkspaceSearchIndexSearchFailed>;
     readonly refresh: () => Effect.Effect<
       void,
       WorkspaceSearchIndexRefreshFailed | WorkspaceSearchIndexScanTimedOut
@@ -230,16 +256,20 @@ function codePointBefore(line: string, index: number): string | undefined {
   return codePointAt(line, previousIndex);
 }
 
-function buildContentSearchQuery(input: Omit<ProjectSearchContentsInput, "cwd">): {
+function buildContentSearchQuery(input: IndexedContentSearchInput): {
   readonly searchQuery: string;
   readonly regexMode: boolean;
 } {
-  if (input.caseSensitive) {
-    return { searchQuery: input.query, regexMode: input.useRegex };
-  }
-  return input.useRegex
-    ? { searchQuery: `(?i)${input.query}`, regexMode: true }
-    : { searchQuery: input.query.toLowerCase(), regexMode: false };
+  const query = input.caseSensitive
+    ? input.query
+    : input.useRegex
+      ? `(?i)${input.query}`
+      : input.query.toLowerCase();
+  const constraints = input.pathFilter?.fffConstraints ?? [];
+  return {
+    searchQuery: constraints.length > 0 ? `${constraints.join(" ")} ${query}` : query,
+    regexMode: input.useRegex,
+  };
 }
 
 function mapContentMatchRanges(
@@ -255,7 +285,7 @@ function mapContentMatchRanges(
 }
 
 // Post-filter whole words: consuming boundary regexes swallow adjacent separators and widen ranges; \b misses punctuation edges.
-function isWholeWordRange(
+export function isWholeWordRange(
   line: string,
   range: { readonly start: number; readonly end: number },
 ): boolean {
@@ -476,51 +506,89 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     return { ...mapped, truncated: incompleteBeforeQuery || mapped.truncated };
   });
 
+  const toContentMatch = (
+    match: GrepMatch,
+    input: IndexedContentSearchInput,
+  ): ProjectContentMatch | null => {
+    const path = toPosixPath(match.relativePath);
+    if (input.pathFilter && !input.pathFilter.matches(path)) return null;
+    const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
+      (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
+    );
+    if (matchRanges.length === 0) return null;
+    return {
+      path,
+      lineNumber: match.lineNumber,
+      lineContent: match.lineContent,
+      matchRanges,
+      ...(input.contextLines > 0
+        ? { contextBefore: match.contextBefore ?? [], contextAfter: match.contextAfter ?? [] }
+        : {}),
+    };
+  };
+
+  // fff pages always end on a file boundary, so an offset plus a count of matches to skip resumes exactly.
   const searchContents: WorkspaceSearchIndex["Service"]["searchContents"] = Effect.fn(
     "WorkspaceSearchIndex.searchContents",
   )(function* (input) {
     const { searchQuery, regexMode } = buildContentSearchQuery(input);
-    const deadline = performance.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
-    // Grep cursors advance per file; whole-word filtering needs enough raw candidates before advancing.
-    const rawPageSize = input.wholeWord
-      ? Math.max(input.limit, CONTENT_SEARCH_MAX_MATCHES_PER_FILE)
-      : input.limit;
-    const matches: Array<ProjectSearchContentsResult["matches"][number]> = [];
-    let nextCursor: GrepCursor | null = null;
+    // Grep cursors advance per file; post-filters need enough raw candidates before advancing.
+    const rawPageSize =
+      input.wholeWord || input.pathFilter !== null
+        ? Math.max(input.limit, CONTENT_SEARCH_MAX_MATCHES_PER_FILE)
+        : input.limit;
+    const matches: ProjectContentMatch[] = [];
+    let position: IndexedContentSearchPosition | null = input.start;
+    let reachedLimit = false;
     let regexFallbackError: string | undefined;
 
-    do {
-      const remainingTimeBudgetMs = Math.max(1, Math.ceil(deadline - performance.now()));
+    while (position !== null && !reachedLimit) {
+      const pageStart: IndexedContentSearchPosition = position;
+      const remainingTimeBudgetMs = Math.max(1, Math.ceil(input.deadline - performance.now()));
       const result = yield* runSearch(input.query, input.limit, "grep", () =>
         finder.grep(searchQuery, {
           mode: regexMode ? "regex" : "plain",
           smartCase: !input.caseSensitive && !regexMode,
           maxMatchesPerFile: Math.min(CONTENT_SEARCH_MAX_MATCHES_PER_FILE, rawPageSize),
           pageSize: rawPageSize,
-          cursor: nextCursor,
+          // fff reads only `_offset`; its cursor constructor isn't exported.
+          cursor:
+            pageStart.offset > 0
+              ? ({ __brand: "GrepCursor", _offset: pageStart.offset } as GrepCursor)
+              : null,
           timeBudgetMs: remainingTimeBudgetMs,
+          beforeContext: input.contextLines,
+          afterContext: input.contextLines,
         }),
       );
-
-      for (const match of result.items) {
-        const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
-          (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
-        );
-        if (matchRanges.length === 0) continue;
-        matches.push({
-          path: toPosixPath(match.relativePath),
-          lineNumber: match.lineNumber,
-          lineContent: match.lineContent,
-          matchRanges,
-        });
-      }
-      nextCursor = result.nextCursor;
       regexFallbackError ??= result.regexFallbackError;
-    } while (matches.length < input.limit && nextCursor !== null && performance.now() < deadline);
+      position =
+        result.nextCursor === null
+          ? null
+          : {
+              offset: result.nextCursor._offset,
+              skip: Math.max(0, pageStart.skip - result.items.length),
+            };
+
+      for (let index = pageStart.skip; index < result.items.length; index += 1) {
+        const match = toContentMatch(result.items[index]!, input);
+        if (match === null) continue;
+        matches.push(match);
+        if (matches.length === input.limit) {
+          reachedLimit = true;
+          if (index + 1 < result.items.length) {
+            position = { offset: pageStart.offset, skip: index + 1 };
+          }
+          break;
+        }
+      }
+      if (performance.now() >= input.deadline) break;
+    }
 
     return {
-      matches: matches.slice(0, input.limit),
-      truncated: matches.length > input.limit || nextCursor !== null,
+      matches,
+      next: position,
+      limited: reachedLimit && position !== null,
       ...(regexFallbackError !== undefined ? { regexFallbackError } : {}),
     };
   });

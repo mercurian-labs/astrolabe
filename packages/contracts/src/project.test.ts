@@ -14,6 +14,7 @@ import {
   ProjectUpdatePayload,
   ProjectMutation,
   ProjectSearchContentsError,
+  ProjectSearchContentsInput,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
 } from "./project.ts";
@@ -90,6 +91,36 @@ describe("project RPC errors", () => {
     expect(writeError.message).toBe("Legacy project write failure.");
     expect(writeError.relativePath).toBeUndefined();
     expect(writeError.failure).toBeUndefined();
+  });
+});
+
+describe("project content search input", () => {
+  const decode = Schema.decodeUnknownSync(ProjectSearchContentsInput);
+  const base = {
+    cwd: "/workspace",
+    query: "needle",
+    limit: 500,
+    caseSensitive: false,
+    wholeWord: false,
+    useRegex: false,
+  };
+
+  it("accepts requests from clients that predate filters and paging", () => {
+    expect(decode(base)).toEqual(base);
+  });
+
+  it("accepts filters, context and a cursor, and caps context lines", () => {
+    const input = {
+      ...base,
+      include: "src/**, {a,b}.ts",
+      exclude: "*.lock",
+      includeIgnored: true,
+      contextLines: 2,
+      cursor: '{"phase":"indexed","offset":4,"skip":2}',
+    };
+    expect(decode(input)).toEqual(input);
+    expect(() => decode({ ...base, contextLines: 6 })).toThrow();
+    expect(() => decode({ ...base, limit: 501 })).toThrow();
   });
 });
 

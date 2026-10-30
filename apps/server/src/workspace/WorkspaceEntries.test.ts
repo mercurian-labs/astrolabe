@@ -567,6 +567,188 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
     );
   });
 
+  describe("searchContents filters and paging", () => {
+    const search = (
+      input: Partial<
+        Parameters<WorkspaceEntries.WorkspaceEntries["Service"]["searchContents"]>[0]
+      > & {
+        readonly cwd: string;
+      },
+    ) =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        return yield* workspaceEntries.searchContents({
+          query: "needle",
+          limit: 100,
+          caseSensitive: true,
+          wholeWord: false,
+          useRegex: false,
+          ...input,
+        });
+      });
+    const pathsOf = (result: { readonly matches: ReadonlyArray<{ readonly path: string }> }) =>
+      [...new Set(result.matches.map((match) => match.path))].toSorted();
+
+    const writeFixture = Effect.fn(function* () {
+      const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-filters-", git: true });
+      yield* writeTextFile(cwd, ".gitignore", "node_modules/\ntarget/\n");
+      yield* writeTextFile(cwd, "package.json", '{ "needle": true }\n');
+      yield* writeTextFile(cwd, "src/a.rs", "needle\n");
+      yield* writeTextFile(cwd, "src/api/b.ts", "needle\n");
+      yield* writeTextFile(cwd, "web/c.ts", "needle\n");
+      yield* writeTextFile(cwd, "target/out.rs", "needle\n");
+      yield* writeTextFile(cwd, "node_modules/prettier/index.js", "needle\n");
+      yield* writeTextFile(cwd, "node_modules/prettier/types.ts", "needle\n");
+      yield* writeTextFile(cwd, "node_modules/other/index.js", "needle\n");
+      return cwd;
+    });
+
+    it.effect("applies inclusions, exclusions and directory globs", () =>
+      Effect.gen(function* () {
+        const cwd = yield* writeFixture();
+        expect(pathsOf(yield* search({ cwd, include: "*.ts" }))).toEqual([
+          "src/api/b.ts",
+          "web/c.ts",
+        ]);
+        expect(pathsOf(yield* search({ cwd, include: "*.odd" }))).toEqual([]);
+        expect(pathsOf(yield* search({ cwd, exclude: "*.ts, *.json" }))).toEqual(["src/a.rs"]);
+        expect(pathsOf(yield* search({ cwd, include: "*.ts", exclude: "*.ts" }))).toEqual([]);
+        expect(pathsOf(yield* search({ cwd, include: "src", exclude: "src/api/" }))).toEqual([
+          "src/a.rs",
+        ]);
+        expect(pathsOf(yield* search({ cwd, include: "src/{a.rs,api/b.ts}" }))).toEqual([
+          "src/a.rs",
+          "src/api/b.ts",
+        ]);
+      }),
+    );
+
+    it.effect("skips gitignored files unless asked, still applying the globs to them", () =>
+      Effect.gen(function* () {
+        const cwd = yield* writeFixture();
+        expect(pathsOf(yield* search({ cwd }))).toEqual([
+          "package.json",
+          "src/a.rs",
+          "src/api/b.ts",
+          "web/c.ts",
+        ]);
+        expect(pathsOf(yield* search({ cwd, includeIgnored: true }))).toEqual([
+          "node_modules/other/index.js",
+          "node_modules/prettier/index.js",
+          "node_modules/prettier/types.ts",
+          "package.json",
+          "src/a.rs",
+          "src/api/b.ts",
+          "target/out.rs",
+          "web/c.ts",
+        ]);
+        expect(
+          pathsOf(
+            yield* search({
+              cwd,
+              includeIgnored: true,
+              include: "node_modules/prettier/**",
+              exclude: "*.ts",
+            }),
+          ),
+        ).toEqual(["node_modules/prettier/index.js"]);
+      }),
+    );
+
+    it.effect("returns context lines around each match in indexed and ignored files", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-context-", git: true });
+        const contents = "one\ntwo\r\nneedle\nfour\nfive\n";
+        yield* writeTextFile(cwd, ".gitignore", "ignored/\n");
+        yield* writeTextFile(cwd, "src/file.ts", contents);
+        yield* writeTextFile(cwd, "ignored/file.ts", contents);
+
+        const result = yield* search({ cwd, includeIgnored: true, contextLines: 2 });
+        expect(result.matches).toHaveLength(2);
+        for (const match of result.matches) {
+          expect(match).toMatchObject({
+            lineNumber: 3,
+            lineContent: "needle",
+            contextBefore: ["one", "two"],
+            contextAfter: ["four", "five"],
+          });
+        }
+        expect((yield* search({ cwd })).matches[0]).not.toHaveProperty("contextBefore");
+      }),
+    );
+
+    it.effect("pages past the limit without gaps or repeats, through ignored files", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-paging-", git: true });
+        yield* writeTextFile(cwd, ".gitignore", "vendor/\n");
+        const expected: string[] = [];
+        for (let file = 0; file < 12; file += 1) {
+          yield* writeTextFile(cwd, `src/file-${file}.ts`, "needle\n".repeat(60));
+          for (let line = 1; line <= 60; line += 1) expected.push(`src/file-${file}.ts:${line}`);
+        }
+        for (let file = 0; file < 3; file += 1) {
+          yield* writeTextFile(cwd, `vendor/lib-${file}.js`, "needle\n".repeat(30));
+          for (let line = 1; line <= 30; line += 1) expected.push(`vendor/lib-${file}.js:${line}`);
+        }
+
+        const seen: string[] = [];
+        let cursor: string | undefined;
+        let pages = 0;
+        do {
+          const page = yield* search({
+            cwd,
+            includeIgnored: true,
+            limit: 500,
+            ...(cursor ? { cursor } : {}),
+          });
+          pages += 1;
+          seen.push(...page.matches.map((match) => `${match.path}:${match.lineNumber}`));
+          expect(page.truncated).toBe(page.nextCursor !== undefined);
+          if (page.matches.length === 500) expect(page.limited).toBe(true);
+          cursor = page.nextCursor;
+        } while (cursor !== undefined && pages < 10);
+
+        expect(pages).toBeGreaterThan(1);
+        expect(seen).toHaveLength(expected.length);
+        expect(seen.toSorted()).toEqual(expected.toSorted());
+      }),
+    );
+
+    it.effect("stops a page at the limit inside an ignored file and resumes there", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({
+          prefix: "t3code-workspace-content-ignored-page-",
+          git: true,
+        });
+        yield* writeTextFile(cwd, ".gitignore", "build/\n");
+        yield* writeTextFile(cwd, "build/out.js", "needle\n".repeat(5));
+
+        const first = yield* search({ cwd, includeIgnored: true, limit: 3 });
+        expect(first.matches.map((match) => match.lineNumber)).toEqual([1, 2, 3]);
+        expect(first).toMatchObject({ truncated: true, limited: true });
+
+        const second = yield* search({
+          cwd,
+          includeIgnored: true,
+          limit: 3,
+          cursor: first.nextCursor!,
+        });
+        expect(second.matches.map((match) => match.lineNumber)).toEqual([4, 5]);
+        expect(second.truncated).toBe(false);
+        expect(second.nextCursor).toBeUndefined();
+        expect(second).not.toHaveProperty("limited");
+      }),
+    );
+
+    it.effect("rejects a cursor it did not issue", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-content-bad-cursor-" });
+        const error = yield* Effect.flip(search({ cwd, cursor: "not a cursor" }));
+        expect(error._tag).toBe("WorkspaceSearchIndexSearchFailed");
+      }),
+    );
+  });
+
   describe("browse", () => {
     it.effect("shows dot directories in directory mode and hidden-prefix mode", () =>
       Effect.gen(function* () {
