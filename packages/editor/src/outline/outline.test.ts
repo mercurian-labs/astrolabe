@@ -1,6 +1,7 @@
+import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { codeLanguageFor } from "../code/code.ts";
 import { livePreview } from "../markdown/livePreview.ts";
@@ -14,8 +15,8 @@ import {
   type OutlineItem,
 } from "./outline.ts";
 
-/** A state of `file`'s language, its text with `|` marking the cursor. */
-async function stateOf(file: string, text: string, extensions: Extension = []) {
+/** A state of `file`'s language, its text with `|` marking the cursor, as far as it parsed. */
+async function unparsedStateOf(file: string, text: string, extensions: Extension = []) {
   const support = file.endsWith(".md") ? livePreview() : await codeLanguageFor(file)!.load();
   const cursor = text.indexOf("|");
   return EditorState.create({
@@ -23,6 +24,13 @@ async function stateOf(file: string, text: string, extensions: Extension = []) {
     selection: { anchor: Math.max(0, cursor) },
     extensions: [support, extensions],
   });
+}
+
+/** The same, parsed to its end: a new state parses within 20 ms, which a loaded run can exhaust. */
+async function stateOf(file: string, text: string, extensions: Extension = []) {
+  const state = await unparsedStateOf(file, text, extensions);
+  ensureSyntaxTree(state, state.doc.length, 5000);
+  return state.update({}).state;
 }
 
 /** Each item as `kind name`, indented two spaces per depth. */
@@ -159,7 +167,7 @@ namespace Tools { export const run = () => {}; }
 
   it("reads a large file as far as the parser has gone, and all of it given time", async () => {
     const big = Array.from({ length: 4000 }, (_, index) => `function f${index}() {}`).join("\n");
-    const state = await stateOf("a.ts", big);
+    const state = await unparsedStateOf("a.ts", big);
     const partial = documentOutline(state, 0);
     expect(partial.complete).toBe(false);
     expect(partial.items.length).toBeGreaterThan(0);
@@ -243,6 +251,8 @@ describe("the outline extension", () => {
   });
 
   it("reports the path when its names change, not on every keystroke or move", async () => {
+    // Each edit reparses within a wall-clock budget, which a loaded run can exhaust mid-file.
+    using _clock = vi.spyOn(Date, "now").mockReturnValue(0);
     const paths: string[][] = [];
     using view = await viewOf("a.ts", "class A {\n  run() {\n    |\n  }\n  stop() {}\n}", (path) =>
       paths.push(path),

@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { runScopeHandlers, type EditorView } from "@codemirror/view";
 import { katexRequested, loadKatex, unloadKatex } from "./math.ts";
-import { caret, destroyViews, lines, mount, select, sourceText, texts } from "./testSupport.ts";
+import {
+  caret,
+  destroyViews,
+  finishParse,
+  lines,
+  mount,
+  select,
+  sourceText,
+  texts,
+} from "./testSupport.ts";
 
 afterEach(destroyViews);
 
@@ -14,7 +23,10 @@ const tableWidgets = (view: EditorView) => [
 
 function press(view: EditorView, key: string, shiftKey = false) {
   const event = new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true });
-  return runScopeHandlers(view, event, "editor");
+  const handled = runScopeHandlers(view, event, "editor");
+  // An edit reparses within a 20 ms budget; finish it, as `mount` does, before the next key.
+  finishParse(view);
+  return handled;
 }
 
 describe("tables", () => {
