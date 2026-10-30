@@ -2,6 +2,7 @@ import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -122,7 +123,7 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
     Effect.ignore,
     Effect.forkScoped,
   );
-  yield* child.stderr.pipe(
+  const stderrDone = yield* child.stderr.pipe(
     Stream.decodeText(),
     Stream.runForEach((text) =>
       Effect.sync(() => {
@@ -135,6 +136,8 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
   yield* child.exitCode.pipe(
     Effect.map(Number),
     Effect.orElseSucceed(() => -1),
+    // What it wrote last is usually why it stopped.
+    Effect.tap(() => Fiber.await(stderrDone)),
     Effect.flatMap((code) =>
       Effect.sync(() => {
         for (const deferred of pending.values()) {

@@ -696,53 +696,42 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
     const processScope = yield* Scope.fork(instance.scope);
     instance.processScope = processScope;
-    const started = yield* Effect.gen(function* () {
-      const connection = yield* connect(
-        { executable: server.executable, args: server.args, cwd: instance.cwd, env: server.env },
-        {
-          onNotification: onNotificationFromServer(instance),
-          onRequest: onRequestFromServer(instance),
-        },
-      );
-      yield* connection.exited.pipe(
-        Effect.flatMap(() => onExit(instance, generation, connection)),
-        Effect.forkIn(serviceScope, { startImmediately: true }),
-      );
-      const rootUri = NodeUrl.pathToFileURL(instance.cwd).href;
-      const init = yield* connection
-        .request("initialize", {
-          processId: process.pid,
-          clientInfo: { name: "Astrolabe" },
-          rootUri,
-          rootPath: instance.cwd,
-          workspaceFolders: [{ uri: rootUri, name: path.basename(instance.cwd) }],
-          capabilities: CLIENT_CAPABILITIES,
-          initializationOptions: server.initializationOptions,
-        })
-        .response.pipe(
-          Effect.timeoutOrElse({
-            duration: options.initializeTimeout,
-            orElse: () => Effect.fail(null),
-          }),
-        );
-      connection.notify("initialized", {});
-      return { connection, capabilities: (init as Json)?.capabilities ?? {} };
-    }).pipe(
-      Scope.provide(processScope),
-      Effect.map((value) => ({ ok: true as const, ...value })),
-      Effect.orElseSucceed(() => ({ ok: false as const })),
-      Effect.catchDefect(() => Effect.succeed({ ok: false as const })),
-    );
-    if (instance.generation !== generation) return;
-    if (!started.ok) {
-      // The exit watcher counts it as a crash when the process died; else it never came up.
-      if (instance.running === null && instance.processScope === processScope) {
-        instance.processScope = null;
-        yield* Scope.close(processScope, Exit.void);
-        yield* onCrash(instance, generation, "The language server did not start.");
-      }
-      return;
+    const connection = yield* connect(
+      { executable: server.executable, args: server.args, cwd: instance.cwd, env: server.env },
+      {
+        onNotification: onNotificationFromServer(instance),
+        onRequest: onRequestFromServer(instance),
+      },
+    ).pipe(Scope.provide(processScope), Effect.option);
+    if (Option.isNone(connection)) {
+      instance.processScope = null;
+      yield* Scope.close(processScope, Exit.void);
+      return yield* onCrash(instance, generation, "The language server could not be started.");
     }
+    // From here a failure ends the process, and its exit is what counts as the crash.
+    yield* connection.value.exited.pipe(
+      Effect.flatMap(() => onExit(instance, generation, connection.value)),
+      Effect.forkIn(serviceScope, { startImmediately: true }),
+    );
+    const rootUri = NodeUrl.pathToFileURL(instance.cwd).href;
+    const init = yield* connection.value
+      .request("initialize", {
+        processId: process.pid,
+        clientInfo: { name: "Astrolabe" },
+        rootUri,
+        rootPath: instance.cwd,
+        workspaceFolders: [{ uri: rootUri, name: path.basename(instance.cwd) }],
+        capabilities: CLIENT_CAPABILITIES,
+        initializationOptions: server.initializationOptions,
+      })
+      .response.pipe(Effect.timeoutOption(options.initializeTimeout), Effect.option);
+    if (instance.generation !== generation) return;
+    if (Option.isNone(init) || Option.isNone(init.value)) {
+      return yield* Scope.close(processScope, Exit.void);
+    }
+    connection.value.notify("initialized", {});
+    const capabilities = (init.value.value as Json)?.capabilities ?? {};
+    const started = { connection: connection.value, capabilities };
     const running: Running = {
       generation,
       connection: started.connection,
@@ -1067,6 +1056,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const relativePath = relativePathOf(instance, clientUri);
     const doc = relativePath === null ? undefined : instance.docs.get(relativePath);
     if (doc !== undefined && state !== undefined) {
+      // A file just opened: its text may still be on its way from Documents.
+      yield* until(doc, () => doc.loadId !== null || instance.docs.get(doc.relativePath) !== doc);
       if (state.loadId !== doc.loadId)
         return { error: contentModified("The document was reloaded.") };
       if (state.unconfirmed.length > 0) {
