@@ -449,6 +449,9 @@ export function summarizeT3ToolCalls(
     case "wiki-amend":
       label = phrase("Amended", "amend", `wikis ${times}`);
       break;
+    case "code-read":
+      label = phrase("Read", "read", `the code index ${times}`);
+      break;
   }
   return { label, failedCount };
 }

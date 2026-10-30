@@ -30,6 +30,13 @@ describe("resolveT3McpToolPresentation", () => {
     }
   });
 
+  it("reads a bare tool name that starts like the t3_code server prefix as the tool", () => {
+    expect(resolveT3McpToolPresentation("t3_code_find")?.displayName).toBe("Find code uses");
+    expect(resolveT3McpToolPresentation("t3_code/t3_code_find")?.displayName).toBe(
+      "Find code uses",
+    );
+  });
+
   it("matches OpenCode 2's per-thread server names, whose thread ids hold underscores", () => {
     expect(
       resolveT3McpToolPresentation("t3-code-thread_opencode2-adapter_delegate_task")?.displayName,
