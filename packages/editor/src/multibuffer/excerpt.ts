@@ -11,7 +11,7 @@ import {
 } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap, WidgetType } from "@codemirror/view";
 
-import { type ExcerptBounds, mapBounds } from "./excerpts.ts";
+import { EXCERPT_EXPAND_LINES, type ExcerptBounds, mapBounds } from "./excerpts.ts";
 
 /**
  * Astrolabe: an editor that holds a whole file but shows one excerpt of it, for a multi-file view
@@ -43,6 +43,8 @@ export interface ExcerptMark {
 
 interface ExcerptValue {
   readonly bounds: ExcerptBounds;
+  /** The lines its bars count, up to the file's neighbouring excerpts; null for the whole file. */
+  readonly reach: ExcerptBounds | null;
   readonly marks: readonly ExcerptMark[];
 }
 
@@ -51,6 +53,7 @@ export const EXCERPT_ATTRIBUTE = "data-excerpt";
 
 export const setExcerptBounds = StateEffect.define<ExcerptBounds>();
 export const setExcerptMarks = StateEffect.define<readonly ExcerptMark[]>();
+export const setExcerptReach = StateEffect.define<ExcerptBounds | null>();
 
 const controlsFacet = Facet.define<ExcerptControls, ExcerptControls | null>({
   combine: (values) => values[0] ?? null,
@@ -64,9 +67,12 @@ function clampBounds(bounds: ExcerptBounds, state: EditorState): ExcerptBounds {
 }
 
 function nextValue(value: ExcerptValue, tr: Transaction): ExcerptValue {
-  let { bounds, marks } = value;
+  let { bounds, reach, marks } = value;
   if (tr.docChanged) {
     bounds = mapBounds(bounds, tr.changes, tr.state.doc);
+    if (reach !== null) {
+      reach = { from: tr.changes.mapPos(reach.from, -1), to: tr.changes.mapPos(reach.to, 1) };
+    }
     marks = marks.flatMap((mark) => {
       const from = tr.changes.mapPos(mark.from, 1);
       const to = tr.changes.mapPos(mark.to, -1);
@@ -76,12 +82,15 @@ function nextValue(value: ExcerptValue, tr: Transaction): ExcerptValue {
   for (const effect of tr.effects) {
     if (effect.is(setExcerptBounds)) bounds = clampBounds(effect.value, tr.state);
     if (effect.is(setExcerptMarks)) marks = effect.value;
+    if (effect.is(setExcerptReach)) reach = effect.value;
   }
-  return bounds === value.bounds && marks === value.marks ? value : { bounds, marks };
+  return bounds === value.bounds && reach === value.reach && marks === value.marks
+    ? value
+    : { bounds, reach, marks };
 }
 
 const excerptField = StateField.define<ExcerptValue>({
-  create: () => ({ bounds: { from: 0, to: 0 }, marks: [] }),
+  create: () => ({ bounds: { from: 0, to: 0 }, reach: null, marks: [] }),
   update: nextValue,
 });
 
@@ -123,8 +132,8 @@ class HiddenLines extends WidgetType {
     button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", () => {
       const controls = view.state.facet(controlsFacet);
-      if (this.edge === "up") controls?.expand(1, 0);
-      else controls?.expand(0, 1);
+      if (this.edge === "up") controls?.expand(EXCERPT_EXPAND_LINES, 0);
+      else controls?.expand(0, EXCERPT_EXPAND_LINES);
     });
     dom.append(button);
     return dom;
@@ -152,8 +161,17 @@ function hiddenRuns(state: EditorState): Array<{ from: number; to: number; edge:
 const hiddenDecorations = EditorView.decorations.compute([excerptField, "doc"], (state) => {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = state.doc;
+  const { bounds, reach } = state.field(excerptField);
   for (const run of hiddenRuns(state)) {
-    const lines = doc.lineAt(run.to).number - doc.lineAt(run.from).number + 1;
+    // The bar counts the lines before the next excerpt of the file, not to the file's edge.
+    const from = run.edge === "up" && reach !== null ? Math.max(run.from, reach.from) : run.from;
+    const to = run.edge === "down" && reach !== null ? Math.min(run.to, reach.to) : run.to;
+    const lines = Math.max(
+      1,
+      run.edge === "up"
+        ? doc.lineAt(bounds.from).number - doc.lineAt(Math.min(from, bounds.from)).number
+        : doc.lineAt(Math.max(to, bounds.to)).number - doc.lineAt(bounds.to).number,
+    );
     builder.add(
       run.from,
       run.to,
@@ -295,12 +313,14 @@ export function excerptKeys(keys: ExcerptKeys): Extension {
 /** The excerpt itself: the lines it shows and what it marks, and how it reaches its neighbours. */
 export function excerpt(options: {
   readonly bounds: ExcerptBounds;
+  readonly reach?: ExcerptBounds | null;
   readonly marks?: readonly ExcerptMark[];
   readonly controls: ExcerptControls;
 }): Extension {
   return [
     excerptField.init((state) => ({
       bounds: clampBounds(options.bounds, state),
+      reach: options.reach ?? null,
       marks: options.marks ?? [],
     })),
     controlsFacet.of(options.controls),

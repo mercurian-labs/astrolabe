@@ -135,7 +135,10 @@ vi.mock(import("~/state/entities"), async (original) => ({
   useThreadShells: (() => []) as never,
 }));
 
+import { allTabs } from "~/panes/arrangement";
 import { RepositoryFileView } from "../RepositoryFileView";
+import { repositoryPanes } from "../repositoryPanes";
+import { repositoryTabKey } from "../repositoryTabs";
 import { rememberLocationList } from "./openMultibuffer";
 import { RepositoryLocationsView } from "./RepositoryMultibufferViews";
 
@@ -192,5 +195,22 @@ describe("RepositoryLocationsView", () => {
     await userEvent.click(screen.getByTestId("file").getByText("alpha 30", { exact: true }));
     await userEvent.keyboard("{End}?");
     await vi.waitFor(() => expect(text(excerpts.nth(1))).toContain("alpha 30?"));
+  });
+
+  it("opens an excerpt's file in a file tab", async () => {
+    setup({ "a.ts": lines(40, "alpha") });
+    const id = rememberLocationList({
+      title: "References",
+      locations: [{ path: "a.ts", line: 5 }],
+    });
+    await using screen = await render(
+      <div style={{ height: 600, display: "flex" }}>
+        <RepositoryLocationsView tabKey="results" tab={{ kind: "locations", ...checkout, id }} />
+      </div>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Open a.ts" }));
+    expect(allTabs(repositoryPanes.arrangement())).toContain(
+      repositoryTabKey({ kind: "file", ...checkout, path: "a.ts" }),
+    );
   });
 });

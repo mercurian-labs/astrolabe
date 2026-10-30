@@ -655,6 +655,45 @@ it.layer(layerTest)("Documents", (it) => {
       ),
     );
 
+    it.effect("leaves a replacement already taken back since, instead of inserting it twice", () =>
+      withWorkspace("foo one\nfoo two\n", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const { cwd } = workspace.target;
+          yield* writeFile(cwd, "src/other.txt", "a foo b\nc foo d");
+          const a = yield* connect(workspace.target, "a");
+          const b = yield* connect({ ...workspace.target, relativePath: "src/other.txt" }, "b");
+
+          const result = yield* documents.replaceAll({
+            cwd,
+            clientId: "replace",
+            query: "foo",
+            ...plain,
+            replacement: "bar",
+            paths: [RELATIVE_PATH, "src/other.txt"],
+          });
+          yield* a.syncTo(1);
+          yield* b.syncTo(1);
+          // Each file's own editor undoes it: one file wholly, the other's first line only.
+          a.edit({ from: 0, to: 3, insert: "foo" });
+          a.edit({ from: 8, to: 11, insert: "foo" });
+          yield* a.push();
+          yield* a.syncTo(2);
+          b.edit({ from: 2, to: 5, insert: "foo" });
+          yield* b.push();
+          yield* b.syncTo(2);
+
+          expect(yield* documents.undoReplaceAll({ cwd, id: result.id! })).toEqual({
+            files: 1,
+            skipped: [RELATIVE_PATH],
+          });
+          yield* b.syncTo(3);
+          expect(a.text()).toBe("foo one\nfoo two\n");
+          expect(b.text()).toBe("a foo b\nc foo d");
+        }),
+      ),
+    );
+
     it.effect("keeps only a client's latest replace-all, until it expires", () =>
       withWorkspace("foo", (workspace) =>
         Effect.gen(function* () {

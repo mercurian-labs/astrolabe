@@ -44,8 +44,11 @@ button searches again.
 - **Replace all** replaces every match in the results' files. With more than ten files it asks
   first. A file open in another tab takes the replacement there, where undo takes it back; the
   rest are changed and saved for you. **Undo replace-all** takes the whole replacement back, also
-  after you've edited since, for 30 minutes or until your next replace-all in that tab. With
+  after you've edited since, for 30 minutes or until your next replace-all in that tab, then
+  searches again. A replacement you've changed or undone since stays as it is. With
   **.\*** on, `$1` and `$<name>` in the replacement insert groups, and `\n` a line break.
+- A file you open from the sidebar opens in a tab beside the results, not over them; so do
+  problems and found references.
 
 ### Problems
 

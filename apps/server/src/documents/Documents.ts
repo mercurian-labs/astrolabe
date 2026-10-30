@@ -19,7 +19,13 @@ import {
   type DocumentUndoReplaceAllInput,
   type DocumentUndoReplaceAllResult,
 } from "@t3tools/contracts";
-import { replacementsIn, textMatcher } from "@t3tools/shared/textReplace";
+import {
+  madeReplacements,
+  type MadeReplacement,
+  replacementsIn,
+  textMatcher,
+  undoReplacements,
+} from "@t3tools/shared/textReplace";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -108,7 +114,7 @@ interface ReplacedFile {
   readonly document: LoadedDocument;
   /** The version right after the replacement. */
   readonly version: number;
-  readonly inverse: ChangeSet;
+  readonly made: readonly MadeReplacement[];
 }
 
 interface ReplaceAllRecord {
@@ -683,18 +689,19 @@ const make = Effect.gen(function* () {
                 document = yield* load(target);
                 documents.set(target.key, document);
               }
-              const found = replacementsIn(document.doc.toString(), matcher, input.replacement);
+              const text = document.doc.toString();
+              const found = replacementsIn(text, matcher, input.replacement);
               if (found.length === 0) {
                 if (document.subscribers === 0) yield* scheduleEviction(document);
                 return null;
               }
               const changes = ChangeSet.of(found, document.doc.length);
-              const inverse = changes.invert(document.doc);
+              const made = madeReplacements(text, found);
               // The record's hold keeps the document, and the history its undo maps through.
               document.subscribers += 1;
               document.idleGeneration += 1;
               yield* editLocked(document, input.clientId, changes, 1);
-              return { document, version: document.updates.length, inverse, count: found.length };
+              return { document, version: document.updates.length, made, count: found.length };
             }),
           );
         }).pipe(
@@ -706,7 +713,7 @@ const make = Effect.gen(function* () {
           ),
         );
         if (result === null) continue;
-        files.push({ document: result.document, version: result.version, inverse: result.inverse });
+        files.push({ document: result.document, version: result.version, made: result.made });
         replacements += result.count;
       }
       if (files.length === 0) return { files: 0, replacements, failed };
@@ -737,12 +744,15 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const later = document.updates
             .slice(file.version)
-            .reduce(
-              (all, update) => all.compose(update.changes),
-              ChangeSet.empty(file.inverse.length),
-            );
-          const changes = file.inverse.map(later);
-          if (!changes.empty) yield* editLocked(document, record.clientId, changes, 1);
+            .map((update) => update.changes)
+            .reduce<ChangeSet | null>((all, changes) => all?.compose(changes) ?? changes, null);
+          // A replacement edited or taken back since stays as it is: mapping it would insert twice.
+          const undo = undoReplacements(file.made, document.doc, (pos, assoc) =>
+            later === null ? pos : later.mapPos(pos, assoc),
+          );
+          if (undo.changes.length === 0) return false;
+          const changes = ChangeSet.of(undo.changes, document.doc.length);
+          yield* editLocked(document, record.clientId, changes, 1);
           return true;
         }),
       ).pipe(Effect.orElseSucceed(() => false));

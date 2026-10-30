@@ -17,6 +17,7 @@ import {
   excerptBounds,
   setExcerptBounds,
   setExcerptMarks,
+  setExcerptReach,
 } from "./excerpt.ts";
 import {
   boundsOfSpan,
@@ -96,10 +97,13 @@ export type MultibufferRow =
   | { readonly kind: "header"; readonly key: string; readonly file: MultibufferFile }
   | { readonly kind: "excerpt"; readonly key: string; readonly excerpt: MultibufferExcerpt };
 
-/** Where the caret should go next: an excerpt, its first or last line, and a column there. */
+/**
+ * Where the caret should go next: an excerpt, its first or last line, and a column there; or
+ * `"kept"`, where its selection already is, for an excerpt whose editor was rebuilt with the caret.
+ */
 export interface FocusRequest {
   readonly excerpt: MultibufferExcerpt;
-  readonly line: "first" | "last" | number;
+  readonly line: "first" | "last" | "kept" | number;
   readonly column: number;
   readonly id: number;
 }
@@ -213,7 +217,7 @@ export class Multibuffer {
       });
       for (const item of old.excerpts) if (!kept.has(item)) this.dropExcerpt(item);
       old.excerpts.splice(0, old.excerpts.length, ...excerpts);
-      this.refreshMarks(old);
+      this.refreshExcerpts(old);
       next.push(old);
     }
     for (const file of previous.values()) this.closeFile(file);
@@ -247,7 +251,7 @@ export class Multibuffer {
       },
       dispatch: (spec) => this.hubDispatch(file, spec),
     });
-    this.mergeTouching(file);
+    if (!this.mergeTouching(file)) this.refreshExcerpts(file);
     this.changed();
   }
 
@@ -266,9 +270,13 @@ export class Multibuffer {
       const range = markRange(hub.doc, mark);
       return range !== null && range.from >= bounds.from && range.to <= bounds.to ? [range] : [];
     });
+    const reach = this.reachOf(item, bounds);
     item.state = EditorState.create({
       doc: hub.doc,
-      extensions: [extensions(item), excerpt({ bounds, marks, controls: this.controls(item) })],
+      extensions: [
+        extensions(item),
+        excerpt({ bounds, reach, marks, controls: this.controls(item) }),
+      ],
     });
     item.bounds = null;
     return item.state;
@@ -279,11 +287,17 @@ export class Multibuffer {
     item.view = view;
   }
 
-  /** The excerpt's editor scrolled out of view; its state stays for when it comes back. */
+  /**
+   * The excerpt's editor scrolled out of view; its state stays for when it comes back. One that had
+   * the caret gets it back in its next editor, as when React builds an editor twice.
+   */
   hidden(item: MultibufferExcerpt, view: EditorView) {
     if (item.view !== view) return;
     item.state = view.state;
     item.view = null;
+    if (view.hasFocus && this.focus === null) {
+      this.focus = { excerpt: item, line: "kept", column: 0, id: this.nextFocusId++ };
+    }
   }
 
   /** For `EditorView`'s `dispatchTransactions`: applies the view's transactions and shares edits. */
@@ -309,7 +323,7 @@ export class Multibuffer {
       both || down > 0 ? amount(down) : 0,
     );
     this.setSpan(item, span);
-    this.mergeTouching(item.file);
+    if (!this.mergeTouching(item.file)) this.refreshExcerpts(item.file);
     this.changed();
   }
 
@@ -344,6 +358,13 @@ export class Multibuffer {
 
   /** Carries out a focus request on a shown editor. */
   applyFocus(request: FocusRequest, view: EditorView) {
+    this.focusDone(request.id);
+    if (request.line === "kept") {
+      // Only where the caret went nowhere else meanwhile.
+      const active = view.root.activeElement;
+      if (active === null || active === view.dom.ownerDocument.body) view.focus();
+      return;
+    }
     const state = view.state;
     const spec =
       typeof request.line === "number"
@@ -357,7 +378,6 @@ export class Multibuffer {
         : enterExcerpt(state, request.line, request.column);
     view.dispatch(spec);
     view.focus();
-    this.focusDone(request.id);
   }
 
   /**
@@ -393,7 +413,22 @@ export class Multibuffer {
     } else item.bounds = bounds;
   }
 
-  private refreshMarks(file: MultibufferFile) {
+  /** The lines an excerpt's bars count: those before the file's excerpts above and below it. */
+  private reachOf(item: MultibufferExcerpt, bounds: ExcerptBounds): ExcerptBounds {
+    const length = item.file.hub?.doc.length ?? 0;
+    let from = 0;
+    let to = length;
+    for (const other of item.file.excerpts) {
+      const near = other === item ? null : this.boundsOf(other);
+      if (near === null) continue;
+      if (near.to < bounds.from) from = Math.max(from, Math.min(near.to + 1, length));
+      else if (near.from > bounds.to) to = Math.min(to, Math.max(near.from - 1, 0));
+    }
+    return { from, to };
+  }
+
+  /** Hands each excerpt of the file its marks and its reach, after its excerpts changed. */
+  private refreshExcerpts(file: MultibufferFile) {
     const hub = file.hub;
     if (hub === null) return;
     const marks = file.marks.flatMap((mark) => markRange(hub.doc, mark) ?? []);
@@ -401,7 +436,7 @@ export class Multibuffer {
       const bounds = this.boundsOf(item);
       if (bounds === null) continue;
       const inside = marks.filter((mark) => mark.from >= bounds.from && mark.to <= bounds.to);
-      const effects = setExcerptMarks.of(inside);
+      const effects = [setExcerptMarks.of(inside), setExcerptReach.of(this.reachOf(item, bounds))];
       if (item.view !== null) item.view.dispatch({ effects });
       else if (item.state !== null) item.state = item.state.update({ effects }).state;
     }
@@ -525,7 +560,7 @@ export class Multibuffer {
     }
     const kept = file.excerpts.filter((item) => !removed.has(item));
     file.excerpts.splice(0, file.excerpts.length, ...kept);
-    this.refreshMarks(file);
+    this.refreshExcerpts(file);
     return true;
   }
 

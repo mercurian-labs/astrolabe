@@ -99,7 +99,7 @@ export async function replaceAll(options: {
         }
         return skipped === 0
           ? null
-          : `${skipped} file${skipped === 1 ? " was" : "s were"} closed since and kept the replacement.`;
+          : `Not undone in ${skipped} file${skipped === 1 ? ": it was" : "s: they were"} closed or changed since.`;
       },
     },
   };
