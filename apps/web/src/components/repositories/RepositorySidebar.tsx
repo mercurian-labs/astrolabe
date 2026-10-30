@@ -600,7 +600,7 @@ function RepositoryFilter({
   readonly repositories: ReadonlyArray<EnvironmentProject>;
   readonly scoped: EnvironmentProject | null;
 }) {
-  const { isMobile, open: sidebarOpen } = useSidebar();
+  const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
     open: false,
@@ -687,7 +687,12 @@ function RepositoryFilter({
           </SidebarPickerAction>
           <SidebarPickerAction
             icon={SettingsIcon}
-            onClick={() => closeAnd(() => void navigate({ to: "/settings/projects" }))}
+            onClick={() =>
+              closeAnd(() => {
+                setOpenMobile(false);
+                void navigate({ to: "/settings/projects" });
+              })
+            }
           >
             Manage repositories
           </SidebarPickerAction>
