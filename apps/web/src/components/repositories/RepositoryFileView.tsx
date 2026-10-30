@@ -4,7 +4,12 @@ import "@mercurian/editor/code/theme.css";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
-import { codeEditing, setSoftWrap } from "@mercurian/editor/code/editing";
+import {
+  codeEditing,
+  hasCodeEditing,
+  setSoftWrap,
+  softWrapOn,
+} from "@mercurian/editor/code/editing";
 import { livePreview } from "@mercurian/editor/markdown";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
@@ -155,9 +160,9 @@ function FileNotice({ children }: { readonly children: string }) {
 
 /**
  * The CodeMirror view. Built once per file; what changes later goes through compartments: Vim,
- * the file's language once it loads, read-only, and wrapping (code follows the word wrap setting,
- * notes always wrap). Contents saved by someone else replace the text, unless edits here are
- * still on their way.
+ * the editor's keys, the file's language once it loads, read-only, and wrapping (code follows the
+ * word wrap setting, notes always wrap). Contents saved by someone else replace the text, unless
+ * edits here are still on their way.
  */
 function FileEditor({
   path,
@@ -186,20 +191,12 @@ function FileEditor({
   const wordWrap = useClientSettings(selectWordWrap);
   const [compartments] = useState(() => ({
     vim: new Compartment(),
+    keys: new Compartment(),
     language: new Compartment(),
     readOnly: new Compartment(),
   }));
-  // The view is built from the file as it first shows (the parent keys it by path), with the
-  // find bar's and editing keys as they are then.
-  const [initial] = useState(() => ({
-    path,
-    contents,
-    readOnly,
-    vim,
-    findKeys,
-    editingKeys,
-    wordWrap,
-  }));
+  // The view is built from the file as it first shows (the parent keys it by path).
+  const [initial] = useState(() => ({ path, contents, readOnly, vim, wordWrap }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -220,9 +217,7 @@ function FileEditor({
           history.extension,
           compartments.vim.of(initial.vim ? vimExtension() : []),
           appVimKeys(() => null),
-          // Ahead of the default keymap (in `codeEditing`), so a find key it also binds opens the bar.
-          inFileSearch({ keys: initial.findKeys }),
-          codeEditing({ keys: initial.editingKeys, softWrap: markdown || initial.wordWrap }),
+          compartments.keys.of([]),
           markdown ? livePreview() : codeView(),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
@@ -253,6 +248,23 @@ function FileEditor({
     if (!view || !vimExtension) return;
     view.dispatch({ effects: compartments.vim.reconfigure(vim ? vimExtension() : []) });
   }, [compartments, vim]);
+
+  // The find bar's and editing keys follow the keybindings; wrapping, folds and the find bar stay.
+  // oxlint-disable-next-line t3code/react-effect-budget -- carries rebound keys into the CodeMirror view
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const wrap = hasCodeEditing(view.state)
+      ? softWrapOn(view.state)
+      : isMarkdownPath(initial.path) || initial.wordWrap;
+    view.dispatch({
+      effects: compartments.keys.reconfigure([
+        // Ahead of the default keymap (in `codeEditing`), so a find key it also binds opens the bar.
+        inFileSearch({ keys: findKeys }),
+        codeEditing({ keys: editingKeys, softWrap: wrap }),
+      ]),
+    });
+  }, [compartments, initial, findKeys, editingKeys]);
 
   useEffect(() => {
     viewRef.current?.dispatch({
