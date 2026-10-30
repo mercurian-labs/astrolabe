@@ -3,6 +3,7 @@ import { ChangeSet, Text } from "@codemirror/state";
 import {
   DOCUMENT_DISK_CLIENT_ID,
   DOCUMENT_MAX_LENGTH,
+  type DocumentDiscardInput,
   DocumentError,
   type DocumentPushInput,
   type DocumentPushResult,
@@ -57,6 +58,8 @@ export class Documents extends Context.Service<
     readonly recover: (
       input: DocumentRecoverInput,
     ) => Effect.Effect<DocumentRecoverResult, DocumentError>;
+    /** Drops the edits that are not on disk; a document whose file is gone closes. */
+    readonly discard: (input: DocumentDiscardInput) => Effect.Effect<void, DocumentError>;
   }
 >()("t3/documents/Documents") {}
 
@@ -127,6 +130,10 @@ const diskState = (document: LoadedDocument) => ({
   savedVersion: document.savedVersion,
   missing: document.missing,
 });
+
+/** Edits that exist only here: a deleted file's document keeps them until saved or discarded. */
+const strandedEdits = (document: LoadedDocument) =>
+  document.missing && document.savedVersion < document.updates.length;
 
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -331,7 +338,11 @@ const make = Effect.gen(function* () {
         }).pipe(Effect.as(false)),
       ),
     );
-    if (!saved) return yield* scheduleEviction(document);
+    if (!saved || strandedEdits(document)) return yield* scheduleEviction(document);
+    yield* closeLocked(document);
+  });
+
+  const closeLocked = Effect.fn("Documents.close")(function* (document: LoadedDocument) {
     documents.delete(document.target.key);
     yield* PubSub.shutdown(document.events);
     yield* Scope.close(document.scope, Exit.void);
@@ -517,6 +528,33 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const discard: Documents["Service"]["discard"] = Effect.fn("Documents.discard")(
+    function* (input) {
+      const target = yield* resolveTarget(input);
+      return yield* lock.withLock(
+        target.key,
+        Effect.gen(function* () {
+          const document = yield* loaded(target, input.loadId);
+          yield* syncLocked(document);
+          if (document.missing) return yield* closeLocked(document);
+          const text = document.doc.toString();
+          if (text === document.diskText) return;
+          const version = document.updates.length;
+          const update = {
+            clientID: DOCUMENT_DISK_CLIENT_ID,
+            changes: textChanges(text, document.diskText),
+          };
+          document.doc = update.changes.apply(document.doc);
+          document.updates.push(update);
+          document.unsaved = ChangeSet.empty(document.doc.length);
+          document.savedVersion = document.updates.length;
+          yield* publish(document, { type: "updates", version, updates: [toWire(update)] });
+          yield* publishDisk(document);
+        }),
+      );
+    },
+  );
+
   yield* Effect.addFinalizer(() =>
     Effect.forEach(
       [...documents.values()],
@@ -528,7 +566,7 @@ const make = Effect.gen(function* () {
     ),
   );
 
-  return Documents.of({ subscribe, push, save, recover });
+  return Documents.of({ subscribe, push, save, recover, discard });
 });
 
 export const layer = Layer.effect(Documents, make);

@@ -3,7 +3,7 @@ import { ChangeSet, EditorState, type ChangeSpec } from "@codemirror/state";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import type { DocumentError, DocumentStreamItem, DocumentTarget } from "@t3tools/contracts";
-import type * as Cause from "effect/Cause";
+import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -458,6 +458,82 @@ it.layer(layerTest)("Documents", (it) => {
           yield* TestClock.adjust(Documents.IDLE_TIMEOUT);
           const c = yield* connect(workspace.target, "c");
           expect(c.loadId).toBe(a.loadId);
+        }),
+      ),
+    );
+
+    it.effect("keeps a deleted file's unsaved edits open past the idle period", () =>
+      withWorkspace("abc", (workspace) =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const absolutePath = path.join(workspace.target.cwd, workspace.target.relativePath);
+          const a = yield* connect(workspace.target, "a");
+          yield* workspace.removeDisk;
+          yield* workspace.notify;
+          yield* TestClock.adjust(Documents.DISK_QUIET);
+          yield* a.nextDisk;
+          a.edit({ from: 3, insert: "d" });
+          yield* a.push();
+          yield* a.leave;
+
+          yield* TestClock.adjust(Duration.times(Documents.IDLE_TIMEOUT, 3));
+          const b = yield* open(workspace.target);
+          expect(b.first).toMatchObject({
+            type: "snapshot",
+            loadId: a.loadId,
+            version: 1,
+            text: "abcd",
+            savedVersion: 0,
+            missing: true,
+          });
+          expect(yield* fileSystem.exists(absolutePath)).toBe(false);
+        }),
+      ),
+    );
+
+    it.effect("closes a deleted file's document when its edits are discarded", () =>
+      withWorkspace("abc", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const absolutePath = path.join(workspace.target.cwd, workspace.target.relativePath);
+          const a = yield* connect(workspace.target, "a");
+          yield* workspace.removeDisk;
+          yield* workspace.notify;
+          yield* TestClock.adjust(Documents.DISK_QUIET);
+          yield* a.nextDisk;
+          a.edit({ from: 3, insert: "d" });
+          yield* a.push();
+
+          yield* documents.discard({ ...workspace.target, loadId: a.loadId });
+          yield* a.syncTo(1);
+          expect(Cause.isDone(yield* Effect.flip(a.next))).toBe(true);
+          const reopened = yield* documents
+            .subscribe(workspace.target)
+            .pipe(Stream.runHead, Effect.flip);
+          expect(reopened.reason).toBe("not-found");
+          expect(yield* fileSystem.exists(absolutePath)).toBe(false);
+        }),
+      ),
+    );
+
+    it.effect("reverts a file that is on disk to its saved text when edits are discarded", () =>
+      withWorkspace("abc", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const a = yield* connect(workspace.target, "a");
+          const b = yield* connect(workspace.target, "b");
+          a.edit({ from: 3, insert: "d" });
+          yield* a.push();
+
+          yield* documents.discard({ ...workspace.target, loadId: a.loadId });
+          yield* b.syncTo(2);
+          expect(b.text()).toBe("abc");
+          expect(yield* b.nextDisk).toEqual({ savedVersion: 2, missing: false });
+          yield* TestClock.adjust(Documents.SAVE_DELAY);
+          expect(yield* workspace.readDisk).toBe("abc");
         }),
       ),
     );

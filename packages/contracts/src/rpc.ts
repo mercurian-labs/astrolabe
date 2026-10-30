@@ -422,6 +422,7 @@ import {
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
 import {
+  DocumentDiscardInput,
   DocumentError,
   DocumentPushInput,
   DocumentPushResult,
@@ -598,6 +599,7 @@ export const WS_METHODS = {
   documentsPush: "documents.push",
   documentsSave: "documents.save",
   documentsRecover: "documents.recover",
+  documentsDiscard: "documents.discard",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2066,6 +2068,11 @@ const WsDocumentsRecoverRpc = Rpc.make(WS_METHODS.documentsRecover, {
   error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
 });
 
+const WsDocumentsDiscardRpc = Rpc.make(WS_METHODS.documentsDiscard, {
+  payload: DocumentDiscardInput,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2407,6 +2414,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsDocumentsPushRpc,
   WsDocumentsSaveRpc,
   WsDocumentsRecoverRpc,
+  WsDocumentsDiscardRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

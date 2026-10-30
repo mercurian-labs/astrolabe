@@ -45,7 +45,10 @@ export type DocumentSubscribeInput = typeof DocumentSubscribeInput.Type;
 const DocumentDiskState = {
   /** The latest version whose text is on disk. */
   savedVersion: NonNegativeInt,
-  /** The file is gone from disk; saving waits for an explicit save. */
+  /**
+   * The file is gone from disk; saving waits for an explicit save. With unsaved edits
+   * (`savedVersion` behind the version) the document stays open until saved or discarded.
+   */
   missing: Schema.Boolean,
 };
 
@@ -95,6 +98,13 @@ export type DocumentSaveInput = typeof DocumentSaveInput.Type;
 
 export const DocumentSaveResult = Schema.Struct({ savedVersion: NonNegativeInt });
 export type DocumentSaveResult = typeof DocumentSaveResult.Type;
+
+/** Close without saving: the document goes back to the file on disk, or closes if it is gone. */
+export const DocumentDiscardInput = Schema.Struct({
+  ...DocumentTarget.fields,
+  loadId: DocumentLoadId,
+});
+export type DocumentDiscardInput = typeof DocumentDiscardInput.Type;
 
 /** A client whose load was evicted while it held unsent edits. */
 export const DocumentRecoverInput = Schema.Struct({

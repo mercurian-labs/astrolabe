@@ -52,6 +52,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.documentsPush]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsSave]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsRecover]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsDiscard]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,

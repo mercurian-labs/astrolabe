@@ -1278,6 +1278,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.documentsPush]: (input) => documents.push(input),
       [WS_METHODS.documentsSave]: (input) => documents.save(input),
       [WS_METHODS.documentsRecover]: (input) => documents.recover(input),
+      [WS_METHODS.documentsDiscard]: (input) => documents.discard(input),
     });
   }),
 );
