@@ -160,8 +160,8 @@ export function LocalGraphPanel({
                     aria-checked={group.color === slot}
                     aria-label={color.name}
                     className={cn(
-                      "size-4 cursor-pointer rounded-full outline-none ring-offset-2 ring-offset-popover focus-visible:ring-2 focus-visible:ring-ring",
-                      group.color === slot && "ring-2 ring-foreground/50",
+                      "size-4 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      group.color === slot && "ring-2 ring-inset ring-foreground/70",
                     )}
                     style={{ background: color.css }}
                     onClick={() =>
@@ -230,7 +230,7 @@ function Section({
     <div className="border-b border-border last:border-b-0">
       <Collapsible open={open} onOpenChange={onOpenChange}>
         <div className="flex h-8 items-center gap-0.5 ps-1.5 pe-1">
-          <CollapsibleTrigger className="flex h-6 min-w-0 flex-1 items-center gap-1 rounded-sm text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <CollapsibleTrigger className="flex h-6 min-w-0 flex-1 items-center gap-1 rounded-sm text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
             <ChevronRightIcon
               aria-hidden
               className={cn(

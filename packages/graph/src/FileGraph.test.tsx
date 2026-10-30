@@ -243,6 +243,36 @@ describe("a file graph", () => {
     expect(drawn("b1.ts")).toBeDefined();
   });
 
+  it("unfolds a folder's files where the folder stood", () => {
+    using _pane = paneSized(700, 500);
+    const folded: FileGraphData = {
+      ...GRAPH,
+      nodes: [...GRAPH.nodes, node("src/ui", { kind: "folder", files: 2 })],
+      links: [...GRAPH.links, { from: "app.ts", to: "src/ui", guessed: false }],
+    };
+    using graph = mounted(folded);
+    harness.run();
+    const folder = drawn("src/ui");
+    graph.show({
+      ...GRAPH,
+      nodes: [...GRAPH.nodes, node("src/ui/a.tsx"), node("src/ui/b.tsx")],
+      links: [
+        ...GRAPH.links,
+        { from: "app.ts", to: "src/ui/a.tsx", guessed: false },
+        { from: "app.ts", to: "src/ui/b.tsx", guessed: false },
+      ],
+    });
+    harness.run(1);
+    for (const id of ["src/ui/a.tsx", "src/ui/b.tsx"]) {
+      const at = drawn(id);
+      expect(
+        Math.hypot((at?.x ?? 0) - (folder?.x ?? 0), (at?.y ?? 0) - (folder?.y ?? 0)),
+      ).toBeLessThan(50);
+    }
+    harness.run();
+    expect(harness.idle()).toBe(true);
+  });
+
   it("lights a hovered node, its neighbours and their links, fades the rest, and names it", () => {
     using _pane = paneSized(700, 500);
     using graph = mounted(GRAPH);

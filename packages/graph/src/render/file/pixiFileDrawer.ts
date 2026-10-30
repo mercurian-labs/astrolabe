@@ -151,7 +151,7 @@ class PixiFileDrawer implements FileGraphDrawer {
             baseX + uy * half,
             baseY - ux * half,
           ])
-          .fill({ color: link.color, alpha: link.alpha });
+          .fill(link.color, link.alpha);
         x2 = baseX;
         y2 = baseY;
       }
@@ -166,10 +166,10 @@ class PixiFileDrawer implements FileGraphDrawer {
       if (node.hollow) {
         nodes
           .circle(node.x, node.y, node.radius)
-          .fill({ color: frame.paper, alpha: node.alpha })
+          .fill(frame.paper, node.alpha)
           .stroke({ width: 1.5 / zoom, color: node.fill, alpha: node.alpha });
       } else {
-        nodes.circle(node.x, node.y, node.radius).fill({ color: node.fill, alpha: node.alpha });
+        nodes.circle(node.x, node.y, node.radius).fill(node.fill, node.alpha);
       }
       if (node.ring !== null) {
         nodes

@@ -63,7 +63,7 @@ export function FileGraph({
 
   // Settings land before the first graph, so it lays out with the forces the host keeps.
   // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the theme
-  useEffect(() => renderer?.setTheme(), [renderer, themeKey]);
+  useEffect(() => renderer?.setTheme(themeKey), [renderer, themeKey]);
   // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the settings
   useEffect(() => renderer?.setSettings(settings), [renderer, settings]);
   // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer each new graph

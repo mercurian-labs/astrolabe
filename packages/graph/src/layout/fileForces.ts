@@ -1,9 +1,7 @@
 /**
- * A file graph's forces, as Obsidian's: a pull to the centre, repulsion between every pair, a
- * spring along each link, and a link length. The simulation runs one tick per frame while it
- * moves and says when it has settled, so the graph stops drawing at rest; it can also settle at
- * once, for a picture shown whole. Starts come from the last picture's positions or from ids, so
- * a graph always settles the same.
+ * A file graph's forces, as Obsidian's: centre, repel, link force and link distance. It ticks once
+ * a frame while it moves and says when it has settled, so the graph stops drawing at rest. Starts
+ * come from the last picture's positions or from ids, so a graph always settles the same.
  */
 import {
   forceLink,

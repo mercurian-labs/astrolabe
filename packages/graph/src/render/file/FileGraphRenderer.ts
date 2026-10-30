@@ -1,11 +1,10 @@
 /**
- * A file graph drawn the way Obsidian draws a vault: small grey dots sized by their links, the
- * name under each, hairline links at rest, the file in front in the accent colour. The forces run
- * while something moves (a new layout, a drag, new forces) and stop when it settles; a hover lights
- * a node and its neighbours and fades the rest. Frames are drawn only when something changed, by a
- * drawer that only paints (`FileGraphDrawer`), so the graph at rest costs nothing.
+ * A file graph drawn the way Obsidian draws a vault: grey dots sized by their links, names under
+ * them, hairline links at rest, the file in front in the accent. Forces run only while something
+ * moves; frames are drawn only on a change, by a drawer that only paints (`FileGraphDrawer`).
  */
 import { FileForces, type Point } from "../../layout/fileForces.ts";
+import { seededPoint } from "../../layout/forceLayout.ts";
 import {
   fileGraphDegrees,
   fileGraphSignature,
@@ -269,6 +268,7 @@ export class FileGraphRenderer {
   #camera: Camera = { x: 0, y: 0, zoom: 1 };
   /** Read at the next frame, after the host's effects have applied its theme. */
   #theme: ReturnType<typeof readFileGraphTheme> | null = null;
+  #themeKey: string | undefined = undefined;
   #hovered: string | null = null;
   /** What the hover lights, kept while it fades out. */
   #lit = new Set<string>();
@@ -353,7 +353,18 @@ export class FileGraphRenderer {
     this.#structure = structure;
     this.#degrees = fileGraphDegrees(graph);
     const sameCenter = previous !== null && previous.center === graph.center;
-    const next = new FileForces(graph, this.#settings, (id) => forces?.positionOf(id) ?? null);
+    // A folder just unfolded: its files start where it stood.
+    const folders = (previous?.nodes ?? []).filter((node) => node.kind === "folder");
+    const startOf = (id: string): Point | null => {
+      const kept = forces?.positionOf(id) ?? null;
+      if (kept !== null) return kept;
+      const folder = folders.find((each) => id.startsWith(`${each.id}/`));
+      const at = folder === undefined ? null : (forces?.positionOf(folder.id) ?? null);
+      if (at === null) return null;
+      const [dx, dy] = seededPoint(id, 24);
+      return { x: at.x + dx, y: at.y + dy };
+    };
+    const next = new FileForces(graph, this.#settings, startOf);
     this.#forces = next;
     if (sameCenter) {
       next.reheat(0.5);
@@ -394,8 +405,10 @@ export class FileGraphRenderer {
     this.#scheduler.invalidate();
   }
 
-  /** Read the theme's colours and font again, at the next frame. */
-  setTheme(): void {
+  /** A new theme (named by `key`): its colours and font are read at the next frame. */
+  setTheme(key: string | undefined): void {
+    if (key === this.#themeKey && this.#theme !== null) return;
+    this.#themeKey = key;
     this.#theme = null;
     this.#scheduler.invalidate();
   }
