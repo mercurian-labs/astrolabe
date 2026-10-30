@@ -73,6 +73,14 @@ import {
   wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
+import {
+  type FileWatcher,
+  FILE_CHANGE_TYPES,
+  mergeChange,
+  type WatchedFileChange,
+  watched,
+  watchersOf,
+} from "./watchedFiles.ts";
 import { changeSetOf, editsByFile } from "./workspaceEdits.ts";
 
 /**
@@ -110,6 +118,11 @@ export class LanguageServers extends Context.Service<
     readonly undoEdit: (
       input: LanguageServerUndoEditInput,
     ) => Effect.Effect<LanguageServerUndoEditResult, LanguageServerError>;
+    /**
+     * Files in a checkout that changed outside its documents, for the servers watching them. A
+     * burst reaches each server as one `workspace/didChangeWatchedFiles`.
+     */
+    readonly filesChanged: (input: FilesChangedInput) => Effect.Effect<void>;
     readonly locate: (input: {
       readonly cwd: string;
       readonly relativePath: string;
@@ -122,6 +135,11 @@ export class LanguageServers extends Context.Service<
   }
 >()("t3/languageServers/LanguageServers") {}
 
+export interface FilesChangedInput {
+  readonly cwd: string;
+  readonly changes: ReadonlyArray<WatchedFileChange>;
+}
+
 export interface LanguageServersOptions {
   readonly specs: Readonly<Record<LanguageServerId, LanguageServerSpec>>;
   /** No documents and no sessions for this long stops a server. */
@@ -133,6 +151,8 @@ export interface LanguageServersOptions {
   readonly restartDelays: ReadonlyArray<Duration.Input>;
   readonly initializeTimeout: Duration.Input;
   readonly diagnosticsTimeout: Duration.Input;
+  /** How long a server's file changes wait for more before it hears of them. */
+  readonly fileChangeQuiet: Duration.Input;
   /** How long a save waits for its formatter. */
   readonly formatTimeout: Duration.Input;
   readonly registry: string;
@@ -274,6 +294,11 @@ interface Instance {
   readonly serverEdits: Queue.Queue<ServerEdit>;
   /** While a command runs for a code action: the edits the server applied meanwhile. */
   collecting: Array<LanguageServerAppliedEdit> | null;
+  /** The process's `workspace/didChangeWatchedFiles` registrations, by id. */
+  readonly watchers: Map<string, ReadonlyArray<FileWatcher>>;
+  /** File changes waiting out a burst, by path; `changesGeneration` restarts the wait. */
+  readonly changes: Map<string, WatchedFileChange["type"]>;
+  changesGeneration: number;
   /** Resolves when the current or next process is ready. */
   ready: Deferred.Deferred<Running>;
   processScope: Scope.Closeable | null;
@@ -344,7 +369,12 @@ const CLIENT_CAPABILITIES = {
     diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
     publishDiagnostics: { versionSupport: true, relatedInformation: true },
   },
-  workspace: { configuration: true, workspaceFolders: true, applyEdit: true },
+  workspace: {
+    configuration: true,
+    workspaceFolders: true,
+    applyEdit: true,
+    didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
+  },
   window: { workDoneProgress: false, showMessage: {} },
 };
 
@@ -719,7 +749,21 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           { uri: NodeURL.pathToFileURL(instance.cwd).href, name: path.basename(instance.cwd) },
         ];
       case "client/registerCapability":
+        for (const registration of Array.isArray(params?.registrations)
+          ? params.registrations
+          : []) {
+          if (registration?.method !== "workspace/didChangeWatchedFiles") continue;
+          instance.watchers.set(String(registration.id), watchersOf(registration.registerOptions));
+        }
+        return null;
       case "client/unregisterCapability":
+        // LSP spells it `unregisterations`.
+        for (const registration of Array.isArray(params?.unregisterations)
+          ? params.unregisterations
+          : []) {
+          instance.watchers.delete(String(registration?.id));
+        }
+        return null;
       case "window/workDoneProgress/create":
       case "window/showMessageRequest":
         return null;
@@ -819,6 +863,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
     const processScope = yield* Scope.fork(instance.scope);
     instance.processScope = processScope;
+    instance.watchers.clear();
     const connection = yield* connect(
       { executable: server.executable, args: server.args, cwd: instance.cwd, env: server.env },
       {
@@ -1012,6 +1057,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       pulls: yield* Queue.unbounded<GatewayDoc>(),
       serverEdits: yield* Queue.unbounded<ServerEdit>(),
       collecting: null,
+      watchers: new Map(),
+      changes: new Map(),
+      changesGeneration: 0,
       running: null,
       ready: Deferred.makeUnsafe(),
       processScope: null,
@@ -1910,6 +1958,64 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     },
   );
 
+  /** Tells the server of the waiting changes it watches, except to files it has open here. */
+  const flushChanges = (instance: Instance) => {
+    const running = instance.running;
+    const changes = [...instance.changes];
+    instance.changes.clear();
+    if (running === null) return;
+    const watchers = [...instance.watchers.values()].flat();
+    const events = changes.flatMap(([relativePath, type]) => {
+      if (instance.docs.get(relativePath)?.openOn === running.generation) return [];
+      const absolute = [instance.cwd, instance.realCwd].map((root) =>
+        path.join(root, relativePath),
+      );
+      if (!watched(watchers, absolute, type)) return [];
+      return [{ uri: NodeURL.pathToFileURL(absolute[0]!).href, type: FILE_CHANGE_TYPES[type] }];
+    });
+    if (events.length > 0) {
+      running.connection.notify("workspace/didChangeWatchedFiles", { changes: events });
+    }
+  };
+
+  const filesChanged: LanguageServers["Service"]["filesChanged"] = (input) =>
+    Effect.suspend(() => {
+      const watching = [...instances.values()].filter((instance) => instance.cwd === input.cwd);
+      return Effect.forEach(
+        watching,
+        (instance) => {
+          for (const { relativePath, type } of input.changes) {
+            const merged = mergeChange(instance.changes.get(relativePath), type);
+            if (merged === null) instance.changes.delete(relativePath);
+            else instance.changes.set(relativePath, merged);
+          }
+          const generation = ++instance.changesGeneration;
+          return Effect.sleep(options.fileChangeQuiet).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                if (generation === instance.changesGeneration) flushChanges(instance);
+              }),
+            ),
+            Effect.forkIn(instance.scope, { startImmediately: true }),
+          );
+        },
+        { discard: true },
+      );
+    });
+
+  // A file saved here is one the server reads from disk, unless it has it open.
+  yield* documents.writes.pipe(
+    Stream.runForEach((write) =>
+      filesChanged({
+        cwd: write.cwd,
+        changes: [
+          { relativePath: write.relativePath, type: write.created ? "created" : "changed" },
+        ],
+      }),
+    ),
+    Effect.forkIn(serviceScope, { startImmediately: true }),
+  );
+
   /** The file's formatting edits at the document's version, landed under `clientId`. */
   const formatForSave = Effect.fn("LanguageServers.formatForSave")(function* (
     input: DocumentSaveInput & { readonly format: NonNullable<DocumentSaveInput["format"]> },
@@ -1968,6 +2074,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   return LanguageServers.of({
     save,
+    filesChanged,
     locate,
     undoEdit,
     subscribe: SubscriptionRef.changes(statuses),
@@ -1989,6 +2096,7 @@ export const defaultOptions: LanguageServersOptions = {
   restartDelays: [Duration.seconds(1), Duration.seconds(2), Duration.seconds(4)],
   initializeTimeout: Duration.minutes(1),
   diagnosticsTimeout: Duration.minutes(1),
+  fileChangeQuiet: Duration.millis(200),
   formatTimeout: Duration.seconds(2),
   registry: DEFAULT_REGISTRY,
   trusted: () => Effect.succeed(true),

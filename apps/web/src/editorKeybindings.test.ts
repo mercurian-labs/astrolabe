@@ -11,6 +11,7 @@ import {
   codeMirrorKey,
   editorFindKeys,
   editorHunkKeys,
+  fileSaveKeys,
   markdownEditorKeys,
 } from "./editorKeybindings";
 import { resolveShortcutCommand } from "./keybindings";
@@ -206,5 +207,28 @@ describe("a code file's keys from the keybindings", () => {
   it("leaves the wiki's formatting keys as they were", () => {
     const keys = markdownEditorKeys(DEFAULT_RESOLVED_KEYBINDINGS, { composer: false });
     expect(keys).toMatchObject({ italic: ["Mod-i"], link: ["Mod-Shift-k"] });
+  });
+});
+
+describe("a code file's save keys from the keybindings", () => {
+  it("saves with mod+s in a code file, and with whatever a user binds instead", () => {
+    expect(fileSaveKeys(DEFAULT_RESOLVED_KEYBINDINGS)).toEqual(["Mod-s"]);
+    const rules: KeybindingRule[] = [
+      { key: "mod+alt+s", command: "file.save", when: "codeEditorFocus" },
+      { key: "ctrl+s", command: "file.save", when: "composerFocus" },
+    ];
+    // A binding only the composer reaches does not save a file.
+    expect(fileSaveKeys(compileResolvedKeybindingsConfig(rules))).toEqual(["Mod-Alt-s"]);
+  });
+
+  it("leaves mod+s to the composer's stash outside a code file", () => {
+    const event = { key: "s", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
+    const resolve = (codeEditorFocus: boolean) =>
+      resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { editorFocus: true, codeEditorFocus },
+      });
+    expect(resolve(true)).toBe("file.save");
+    expect(resolve(false)).toBe("composer.stash");
   });
 });

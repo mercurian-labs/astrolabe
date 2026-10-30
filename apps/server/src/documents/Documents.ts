@@ -67,8 +67,14 @@ export class Documents extends Context.Service<
     readonly sync: (
       input: DocumentTarget,
     ) => Effect.Effect<{ readonly loadId: string; readonly version: number }, DocumentError>;
+    /** Each file a document writes to disk, as it writes it; `created` when it wasn't there. */
+    readonly writes: Stream.Stream<DocumentWrite>;
   }
 >()("t3/documents/Documents") {}
+
+export interface DocumentWrite extends DocumentTarget {
+  readonly created: boolean;
+}
 
 interface AcceptedUpdate {
   readonly clientID: string;
@@ -157,6 +163,7 @@ const make = Effect.gen(function* () {
   // only under this lock. Not reentrant: the `...Locked` helpers assume the caller holds it.
   const lock = yield* KeyedLock.make<string>();
   const documents = new Map<string, LoadedDocument>();
+  const writes = yield* Effect.acquireRelease(PubSub.unbounded<DocumentWrite>(), PubSub.shutdown);
   const isCurrent = (document: LoadedDocument) => documents.get(document.target.key) === document;
 
   const fail = (reason: DocumentError["reason"], relativePath: string, cause?: unknown) =>
@@ -286,6 +293,11 @@ const make = Effect.gen(function* () {
         contents: document.doc.sliceString(0, document.doc.length, document.lineSeparator),
       })
       .pipe(Effect.mapError(fileError(document.target.relativePath)));
+    yield* PubSub.publish(writes, {
+      cwd: document.target.cwd,
+      relativePath: document.target.relativePath,
+      created: document.missing,
+    });
     document.diskText = text;
     document.unsaved = ChangeSet.empty(document.doc.length);
     document.savedVersion = document.updates.length;
@@ -586,7 +598,15 @@ const make = Effect.gen(function* () {
     ),
   );
 
-  return Documents.of({ subscribe, push, save, recover, discard, sync });
+  return Documents.of({
+    subscribe,
+    push,
+    save,
+    recover,
+    discard,
+    sync,
+    writes: Stream.fromPubSub(writes),
+  });
 });
 
 export const layer = Layer.effect(Documents, make);
