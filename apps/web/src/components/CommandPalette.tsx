@@ -179,6 +179,7 @@ import {
   type AddProjectEnvironmentOption,
   buildPaletteRemoteSourceReadiness,
   errorMessage,
+  escapeReturnsToCommand,
   getEnvironmentBrowsePlatform,
   remoteProjectInputPlaceholder,
   reduceCommandPaletteSearchState,
@@ -278,13 +279,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       <CommandDialog
         open={state.open}
         onOpenChange={(open, eventDetails) => {
-          // Astrolabe: Escape in the outline picker goes back to its editor.
-          if (
-            !open &&
-            eventDetails.reason === "escape-key" &&
-            state.mode !== "command" &&
-            state.mode !== "outline"
-          ) {
+          if (!open && eventDetails.reason === "escape-key" && escapeReturnsToCommand(state.mode)) {
             eventDetails.cancel();
             dispatchCommandPalette({ _tag: "BackToCommand" });
             return;

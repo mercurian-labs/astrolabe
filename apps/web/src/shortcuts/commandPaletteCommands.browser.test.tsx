@@ -4,7 +4,11 @@ import { userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
-import { useCommandPaletteMount, useCommandPaletteStore } from "../commandPaletteStore";
+import {
+  dispatchCommandPalette,
+  useCommandPaletteMount,
+  useCommandPaletteStore,
+} from "../commandPaletteStore";
 import { installCommandPaletteCommands } from "./commandPaletteCommands";
 
 const keybindings = compileResolvedKeybindingsConfig([
@@ -89,6 +93,20 @@ describe("Astrolabe palette shortcuts", () => {
     openCommandPalette();
     await userEvent.keyboard("{Control>}k{/Control}");
     expect(useCommandPaletteStore.getState().open).toBe(false);
+  });
+
+  it("leave Escape in the outline picker to close it, not to open the Command Palette", async () => {
+    setup();
+    await using screen = await render(<MountedPalette />, { router: "/" });
+    using commands = new DisposableStack();
+    commands.defer(installCommandPaletteCommands(screen.router!));
+
+    dispatchCommandPalette({ _tag: "ToggleMode", mode: "outline" });
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(escape);
+
+    expect(escape.defaultPrevented).toBe(false);
+    expect(useCommandPaletteStore.getState()).toMatchObject({ open: true, mode: "outline" });
   });
 
   it("switch the file picker to the Command Palette on the command-line chord", async () => {

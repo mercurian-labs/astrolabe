@@ -1,7 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EditorView } from "@codemirror/view";
-import { documentOutline, revealOutlineItem, type OutlineKind } from "@mercurian/editor/outline";
-import { useState, type ReactNode } from "react";
+import {
+  deepestItemAt,
+  documentOutline,
+  revealOutlineItem,
+  type OutlineKind,
+} from "@mercurian/editor/outline";
+import { useRef, useState, type ReactNode } from "react";
 
 import { requestCommandPalette } from "~/commandPaletteStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
@@ -78,6 +83,12 @@ export function OutlinePicker(props: { readonly setOpen: (open: boolean) => void
   const [outline] = useState(() => (view ? documentOutline(view.state) : null));
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  // The row of the item around the cursor, which the list starts on in place of the first.
+  const [startItem] = useState(() =>
+    view && outline ? deepestItemAt(outline.items, view.state.selection.main.head) : null,
+  );
+  const startRow = useRef(startItem && outline ? outline.items.indexOf(startItem) : -1);
+  const listRef = useRef<HTMLDivElement>(null);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
 
   const rows = outline ? outlinePickerRows(outline.items, query) : [];
@@ -123,7 +134,18 @@ export function OutlinePicker(props: { readonly setOpen: (open: boolean) => void
       footerActionLabel="Go to symbol"
       inputProps={{ placeholder: "Go to symbol…", disabled: !outline }}
       mode="none"
-      onItemHighlighted={(value) => setHighlighted(typeof value === "string" ? value : null)}
+      onItemHighlighted={(value, eventDetails) => {
+        const start = startRow.current;
+        startRow.current = -1;
+        // The list has no controlled highlight; hovering a row moves its own, so arrows go on.
+        const row = start > 0 ? listRef.current?.querySelectorAll('[role="option"]')[start] : null;
+        if (eventDetails.reason === "none" && row) {
+          row.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+          row.scrollIntoView({ block: "center" });
+          return;
+        }
+        setHighlighted(typeof value === "string" ? value : null);
+      }}
       onValueChange={(value) => {
         setHighlighted(null);
         setQuery(value);
@@ -132,18 +154,20 @@ export function OutlinePicker(props: { readonly setOpen: (open: boolean) => void
       testId="outline-picker"
       value={query}
     >
-      <CommandPaletteResults
-        groups={items.length > 0 ? [{ value: "outline", label, items }] : []}
-        highlightedItemValue={highlighted}
-        isActionsOnly={false}
-        keybindings={keybindings}
-        onExecuteItem={(item) => {
-          if (item.kind !== "action") return;
-          props.setOpen(false);
-          void item.run();
-        }}
-        emptyStateMessage={empty}
-      />
+      <div className="contents" ref={listRef}>
+        <CommandPaletteResults
+          groups={items.length > 0 ? [{ value: "outline", label, items }] : []}
+          highlightedItemValue={highlighted}
+          isActionsOnly={false}
+          keybindings={keybindings}
+          onExecuteItem={(item) => {
+            if (item.kind !== "action") return;
+            props.setOpen(false);
+            void item.run();
+          }}
+          emptyStateMessage={empty}
+        />
+      </div>
     </CommandPaletteContent>
   );
 }

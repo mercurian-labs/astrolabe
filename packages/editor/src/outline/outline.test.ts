@@ -165,6 +165,56 @@ namespace Tools { export const run = () => {}; }
     expect(deepestItemAt(items, state.doc.length)).toBeNull();
   });
 
+  it("lists consts whose call wraps a function body, and the function consts inside", async () => {
+    const service = `const make = Effect.fn("make")(function* () {
+  const sql = yield* SqlClient;
+  const run = Effect.fn("run")(function* (id: string) {
+    const step = (n: number) => n + 1;
+    const total = 1;
+  });
+  const traced = Effect.fn("traced")(function* () {}, Effect.orDie);
+  const layer = Layer.effect(Tag, make);
+  const memo = useMemo(() => 1, []);
+  const ids = items.map((item) => item.id);
+  const iife = (() => 2)();
+  const resume = Effect.gen(function* () {
+    const again = () => {};
+  }).pipe(Effect.orDie);
+  return { run };
+});
+export const layer = Layer.effect(Tag, make);
+const decode = Schema.decodeUnknownEffect(Body);
+export const handler = toHandler((input) => {
+  const reply = async () => {};
+});
+const enrich = Effect.fn("enrich")((ids: string[]) => Effect.succeed(ids));
+const layerRpc = (session: Session) =>
+  Layer.effect(
+    Effect.gen(function* () {
+      const handle = Effect.fn("handle")(function* () {});
+    }),
+  );
+`;
+    const state = await stateOf("a.ts", service);
+    expect(tree(documentOutline(state).items)).toEqual([
+      "function make",
+      "  function run",
+      "    function step",
+      "  function traced",
+      "  function iife",
+      "  function resume",
+      "    function again",
+      "function handler",
+      "  function reply",
+      "function enrich",
+      "function layerRpc",
+      "  function handle",
+    ]);
+    const at = (text: string) => outlinePath(state, service.indexOf(text));
+    expect(names(at("n + 1"))).toEqual(["make", "run", "step"]);
+    expect(names(at("total"))).toEqual(["make", "run"]);
+  });
+
   it("reads a large file as far as the parser has gone, and all of it given time", async () => {
     const big = Array.from({ length: 4000 }, (_, index) => `function f${index}() {}`).join("\n");
     const state = await unparsedStateOf("a.ts", big);
