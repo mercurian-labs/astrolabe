@@ -23,6 +23,7 @@ import { DiffFileLoadingBoundary } from "../diffs/DiffFileLoadingBoundary";
 import { useReviewFilePatches } from "../diffs/useReviewFilePatches";
 import { Button } from "../ui/button";
 import { repositoryPanes } from "./repositoryPanes";
+import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
 
 type DiffTab = Extract<RepositoryTab, { kind: "diff" }>;
@@ -85,24 +86,37 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       ? "Uncommitted changes"
       : `Changes against ${source?.baseRef ?? "the base"}`;
 
-  if (!canReadFiles) return <Notice>This connection cannot read this repository's files.</Notice>;
-  if (preview.error !== null && preview.data === null)
-    return <Notice>{String(preview.error)}</Notice>;
-  if (preview.data === null) return <Notice>Reading changes…</Notice>;
+  const header = (
+    <RepositoryTabHeader.Root>
+      <RepositoryTabHeader.Path>{cwd.slice(cwd.lastIndexOf("/") + 1)}</RepositoryTabHeader.Path>
+      <RepositoryTabHeader.Status>{title}</RepositoryTabHeader.Status>
+    </RepositoryTabHeader.Root>
+  );
+  const notice = (text: string) => (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {header}
+      <Notice>{text}</Notice>
+    </div>
+  );
+
+  if (!canReadFiles) return notice("This connection cannot read this repository's files.");
+  if (preview.error !== null && preview.data === null) return notice(String(preview.error));
+  if (preview.data === null) return notice("Reading changes…");
   if (source === null || (!lazySource && renderablePatch === null)) {
-    return (
-      <Notice>
-        {sourceKind === "working-tree"
-          ? "No uncommitted changes."
-          : "This branch has no changes against its base."}
-      </Notice>
+    return notice(
+      sourceKind === "working-tree"
+        ? "No uncommitted changes."
+        : "This branch has no changes against its base.",
     );
   }
   if (renderablePatch?.kind === "raw") {
     return (
-      <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-2xs text-muted-foreground">
-        {renderablePatch.text}
-      </pre>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {header}
+        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-2xs text-muted-foreground">
+          {renderablePatch.text}
+        </pre>
+      </div>
     );
   }
   const openFile = (fileDiff: FileDiffMetadata) =>
@@ -111,10 +125,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
     );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate">{title}</span>
-        <span className="shrink-0 font-mono">{cwd.slice(cwd.lastIndexOf("/") + 1)}</span>
-      </div>
+      {header}
       {target === null ? null : (
         <AnnotatableCodeView
           codeViewKey={`repository-diff:${cwd}:${sourceKind}`}

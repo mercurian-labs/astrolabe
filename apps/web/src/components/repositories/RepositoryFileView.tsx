@@ -22,12 +22,11 @@ import { composerHistory } from "../composerCodeMirror/composerUndo";
 import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFilesQueryState";
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
-import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
 import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
 import { openLocalGraph } from "./localGraph";
 import { repositoryPanes } from "./repositoryPanes";
+import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
@@ -107,23 +106,17 @@ export function RepositoryFileView({
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
 
-  if (file.error !== null && contents === null) {
-    return <FileNotice>{file.error}</FileNotice>;
-  }
-  if (contents === null) {
-    return <FileNotice>{file.isPending ? "Opening…" : "Nothing to show."}</FileNotice>;
-  }
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
-        {agentWorking ? (
-          <span className="flex shrink-0 items-center gap-1 text-info-foreground">
-            <BotIcon className="size-3.5" />
-            An agent is working in this checkout
-          </span>
-        ) : null}
-        <span className="shrink-0">
+  const header = (
+    <RepositoryTabHeader.Root>
+      <RepositoryTabHeader.Path>{path}</RepositoryTabHeader.Path>
+      {agentWorking ? (
+        <RepositoryTabHeader.Status className="text-info-foreground">
+          <BotIcon className="size-3.5" />
+          An agent is working in this checkout
+        </RepositoryTabHeader.Status>
+      ) : null}
+      {contents === null ? null : (
+        <RepositoryTabHeader.Status>
           {readOnly
             ? file.data?.truncated
               ? "Too big to edit here"
@@ -131,24 +124,35 @@ export function RepositoryFileView({
             : pending
               ? "Saving…"
               : "Saved"}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label="Open local graph"
-                className="shrink-0"
-                size="icon-xs"
-                variant="ghost-muted"
-                onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
-              />
-            }
-          >
-            <WaypointsIcon />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">Open local graph</TooltipPopup>
-        </Tooltip>
+        </RepositoryTabHeader.Status>
+      )}
+      <RepositoryTabHeader.Action
+        label="Open local graph"
+        onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
+      >
+        <WaypointsIcon />
+      </RepositoryTabHeader.Action>
+    </RepositoryTabHeader.Root>
+  );
+  if (file.error !== null && contents === null) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {header}
+        <FileNotice>{file.error}</FileNotice>
       </div>
+    );
+  }
+  if (contents === null) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {header}
+        <FileNotice>{file.isPending ? "Opening…" : "Nothing to show."}</FileNotice>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {header}
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
           key={importLineKey(tab)}

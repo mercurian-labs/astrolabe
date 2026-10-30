@@ -31,6 +31,7 @@ import {
   useSectionOpenKeys,
 } from "~/panes/sectionPanes";
 import { repositoryPanes } from "./repositoryPanes";
+import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { parseRepositoryTabKey } from "./repositoryTabs";
 import { RepositoryTabView, repositoryTabLabel } from "./RepositoryTabView";
 
@@ -196,15 +197,21 @@ function NewTabButton({ paneId }: { readonly paneId: string }) {
   );
 }
 
+/** An empty tab keeps the header row, so its pane lines up with the files beside it. */
 function EmptyTabOverlay({ leaf }: { readonly leaf: Leaf }) {
   return isEmptyTab(leaf.active) ? (
-    <Empty>
-      <EmptyHeader>
-        <EmptyTitle>No file open</EmptyTitle>
-        <EmptyDescription>
-          Open a file from the sidebar, or search for one by name with the sidebar's search.
-        </EmptyDescription>
-      </EmptyHeader>
-    </Empty>
+    <>
+      <RepositoryTabHeader.Root>
+        <RepositoryTabHeader.Path />
+      </RepositoryTabHeader.Root>
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>No file open</EmptyTitle>
+          <EmptyDescription>
+            Open a file from the sidebar, or search for one by name with the sidebar's search.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    </>
   ) : null;
 }
