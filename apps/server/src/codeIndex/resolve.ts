@@ -3,16 +3,10 @@
  * or a dependency; a reference narrows to its imports, then its own file, then every definition of
  * the name (the tiers of code-graph's indexer, over a checkout's stored facts).
  */
-import {
-  DEFAULT_EXPORT,
-  isBuiltin,
-  languageOf,
-  ModuleIndex,
-  offeredKeys,
-  wantedKeys,
-  type LanguageId,
-  type ReferenceKind,
-} from "@mercurian/code-graph";
+import type { ReferenceKind } from "@mercurian/code-graph";
+import { isBuiltin } from "@mercurian/code-graph/builtins";
+import { languageOf, type LanguageId } from "@mercurian/code-graph/languages";
+import { ModuleIndex, offeredKeys, wantedKeys } from "@mercurian/code-graph/modules";
 import type { CodeResolution, CodeSymbolKind, CodeUse } from "@t3tools/contracts";
 
 import { packageNameOf, type StoredFacts, type StoredImport, type StoredSymbol } from "./facts.ts";
@@ -391,7 +385,8 @@ export function resolveReference(
           ? new Set([target.file])
           : null;
     if (files === null) return null;
-    if (qualifier === null && binding.imported === DEFAULT_EXPORT) {
+    // code-graph's DEFAULT_EXPORT, written out so the server does not load the parser.
+    if (qualifier === null && binding.imported === "default") {
       // A default import names whatever the module exports as default; the facts of that file say.
       return found(inFiles(files).filter((definition) => definition.symbol.exported)) ?? null;
     }

@@ -3,7 +3,7 @@
  * outline, a name's definitions and uses, what changed between two refs, and how a slice of files
  * hangs together. Each reads stored facts through a `Snapshot` and resolves links as it goes.
  */
-import { isIndexable, languageOf } from "@mercurian/code-graph";
+import { isIndexable, languageOf } from "@mercurian/code-graph/languages";
 import {
   CodeIndexError,
   type CodeChangeState,

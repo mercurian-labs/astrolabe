@@ -6,13 +6,9 @@
  */
 import * as NodeZlib from "node:zlib";
 
-import {
-  wantedKeys,
-  type FileFacts,
-  type ImportBinding,
-  type LanguageId,
-  type ReferenceKind,
-} from "@mercurian/code-graph";
+import type { FileFacts, ImportBinding, ReferenceKind } from "@mercurian/code-graph";
+import type { LanguageId } from "@mercurian/code-graph/languages";
+import { wantedKeys } from "@mercurian/code-graph/modules";
 import type { CodeSymbolKind } from "@t3tools/contracts";
 
 export interface StoredSymbol {

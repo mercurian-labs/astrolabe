@@ -1,10 +1,5 @@
-import {
-  DEFAULT_MAX_BYTES,
-  blobSizes,
-  isIndexable,
-  languageOf,
-  readBlobs,
-} from "@mercurian/code-graph";
+import { blobSizes, readBlobs } from "@mercurian/code-graph/git";
+import { isIndexable, languageOf } from "@mercurian/code-graph/languages";
 import {
   CodeIndexError,
   DEFAULT_CODE_INDEX_SETTINGS,
@@ -83,7 +78,7 @@ import {
   VersionState,
   type WrittenVersion,
 } from "./store.ts";
-import { WorkerJob, WorkerOutput } from "./workerJob.ts";
+import { WorkerJob, WorkerOutput } from "./workerProtocol.ts";
 
 /**
  * Astrolabe: each repository's code index. People reach it through the WebSocket (status,
@@ -239,6 +234,8 @@ export const makeWorkerRunner = Effect.fn("CodeIndex.makeWorkerRunner")(function
 // The index.
 
 const DB_FILE = "code-index.sqlite";
+/** Larger files are skipped: generated or data, and slow to parse. */
+const MAX_FILE_BYTES = 512 * 1024;
 /** Files per worker job: a few seconds of parsing, so pausing and cancelling take effect soon. */
 const CHUNK_FILES = 250;
 /** A parse job holds one permit, a delete all of them, so nothing parses while facts go. */
@@ -682,7 +679,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           db: dbFile,
           projectId: repo.projectId,
           repo: cwd,
-          maxBytes: DEFAULT_MAX_BYTES,
+          maxBytes: MAX_FILE_BYTES,
           files: chunk,
         },
         (output) =>

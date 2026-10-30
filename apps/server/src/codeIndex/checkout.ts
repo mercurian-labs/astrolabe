@@ -2,7 +2,7 @@
  * What a checkout holds, read from git: each indexable file's path and blob, with uncommitted
  * files hashed as git would hash them. A checkout's code index is this list plus the shared facts.
  */
-import { isIndexable } from "@mercurian/code-graph";
+import { isIndexable } from "@mercurian/code-graph/languages";
 import { CodeIndexError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 

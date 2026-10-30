@@ -10,7 +10,8 @@
 import { useAssets } from "@mercurian/code-graph";
 import * as Schema from "effect/Schema";
 
-import { runJob, WorkerJob, WorkerOutput } from "./workerJob.ts";
+import { runJob } from "./workerJob.ts";
+import { WorkerJob, WorkerOutput } from "./workerProtocol.ts";
 
 const decodeJob = Schema.decodeUnknownSync(Schema.fromJsonString(WorkerJob));
 const encodeOutput = Schema.encodeSync(Schema.fromJsonString(WorkerOutput));
