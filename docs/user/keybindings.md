@@ -127,6 +127,7 @@ you need.
 | `p`                     | Panes: split, close, maximize, full screen, right panel        |
 | `s` `s`                 | Show or hide the sidebar                                       |
 | `w`                     | Open Wikis, or find or create a document                       |
+| `e` `f`                 | [Find](#find-in-a-file-or-note) in the file or note you are in |
 | `,`                     | Settings                                                       |
 
 These are the defaults. A row lists every key in its group that runs the same
@@ -229,6 +230,20 @@ to copy its URL and `mod+shift+k` (outside the composer and notes) to copy its
 number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
+
+## Find in a file or note
+
+In a repository file or a wiki note, `mod+f` opens a find bar above the text, starting from the
+words you selected. Enter and `Shift+Enter` move between matches, as do `mod+g` and
+`mod+shift+g` from the text. `Alt+Enter` selects every match in a note, so typing changes them
+all. `mod+alt+c`, `mod+alt+w`, and `mod+alt+x` switch match case, whole words, and regular
+expressions. Where you can edit, the bar's second row replaces: Enter replaces the current match
+and `mod+Enter` every match. Escape closes the bar. Read-only files and notes can be searched too.
+
+With Vim on, `/`, `?`, `n`, and `N` stay Vim's own search in normal mode. On Windows and Linux,
+`Ctrl+F` in normal mode is Vim's page down, so use `/` or Space `e` `f` there. Change the
+shortcut in **Settings → Keybindings** under **Find in Editor**. In the composer, `mod+f` finds
+in the thread instead.
 
 ## Find in a diff
 

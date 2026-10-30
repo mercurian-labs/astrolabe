@@ -6,11 +6,13 @@ import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
 import { livePreview } from "@mercurian/editor/markdown";
+import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { useEditorFindKeys } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useEnvironmentScope } from "~/state/session";
@@ -177,13 +179,15 @@ function FileEditor({
   }, [onChange]);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
+  const findKeys = useEditorFindKeys();
   const [compartments] = useState(() => ({
     vim: new Compartment(),
     language: new Compartment(),
     readOnly: new Compartment(),
   }));
-  // The view is built from the file as it first shows (the parent keys it by path).
-  const [initial] = useState(() => ({ path, contents, readOnly, vim }));
+  // The view is built from the file as it first shows (the parent keys it by path), with the
+  // find bar's keys as they are then.
+  const [initial] = useState(() => ({ path, contents, readOnly, vim, findKeys }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -206,6 +210,7 @@ function FileEditor({
           appVimKeys(() => null),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
+          inFileSearch({ keys: initial.findKeys }),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           EditorView.updateListener.of((update) => {

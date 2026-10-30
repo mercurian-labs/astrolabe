@@ -1,3 +1,6 @@
+import { EditorState, type Extension } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { inFileSearch } from "@mercurian/editor/search";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
@@ -87,7 +90,12 @@ function context(
     ...overrides,
   };
   const root = whichKeyRoot(triggers, (id: KeybindingCommand) => appCommand(id, value));
-  return { root, ran };
+  /** The same context, acting from `origin`. */
+  const actingFrom = (origin: AppCommandContext["origin"]): AppCommandContext => ({
+    ...value,
+    origin,
+  });
+  return { root, ran, actingFrom };
 }
 
 /** Two panes side by side, the second focused. */
@@ -147,6 +155,7 @@ describe("the keyboard menu built from the menu rules", () => {
       ["p", "Panes"],
       ["s", "Sidebar"],
       ["w", "Wikis"],
+      ["e", "Editor"],
       [",", "settings"],
     ]);
     // Only the focus moves and the scrolls repeat, there and nowhere in the groups.
@@ -331,6 +340,48 @@ describe("the keyboard menu built from the menu rules", () => {
     expect(press(context().root, ["p", "r"])).toBe(NOT_HERE);
     press(context({ chatTabs: { keys: ["a"], activeKey: "a", select, close } }).root, ["p", "r"]);
     expect(pressed).toEqual(["rightPanel.toggle"]);
+  });
+});
+
+describe("Find in editor", () => {
+  /** An editor on the page, inside `parent` (the body when not given), gone as the test ends. */
+  function editor(extensions: Extension, parent: HTMLElement = document.body) {
+    const view = new EditorView({
+      parent: parent.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc: "find me", extensions }),
+    });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+
+  /** Where a key pressed in `view` comes from, as the menu's chord reports it. */
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("opens the find bar of the editor the menu was opened from, with e f", async () => {
+    using _cleanup = cleanup();
+    const view = editor(inFileSearch());
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    expect(press(root, ["e", "f"])).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(view.dom.querySelector(".cm-search input[name=search]")),
+    );
+  });
+
+  it("finds in the note around a table cell's editor, and is faint where no editor has a bar", () => {
+    using _cleanup = cleanup();
+    const note = editor(inFileSearch());
+    const cell = editor([], note.dom);
+    expect(appCommand("search.find", context().actingFrom(keyIn(cell))).disabled).toBe(false);
+
+    // The composer: an editor with no find bar, where mod+f stays thread find.
+    const composer = editor([]);
+    const faint = appCommand("search.find", context().actingFrom(keyIn(composer)));
+    expect(faint).toMatchObject({ label: "No editor to find in", disabled: true });
+    expect(appCommand("search.find", context().actingFrom(null)).disabled).toBe(true);
   });
 });
 

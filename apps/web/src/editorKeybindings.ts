@@ -12,9 +12,9 @@ import { whenClauseHolds } from "./keybindings";
 import { primaryServerKeybindingsAtom } from "./state/server";
 
 /**
- * Astrolabe: the Markdown editors' formatting keys from the keybindings. Each `markdown.*`
- * command's shortcuts whose `when` holds in that editor (`editorFocus`, and `composerFocus` in
- * the composer) become the live preview's keys for it, in CodeMirror's notation.
+ * Astrolabe: the editors' own keys from the keybindings. Each `markdown.*` command's shortcuts
+ * whose `when` holds in that editor (`editorFocus`, and `composerFocus` in the composer) become
+ * the live preview's keys for it, and `search.find`'s open the find bar, in CodeMirror's notation.
  */
 
 const CODEMIRROR_KEY_NAMES: Readonly<Record<string, string>> = {
@@ -69,14 +69,34 @@ export function markdownEditorKeys(
 }
 
 /**
- * An editor's formatting keys, the same object until they change: the keybindings list is rebuilt
- * on every server config update, and a new keys object recreates the editor.
+ * `keys` as first seen until they change in substance: the keybindings list is rebuilt on every
+ * server config update, and a new keys object recreates the editor.
  */
-export function useMarkdownEditorKeys(editor: { readonly composer: boolean }) {
-  const keys = markdownEditorKeys(useAtomValue(primaryServerKeybindingsAtom), editor);
+function useStableKeys<Keys>(keys: Keys): Keys {
   const signature = JSON.stringify(keys);
   const [stable, setStable] = useState({ signature, keys });
   if (stable.signature === signature) return stable.keys;
   setStable({ signature, keys });
   return keys;
+}
+
+/** An editor's formatting keys, the same object until they change. */
+export function useMarkdownEditorKeys(editor: { readonly composer: boolean }) {
+  return useStableKeys(markdownEditorKeys(useAtomValue(primaryServerKeybindingsAtom), editor));
+}
+
+/** The keys that open an editor's find bar (`search.find`), in CodeMirror's notation. */
+export function editorFindKeys(keybindings: ResolvedKeybindingsConfig): string[] {
+  const context = { editorFocus: true, composerFocus: false };
+  return keybindings
+    .filter(
+      (binding) =>
+        binding.command === "search.find" && whenClauseHolds(binding.whenAst, { context }),
+    )
+    .map((binding) => codeMirrorKey(binding.shortcut));
+}
+
+/** The find bar's keys, the same array until they change. */
+export function useEditorFindKeys(): readonly string[] {
+  return useStableKeys(editorFindKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }

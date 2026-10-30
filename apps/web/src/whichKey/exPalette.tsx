@@ -14,6 +14,7 @@ import {
   CornerDownLeft,
   Rows2,
   SquareTerminal,
+  TextSearch,
   X,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -100,6 +101,7 @@ const COMMAND_ICONS: Partial<Record<KeybindingCommand, ReactNode>> = {
   "focus.right": <ArrowRight className={ITEM_ICON_CLASS} />,
   "scroll.down": <ChevronsDown className={ITEM_ICON_CLASS} />,
   "scroll.up": <ChevronsUp className={ITEM_ICON_CLASS} />,
+  "search.find": <TextSearch className={ITEM_ICON_CLASS} />,
 };
 
 const iconFor = (command: KeybindingCommand) =>

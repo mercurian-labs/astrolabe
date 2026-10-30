@@ -10,7 +10,7 @@ import { EditorView } from "@codemirror/view";
 import type { ClientSettings } from "@t3tools/contracts";
 import { useLayoutEffect, useRef, useState } from "react";
 
-import { useMarkdownEditorKeys } from "~/editorKeybindings";
+import { useEditorFindKeys, useMarkdownEditorKeys } from "~/editorKeybindings";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import { appVimKeys } from "~/whichKey/doors";
@@ -49,7 +49,7 @@ const WIKI_EDITOR_THEME = EditorView.theme({
   "&.cm-editor .cm-content": { padding: "0 0 40vh", caretColor: "currentColor" },
   ".cm-line": { padding: "0" },
   // The change bar sticks to the bottom of the page's scroll area, over the note, as do Vim's
-  // search prompt and messages when Vim is on.
+  // search prompt and messages when Vim is on; the find bar sticks to its top.
   ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)" },
   ".cm-panels-bottom": { borderTop: "1px solid var(--border)" },
 });
@@ -106,6 +106,7 @@ export function WikiNoteEditor({
   useVimScreenLines();
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
   const keys = useMarkdownEditorKeys(NOTE_EDITOR);
+  const findKeys = useEditorFindKeys();
   const livePreview: LivePreviewOptions = {
     openWikilink: (target) => {
       const name = wikilinkNoteName(target);
@@ -129,6 +130,7 @@ export function WikiNoteEditor({
         livePreview={livePreview}
         vim={vim}
         vimPanel={false}
+        findKeys={findKeys}
       />
     </div>
   );

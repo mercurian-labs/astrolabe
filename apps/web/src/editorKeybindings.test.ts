@@ -6,7 +6,7 @@ import {
 } from "@t3tools/shared/keybindings";
 import { describe, expect, it } from "vite-plus/test";
 
-import { codeMirrorKey, markdownEditorKeys } from "./editorKeybindings";
+import { codeMirrorKey, editorFindKeys, markdownEditorKeys } from "./editorKeybindings";
 import { resolveShortcutCommand } from "./keybindings";
 
 describe("the Markdown editors' keys from the keybindings", () => {
@@ -47,5 +47,29 @@ describe("the Markdown editors' keys from the keybindings", () => {
       });
     expect(resolve(true)).toBe("markdown.link");
     expect(resolve(false)).toBe("pullRequest.copyNumber");
+  });
+});
+
+describe("the find bar's keys from the keybindings", () => {
+  it("opens with mod+f in an editor, and with whatever a user binds instead", () => {
+    expect(editorFindKeys(DEFAULT_RESOLVED_KEYBINDINGS)).toEqual(["Mod-f"]);
+    const rules: KeybindingRule[] = [
+      { key: "mod+shift+f", command: "search.find", when: "editorFocus" },
+      { key: "alt+f", command: "search.find", when: "composerFocus" },
+    ];
+    // A binding only the composer reaches does not open a find bar, which the composer has not.
+    expect(editorFindKeys(compileResolvedKeybindingsConfig(rules))).toEqual(["Mod-Shift-f"]);
+  });
+
+  it("leaves mod+f to thread find wherever an editor does not take it first", () => {
+    const event = { key: "f", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
+    const resolve = (editorFocus: boolean) =>
+      resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { editorFocus },
+      });
+    // The composer is an editor without a find bar: mod+f there still finds in the thread.
+    expect(resolve(true)).toBe("chat.find");
+    expect(resolve(false)).toBe("chat.find");
   });
 });

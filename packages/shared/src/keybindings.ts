@@ -155,6 +155,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+x", command: "markdown.strikethrough", when: "editorFocus" },
   { key: "mod+shift+h", command: "markdown.highlight", when: "editorFocus" },
   { key: "mod+shift+k", command: "markdown.link", when: "editorFocus" },
+  // Astrolabe: an editor's find bar, which each editor binds itself; elsewhere mod+f stays
+  // `chat.find`, as does the composer, which has no find bar.
+  { key: "mod+f", command: "search.find", when: "editorFocus" },
   // Astrolabe: Ctrl+H/J/K/L move focus between the sidebar and the panes, as Vim's and tmux's
   // window keys do, only while nothing is being typed into (a field, an editor, a terminal):
   // there they stay the editor's. Early, so where `mod` is Ctrl the terminal (mod+j) and the
