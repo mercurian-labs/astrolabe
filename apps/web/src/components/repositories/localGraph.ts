@@ -6,6 +6,7 @@ import {
   replaceTab,
   type Arrangement,
 } from "~/panes/arrangement";
+import type { PaneArrangementStore } from "~/panes/panesHost";
 import { leafWithTab, leaves } from "~/panes/tree";
 import {
   parseRepositoryTabKey,
@@ -112,4 +113,16 @@ export function filePaneOf(
   const front =
     path === null ? undefined : panes.find((leaf) => fileOf(leaf.active, checkout)?.path === path);
   return (front ?? panes.find((leaf) => !leaf.tabs.includes(graphKey)))?.id ?? null;
+}
+
+/**
+ * Opens the local graph of the file in front of the focused pane of `panes` (the keyboard menu's
+ * and the Command Palette's), or null when that is not a repository file.
+ */
+export function localGraphOpener(panes: PaneArrangementStore | null): (() => void) | null {
+  const arrangement = panes?.getSnapshot()?.arrangement;
+  if (panes === null || arrangement === undefined) return null;
+  const tab = parseRepositoryTabKey(focusedPane(arrangement).active);
+  if (tab?.kind !== "file") return null;
+  return () => panes.update((next) => openLocalGraph(next, tab));
 }

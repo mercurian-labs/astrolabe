@@ -18,9 +18,11 @@ import {
   useState,
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
+import { readLocalApi } from "~/localApi";
 import { isElectron } from "~/env";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
@@ -66,9 +68,9 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useSectionFocusedKey } from "~/panes/sectionPanes";
-import { repositoryPanes } from "./repositoryPanes";
+import { repositoryPanes, showLocalGraph } from "./repositoryPanes";
 import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
-import { fileName, folderOf, repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
+import { fileName, folderOf, repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
@@ -243,6 +245,13 @@ export function RepositorySidebar() {
                         onOpenFile={(path) =>
                           repositoryPanes.show(fileKey(scoped, checkout.cwd, path))
                         }
+                        fileMenuActions={[
+                          {
+                            id: "local-graph",
+                            label: "Open local graph",
+                            run: (path) => showLocalGraph(fileTab(scoped, checkout.cwd, path)),
+                          },
+                        ]}
                         workspaceMutationId={null}
                       />
                     </div>
@@ -273,7 +282,7 @@ export function RepositorySidebar() {
   );
 }
 
-type FileTab = Extract<RepositoryTab, { kind: "file" }>;
+type FileTab = RepositoryFileTab;
 
 const fileTab = (repository: EnvironmentProject, cwd: string, path: string): FileTab => ({
   kind: "file",
@@ -523,6 +532,19 @@ function FileRow({
     else repositoryPanes.show(key);
     onOpened?.();
   };
+  const showMenu = (event: MouseEvent<HTMLElement>) => {
+    const api = readLocalApi();
+    if (!api) return;
+    event.preventDefault();
+    void api.contextMenu
+      .show([{ id: "local-graph", label: "Open local graph" }], {
+        x: event.clientX,
+        y: event.clientY,
+      })
+      .then((clicked) => {
+        if (clicked === "local-graph") showLocalGraph(tab);
+      });
+  };
   const drag = (event: DragEvent<HTMLElement>) =>
     startDrag(
       event,
@@ -551,6 +573,7 @@ function FileRow({
                   : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
               )}
               onClick={open}
+              onContextMenu={showMenu}
               onAuxClick={(event) => {
                 if (event.button === 1) open(event);
               }}

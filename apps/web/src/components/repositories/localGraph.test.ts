@@ -3,7 +3,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { focusedPane, type Arrangement } from "~/panes/arrangement";
 import { leafWithTab, leaves, type SplitNode } from "~/panes/tree";
-import { filePaneOf, followedPath, localGraphKey, openLocalGraph } from "./localGraph";
+import type { PaneArrangementStore } from "~/panes/panesHost";
+import {
+  filePaneOf,
+  followedPath,
+  localGraphKey,
+  localGraphOpener,
+  openLocalGraph,
+} from "./localGraph";
 import { repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
 
 const checkout = {
@@ -131,5 +138,32 @@ describe("a graph's file pane", () => {
     expect(filePaneOf(arranged(leaf("p3", [FOLLOWING]), "p3"), FOLLOWING, checkout, "a.ts")).toBe(
       null,
     );
+  });
+});
+
+describe("the menu's Open local graph", () => {
+  const store = (initial: Arrangement) => {
+    let arrangement = initial;
+    const panes: PaneArrangementStore = {
+      getSnapshot: () => ({ arrangement, hostPaneId: null }),
+      update: (change) => {
+        arrangement = change(arrangement);
+      },
+      subscribe: () => () => {},
+    };
+    return { panes, current: () => arrangement };
+  };
+
+  it("opens the graph of the file in front of the focused pane", () => {
+    const { panes, current } = store(arranged(leaf("p1", [key("a.ts")]), "p1"));
+    localGraphOpener(panes)?.();
+    expect(leaves(current().root).map((pane) => pane.tabs)).toEqual([[key("a.ts")], [FOLLOWING]]);
+  });
+
+  it("has nothing to open on anything but a repository file", () => {
+    const diff = repositoryTabKey({ kind: "diff", ...checkout, source: "working-tree" });
+    expect(localGraphOpener(store(arranged(leaf("p1", [diff]), "p1")).panes)).toBeNull();
+    expect(localGraphOpener(store(arranged(leaf("p1", [FOLLOWING]), "p1")).panes)).toBeNull();
+    expect(localGraphOpener(null)).toBeNull();
   });
 });

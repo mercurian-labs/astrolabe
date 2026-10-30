@@ -66,6 +66,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu s s", command: "sidebar.toggle" },
   { key: "menu w w", command: "section.wikis" },
   { key: "menu w f", command: "wiki.findDocument" },
+  { key: "menu r g", command: "repository.localGraph" },
   { key: "menu ,", command: "section.settings" },
   { key: ":q[uit]", command: "tab.close" },
   { key: ":w[rite]", command: "draft.write" },
