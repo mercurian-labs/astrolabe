@@ -113,6 +113,11 @@ export interface ViewContext {
   readonly reading: boolean;
   /** The reading is narrowed to the checkpoint's own turn: its story is that turn's links alone. */
   readonly thisTurnOnly: boolean;
+  /**
+   * A local graph (Repositories' file graph): a small graph around its `focus`, without a thread.
+   * Its links draw at rest, and the camera frames all of it rather than the reading density.
+   */
+  readonly localGraph?: boolean;
 }
 
 /**

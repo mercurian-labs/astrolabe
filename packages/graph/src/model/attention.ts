@@ -2,7 +2,8 @@
  * At rest no edge is drawn, so no label ever has a line under it. Only attention (hover, pick,
  * search, a shown lens) or a landing turn's transient story lights links, and the story lights only
  * the links the turn made or broke, never a note's neighbourhood. The lit levels are the AI Coding
- * Dictionary's.
+ * Dictionary's. One exception: a local graph (Repositories' file graph) is its links, so they draw
+ * at rest there (`linksAtRest`).
  */
 import type { PlayFocus } from "./plays.ts";
 import { NodeFlag, type GraphView } from "./view.ts";
@@ -18,6 +19,8 @@ export const EdgeAttention = {
   /** Inside a container opened past the landing's level, an edge that stood there: quieter still. */
   structure: 0.3,
   lensFloor: 0.35,
+  /** A local graph's link at rest (`linksAtRest`): drawn, below a hover's. */
+  localRest: 0.38,
 } as const;
 
 /** Whether an edge is the story's (a link the turn made or broke, or the selected play's), while it is lit. */
@@ -36,6 +39,8 @@ export interface EdgeAttentionInput {
   readonly lens: boolean;
   /** It stood among what shows inside an opened container (see `GraphView.edgeStructure`). */
   readonly structure?: boolean;
+  /** The graph is a local graph, whose links draw at rest. */
+  readonly linksAtRest?: boolean;
 }
 
 /**
@@ -49,7 +54,8 @@ export function edgeAttention(input: EdgeAttentionInput): number {
   if (input.searching) {
     return input.bothMatch ? EdgeAttention.searchMatch : EdgeAttention.searchMiss;
   }
-  const base = input.touched ? EdgeAttention.touched : EdgeAttention.rest;
+  const rest = input.linksAtRest === true ? EdgeAttention.localRest : EdgeAttention.rest;
+  const base = input.touched ? EdgeAttention.touched : rest;
   const lensed = input.lens ? Math.max(base, EdgeAttention.lensFloor) : base;
   return input.structure === true ? Math.max(lensed, EdgeAttention.structure) : lensed;
 }
@@ -66,6 +72,8 @@ export interface AttentionState {
    * full; the rest of the turn's links stay dark.
    */
   readonly play: PlayFocus | null;
+  /** A local graph: its links draw at rest. */
+  readonly linksAtRest?: boolean;
 }
 
 /** An edge's part in the story, given what is lit and what play is selected. */
@@ -97,6 +105,7 @@ export function edgeAttentions(
       touched: touched(edge.a) || touched(edge.b),
       lens: (view.edgeSlot[index] ?? -1) >= 0,
       structure: view.edgeStructure[index] === 1,
+      linksAtRest: state.linksAtRest === true,
     });
   });
   return out;

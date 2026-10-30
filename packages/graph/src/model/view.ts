@@ -5,7 +5,7 @@
  * (surroundings, frontier) to front (worked notes).
  */
 import { localGraph, neighborsOf, pairKey, type MemoryIndex, type MemoryLens } from "./memory.ts";
-import { kindShape } from "./kinds.ts";
+import { nodeShape } from "./kinds.ts";
 import { lensPlacement } from "./lenses.ts";
 import type { Reading } from "./reading.ts";
 import { applyFilters, normalizeQuery, searchMatches, type GraphFilters } from "./search.ts";
@@ -948,7 +948,7 @@ export const denseView = (input: ViewInput): GraphView => {
   const view = deriveView(input);
   return {
     ...expandView(view, input.universe.nodes.length, input.universe.edges.length),
-    nodeShape: Uint8Array.from(input.universe.nodes, (node) => kindShape(node.kind)),
+    nodeShape: Uint8Array.from(input.universe.nodes, nodeShape),
     regions: regionShapes(view, input.universe, (index) => index),
   };
 };

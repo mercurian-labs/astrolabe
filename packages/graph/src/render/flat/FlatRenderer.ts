@@ -133,6 +133,8 @@ export class FlatRenderer implements GraphRenderer {
   #gathering: Gathering | null = null;
   #readingFrame: ReadingFrame | null = null;
   #reading = false;
+  /** The view is a local graph (`ViewContext.localGraph`): links at rest, framed whole. */
+  #localGraph = false;
   #camera: FlatCamera = { x: 0, y: 0, scale: 1 };
   #flight: { from: FlatCamera; to: FlatCamera; start: number | null } | null = null;
   #following = true;
@@ -548,6 +550,7 @@ export class FlatRenderer implements GraphRenderer {
     const graph = this.#graph;
     if (graph === null) return;
     const first = this.#view === null;
+    this.#localGraph = context.localGraph === true;
     // Seat the view in slots, keeping the hover by note across any renumbering.
     const { slots } = graph;
     const hoverNote = this.#hoverNode >= 0 ? slots.nodeOf(this.#hoverNode) : -1;
@@ -926,6 +929,7 @@ export class FlatRenderer implements GraphRenderer {
       hover: this.#hoverNode,
       storyLit: this.#storyline.lit(),
       play: this.#storyline.play,
+      linksAtRest: this.#localGraph,
       radiusFor: (degree) => this.#radiusFor(degree),
       offsetFor: (index) =>
         composeOffset(this.#baseOffset(index), this.#dragOffsets.get(graph.slots.nodeOf(index))),
@@ -982,7 +986,7 @@ export class FlatRenderer implements GraphRenderer {
 
   /** Zoom is free within a quarter to four times the reading density, and out as far as the reading needs. */
   #limits(extent = 0): { min: number; max: number } {
-    const reach = Math.max(extent, this.#readingFrame?.extent ?? 0);
+    const reach = Math.max(extent, this.#readingFrame?.extent ?? 0, this.#localExtent());
     const density = this.#densityScale;
     return {
       min: Math.min(density / DENSITY_ZOOM_RANGE, this.#fitScale(reach)),
@@ -1100,6 +1104,10 @@ export class FlatRenderer implements GraphRenderer {
   }
 
   #autoFrame(fly: boolean): void {
+    if (this.#localGraph) {
+      this.#frameWhole(fly);
+      return;
+    }
     const reading = this.#readingFrame;
     if (reading !== null) {
       // Always at the reading density, never zoomed out to fit: centred on the
@@ -1125,6 +1133,10 @@ export class FlatRenderer implements GraphRenderer {
 
   /** Fit: the pick at the reading density, else the reading's centre at it, else the frame following would take. */
   #fitFrame(fly: boolean): void {
+    if (this.#localGraph) {
+      this.#frameWhole(fly);
+      return;
+    }
     const focus = this.#view?.focus ?? null;
     const reading = this.#readingFrame;
     if (focus === null && reading !== null) {
@@ -1137,6 +1149,19 @@ export class FlatRenderer implements GraphRenderer {
     }
     const at = this.#landing(focus.index, new Vector3());
     this.#frame(fly, at.x, at.y);
+  }
+
+  /** A local graph whole, around its layout's centre: zoomed out to fit, never past the density. */
+  #frameWhole(fly: boolean): void {
+    const layout = this.#layout;
+    if (layout === null) return;
+    const [x, y] = layout.center;
+    this.#frame(fly, x, y, this.#localExtent());
+  }
+
+  /** How far a local graph reaches from its centre, a spacing beyond its outer notes for their labels. */
+  #localExtent(): number {
+    return this.#localGraph && this.#layout !== null ? this.#layout.radius + this.#densitySpan : 0;
   }
 
   #anchor(): Vector3 {
