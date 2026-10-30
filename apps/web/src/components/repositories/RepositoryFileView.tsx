@@ -2,7 +2,7 @@ import "@mercurian/editor/markdown/theme.css";
 import "@mercurian/editor/code/theme.css";
 
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
 import {
   codeEditing,
@@ -60,6 +60,7 @@ import {
   useEditorDiagnosticKeys,
   useEditorFindKeys,
   useEditorHunkKeys,
+  useFileSaveKeys,
   useLspEditorKeys,
 } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -510,6 +511,7 @@ function FileEditor({
   const editingKeys = useCodeEditorKeys();
   const diagnosticKeys = useEditorDiagnosticKeys();
   const lspKeys = useLspEditorKeys();
+  const saveKeys = useFileSaveKeys();
   const wordWrap = useClientSettings(selectWordWrap);
   const formatOnSave = useClientSettings(selectFormatOnSave);
   // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
@@ -611,7 +613,7 @@ function FileEditor({
     view.dispatch({ effects: compartments.vim.reconfigure(vim ? vimExtension() : []) });
   }, [compartments, vim]);
 
-  // The find bar's, change and editing keys follow the keybindings; wrapping, folds, the find bar
+  // The find bar's, change, editing and save keys follow the keybindings; wrapping, folds, the find bar
   // and shown changes stay.
   // oxlint-disable-next-line t3code/react-effect-budget -- carries rebound keys into the CodeMirror view
   useLayoutEffect(() => {
@@ -627,9 +629,20 @@ function FileEditor({
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
         initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial) : [],
+        "session" in initial.source
+          ? keymap.of(
+              saveKeys.map((key) => ({
+                key,
+                run: () => {
+                  initial.save();
+                  return true;
+                },
+              })),
+            )
+          : [],
       ]),
     });
-  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys]);
+  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys, saveKeys]);
 
   useEffect(() => {
     viewRef.current?.dispatch({

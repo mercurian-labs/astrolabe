@@ -182,6 +182,21 @@ export function useEditorDiagnosticKeys(): DiagnosticKeys {
   return useStableKeys(editorDiagnosticKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }
 
+/** The keys that save a code file (`file.save`), in CodeMirror's notation. */
+export function fileSaveKeys(keybindings: ResolvedKeybindingsConfig): string[] {
+  const context = { editorFocus: true, codeEditorFocus: true, composerFocus: false };
+  return keybindings
+    .filter(
+      (binding) => binding.command === "file.save" && whenClauseHolds(binding.whenAst, { context }),
+    )
+    .map((binding) => codeMirrorKey(binding.shortcut));
+}
+
+/** A code file's save keys, the same array until they change. */
+export function useFileSaveKeys(): readonly string[] {
+  return useStableKeys(fileSaveKeys(useAtomValue(primaryServerKeybindingsAtom)));
+}
+
 /** A code file's language-server keys (`lsp.*`), by command. */
 function lspEditorKeys(
   keybindings: ResolvedKeybindingsConfig,
