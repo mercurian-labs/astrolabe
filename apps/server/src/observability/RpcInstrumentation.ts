@@ -225,6 +225,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.codeIndexLocalGraph]: "codeIndex",
   [WS_METHODS.codeIndexRebuild]: "codeIndex",
   [WS_METHODS.codeIndexStorage]: "codeIndex",
+  [WS_METHODS.codeIndexPrune]: "codeIndex",
   [WS_METHODS.codeIndexClear]: "codeIndex",
   [WS_METHODS.wikiList]: "wiki",
   [WS_METHODS.wikiSubscribe]: "wiki",

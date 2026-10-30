@@ -68,6 +68,13 @@ export const CodeIndexStorage = Schema.Struct({
 });
 export type CodeIndexStorage = typeof CodeIndexStorage.Type;
 
+/** What a cleanup of unused file versions removed. */
+export const CodeIndexPruneResult = Schema.Struct({
+  bytesFreed: NonNegativeInt,
+  fileVersions: NonNegativeInt,
+});
+export type CodeIndexPruneResult = typeof CodeIndexPruneResult.Type;
+
 export const CodeIndexProjectInput = Schema.Struct({ projectId: ProjectId });
 export type CodeIndexProjectInput = typeof CodeIndexProjectInput.Type;
 

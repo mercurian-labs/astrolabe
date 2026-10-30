@@ -405,6 +405,7 @@ import {
 import {
   CodeIndexError,
   CodeIndexProjectInput,
+  CodeIndexPruneResult,
   CodeIndexStatus,
   CodeIndexStorage,
   CodeLocalGraph,
@@ -595,6 +596,7 @@ export const WS_METHODS = {
   codeIndexLocalGraph: "codeIndex.localGraph",
   codeIndexRebuild: "codeIndex.rebuild",
   codeIndexStorage: "codeIndex.storage",
+  codeIndexPrune: "codeIndex.prune",
   codeIndexClear: "codeIndex.clear",
 
   scheduledTasksList: "scheduledTasks.list",
@@ -2064,6 +2066,13 @@ const WsCodeIndexStorageRpc = Rpc.make(WS_METHODS.codeIndexStorage, {
   error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
 });
 
+/** Remove file versions no branch, worktree or checkpoint uses. */
+const WsCodeIndexPruneRpc = Rpc.make(WS_METHODS.codeIndexPrune, {
+  payload: Schema.Struct({}),
+  success: CodeIndexPruneResult,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
 const WsCodeIndexClearRpc = Rpc.make(WS_METHODS.codeIndexClear, {
   payload: Schema.Struct({}),
   success: Schema.Struct({}),
@@ -2411,6 +2420,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsCodeIndexLocalGraphRpc,
   WsCodeIndexRebuildRpc,
   WsCodeIndexStorageRpc,
+  WsCodeIndexPruneRpc,
   WsCodeIndexClearRpc,
 ).middleware(RpcScopeAuthorization);
 
