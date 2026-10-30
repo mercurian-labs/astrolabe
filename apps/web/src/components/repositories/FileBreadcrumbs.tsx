@@ -26,7 +26,7 @@ export function FileBreadcrumbs(props: {
     >
       <span className="min-w-0 shrink truncate font-mono">{props.path}</span>
       {trail?.path.map((item, index) => (
-        <span className="flex min-w-0 shrink-[2] items-center gap-0.5" key={index}>
+        <span className="flex min-w-0 shrink-[2] items-center gap-0.5" key={item.nameFrom}>
           <ChevronRightIcon aria-hidden className="size-3 shrink-0" />
           <Button
             variant="ghost-muted"
