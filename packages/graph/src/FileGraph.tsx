@@ -1,9 +1,8 @@
 /**
- * A file graph on the Lean renderer (see `model/fileGraph.ts`): a file in the middle, the files it
- * imports and the files that import it, with their links drawn at rest, arrows from importer to
- * imported. No thread and no reading: each graph handed over is a new picture, framed whole, and
- * the renderer sleeps once it settles. Hosts import `@mercurian/graph/styles.css` once and set
- * the `--atlas-*` properties on an ancestor, as for `AtlasGraph`.
+ * A file graph (`model/fileGraph.ts`) on the Lean renderer, links drawn at rest and arrows from
+ * importer to imported. No thread: each new graph is a new picture, framed whole, and the renderer
+ * sleeps once it settles. Hosts import `@mercurian/graph/styles.css` and set `--atlas-*`, as for
+ * `AtlasGraph`.
  */
 import { useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";

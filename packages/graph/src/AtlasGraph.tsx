@@ -1,9 +1,8 @@
 /**
- * A thin React wrapper around a `GraphRenderer`: it derives universe, layout, reading, and view
- * from props; the renderer owns every frame. `createRenderer` builds it, so a host loads only the
- * renderer it draws with (the app: `createLeanRenderer`). A new factory keeps selection, pick,
- * play, and flat view. Hosts import `@mercurian/graph/styles.css` once and set the `--atlas-*`
- * properties (see `render/theme.ts`) on an ancestor.
+ * A thin React wrapper around the `GraphRenderer` that `createRenderer` builds: it derives universe,
+ * layout, reading, and view from props; the renderer owns every frame. A new factory keeps
+ * selection, pick, play, and flat view. Hosts import `@mercurian/graph/styles.css` once and set the
+ * `--atlas-*` properties (see `render/theme.ts`) on an ancestor.
  */
 import {
   useCallback,

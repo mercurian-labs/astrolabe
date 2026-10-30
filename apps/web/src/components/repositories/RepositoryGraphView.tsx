@@ -1,6 +1,11 @@
 import "@mercurian/graph/styles.css";
 import { FileGraph, type FileGraphHandle, type FileGraphHover } from "@mercurian/graph/file";
-import { CodeIndexError, type CodeGraphNode, type CodeLocalGraph } from "@t3tools/contracts";
+import {
+  CODE_LOCAL_GRAPH_MAX_DEPTH,
+  CodeIndexError,
+  type CodeGraphNode,
+  type CodeLocalGraph,
+} from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ScanIcon } from "lucide-react";
@@ -58,6 +63,8 @@ const graphOptions = storedChoice<LocalGraphOptions>({
 
 const isCodeIndexError = Schema.is(CodeIndexError);
 
+const DEPTHS = Array.from({ length: CODE_LOCAL_GRAPH_MAX_DEPTH }, (_, at) => at + 1);
+
 /** While its repository's index builds, a graph reads again this often. */
 const INDEXING_REFRESH_MS = 2_000;
 
@@ -106,13 +113,12 @@ export default function RepositoryGraphView({
 
   const indexing = query.data?.usedByPending === true || reason === "not-indexed";
   const refresh = query.refresh;
-  const answeredAt = query.dataUpdatedAt;
   // oxlint-disable-next-line t3code/react-effect-budget -- reads the graph again while the index builds
   useEffect(() => {
     if (!indexing) return;
-    const timer = setTimeout(refresh, INDEXING_REFRESH_MS);
-    return () => clearTimeout(timer);
-  }, [indexing, refresh, answeredAt]);
+    const timer = setInterval(refresh, INDEXING_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [indexing, refresh]);
   // oxlint-disable-next-line t3code/react-effect-budget -- a closed graph lets go of the line it lit
   useEffect(() => () => importLineHighlight.set(null), []);
 
@@ -214,15 +220,18 @@ export default function RepositoryGraphView({
     );
   } else if (reason === "off") {
     body = (
-      <GraphNotice>
-        The code index is off for this repository.{" "}
-        <Button
-          className="h-auto p-0 align-baseline"
-          variant="link"
-          onClick={() => void navigate({ to: "/settings/projects" })}
-        >
-          Turn it on in Settings → Projects
-        </Button>
+      <GraphNotice
+        action={
+          <Button
+            size="xs"
+            variant="link"
+            onClick={() => void navigate({ to: "/settings/projects" })}
+          >
+            Turn it on in Settings → Projects
+          </Button>
+        }
+      >
+        The code index is off for this repository.
       </GraphNotice>
     );
   } else if (reason === "unsupported") {
@@ -276,7 +285,7 @@ export default function RepositoryGraphView({
             if (depth === 1 || depth === 2 || depth === 3) graphOptions.set({ ...options, depth });
           }}
         >
-          {[1, 2, 3].map((depth) => (
+          {DEPTHS.map((depth) => (
             <Toggle key={depth} value={String(depth)} aria-label={`Depth ${depth}`}>
               {depth}
             </Toggle>
@@ -338,11 +347,18 @@ function swapTab(arrangement: Arrangement, key: string, next: string): Arrangeme
     : replaceTab(arrangement, key, next);
 }
 
-function GraphNotice({ children }: { readonly children: ReactNode }) {
+function GraphNotice({
+  children,
+  action = null,
+}: {
+  readonly children: ReactNode;
+  readonly action?: ReactNode;
+}) {
   return (
-    <p role="status" className="px-4 py-6 text-center text-sm text-muted-foreground">
-      {children}
-    </p>
+    <div className="flex flex-col items-center gap-1 px-4 py-6 text-center text-sm text-muted-foreground">
+      <p role="status">{children}</p>
+      {action}
+    </div>
   );
 }
 

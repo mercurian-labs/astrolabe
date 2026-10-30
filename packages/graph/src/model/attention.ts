@@ -1,9 +1,8 @@
 /**
- * At rest no edge is drawn, so no label ever has a line under it. Only attention (hover, pick,
- * search, a shown lens) or a landing turn's transient story lights links, and the story lights only
- * the links the turn made or broke, never a note's neighbourhood. The lit levels are the AI Coding
- * Dictionary's. One exception: a local graph (Repositories' file graph) is its links, so they draw
- * at rest there (`linksAtRest`).
+ * At rest no edge is drawn, so no label has a line under it, except in a local graph (`linksAtRest`),
+ * which is its links. Otherwise only attention (hover, pick, search, a shown lens) or a landing turn's
+ * story lights links, and the story only those the turn made or broke. The levels are the AI Coding
+ * Dictionary's.
  */
 import type { PlayFocus } from "./plays.ts";
 import { NodeFlag, type GraphView } from "./view.ts";
