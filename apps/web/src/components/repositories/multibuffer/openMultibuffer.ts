@@ -42,6 +42,13 @@ export function locationList(id: string): LocationList | null {
   return lists.get(id) ?? null;
 }
 
+/** Keeps a list for a locations tab to show, under a new id. */
+export function rememberLocationList(list: LocationList): string {
+  const id = `l${nextList++}`;
+  lists.set(id, list);
+  return id;
+}
+
 function show(checkout: MultibufferCheckout, key: string, navigate: NavigateFn | null) {
   repositoryScope.set(`${checkout.environmentId}:${checkout.projectId}`);
   repositoryCheckout.set(checkout.worktreePath);
@@ -73,8 +80,7 @@ export function openLocationsInMultibuffer(
   list: LocationList,
   navigate: NavigateFn | null,
 ): string {
-  const id = `l${nextList++}`;
-  lists.set(id, list);
+  const id = rememberLocationList(list);
   const { environmentId, projectId, cwd } = checkout;
   const key = repositoryTabKey({ kind: "locations", environmentId, projectId, cwd, id });
   show(checkout, key, navigate);

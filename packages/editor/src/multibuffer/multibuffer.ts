@@ -227,6 +227,8 @@ export class Multibuffer {
   need(file: MultibufferFile) {
     if (file.document !== null || !this.files.includes(file)) return;
     file.document = this.options.open(file.path);
+    // The document may have had its text before `open` returned.
+    this.documentReady(file);
   }
 
   /**
