@@ -32,8 +32,13 @@ Repositories tab.
 
 Files open in tabs that split, as wiki documents do. Markdown files open with the live preview;
 code opens with line numbers and its language's colours, with Vim if you turned it on in
-Settings. Your edits save on their own a moment after you stop typing. A file shows when an agent
-is working in the same copy, and an edit never overwrites newer changes saved there.
+Settings. Your edits save on their own a moment after you stop typing. Changes from agents, the
+terminal, and other windows with the same file open show up as they happen, and an edit never
+overwrites newer changes saved there. A file shows when an agent is working in the same copy.
+
+If a file you have edits in is deleted, it stays open with **Save**, which recreates it, and
+**Discard**. Edits made while you were offline are sent when you reconnect; if the file changed
+in the meantime, choose **Keep mine** or **Use the file’s**.
 
 ## Review changes
 
