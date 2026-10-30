@@ -46,7 +46,7 @@ function touchesFiles(event: OrchestrationV2DomainEvent, threads: ReadonlySet<st
 }
 
 /** What changed between two reads; `exists` says whether a file that left the status is there. */
-export function changesBetween(
+function changesBetween(
   before: Snapshot,
   after: Snapshot,
   exists: (relativePath: string) => boolean,
