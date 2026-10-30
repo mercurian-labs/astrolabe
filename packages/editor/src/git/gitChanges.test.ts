@@ -109,6 +109,23 @@ describe("hunks against the base", () => {
   });
 });
 
+describe("the gutter", () => {
+  it("draws a strip on each added or changed line, and a notch where lines were deleted", () => {
+    const words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf"];
+    const editor = mount(
+      lines(...words),
+      lines("alpha", "BRAVO", "CHARLIE", "delta", "echo", "foxtrot", "golf", "hotel"),
+    );
+    const kinds = (kind: string) =>
+      editor.dom.querySelectorAll(`.atlas-git-gutter .atlas-git-${kind}`).length;
+    expect([kinds("modified"), kinds("added"), kinds("deleted")]).toEqual([2, 1, 0]);
+    // Deleting "echo" leaves a notch on "foxtrot", the line after it.
+    const echo = editor.state.doc.line(5);
+    editor.dispatch({ changes: { from: echo.from, to: echo.to + 1 } });
+    expect([kinds("modified"), kinds("added"), kinds("deleted")]).toEqual([2, 1, 1]);
+  });
+});
+
 describe("restoring a hunk", () => {
   it("puts back only the hunks the cursor touches, as one undoable edit", () => {
     const base = lines("a", "b", "c", "d");

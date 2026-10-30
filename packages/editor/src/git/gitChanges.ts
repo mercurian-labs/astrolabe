@@ -27,11 +27,9 @@ import { lineBlocks, setLineBlocks, type LineBlock } from "../blocks/lineBlocks.
 import { oldLinesBlock, oldTextStyles } from "../blocks/oldText.ts";
 
 /**
- * Changes since a base text (the file's last commit): a strip in the gutter beside each changed
- * run of lines (a hunk), green where lines were added, yellow where changed, and a red notch where
- * lines were deleted. A hunk stays a strip until you expand it, by clicking its strip or with a
- * key; then its old lines show above it, struck in red, under a small bar to restore the hunk or
- * step to the hunks around it. Escape collapses every expanded hunk. Restoring is an edit.
+ * Changes since a base text (a file's last commit): gutter strips per changed run of lines (a
+ * hunk), collapsed until expanded; an expanded hunk shows its old lines above it under a bar to
+ * restore it or step to its neighbours. Restoring is an ordinary edit.
  */
 
 export type HunkKind = "added" | "modified" | "deleted";
@@ -468,18 +466,22 @@ function marker(kind: HunkKind, expanded: boolean) {
   return (MARKERS[`${kind}:${expanded}`] ??= new HunkMarker(kind, expanded));
 }
 
-/** One marker per line a hunk covers, and a deletion's on the line after it (or its last). */
-function hunkMarkers(state: EditorState) {
+/**
+ * One marker per line a hunk covers, and a deletion's on the line after it (or its last), for
+ * the lines from `from` to `to` (the viewport: the gutter asks again on every update).
+ */
+function hunkMarkers(state: EditorState, { from, to }: { from: number; to: number }) {
   const doc = state.doc;
   const open = expandedHunks(state);
   const ranges: Range<GutterMarker>[] = [];
   for (const hunk of gitHunks(state)) {
+    if (hunk.to < from || hunk.from > to) continue;
     const expanded = open.some((o) => o.from === hunk.from);
     if (hunk.kind === "deleted") {
       ranges.push(marker("deleted", expanded).range(doc.lineAt(hunk.from).from));
       continue;
     }
-    for (let pos = hunk.from; pos <= hunk.to;) {
+    for (let pos = Math.max(hunk.from, from); pos <= Math.min(hunk.to, to);) {
       const line = doc.lineAt(pos);
       ranges.push(marker(hunk.kind, expanded).range(line.from));
       pos = line.to + 1;
@@ -490,7 +492,7 @@ function hunkMarkers(state: EditorState) {
 
 const hunkGutter = gutter({
   class: "atlas-git-gutter",
-  markers: (view) => hunkMarkers(view.state),
+  markers: (view) => hunkMarkers(view.state, view.viewport),
   lineMarkerChange: (update) => update.startState.field(gitField) !== update.state.field(gitField),
   domEventHandlers: {
     mousedown(view, line) {
