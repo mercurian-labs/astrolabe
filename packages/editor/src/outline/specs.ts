@@ -138,17 +138,83 @@ function isModuleLevel(declaration: SyntaxNode) {
   );
 }
 
+const unwrap = (node: SyntaxNode | null) =>
+  node?.name === "ParenthesizedExpression" ? node.firstChild!.nextSibling : node;
+
+const isGenerator = (node: SyntaxNode) =>
+  node.name === "FunctionExpression" && node.getChild("Star") !== null;
+
 /**
- * A module-level `const` or `let` holding a function or class, or an object with methods: one
- * item per such declarator (`const a = () => {}, b = 1` lists only `a`).
+ * The function a value runs: itself, or one a call wraps as its callee, a generator argument, a
+ * curried call's first function (`Effect.fn("x")(…)`), or a block-bodied final argument (not
+ * `map((x) => x.id)`), looking through a final-argument call and `.pipe(…)` chains.
+ */
+function functionOf(value: SyntaxNode | null): SyntaxNode | null {
+  if (isFunctionValue(value)) return value;
+  if (value?.name !== "CallExpression") return null;
+  const callee = unwrap(value.firstChild);
+  if (isFunctionValue(callee)) return callee;
+  let first: SyntaxNode | null = null;
+  let last: SyntaxNode | null = null;
+  for (let arg = value.getChild("ArgList")?.firstChild ?? null; arg; arg = arg.nextSibling) {
+    if (isGenerator(arg)) return arg;
+    if (!first && isFunctionValue(arg)) first = arg;
+    if (arg.name !== "(" && arg.name !== ")" && arg.name !== ",") last = arg;
+  }
+  if (first && callee?.name === "CallExpression") return first;
+  if (last && isFunctionValue(last) && last.lastChild?.name === "Block") return last;
+  const inner = last?.name === "CallExpression" ? functionOf(last) : null;
+  if (inner) return inner;
+  return callee?.name === "MemberExpression" ? functionOf(callee.firstChild) : null;
+}
+
+const WRAPPERS = new Set([
+  "ArgList",
+  "CallExpression",
+  "MemberExpression",
+  "ParenthesizedExpression",
+]);
+
+/**
+ * Whether `fn` is the body of an outline item's function: the one a listed declarator's value
+ * runs, or the one such a function's arrow returns (`(r) => Layer.effect(Effect.gen(…))`).
+ */
+function isItemBody(fn: SyntaxNode): boolean {
+  let value = fn;
+  while (value.parent && WRAPPERS.has(value.parent.name)) value = value.parent;
+  const holder = value.parent;
+  if (!holder || functionOf(value)?.from !== fn.from) return false;
+  if (holder.name === "VariableDeclaration") {
+    return value.prevSibling?.name === "Equals" && isOutlineLevel(holder);
+  }
+  return (
+    holder.name === "ArrowFunction" && holder.lastChild?.from === value.from && isItemBody(holder)
+  );
+}
+
+/**
+ * Where a `const` or `let` is an outline item: at the top of a module or namespace, or in the
+ * body of a function another such declaration holds, so a service's functions list under it.
+ */
+function isOutlineLevel(declaration: SyntaxNode): boolean {
+  if (isModuleLevel(declaration)) return true;
+  const block = declaration.parent;
+  const fn = block?.name === "Block" ? block.parent : null;
+  return !!fn && isFunctionValue(fn) && isItemBody(fn);
+}
+
+/**
+ * A `const` or `let` holding a function or class, or an object with methods, where it is an
+ * outline item (`isOutlineLevel`): one item per such declarator (`const a = () => {}, b = 1`
+ * lists only `a`).
  */
 const variableDeclaration: Rule = (node, doc) => {
-  if (!isModuleLevel(node)) return null;
+  if (!isOutlineLevel(node)) return null;
   const items: RawItem[] = [];
   for (const name of node.getChildren("VariableDefinition")) {
     const value = name.nextSibling?.name === "Equals" ? name.nextSibling.nextSibling : null;
     if (!value) continue;
-    const kind: OutlineKind | null = isFunctionValue(value)
+    const kind: OutlineKind | null = functionOf(value)
       ? "function"
       : value.name === "ClassExpression"
         ? "class"
