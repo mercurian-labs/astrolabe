@@ -9,6 +9,7 @@ import {
 import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
+import { hasOutline } from "@mercurian/editor/outline";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
@@ -16,6 +17,7 @@ import { EditorView } from "@codemirror/view";
 import { diffBaseControl, hasDiffBaseControl } from "~/components/repositories/fileDiffBase";
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { codeEditingCommandOf } from "~/editorKeybindings";
+import { openOutlinePicker } from "~/components/outline/OutlinePicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import {
   canClosePane,
@@ -406,6 +408,13 @@ function astrolabeCommand(
             : "Compare since this turn"
           : "No turn changed this file",
         control && current?.turnAvailable ? control.toggle : null,
+      );
+    }
+    case "outline.open": {
+      const view = editorFrom(context.origin, hasOutline);
+      return entry(
+        view ? "Go to symbol" : "No file to outline",
+        view ? () => afterPalette(() => openOutlinePicker(view)) : null,
       );
     }
   }

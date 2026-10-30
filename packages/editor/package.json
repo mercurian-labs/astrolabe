@@ -50,6 +50,10 @@
     "./git": {
       "types": "./src/git/gitChanges.ts",
       "default": "./src/git/gitChanges.ts"
+    },
+    "./outline": {
+      "types": "./src/outline/outline.ts",
+      "default": "./src/outline/outline.ts"
     }
   },
   "scripts": {

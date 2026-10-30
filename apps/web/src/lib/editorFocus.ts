@@ -1,3 +1,5 @@
+import { OUTLINE_ATTRIBUTE } from "@mercurian/editor/outline";
+
 /**
  * Astrolabe: whether focus is in one of the app's text editors (the composer, a wiki note, a
  * repository file): an editable CodeMirror view. The `editorFocus` keybinding condition, which the
@@ -24,4 +26,16 @@ export function isCodeEditorFocused(target: EventTarget | null = document.active
     content?.getAttribute("contenteditable") === "true" &&
     content.closest(".cm-editor")?.hasAttribute("data-code-editing") === true
   );
+}
+
+/**
+ * Astrolabe: whether focus is in an editor with an outline (a repository file or wiki note,
+ * marked by `outline()`), or in one inside it such as a table cell's: the `outlineFocus`
+ * condition, where mod+shift+o opens the outline picker rather than a new thread.
+ */
+export function isOutlineEditorFocused(
+  target: EventTarget | null = document.activeElement,
+): boolean {
+  const element = target instanceof Element ? target : null;
+  return element?.closest(`.cm-editor[${OUTLINE_ATTRIBUTE}]`) != null;
 }

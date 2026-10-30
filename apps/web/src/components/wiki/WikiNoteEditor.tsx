@@ -5,6 +5,7 @@ import { agentChangeBar } from "@mercurian/editor/collab/agent-changes";
 import { AtlasEditor } from "@mercurian/editor/editor";
 import { vimNormalModeFont } from "@mercurian/editor/vim";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
+import { outline } from "@mercurian/editor/outline";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ClientSettings } from "@t3tools/contracts";
@@ -60,9 +61,11 @@ const NOTE_EDITOR = { composer: false };
 // Editable notes get the agent change bar to review live amendments; a skill map is read only.
 // Under Vim, Space opens the keyboard menu and `:` the palette's ex line (see `appVimKeys`), and
 // the text reads in the code font outside insert mode, which shows the mode instead of a panel.
+// Either way, mod+shift+o opens the note's headings (`outline`).
 const READ_ONLY_EXTENSIONS = [
   WIKI_EDITOR_THEME,
   vimNormalModeFont,
+  outline(),
   EditorState.readOnly.of(true),
   EditorView.editable.of(false),
   appVimKeys(() => null),
@@ -99,6 +102,7 @@ export function WikiNoteEditor({
   const [editableExtensions] = useState(() => [
     WIKI_EDITOR_THEME,
     vimNormalModeFont,
+    outline(),
     agentChangeBar(),
     appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
   ]);

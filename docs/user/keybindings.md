@@ -114,21 +114,21 @@ have pressed show at the top, Backspace goes back a level, and Escape or a click
 elsewhere closes it. A key with nothing bound says so. The menu waits as long as
 you need.
 
-| Key                     | Does                                                                                                                          |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `:`                     | Command Palette                                                                                                               |
-| `/`                     | Search threads, wiki documents, projects, and settings                                                                        |
-| `n`                     | New thread, or new document on Wikis                                                                                          |
-| `f`                     | Find a file in the current project                                                                                            |
-| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                          |
-| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                   |
-| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                            |
-| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                       |
-| `s` `s`                 | Show or hide the sidebar                                                                                                      |
-| `w`                     | Open Wikis, or find or create a document                                                                                      |
-| `e`                     | [Find](#find-in-a-file-or-note), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base |
-| `,`                     | Settings                                                                                                                      |
+| Key                     | Does                                                                                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:`                     | Command Palette                                                                                                                                                  |
+| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                           |
+| `n`                     | New thread, or new document on Wikis                                                                                                                             |
+| `f`                     | Find a file in the current project                                                                                                                               |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                             |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                      |
+| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                                                   |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                                                               |
+| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                          |
+| `s` `s`                 | Show or hide the sidebar                                                                                                                                         |
+| `w`                     | Open Wikis, or find or create a document                                                                                                                         |
+| `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base |
+| `,`                     | Settings                                                                                                                                                         |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
@@ -244,6 +244,19 @@ With Vim on, `/`, `?`, `n`, and `N` stay Vim's own search in normal mode. On Win
 `Ctrl+F` in normal mode is Vim's page down, so use `/` or Space `e` `f` there. Change the
 shortcut in **Settings → Keybindings** under **Find in Editor**. In the composer, `mod+f` finds
 in the thread instead.
+
+## Go to a symbol
+
+In a repository file or a wiki note, `mod+shift+o` lists the file's outline: a note's headings,
+and the classes, functions, methods, and other declarations of TypeScript, JavaScript, Python,
+Rust, and CSS files. Type to filter by name; words before the last one match the items around it,
+so `store add` finds `add` inside `Store`. Enter puts the cursor on the symbol, in the middle of
+the view, and Escape goes back with the cursor where it was. Space `e` `o` and the Command Palette
+open it too. Elsewhere `mod+shift+o` still starts a new thread. Change the shortcut in
+**Settings → Keybindings** under **Go to Symbol in File**.
+
+A repository file's header shows the symbols around the cursor after its path. Click one to go
+to it.
 
 ## Edit code
 
@@ -394,10 +407,12 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
 `previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
-`turnRunning`, `editableFocus`, `editorFocus`, `codeEditorFocus`, `isWeb`, and `isDesktop`.
+`turnRunning`, `editableFocus`, `editorFocus`, `codeEditorFocus`, `outlineFocus`, `isWeb`, and
+`isDesktop`.
 `editableFocus` is true while a text field, the composer, or another editor has
 the keyboard. `editorFocus` is true while the composer, a wiki note, or a repository file has
-it, and `codeEditorFocus` only while a repository file's text has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
+it, `codeEditorFocus` only while a repository file's text has it, and `outlineFocus` while a
+repository file or wiki note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the

@@ -230,8 +230,8 @@ const KEYBINDING_GROUPS = [
   // Astrolabe: `draft` is the command line's `:w`.
   { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker", "draft"] },
   // Astrolabe: the editors' own keys: formatting, finding and Vim's search highlight, a code
-  // file's editing, and its changes since its last commit.
-  { id: "editor", title: "Editors", prefixes: ["markdown", "search", "code", "hunk"] },
+  // file's editing, its changes since its last commit, and the outline picker.
+  { id: "editor", title: "Editors", prefixes: ["markdown", "search", "code", "hunk", "outline"] },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
   { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
@@ -399,6 +399,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "hunk.next": "Next Change",
   "hunk.previous": "Previous Change",
   "hunk.toggleBase": "Compare With HEAD or This Turn",
+  "outline.open": "Go to Symbol in File",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

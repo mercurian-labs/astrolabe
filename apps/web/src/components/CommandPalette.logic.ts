@@ -68,7 +68,8 @@ export function browseInputEndPaddingClass(input: {
   return "*:data-[slot=autocomplete-input]:pe-24!";
 }
 
-export type SearchOverlayMode = "command" | "files" | "content";
+// Astrolabe: `outline` is the outline picker of the editor it was opened from.
+export type SearchOverlayMode = "command" | "files" | "content" | "outline";
 
 export type CommandPaletteOpenIntent =
   | { readonly kind: "add-project" | "new-thread-in" | "change-theme" }

@@ -12,6 +12,7 @@ import {
 } from "@mercurian/editor/code/editing";
 import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
+import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -54,6 +55,7 @@ import {
   type FileDiffBase,
 } from "./fileDiffBase";
 import { repositoryPanes } from "./repositoryPanes";
+import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
 import type { RepositoryTab } from "./repositoryTabs";
 import { useRepositoryDocument } from "./useRepositoryDocument";
 
@@ -147,6 +149,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     if (turnAvailable) setChoice(diffBase === "turn" ? "head" : "turn");
   });
   const baseControl = { current: currentBase, toggle: toggleBase };
+  const [trail, setTrail] = useState<OutlineTrail | null>(null);
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -163,7 +166,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
+        <FileBreadcrumbs path={path} trail={trail} />
         {turnAvailable ? (
           <ToggleGroup
             aria-label="Compare changes with"
@@ -207,6 +210,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
+          onOutlinePath={(next, view) => setTrail({ path: next, view })}
         />
       </div>
     </div>
@@ -319,6 +323,7 @@ function FileEditor({
   readOnly,
   baseText,
   baseControl,
+  onOutlinePath,
 }: {
   readonly tabKey: string;
   readonly path: string;
@@ -328,10 +333,13 @@ function FileEditor({
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
   readonly baseControl: DiffBaseControl;
+  /** The outline items around the cursor, whenever they change (the header's breadcrumbs). */
+  readonly onOutlinePath: (path: readonly OutlineItem[], view: EditorView) => void;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const vimRef = useRef<(() => Extension) | null>(null);
+  const outlinePath = useStableCallback(onOutlinePath);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   const findKeys = useEditorFindKeys();
@@ -347,7 +355,15 @@ function FileEditor({
     readOnly: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
-  const [initial] = useState(() => ({ path, source, readOnly, vim, wordWrap, baseControl }));
+  const [initial] = useState(() => ({
+    path,
+    source,
+    readOnly,
+    vim,
+    wordWrap,
+    baseControl,
+    outlinePath,
+  }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -376,6 +392,7 @@ function FileEditor({
           markdown ? livePreview() : codeView(),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
+          outline({ onPath: initial.outlinePath }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) session?.changed();
           }),

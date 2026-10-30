@@ -182,6 +182,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+k", command: "code.deleteLine", when: "codeEditorFocus" },
   { key: "mod+alt+[", command: "code.fold", when: "codeEditorFocus" },
   { key: "mod+alt+]", command: "code.unfold", when: "codeEditorFocus" },
+  // Astrolabe: the outline picker of a repository file or wiki note; mod+shift+o stays
+  // `chat.new` everywhere else.
+  { key: "mod+shift+o", command: "outline.open", when: "outlineFocus" },
   // Astrolabe: Ctrl+H/J/K/L move focus between the sidebar and the panes, as Vim's and tmux's
   // window keys do, only while nothing is being typed into (a field, an editor, a terminal):
   // there they stay the editor's. Early, so where `mod` is Ctrl the terminal (mod+j) and the
@@ -247,7 +250,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
     when: "composerFocus && !draftThreadRoute",
   },
   { key: "mod+n", command: "chat.new", when: "!terminalFocus" },
-  { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
+  { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus && !outlineFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "mod+alt+n", command: "chat.newWithoutProject", when: "!terminalFocus" },
   { key: "mod+f", command: "chat.find", when: "!terminalFocus && !previewFocus" },

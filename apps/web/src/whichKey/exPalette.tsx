@@ -12,6 +12,7 @@ import {
   ChevronsUp,
   Columns2,
   CornerDownLeft,
+  ListTree,
   Rows2,
   SquareTerminal,
   TextSearch,
@@ -102,6 +103,7 @@ const COMMAND_ICONS: Partial<Record<KeybindingCommand, ReactNode>> = {
   "scroll.down": <ChevronsDown className={ITEM_ICON_CLASS} />,
   "scroll.up": <ChevronsUp className={ITEM_ICON_CLASS} />,
   "search.find": <TextSearch className={ITEM_ICON_CLASS} />,
+  "outline.open": <ListTree className={ITEM_ICON_CLASS} />,
 };
 
 const iconFor = (command: KeybindingCommand) =>

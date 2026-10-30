@@ -483,6 +483,28 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(layerKeybindings())),
   );
 
+  it.effect(
+    "hands mod+shift+o to the outline in a file or note, leaving it a new thread elsewhere",
+    () =>
+      Effect.gen(function* () {
+        const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* writeKeybindingsConfig(keybindingsConfigPath, [
+          { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
+        ]);
+
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+        const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+        assert.deepEqual(
+          persisted.filter((entry) => entry.key === "mod+shift+o"),
+          [
+            { key: "mod+shift+o", command: "outline.open", when: "outlineFocus" },
+            { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus && !outlineFocus" },
+          ],
+        );
+      }).pipe(Effect.provide(layerKeybindings())),
+  );
+
   it.effect("moves an untouched mod+p from the file picker to the Command Palette, once", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;

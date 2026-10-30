@@ -56,6 +56,19 @@ describe("the Markdown editors' keys from the keybindings", () => {
   });
 });
 
+describe("the outline picker's key", () => {
+  it("is mod+shift+o in a file or note with an outline, and a new thread everywhere else", () => {
+    const event = { key: "o", metaKey: true, ctrlKey: false, shiftKey: true, altKey: false };
+    const resolve = (outlineFocus: boolean) =>
+      resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { editorFocus: outlineFocus, outlineFocus },
+      });
+    expect(resolve(true)).toBe("outline.open");
+    expect(resolve(false)).toBe("chat.new");
+  });
+});
+
 describe("the find bar's keys from the keybindings", () => {
   it("opens with mod+f in an editor, and with whatever a user binds instead", () => {
     expect(editorFindKeys(DEFAULT_RESOLVED_KEYBINDINGS)).toEqual(["Mod-f"]);

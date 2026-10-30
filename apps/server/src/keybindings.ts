@@ -150,6 +150,12 @@ const MOVED_DEFAULT_KEYBINDINGS: ReadonlyArray<{
     from: { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
     to: { key: "mod+p", command: "commandLine.open", when: "!terminalFocus" },
   },
+  // In a repository file or wiki note, mod+shift+o opens its outline (`outline.open`).
+  {
+    id: "astrolabe:mod+shift+o:chat.new:!outlineFocus",
+    from: { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
+    to: { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus && !outlineFocus" },
+  },
   // In a code file these keys are the editor's (`code.*`).
   ...(
     [
