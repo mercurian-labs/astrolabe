@@ -398,6 +398,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "hunk.restore": "Restore Change",
   "hunk.next": "Next Change",
   "hunk.previous": "Previous Change",
+  "hunk.toggleBase": "Compare With HEAD or This Turn",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

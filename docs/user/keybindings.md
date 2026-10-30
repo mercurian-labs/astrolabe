@@ -130,6 +130,7 @@ you need.
 | `e` `f`                 | [Find](#find-in-a-file-or-note) in the file or note you are in |
 | `e` `n` \| `p`          | Next or previous [change](#changes-in-a-code-file) in a file   |
 | `e` `t` \| `a` \| `r`   | Show a change, show all changes, or restore a change           |
+| `e` `b`                 | Compare a code file with its last commit or since this turn    |
 | `,`                     | Settings                                                       |
 
 These are the defaults. A row lists every key in its group that runs the same
@@ -264,6 +265,14 @@ and Escape leaves insert mode before it hides changes.
 
 Change these shortcuts in **Settings → Keybindings** under **Editors**. Files that are new and
 not yet committed show no strips.
+
+When an agent's turn has changed the file, the header offers **HEAD** and **This turn**. This
+turn marks what changed since the latest turn, from any thread in this checkout, that changed
+the file started, so you see just what the agent did; while that turn runs, its edits show as
+they land. A file opens on This turn while it has changes from that turn, and on HEAD
+otherwise. Restore puts back the lines from the base you are comparing with, so in This turn it
+reverts that change of the agent's. `e` `b` in the keyboard menu, or **Compare With HEAD or
+This Turn** in the Command Palette, switches too.
 
 ## Find in a diff
 

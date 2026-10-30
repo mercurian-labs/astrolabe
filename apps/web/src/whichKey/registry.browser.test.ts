@@ -11,6 +11,7 @@ import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/
 import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
+import { diffBaseControl, type FileDiffBase } from "~/components/repositories/fileDiffBase";
 import { appCommand, cycleKey, fullScreenState, type AppCommandContext } from "./commands";
 import type { PanesHandle } from "./handles";
 import {
@@ -388,10 +389,10 @@ describe("Find in editor", () => {
 
 describe("a code file's changes from the keyboard menu", () => {
   /** A code editor showing changes against `base`, gone as the test ends. */
-  function codeEditor(base: string | null, doc: string) {
+  function codeEditor(base: string | null, doc: string, extensions: Extension = []) {
     const view = new EditorView({
       parent: document.body.appendChild(document.createElement("div")),
-      state: EditorState.create({ doc, extensions: gitChanges() }),
+      state: EditorState.create({ doc, extensions: [gitChanges(), extensions] }),
     });
     view.dispatch({ effects: setGitBase(base) });
     stops.push(() => {
@@ -423,6 +424,29 @@ describe("a code file's changes from the keyboard menu", () => {
     const faint = appCommand("hunk.next", context().actingFrom(keyIn(plain)));
     expect(faint).toMatchObject({ label: "No changes here", disabled: true });
     expect(appCommand("hunk.restore", context().actingFrom(null)).disabled).toBe(true);
+  });
+
+  it("switches a file between HEAD and since this turn with e b, faint without a turn", () => {
+    using _cleanup = cleanup();
+    let base: FileDiffBase = "turn";
+    let turnAvailable = true;
+    const view = codeEditor("a\n", "b\n", [
+      diffBaseControl.of({
+        current: () => ({ base, turnAvailable }),
+        toggle: () => {
+          base = base === "turn" ? "head" : "turn";
+        },
+      }),
+    ]);
+    const switchBase = () => appCommand("hunk.toggleBase", context().actingFrom(keyIn(view)));
+    expect(switchBase().label).toBe("Compare with HEAD");
+    press(context({ origin: keyIn(view) }).root, ["e", "b"]);
+    expect(base).toBe("head");
+    expect(switchBase().label).toBe("Compare since this turn");
+
+    turnAvailable = false;
+    expect(switchBase()).toMatchObject({ label: "No turn changed this file", disabled: true });
+    expect(appCommand("hunk.toggleBase", context().actingFrom(null)).disabled).toBe(true);
   });
 });
 

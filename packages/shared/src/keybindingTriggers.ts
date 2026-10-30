@@ -72,6 +72,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e t", command: "hunk.toggle" },
   { key: "menu e a", command: "hunk.expandAll" },
   { key: "menu e r", command: "hunk.restore" },
+  { key: "menu e b", command: "hunk.toggleBase" },
   { key: "menu ,", command: "section.settings" },
   { key: ":q[uit]", command: "tab.close" },
   { key: ":w[rite]", command: "draft.write" },
