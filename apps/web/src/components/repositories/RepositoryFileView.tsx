@@ -58,6 +58,8 @@ const FILE_EDITOR_THEME = EditorView.theme({
   },
   "&.cm-focused": { outline: "none" },
   "&.cm-code .cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "13px" },
+  // The sidebar's resize handle overhangs a pane's first 8px: the change strips sit past it.
+  "&.cm-code .cm-gutters": { paddingLeft: "8px" },
   ".cm-scroller": { lineHeight: "inherit" },
   "&.cm-editor .cm-content": { padding: "12px 16px 40vh", caretColor: "currentColor" },
   // A note reads as a wiki's document does: a measure wide, in the middle of the pane.
