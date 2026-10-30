@@ -31,9 +31,8 @@ In a thread, the **Files** and **Diff** tabs offer **Open in Repositories** from
 
 ## Manage repositories
 
-**Manage repositories**, in the filter, lists every repository with where it lives, a link to its
-settings, and **Hosting providers**. **Add a repository** adds a folder or clones one, as adding a
-project does.
+**Manage repositories**, in the filter, opens **Settings → Projects**. **Add a repository** adds a
+folder or clones one, as adding a project does.
 
 ## On your phone
 

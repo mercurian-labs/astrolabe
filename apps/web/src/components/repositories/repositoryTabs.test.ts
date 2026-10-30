@@ -16,7 +16,6 @@ describe("Repositories tab keys", () => {
     const tabs: RepositoryTab[] = [
       { kind: "file", environmentId, projectId, cwd: "/Users/me/dev/app", path: "src/a b:c.ts" },
       { kind: "diff", environmentId, projectId, cwd: "/tmp/wt", source: "branch-range" },
-      { kind: "manage" },
     ];
     for (const tab of tabs) expect(parseRepositoryTabKey(repositoryTabKey(tab))).toEqual(tab);
   });
