@@ -68,7 +68,7 @@ interface Registry {
 
 interface OwnerUpdate {
   readonly owner: string;
-  /** The owner's blocks from now on; null removes `remove` (or every block, when null). */
+  /** The owner's blocks from now on, or null to remove those `remove` names (all, when null). */
   readonly blocks: readonly LineBlock[] | null;
   readonly remove: readonly string[] | null;
 }
