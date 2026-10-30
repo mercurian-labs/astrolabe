@@ -112,6 +112,14 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     threadId: "thread-1",
     title: "Fix login flow",
   },
+  "wiki-note": {
+    ...base,
+    kind: "wiki-note",
+    label: "Login flow",
+    wikiId: "wiki-1",
+    wikiName: "Plans",
+    name: "Login flow",
+  },
 };
 
 describe("ComposerContextRecord", () => {
