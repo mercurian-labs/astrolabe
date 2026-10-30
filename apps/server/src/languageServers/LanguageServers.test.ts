@@ -28,7 +28,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import * as NodeCrypto from "node:crypto";
-import * as NodeUrl from "node:url";
+import * as NodeURL from "node:url";
 import * as NodeZlib from "node:zlib";
 
 import * as ServerConfig from "../config.ts";
@@ -43,7 +43,7 @@ import { ContentModified, RequestCancelled } from "./connection.ts";
 import * as LanguageServers from "./LanguageServers.ts";
 import type { LanguageServerSpec } from "./registry.ts";
 
-const FAKE_SERVER = NodeUrl.fileURLToPath(
+const FAKE_SERVER = NodeURL.fileURLToPath(
   new URL("./testing/fakeLanguageServer.mjs", import.meta.url),
 );
 const FILE = "src/main.ts";
@@ -125,7 +125,7 @@ const makeCheckout = Effect.fn("makeCheckout")(function* (
   yield* fileSystem.writeFileString(path.join(cwd, "fake-server.json"), JSON.stringify(config));
   return {
     cwd,
-    uri: NodeUrl.pathToFileURL(path.join(cwd, FILE)).href,
+    uri: NodeURL.pathToFileURL(path.join(cwd, FILE)).href,
     starts: fileSystem.readFileString(path.join(cwd, "starts.log")).pipe(
       Effect.map((log) => log.trim().split("\n").length),
       Effect.orElseSucceed(() => 0),
@@ -589,8 +589,6 @@ describe("LanguageServers", () => {
   );
 });
 
-// Downloads ----------------------------------------------------------------------------------
-
 /** A gzipped npm tarball holding `files` under `package/`. */
 const tarball = (files: Record<string, string>) => {
   const blocks: Array<Uint8Array> = [];
@@ -652,7 +650,7 @@ const downloadSpecs = (licence: string): Record<"typescript", LanguageServerSpec
 
 describe("LanguageServers downloads", () => {
   const archive = tarball({
-    "server.mjs": `await import(${JSON.stringify(NodeUrl.pathToFileURL(FAKE_SERVER).href)});\n`,
+    "server.mjs": `await import(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`,
     "package.json": '{"name":"fake-server","version":"1.0.0","license":"MIT"}',
   });
 

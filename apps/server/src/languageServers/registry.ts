@@ -7,13 +7,7 @@ import type { LanguageServerId } from "@t3tools/contracts";
  */
 
 /** Licences we download; a server under any other (MPL included) has to be on PATH. */
-export const LICENCE_ALLOWLIST = new Set([
-  "MIT",
-  "Apache-2.0",
-  "BSD-2-Clause",
-  "BSD-3-Clause",
-  "ISC",
-]);
+const LICENCE_ALLOWLIST = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]);
 
 /** `{platform}` and `{arch}` are Node's names for the environment's. */
 export interface NpmSource {

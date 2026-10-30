@@ -108,7 +108,7 @@ export const LanguageServerDocumentState = Schema.Struct({
 });
 export type LanguageServerDocumentState = typeof LanguageServerDocumentState.Type;
 
-export const LANGUAGE_SERVER_MESSAGE_MAX_LENGTH = 1024 * 1024;
+const LANGUAGE_SERVER_MESSAGE_MAX_LENGTH = 1024 * 1024;
 
 export const LanguageServerSendInput = Schema.Struct({
   sessionId: LanguageServerSessionId,

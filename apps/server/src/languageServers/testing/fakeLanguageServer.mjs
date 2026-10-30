@@ -1,15 +1,13 @@
-// A tiny language server for tests. It reads `fake-server.json` in its working directory:
-//   crashTimes: exit right after `initialize` on this many starts (counted in `starts.log`)
-//   waitFor: answer `initialize` only once this file exists
-// Diagnostics: every "bad" is an error. Hover answers the word at the position, rename renames
-// it everywhere, `test/slow` waits for its cancel, `test/state` reports what the server holds.
-import { appendFileSync, existsSync, readFileSync, watch } from "node:fs";
+// A language server for tests, configured by `fake-server.json` in its working directory:
+// `crashTimes` exits at `initialize` on that many starts (counted in `starts.log`), `waitFor`
+// answers `initialize` once that file exists. Every "bad" is an error diagnostic.
+import * as NodeFS from "node:fs";
 
-const config = existsSync("fake-server.json")
-  ? JSON.parse(readFileSync("fake-server.json", "utf8"))
+const config = NodeFS.existsSync("fake-server.json")
+  ? JSON.parse(NodeFS.readFileSync("fake-server.json", "utf8"))
   : {};
-appendFileSync("starts.log", "start\n");
-const starts = readFileSync("starts.log", "utf8").trim().split("\n").length;
+NodeFS.appendFileSync("starts.log", "start\n");
+const starts = NodeFS.readFileSync("starts.log", "utf8").trim().split("\n").length;
 
 const docs = new Map();
 const received = [];
@@ -68,15 +66,15 @@ const handle = (message) => {
           },
         });
       };
-      if (config.waitFor && !existsSync(config.waitFor)) {
+      if (config.waitFor && !NodeFS.existsSync(config.waitFor)) {
         let answered = false;
         const check = () => {
-          if (answered || !existsSync(config.waitFor)) return;
+          if (answered || !NodeFS.existsSync(config.waitFor)) return;
           answered = true;
           watcher.close();
           answer();
         };
-        const watcher = watch(".", check);
+        const watcher = NodeFS.watch(".", check);
         check();
       } else answer();
       return;

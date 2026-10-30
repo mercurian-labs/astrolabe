@@ -25,7 +25,7 @@ const indexOfHeaderEnd = (buffer: Uint8Array): number => {
   return -1;
 };
 
-export class FramingError extends Error {}
+class FramingError extends Error {}
 
 /** Splits a byte stream into message bodies, as text; chunks may cut anywhere. */
 export class MessageDecoder {

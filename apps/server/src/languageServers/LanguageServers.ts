@@ -29,7 +29,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import * as NodeUrl from "node:url";
+import * as NodeURL from "node:url";
 
 import * as ServerConfig from "../config.ts";
 import * as Documents from "../documents/Documents.ts";
@@ -59,11 +59,8 @@ import {
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
 
 /**
- * Language servers in the environment, one per language per checkout, started when a code file
- * opens and stopped when nothing uses them. The environment is each server's only LSP client: it
- * feeds the server its `Documents`, one `didChange` per accepted update so collab versions are LSP
- * versions, and pulls diagnostics. Browsers reach a server through the gateway here, which maps
- * their positions into its copy and the answers back into theirs.
+ * One server per language per checkout, and the environment as its only LSP client; see
+ * docs/internals/language-servers.md for how browsers reach it through the gateway.
  */
 export class LanguageServers extends Context.Service<
   LanguageServers,
@@ -356,8 +353,6 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
   };
 
-  // Diagnostics ---------------------------------------------------------------------------------
-
   const fanOutDiagnostics = (instance: Instance, doc: GatewayDoc) => {
     const latest = doc.latest ?? { version: doc.version, diagnostics: [] };
     for (const session of instance.sessions.values()) {
@@ -441,8 +436,6 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       ),
     );
   });
-
-  // Feeding the server ------------------------------------------------------------------------
 
   const openOnServer = (instance: Instance, doc: GatewayDoc) => {
     const running = instance.running;
@@ -542,7 +535,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     if (doc === undefined) {
       const created: GatewayDoc = {
         relativePath,
-        uri: NodeUrl.pathToFileURL(path.join(instance.cwd, relativePath)).href,
+        uri: NodeURL.pathToFileURL(path.join(instance.cwd, relativePath)).href,
         languageId,
         holders: 0,
         loadId: null,
@@ -590,15 +583,13 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return Scope.close(doc.scope, Exit.void).pipe(Effect.andThen(scheduleIdle(instance)));
     });
 
-  // Lifecycle ---------------------------------------------------------------------------------
-
   const onRequestFromServer = (instance: Instance) => (method: string, params: Json) => {
     switch (method) {
       case "workspace/configuration":
         return Array.isArray(params?.items) ? params.items.map(() => null) : [];
       case "workspace/workspaceFolders":
         return [
-          { uri: NodeUrl.pathToFileURL(instance.cwd).href, name: path.basename(instance.cwd) },
+          { uri: NodeURL.pathToFileURL(instance.cwd).href, name: path.basename(instance.cwd) },
         ];
       case "client/registerCapability":
       case "client/unregisterCapability":
@@ -713,7 +704,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       Effect.flatMap(() => onExit(instance, generation, connection.value)),
       Effect.forkIn(serviceScope, { startImmediately: true }),
     );
-    const rootUri = NodeUrl.pathToFileURL(instance.cwd).href;
+    const rootUri = NodeURL.pathToFileURL(instance.cwd).href;
     const init = yield* connection.value
       .request("initialize", {
         processId: process.pid,
@@ -962,13 +953,11 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     }
   }).pipe(Effect.withSpan("LanguageServers.confirmDownload"));
 
-  // The gateway -------------------------------------------------------------------------------
-
   const relativePathOf = (instance: Instance, uri: unknown): string | null => {
     if (typeof uri !== "string" || !uri.startsWith("file:")) return null;
     let absolute: string;
     try {
-      absolute = NodeUrl.fileURLToPath(uri);
+      absolute = NodeURL.fileURLToPath(uri);
     } catch {
       return null;
     }

@@ -41,7 +41,7 @@ export type Resolution =
   | { readonly type: "download"; readonly name: string; readonly npm: NpmSource }
   | { readonly type: "unavailable"; readonly message: string };
 
-export class InstallError extends Data.TaggedError("InstallError")<{
+class InstallError extends Data.TaggedError("InstallError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}

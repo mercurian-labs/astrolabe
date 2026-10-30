@@ -19,7 +19,7 @@ export const toPosition = (doc: Text, offset: number): Position => {
   return { line: line.number - 1, character: offset - line.from };
 };
 
-export const fromPosition = (doc: Text, position: Position): number => {
+const fromPosition = (doc: Text, position: Position): number => {
   const line = doc.line(Math.max(1, Math.min(position.line + 1, doc.lines)));
   return Math.min(line.from + Math.max(0, position.character), line.to);
 };
@@ -184,7 +184,7 @@ export const mapDiagnostics = (diagnostics: Json, m: OffsetMapper): Json => {
   return diagnostics;
 };
 
-export const COMPLETION_MAX_ITEMS = 200;
+const COMPLETION_MAX_ITEMS = 200;
 
 /**
  * Completion lists can run to thousands of items and megabytes. Keep the best-sorted few, without
