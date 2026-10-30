@@ -156,6 +156,10 @@
       "types": "./src/state/documentSession.ts",
       "default": "./src/state/documentSession.ts"
     },
+    "./state/language-servers": {
+      "types": "./src/state/languageServers.ts",
+      "default": "./src/state/languageServers.ts"
+    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"

@@ -13,6 +13,7 @@ import {
 import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
 import { outline, type OutlineItem } from "@mercurian/editor/outline";
+import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -32,7 +33,12 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { useCodeEditorKeys, useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
+import {
+  useCodeEditorKeys,
+  useEditorDiagnosticKeys,
+  useEditorFindKeys,
+  useEditorHunkKeys,
+} from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { PanesHostContext } from "~/panes/panesHost";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -62,6 +68,8 @@ import { openLocalGraph } from "./localGraph";
 import { repositoryPanes } from "./repositoryPanes";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
 import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
+import { LanguageServerStatusEntry } from "./LanguageServerStatus";
+import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
@@ -132,6 +140,13 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
 
   const contents = fromDisk ? (file.data?.contents ?? null) : session.text();
   const readOnly = !canWrite || fromDisk;
+  const languageServer = useLanguageServer(
+    environmentId,
+    cwd,
+    path,
+    session,
+    !fromDisk && state.status !== "failed",
+  );
   const agentWorking = useAgentWorkingIn(tab);
   const bases = useBaseTexts(tab, !isMarkdownPath(path));
   const [choice, setChoice] = useState<FileDiffBase | null>(null);
@@ -198,6 +213,9 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
             An agent is working in this checkout
           </span>
         ) : null}
+        {fromDisk ? null : (
+          <LanguageServerStatusEntry environmentId={environmentId} status={languageServer.status} />
+        )}
         <span className="shrink-0">
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
         </span>
@@ -231,6 +249,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           file={importLineKey(tab)}
           path={path}
           source={fromDisk ? { contents: contents ?? "" } : { session }}
+          languageServer={fromDisk ? null : languageServer.extension}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
@@ -345,6 +364,7 @@ function FileEditor({
   file,
   path,
   source,
+  languageServer,
   readOnly,
   baseText,
   baseControl,
@@ -356,6 +376,8 @@ function FileEditor({
   readonly path: string;
   /** The live document, or a file read once from disk (read only). */
   readonly source: { readonly session: DocumentSession } | { readonly contents: string };
+  /** The file's language server client, when one reads it. */
+  readonly languageServer: Extension | null;
   readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
@@ -372,6 +394,7 @@ function FileEditor({
   const findKeys = useEditorFindKeys();
   const hunkKeys = useEditorHunkKeys();
   const editingKeys = useCodeEditorKeys();
+  const diagnosticKeys = useEditorDiagnosticKeys();
   const wordWrap = useClientSettings(selectWordWrap);
   const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
   const revealHere = reveal?.tabKey === tabKey ? reveal : null;
@@ -386,6 +409,7 @@ function FileEditor({
     file,
     path,
     source,
+    languageServer,
     readOnly,
     vim,
     wordWrap,
@@ -422,6 +446,7 @@ function FileEditor({
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           outline({ onPath: initial.outlinePath }),
           importLineExtension,
+          initial.languageServer ?? [],
           EditorView.updateListener.of((update) => {
             if (update.docChanged) session?.changed();
           }),
@@ -469,9 +494,10 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
+        initial.languageServer ? diagnosticsUi({ keys: diagnosticKeys }) : [],
       ]),
     });
-  }, [compartments, initial, findKeys, hunkKeys, editingKeys]);
+  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys]);
 
   useEffect(() => {
     viewRef.current?.dispatch({

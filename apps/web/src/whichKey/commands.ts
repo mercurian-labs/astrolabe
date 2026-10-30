@@ -10,6 +10,11 @@ import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/co
 import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
 import { hasOutline } from "@mercurian/editor/outline";
+import {
+  hasDiagnosticsUi,
+  nextDiagnostic,
+  previousDiagnostic,
+} from "@mercurian/editor/lsp/diagnostics";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
@@ -409,6 +414,17 @@ function astrolabeCommand(
             : "Compare since this turn"
           : "No turn changed this file",
         control && current?.turnAvailable ? control.toggle : null,
+      );
+    }
+    case "diagnostic.next":
+    case "diagnostic.previous": {
+      const view = editorFrom(context.origin, hasDiagnosticsUi);
+      const next = command === "diagnostic.next";
+      return entry(
+        view ? (next ? "Next problem" : "Previous problem") : "No problems shown here",
+        view
+          ? () => afterPalette(() => void (next ? nextDiagnostic : previousDiagnostic)(view))
+          : null,
       );
     }
     case "outline.open": {

@@ -74,6 +74,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e r", command: "hunk.restore" },
   { key: "menu e b", command: "hunk.toggleBase" },
   { key: "menu e o", command: "outline.open" },
+  { key: "menu e .", command: "diagnostic.next" },
+  { key: "menu e ,", command: "diagnostic.previous" },
   // A code file's editing commands with no shortcut of their own, and a few that have one.
   { key: "menu e c", command: "code.toggleComment" },
   { key: "menu e d", command: "code.duplicateSelection" },

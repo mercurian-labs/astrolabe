@@ -1,4 +1,4 @@
-import type { Extension } from "@codemirror/state";
+import { type EditorState, type Extension, Facet } from "@codemirror/state";
 import {
   type Diagnostic,
   forEachDiagnostic,
@@ -23,6 +23,9 @@ export interface DiagnosticKeys {
 }
 
 const OWNER = "diagnostics";
+
+/** Marks an editor that shows diagnostics. */
+const shown = Facet.define<boolean>();
 
 interface LineMessage {
   readonly severity: Diagnostic["severity"];
@@ -147,6 +150,7 @@ const theme = EditorView.baseTheme({
 
 export function diagnosticsUi(options: { readonly keys: DiagnosticKeys }): Extension {
   return [
+    shown.of(true),
     lineBlocks,
     lintGutter(),
     cursorMessages,
@@ -159,8 +163,8 @@ export function diagnosticsUi(options: { readonly keys: DiagnosticKeys }): Exten
 }
 
 /** Whether the editor shows diagnostics, for menus that step through them. */
-export function hasDiagnosticsUi(view: EditorView): boolean {
-  return view.plugin(cursorMessages) !== null;
+export function hasDiagnosticsUi(state: EditorState): boolean {
+  return state.facet(shown).length > 0;
 }
 
 export { nextDiagnostic, previousDiagnostic };

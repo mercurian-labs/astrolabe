@@ -101,6 +101,7 @@
   },
   "devDependencies": {
     "@codemirror/collab": "6.1.1",
+    "@codemirror/lint": "^6.9.7",
     "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@tailwindcss/vite": "^4.0.0",

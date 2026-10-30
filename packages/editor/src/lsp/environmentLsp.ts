@@ -21,7 +21,8 @@ export interface LspDocumentState {
   readonly loadId: string;
   readonly version: number;
   readonly clientId: string;
-  readonly unconfirmed: ReadonlyArray<unknown>;
+  /** `ChangeSet.toJSON()` of each. */
+  readonly unconfirmed: ReadonlyArray<ReturnType<ChangeSet["toJSON"]>>;
 }
 
 /** The environment's document behind the editor; a `DocumentSession` fits. */

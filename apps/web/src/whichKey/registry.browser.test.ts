@@ -1,7 +1,9 @@
+import { setDiagnostics } from "@codemirror/lint";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { codeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { gitChanges, gitHunks, setGitBase } from "@mercurian/editor/git";
+import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { outline } from "@mercurian/editor/outline";
 import { inFileSearch } from "@mercurian/editor/search";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
@@ -523,6 +525,9 @@ describe("a code file's editing commands", () => {
       ["r", "No changes here"],
       ["b", "No turn changed this file"],
       ["o", "No file to outline"],
+      // Nor a language server's problems.
+      [".", "No problems shown here"],
+      [",", "No problems shown here"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],
@@ -541,6 +546,25 @@ describe("a code file's editing commands", () => {
     expect(appCommand("code.toggleSoftWrap", context().actingFrom(keyIn(view))).label).toBe(
       "Stop wrapping lines",
     );
+  });
+
+  it("steps to the next problem in a file that shows them", async () => {
+    using _cleanup = cleanup();
+    const view = editor(
+      "const a = 1;\nconst b = 2;\n",
+      diagnosticsUi({ keys: { next: [], previous: [] } }),
+    );
+    view.dispatch(
+      setDiagnostics(view.state, [{ from: 19, to: 20, severity: "error", message: "b is unused" }]),
+    );
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    expect(appCommand("diagnostic.next", context().actingFrom(keyIn(view)))).toMatchObject({
+      label: "Next problem",
+      disabled: false,
+    });
+    press(root, ["e", "."]);
+    await vi.waitFor(() => expect(view.state.selection.main.from).toBe(19));
   });
 
   it("is faint outside a code file, and for edits in one that cannot be edited", () => {
