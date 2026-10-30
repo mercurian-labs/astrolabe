@@ -174,6 +174,10 @@ when the feature needs a real thread. Then:
   that times out too, close the tab and open a fresh one. Check a snapshot on a
   second page before blaming the page under test: a stuck snapshot can be the
   browser panel's, not the app's.
+- Don't read React state through a DOM node's `__reactFiber$` key. React sets it when the
+  node is created and never updates it, so walking up from it can read the previous
+  render: a walk once reported a local graph that never redrew when the page was fine.
+  Read rendered output (DOM text, a screenshot) or query the state's own atom.
 - Right-panel arrangements live in localStorage under
   `t3code:right-panel-panes:v1:<environmentId>:<threadId>`. Reading that key proves a
   layout change without a screenshot, and surviving `location.reload()` proves
