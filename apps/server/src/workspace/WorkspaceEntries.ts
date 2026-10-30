@@ -401,6 +401,7 @@ export const make = Effect.gen(function* () {
             ? { path: cursor.path, skip: cursor.skip }
             : null,
         deadline,
+        pageHasMatches: matches.length > 0,
       }),
     );
     return page(

@@ -32,6 +32,8 @@ export interface IgnoredContentSearchInput extends Pick<
   readonly pathFilter: ContentSearchPathFilter | null;
   readonly start: IgnoredContentSearchPosition | null;
   readonly deadline: number;
+  /** The page already holds indexed matches, so the budget applies from the start. */
+  readonly pageHasMatches: boolean;
 }
 
 export interface IgnoredContentSearchResult {
@@ -141,7 +143,9 @@ export async function searchIgnoredContents(
 
   const outOfTime = () => {
     const now = performance.now();
-    return now >= hardDeadline || (matches.length > 0 && now >= input.deadline);
+    return (
+      now >= hardDeadline || ((input.pageHasMatches || matches.length > 0) && now >= input.deadline)
+    );
   };
 
   // Returns false once the page is full or out of time; `next` then says where to resume.
