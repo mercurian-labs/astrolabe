@@ -173,21 +173,23 @@ const handle = (message) => {
     }
     case "textDocument/codeAction": {
       // Each "bad" diagnostic offers a fix that needs resolving, and a command that edits.
-      const actions = (params.context?.diagnostics ?? [])
-        .filter((diagnostic) => diagnostic.message === "bad is not allowed")
-        .flatMap((diagnostic) => [
-          {
-            title: "Replace bad with good",
-            kind: "quickfix",
-            isPreferred: true,
-            data: { uri: params.textDocument.uri, range: diagnostic.range },
-          },
-          {
-            title: "Remove the line",
-            command: "fake.removeLine",
-            arguments: [params.textDocument.uri, diagnostic.range.start.line],
-          },
-        ]);
+      const actions = (params.context?.diagnostics ?? []).flatMap((diagnostic) =>
+        diagnostic.message !== "bad is not allowed"
+          ? []
+          : [
+              {
+                title: "Replace bad with good",
+                kind: "quickfix",
+                isPreferred: true,
+                data: { uri: params.textDocument.uri, range: diagnostic.range },
+              },
+              {
+                title: "Remove the line",
+                command: "fake.removeLine",
+                arguments: [params.textDocument.uri, diagnostic.range.start.line],
+              },
+            ],
+      );
       return reply(actions);
     }
     case "codeAction/resolve":
