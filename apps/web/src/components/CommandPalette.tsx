@@ -328,6 +328,11 @@ function CommandPaletteDialog(props: {
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
+        // Astrolabe: an action that focused what it opened (a search result's editor) keeps it.
+        const active = document.activeElement;
+        if (active && active !== document.body && !active.closest("[data-command-palette]")) {
+          return false;
+        }
         const composer = composerHandleRef?.current;
         if (!composer) return true;
         composer.focusAtEnd();
