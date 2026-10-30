@@ -25,11 +25,12 @@ const RULES =
   "A change group is the change requests in different projects that are one effort: a repository's pull requests and the wiki change requests documenting them, plus the threads working on it. A thread's own change requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A change request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
 
 const groupId = TrimmedNonEmptyString.annotate({
-  description: "The group's id, as t3_change_groups shows it: the thread the group started from.",
+  description:
+    "The group's id, as astrolabe_change_groups shows it: the thread the group started from.",
 });
 const memberKey = TrimmedNonEmptyString.annotate({
   description:
-    "A change request's or a thread's key, as t3_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
+    "A change request's or a thread's key, as astrolabe_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
 });
 
 export const ChangeGroupSummary = Schema.Struct({
@@ -69,7 +70,7 @@ export const ChangeGroupSummary = Schema.Struct({
   ),
 });
 
-const ChangeGroupsTool = Tool.make("t3_change_groups", {
+const ChangeGroupsTool = Tool.make("astrolabe_change_groups", {
   ...shared,
   description: `List this environment's change groups: each group's members (code and documentation, with why each is there), the threads working on it (with why each is there), its state, and whether its documentation merges with its code. ${RULES}`,
   success: Schema.Struct({ groups: Schema.Array(ChangeGroupSummary) }),
@@ -77,7 +78,7 @@ const ChangeGroupsTool = Tool.make("t3_change_groups", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const ChangeGroupSuggestTool = Tool.make("t3_change_group_suggest", {
+const ChangeGroupSuggestTool = Tool.make("astrolabe_change_group_suggest", {
   ...shared,
   description:
     "Suggest a change request or a thread for a group, with one sentence on why it is part of the same effort. A person accepts or dismisses it; a dismissed suggestion is not suggested again.",
@@ -91,10 +92,10 @@ const ChangeGroupSuggestTool = Tool.make("t3_change_group_suggest", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false);
 
-const ChangeGroupUpdateTool = Tool.make("t3_change_group_update", {
+const ChangeGroupUpdateTool = Tool.make("astrolabe_change_group_update", {
   ...shared,
   description:
-    "Add a change request or a thread to a group, or take one out, as a coordinator builds its group on purpose. Prefer t3_change_group_suggest when the person should decide.",
+    "Add a change request or a thread to a group, or take one out, as a coordinator builds its group on purpose. Prefer astrolabe_change_group_suggest when the person should decide.",
   parameters: Schema.Struct({
     groupId,
     action: Schema.Literals(["add", "remove"]),

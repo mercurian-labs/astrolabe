@@ -30,10 +30,17 @@ export type WikiTool = (typeof WIKI_TOOLS)[number];
 
 const WORKING_RUN = new Set(["preparing", "starting", "running", "waiting"]);
 
-/** The wiki tool a provider's tool name calls, matched by suffix (`mcp__t3-code__t3_wiki_read`). */
+/**
+ * The wiki tool a provider's tool name calls, matched by suffix (`mcp__t3-code__astrolabe_wiki_read`).
+ * Threads from before 2026-10-30 name it `t3_wiki_read`.
+ */
 export function wikiToolOf(toolName: string | null | undefined): WikiTool | null {
   if (!toolName) return null;
-  for (const tool of WIKI_TOOLS) if (toolName.endsWith(`t3_wiki_${tool}`)) return tool;
+  for (const tool of WIKI_TOOLS) {
+    if (toolName.endsWith(`astrolabe_wiki_${tool}`) || toolName.endsWith(`t3_wiki_${tool}`)) {
+      return tool;
+    }
+  }
   return null;
 }
 

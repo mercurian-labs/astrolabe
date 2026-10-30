@@ -30,11 +30,16 @@ describe("resolveT3McpToolPresentation", () => {
     }
   });
 
-  it("reads a bare tool name that starts like the t3_code server prefix as the tool", () => {
-    expect(resolveT3McpToolPresentation("astrolabe_code_find")?.displayName).toBe("Find code uses");
-    expect(resolveT3McpToolPresentation("t3_code/astrolabe_code_find")?.displayName).toBe(
-      "Find code uses",
-    );
+  it("reads Astrolabe's wiki and change-group tools by the t3_ names older threads recorded", () => {
+    for (const [legacy, current] of [
+      ["t3_wiki_amend", "astrolabe_wiki_amend"],
+      ["t3_change_group_suggest", "astrolabe_change_group_suggest"],
+    ]) {
+      expect(resolveT3McpToolPresentation(`mcp__t3-code__${legacy}`)).toEqual(
+        resolveT3McpToolPresentation(`mcp__t3-code__${current}`),
+      );
+    }
+    expect(resolveT3McpToolPresentation("mcp__t3-code__t3_code_find")).toBeNull();
   });
 
   it("matches OpenCode 2's per-thread server names, whose thread ids hold underscores", () => {
