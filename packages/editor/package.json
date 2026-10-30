@@ -46,7 +46,11 @@
       "types": "./src/code/editing.ts",
       "default": "./src/code/editing.ts"
     },
-    "./code/theme.css": "./src/code/theme.css"
+    "./code/theme.css": "./src/code/theme.css",
+    "./outline": {
+      "types": "./src/outline/outline.ts",
+      "default": "./src/outline/outline.ts"
+    }
   },
   "scripts": {
     "dev": "vp dev",
