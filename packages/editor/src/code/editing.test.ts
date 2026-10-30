@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getCM } from "@replit/codemirror-vim";
@@ -15,16 +15,6 @@ import {
 } from "./editing.ts";
 
 const mac = /Mac/.test(navigator.platform);
-
-// Browsers queue `selectionchange` as a task; happy-dom fires it inside updates. These tests
-// drive selections through transactions, so it is dropped.
-const dispatchEvent = document.dispatchEvent.bind(document);
-beforeAll(() => {
-  document.dispatchEvent = (event) => event.type === "selectionchange" || dispatchEvent(event);
-});
-afterAll(() => {
-  document.dispatchEvent = dispatchEvent;
-});
 
 let view: EditorView | null = null;
 afterEach(() => {

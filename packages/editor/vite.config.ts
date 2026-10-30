@@ -16,6 +16,7 @@ export default defineConfig({
   test: {
     root: packageDir,
     environment: "happy-dom",
+    setupFiles: ["./src/testing/selectionChange.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     // The theme test reads the stylesheet's text; Vitest otherwise stubs CSS out.
     css: { include: [/theme\.css/] },
