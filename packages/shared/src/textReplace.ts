@@ -138,3 +138,56 @@ export function replacementsIn(
   }
   return replacements;
 }
+
+/** A replacement as made: where its text now is, that text, and the text it replaced. */
+export interface MadeReplacement {
+  readonly from: number;
+  readonly to: number;
+  readonly text: string;
+  readonly original: string;
+}
+
+/** `replacements` of `text` (as `replacementsIn` gives them) as they sit in the replaced text. */
+export function madeReplacements(
+  text: string,
+  replacements: readonly TextReplacement[],
+): MadeReplacement[] {
+  let shift = 0;
+  return replacements.map((replacement) => {
+    const from = replacement.from + shift;
+    shift += replacement.insert.length - (replacement.to - replacement.from);
+    return {
+      from,
+      to: from + replacement.insert.length,
+      text: replacement.insert,
+      original: text.slice(replacement.from, replacement.to),
+    };
+  });
+}
+
+/**
+ * The edits that take `made` back in `current`, a later text, with `mapPos` mapping a position of
+ * the replaced text into it (CodeMirror's `ChangeDesc.mapPos` over the edits since). A replacement
+ * whose text was edited, removed or already put back since is left as it is, and counted.
+ */
+export function undoReplacements(
+  made: readonly MadeReplacement[],
+  current: { readonly sliceString: (from: number, to: number) => string },
+  mapPos: (pos: number, assoc: -1 | 1) => number,
+): { readonly changes: TextReplacement[]; readonly skipped: number } {
+  const changes: TextReplacement[] = [];
+  let skipped = 0;
+  for (const replacement of made) {
+    const from = mapPos(replacement.from, 1);
+    const to = mapPos(replacement.to, -1);
+    if (
+      to - from !== replacement.text.length ||
+      current.sliceString(from, to) !== replacement.text
+    ) {
+      skipped += 1;
+      continue;
+    }
+    changes.push({ from, to, insert: replacement.original });
+  }
+  return { changes, skipped };
+}

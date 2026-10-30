@@ -1,6 +1,11 @@
-import { ChangeSet, type ChangeSpec } from "@codemirror/state";
+import { ChangeSet } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  madeReplacements,
+  type TextReplacement,
+  undoReplacements,
+} from "@t3tools/shared/textReplace";
 
 /**
  * Astrolabe: the repository files open in an editor in this window, so an edit made for many files
@@ -51,17 +56,18 @@ export function openFileEditor(
 }
 
 /**
- * Applies `changes` in an open editor as one undoable edit, and returns a way to take it back
- * later, over whatever was typed since. Null once the editor has closed.
+ * Applies `replacements` (positions in the editor's text) in an open editor as one undoable edit,
+ * and returns a way to take them back later, over whatever was typed since. A replacement edited
+ * or taken back since is left alone; `undo` says whether any was taken back.
  */
 export function editInOpenEditor(
   editor: OpenFileEditor,
-  changes: ChangeSpec,
+  replacements: readonly TextReplacement[],
   userEvent: string,
 ): { readonly undo: () => boolean; readonly stop: () => void } {
   const view = editor.view;
-  const applied = ChangeSet.of(changes, view.state.doc.length);
-  const inverse = applied.invert(view.state.doc);
+  const made = madeReplacements(view.state.doc.toString(), replacements);
+  const applied = ChangeSet.of(replacements, view.state.doc.length);
   view.dispatch({ changes: applied, userEvent });
   let since = ChangeSet.empty(applied.newLength);
   const track = (next: ChangeSet) => {
@@ -79,7 +85,11 @@ export function editInOpenEditor(
     undo: () => {
       stop();
       if (!editors.has(editor)) return false;
-      view.dispatch({ changes: inverse.map(since), userEvent: `${userEvent}.undo` });
+      const { changes } = undoReplacements(made, view.state.doc, (pos, assoc) =>
+        since.mapPos(pos, assoc),
+      );
+      if (changes.length === 0) return false;
+      view.dispatch({ changes, userEvent: `${userEvent}.undo` });
       return true;
     },
   };
