@@ -2,6 +2,7 @@ import {
   AuthEnvironmentMaintainScope,
   AuthDiagnosticsReadScope,
   AuthFilesystemReadScope,
+  AuthFilesystemWriteScope,
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
@@ -14,6 +15,7 @@ import {
   AuthTerminalOperateScope,
   WS_METHODS,
   WsRpcGroup,
+  clientRpcRequiredScopes,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -61,6 +63,18 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.terminalClose,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthTerminalOperateScope);
+    }
+  });
+
+  it("lets file readers open documents and only file writers change them", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.documentsSubscribe)).toBe(AuthFilesystemReadScope);
+    for (const method of [
+      WS_METHODS.documentsPush,
+      WS_METHODS.documentsSave,
+      WS_METHODS.documentsRecover,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemWriteScope);
+      expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthFilesystemWriteScope]);
     }
   });
 
