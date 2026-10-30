@@ -16,11 +16,13 @@ import {
   agentLog,
   agentLogField,
   liveTurns,
+  ghostKey,
   setAgentLog,
   setLiveTurns,
   type AgentLogState,
 } from "./changeState.ts";
-import { closeGhostPopover, ghostDecorations, ghostPopoverStale } from "./ghosts.ts";
+import { closeOldTextPopover, oldTextPopoverStale, oldTextStyles } from "../blocks/oldText.ts";
+import { ghostDecorations } from "./ghosts.ts";
 import { prefersReducedMotion } from "./reveal.ts";
 
 export {
@@ -286,47 +288,7 @@ const agentChangesTheme = EditorView.baseTheme({
     backgroundColor:
       "color-mix(in srgb, var(--atlas-agent-color) var(--atlas-agent-change-settled-strength, 10%), transparent)",
   },
-  ".atlas-agent-ghost": {
-    color: "color-mix(in srgb, var(--atlas-agent-color) 70%, currentColor)",
-    backgroundColor:
-      "color-mix(in srgb, var(--atlas-agent-color) var(--atlas-agent-ghost-strength, 10%), transparent)",
-    borderRadius: "2px",
-    whiteSpace: "pre-wrap",
-    cursor: "pointer",
-  },
-  ".atlas-agent-ghost-text": { textDecorationColor: "var(--atlas-agent-color)" },
-  ".atlas-agent-ghost-more": {
-    marginLeft: "0.4em",
-    fontSize: "0.85em",
-    opacity: "0.8",
-  },
-  ".atlas-agent-ghost.atlas-agent-change-settled": { opacity: "0.6" },
-  // A ghost of a write that just landed fades in once; reduced motion skips it.
-  "@keyframes atlas-agent-ghost-arrive": { from: { opacity: "0" } },
-  ".atlas-agent-ghost-arriving": { animation: "atlas-agent-ghost-arrive 300ms ease-out" },
-  "@media (prefers-reduced-motion: reduce)": {
-    ".atlas-agent-ghost-arriving": { animation: "none" },
-  },
-  ".atlas-agent-ghost-popover": {
-    position: "fixed",
-    zIndex: "100",
-    display: "flex",
-    gap: "2px",
-    padding: "3px",
-    border: "1px solid var(--atlas-md-border-color, #e4e0d8)",
-    borderRadius: "6px",
-    background: "var(--atlas-md-menu-bg, #ffffff)",
-    color: "var(--atlas-md-menu-color, #1f1d1a)",
-    boxShadow: "var(--atlas-md-menu-shadow, 0 6px 20px rgba(31, 29, 26, 0.16))",
-    fontSize: "0.85em",
-    lineHeight: "1.4",
-  },
-  "&dark .atlas-agent-ghost-popover": {
-    borderColor: "var(--atlas-md-border-color, #33312d)",
-    background: "var(--atlas-md-menu-bg, #24221f)",
-    color: "var(--atlas-md-menu-color, #ebe8e2)",
-  },
-  ".atlas-agent-ghost-action, .atlas-agent-bar-button": {
+  ".atlas-agent-bar-button": {
     font: "inherit",
     padding: "0.2em 0.6em",
     border: "none",
@@ -335,8 +297,9 @@ const agentChangesTheme = EditorView.baseTheme({
     color: "inherit",
     cursor: "pointer",
   },
-  ".atlas-agent-ghost-action:hover, .atlas-agent-ghost-action-focused, .atlas-agent-bar-button:hover":
-    { background: "var(--atlas-md-menu-hover-bg, rgba(127, 127, 127, 0.14))" },
+  ".atlas-agent-bar-button:hover": {
+    background: "var(--atlas-md-menu-hover-bg, rgba(127, 127, 127, 0.14))",
+  },
   ".atlas-agent-bar": {
     display: "flex",
     flexWrap: "wrap",
@@ -408,18 +371,20 @@ export function agentChanges(text: Y.Text, awareness: Awareness): Extension {
     return {
       update(update) {
         const entries = agentLog(update.state)?.entries ?? [];
-        const stillThere = (id: string, opIndex: number) =>
-          entries.some((entry) => {
-            const op = entry.id === id ? entry.ops[opIndex] : undefined;
-            return op !== undefined && op.deleted !== "" && !op.dismissed;
-          });
-        if (ghostPopoverStale(update.view, stillThere)) closeGhostPopover(update.view);
+        const stillThere = (key: string) =>
+          entries.some((entry) =>
+            entry.ops.some(
+              (op, opIndex) =>
+                op.deleted !== "" && !op.dismissed && ghostKey(entry.id, opIndex) === key,
+            ),
+          );
+        if (oldTextPopoverStale(update.view, stillThere)) closeOldTextPopover(update.view);
       },
       destroy() {
         text.unobserve(onTextEvent);
         doc?.off("afterTransaction", afterTransaction);
         awareness.off("change", onAwareness);
-        closeGhostPopover(view);
+        closeOldTextPopover(view);
       },
     };
   });
@@ -435,6 +400,7 @@ export function agentChanges(text: Y.Text, awareness: Awareness): Extension {
     ),
     recorder,
     agentChangesTheme,
+    oldTextStyles,
   ];
 }
 

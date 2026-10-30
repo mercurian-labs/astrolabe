@@ -292,7 +292,7 @@ describe("agent change log", () => {
   }
 
   function popoverAction(label: string) {
-    const action = [...document.querySelectorAll<HTMLElement>(".atlas-agent-ghost-action")].find(
+    const action = [...document.querySelectorAll<HTMLElement>(".atlas-old-text-action")].find(
       (candidate) => candidate.textContent === label,
     );
     if (!action) throw new Error(`no ${label} action`);
@@ -876,7 +876,7 @@ describe("agent change log", () => {
     const ghost = onlyGhost(editor);
     expect(ghost.textContent).toBe("old words ");
     expect(ghost.querySelector("del")?.textContent).toBe("old words ");
-    expect(ghost.style.getPropertyValue("--atlas-agent-color")).toBe(TURN.color);
+    expect(ghost.style.getPropertyValue("--atlas-old-text-tint")).toBe(TURN.color);
     expect(editor.posAtDOM(ghost)).toBe("keep ".length);
     expect(user.text.toString()).toBe("keep here\n");
     expect(user.text.toString()).not.toContain("old words");
@@ -893,7 +893,7 @@ describe("agent change log", () => {
     expect(editor.state.doc.toString()).toBe("keep old words here\n");
     expect(highlighted(editor)).toEqual([]);
     expect(ghosts(editor)).toHaveLength(0);
-    expect(document.querySelector(".atlas-agent-ghost-popover")).toBeNull();
+    expect(document.querySelector(".atlas-old-text-popover")).toBeNull();
     expect(readAgentChanges(user.doc)).toEqual([]);
 
     undoManager.undo();
@@ -961,21 +961,21 @@ describe("agent change log", () => {
     write("# Title\nend\n");
 
     const collapsed = onlyGhost(editor);
-    expect(collapsed.classList.contains("atlas-agent-ghost-collapsed")).toBe(true);
+    expect(collapsed.classList.contains("atlas-old-text-collapsed")).toBe(true);
     expect(collapsed.querySelector("del")?.textContent).toBe("line one");
-    expect(collapsed.querySelector(".atlas-agent-ghost-more")?.textContent).toBe("+2 lines");
+    expect(collapsed.querySelector(".atlas-old-text-more")?.textContent).toBe("+2 lines");
 
     collapsed.click();
 
     // One click expands the ghost and opens its popover.
-    expect(document.querySelector(".atlas-agent-ghost-popover")).not.toBeNull();
+    expect(document.querySelector(".atlas-old-text-popover")).not.toBeNull();
     const expanded = onlyGhost(editor);
-    expect(expanded.classList.contains("atlas-agent-ghost-collapsed")).toBe(false);
+    expect(expanded.classList.contains("atlas-old-text-collapsed")).toBe(false);
     expect(expanded.textContent).toBe("line one\nline two\nline three\n");
 
     write("# Title\n");
     const short = ghosts(editor).find((ghost) => ghost.textContent === "end\n");
-    expect(short?.classList.contains("atlas-agent-ghost-collapsed")).toBe(false);
+    expect(short?.classList.contains("atlas-old-text-collapsed")).toBe(false);
   });
 
   it("B5: at the end of the text a ghost sticks to the character before it, through a refresh", () => {
@@ -1247,7 +1247,7 @@ describe("agent change log", () => {
     ghosts(editor)
       .find((ghost) => ghost.textContent === "BB ")
       ?.click();
-    expect(document.querySelector(".atlas-agent-ghost-popover")).not.toBeNull();
+    expect(document.querySelector(".atlas-old-text-popover")).not.toBeNull();
 
     expect(restoreAgentDeletion(otherView, entry?.id ?? "", 0)).toBe(true);
     expect(user.text.toString()).toBe("one AA two three four\n");
@@ -1445,7 +1445,7 @@ describe("agent change log", () => {
     expect(drawn(reduced.view)).toBe(`keep old words\n${inserted}\n`);
     // Nor does a ghost fade in.
     reduced.write((file) => file.replace("old ", ""));
-    expect(onlyGhost(reduced.view).classList.contains("atlas-agent-ghost-arriving")).toBe(false);
+    expect(onlyGhost(reduced.view).classList.contains("atlas-old-text-arriving")).toBe(false);
     expect(time.pendingFrames()).toBe(0);
   });
 
@@ -1554,7 +1554,7 @@ describe("agent change log", () => {
         }),
       });
       cleanups.push(() => mounted.destroy());
-      const isArriving = () => onlyGhost(mounted).classList.contains("atlas-agent-ghost-arriving");
+      const isArriving = () => onlyGhost(mounted).classList.contains("atlas-old-text-arriving");
       return { time, isArriving };
     };
 
@@ -1581,7 +1581,7 @@ describe("agent change log", () => {
     write("keep here\nand gone here\n");
 
     const isArriving = (ghost: HTMLElement | undefined) =>
-      ghost?.classList.contains("atlas-agent-ghost-arriving") ?? false;
+      ghost?.classList.contains("atlas-old-text-arriving") ?? false;
     expect(isArriving(onlyGhost(editor))).toBe(true);
     time.elapse(150);
     expect(isArriving(onlyGhost(editor))).toBe(true);
@@ -1730,6 +1730,6 @@ describe("agent changes in the live preview", () => {
     const ghost = view.dom.querySelector<HTMLElement>(".atlas-agent-ghost");
     expect(ghost?.textContent).toBe("tags: [old]\n");
     ghost?.click();
-    expect(document.querySelector(".atlas-agent-ghost-popover")).not.toBeNull();
+    expect(document.querySelector(".atlas-old-text-popover")).not.toBeNull();
   });
 });
