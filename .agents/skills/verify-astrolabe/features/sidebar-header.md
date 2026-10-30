@@ -2,7 +2,7 @@
 
 The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark (the
 rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds and, in
-each section with tabs (Agents, Wikis, Repositories, and Changes where the server
+each section with tabs (Agents, Wikis, Projects, and Changes where the server
 supports pull requests), **Back** and **Forward** at its right end (`[data-tab-history]`, from
 `SidebarTabHistory.tsx`; see chat-tabs.md, wikis.md, repositories.md and pull-requests.md). It has a bottom border in
 line with the tab strip's and keeps the icon rail's colour (`bg-sidebar`), so the
@@ -13,7 +13,7 @@ sidebar colour. There is no sidebar artwork: the identification setting offers
 the version pill or none, and a stored "artwork" shows the pill.
 
 Below it, the sidebar opens on its **section title**, as ChatGPT's does: a large
-"Agents" (or "Wikis", "Repositories", "Changes"; see [wikis.md](wikis.md)) heading with the section's
+"Agents" (or "Wikis", "Projects", "Changes"; see [wikis.md](wikis.md)) heading with the section's
 actions at its right end.
 
 ## Sub-features
@@ -31,17 +31,13 @@ actions at its right end.
   `Filter threads`, or `Filter threads (filtered)` with a dot while anything is picked. Its
   popup has a `Search filters` field (placeholder `Filter...`; "No matching filters." when
   nothing matches), then a **Status** group (Needs you, Working, Errored, each with the count
-  of visible threads in the picked projects) and a **Projects** group: All projects, a
-  **Repositories** heading and each repository, a **Wikis** heading and each wiki (a wiki's
-  checkout is listed once, as the wiki; a heading shows only when it has entries), and a last
-  **New project** row. Every row is a checkbox and picking keeps the popup open. Values in one
-  group widen, the two groups narrow. With no project picked, All projects and every row under
-  it show ticked; unticking one keeps the rest, and ticking every project or unticking the
-  last is All projects again. A heading stands for every project of its kind, including later
-  ones; unticking one project under a ticked heading turns it into picks of the others and
-  the heading shows a minus (partial). The filter is kept in localStorage
-  `astrolabe:threads-filter:v1` as `{projects, kinds, statuses}` (removed when empty; the old
-  single pick is not read). An empty list reads "No threads match these filters".
+  of visible threads in the picked projects) and a **Projects** group: All projects, each
+  project (wikis are not projects, so none is listed), and a last **New project** row. Every
+  row is a checkbox and picking keeps the popup open. Values in one group widen, the two
+  groups narrow. With no project picked, All projects and every project show ticked;
+  unticking one keeps the rest, and ticking every project or unticking the last is All
+  projects again. The filter is kept in localStorage `astrolabe:threads-filter:v1` as
+  `{projects, statuses}` (removed when empty; an older stored `kinds` is dropped). An empty list reads "No threads match these filters".
 - **Pills** (`[aria-label='Thread filters']`, under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
@@ -63,7 +59,7 @@ actions at its right end.
   the filter's popup has a `Project settings for <name>` gear.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
-  (Agents, Wikis, Repositories, Changes when the server supports pull requests),
+  (Agents, Wikis, Projects, Changes when the server supports pull requests),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
   (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a link (see
@@ -71,15 +67,15 @@ actions at its right end.
   Rail mark).
   Usage has no sidebar: there it shows collapsed and the toggle is gone (`mod+b` does
   nothing), and leaving Usage restores the open state. The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Agents returns to the last chat. Repositories and Changes are
+  (`useAppSections`). Agents returns to the last chat. Projects and Changes are
   sections like Wikis, each with its own sidebar and panes ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
   monogram, is absent; the header row carries no brand at any width, and below 768px it starts
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
-  account menu), Wikis, Repositories, Changes (when the server supports pull requests) and
-  Usage; while on Wikis, Repositories or Changes, that section's button reads Agents
+  account menu), Wikis, Projects, Changes (when the server supports pull requests) and
+  Usage; while on Wikis, Projects or Changes, that section's button reads Agents
   instead. On Settings (legacy `/projects/…` links included) and Usage it shows only Back,
   beside the account menu when there is one.
 - **Toggle main sidebar** is drawn over the rail's title-bar cell, above the monogram (same icon,

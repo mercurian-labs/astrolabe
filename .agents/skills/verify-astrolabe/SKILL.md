@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -191,7 +191,7 @@ A node in the accessibility tree or the DOM is not proof that it paints. Prove
 rendering with `document.elementFromPoint` at the element's centre (for a
 shadow-DOM widget such as @pierre/trees,
 `document.querySelector('file-tree-container').shadowRoot.elementFromPoint`) or
-a screenshot: the Repositories Tree once had rows in the accessibility tree that
+a screenshot: the Projects Tree once had rows in the accessibility tree that
 painted nothing, and a DOM-only walk passed it.
 
 ## Cleanup

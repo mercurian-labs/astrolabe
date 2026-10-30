@@ -285,7 +285,7 @@ opens it when selected. Your prompt only carries a reference: the agent reads th
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a
 thread does not change it, and the agent cannot send messages to it unless you ask.
 
-On web and desktop, type `[[` to point the agent at a wiki note. Notes from the repository's
+On web and desktop, type `[[` to point the agent at a wiki note. Notes from the project's
 linked wikis list first. See [Wikis](wikis.md).
 
 Dropping a thread from another environment attaches a saved transcript file. The source

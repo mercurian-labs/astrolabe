@@ -1,6 +1,6 @@
 # Changes (pull requests and wiki change requests)
 
-Astrolabe's section after Agents, Wikis and Repositories: every pull request on the
+Astrolabe's section after Agents, Wikis and Projects: every pull request on the
 connected git hosts, listed in its own sidebar and opened in Obsidian-style tabs and
 splits (the same panes as Wikis and the right panel, see [panes.md](panes.md)).
 Astrolabe owns the section's shell (sidebar frame, panes, tab history, selection,
@@ -86,24 +86,22 @@ thread's own Pull request tab. Shown only when a connected server reports
   Agent suggestions off, check the group's tab loses **Ask for suggestions**, turn it back on.
 - **Project filter** (`changeRequests/ChangeRequestSourceFilter.tsx` over the shared
   `projects/projectFilter.ts`, `combobox "Filter by project: <name>"` beside Sort and Filters, in
-  place of upstream's provider menu): a searchable list of All projects, **Repositories** and
-  each repository (a wiki's folder project is left out), **Wikis** and each wiki. The kind
+  place of upstream's provider menu): a searchable list of All, **Projects** and each
+  project, **Wikis** and each wiki; with only projects (or only wikis) the headings drop and
+  the first row reads All projects (or All wikis). The kind
   (`astrolabe:change-request-kind:v1`: all, repositories, wikis) and this section's own wiki
-  (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a repository
-  is the list's `projectId` scope. Repositories (all or one) hides Wiki changes; Wikis (all or
+  (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a project
+  is the list's `projectId` scope. Projects (all or one) hides Wiki changes; Wikis (all or
   one) hides the pull requests, Sort and Filters, and an empty wiki says `No change requests in
   <wiki> yet`. The Agents filter (`projects/useThreadsFilter.ts`, `Filter threads`; see
-  [sidebar-header.md](sidebar-header.md)) lists the same projects, a wiki only once its folder
-  is a project (one added through Wikis → Add a folder is), but picks several and adds status
-  rows; this filter stays single-pick. Filters still holds Host (with several hosts) and
+  [sidebar-header.md](sidebar-header.md)) lists the same projects and no wikis, but picks
+  several and adds status rows; this filter stays single-pick. Filters still holds Host (with several hosts) and
   upstream's Project, which mirrors the same scope.
-  Mobile's Filters → Project lists All projects, "Repositories" and each repository, then
-  "Wikis" and `<wiki> · Wiki`; the menu scrolls, so walk it with two short `scroll down 0.3`
-  steps. The mobile thread list's project menu (`features/projects/threadsProjectFilter.ts`:
-  iPhone's `Filter threads by project`, elsewhere the **Project** submenu of
-  `Filter threads`) lists the same, a wiki only once its folder is a project; Repositories
-  or Wikis scopes the list to "your repositories" or "your wikis" ("No threads in your
-  wikis").
+  Mobile's Filters → Project lists All, "Projects" and each project, then `<wiki> · Wiki`
+  (All projects and the projects alone without wikis); the menu scrolls, so walk it with two
+  short `scroll down 0.3` steps. The mobile thread list's project menu (iPhone's
+  `Filter threads by project`, elsewhere the **Project** submenu of `Filter threads`) is
+  upstream's: All projects and each project.
 - **Sidebar** (`role=navigation[name='Changes']`): heading **Changes** and
   **Refresh pull requests**; no New or Link button. Under it `searchbox "Search pull
   requests"` (placeholder "Search pull requests, or label:bug"), then `Filter by project:
@@ -162,7 +160,7 @@ thread's own Pull request tab. Shown only when a connected server reports
 
 ## How to get to it (user POV)
 
-The **Changes** icon in the icon rail (between Repositories and Usage), the
+The **Changes** icon in the icon rail (between Projects and Usage), the
 keyboard menu's `g p`, **Open pull requests** in the Command Palette (type "pull
 requests"; "change requests" finds Open wikis and Settings › Changes instead), or
 a pull request link in a conversation. Each lands on the last list filters (localStorage

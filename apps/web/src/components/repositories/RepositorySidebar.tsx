@@ -589,9 +589,8 @@ function FileRow({
 type FilterOption = ProjectFilterOption<EnvironmentProject>;
 
 /**
- * The filter: every repository or one, as every section's project filter offers repositories,
- * with how the list shows (as a list, or the whole file tree), Manage repositories and Add a
- * repository at its foot.
+ * The filter: every project or one, as every section's project filter offers them, with how the
+ * list shows (as a list, or the whole file tree), Manage projects and Add a project at its foot.
  */
 function RepositoryFilter({
   repositories,
@@ -693,13 +692,13 @@ function RepositoryFilter({
               })
             }
           >
-            Manage repositories
+            Manage projects
           </SidebarPickerAction>
           <SidebarPickerAction
             icon={FolderPlusIcon}
             onClick={() => closeAnd(() => openCommandPalette({ open: "add-project" }))}
           >
-            Add a repository
+            Add a project
           </SidebarPickerAction>
         </SidebarPickerFooter>
       </ComboboxPopup>

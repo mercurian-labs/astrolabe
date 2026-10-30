@@ -79,15 +79,15 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
-- **Linked repositories** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinkMenus.tsx`): a wiki is not
-  a project. Adding a wiki or a repository in the palette ends on a link step
-  ("Link <wiki> to the repository it plans" / "Link <repo> to a wiki…", plus **Not now**);
-  links change from the wiki's settings (**Repositories**) and Settings → Projects (**Wikis**).
-  A new conversation in a linked repository gets an `<astrolabe_wikis>` note on its first
+- **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinkMenus.tsx`): a wiki is not
+  a project. Adding a wiki or a project in the palette ends on a link step
+  ("Link <wiki> to the project it plans" / "Link <project> to a wiki…", plus **Not now**);
+  links change from the wiki's settings (**Projects**) and Settings → Projects (**Wikis**).
+  A new conversation in a linked project gets an `<astrolabe_wikis>` note on its first
   prompt (`WikiService.agentNote`); prove it with a real turn that never names the wiki.
 - **`[[` in the composer** (`chat/composerWikiNoteItems.ts`): opens notes of this server's
-  wikis, linked ones first; `[[ ` (space) and no wikis stay text; an unlinked repository
-  gets "Link <wiki> to <repo>" rows while the query is empty. A pick inserts a chip; a
+  wikis, linked ones first; `[[ ` (space) and no wikis stay text; an unlinked project
+  gets "Link <wiki> to <project>" rows while the query is empty. A pick inserts a chip; a
   sent chip opens the note in the right panel.
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
@@ -151,7 +151,7 @@ a screenshot of the section.
   AGENTS, CLAUDE). Clone one (for example the almagest vault) anywhere the server
   can read, such as `<home>/wiki-fixtures/`, and register it: **Add a folder** →
   dialog `Add a folder`, `textbox "Folder"` (absolute path) → **Add wiki**. No
-  project is made; link it to a repository from its settings or the palette's link
+  project is made; link it to a project from its settings or the palette's link
   step. **New wiki** makes a repo with only README, so it lists no documents.
 - The settings gear in the filter is `aria-hidden`; reach it by
   `[title="Settings for <wiki>"]`.
@@ -166,9 +166,9 @@ a screenshot of the section.
 `apps/web/src/components/wiki/`, `routes/_chat.wikis*.tsx`, `components/sidebar/SidebarCard.tsx`,
 `components/sidebar/SidebarTabHistory.tsx` (Back/Forward), `panes/panesHost.ts`,
 `panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
-`NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Repositories and
+`NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Projects and
 Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
-`astrolabe:wiki-filter:v1`; storedChoice is shared with Repositories and the Agents filter),
+`astrolabe:wiki-filter:v1`; storedChoice is shared with Projects and the Agents filter),
 `projects/ThreadsFilterParts.tsx` (the pills, shared with Agents), the Wikis branches in `AppSidebarLayout.tsx` and
 `sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
 `WikiChangesSection.tsx` is pull-requests.md's).

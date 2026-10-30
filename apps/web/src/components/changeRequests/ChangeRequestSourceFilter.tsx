@@ -39,9 +39,9 @@ const projectKey = (project: { readonly environmentId: EnvironmentId; readonly i
 
 /**
  * Astrolabe: the Change Requests sidebar's project filter, the list every section shares (see
- * `projectFilter`): All projects, every repository or one repository's pull requests, every wiki
- * or one wiki's change requests. The repository picked is the list's own project scope, in the
- * route; the wiki picked is this section's own (`changeRequestWikiScope`).
+ * `projectFilter`): All, every project's or one project's pull requests, every wiki's or one
+ * wiki's change requests. The project picked is the list's own project scope, in the route; the
+ * wiki picked is this section's own (`changeRequestWikiScope`).
  */
 export function ChangeRequestSourceFilter({
   projects,

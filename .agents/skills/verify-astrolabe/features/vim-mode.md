@@ -1,6 +1,6 @@
 # Vim mode
 
-The composer, wiki notes and Repositories file tabs can edit with Vim, behind one
+The composer, wiki notes and Projects file tabs can edit with Vim, behind one
 device setting that is off by default. Turning it on asks you to type `:q` first, to
 show you know the way out. In Vim's normal mode `:` opens the Command Palette (see
 [which-key.md](which-key.md)), and the leader key (Space by default) opens the keyboard menu.
@@ -29,7 +29,7 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
 - **Notes**: wiki notes start in normal mode, with no mode panel: like the composer,
   the text reads in the code font (`--font-mono`, the Monospace font setting)
   outside insert mode.
-- **Repository files**: a Repositories file tab ([repositories.md](repositories.md)) starts
+- **Repository files**: a Projects file tab ([repositories.md](repositories.md)) starts
   in normal mode with no mode panel and follows the switch live. Space opens the keyboard
   menu and `:` the palette. Files save on their own, so `:w` is the disabled "Nothing to
   write here". A Markdown file switches to the code font outside insert mode; a code file
@@ -107,7 +107,7 @@ Read the composer's state:
 
 A note's mode: `document.querySelector('[data-pane-id] [data-vim-mode]').dataset.vimMode`
 and its font `getComputedStyle(document.querySelector('[data-pane-id] .cm-content')).fontFamily`.
-A Repositories file tab reads the same way.
+A Projects file tab reads the same way.
 
 ## Flows
 

@@ -3,8 +3,8 @@
 Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
-leftmost), the sidebar on screen (Agents, Wikis, Repositories or Changes), the chat
-column, and each pane (the right panel's, the Wikis area's, the Repositories area's,
+leftmost), the sidebar on screen (Agents, Wikis, Projects or Changes), the chat
+column, and each pane (the right panel's, the Wikis area's, the Projects area's,
 the Changes area's). Never anything inside one (no stop for a tab strip, the
 timeline or the composer).
 
@@ -68,7 +68,7 @@ timeline or the composer).
   (`gg`, `G`). The reached row shows the rows' light keyboard ring (`:focus-visible`:
   a 1px `--ring` inset edge and a 3px `--ring`/24% band, as inputs have), apart from
   the current row's fill. Rows are a roving tab stop: after a row has focus, only it
-  keeps `tabindex=0`. The Repositories sidebar's rows are not list rows yet (a known
+  keeps `tabindex=0`. The Projects sidebar's rows are not list rows yet (a known
   gap, not a regression): the list keys do nothing there, and focus moving in lands on
   its first focusable control, not the current file.
 - **Rail list** (focus on a rail button, `[data-app-rail] [data-sidebar=menu-button]`;

@@ -34,7 +34,7 @@ resize and maximize still drive the panel itself.
   gets a halo (`circle.fill-foreground/12`), or its fold's button a solid border; drive it
   by setting `.messages-timeline-scroll`'s `scrollTop`. Thread details' Lineage section has **Show lineage** (only when the
   thread has a fork, parent or merge-back), which opens or focuses the tab.
-- **Tabs from other sections** (`apps/web/src/sectionTabs/`): the Wikis, Repositories
+- **Tabs from other sections** (`apps/web/src/sectionTabs/`): the Wikis, Projects
   and Changes panes can hold a chat (`chat:<env>:<thread>`), a document or wiki
   change request (`wiki-note:`, `wiki-change:`), a repository file, diff or Manage tab
   (`repo-file:`, `repo-diff:`, `repo-manage`), a change group (`change-group:<env>:<id>`)
@@ -42,12 +42,12 @@ resize and maximize still drive the panel itself.
   thread** opens its thread beside it. A thread's right panel takes only wiki tabs
   (Document, or a Graph tab click, which opens one beside the graph) and change-group tabs
   (from the group's shared run; see below). A tab outside its
-  own section has **Open in Agents / Wikis / Repositories / Changes** first in
+  own section has **Open in Agents / Wikis / Projects / Changes** first in
   its right-click menu: it closes here and opens there (a chat in the chat tab in front,
-  a document in the Wikis tab in front, a repository tab in the Repositories panes, a
+  a document in the Wikis tab in front, a repository tab in the Projects panes, a
   change request or change group in Changes). The exception is a thread's
-  right-panel **Files**, **Diff** and opened-file tabs: their **Open in Repositories**
-  keeps the tab here and opens the thread's checkout in Repositories (the file, its
+  right-panel **Files**, **Diff** and opened-file tabs: their **Open in Projects**
+  keeps the tab here and opens the thread's checkout in Projects (the file, its
   uncommitted changes, or the file tree; repositories.md). Section tab keys survive a
   reload; a chat mounts only while its tab is in front.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
@@ -94,14 +94,14 @@ resize and maximize still drive the panel itself.
   stay each thread's. A group tab the thread already held (its own pull request, opened
   before the group formed) joins the run when the thread shows in the group; a thread in
   two groups shows both runs. Only threads' right panels share: Changes, Wikis and
-  Repositories panes don't. The store is
+  Projects panes don't. The store is
   `JSON.parse(localStorage['astrolabe:group-panel-runs:v1']).state.runs[<change-group key>]`,
   `{open: [entries], closed: [ids]}` (`closed` holds what was closed beside a member, until
   it is opened again). From the group's tab beside a thread, **Open as a tab group** opens
   the group's threads as chat tabs right after the chat in front (no navigation) and the
   rest into the run; beside a thread outside the group they open in that panel too,
   unshared. A thread row there opens it as a chat tab after the one in front, a pull
-  request row as the thread's own surface. In Changes, Wikis and Repositories, **Open as a
+  request row as the thread's own surface. In Changes, Wikis and Projects, **Open as a
   tab group** opens everything in that section's focused pane. **Proof:** with member
   threads A and B, open the group's tab beside A, show B: its strip holds the group's tab,
   not `aria-selected`, and B's panel, if it was closed, is still closed; close it beside B,
@@ -134,7 +134,7 @@ resize and maximize still drive the panel itself.
   "Exit full screen"): the focused pane takes the whole content area: it maximizes
   the pane (unless alone) and, in a thread's right panel, the panel too, so the chat
   column hides (`[data-chat-column-maximized-away=true]`); pressed again it restores
-  both. In Wikis, Repositories and Changes it is maximizing the pane, faint for
+  both. In Wikis, Projects and Changes it is maximizing the pane, faint for
   a lone pane.
 - **Chrome tabs**: tabs are drawn as Chrome's (`index.css`, `TabParts.tsx`): 240px
   wide, shrinking together to 96px; the title fades out before an always-shown ✕.
@@ -247,7 +247,7 @@ reload both reads return the same result.
   using the keyboard menu (or the leader key; Cmd+K is the default `whichKey.open`).
 - The panes engine (`panesHost.ts`, `PaneView.tsx`, `PaneTree.tsx`, `maximize.ts`,
   `paneCommands.ts`, `sectionPanes.ts`, `tabGroups.tsx`) is shared with the Wikis,
-  Repositories and Changes areas; a change there walks wikis.md,
+  Projects and Changes areas; a change there walks wikis.md,
   repositories.md and pull-requests.md too. The menu acts on whichever panes
   registered last (one `panesSlot`).
 - While a pane is maximized the others are `inert`, so role locators skip them and

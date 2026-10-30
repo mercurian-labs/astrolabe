@@ -35,10 +35,10 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   `w` Wikis, `,` Settings. `n`'s
   label follows the section (on Wikis: "New document").
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Agents, w Wikis, r Repositories, p Changes,
+- **Groups** (defaults): `g` t Agents, w Wikis, r Projects, p Changes,
   u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
   browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
-  `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Repositories
+  `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Projects
   and Changes they walk the tab in front's history and are faint at either
   end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
@@ -146,7 +146,7 @@ and copy the backup back when done. The server picks changes up live.
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
    with the sixteen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
-   `Menu › Go to`, rows Agents, Wikis, Repositories, Changes (a faint row
+   `Menu › Go to`, rows Agents, Wikis, Projects, Changes (a faint row
    where pull requests are unsupported), Usage, Settings → click **Backspace back**
    → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `w`,
    or `r` (`/repositories`) → the URL changes, menu closed.
