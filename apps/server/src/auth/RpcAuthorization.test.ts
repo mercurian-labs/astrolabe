@@ -73,6 +73,8 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.documentsSave,
       WS_METHODS.documentsRecover,
       WS_METHODS.documentsDiscard,
+      WS_METHODS.documentsReplaceAll,
+      WS_METHODS.documentsUndoReplaceAll,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemWriteScope);
       expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthFilesystemWriteScope]);

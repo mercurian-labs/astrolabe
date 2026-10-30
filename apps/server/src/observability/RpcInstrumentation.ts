@@ -257,6 +257,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.documentsSave]: "workspace",
   [WS_METHODS.documentsRecover]: "workspace",
   [WS_METHODS.documentsDiscard]: "workspace",
+  [WS_METHODS.documentsReplaceAll]: "workspace",
+  [WS_METHODS.documentsUndoReplaceAll]: "workspace",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";

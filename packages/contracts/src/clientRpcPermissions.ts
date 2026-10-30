@@ -55,6 +55,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.documentsSave]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsRecover]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsDiscard]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsReplaceAll]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsUndoReplaceAll]: AuthFilesystemWriteScope,
   // Astrolabe: rebuilding or clearing a code index is environment maintenance.
   [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,

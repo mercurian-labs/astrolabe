@@ -597,4 +597,125 @@ it.layer(layerTest)("Documents", (it) => {
       ),
     );
   });
+
+  describe("replace-all", () => {
+    const plain = { caseSensitive: false, wholeWord: false, useRegex: false } as const;
+
+    /** Another file in the workspace, written to disk. */
+    const writeFile = Effect.fn("writeFile")(function* (
+      cwd: string,
+      relativePath: string,
+      text: string,
+    ) {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      yield* fileSystem.writeFileString(path.join(cwd, relativePath), text);
+      return {
+        read: fileSystem.readFileString(path.join(cwd, relativePath)),
+      };
+    });
+
+    it.effect("edits open and unopened files under the caller's id, and undoes both", () =>
+      withWorkspace("foo one\nfoo two\n", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const { cwd } = workspace.target;
+          const other = yield* writeFile(cwd, "src/other.txt", "a foo b");
+          const a = yield* connect(workspace.target, "a");
+
+          const result = yield* documents.replaceAll({
+            cwd,
+            clientId: "replace",
+            query: "foo",
+            ...plain,
+            replacement: "bar",
+            paths: [RELATIVE_PATH, "src/other.txt", "src/gone.txt"],
+          });
+          expect(result).toMatchObject({ files: 2, replacements: 3 });
+          expect(result.failed.map((failure) => failure.relativePath)).toEqual(["src/gone.txt"]);
+          yield* a.syncTo(1);
+          expect(a.text()).toBe("bar one\nbar two\n");
+          // Nobody had the other file open: it is on disk already.
+          expect(yield* other.read).toBe("a bar b");
+
+          a.edit({ from: 0, insert: "X" });
+          yield* a.push();
+          yield* a.syncTo(2);
+
+          expect(yield* documents.undoReplaceAll({ cwd, id: result.id! })).toEqual({
+            files: 2,
+            skipped: [],
+          });
+          yield* a.syncTo(3);
+          expect(a.text()).toBe("Xfoo one\nfoo two\n");
+          expect(yield* other.read).toBe("a foo b");
+          const again = yield* documents.undoReplaceAll({ cwd, id: result.id! }).pipe(Effect.flip);
+          expect(again.reason).toBe("undo-gone");
+        }),
+      ),
+    );
+
+    it.effect("keeps only a client's latest replace-all, until it expires", () =>
+      withWorkspace("foo", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const { cwd } = workspace.target;
+          const replace = (query: string, replacement: string) =>
+            documents.replaceAll({
+              cwd,
+              clientId: "replace",
+              query,
+              ...plain,
+              replacement,
+              paths: [RELATIVE_PATH],
+            });
+          const first = yield* replace("foo", "bar");
+          const second = yield* replace("bar", "baz");
+          expect(
+            (yield* documents.undoReplaceAll({ cwd, id: first.id! }).pipe(Effect.flip)).reason,
+          ).toBe("undo-gone");
+          yield* TestClock.adjust(Documents.REPLACE_ALL_UNDO_TIMEOUT);
+          expect(
+            (yield* documents.undoReplaceAll({ cwd, id: second.id! }).pipe(Effect.flip)).reason,
+          ).toBe("undo-gone");
+          expect(yield* workspace.readDisk).toBe("baz");
+        }),
+      ),
+    );
+
+    it.effect("refuses an invalid regular expression", () =>
+      withWorkspace("abc", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const error = yield* documents
+            .replaceAll({
+              cwd: workspace.target.cwd,
+              clientId: "replace",
+              query: "(",
+              ...plain,
+              useRegex: true,
+              replacement: "",
+              paths: [RELATIVE_PATH],
+            })
+            .pipe(Effect.flip);
+          expect(error.reason).toBe("invalid-query");
+        }),
+      ),
+    );
+
+    it.effect("lists the open documents whose text is not on disk", () =>
+      withWorkspace("abc", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const a = yield* connect(workspace.target, "a");
+          expect(yield* documents.unsavedTexts(workspace.target.cwd)).toEqual([]);
+          a.edit({ from: 0, insert: "new " });
+          yield* a.push();
+          expect(yield* documents.unsavedTexts(workspace.target.cwd)).toEqual([
+            { relativePath: RELATIVE_PATH, text: "new abc" },
+          ]);
+        }),
+      ),
+    );
+  });
 });

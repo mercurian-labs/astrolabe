@@ -438,10 +438,14 @@ import {
   DocumentPushResult,
   DocumentRecoverInput,
   DocumentRecoverResult,
+  DocumentReplaceAllInput,
+  DocumentReplaceAllResult,
   DocumentSaveInput,
   DocumentSaveResult,
   DocumentStreamItem,
   DocumentSubscribeInput,
+  DocumentUndoReplaceAllInput,
+  DocumentUndoReplaceAllResult,
 } from "./documents.ts";
 import {
   LanguageServerError,
@@ -622,6 +626,8 @@ export const WS_METHODS = {
   documentsSave: "documents.save",
   documentsRecover: "documents.recover",
   documentsDiscard: "documents.discard",
+  documentsReplaceAll: "documents.replaceAll",
+  documentsUndoReplaceAll: "documents.undoReplaceAll",
   // Astrolabe: each repository's code index.
   codeIndexSubscribe: "codeIndex.subscribe",
   codeIndexLocalGraph: "codeIndex.localGraph",
@@ -2124,6 +2130,18 @@ const WsDocumentsDiscardRpc = Rpc.make(WS_METHODS.documentsDiscard, {
   error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
 });
 
+const WsDocumentsReplaceAllRpc = Rpc.make(WS_METHODS.documentsReplaceAll, {
+  payload: DocumentReplaceAllInput,
+  success: DocumentReplaceAllResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsUndoReplaceAllRpc = Rpc.make(WS_METHODS.documentsUndoReplaceAll, {
+  payload: DocumentUndoReplaceAllInput,
+  success: DocumentUndoReplaceAllResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
 /** Every running or waiting language server now, then the whole list again on each change. */
 const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscribe, {
   payload: Schema.Struct({}),
@@ -2546,6 +2564,8 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsDocumentsSaveRpc,
   WsDocumentsRecoverRpc,
   WsDocumentsDiscardRpc,
+  WsDocumentsReplaceAllRpc,
+  WsDocumentsUndoReplaceAllRpc,
   WsCodeIndexSubscribeRpc,
   WsCodeIndexLocalGraphRpc,
   WsCodeIndexRebuildRpc,
