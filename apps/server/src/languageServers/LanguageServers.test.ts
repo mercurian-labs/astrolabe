@@ -506,7 +506,7 @@ describe("LanguageServers", () => {
       );
       expect(yield* read("src/point.ts")).toBe("export function pointAt() {}\npointAt();\n");
       // Someone types after the rename; undo puts the names back and keeps their line.
-      yield* agentEdit(checkout, (text) => ({ from: 0, insert: "// later\n" }));
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// later\n" }));
       const undone = yield* service.undoEdit({ id: rename.result.applied.id });
       expect(undone).toEqual({ files: [FILE, "src/point.ts"], skipped: [] });
       expect(yield* read(FILE)).toBe(`// later\n${SOURCE}makePoint(3, 4);\n`);
