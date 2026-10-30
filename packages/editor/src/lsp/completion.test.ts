@@ -103,8 +103,8 @@ async function open(
 
 /** Moves the clock past the menu's guard against keys pressed the moment it opens. */
 const pastGuard = () => {
-  const now = Date.now() + 1000;
-  return vi.spyOn(Date, "now").mockReturnValue(now);
+  vi.setSystemTime(new Date(2100, 0, 1));
+  return { [Symbol.dispose]: () => vi.useRealTimers() };
 };
 
 const menuOpen = (view: EditorView) =>

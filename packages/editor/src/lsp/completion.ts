@@ -24,12 +24,9 @@ import { type Command, EditorView, keymap, ViewPlugin, type ViewUpdate } from "@
 import { rankCompletions } from "./ranking.ts";
 
 /**
- * Astrolabe: completion from the language server, through the environment's gateway. Our own
- * source over lsp-client's requests, for three things its `serverCompletion` lacks: the spec's
- * ranking (`ranking.ts`), done here with autocomplete's own filtering off; resolving the selected
- * item, which brings its documentation and the import an auto-import adds; and the gateway's
- * trimmed lists, which are matched to the word typed so far and so are re-filtered here only while
- * that word grows.
+ * Astrolabe: completion from the language server through the environment's gateway. Our own source
+ * over lsp-client's requests, for the spec's ranking (`ranking.ts`, autocomplete's filtering off)
+ * and for resolving the selected item, which brings its documentation and an auto-import's edit.
  */
 
 // The LSP items' shape, as far as this file reads it.
@@ -269,8 +266,6 @@ function rangeOf(context: CompletionContext, list: LspList) {
 
 /** The menu for `query`, which re-ranks itself while the word grows from the same start. */
 function result(
-  view: EditorView,
-  uri: string,
   list: LspList,
   options: ReadonlyArray<{ readonly item: LspItem; readonly completion: Completion }>,
   from: number,
@@ -306,7 +301,7 @@ function result(
       if (list.isIncomplete || newFrom !== from) return null;
       const typed = context.state.sliceDoc(from, to);
       if (!/^[\w$]+$/.test(typed) || !typed.startsWith(query)) return null;
-      return result(view, uri, list, options, from, typed);
+      return result(list, options, from, typed);
     },
   };
 }
@@ -347,7 +342,7 @@ async function serverSource(context: CompletionContext): Promise<CompletionResul
     return { item, completion: option(view, list, item, plugin.uri) };
   });
   const { from } = rangeOf(context, list);
-  return result(view, plugin.uri, list, options, from, context.state.sliceDoc(from, context.pos));
+  return result(list, options, from, context.state.sliceDoc(from, context.pos));
 }
 
 // Resolves hold a mapping each, kept until the menu that asked for them closes.
