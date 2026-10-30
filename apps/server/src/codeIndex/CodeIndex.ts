@@ -241,7 +241,9 @@ const CHUNK_FILES = 250;
 /** A parse job holds one permit, a delete all of them, so nothing parses while facts go. */
 const STORE_PERMITS = 64;
 const LISTINGS_KEPT = 4;
-const FACTS_CACHE = 4000;
+/** Decoded file versions kept between questions: a file's facts are kilobytes, its imports less. */
+const FACTS_CACHED = 1000;
+const IMPORTS_CACHED = 5000;
 const HEAD_CHECK_INTERVAL = "1 minute";
 const IN_CHUNK = 500;
 /** Workers a question may start at once to index what its checkout changed. */
@@ -410,9 +412,9 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
 
   const factsCache = new Map<number, FileView>();
   const importsCache = new Map<number, ReadonlyArray<StoredImport>>();
-  const remember = <A>(cache: Map<number, A>, id: number, value: A) => {
+  const remember = <A>(cache: Map<number, A>, limit: number, id: number, value: A) => {
     cache.set(id, value);
-    if (cache.size > FACTS_CACHE) cache.delete(cache.keys().next().value as number);
+    if (cache.size > limit) cache.delete(cache.keys().next().value as number);
   };
   const chunks = <A>(items: ReadonlyArray<A>, size: number) => {
     const out: Array<ReadonlyArray<A>> = [];
@@ -470,7 +472,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           facts: decodeJson<StoredFacts>(row.facts),
           imports: decodeJson<ReadonlyArray<StoredImport>>(row.imports),
         };
-        remember(factsCache, row.id, file);
+        remember(factsCache, FACTS_CACHED, row.id, file);
         out.set(row.id, file);
       }
     }
@@ -493,7 +495,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       );
       for (const row of rows) {
         const imports = decodeJson<ReadonlyArray<StoredImport>>(row.imports);
-        remember(importsCache, row.id, imports);
+        remember(importsCache, IMPORTS_CACHED, row.id, imports);
         out.set(row.id, imports);
       }
     }
