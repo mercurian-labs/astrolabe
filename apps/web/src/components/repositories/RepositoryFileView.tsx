@@ -4,6 +4,7 @@ import "@mercurian/editor/code/theme.css";
 import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { replaceDocText } from "@mercurian/editor/bridge/text-edits";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
 import { livePreview } from "@mercurian/editor/markdown";
 import { inFileSearch } from "@mercurian/editor/search";
@@ -154,8 +155,8 @@ function FileNotice({ children }: { readonly children: string }) {
 
 /**
  * The CodeMirror view. Built once per file; what changes later goes through compartments: Vim,
- * the file's language once it loads, and read-only. Contents saved by someone else replace the
- * text, unless edits here are still on their way.
+ * the file's language once it loads, and read-only. Contents saved by someone else arrive as
+ * edits, unless edits here are still on their way.
  */
 function FileEditor({
   path,
@@ -248,18 +249,13 @@ function FileEditor({
     });
   }, [compartments, readOnly]);
 
-  // Newer contents from elsewhere (an agent's edit, the thread's Files view) replace the text,
-  // unless edits typed here are still saving, which would otherwise be lost.
+  // Newer contents from elsewhere (an agent's edit, the thread's Files view) arrive as their
+  // smallest edits, unless edits typed here are still saving, which would otherwise be lost.
   useEffect(() => {
     const view = viewRef.current;
     if (!view || pendingRef.current) return;
-    const current = view.state.doc.toString();
-    if (current === contents) return;
-    const head = Math.min(view.state.selection.main.head, contents.length);
-    view.dispatch({
-      changes: { from: 0, to: current.length, insert: contents },
-      selection: { anchor: head },
-    });
+    const spec = replaceDocText(view.state, contents);
+    if (spec) view.dispatch(spec);
   }, [contents, pendingRef]);
 
   return (
