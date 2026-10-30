@@ -137,7 +137,6 @@ const makeCheckout = Effect.fn("makeCheckout")(function* (
 
 type Checkout = Effect.Success<ReturnType<typeof makeCheckout>>;
 type Item = LanguageServerSessionItem;
-type Message = Extract<Item, { type: "message" }>;
 
 let sessionCount = 0;
 
