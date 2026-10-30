@@ -110,6 +110,8 @@ const mapEdit = (m: OffsetMapper, edit: Json, strict: boolean) => {
 export const mapParams = (params: Json, m: OffsetMapper): Json => {
   if (params?.position) params.position = mapPoint(m, params.position, -1);
   if (params?.range) params.range = mapRange(m, params.range, false);
+  // A completion item handed back to resolve it carries its edit in the editor's text.
+  if (params?.textEdit) mapEdit(m, params.textEdit, false);
   return params;
 };
 
@@ -139,6 +141,10 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
       }
       return result;
     }
+    case "completionItem/resolve":
+      if (result.textEdit) mapEdit(m, result.textEdit, false);
+      for (const edit of result.additionalTextEdits ?? []) mapEdit(m, edit, true);
+      return result;
     case "textDocument/hover":
       if (result.range) result.range = mapRange(m, result.range, false);
       return result;
@@ -186,21 +192,42 @@ export const mapDiagnostics = (diagnostics: Json, m: OffsetMapper): Json => {
 
 const COMPLETION_MAX_ITEMS = 200;
 
+/** Whether `query`'s characters appear in `text` in order, ignoring case. */
+const subsequence = (query: string, text: string) => {
+  let at = 0;
+  for (const char of text.toLowerCase()) if (char === query[at]) at++;
+  return at === query.length;
+};
+
 /**
- * Completion lists can run to thousands of items and megabytes. Keep the best-sorted few, without
- * documentation (resolve fetches it), and say the list is incomplete so the editor asks again.
+ * Completion lists can run to thousands of items and megabytes. Keep the items the word being
+ * typed (`query`) can still match, the best-sorted few of them, without documentation (resolve
+ * fetches it); a list cut short says it is incomplete, so the editor asks again as you type.
  */
-export const trimCompletion = (result: Json): Json => {
+export const trimCompletion = (result: Json, query = ""): Json => {
   if (result == null) return result;
   const list = Array.isArray(result) ? { isIncomplete: false, items: result } : result;
   if (!Array.isArray(list.items)) return result;
-  for (const item of list.items) delete item.documentation;
-  if (list.items.length > COMPLETION_MAX_ITEMS) {
+  const lowered = query.toLowerCase();
+  const items = lowered
+    ? list.items.filter((item: Json) => subsequence(lowered, String(item.filterText ?? item.label)))
+    : list.items;
+  for (const item of items) delete item.documentation;
+  if (items.length > COMPLETION_MAX_ITEMS) {
     const key = (item: Json) => String(item.sortText ?? item.label ?? "");
-    list.items = list.items
+    list.items = items
       .toSorted((a: Json, b: Json) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
       .slice(0, COMPLETION_MAX_ITEMS);
     list.isIncomplete = true;
+  } else {
+    list.items = items;
   }
   return list;
+};
+
+/** The identifier characters before `position`: what a completion there is matched against. */
+export const wordBefore = (doc: Text, position: Position): string => {
+  const offset = fromPosition(doc, position);
+  const line = doc.lineAt(offset);
+  return /[\w$]*$/.exec(line.text.slice(0, offset - line.from))![0];
 };

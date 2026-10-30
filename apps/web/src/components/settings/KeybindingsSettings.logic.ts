@@ -402,6 +402,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "outline.open": "Go to Symbol in File",
   "diagnostic.next": "Next Problem",
   "diagnostic.previous": "Previous Problem",
+  "lsp.complete": "Show Completions",
   "repository.localGraph": "Repositories: Open Local Graph",
 };
 

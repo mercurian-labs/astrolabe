@@ -55,6 +55,7 @@ import {
   toPosition,
   trimCompletion,
   Unrepresentable,
+  wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
 
@@ -157,6 +158,8 @@ interface Session {
   readonly open: Map<string, string>;
   readonly pending: Map<number | string, PendingForward>;
   readonly scope: Scope.Closeable;
+  /** The file of the last completion list: `completionItem/resolve` names no document. */
+  completionPath: string | null;
 }
 
 interface Running {
@@ -202,6 +205,7 @@ const CLIENT_CAPABILITIES = {
         snippetSupport: true,
         documentationFormat: ["markdown", "plaintext"],
         insertReplaceSupport: false,
+        resolveSupport: { properties: ["documentation", "detail", "additionalTextEdits"] },
       },
       completionList: { itemDefaults: ["commitCharacters", "editRange", "insertTextFormat"] },
       completionItemKind: { valueSet: [] },
@@ -281,8 +285,9 @@ const mapAnswer = (
   raw: Json,
   doc: GatewayDoc | undefined,
   context: Translation | null,
+  query: string,
 ): { readonly result: Json } | { readonly error: Json } => {
-  const result = method === "textDocument/completion" ? trimCompletion(raw) : raw;
+  const result = method === "textDocument/completion" ? trimCompletion(raw, query) : raw;
   if (context === null || doc === undefined) return { result };
   try {
     return {
@@ -1042,7 +1047,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const running = yield* Deferred.await(instance.ready);
     const method: string = message.method;
     const clientUri = message.params?.textDocument?.uri;
-    const relativePath = relativePathOf(instance, clientUri);
+    const relativePath =
+      method === "completionItem/resolve"
+        ? session.completionPath
+        : relativePathOf(instance, clientUri);
     const doc = relativePath === null ? undefined : instance.docs.get(relativePath);
     if (doc !== undefined && state !== undefined) {
       // A file just opened: its text may still be on its way from Documents.
@@ -1070,6 +1078,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const translated = translateRequest(doc, state, message.params);
     if ("error" in translated) return translated;
     if (instance.running !== running) return { error: contentModified("The server restarted.") };
+    const position = translated.params?.position;
+    const query =
+      method === "textDocument/completion" && doc !== undefined && position
+        ? wordBefore(doc.texts.get(doc.version)!, position)
+        : "";
+    if (method === "textDocument/completion") session.completionPath = relativePath;
     const request = running.connection.request(method, translated.params);
     pending.serverId = request.id;
     const answer = yield* request.response.pipe(
@@ -1077,7 +1091,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
     );
     if (!answer.ok) return { error: errorMessage(answer.error) };
-    const mapped = mapAnswer(method, answer.result, doc, translated.context);
+    const mapped = mapAnswer(method, answer.result, doc, translated.context, query);
     if ("error" in mapped) return mapped;
     return {
       result:
@@ -1156,6 +1170,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           open: new Map(),
           pending: new Map(),
           scope: yield* Scope.fork(instance.scope),
+          completionPath: null,
         };
         instance.sessions.set(opened.id, opened);
         sessions.set(opened.id, { instance, session: opened });

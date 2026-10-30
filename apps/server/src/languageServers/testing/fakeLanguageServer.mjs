@@ -62,7 +62,7 @@ const handle = (message) => {
             diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
             hoverProvider: true,
             renameProvider: true,
-            completionProvider: {},
+            completionProvider: { resolveProvider: true, triggerCharacters: ["."] },
           },
         });
       };
@@ -140,6 +140,18 @@ const handle = (message) => {
           sortText: String(index).padStart(4, "0"),
           documentation: "x".repeat(100),
         })),
+      });
+    case "completionItem/resolve":
+      // An auto-import: the edit lands at the top of the file the completion list was for.
+      return reply({
+        ...params,
+        documentation: `About ${params.label}`,
+        additionalTextEdits: [
+          {
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+            newText: `import { ${params.label} } from "./lib";\n`,
+          },
+        ],
       });
     case "test/slow":
       slow.set(id, true);

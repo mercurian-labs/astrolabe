@@ -528,6 +528,8 @@ describe("a code file's editing commands", () => {
       // Nor a language server's problems.
       [".", "No problems shown here"],
       [",", "No problems shown here"],
+      // Nor a language server to ask.
+      ["m", "No language server here"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],

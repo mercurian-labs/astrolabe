@@ -15,6 +15,8 @@ import {
   nextDiagnostic,
   previousDiagnostic,
 } from "@mercurian/editor/lsp/diagnostics";
+import { startCompletion } from "@mercurian/editor/lsp/completion";
+import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
@@ -425,6 +427,13 @@ function astrolabeCommand(
         view
           ? () => afterPalette(() => void (next ? nextDiagnostic : previousDiagnostic)(view))
           : null,
+      );
+    }
+    case "lsp.complete": {
+      const view = editorFrom(context.origin, hasLanguageServer);
+      return entry(
+        view ? "Show completions" : "No language server here",
+        view ? () => afterPalette(() => void startCompletion(view)) : null,
       );
     }
     case "outline.open": {

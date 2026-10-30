@@ -559,6 +559,64 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("keeps the items the word being typed can still match", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout("const x = item12;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const completion = yield* session.request(
+        1,
+        "textDocument/completion",
+        { textDocument: { uri: checkout.uri }, position: editor.position("item12", 6) },
+        editor.envelope(),
+      );
+      // item12, item120..item129 and item412 hold "item12" in order; nothing else is sent.
+      expect(completion.result.isIncomplete).toBe(false);
+      expect(completion.result.items.map((item: any) => item.label)).toContain("item412");
+      expect(completion.result.items).toHaveLength(
+        Array.from({ length: 500 }, (_, index) => `item${index}`).filter((label) =>
+          /i.*t.*e.*m.*1.*2/.test(label),
+        ).length,
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("resolves a completion item against the file its list came from", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const completion = yield* session.request(
+        1,
+        "textDocument/completion",
+        { textDocument: { uri: checkout.uri }, position: editor.position("label") },
+        editor.envelope(),
+      );
+      // The editor types a line at the top before it accepts; the import still lands above it.
+      editor.type(0, "// mine\n");
+      const resolved = yield* session.request(
+        2,
+        "completionItem/resolve",
+        completion.result.items[0],
+        editor.envelope(),
+      );
+      expect(resolved.result.documentation).toBe("About item0");
+      expect(resolved.result.additionalTextEdits).toEqual([
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          newText: 'import { item0 } from "./lib";\n',
+        },
+      ]);
+      // The editor's line reached the environment first, as for any request.
+      const state = yield* session.request(3, "test/state", {});
+      expect(state.result.docs[checkout.uri].text).toBe(`// mine\n${SOURCE}`);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("gives an agent the diagnostics for the file as its last write left it", () =>
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;

@@ -1,4 +1,10 @@
-import type { ChangeSet, Extension, Text } from "@codemirror/state";
+import {
+  type ChangeSet,
+  type EditorState,
+  type Extension,
+  Facet,
+  type Text,
+} from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import {
   LSPClient,
@@ -120,6 +126,14 @@ const positionOf = (doc: Text, offset: number) => {
   return { line: line.number - 1, character: offset - line.from };
 };
 
+/** Marks an editor whose file has a language server, for menus that run its features. */
+const languageServed = Facet.define<boolean>();
+
+/** Whether `state`'s editor talks to a language server (the commands that ask it can run). */
+export function hasLanguageServer(state: EditorState): boolean {
+  return state.facet(languageServed).length > 0;
+}
+
 /** Cold projects take seconds before a server answers; lsp-client's default is 3. */
 const REQUEST_TIMEOUT = 30_000;
 
@@ -160,7 +174,11 @@ export function environmentLsp(options: {
         method?: string;
         params?: { textDocument?: { uri?: string } };
       };
-      const uri = parsed.params?.textDocument?.uri;
+      // An item handed back to resolve names no file: it is this editor's one.
+      const uri =
+        parsed.method === "completionItem/resolve"
+          ? workspace?.files[0]?.uri
+          : parsed.params?.textDocument?.uri;
       const file =
         parsed.id !== undefined && parsed.method !== undefined && uri !== undefined
           ? (workspace?.getFile(uri) as EnvironmentFile | null)
@@ -203,7 +221,7 @@ export function environmentLsp(options: {
 
   return {
     client,
-    extension: client.plugin(options.uri, options.languageId),
+    extension: [client.plugin(options.uri, options.languageId), languageServed.of(true)],
     connect: () => {
       if (!client.connected) client.connect(transport);
     },

@@ -14,6 +14,7 @@ import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
 import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
+import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -38,6 +39,7 @@ import {
   useEditorDiagnosticKeys,
   useEditorFindKeys,
   useEditorHunkKeys,
+  useLspEditorKeys,
 } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { PanesHostContext } from "~/panes/panesHost";
@@ -395,6 +397,7 @@ function FileEditor({
   const hunkKeys = useEditorHunkKeys();
   const editingKeys = useCodeEditorKeys();
   const diagnosticKeys = useEditorDiagnosticKeys();
+  const lspKeys = useLspEditorKeys();
   const wordWrap = useClientSettings(selectWordWrap);
   const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
   const revealHere = reveal?.tabKey === tabKey ? reveal : null;
@@ -494,10 +497,10 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer ? diagnosticsUi({ keys: diagnosticKeys }) : [],
+        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys) : [],
       ]),
     });
-  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys]);
+  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys]);
 
   useEffect(() => {
     viewRef.current?.dispatch({
@@ -534,6 +537,17 @@ function FileEditor({
       }}
     />
   );
+}
+
+/** What a code file with a language server shows and binds, under the keybindings' keys. */
+function languageServerUi(
+  keys: ReturnType<typeof useLspEditorKeys>,
+  diagnosticKeys: ReturnType<typeof useEditorDiagnosticKeys>,
+): Extension {
+  return [
+    diagnosticsUi({ keys: diagnosticKeys }),
+    environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
+  ];
 }
 
 function readOnlyExtension(readOnly: boolean) {

@@ -76,6 +76,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e o", command: "outline.open" },
   { key: "menu e .", command: "diagnostic.next" },
   { key: "menu e ,", command: "diagnostic.previous" },
+  { key: "menu e m", command: "lsp.complete" },
   // A code file's editing commands with no shortcut of their own, and a few that have one.
   { key: "menu e c", command: "code.toggleComment" },
   { key: "menu e d", command: "code.duplicateSelection" },

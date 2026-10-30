@@ -1,5 +1,7 @@
 import {
   CODE_EDITOR_KEYBINDING_COMMANDS,
+  LSP_KEYBINDING_COMMANDS,
+  type LspKeybindingCommand,
   MARKDOWN_KEYBINDING_COMMANDS,
   type KeybindingCommand,
   type KeybindingShortcut,
@@ -178,4 +180,26 @@ function editorDiagnosticKeys(keybindings: ResolvedKeybindingsConfig): Diagnosti
 /** A code file's diagnostic keys, the same object until they change. */
 export function useEditorDiagnosticKeys(): DiagnosticKeys {
   return useStableKeys(editorDiagnosticKeys(useAtomValue(primaryServerKeybindingsAtom)));
+}
+
+/** A code file's language-server keys (`lsp.*`), by command. */
+function lspEditorKeys(
+  keybindings: ResolvedKeybindingsConfig,
+): Record<LspKeybindingCommand, string[]> {
+  const context = { editorFocus: true, codeEditorFocus: true, composerFocus: false };
+  return Object.fromEntries(
+    LSP_KEYBINDING_COMMANDS.map((command) => [
+      command,
+      keybindings
+        .filter(
+          (binding) => binding.command === command && whenClauseHolds(binding.whenAst, { context }),
+        )
+        .map((binding) => codeMirrorKey(binding.shortcut)),
+    ]),
+  ) as Record<LspKeybindingCommand, string[]>;
+}
+
+/** A code file's language-server keys, the same object until they change. */
+export function useLspEditorKeys() {
+  return useStableKeys(lspEditorKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }
