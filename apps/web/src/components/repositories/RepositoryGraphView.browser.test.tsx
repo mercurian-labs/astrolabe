@@ -74,7 +74,8 @@ vi.mock("~/state/query", () => ({
   },
 }));
 
-vi.mock("@mercurian/graph/file", () => ({
+vi.mock("@mercurian/graph/file", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@mercurian/graph/file")>()),
   FileGraph: ({
     graph,
     onOpen,
@@ -240,7 +241,7 @@ describe("a following local graph", () => {
     await vi.waitFor(() =>
       expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: ["src/ui"] }),
     );
-    await userEvent.click(page.getByRole("button", { name: "Fold" }));
+    await userEvent.click(page.getByRole("button", { name: "Fold folders" }));
     await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: [] }));
     await userEvent.click(page.getByRole("button", { name: "node ui" }));
 
@@ -307,15 +308,43 @@ describe("a following local graph", () => {
     }));
     await using _screen = await render(graphView(panes.host));
     await expect
-      .element(page.getByRole("button", { name: "Used by · indexing 40%" }))
-      .toBeVisible();
-    await expect
       .element(
         page.getByText(
           "Indexing 40 of 100 files: the files that use this one show once it finishes.",
         ),
       )
       .toBeVisible();
+    await userEvent.click(page.getByRole("button", { name: "Graph settings" }));
+    await expect.element(page.getByText("Used by · indexing 40%")).toBeVisible();
+    await userEvent.click(page.getByRole("button", { name: "Close graph settings" }));
+    await expect
+      .element(page.getByRole("region", { name: "Graph settings" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("filters from its settings panel, narrows by a search, and restores the defaults", async () => {
+    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    await using _screen = await render(graphView(panes.host));
+    await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
+    await expect
+      .element(page.getByRole("region", { name: "Graph settings" }))
+      .not.toBeInTheDocument();
+    await userEvent.click(page.getByRole("button", { name: "Graph settings" }));
+    const panel = page.getByRole("region", { name: "Graph settings" });
+    await expect.element(panel).toBeVisible();
+
+    await userEvent.click(panel.getByRole("switch", { name: "Used by" }));
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", usedBy: false }));
+    await userEvent.fill(panel.getByRole("searchbox", { name: "Search files" }), "lib");
+    await expect.element(page.getByRole("button", { name: "node ui" })).not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "node lib.ts" })).toBeVisible();
+
+    await userEvent.click(panel.getByRole("button", { name: "Restore default settings" }));
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", usedBy: true }));
+    await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
+    await expect.element(panel.getByRole("searchbox", { name: "Search files" })).toHaveValue("");
+    await userEvent.click(page.getByRole("button", { name: "Graph settings" }));
+    await expect.element(panel).not.toBeInTheDocument();
   });
 
   it("reads the graph again when the index finishes, not at each step of its progress", async () => {

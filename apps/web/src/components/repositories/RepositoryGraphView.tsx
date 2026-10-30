@@ -1,15 +1,10 @@
 import "@mercurian/graph/styles.css";
 import { FileGraph, type FileGraphHandle, type FileGraphHover } from "@mercurian/graph/file";
-import {
-  CODE_LOCAL_GRAPH_MAX_DEPTH,
-  CodeIndexError,
-  type CodeGraphNode,
-  type CodeLocalGraph,
-} from "@t3tools/contracts";
+import { CodeIndexError, type CodeGraphNode, type CodeLocalGraph } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ScanIcon } from "lucide-react";
+import { FoldVerticalIcon, LocateFixedIcon, ScanIcon, SlidersHorizontalIcon } from "lucide-react";
 import {
   useContext,
   useEffect,
@@ -37,8 +32,8 @@ import { useEnvironmentQuery } from "~/state/query";
 import { ATLAS_COLORS } from "../graph/atlasColors";
 import { storedChoice } from "../projects/storedChoice";
 import { Button } from "../ui/button";
-import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { importLineHighlight, importLineKey } from "./importLineHighlight";
+import { LocalGraphPanel } from "./LocalGraphPanel";
 import { filePaneOf, followedPath, localGraphKey } from "./localGraph";
 import {
   DEFAULT_LOCAL_GRAPH_OPTIONS,
@@ -53,9 +48,10 @@ import {
   type LocalGraphOptions,
 } from "./localGraphData";
 import { repositoryPanes } from "./repositoryPanes";
+import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { fileName, repositoryTabKey, type RepositoryGraphTab } from "./repositoryTabs";
 
-/** The toolbar's choices, kept on the device for every local graph. */
+/** The filter panel's choices, kept on the device for every local graph. */
 const graphOptions = storedChoice<LocalGraphOptions>({
   storageKey: "astrolabe:repository-local-graph:v1",
   fallback: DEFAULT_LOCAL_GRAPH_OPTIONS,
@@ -64,8 +60,6 @@ const graphOptions = storedChoice<LocalGraphOptions>({
 });
 
 const isCodeIndexError = Schema.is(CodeIndexError);
-
-const DEPTHS = Array.from({ length: CODE_LOCAL_GRAPH_MAX_DEPTH }, (_, at) => at + 1);
 
 type GraphHover = FileGraphHover & { readonly width: number; readonly height: number };
 
@@ -96,6 +90,8 @@ export default function RepositoryGraphView({
   if (tab.path === null && path !== followed) setFollowed(path);
 
   const options = graphOptions.useValue();
+  // The search narrows this tab's graph only, and is never kept.
+  const [search, setSearch] = useState("");
   const [expansion, setExpansion] = useState(NO_EXPANSION);
   const query = useEnvironmentQuery(
     path === null
@@ -111,7 +107,7 @@ export default function RepositoryGraphView({
   const failure = query.failure;
   const reason = isCodeIndexError(failure) ? failure.reason : null;
   const graph = path === null || failure !== null ? null : (query.data ?? last);
-  const shown = graph === null ? null : shownLocalGraph(graph, options);
+  const shown = graph === null ? null : shownLocalGraph(graph, options, search);
 
   const status = useAtomValue(codeIndexEnvironment.status(tab.environmentId, tab.projectId));
   // Progress moves the status, not the graph: a graph changes only when the index finishes or updates.
@@ -208,9 +204,6 @@ export default function RepositoryGraphView({
   };
 
   const navigate = useNavigate();
-  const showValues = (["uses", "usedBy", "tests", "dependencies"] as const).filter(
-    (value) => options[value],
-  );
   const progress = status ?? graph?.status ?? null;
   const percent =
     progress === null || progress.totalFiles === 0
@@ -261,10 +254,11 @@ export default function RepositoryGraphView({
     body = <GraphNotice>Reading the graph…</GraphNotice>;
   } else {
     body = (
-      <div ref={frameRef} className="relative min-h-0 flex-1" style={ATLAS_COLORS}>
+      <div ref={frameRef} className="relative min-h-0 flex-1">
         <FileGraph
           ref={graphRef}
           graph={shown.data}
+          settings={options.settings}
           onOpen={onOpen}
           onHover={onHover}
           themeKey={`${theme}|${resolvedTheme}`}
@@ -280,73 +274,72 @@ export default function RepositoryGraphView({
     );
   }
 
+  const panel = options.panel;
+  const setPanelOpen = (open: boolean) =>
+    graphOptions.set({ ...options, panel: { ...panel, open } });
+  const folded = path === null || expandedFor(expansion, path).length === 0;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-1.5 py-1 text-xs text-muted-foreground">
-        <ToggleGroup
-          aria-label="Depth"
-          value={[String(options.depth)]}
-          onValueChange={(next) => {
-            const depth = Number(next[0]);
-            if (depth === 1 || depth === 2 || depth === 3) graphOptions.set({ ...options, depth });
-          }}
-        >
-          {DEPTHS.map((depth) => (
-            <Toggle key={depth} value={String(depth)} aria-label={`Depth ${depth}`}>
-              {depth}
-            </Toggle>
-          ))}
-        </ToggleGroup>
-        <ToggleGroup
-          multiple
-          aria-label="Show"
-          value={showValues}
-          onValueChange={(next) =>
-            graphOptions.set({
-              ...options,
-              uses: next.includes("uses"),
-              usedBy: next.includes("usedBy"),
-              tests: next.includes("tests"),
-              dependencies: next.includes("dependencies"),
-            })
+    <div className="flex min-h-0 flex-1 flex-col" style={ATLAS_COLORS}>
+      <RepositoryTabHeader.Root>
+        <RepositoryTabHeader.Path>{path ?? ""}</RepositoryTabHeader.Path>
+        {folded ? null : (
+          <RepositoryTabHeader.Action
+            label="Fold folders"
+            tooltip="Fold the folders you opened"
+            onClick={() => setExpansion(NO_EXPANSION)}
+          >
+            <FoldVerticalIcon />
+          </RepositoryTabHeader.Action>
+        )}
+        <RepositoryTabHeader.Action
+          label="Following"
+          tooltip={
+            following
+              ? "Following the file in front: click to keep this file"
+              : "Follow the file in front"
           }
-        >
-          <Toggle value="uses">Uses</Toggle>
-          <Toggle value="usedBy">
-            {graph?.usedByPending ? `Used by · indexing ${percent}%` : "Used by"}
-          </Toggle>
-          <Toggle value="tests">Tests</Toggle>
-          <Toggle value="dependencies">
-            {shown === null ? "Dependencies" : `Dependencies · ${shown.dependencies}`}
-          </Toggle>
-        </ToggleGroup>
-        {path !== null && expandedFor(expansion, path).length > 0 ? (
-          <Button size="xs" variant="ghost" onClick={() => setExpansion(NO_EXPANSION)}>
-            Fold
-          </Button>
-        ) : null}
-        <span className="min-w-0 flex-1 truncate font-mono">{path ?? ""}</span>
-        <Button
-          size="xs"
-          variant="ghost"
-          aria-pressed={following}
-          data-pressed={following ? "" : undefined}
+          pressed={following}
           disabled={following && path === null}
           onClick={toggleFollowing}
         >
-          Following
-        </Button>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          aria-label="Fit the graph"
+          <LocateFixedIcon />
+        </RepositoryTabHeader.Action>
+        <RepositoryTabHeader.Action
+          label="Fit the graph"
           disabled={shown === null}
           onClick={() => graphRef.current?.fit()}
         >
           <ScanIcon />
-        </Button>
+        </RepositoryTabHeader.Action>
+        <RepositoryTabHeader.Action
+          label="Graph settings"
+          tooltip={panel.open ? "Close graph settings" : "Graph settings"}
+          pressed={panel.open}
+          onClick={() => setPanelOpen(!panel.open)}
+        >
+          <SlidersHorizontalIcon />
+        </RepositoryTabHeader.Action>
+      </RepositoryTabHeader.Root>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {body}
+        {panel.open ? (
+          <LocalGraphPanel
+            options={options}
+            onChange={graphOptions.set}
+            search={search}
+            onSearch={setSearch}
+            usedByLabel={graph?.usedByPending ? `Used by · indexing ${percent}%` : "Used by"}
+            dependencies={shown === null ? null : shown.dependencies}
+            onAnimate={() => graphRef.current?.animate()}
+            onReset={() => {
+              setSearch("");
+              graphOptions.set({ ...DEFAULT_LOCAL_GRAPH_OPTIONS, panel });
+            }}
+            onClose={() => setPanelOpen(false)}
+          />
+        ) : null}
       </div>
-      {body}
     </div>
   );
 }

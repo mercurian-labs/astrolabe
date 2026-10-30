@@ -6,10 +6,14 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { DEFAULT_FILE_GRAPH_SETTINGS } from "@mercurian/graph/file";
+
 import {
   DEFAULT_LOCAL_GRAPH_OPTIONS,
+  DEFAULT_LOCAL_GRAPH_PANEL,
   expandFolder,
   expandedFor,
+  groupOf,
   importOf,
   localGraphInput,
   NO_EXPANSION,
@@ -110,8 +114,43 @@ describe("a local graph as the renderer draws it", () => {
     const byId = new Map(
       shownLocalGraph(GRAPH, DEFAULT_LOCAL_GRAPH_OPTIONS).data.nodes.map((each) => [each.id, each]),
     );
-    expect(byId.get("app.ts")).toMatchObject({ changed: true, kind: "file" });
+    expect(byId.get("app.ts")).toMatchObject({ changed: true, kind: "file", test: false });
+    expect(byId.get("app.test.ts")).toMatchObject({ test: true });
     expect(byId.get("src/ui")).toMatchObject({ kind: "folder", files: 7, name: "ui" });
+  });
+
+  it("narrows to the files whose name holds a search, keeping the centre and their links", () => {
+    const shown = shownLocalGraph(GRAPH, DEFAULT_LOCAL_GRAPH_OPTIONS, "  LI ");
+    expect(ids(shown)).toEqual(["app.ts", "lib.ts"]);
+    expect(shown.data.links).toEqual([{ from: "app.ts", to: "lib.ts", guessed: false }]);
+    // A match the centre reaches only through a file the search drops still shows, on its own.
+    expect(ids(shownLocalGraph(GRAPH, DEFAULT_LOCAL_GRAPH_OPTIONS, "harness"))).toEqual([
+      "app.ts",
+      "harness.ts",
+    ]);
+    expect(ids(shownLocalGraph(GRAPH, DEFAULT_LOCAL_GRAPH_OPTIONS, "nothing"))).toEqual(["app.ts"]);
+  });
+
+  it("tints a file with the first group whose words its path holds", () => {
+    const groups = [
+      { query: "", color: 5 },
+      { query: "src ui", color: 2 },
+      { query: "lib", color: 4 },
+      { query: "LIB.ts", color: 1 },
+    ];
+    expect(groupOf("src/ui", groups)).toBe(2);
+    expect(groupOf("ui", groups)).toBeNull();
+    expect(groupOf("src/Lib.ts", groups)).toBe(4);
+    expect(groupOf("app.ts", groups)).toBeNull();
+    const byId = new Map(
+      shownLocalGraph(GRAPH, { ...DEFAULT_LOCAL_GRAPH_OPTIONS, groups }).data.nodes.map((each) => [
+        each.id,
+        each.group,
+      ]),
+    );
+    expect(byId.get("src/ui")).toBe(2);
+    expect(byId.get("lib.ts")).toBe(4);
+    expect(byId.get("app.ts")).toBeNull();
   });
 });
 
@@ -174,9 +213,48 @@ describe("folders and clicks", () => {
 
 describe("stored options", () => {
   it("read back what was stored, and nothing malformed", () => {
-    const options = { ...DEFAULT_LOCAL_GRAPH_OPTIONS, depth: 3, tests: false };
+    const options = {
+      ...DEFAULT_LOCAL_GRAPH_OPTIONS,
+      depth: 3,
+      tests: false,
+      groups: [{ query: "packages/", color: 3 }],
+      settings: { ...DEFAULT_FILE_GRAPH_SETTINGS, arrows: true, linkDistance: 250 },
+      panel: { ...DEFAULT_LOCAL_GRAPH_PANEL, open: true, forces: true },
+    };
     expect(parseLocalGraphOptions(JSON.stringify(options))).toEqual(options);
     expect(parseLocalGraphOptions(JSON.stringify({ ...options, depth: 4 }))).toBeNull();
     expect(parseLocalGraphOptions("{")).toBeNull();
+    expect(parseLocalGraphOptions("[]")).toBeNull();
+  });
+
+  it("read options stored before the filter panel, with its defaults", () => {
+    const stored = { depth: 2, uses: true, usedBy: false, tests: true, dependencies: true };
+    expect(parseLocalGraphOptions(JSON.stringify(stored))).toEqual({
+      ...DEFAULT_LOCAL_GRAPH_OPTIONS,
+      ...stored,
+    });
+  });
+
+  it("keep the filters when the rest is malformed, each part falling back on its own", () => {
+    const parsed = parseLocalGraphOptions(
+      JSON.stringify({
+        depth: 2,
+        uses: true,
+        usedBy: true,
+        tests: false,
+        dependencies: false,
+        groups: [{ query: "ok", color: 1 }, { query: "bad colour", color: 9 }, "junk"],
+        settings: { ...DEFAULT_FILE_GRAPH_SETTINGS, repelForce: 999 },
+        panel: { open: true, groups: "yes" },
+      }),
+    );
+    expect(parsed).toEqual({
+      ...DEFAULT_LOCAL_GRAPH_OPTIONS,
+      depth: 2,
+      tests: false,
+      groups: [{ query: "ok", color: 1 }],
+      settings: DEFAULT_FILE_GRAPH_SETTINGS,
+      panel: { ...DEFAULT_LOCAL_GRAPH_PANEL, open: true },
+    });
   });
 });
