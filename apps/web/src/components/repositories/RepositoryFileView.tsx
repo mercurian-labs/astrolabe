@@ -15,6 +15,7 @@ import { livePreview } from "@mercurian/editor/markdown";
 import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
+import { environmentHover } from "@mercurian/editor/lsp/hover";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -547,6 +548,9 @@ function languageServerUi(
   return [
     diagnosticsUi({ keys: diagnosticKeys }),
     environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
+    environmentHover({
+      keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },
+    }),
   ];
 }
 

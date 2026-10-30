@@ -66,6 +66,10 @@
     "./lsp/completion": {
       "types": "./src/lsp/completion.ts",
       "default": "./src/lsp/completion.ts"
+    },
+    "./lsp/hover": {
+      "types": "./src/lsp/hover.ts",
+      "default": "./src/lsp/hover.ts"
     }
   },
   "scripts": {

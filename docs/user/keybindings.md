@@ -343,13 +343,20 @@ several ran at once, click **Restart** in the header.
 TypeScript and JavaScript files also take these from their language server. Each is in the
 Command Palette, and you can rebind it under **Editors**.
 
-| Key          | Does             | Keyboard menu |
-| ------------ | ---------------- | ------------- |
-| `ctrl+space` | Show completions | `e` `m`       |
+| Key                      | Does                | Keyboard menu |
+| ------------------------ | ------------------- | ------------- |
+| `ctrl+space`             | Show completions    | `e` `m`       |
+| `mod+shift+space`        | Show signature help | `e` `i`       |
+| `K` in Vim's normal mode | Show hover          | `e` `h`       |
 
 Completions open as you type a name or a `.`. Tab or Enter accepts the selected one, `ctrl+n`
 and `ctrl+p` move through them, and Escape closes the list (in Vim's insert mode you stay in
 insert mode). Accepting a name another module exports also adds its import.
+
+Pointing at a name shows what the server knows about it; so does Show Hover at the cursor, until
+you move or type. Edits an agent makes elsewhere in the file leave it open. Signature help opens
+as you type a call's `(` or `,`, with the parameter you are on in bold; when a function has
+several signatures, `mod+shift+Up` and `mod+shift+Down` step through them.
 
 ## Find in a diff
 

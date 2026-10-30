@@ -617,6 +617,24 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("cuts a hover too big to send, closing its code block", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout("const huge = 1;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const hover = yield* session.request(
+        1,
+        "textDocument/hover",
+        { textDocument: { uri: checkout.uri }, position: editor.position("huge") },
+        editor.envelope(),
+      );
+      expect(hover.result.contents.length).toBeLessThan(100_010);
+      expect(hover.result.contents.endsWith("\n```\n…")).toBe(true);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("gives an agent the diagnostics for the file as its last write left it", () =>
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;

@@ -16,6 +16,7 @@ import {
   previousDiagnostic,
 } from "@mercurian/editor/lsp/diagnostics";
 import { startCompletion } from "@mercurian/editor/lsp/completion";
+import { showHover, showSignatureHelp } from "@mercurian/editor/lsp/hover";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
@@ -198,6 +199,15 @@ const HUNK_ENTRIES: Record<
   "hunk.next": { command: "next", label: "Next change" },
   "hunk.previous": { command: "previous", label: "Previous change" },
 };
+
+/** A language-server command on the code file the key came from; faint where none serves it. */
+function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorView) => boolean) {
+  const view = editorFrom(origin, hasLanguageServer);
+  return entry(
+    view ? label : "No language server here",
+    view ? () => afterPalette(() => void run(view)) : null,
+  );
+}
 
 /** A change command on the code file the key came from; faint where no file shows changes. */
 function hunkEntry(command: keyof typeof HUNK_ENTRIES, origin: KeyOrigin | null): AppCommand {
@@ -429,13 +439,12 @@ function astrolabeCommand(
           : null,
       );
     }
-    case "lsp.complete": {
-      const view = editorFrom(context.origin, hasLanguageServer);
-      return entry(
-        view ? "Show completions" : "No language server here",
-        view ? () => afterPalette(() => void startCompletion(view)) : null,
-      );
-    }
+    case "lsp.complete":
+      return lspEntry(context.origin, "Show completions", startCompletion);
+    case "lsp.hover":
+      return lspEntry(context.origin, "Show hover", showHover);
+    case "lsp.signatureHelp":
+      return lspEntry(context.origin, "Show signature help", showSignatureHelp);
     case "outline.open": {
       const view = editorFrom(context.origin, hasOutline);
       return entry(

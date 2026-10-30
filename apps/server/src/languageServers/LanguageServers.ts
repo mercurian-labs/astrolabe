@@ -54,6 +54,7 @@ import {
   mapResult,
   toPosition,
   trimCompletion,
+  trimHover,
   Unrepresentable,
   wordBefore,
 } from "./positions.ts";
@@ -287,7 +288,12 @@ const mapAnswer = (
   context: Translation | null,
   query: string,
 ): { readonly result: Json } | { readonly error: Json } => {
-  const result = method === "textDocument/completion" ? trimCompletion(raw, query) : raw;
+  const result =
+    method === "textDocument/completion"
+      ? trimCompletion(raw, query)
+      : method === "textDocument/hover"
+        ? trimHover(raw)
+        : raw;
   if (context === null || doc === undefined) return { result };
   try {
     return {

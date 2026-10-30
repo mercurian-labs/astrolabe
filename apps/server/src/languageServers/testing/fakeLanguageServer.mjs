@@ -118,7 +118,9 @@ const handle = (message) => {
     case "textDocument/hover": {
       const { text } = docs.get(params.textDocument.uri);
       const { from, to, word } = wordAt(text, offsetOf(text, params.position));
-      return reply({ contents: word, range: rangeOf(text, from, to) });
+      // A word named `huge` answers with more than a hover may carry.
+      const contents = word === "huge" ? `\`\`\`ts\n${"x".repeat(200_000)}\n\`\`\`` : word;
+      return reply({ contents, range: rangeOf(text, from, to) });
     }
     case "textDocument/rename": {
       const { text } = docs.get(params.textDocument.uri);

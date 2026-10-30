@@ -231,3 +231,33 @@ export const wordBefore = (doc: Text, position: Position): string => {
   const line = doc.lineAt(offset);
   return /[\w$]*$/.exec(line.text.slice(0, offset - line.from))![0];
 };
+
+const HOVER_MAX_LENGTH = 100_000;
+
+/** `text` cut to `length` characters, closing a code fence the cut leaves open. */
+const cutMarkdown = (text: string, length: number) => {
+  if (text.length <= length) return text;
+  const kept = text.slice(0, length);
+  const fences = kept.match(/^```/gm)?.length ?? 0;
+  return `${kept}${fences % 2 === 1 ? "\n```" : ""}\n…`;
+};
+
+/** A hover's text kept within 100 000 characters across its parts; later parts are dropped. */
+export const trimHover = (result: Json): Json => {
+  if (result == null) return result;
+  const contents = result.contents;
+  if (typeof contents === "string") result.contents = cutMarkdown(contents, HOVER_MAX_LENGTH);
+  else if (typeof contents?.value === "string") {
+    contents.value = cutMarkdown(contents.value, HOVER_MAX_LENGTH);
+  } else if (Array.isArray(contents)) {
+    let left = HOVER_MAX_LENGTH;
+    result.contents = contents.flatMap((part: Json) => {
+      if (left <= 0) return [];
+      const value = typeof part === "string" ? part : String(part?.value ?? "");
+      const kept = cutMarkdown(value, left);
+      left -= value.length;
+      return [typeof part === "string" ? kept : { ...part, value: kept }];
+    });
+  }
+  return result;
+};

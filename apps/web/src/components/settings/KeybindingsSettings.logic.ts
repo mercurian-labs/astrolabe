@@ -408,6 +408,8 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "diagnostic.next": "Next Problem",
   "diagnostic.previous": "Previous Problem",
   "lsp.complete": "Show Completions",
+  "lsp.hover": "Show Hover",
+  "lsp.signatureHelp": "Show Signature Help",
   "repository.localGraph": "Repositories: Open Local Graph",
 };
 
