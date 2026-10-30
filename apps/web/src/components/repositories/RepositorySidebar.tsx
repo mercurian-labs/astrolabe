@@ -172,7 +172,7 @@ export function RepositorySidebar() {
               searchNoun="file"
               hasProjects
               projectScope={<RepositoryFilter repositories={repositories} scoped={scoped} />}
-              onNewThread={() => openCommandPalette({ open: "add-project" })}
+              onNewThread={() => openCommandPalette({ open: "add-repository" })}
               newThreadDisabled={false}
               newThreadShortcutLabel={null}
               newThreadInProjectShortcutLabel={null}
@@ -299,7 +299,7 @@ function EmptyRepositories() {
       <span>No repositories yet</span>
       <button
         type="button"
-        onClick={() => openCommandPalette({ open: "add-project" })}
+        onClick={() => openCommandPalette({ open: "add-repository" })}
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
       >
         <FolderPlusIcon className="-mx-0.5 size-3" />
@@ -600,7 +600,8 @@ function RepositoryFilter({
   readonly repositories: ReadonlyArray<EnvironmentProject>;
   readonly scoped: EnvironmentProject | null;
 }) {
-  const { isMobile, open: sidebarOpen } = useSidebar();
+  const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
+  const navigate = useNavigate();
   const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
     open: false,
     query: "",
@@ -687,14 +688,17 @@ function RepositoryFilter({
           <SidebarPickerAction
             icon={SettingsIcon}
             onClick={() =>
-              closeAnd(() => repositoryPanes.show(repositoryTabKey({ kind: "manage" })))
+              closeAnd(() => {
+                setOpenMobile(false);
+                void navigate({ to: "/settings/projects" });
+              })
             }
           >
             Manage repositories
           </SidebarPickerAction>
           <SidebarPickerAction
             icon={FolderPlusIcon}
-            onClick={() => closeAnd(() => openCommandPalette({ open: "add-project" }))}
+            onClick={() => closeAnd(() => openCommandPalette({ open: "add-repository" }))}
           >
             Add a repository
           </SidebarPickerAction>

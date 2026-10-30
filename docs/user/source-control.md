@@ -121,8 +121,9 @@ Merging a stack lands it through GitCafe, and updating a branch restacks the lay
 
 ## Start, clone, or publish a project
 
-To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K` twice), or
-**New project** under **Add Project** on any client, and type a name. T3 Code makes a Git
+To start from nothing, choose **New repository** in the command palette (`Cmd/Ctrl+K` twice), or
+**Add project**, then **Repository**, then **New repository** (on your phone, **New project** under
+**Add Project**), and type a name. T3 Code makes a Git
 repository in `~/.astrolabe/projects` (the `projects` folder of your T3 data directory) with a README,
 an icon, and a first commit, then opens a new thread in it. Until the project has a thread, new
 threads work in its folder, even when your default is a new worktree. The folder is named after the project,
@@ -130,7 +131,8 @@ like `pinball-stats` for "Pinball Stats". Turn on **Create private repository on
 publish it. If Git has no name or email on that machine, the project is created without the
 first commit.
 
-Use **Add Project** in the command palette (`Cmd/Ctrl+K` twice) to clone a repository. Choose a hosting
+Use **Add project**, then **Repository**, in the command palette (`Cmd/Ctrl+K` twice), or **Add a
+repository** in Repositories, to clone a repository. Choose a hosting
 provider or paste a Git URL, then choose where to save it. The project opens right away while the
 clone runs in the background: you can write your first prompt, and sending waits until the files
 are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the

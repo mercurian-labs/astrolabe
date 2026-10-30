@@ -3,8 +3,8 @@ import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 /**
  * Astrolabe: what a Repositories tab shows, named by its key so any section's panes can hold it
  * and keep it across a reload: a file of a checkout, a checkout's changes (uncommitted, or its
- * branch against its base), or the repositories' Manage view. `cwd` is the checkout: the
- * repository's own, or a thread's working tree.
+ * branch against its base). `cwd` is the checkout: the repository's own, or a thread's working
+ * tree.
  */
 export type RepositoryTab =
   | {
@@ -20,14 +20,12 @@ export type RepositoryTab =
       readonly projectId: ProjectId;
       readonly cwd: string;
       readonly source: RepositoryDiffSource;
-    }
-  | { readonly kind: "manage" };
+    };
 
 export type RepositoryDiffSource = "working-tree" | "branch-range";
 
 const FILE_PREFIX = "repo-file:";
 const DIFF_PREFIX = "repo-diff:";
-const MANAGE_KEY = "repo-manage";
 
 const encode = (parts: readonly string[]) => parts.map(encodeURIComponent).join(":");
 
@@ -37,8 +35,6 @@ export function repositoryTabKey(tab: RepositoryTab): string {
       return FILE_PREFIX + encode([tab.environmentId, tab.projectId, tab.cwd, tab.path]);
     case "diff":
       return DIFF_PREFIX + encode([tab.environmentId, tab.projectId, tab.cwd, tab.source]);
-    case "manage":
-      return MANAGE_KEY;
   }
 }
 
@@ -55,7 +51,6 @@ function decode(rest: string): string[] | null {
 
 /** The tab a key names; null for any other key. */
 export function parseRepositoryTabKey(key: string): RepositoryTab | null {
-  if (key === MANAGE_KEY) return { kind: "manage" };
   if (key.startsWith(FILE_PREFIX)) {
     const parts = decode(key.slice(FILE_PREFIX.length));
     if (parts === null) return null;

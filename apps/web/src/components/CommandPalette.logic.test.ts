@@ -101,8 +101,13 @@ describe("reduceCommandPaletteUiState", () => {
     state = reduceCommandPaletteUiState(state, { _tag: "OpenAddProject" });
     expect(state).toMatchObject({
       mode: "command",
-      openIntent: { kind: "add-project" },
+      openIntent: { kind: "add-project", target: null },
       session: 2,
+    });
+    state = reduceCommandPaletteUiState(state, { _tag: "OpenAddProject", target: "wiki" });
+    expect(state).toMatchObject({
+      openIntent: { kind: "add-project", target: "wiki" },
+      session: 3,
     });
   });
 });

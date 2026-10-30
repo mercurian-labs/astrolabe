@@ -70,8 +70,15 @@ export function browseInputEndPaddingClass(input: {
 
 export type SearchOverlayMode = "command" | "files" | "content";
 
+/**
+ * Astrolabe: what the add flow adds, a project of either kind; a wiki shares a repository's
+ * folder, clone, and new steps. An add intent without one asks which first.
+ */
+export type CommandPaletteAddTarget = "repository" | "wiki";
+
 export type CommandPaletteOpenIntent =
-  | { readonly kind: "add-project" | "new-thread-in" | "change-theme" }
+  | { readonly kind: "new-thread-in" | "change-theme" }
+  | { readonly kind: "add-project"; readonly target: CommandPaletteAddTarget | null }
   | {
       readonly kind: "search";
       readonly query: string;
@@ -97,7 +104,7 @@ export type CommandPaletteUiAction =
       readonly query: string;
       readonly linkedThreads?: CommandPaletteLinkedThreads;
     }
-  | { readonly _tag: "OpenAddProject" }
+  | { readonly _tag: "OpenAddProject"; readonly target?: CommandPaletteAddTarget }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
   | {
@@ -152,7 +159,7 @@ export function reduceCommandPaletteUiState(
         ...(action.linkedThreads ? { linkedThreads: action.linkedThreads } : {}),
       });
     case "OpenAddProject":
-      return openWithIntent({ kind: "add-project" });
+      return openWithIntent({ kind: "add-project", target: action.target ?? null });
     case "OpenNewThreadIn":
       return openWithIntent({ kind: "new-thread-in" });
     case "OpenChangeTheme":
