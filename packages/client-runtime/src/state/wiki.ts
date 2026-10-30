@@ -156,6 +156,10 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:mirror:set",
       tag: WS_METHODS.wikiSetMirror,
     }),
+    setProjectLink: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:project-link:set",
+      tag: WS_METHODS.wikiSetProjectLink,
+    }),
     pushMirror: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:mirror:push",
       tag: WS_METHODS.wikiPushMirror,

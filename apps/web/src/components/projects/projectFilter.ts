@@ -6,8 +6,7 @@ import { storedName } from "./storedChoice";
 /**
  * The project filter every section's list shares. A project is a repository or a wiki: All, then
  * Repositories and each repository, then Wikis and each wiki, the headings meaning every project
- * of that kind. A wiki's checkout is a T3 Code project but is listed once, as the wiki; a section
- * listing one kind offers only that kind.
+ * of that kind. A section listing one kind offers only that kind.
  */
 export type ProjectFilterChoice =
   | { readonly kind: "all" }
@@ -69,17 +68,6 @@ export const projectFilterChoice = (option: ProjectFilterOption<unknown>): Proje
       return { kind: "wiki", key: option.value.slice("wiki:".length) };
   }
 };
-
-/** The `environmentId:projectId` keys of the wikis' checkouts. */
-export function wikiCheckoutKeys(overviews: ReadonlyArray<WikiOverview>): ReadonlySet<string> {
-  return new Set(
-    overviews.flatMap((overview) =>
-      overview.wiki.projectId === null
-        ? []
-        : [`${overview.environmentId}:${overview.wiki.projectId}`],
-    ),
-  );
-}
 
 export function projectFilterOptions<Repository>({
   repositories,

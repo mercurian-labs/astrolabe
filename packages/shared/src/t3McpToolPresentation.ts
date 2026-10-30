@@ -345,23 +345,26 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_send_attachments: tool(["Send", "Sending", "Sent", "attachments"], "attachment-send"),
   html_preview: tool(["Preview", "Previewing", "Previewed", "an HTML page"], "html-preview"),
   html_render: tool(["Render", "Rendering", "Rendered", "an HTML page"], "html-render"),
-  t3_change_groups: tool(["List", "Listing", "Listed", "change groups"], "wiki-read"),
-  t3_change_group_suggest: tool(
+  astrolabe_change_groups: tool(["List", "Listing", "Listed", "change groups"], "wiki-read"),
+  astrolabe_change_group_suggest: tool(
     ["Suggest", "Suggesting", "Suggested", "a change group member"],
     "wiki-amend",
   ),
-  t3_change_group_update: tool(["Update", "Updating", "Updated", "a change group"], "wiki-amend"),
-  t3_wiki_list: tool(["List", "Listing", "Listed", "wikis"], "wiki-read"),
-  t3_wiki_read: tool(["Read", "Reading", "Read", "a wiki note"], "wiki-read"),
-  t3_wiki_search: tool(["Search", "Searching", "Searched", "a wiki"], "wiki-read"),
-  t3_wiki_orient: tool(["Read", "Reading", "Read", "a wiki skill map"], "wiki-read"),
-  t3_wiki_links: tool(["Read", "Reading", "Read", "wiki links"], "wiki-read"),
-  t3_wiki_change_request: tool(
+  astrolabe_change_group_update: tool(
+    ["Update", "Updating", "Updated", "a change group"],
+    "wiki-amend",
+  ),
+  astrolabe_wiki_list: tool(["List", "Listing", "Listed", "wikis"], "wiki-read"),
+  astrolabe_wiki_read: tool(["Read", "Reading", "Read", "a wiki note"], "wiki-read"),
+  astrolabe_wiki_search: tool(["Search", "Searching", "Searched", "a wiki"], "wiki-read"),
+  astrolabe_wiki_orient: tool(["Read", "Reading", "Read", "a wiki skill map"], "wiki-read"),
+  astrolabe_wiki_links: tool(["Read", "Reading", "Read", "wiki links"], "wiki-read"),
+  astrolabe_wiki_change_request: tool(
     ["Review", "Reviewing", "Reviewed", "a wiki change request"],
     "wiki-read",
   ),
-  t3_wiki_amend: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
-  t3_wiki_transform: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
+  astrolabe_wiki_amend: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
+  astrolabe_wiki_transform: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));

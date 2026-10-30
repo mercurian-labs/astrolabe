@@ -193,7 +193,7 @@ function GroupDetails({
               `- ${threadKey(shell.id)}: ${shell.title}${shell.branch ? ` (branch ${shell.branch})` : ""}`,
           )
           .join("\n") || "- none"
-      }\n\nFor each candidate that is part of the same effort, call the t3_change_group_suggest tool with this group's id (${group.groupId}), the candidate's key, and one sentence on why. Suggest nothing that does not clearly belong.`,
+      }\n\nFor each candidate that is part of the same effort, call the astrolabe_change_group_suggest tool with this group's id (${group.groupId}), the candidate's key, and one sentence on why. Suggest nothing that does not clearly belong.`,
     );
   };
 

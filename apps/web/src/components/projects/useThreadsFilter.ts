@@ -1,9 +1,5 @@
-import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
-
 import type { SidebarThreadSummary } from "../../types";
 import { filterSidebarV2VisibleThreads } from "../Sidebar.logic";
-import { useWikiOverviews } from "../wiki/wikiEnvironment";
-import { wikiScopeKey } from "../wiki/wikiTabs";
 import { projectFilterOptions, type ProjectFilterOption } from "./projectFilter";
 import {
   filterAsShown,
@@ -52,8 +48,7 @@ const statusValue = (status: ThreadStatusFilter) => `status:${status}`;
 
 /**
  * Astrolabe: the thread list's filter (`threadsFilter`) as the sidebar offers it: statuses, then
- * All projects, Repositories and each repository, Wikis and each wiki. A wiki's threads are the
- * ones in its checkout, so a wiki is picked by its checkout's project group.
+ * All projects, Repositories and each repository. Threads run in repositories, never in wikis.
  */
 export function useThreadsFilter<Group extends ProjectGroup>({
   groups,
@@ -66,39 +61,15 @@ export function useThreadsFilter<Group extends ProjectGroup>({
   readonly onChange: () => void;
 }) {
   const filter = useStoredThreadsFilter();
-  const { overviews } = useWikiOverviews();
-  const { wikiOfGroup, groupOfWiki } = (() => {
-    const checkouts = new Map<string, WikiOverview>();
-    for (const overview of overviews) {
-      if (overview.wiki.projectId === null) continue;
-      checkouts.set(`${overview.environmentId}:${overview.wiki.projectId}`, overview);
-    }
-    const wikiOfGroup = new Map<string, WikiOverview>();
-    const groupOfWiki = new Map<string, Group>();
-    for (const group of groups) {
-      const overview = group.memberProjectRefs
-        .map((ref) => checkouts.get(`${ref.environmentId}:${ref.projectId}`))
-        .find((found) => found !== undefined);
-      if (overview === undefined) continue;
-      wikiOfGroup.set(group.projectKey, overview);
-      groupOfWiki.set(wikiScopeKey(overview.environmentId, overview.wiki.wikiId), group);
-    }
-    return { wikiOfGroup, groupOfWiki };
-  })();
-  const repositoryGroups = groups.filter((group) => !wikiOfGroup.has(group.projectKey));
-  const wikiGroups = groups.filter((group) => wikiOfGroup.has(group.projectKey));
-  const keysOf = {
-    repositories: repositoryGroups.map((group) => group.projectKey),
-    wikis: wikiGroups.map((group) => group.projectKey),
-  };
+  const keysOf = { repositories: groups.map((group) => group.projectKey), wikis: [] };
 
   const projectItems = projectFilterOptions({
-    repositories: repositoryGroups.map((group) => ({
+    repositories: groups.map((group) => ({
       key: group.projectKey,
       label: group.displayName,
       repository: group,
     })),
-    wikis: wikiGroups.map((group) => wikiOfGroup.get(group.projectKey)!),
+    wikis: [],
   });
   const statusItems: ReadonlyArray<ThreadsFilterItem<Group>> = THREAD_STATUS_FILTERS.map(
     (status) => ({
@@ -109,10 +80,7 @@ export function useThreadsFilter<Group extends ProjectGroup>({
     }),
   );
 
-  const filterGroups = [
-    ...keysOf.repositories.map((key) => ({ key, kind: "repositories" as const })),
-    ...keysOf.wikis.map((key) => ({ key, kind: "wikis" as const })),
-  ];
+  const filterGroups = keysOf.repositories.map((key) => ({ key, kind: "repositories" as const }));
   const scopedGroupKeys = filterProjectGroupKeys(filter, filterGroups);
   const shown = filterAsShown(filter, filterGroups);
   const scopedProjectKeys =
@@ -130,16 +98,8 @@ export function useThreadsFilter<Group extends ProjectGroup>({
     return counts;
   })();
 
-  const groupOf = (item: ThreadsFilterItem<Group>): Group | null => {
-    if (item.kind === "repository") return item.repository;
-    if (item.kind === "wiki") {
-      return (
-        groupOfWiki.get(wikiScopeKey(item.overview.environmentId, item.overview.wiki.wikiId)) ??
-        null
-      );
-    }
-    return null;
-  };
+  const groupOf = (item: ThreadsFilterItem<Group>): Group | null =>
+    item.kind === "repository" ? item.repository : null;
   const checkOf = (item: ThreadsFilterItem<Group>): ThreadsFilterCheck => {
     const checked = (value: boolean): ThreadsFilterCheck => (value ? "checked" : "unchecked");
     switch (item.kind) {

@@ -1596,12 +1596,12 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__t3_environment_read",
   "mcp__t3-code__html_preview",
   "mcp__t3-code__html_render",
-  "mcp__t3-code__t3_wiki_list",
-  "mcp__t3-code__t3_wiki_read",
-  "mcp__t3-code__t3_wiki_search",
-  "mcp__t3-code__t3_wiki_orient",
-  "mcp__t3-code__t3_wiki_links",
-  "mcp__t3-code__t3_wiki_change_request",
+  "mcp__t3-code__astrolabe_wiki_list",
+  "mcp__t3-code__astrolabe_wiki_read",
+  "mcp__t3-code__astrolabe_wiki_search",
+  "mcp__t3-code__astrolabe_wiki_orient",
+  "mcp__t3-code__astrolabe_wiki_links",
+  "mcp__t3-code__astrolabe_wiki_change_request",
 ];
 
 // T3 waits can block for an hour; exceed Claude's default 60 s timeout.

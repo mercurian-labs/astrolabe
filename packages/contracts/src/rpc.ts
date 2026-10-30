@@ -398,6 +398,7 @@ import {
   WikiRevertInput,
   WikiSetChangeRequestStatusInput,
   WikiSetMirrorInput,
+  WikiSetProjectLinkInput,
   WikiSummary,
   WikiTarget,
   WikiTransformInput,
@@ -580,6 +581,7 @@ export const WS_METHODS = {
   wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
+  wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
 
   scheduledTasksList: "scheduledTasks.list",
@@ -2017,6 +2019,12 @@ const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiSetProjectLinkRpc = Rpc.make(WS_METHODS.wikiSetProjectLink, {
+  payload: WikiSetProjectLinkInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   payload: WikiTarget,
   success: WikiSummary,
@@ -2359,6 +2367,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,
+  WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
 ).middleware(RpcScopeAuthorization);
 

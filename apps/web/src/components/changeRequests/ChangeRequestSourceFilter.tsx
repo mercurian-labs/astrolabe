@@ -9,7 +9,6 @@ import {
   projectFilterOptions,
   projectFilterValue,
   searchProjectFilterOptions,
-  wikiCheckoutKeys,
   type ProjectFilterChoice,
   type ProjectFilterOption,
 } from "../projects/projectFilter";
@@ -61,15 +60,12 @@ export function ChangeRequestSourceFilter({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const filter = useComboboxFilter();
-  const checkouts = wikiCheckoutKeys(overviews);
   const options = projectFilterOptions({
-    repositories: projects
-      .filter((project) => !checkouts.has(projectKey(project)))
-      .map((project) => ({
-        key: projectKey(project),
-        label: project.title,
-        repository: project,
-      })),
+    repositories: projects.map((project) => ({
+      key: projectKey(project),
+      label: project.title,
+      repository: project,
+    })),
     wikis: overviews,
   });
   const filtered = searchProjectFilterOptions(options, query, (option, text) =>
