@@ -124,6 +124,7 @@ describe("a hovered node's import", () => {
   it("is the link a ring nearer for a node further out, and none for a folder", () => {
     expect(importOf(GRAPH, "harness.ts")).toMatchObject({ from: "harness.ts", to: "app.test.ts" });
     expect(importOf(GRAPH, "src/ui")).toBeNull();
+    expect(importOf(GRAPH, "app.ts")).toBeNull();
   });
 });
 

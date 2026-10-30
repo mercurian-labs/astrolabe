@@ -142,9 +142,10 @@ export function shownLocalGraph(
 
 /**
  * The import a hovered node's card quotes: the one between it and the centre, else one between it
- * and a node a ring nearer the centre, else any it has that names its line.
+ * and a node a ring nearer the centre, else any it has that names its line. None for the centre.
  */
 export function importOf(graph: CodeLocalGraph, id: string): CodeGraphLink | null {
+  if (id === graph.center) return null;
   const depthOf = new Map(graph.nodes.map((node) => [node.id, node.depth]));
   const depth = depthOf.get(id) ?? 0;
   const written = graph.links.filter(

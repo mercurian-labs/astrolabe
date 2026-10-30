@@ -216,7 +216,7 @@ function graphView(host: ReturnType<typeof panesWith>["host"]) {
 const lastRequest = () => mocks.requests.at(-1)?.input;
 
 describe("a following local graph", () => {
-  it("shows the focused file, asks again with a folder opened, and starts folded on a new file", async () => {
+  it("shows the focused file, asks again with a folder opened or folded, and folded on a new file", async () => {
     const panes = setup((input) => ({ data: graphOf(input.path) }));
     await using _screen = await render(graphView(panes.host));
     await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
@@ -226,6 +226,9 @@ describe("a following local graph", () => {
     await vi.waitFor(() =>
       expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: ["src/ui"] }),
     );
+    await userEvent.click(page.getByRole("button", { name: "Fold" }));
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: [] }));
+    await userEvent.click(page.getByRole("button", { name: "node ui" }));
 
     panes.store.update((arrangement) => ({
       ...arrangement,

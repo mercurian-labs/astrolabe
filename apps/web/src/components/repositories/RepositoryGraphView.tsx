@@ -314,6 +314,11 @@ export default function RepositoryGraphView({
             {shown === null ? "Dependencies" : `Dependencies · ${shown.dependencies}`}
           </Toggle>
         </ToggleGroup>
+        {path !== null && expandedFor(expansion, path).length > 0 ? (
+          <Button size="xs" variant="ghost" onClick={() => setExpansion(NO_EXPANSION)}>
+            Fold
+          </Button>
+        ) : null}
         <span className="min-w-0 flex-1 truncate font-mono">{path ?? ""}</span>
         <Button
           size="xs"
