@@ -139,6 +139,9 @@ function setup(files: Record<string, string>, inputs: MultibufferFileInput[], co
     });
     views.push(view);
     multibuffer.shown(item, view);
+    // As the view does: a caret move waiting for this excerpt's editor lands once it is built.
+    const request = multibuffer.focusRequest();
+    if (request?.excerpt === item) multibuffer.applyFocus(request, view);
     return view;
   };
   const excerpts = () =>
@@ -323,5 +326,51 @@ describe("Multibuffer", () => {
     expect(visible(first!)).toBe(
       Array.from({ length: 7 }, (_, index) => `line ${index + 6}`).join("\n"),
     );
+  });
+
+  it("moves the caret to the next file's excerpt even when its editor is built twice", () => {
+    const { multibuffer, show, excerpts } = setup({ "a.ts": lines(30), "b.ts": lines(30) }, [
+      { path: "a.ts", lines: [{ line: 5 }] },
+      { path: "b.ts", lines: [{ line: 12 }] },
+    ]);
+    for (const file of multibuffer.fileList()) {
+      multibuffer.need(file);
+      multibuffer.documentReady(file);
+    }
+    const [first, second] = excerpts();
+    show(first!).focus();
+    // The next file's excerpt is scrolled out of view: it has no editor until it scrolls in.
+    multibuffer.jumpFile(first!, 1);
+    const built = show(second!);
+    expect(built.hasFocus).toBe(true);
+    // React builds a new effect's editor, destroys it, and builds it again.
+    multibuffer.hidden(second!, built);
+    built.destroy();
+    const again = show(second!);
+    expect(again.hasFocus).toBe(true);
+    expect(again.state.doc.lineAt(again.state.selection.main.head).number).toBe(11);
+  });
+
+  it("counts hidden lines up to the file's next excerpt, and shows five more on a click", () => {
+    const { showAll, excerpts, visible } = setup({ "a.ts": lines(40) }, [
+      { path: "a.ts", lines: [{ line: 12 }, { line: 25 }] },
+    ]);
+    showAll();
+    const bars = (item: MultibufferExcerpt) => [
+      ...item.view!.dom.querySelectorAll<HTMLButtonElement>(".atlas-excerpt-expand"),
+    ];
+    const labels = (item: MultibufferExcerpt) => bars(item).map((bar) => bar.textContent);
+    const [first, second] = excerpts();
+    expect(labels(first!)).toEqual(["↑ 10 more lines", "↓ 10 more lines"]);
+    expect(labels(second!)).toEqual(["↑ 10 more lines", "↓ 14 more lines"]);
+
+    bars(first!)[0]!.click();
+    expect(visible(first!)).toBe(
+      Array.from({ length: 8 }, (_, index) => `line ${index + 6}`).join("\n"),
+    );
+    expect(labels(first!)).toEqual(["↑ 5 more lines", "↓ 10 more lines"]);
+    bars(first!)[1]!.click();
+    expect(labels(first!)).toEqual(["↑ 5 more lines", "↓ 5 more lines"]);
+    expect(labels(second!)).toEqual(["↑ 5 more lines", "↓ 14 more lines"]);
   });
 });
