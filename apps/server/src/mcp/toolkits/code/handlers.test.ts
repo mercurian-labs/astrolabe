@@ -204,7 +204,7 @@ describe("code toolkit handlers", () => {
   it.effect("reads the thread's worktree, or the project folder when it has none", () =>
     Effect.gen(function* () {
       const inWorktree = harness({ worktreePath: worktree });
-      const result = yield* inWorktree.call("t3_code_outline", { path: "src" });
+      const result = yield* inWorktree.call("astrolabe_code_outline", { path: "src" });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual(outline);
       expect(inWorktree.calls).toEqual([
@@ -212,7 +212,7 @@ describe("code toolkit handlers", () => {
       ]);
 
       const atRoot = harness();
-      yield* atRoot.call("t3_code_find", { name: "resolveSession", path: null });
+      yield* atRoot.call("astrolabe_code_find", { name: "resolveSession", path: null });
       expect(atRoot.calls).toEqual([
         { method: "find", input: { projectId, cwd: projectRoot, name: "resolveSession" } },
       ]);
@@ -228,7 +228,7 @@ describe("code toolkit handlers", () => {
           checkpoints: [checkpoint(1, 1), checkpoint(3, 3, "stale"), checkpoint(2, 2)],
         },
       });
-      const result = yield* tools.call("t3_code_changes", {});
+      const result = yield* tools.call("astrolabe_code_changes", {});
       const from = yield* checkpointRef(1);
       expect(tools.calls).toEqual([
         { method: "changes", input: { projectId, cwd: worktree, from } },
@@ -240,7 +240,7 @@ describe("code toolkit handlers", () => {
   it.effect("compares from the thread's start before any turn has finished", () =>
     Effect.gen(function* () {
       const tools = harness();
-      yield* tools.call("t3_code_changes", { since: "turn" });
+      yield* tools.call("astrolabe_code_changes", { since: "turn" });
       expect(tools.calls).toEqual([
         {
           method: "changes",
@@ -251,7 +251,7 @@ describe("code toolkit handlers", () => {
       const neverRan = harness({
         checkpoints: { runs: [], checkpointScopes: [], checkpoints: [] },
       });
-      const result = yield* neverRan.call("t3_code_changes", {});
+      const result = yield* neverRan.call("astrolabe_code_changes", {});
       expect(declaredFailure(result)).toMatchObject({ code: "invalid_request" });
       expect(neverRan.calls).toEqual([]);
     }),
@@ -260,8 +260,8 @@ describe("code toolkit handlers", () => {
   it.effect("compares a branch from where it left its base, and passes other refs through", () =>
     Effect.gen(function* () {
       const tools = harness({ worktreePath: worktree });
-      const branch = yield* tools.call("t3_code_changes", { since: "branch" });
-      yield* tools.call("t3_code_changes", { since: "v1.4.0" });
+      const branch = yield* tools.call("astrolabe_code_changes", { since: "branch" });
+      yield* tools.call("astrolabe_code_changes", { since: "v1.4.0" });
       expect(tools.calls).toEqual([
         { method: "resolveBranchMergeBase", input: worktree },
         { method: "changes", input: { projectId, cwd: worktree, from: "9f2c1ab" } },
@@ -280,7 +280,7 @@ describe("code toolkit handlers", () => {
         ["not-found", "invalid_request", /^Index said not-found\.$/],
       ];
       for (const [reason, code, message] of expected) {
-        const result = yield* harness({ failure: reason }).call("t3_code_map", {
+        const result = yield* harness({ failure: reason }).call("astrolabe_code_map", {
           paths: ["src/billing"],
         });
         expect(result.structuredContent).toBeUndefined();
@@ -296,7 +296,7 @@ describe("code toolkit handlers", () => {
     Effect.gen(function* () {
       const tools = harness();
       const result = yield* tools.call(
-        "t3_code_outline",
+        "astrolabe_code_outline",
         { path: "src" },
         { ...scope, thread: undefined },
       );

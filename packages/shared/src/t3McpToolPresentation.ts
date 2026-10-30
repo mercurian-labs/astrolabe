@@ -363,10 +363,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   ),
   t3_wiki_amend: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
   t3_wiki_transform: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
-  t3_code_outline: tool(["Outline", "Outlining", "Outlined", "code"], "code-read"),
-  t3_code_find: tool(["Find", "Finding", "Found", "code uses"], "code-read"),
-  t3_code_changes: tool(["Read", "Reading", "Read", "code changes"], "code-read"),
-  t3_code_map: tool(["Map", "Mapping", "Mapped", "code dependencies"], "code-read"),
+  astrolabe_code_outline: tool(["Outline", "Outlining", "Outlined", "code"], "code-read"),
+  astrolabe_code_find: tool(["Find", "Finding", "Found", "code uses"], "code-read"),
+  astrolabe_code_changes: tool(["Read", "Reading", "Read", "code changes"], "code-read"),
+  astrolabe_code_map: tool(["Map", "Mapping", "Mapped", "code dependencies"], "code-read"),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));
@@ -378,8 +378,6 @@ function normalizeT3McpToolLabel(value: string): string {
 // ACP tool prefixes vary; match loosely but require a known display-name entry.
 function resolveT3McpToolName(value: string): string | null {
   const label = normalizeT3McpToolLabel(value);
-  // A bare `t3_code_*` name would otherwise parse as the `t3_code` server prefix.
-  if (Object.hasOwn(T3_MCP_TOOLS, label)) return label;
   const mcpMatch = /^mcp__(?<server>.+?)__(?<tool>.+)$/i.exec(label);
   if (mcpMatch?.groups) {
     const { server, tool } = mcpMatch.groups;

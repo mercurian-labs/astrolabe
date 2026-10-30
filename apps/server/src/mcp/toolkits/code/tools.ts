@@ -32,7 +32,7 @@ const Text = Schema.NonEmptyString;
 const SCOPE =
   "Reads the repository's code index at your thread's checkout. Paths are repository-relative. Long lists are cut and say `truncated`.";
 
-const CodeOutlineTool = Tool.make("t3_code_outline", {
+const CodeOutlineTool = Tool.make("astrolabe_code_outline", {
   ...shared,
   description: `A file's or folder's definitions with kind, signature, and line range, without reading the files. Use it to see the shape of unfamiliar code before reading it, and to pick the lines to read. ${SCOPE}`,
   parameters: Schema.Struct({
@@ -43,7 +43,7 @@ const CodeOutlineTool = Tool.make("t3_code_outline", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const CodeFindTool = Tool.make("t3_code_find", {
+const CodeFindTool = Tool.make("astrolabe_code_find", {
   ...shared,
   description: `Where a name is defined, and every use of it across the repository: file, line, the enclosing symbol, and how it is used (call, import, type, inheritance). Use it instead of grep to find who calls or uses a function, class, or type. Each use's \`resolution\` says how sure the link is: \`exact\`, or \`heuristic\` when several definitions share the name. ${SCOPE}`,
   parameters: Schema.Struct({
@@ -57,7 +57,7 @@ const CodeFindTool = Tool.make("t3_code_find", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const CodeChangesTool = Tool.make("t3_code_changes", {
+const CodeChangesTool = Tool.make("astrolabe_code_changes", {
   ...shared,
   dependencies: [...shared.dependencies, GitVcsDriver.GitVcsDriver, Crypto.Crypto],
   description: `What changed in the code's structure: files, definitions added, changed, or removed, and uses made or broken. By default it covers your last finished turn and any edits since; in a first turn, everything since the thread began. Use it to review or explain a turn's or a branch's changes instead of reading the whole diff. ${SCOPE}`,
@@ -77,7 +77,7 @@ const CodeChangesTool = Tool.make("t3_code_changes", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const CodeMapTool = Tool.make("t3_code_map", {
+const CodeMapTool = Tool.make("astrolabe_code_map", {
   ...shared,
   description: `How the files of a folder or slice import each other, with the names on each link, and which files outside the slice they use or are used by. Use it to explain or draw how part of the system fits together instead of opening every file. ${SCOPE}`,
   parameters: Schema.Struct({

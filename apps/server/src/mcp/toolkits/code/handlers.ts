@@ -117,13 +117,13 @@ const branchBase = Effect.fn("CodeTools.branchBase")(function* (cwd: string) {
 });
 
 export const layer = McpToolAccess.toLayer(CodeToolkit, {
-  t3_code_outline: McpToolAccess.readsAsCaller((input) =>
+  astrolabe_code_outline: McpToolAccess.readsAsCaller((input) =>
     read((index, checkout) => index.outline({ ...checkout, ...input })),
   ),
-  t3_code_find: McpToolAccess.readsAsCaller((input) =>
+  astrolabe_code_find: McpToolAccess.readsAsCaller((input) =>
     read((index, checkout) => index.find({ ...checkout, ...input })),
   ),
-  t3_code_changes: McpToolAccess.readsAsCaller(({ since = "turn" }) =>
+  astrolabe_code_changes: McpToolAccess.readsAsCaller(({ since = "turn" }) =>
     Effect.gen(function* () {
       const { threadId, checkout } = yield* readCheckout();
       const from =
@@ -139,7 +139,7 @@ export const layer = McpToolAccess.toLayer(CodeToolkit, {
       return { from, ...changes };
     }),
   ),
-  t3_code_map: McpToolAccess.readsAsCaller((input) =>
+  astrolabe_code_map: McpToolAccess.readsAsCaller((input) =>
     read((index, checkout) => index.map({ ...checkout, ...input })),
   ),
 });

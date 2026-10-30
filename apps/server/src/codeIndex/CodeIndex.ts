@@ -22,7 +22,7 @@ import * as Stream from "effect/Stream";
 
 /**
  * Astrolabe: each repository's code index. People reach it through the WebSocket (status,
- * Settings, the Repositories local graph) and agents through the `t3_code_*` MCP tools; both call
+ * Settings, the Repositories local graph) and agents through the `astrolabe_code_*` MCP tools; both call
  * these methods, so neither transport holds index logic.
  */
 export class CodeIndex extends Context.Service<

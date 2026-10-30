@@ -31,8 +31,8 @@ describe("resolveT3McpToolPresentation", () => {
   });
 
   it("reads a bare tool name that starts like the t3_code server prefix as the tool", () => {
-    expect(resolveT3McpToolPresentation("t3_code_find")?.displayName).toBe("Find code uses");
-    expect(resolveT3McpToolPresentation("t3_code/t3_code_find")?.displayName).toBe(
+    expect(resolveT3McpToolPresentation("astrolabe_code_find")?.displayName).toBe("Find code uses");
+    expect(resolveT3McpToolPresentation("t3_code/astrolabe_code_find")?.displayName).toBe(
       "Find code uses",
     );
   });
