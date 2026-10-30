@@ -593,7 +593,7 @@ describe("LanguageServers", () => {
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(`${SOURCE}const bad = label;\n`);
-      const items = yield* Queue.unbounded<LanguageServerProblemsItem>();
+      const items = yield* Queue.unbounded<LanguageServerProblemsItem, Cause.Done>();
       yield* service.problems(checkout.cwd).pipe(Stream.runIntoQueue(items), Effect.forkScoped);
       expect(yield* Queue.take(items)).toEqual({ type: "snapshot", files: [] });
 
@@ -604,7 +604,7 @@ describe("LanguageServers", () => {
         type: "file",
         file: { path: FILE, diagnostics: [{ line: 3, message: "bad is not allowed" }] },
       });
-      const later = yield* Queue.unbounded<LanguageServerProblemsItem>();
+      const later = yield* Queue.unbounded<LanguageServerProblemsItem, Cause.Done>();
       yield* service.problems(checkout.cwd).pipe(Stream.runIntoQueue(later), Effect.forkScoped);
       expect(yield* Queue.take(later)).toMatchObject({
         type: "snapshot",
