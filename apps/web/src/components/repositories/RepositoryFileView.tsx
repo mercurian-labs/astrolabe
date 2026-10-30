@@ -26,6 +26,8 @@ import {
   type RenameHost,
   type RenameResult,
 } from "@mercurian/editor/lsp/rename";
+import { environmentFormat, formattingOptions } from "@mercurian/editor/lsp/format";
+import { fileSave } from "./fileSave";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { lastRename, type UndoableRename } from "./renameUndo";
@@ -128,6 +130,7 @@ const FILE_EDITOR_THEME = EditorView.theme({
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
+const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
 
 /**
  * A repository file in the wiki editor, as the environment's live document: it saves your edits
@@ -484,6 +487,14 @@ function FileEditor({
   const diagnosticKeys = useEditorDiagnosticKeys();
   const lspKeys = useLspEditorKeys();
   const wordWrap = useClientSettings(selectWordWrap);
+  const formatOnSave = useClientSettings(selectFormatOnSave);
+  // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
+  const save = useStableCallback(() => {
+    const view = viewRef.current;
+    if (!view || !("session" in source) || view.state.readOnly) return;
+    const format = formatOnSave && languageServer ? formattingOptions(view.state) : undefined;
+    void source.session.save(format ? { format } : {});
+  });
   const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
   const revealHere = reveal?.tabKey === tabKey ? reveal : null;
   const [compartments] = useState(() => ({
@@ -505,6 +516,7 @@ function FileEditor({
     wordWrap,
     baseControl,
     outlinePath,
+    save,
   }));
 
   useLayoutEffect(() => {
@@ -528,7 +540,12 @@ function FileEditor({
           history.extension,
           document?.extension ?? [],
           compartments.vim.of(initial.vim ? vimExtension() : []),
-          appVimKeys(() => null),
+          session ? fileSave.of(initial.save) : [],
+          appVimKeys((target) =>
+            session && !target.state.readOnly
+              ? { label: "Save the file", run: initial.save }
+              : null,
+          ),
           compartments.keys.of([]),
           markdown ? [] : diffBaseControl.of(initial.baseControl),
           markdown ? livePreview() : codeView(),
@@ -652,6 +669,7 @@ function languageServerUi(
       host: navigation,
     }),
     environmentRename({ keys: keys["lsp.rename"], host: rename }),
+    environmentFormat({ keys: keys["lsp.format"] }),
   ];
 }
 

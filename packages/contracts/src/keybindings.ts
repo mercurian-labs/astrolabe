@@ -71,6 +71,7 @@ export const LSP_KEYBINDING_COMMANDS = [
   "lsp.references",
   "lsp.rename",
   "lsp.undoRename",
+  "lsp.format",
 ] as const;
 export type LspKeybindingCommand = (typeof LSP_KEYBINDING_COMMANDS)[number];
 
@@ -119,6 +120,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "diagnostic.previous",
   ...LSP_KEYBINDING_COMMANDS,
   "repository.localGraph",
+  "file.save",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

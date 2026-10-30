@@ -5,6 +5,8 @@ import {
   type CodeLocationKind,
   type CodeLocations,
   type DocumentError,
+  type DocumentSaveInput,
+  type DocumentSaveResult,
   type DocumentStreamItem,
   type FileDiagnostic,
   type FileDiagnostics,
@@ -99,6 +101,11 @@ export class LanguageServers extends Context.Service<
      * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
      * now: a write made before the call is in it.
      */
+    /**
+     * The documents' save, formatting the file first when asked and a server can. A formatter
+     * slower than `formatTimeout` is skipped: the file saves as it is.
+     */
+    readonly save: (input: DocumentSaveInput) => Effect.Effect<DocumentSaveResult, DocumentError>;
     /** Puts back the files of an edit the environment applied (a rename), as far as it can. */
     readonly undoEdit: (
       input: LanguageServerUndoEditInput,
@@ -126,6 +133,8 @@ export interface LanguageServersOptions {
   readonly restartDelays: ReadonlyArray<Duration.Input>;
   readonly initializeTimeout: Duration.Input;
   readonly diagnosticsTimeout: Duration.Input;
+  /** How long a save waits for its formatter. */
+  readonly formatTimeout: Duration.Input;
   readonly registry: string;
   /** Defaults to `caches/language-servers` under T3 home, shared by every checkout. */
   readonly cacheDir?: string;
@@ -1756,7 +1765,64 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     },
   );
 
+  /** The file's formatting edits at the document's version, landed under `clientId`. */
+  const formatForSave = Effect.fn("LanguageServers.formatForSave")(function* (
+    input: DocumentSaveInput & { readonly format: NonNullable<DocumentSaveInput["format"]> },
+  ) {
+    const match = languageServerForPath(input.relativePath);
+    if (match === null) return;
+    const instance = instances.get(`${input.cwd}\0${match.server}`);
+    const doc = instance?.docs.get(input.relativePath);
+    const running = instance?.running;
+    // Only a file an editor holds open here has a running server and the text it formats.
+    if (
+      !instance ||
+      !doc ||
+      !running ||
+      doc.loadId !== input.loadId ||
+      doc.openOn !== running.generation
+    ) {
+      return;
+    }
+    if (!running.capabilities?.documentFormattingProvider) return;
+    const version = doc.version;
+    const text = doc.texts.get(version)!;
+    const request = running.connection.request("textDocument/formatting", {
+      textDocument: { uri: doc.uri },
+      options: input.format,
+    });
+    const edits = yield* request.response.pipe(
+      Effect.orElseSucceed(() => null),
+      // Past the save's patience: the server can stop working on it.
+      Effect.onInterrupt(() => Effect.sync(() => running.connection.cancel(request.id))),
+    );
+    if (!Array.isArray(edits) || edits.length === 0) return;
+    const changes = changeSetOf(text, edits);
+    if (changes.empty) return;
+    yield* documents.push({
+      cwd: input.cwd,
+      relativePath: input.relativePath,
+      loadId: input.loadId,
+      version,
+      updates: [{ clientId: `lsp-format:${++editCount}`, changes: changes.toJSON() }],
+    });
+  });
+
+  const save: LanguageServers["Service"]["save"] = Effect.fn("LanguageServers.save")(
+    function* (input) {
+      const format = input.format;
+      if (format !== undefined) {
+        yield* formatForSave({ ...input, format }).pipe(
+          Effect.timeoutOption(options.formatTimeout),
+          Effect.ignore({ log: "Warn", message: "Formatting before a save failed." }),
+        );
+      }
+      return yield* documents.save(input);
+    },
+  );
+
   return LanguageServers.of({
+    save,
     locate,
     undoEdit,
     subscribe: SubscriptionRef.changes(statuses),
@@ -1778,6 +1844,7 @@ export const defaultOptions: LanguageServersOptions = {
   restartDelays: [Duration.seconds(1), Duration.seconds(2), Duration.seconds(4)],
   initializeTimeout: Duration.minutes(1),
   diagnosticsTimeout: Duration.minutes(1),
+  formatTimeout: Duration.seconds(2),
   registry: DEFAULT_REGISTRY,
   trusted: () => Effect.succeed(true),
 };

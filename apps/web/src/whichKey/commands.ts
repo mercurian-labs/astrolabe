@@ -25,6 +25,8 @@ import {
   goToTypeDefinition,
 } from "@mercurian/editor/lsp/navigation";
 import { renameSymbol } from "@mercurian/editor/lsp/rename";
+import { formatCode } from "@mercurian/editor/lsp/format";
+import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
 import { lastRename } from "~/components/repositories/renameUndo";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
@@ -466,6 +468,13 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Find references", findReferences);
     case "lsp.rename":
       return lspEntry(context.origin, "Rename symbol", renameSymbol);
+    case "lsp.format":
+      return lspEntry(context.origin, "Format document", formatCode);
+    case "file.save": {
+      const view = editorFrom(context.origin, hasFileSave);
+      const run = view?.state.facet(fileSave) ?? null;
+      return entry(run ? "Save file" : "No file to save here", run);
+    }
     case "lsp.undoRename": {
       const rename = lastRename.get();
       return entry(rename?.label ?? "No rename to undo", rename?.run ?? null);

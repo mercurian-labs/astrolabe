@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
  * Astrolabe: the environment is the authority for open repository files. Clients edit through
@@ -93,6 +93,11 @@ export type DocumentPushResult = typeof DocumentPushResult.Type;
 export const DocumentSaveInput = Schema.Struct({
   ...DocumentTarget.fields,
   loadId: DocumentLoadId,
+  /**
+   * Astrolabe: format the file with its language server first, with these options. A formatter
+   * that doesn't answer in time is skipped and the file saves as it is.
+   */
+  format: Schema.optional(Schema.Struct({ tabSize: PositiveInt, insertSpaces: Schema.Boolean })),
 });
 export type DocumentSaveInput = typeof DocumentSaveInput.Type;
 

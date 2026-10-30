@@ -235,7 +235,7 @@ const KEYBINDING_GROUPS = [
   {
     id: "editor",
     title: "Editors",
-    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp"],
+    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp", "file"],
   },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
@@ -417,6 +417,8 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "lsp.references": "Find References",
   "lsp.rename": "Rename Symbol",
   "lsp.undoRename": "Undo Rename",
+  "lsp.format": "Format Document",
+  "file.save": "Save File",
   "repository.localGraph": "Repositories: Open Local Graph",
 };
 

@@ -78,6 +78,10 @@
     "./lsp/rename": {
       "types": "./src/lsp/rename.ts",
       "default": "./src/lsp/rename.ts"
+    },
+    "./lsp/format": {
+      "types": "./src/lsp/format.ts",
+      "default": "./src/lsp/format.ts"
     }
   },
   "scripts": {

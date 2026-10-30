@@ -452,6 +452,8 @@ export const ClientSettingsSchema = Schema.Struct({
   // Astrolabe: Vim keys in the composer and the wiki's note editor. Off until turned on in
   // Settings, which first asks for `:q`.
   vimModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Astrolabe: saving a code file (mod+s, `:w`) formats it with its language server first.
+  formatOnSave: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Astrolabe: Vim's j and k move by screen line (as gj and gk) without a count. Off by default,
   // as Vim's are.
   vimScreenLinesEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1719,6 +1721,7 @@ export const ClientSettingsPatch = Schema.Struct({
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
   // Astrolabe: Vim keys in the composer and notes.
   vimModeEnabled: Schema.optionalKey(Schema.Boolean),
+  formatOnSave: Schema.optionalKey(Schema.Boolean),
   vimScreenLinesEnabled: Schema.optionalKey(Schema.Boolean),
   // Astrolabe: Space as the keyboard menu's leader key.
   spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),

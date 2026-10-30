@@ -516,6 +516,40 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("formats an open file before saving it when asked, and saves without waiting long", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const run = Effect.fn("run")(function* (formatDelay: number) {
+        const checkout = yield* makeCheckout("f(1,2);\n", { formatDelay });
+        const session = yield* openSession(checkout);
+        yield* session.state("ready");
+        yield* session.open(checkout.uri);
+        const editor = yield* openEditor(checkout, "editor-a");
+        // The server has the file open once its diagnostics are in.
+        yield* session.diagnostics();
+        const save = (format: boolean) =>
+          service.save({
+            cwd: checkout.cwd,
+            relativePath: FILE,
+            loadId: editor.loadId,
+            ...(format ? { format: { tabSize: 2, insertSpaces: true } } : {}),
+          });
+        const read = fileSystem.readFileString(`${checkout.cwd}/${FILE}`);
+        yield* agentEdit(checkout, () => ({ from: 0, insert: "g(3,4);\n" }));
+        yield* save(false);
+        const unformatted = yield* read;
+        yield* save(true);
+        return { unformatted, saved: yield* read };
+      });
+      const quick = yield* run(0);
+      expect(quick).toEqual({ unformatted: "g(3,4);\nf(1,2);\n", saved: "g(3, 4);\nf(1, 2);\n" });
+      // A formatter slower than the save's patience is skipped.
+      const slow = yield* run(10_000);
+      expect(slow.saved).toBe("g(3,4);\nf(1,2);\n");
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ formatTimeout: "300 millis" }))),
+  );
+
   it.live("pushes diagnostics to every session with the version they were pulled at", () =>
     Effect.gen(function* () {
       const checkout = yield* makeCheckout(SOURCE);

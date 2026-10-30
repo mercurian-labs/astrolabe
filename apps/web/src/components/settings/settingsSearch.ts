@@ -413,6 +413,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["long lines code blocks tables diffs file previews soft wrap editor repository"],
   },
   {
+    id: "format-on-save",
+    title: "Format on save",
+    to: "/settings/appearance",
+    searchTerms: ["formatter prettier language server code repository file save mod+s"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",
