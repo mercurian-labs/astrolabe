@@ -220,7 +220,6 @@ const KEYBINDING_GROUPS = [
       "tab",
       "buffer",
       "document",
-      "search",
       "wiki",
       "filePicker",
       "projectSearch",
