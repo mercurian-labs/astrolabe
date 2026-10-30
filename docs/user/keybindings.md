@@ -114,21 +114,22 @@ have pressed show at the top, Backspace goes back a level, and Escape or a click
 elsewhere closes it. A key with nothing bound says so. The menu waits as long as
 you need.
 
-| Key                     | Does                                                                                                                                                             |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:`                     | Command Palette                                                                                                                                                  |
-| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                           |
-| `n`                     | New thread, or new document on Wikis                                                                                                                             |
-| `f`                     | Find a file in the current project                                                                                                                               |
-| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                             |
-| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                      |
-| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                                                   |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                                                               |
-| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                          |
-| `s` `s`                 | Show or hide the sidebar                                                                                                                                         |
-| `w`                     | Open Wikis, or find or create a document                                                                                                                         |
-| `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base |
-| `,`                     | Settings                                                                                                                                                         |
+| Key                     | Does                                                                                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:`                     | Command Palette                                                                                                                                                                                            |
+| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                                                                     |
+| `n`                     | New thread, or new document on Wikis                                                                                                                                                                       |
+| `f`                     | Find a file in the current project                                                                                                                                                                         |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                       |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                |
+| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                                                                                             |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                                                                                                         |
+| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                    |
+| `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                   |
+| `w`                     | Open Wikis, or find or create a document                                                                                                                                                                   |
+| `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, and [problems](#problems-in-a-code-file) |
+| `r` `g`                 | Open the local graph of the repository file in front                                                                                                                                                       |
+| `,`                     | Settings                                                                                                                                                                                                   |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
@@ -324,6 +325,18 @@ they land. A file opens on This turn while it has changes from that turn, and on
 otherwise. Restore puts back the lines from the base you are comparing with, so in This turn it
 reverts that change of the agent's. `e` `b` in the keyboard menu, or **Compare With HEAD or
 This Turn** in the Command Palette, switches too.
+
+## Problems in a code file
+
+TypeScript and JavaScript files show the problems TypeScript's language server finds: a wavy
+underline, a mark beside the line number, and the message on hover. The messages of the line the
+cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
+`.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
+
+The header names the language server and says when it is starting. It runs the project's own
+TypeScript when it has one. Without one, the first time an environment needs a language server
+it asks to download it: click **Download**. If a server keeps stopping, or was paused because
+several ran at once, click **Restart** in the header.
 
 ## Find in a diff
 

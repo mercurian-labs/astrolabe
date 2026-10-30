@@ -74,6 +74,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e r", command: "hunk.restore" },
   { key: "menu e b", command: "hunk.toggleBase" },
   { key: "menu e o", command: "outline.open" },
+  { key: "menu e .", command: "diagnostic.next" },
+  { key: "menu e ,", command: "diagnostic.previous" },
   // A code file's editing commands with no shortcut of their own, and a few that have one.
   { key: "menu e c", command: "code.toggleComment" },
   { key: "menu e d", command: "code.duplicateSelection" },
@@ -84,6 +86,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e w", command: "code.toggleSoftWrap" },
   { key: "menu e [", command: "code.foldAll" },
   { key: "menu e ]", command: "code.unfoldAll" },
+  { key: "menu r g", command: "repository.localGraph" },
   { key: "menu ,", command: "section.settings" },
   { key: ":q[uit]", command: "tab.close" },
   { key: ":w[rite]", command: "draft.write" },

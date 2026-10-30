@@ -10,6 +10,22 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./languages": {
+      "types": "./src/parse/languages.ts",
+      "default": "./src/parse/languages.ts"
+    },
+    "./git": {
+      "types": "./src/git.ts",
+      "default": "./src/git.ts"
+    },
+    "./modules": {
+      "types": "./src/index/modules.ts",
+      "default": "./src/index/modules.ts"
+    },
+    "./builtins": {
+      "types": "./src/index/builtins.ts",
+      "default": "./src/index/builtins.ts"
     }
   },
   "scripts": {

@@ -53,26 +53,30 @@ const runs = [
 
 describe("wiki tool calls", () => {
   it("matches every provider's naming of the wiki tools by suffix", () => {
-    expect(wikiToolOf("mcp__t3-code__t3_wiki_read")).toBe("read");
-    expect(wikiToolOf("t3_wiki_change_request")).toBe("change_request");
-    expect(wikiToolOf("t3-code_t3_wiki_amend")).toBe("amend");
+    expect(wikiToolOf("mcp__t3-code__astrolabe_wiki_read")).toBe("read");
+    expect(wikiToolOf("astrolabe_wiki_change_request")).toBe("change_request");
+    expect(wikiToolOf("t3-code_astrolabe_wiki_amend")).toBe("amend");
+    expect(wikiToolOf("mcp__t3-code__t3_wiki_amend")).toBe("amend");
     expect(wikiToolOf("mcp__t3-code__t3_thread_read")).toBeNull();
   });
 
   it("keeps completed, successful calls with their arguments, unwrapping envelopes", () => {
     const calls = wikiToolCalls([
-      tool("mcp__t3-code__t3_wiki_read", { wiki: "Notes", name: "Graphs" }),
-      tool("t3_wiki_read", { wiki: "Notes", name: "Running" }, { status: "running" }),
-      tool("t3_wiki_amend", {
-        toolName: "t3_wiki_amend",
+      tool("mcp__t3-code__astrolabe_wiki_read", { wiki: "Notes", name: "Graphs" }),
+      tool("astrolabe_wiki_read", { wiki: "Notes", name: "Running" }, { status: "running" }),
+      tool("astrolabe_wiki_amend", {
+        toolName: "astrolabe_wiki_amend",
         args: { wiki: "w1", changes: { "A.md": "a" } },
       }),
       tool(
-        "t3_wiki_amend",
+        "astrolabe_wiki_amend",
         { wiki: "w1", changes: { "B.md": "b" } },
         { output: { isError: true } },
       ),
-      tool("t3_wiki_transform", { wiki: "w1", transform: { kind: "rename", from: "A", to: "Z" } }),
+      tool("astrolabe_wiki_transform", {
+        wiki: "w1",
+        transform: { kind: "rename", from: "A", to: "Z" },
+      }),
     ]);
     expect(calls.map((call) => [call.tool, call.wiki])).toEqual([
       ["read", "Notes"],
@@ -86,7 +90,7 @@ describe("wiki tool calls", () => {
   it("reads a read's returned markdown out of its MCP content", () => {
     const [call] = wikiToolCalls([
       tool(
-        "t3_wiki_read",
+        "astrolabe_wiki_read",
         { wiki: "w1", name: "Graphs" },
         {
           output: {

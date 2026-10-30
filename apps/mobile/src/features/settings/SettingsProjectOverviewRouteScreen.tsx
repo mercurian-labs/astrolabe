@@ -11,11 +11,15 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { describeCodeIndexStatus } from "@t3tools/client-runtime/state/codeIndex";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
 import { useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { relativeTime } from "../../lib/time";
+import { codeIndexStatusesAtom } from "../../state/codeIndex";
 import { projectEnvironment } from "../../state/projects";
 import { useThreadShells } from "../../state/entities";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -333,6 +337,7 @@ function ProjectOverviewContent(props: {
           );
         })}
       </SettingsSection>
+      <CodeIndexStatusSection members={props.members} environments={props.environments} />
       <SettingsSection title="Danger">
         <SettingsActionRow
           icon="trash"
@@ -376,5 +381,42 @@ function RemoveCheckoutAction(props: {
     >
       <Text className="font-t3-medium text-xs text-danger-foreground">Remove checkout</Text>
     </Pressable>
+  );
+}
+
+/** A repository's code index, read-only: turning it on or off and rebuilding live on the web. */
+function CodeIndexStatusSection(props: {
+  readonly members: readonly EnvironmentProject[];
+  readonly environments: readonly SettingsTarget[];
+}) {
+  const statuses = useAtomValue(
+    codeIndexStatusesAtom(
+      JSON.stringify(props.members.map((member) => [member.environmentId, member.id])),
+    ),
+  );
+  const shown = props.members.flatMap((member, index) => {
+    const status = statuses[index];
+    return status === null || status === undefined ? [] : [{ member, status }];
+  });
+  if (shown.length === 0) return null;
+  return (
+    <SettingsSection title="Code index">
+      {shown.map(({ member, status }, index) => (
+        <View
+          key={`${member.environmentId}:${member.id}`}
+          className={index === 0 ? "gap-1 p-4" : "gap-1 border-t border-border-subtle p-4"}
+        >
+          {shown.length > 1 ? (
+            <Text className="text-base text-foreground">
+              {props.environments.find((entry) => entry.environmentId === member.environmentId)
+                ?.label ?? "Environment"}
+            </Text>
+          ) : null}
+          <Text className="text-sm leading-normal text-foreground-muted">
+            {describeCodeIndexStatus(status, (iso) => `${relativeTime(iso)} ago`)}
+          </Text>
+        </View>
+      ))}
+    </SettingsSection>
   );
 }

@@ -403,6 +403,15 @@ import {
   WikiTransformInput,
 } from "./wiki.ts";
 import {
+  CodeIndexError,
+  CodeIndexProjectInput,
+  CodeIndexPruneResult,
+  CodeIndexStatus,
+  CodeIndexStorage,
+  CodeLocalGraph,
+  CodeLocalGraphInput,
+} from "./codeIndex.ts";
+import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
   ProjectCloneListEvent,
@@ -434,6 +443,14 @@ import {
   DocumentStreamItem,
   DocumentSubscribeInput,
 } from "./documents.ts";
+import {
+  LanguageServerError,
+  LanguageServerSendInput,
+  LanguageServerSessionInput,
+  LanguageServerSessionItem,
+  LanguageServerStatus,
+  LanguageServerTarget,
+} from "./languageServers.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -605,6 +622,20 @@ export const WS_METHODS = {
   documentsSave: "documents.save",
   documentsRecover: "documents.recover",
   documentsDiscard: "documents.discard",
+  // Astrolabe: each repository's code index.
+  codeIndexSubscribe: "codeIndex.subscribe",
+  codeIndexLocalGraph: "codeIndex.localGraph",
+  codeIndexRebuild: "codeIndex.rebuild",
+  codeIndexStorage: "codeIndex.storage",
+  codeIndexPrune: "codeIndex.prune",
+  codeIndexClear: "codeIndex.clear",
+  // Astrolabe: language servers in the environment, and the gateway browsers reach them through.
+  languageServersSubscribe: "languageServers.subscribe",
+  languageServersRestart: "languageServers.restart",
+  languageServersStop: "languageServers.stop",
+  languageServersConfirmDownload: "languageServers.confirmDownload",
+  languageServersSession: "languageServers.session",
+  languageServersSend: "languageServers.send",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2093,6 +2124,84 @@ const WsDocumentsDiscardRpc = Rpc.make(WS_METHODS.documentsDiscard, {
   error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
 });
 
+/** Every running or waiting language server now, then the whole list again on each change. */
+const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscribe, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(LanguageServerStatus),
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** Starts it again, also after a stop, a cap or giving up. */
+const WsLanguageServersRestartRpc = Rpc.make(WS_METHODS.languageServersRestart, {
+  payload: LanguageServerTarget,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+const WsLanguageServersStopRpc = Rpc.make(WS_METHODS.languageServersStop, {
+  payload: LanguageServerTarget,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** The yes to this environment's first language-server download; later ones need none. */
+const WsLanguageServersConfirmDownloadRpc = Rpc.make(WS_METHODS.languageServersConfirmDownload, {
+  payload: Schema.Struct({}),
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** One LSP connection to a checkout's server: its status, then LSP messages from the gateway. */
+const WsLanguageServersSessionRpc = Rpc.make(WS_METHODS.languageServersSession, {
+  payload: LanguageServerSessionInput,
+  success: LanguageServerSessionItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** One LSP message from the client to its session. */
+const WsLanguageServersSendRpc = Rpc.make(WS_METHODS.languageServersSend, {
+  payload: LanguageServerSendInput,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Every repository's index status now, then each change. */
+const WsCodeIndexSubscribeRpc = Rpc.make(WS_METHODS.codeIndexSubscribe, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStatus,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsCodeIndexLocalGraphRpc = Rpc.make(WS_METHODS.codeIndexLocalGraph, {
+  payload: CodeLocalGraphInput,
+  success: CodeLocalGraph,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexRebuildRpc = Rpc.make(WS_METHODS.codeIndexRebuild, {
+  payload: CodeIndexProjectInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexStorageRpc = Rpc.make(WS_METHODS.codeIndexStorage, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStorage,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+/** Remove file versions no branch, worktree or checkpoint uses. */
+const WsCodeIndexPruneRpc = Rpc.make(WS_METHODS.codeIndexPrune, {
+  payload: Schema.Struct({}),
+  success: CodeIndexPruneResult,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexClearRpc = Rpc.make(WS_METHODS.codeIndexClear, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2437,6 +2546,18 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsDocumentsSaveRpc,
   WsDocumentsRecoverRpc,
   WsDocumentsDiscardRpc,
+  WsCodeIndexSubscribeRpc,
+  WsCodeIndexLocalGraphRpc,
+  WsCodeIndexRebuildRpc,
+  WsCodeIndexStorageRpc,
+  WsCodeIndexPruneRpc,
+  WsCodeIndexClearRpc,
+  WsLanguageServersSubscribeRpc,
+  WsLanguageServersRestartRpc,
+  WsLanguageServersStopRpc,
+  WsLanguageServersConfirmDownloadRpc,
+  WsLanguageServersSessionRpc,
+  WsLanguageServersSendRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

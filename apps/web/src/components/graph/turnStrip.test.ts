@@ -1,4 +1,4 @@
-import type { PlayPick, ThreadRecord } from "@mercurian/graph";
+import type { PlayPick, ThreadRecord } from "@mercurian/graph/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

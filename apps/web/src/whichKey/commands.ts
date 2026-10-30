@@ -10,6 +10,11 @@ import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/co
 import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
 import { hasOutline } from "@mercurian/editor/outline";
+import {
+  hasDiagnosticsUi,
+  nextDiagnostic,
+  previousDiagnostic,
+} from "@mercurian/editor/lsp/diagnostics";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
@@ -28,6 +33,7 @@ import {
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
+import { localGraphOpener } from "~/components/repositories/localGraph";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
 import type { FocusDirection } from "~/keyboardNav/regions.logic";
@@ -410,6 +416,17 @@ function astrolabeCommand(
         control && current?.turnAvailable ? control.toggle : null,
       );
     }
+    case "diagnostic.next":
+    case "diagnostic.previous": {
+      const view = editorFrom(context.origin, hasDiagnosticsUi);
+      const next = command === "diagnostic.next";
+      return entry(
+        view ? (next ? "Next problem" : "Previous problem") : "No problems shown here",
+        view
+          ? () => afterPalette(() => void (next ? nextDiagnostic : previousDiagnostic)(view))
+          : null,
+      );
+    }
     case "outline.open": {
       const view = editorFrom(context.origin, hasOutline);
       return entry(
@@ -417,6 +434,8 @@ function astrolabeCommand(
         view ? () => afterPalette(() => openOutlinePicker(view)) : null,
       );
     }
+    case "repository.localGraph":
+      return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
   }
 }
 

@@ -79,6 +79,39 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets file readers use language servers, file writers land edits, and maintainers manage them", () => {
+    for (const method of [
+      WS_METHODS.languageServersSubscribe,
+      WS_METHODS.languageServersSession,
+      WS_METHODS.languageServersSend,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
+    }
+    const send = { sessionId: "s", message: "{}" };
+    const document = { loadId: "l", version: 3, clientId: "c" };
+    expect(clientRpcRequiredScopes(WS_METHODS.languageServersSend, send)).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        document: { ...document, unconfirmed: [] },
+      }),
+    ).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        document: { ...document, unconfirmed: [[3, [0, "x"]]] },
+      }),
+    ).toEqual([AuthFilesystemWriteScope]);
+    for (const method of [
+      WS_METHODS.languageServersRestart,
+      WS_METHODS.languageServersStop,
+      WS_METHODS.languageServersConfirmDownload,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
+      expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthEnvironmentMaintainScope]);
+    }
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(
@@ -382,6 +415,35 @@ it.effect("denies manual cleanup before the handler without settings permission"
     );
     expect(yield* client[WS_METHODS.serverRunStorageCleanup]({}).pipe(Effect.flip)).toMatchObject({
       requiredPermission: AuthSettingsWriteScope,
+    });
+    expect(handled).toBe(false);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("denies clearing a code index before the handler without maintenance permission", () =>
+  Effect.gen(function* () {
+    const group = WsRpcGroup.omit(
+      ...[...WsRpcGroup.requests.keys()].filter(
+        (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, typeof WS_METHODS.codeIndexClear> =>
+          tag !== WS_METHODS.codeIndexClear,
+      ),
+    );
+    let handled = false;
+    const client = yield* RpcTest.makeClient(group).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          group.toLayerHandler(WS_METHODS.codeIndexClear, () =>
+            Effect.sync(() => {
+              handled = true;
+              return {};
+            }),
+          ),
+          RpcAuthorization.layer([AuthOrchestrationReadScope]),
+        ),
+      ),
+    );
+    expect(yield* client[WS_METHODS.codeIndexClear]({}).pipe(Effect.flip)).toMatchObject({
+      requiredPermission: AuthEnvironmentMaintainScope,
     });
     expect(handled).toBe(false);
   }).pipe(Effect.scoped),

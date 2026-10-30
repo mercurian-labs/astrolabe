@@ -1,4 +1,6 @@
 import "vite-plus/test/config";
+import * as NodeModule from "node:module";
+import * as NodeURL from "node:url";
 import { defineConfig, mergeConfig } from "vite-plus";
 
 import baseConfig from "../../vite.config.ts";
@@ -59,6 +61,23 @@ const packExecutableTargets = packExecutableTarget
     ]
   : undefined;
 
+// Astrolabe: the code index worker (src/codeIndex/worker.ts) is bundled beside the server and reads
+// its grammars and queries from `code-graph/` there (code-graph's `useAssets`). The grammars are
+// the languages code-graph reads (its src/parse/languages.ts).
+const CODE_GRAPH_DIR = NodeURL.fileURLToPath(
+  new URL("../../packages/code-graph/", import.meta.url),
+);
+const codeGraphRequire = NodeModule.createRequire(`${CODE_GRAPH_DIR}package.json`);
+/** A file beside one a package resolves to. */
+const besideResolved = (specifier: string, file: string) =>
+  NodeURL.fileURLToPath(new URL(file, NodeURL.pathToFileURL(codeGraphRequire.resolve(specifier))));
+const CODE_GRAPH_WASM = [
+  ...["typescript", "tsx", "python", "go", "rust"].map((language) =>
+    besideResolved("@vscode/tree-sitter-wasm/package.json", `wasm/tree-sitter-${language}.wasm`),
+  ),
+  besideResolved("web-tree-sitter", "web-tree-sitter.wasm"),
+];
+
 // The root config's `projects` route repo-root runs to package configs,
 // including this one. Inheriting them would make this config a container.
 const { projects: _rootTestProjects, ...baseTestConfig } = baseConfig.test ?? {};
@@ -79,7 +98,27 @@ export default mergeConfig(
     },
     pack: {
       // SEA embeds one entry; expose the history worker as a hidden subcommand.
-      entry: packExecutable ? ["src/bin.ts"] : ["src/bin.ts", "src/claude-history-worker.ts"],
+      // Astrolabe: the code index worker has no such room, so the executable indexes nothing.
+      entry: packExecutable
+        ? ["src/bin.ts"]
+        : [
+            "src/bin.ts",
+            "src/claude-history-worker.ts",
+            { "code-index-worker": "src/codeIndex/worker.ts" },
+          ],
+      ...(packExecutable
+        ? {}
+        : {
+            copy: ({ outDir }: { readonly outDir: string }) => [
+              // Flattened one folder at a time: tsdown keeps an unflattened source's path from the repo.
+              ...["", "/extra", "/imports", "/locals"].map((folder) => ({
+                from: `${CODE_GRAPH_DIR}queries${folder}/*.scm`,
+                to: `${outDir}/code-graph/queries${folder}`,
+              })),
+              { from: `${CODE_GRAPH_DIR}queries/NOTICE`, to: `${outDir}/code-graph/queries` },
+              { from: CODE_GRAPH_WASM, to: `${outDir}/code-graph/wasm` },
+            ],
+          }),
       outDir: packExecutable ? "dist-exe" : "dist",
       sourcemap: !packExecutable,
       clean: true,

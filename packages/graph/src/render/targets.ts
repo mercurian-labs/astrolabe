@@ -26,6 +26,8 @@ export interface TargetInput {
   readonly hover: number;
   readonly storyLit: boolean;
   readonly play: PlayFocus | null;
+  /** A local graph: its links draw at rest. */
+  readonly linksAtRest?: boolean;
   /** The drawn radius of a note of this degree. */
   readonly radiusFor: (degree: number) => number;
   /** Where node `index` goes, relative to its home: gathering, pull, and drag. */
@@ -71,6 +73,7 @@ export function applyTargets(input: TargetInput): void {
     picked,
     storyLit: input.storyLit,
     play,
+    linksAtRest: input.linksAtRest === true,
   });
   attention.forEach((value, index) => {
     edgeStyle.setTarget(index, playEdge(view, play, index).visible, value);

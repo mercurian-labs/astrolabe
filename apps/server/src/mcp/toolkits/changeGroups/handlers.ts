@@ -24,14 +24,14 @@ const memberOf = Effect.fn("ChangeGroupToolkit.memberOf")(function* (memberKey: 
   if (member === null) {
     return yield* new OrchestratorMcpFailure({
       code: "invalid_request",
-      message: `"${memberKey}" names no change request or thread; use a key t3_change_groups shows.`,
+      message: `"${memberKey}" names no change request or thread; use a key astrolabe_change_groups shows.`,
     });
   }
   return member;
 });
 
 export const layer = McpToolAccess.toLayer(ChangeGroupToolkit, {
-  t3_change_groups: McpToolAccess.reads(() =>
+  astrolabe_change_groups: McpToolAccess.reads(() =>
     ChangeGroupService.ChangeGroupService.pipe(
       Effect.flatMap((service) => service.groups),
       Effect.map((groups) => ({ groups })),
@@ -39,18 +39,19 @@ export const layer = McpToolAccess.toLayer(ChangeGroupToolkit, {
     ),
   ),
   // Suggestions and edits come from a live thread's agent, as wiki amendments do.
-  t3_change_group_suggest: McpToolAccess.actsAsCaller(({ groupId, memberKey, note }) =>
+  astrolabe_change_group_suggest: McpToolAccess.actsAsCaller(({ groupId, memberKey, note }) =>
     memberOf(memberKey).pipe(
       Effect.flatMap((member) => update(groupId, { type: "suggest", member, note })),
     ),
   ),
-  t3_change_group_update: McpToolAccess.actsAsCaller(({ groupId, action, memberKey, note }) =>
-    action === "remove"
-      ? update(groupId, { type: "remove", memberKey })
-      : memberOf(memberKey).pipe(
-          Effect.flatMap((member) =>
-            update(groupId, { type: "add", member, reason: "manual", note: note ?? "" }),
+  astrolabe_change_group_update: McpToolAccess.actsAsCaller(
+    ({ groupId, action, memberKey, note }) =>
+      action === "remove"
+        ? update(groupId, { type: "remove", memberKey })
+        : memberOf(memberKey).pipe(
+            Effect.flatMap((member) =>
+              update(groupId, { type: "add", member, reason: "manual", note: note ?? "" }),
+            ),
           ),
-        ),
   ),
 });

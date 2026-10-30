@@ -156,6 +156,10 @@
       "types": "./src/state/documentSession.ts",
       "default": "./src/state/documentSession.ts"
     },
+    "./state/language-servers": {
+      "types": "./src/state/languageServers.ts",
+      "default": "./src/state/languageServers.ts"
+    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"
@@ -187,6 +191,10 @@
     "./delayed-status": {
       "types": "./src/delayedStatus.ts",
       "default": "./src/delayedStatus.ts"
+    },
+    "./state/codeLocalGraph": {
+      "types": "./src/state/codeLocalGraph.ts",
+      "default": "./src/state/codeLocalGraph.ts"
     },
     "./state/connections": {
       "types": "./src/state/connections.ts",
@@ -383,6 +391,10 @@
     "./state/vcs": {
       "types": "./src/state/vcs.ts",
       "default": "./src/state/vcs.ts"
+    },
+    "./state/codeIndex": {
+      "types": "./src/state/codeIndex.ts",
+      "default": "./src/state/codeIndex.ts"
     },
     "./state/wiki": {
       "types": "./src/state/wiki.ts",

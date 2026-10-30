@@ -12,6 +12,7 @@ import {
   type MemoryLink,
   type NoteKind,
 } from "./memory.ts";
+import type { NodeShape } from "./kinds.ts";
 
 export interface UniverseNode {
   readonly id: string;
@@ -20,6 +21,8 @@ export interface UniverseNode {
   readonly group?: string;
   /** What the note is, in a codebase. */
   readonly kind?: NoteKind;
+  /** Its shape, when the note names one in place of its kind's. */
+  readonly shape?: NodeShape;
 }
 
 /** Bits of `Universe.edgeMarks`: how a codebase's edge draws when lit. */
@@ -87,6 +90,7 @@ export function buildUniverse(
       name: note.name,
       ...(note.group === undefined ? {} : { group: note.group }),
       ...(note.kind === undefined ? {} : { kind: note.kind }),
+      ...(note.shape === undefined ? {} : { shape: note.shape }),
     }))
     .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
   const indexOf = new Map(nodes.map((node, position) => [node.id, position]));

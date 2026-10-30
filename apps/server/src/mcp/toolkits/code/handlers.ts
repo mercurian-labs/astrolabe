@@ -1,0 +1,182 @@
+import {
+  type CodeCheckout,
+  type CodeIndexError,
+  type LanguageServerError,
+  OrchestratorMcpFailure,
+  type ThreadId,
+} from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+
+import * as CodeIndex from "../../../codeIndex/CodeIndex.ts";
+import * as LanguageServers from "../../../languageServers/LanguageServers.ts";
+import { checkpointRefForScopeOrdinal } from "../../../orchestration-v2/CheckpointService.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
+import * as ProjectService from "../../../project/ProjectService.ts";
+import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
+import { loadCaller, unavailable } from "../../threadAccess.ts";
+import { CodeToolkit } from "./tools.ts";
+
+const FALLBACK = "Use search and file reads instead.";
+
+const codeFailure = (error: CodeIndexError) => {
+  switch (error.reason) {
+    case "off":
+      return new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: `The code index is turned off for this repository in Settings. ${FALLBACK}`,
+      });
+    case "not-indexed":
+      return new OrchestratorMcpFailure({
+        code: "orchestration_error",
+        message:
+          "The code index for this repository is still building. Retry in a minute, or use search and file reads.",
+      });
+    case "unsupported":
+      return new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: `This project has no code index, or no parser reads this file's language. ${FALLBACK}`,
+      });
+    case "not-found":
+      return new OrchestratorMcpFailure({ code: "invalid_request", message: error.message });
+    case "git-failed":
+    case "failed":
+      return new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
+  }
+};
+
+const diagnosticsFailure = (error: LanguageServerError) =>
+  new OrchestratorMcpFailure({
+    code:
+      error.reason === "download-needed" || error.reason === "not-running"
+        ? "invalid_request"
+        : "orchestration_error",
+    message: `${error.message} Run the project's type checker instead.`,
+  });
+
+/** The calling thread and its checkout: the thread's worktree, else the project's own folder. */
+const readCheckout = Effect.fn("CodeTools.readCheckout")(function* () {
+  const { caller } = yield* loadCaller();
+  // readsAsCaller has already refused callers outside a thread.
+  if (caller === undefined) return yield* unavailable();
+  const projects = yield* ProjectService.ProjectService;
+  const project = yield* projects.getById(caller.projectId).pipe(Effect.mapError(unavailable));
+  if (Option.isNone(project)) {
+    return yield* new OrchestratorMcpFailure({
+      code: "invalid_request",
+      message: "This thread's project was not found.",
+    });
+  }
+  const checkout: CodeCheckout = {
+    projectId: caller.projectId,
+    cwd: caller.worktreePath ?? project.value.workspaceRoot,
+  };
+  return { threadId: caller.id, checkout };
+});
+
+const read = Effect.fn("CodeTools.read")(function* <A>(
+  query: (
+    index: CodeIndex.CodeIndex["Service"],
+    checkout: CodeCheckout,
+  ) => Effect.Effect<A, CodeIndexError>,
+) {
+  const { checkout } = yield* readCheckout();
+  const index = yield* CodeIndex.CodeIndex;
+  return yield* query(index, checkout).pipe(Effect.mapError(codeFailure));
+});
+
+/** The checkpoint before the thread's last finished turn, or before its first turn. */
+const latestTurnStart = Effect.fn("CodeTools.latestTurnStart")(function* (threadId: ThreadId) {
+  const threads = yield* ThreadManagementService.ThreadManagementService;
+  const context = yield* threads.getCheckpointContext(threadId).pipe(Effect.mapError(unavailable));
+  const latest = context.checkpoints
+    .filter((checkpoint) => checkpoint.status === "ready" && checkpoint.appRunOrdinal !== null)
+    .reduce<(typeof context.checkpoints)[number] | undefined>(
+      (found, checkpoint) =>
+        found !== undefined && (found.appRunOrdinal ?? 0) >= (checkpoint.appRunOrdinal ?? 0)
+          ? found
+          : checkpoint,
+      undefined,
+    );
+  const scopeId =
+    latest?.scopeId ?? context.checkpointScopes.find((scope) => scope.kind === "root_run")?.id;
+  if (scopeId === undefined) {
+    return yield* new OrchestratorMcpFailure({
+      code: "invalid_request",
+      message: 'This thread has no turn checkpoints yet. Pass `since` as "branch" or a git ref.',
+    });
+  }
+  return yield* checkpointRefForScopeOrdinal({
+    scopeId,
+    ordinalWithinScope: Math.max(0, (latest?.ordinalWithinScope ?? 0) - 1),
+  });
+});
+
+const branchBase = Effect.fn("CodeTools.branchBase")(function* (cwd: string) {
+  const git = yield* GitVcsDriver.GitVcsDriver;
+  const { mergeBase } = yield* git.resolveBranchMergeBase(cwd).pipe(
+    Effect.mapError(
+      () =>
+        new OrchestratorMcpFailure({
+          code: "orchestration_error",
+          message: "Could not find where this branch left its base branch. Pass `since` as a ref.",
+        }),
+    ),
+  );
+  return mergeBase;
+});
+
+export const layer = McpToolAccess.toLayer(CodeToolkit, {
+  astrolabe_code_outline: McpToolAccess.readsAsCaller((input) =>
+    read((index, checkout) => index.outline({ ...checkout, ...input })),
+  ),
+  astrolabe_code_find: McpToolAccess.readsAsCaller((input) =>
+    read((index, checkout) => index.find({ ...checkout, ...input })),
+  ),
+  astrolabe_code_changes: McpToolAccess.readsAsCaller(({ since = "turn" }) =>
+    Effect.gen(function* () {
+      const { threadId, checkout } = yield* readCheckout();
+      const from =
+        since === "turn"
+          ? yield* latestTurnStart(threadId)
+          : since === "branch"
+            ? yield* branchBase(checkout.cwd)
+            : since;
+      const index = yield* CodeIndex.CodeIndex;
+      const changes = yield* index
+        .changes({ ...checkout, from })
+        .pipe(Effect.mapError(codeFailure));
+      return { from, ...changes };
+    }),
+  ),
+  astrolabe_code_map: McpToolAccess.readsAsCaller((input) =>
+    read((index, checkout) => index.map({ ...checkout, ...input })),
+  ),
+  astrolabe_code_diagnostics: McpToolAccess.readsAsCaller(({ paths }) =>
+    Effect.gen(function* () {
+      const { checkout } = yield* readCheckout();
+      const languageServers = yield* LanguageServers.LanguageServers;
+      const results = yield* Effect.forEach(
+        [...new Set(paths)],
+        (path) =>
+          languageServers.diagnostics({ cwd: checkout.cwd, relativePath: path }).pipe(
+            Effect.map((file) => ({ ok: true as const, file })),
+            Effect.catch((error) =>
+              // A file no server reads, or that cannot be opened, is listed; the rest fail the call.
+              error.reason === "unsupported" || error.reason === "document"
+                ? Effect.succeed({ ok: false as const, path, reason: error.message })
+                : Effect.fail(diagnosticsFailure(error)),
+            ),
+          ),
+        { concurrency: 4 },
+      );
+      return {
+        files: results.flatMap((result) => (result.ok ? [result.file] : [])),
+        skipped: results.flatMap((result) =>
+          result.ok ? [] : [{ path: result.path, reason: result.reason }],
+        ),
+      };
+    }),
+  ),
+});

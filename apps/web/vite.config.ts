@@ -322,10 +322,9 @@ export default defineConfig(() => {
         "effect/Array",
         "effect/Order",
         "react-dom/client",
-        // Astrolabe: the Graph tab loads lazily; prebundling its renderers at startup keeps
+        // Astrolabe: the Graph tab loads lazily; prebundling its renderer at startup keeps
         // the first open from stalling on a dependency re-optimization.
         "@mercurian/graph > three",
-        "@mercurian/graph > pixi.js",
         "@mercurian/graph > d3-force-3d",
         "@mercurian/graph > troika-three-text",
       ],

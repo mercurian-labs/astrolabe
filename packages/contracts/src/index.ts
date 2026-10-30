@@ -68,6 +68,8 @@ export * from "./usage.ts";
 export * from "./scheduledTask.ts";
 export * from "./wiki.ts";
 export * from "./documents.ts";
+export * from "./codeIndex.ts";
+export * from "./languageServers.ts";
 export * from "./changeGroups.ts";
 export * from "./worktreeMcp.ts";
 export * from "./resourceTelemetry.ts";

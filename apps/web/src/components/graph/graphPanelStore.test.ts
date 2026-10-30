@@ -1,4 +1,4 @@
-import type { ThreadRecord } from "@mercurian/graph";
+import type { ThreadRecord } from "@mercurian/graph/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import { CLOSED_PANEL, graphPanelReducer, useGraphPanelStore } from "./graphPanelStore";

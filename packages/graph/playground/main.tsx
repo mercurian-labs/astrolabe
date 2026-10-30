@@ -53,6 +53,8 @@ import {
   type RenderMode,
   type ThreadRecord,
 } from "../src/index.ts";
+import { rendererFamily } from "../src/render/renderer.ts";
+import { RENDERERS } from "../src/render/renderers.ts";
 import "../src/styles.css";
 import { CodeEditPopup } from "./codeEdits.tsx";
 import { NoteEditPopup, useNoteEdits } from "./noteEdits.tsx";
@@ -675,6 +677,7 @@ function App() {
             thisTurnOnly={thisTurnOnly}
             turnRunning={turnRunning}
             mode={mode}
+            createRenderer={RENDERERS[rendererFamily(mode)]}
             settings={shownSettings}
             filters={filters}
             lensSlots={lensSlots}

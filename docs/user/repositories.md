@@ -34,11 +34,27 @@ Files open in tabs that split, as wiki documents do. Markdown files open with th
 code opens with line numbers and its language's colours, with Vim if you turned it on in
 Settings. Your edits save on their own a moment after you stop typing. Changes from agents, the
 terminal, and other windows with the same file open show up as they happen, and an edit never
-overwrites newer changes saved there. A file shows when an agent is working in the same copy.
+overwrites newer changes saved there. A file shows when an agent is working in the same copy. TypeScript
+and JavaScript files show the [problems](keybindings.md#problems-in-a-code-file) their language
+server finds.
 
 If a file you have edits in is deleted, it stays open with **Save**, which recreates it, and
 **Discard**. Edits made while you were offline are sent when you reconnect; if the file changed
 in the meantime, choose **Keep mine** or **Use the file’s**.
+
+## Local graph
+
+A file's local graph shows the file in the middle, the files it imports on one side and the files
+that import it on the other, with arrows from importer to imported. Open it with the graph button
+in a file's header, **Open local graph** in a file's menu in the sidebar, or `r` `g` in the
+[keyboard menu](keybindings.md#keyboard-menu). It opens beside the file and follows the file you
+are reading; turn off **Following** to keep it on one file. Click a file to open it (⌘-click or
+Ctrl-click for a new tab), or a folded folder to unfold it. Hovering a file shows the import that
+links it and highlights that line in the open file. The toolbar sets the depth and whether uses,
+files that use it, tests and outside packages show.
+
+The graph reads the repository's code index, set in **Settings → Projects**. While the index is
+first built, the files that import this one appear once it finishes.
 
 ## Review changes
 
@@ -50,9 +66,8 @@ In a thread, the **Files** and **Diff** tabs offer **Open in Repositories** from
 
 ## Manage repositories
 
-**Manage repositories**, in the filter, lists every repository with where it lives, a link to its
-settings, and **Hosting providers**. **Add a repository** adds a folder or clones one, as adding a
-project does.
+**Manage repositories**, in the filter, opens **Settings → Projects**. **Add a repository** adds a
+folder or clones one, as adding a project does.
 
 ## On your phone
 

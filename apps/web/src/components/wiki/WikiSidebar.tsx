@@ -11,7 +11,6 @@ import {
   LinkIcon,
   FolderPlusIcon,
   ListFilterIcon,
-  PlusIcon,
   SettingsIcon,
   UsersIcon,
 } from "lucide-react";
@@ -29,6 +28,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { openCommandPalette } from "~/commandPaletteBus";
 import { isElectron } from "~/env";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
@@ -97,8 +97,7 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { isTurnRunning, noteNameOfFile } from "./wiki.logic";
-import { AddWikiFolderDialog, NewWikiDialog } from "./WikiDialogs";
-import { useWikiEnvironment, useWikiOverviews } from "./wikiEnvironment";
+import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
 import {
@@ -172,9 +171,7 @@ export function WikiSidebar() {
   const focused = useFocusedWikiTab();
   const { isMobile, setOpenMobile } = useSidebar();
   const [finding, setFinding] = useState(false);
-  const [adding, setAdding] = useState<"folder" | "new" | null>(null);
   const [settingsFor, setSettingsFor] = useState<WikiOverview | null>(null);
-  const { environmentId: addEnvironmentId } = useWikiEnvironment(undefined);
   const navigate = useNavigate();
   const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
     open: false,
@@ -220,9 +217,6 @@ export function WikiSidebar() {
   const setFilter = (next: WikiFilter) => storeWikiFilter(next);
   // A wiki just added is shown alone, unless it is the first, when alone is every wiki and the
   // pick would narrow the list once a second arrives.
-  const showAddedWiki = (key: string) =>
-    setFilter(overviews.length === 0 ? EMPTY_WIKI_FILTER : { wikis: [key], changed: false });
-
   // Astrolabe: a document opened from a link, the palette or another section clears a filter that
   // hides it. Undecided until the wikis load; a filter changed under the open document stays.
   const focusedKey = keyOfTab(focused);
@@ -408,7 +402,6 @@ export function WikiSidebar() {
                   dispatchMenu={dispatchMenu}
                   onFilter={setFilter}
                   onSettings={setSettingsFor}
-                  onAdd={setAdding}
                 />
               }
               onNewThread={() => setFinding(true)}
@@ -532,12 +525,9 @@ export function WikiSidebar() {
               {overviews.length === 0 ? (
                 <>
                   <span>No wikis yet</span>
-                  <div className="flex gap-1.5">
-                    <EmptyStateButton onClick={() => setAdding("folder")}>
-                      Add a folder
-                    </EmptyStateButton>
-                    <EmptyStateButton onClick={() => setAdding("new")}>New wiki</EmptyStateButton>
-                  </div>
+                  <EmptyStateButton onClick={() => openCommandPalette({ open: "add-wiki" })}>
+                    Add a wiki
+                  </EmptyStateButton>
                 </>
               ) : scoped && !filter.changed ? (
                 `No documents in ${scoped.wiki.name} yet`
@@ -558,22 +548,6 @@ export function WikiSidebar() {
         scope={scope}
         mode="new"
       />
-      {addEnvironmentId !== null ? (
-        <>
-          <AddWikiFolderDialog
-            environmentId={addEnvironmentId}
-            open={adding === "folder"}
-            onOpenChange={(next) => setAdding(next ? "folder" : null)}
-            onAdded={(wiki) => showAddedWiki(wikiScopeKey(addEnvironmentId, wiki.wikiId))}
-          />
-          <NewWikiDialog
-            environmentId={addEnvironmentId}
-            open={adding === "new"}
-            onOpenChange={(next) => setAdding(next ? "new" : null)}
-            onCreated={(wiki) => showAddedWiki(wikiScopeKey(addEnvironmentId, wiki.wikiId))}
-          />
-        </>
-      ) : null}
       {settingsFor ? (
         <WikiSettingsDialog
           environmentId={settingsFor.environmentId}
@@ -592,7 +566,7 @@ function EmptyStateButton({ onClick, children }: { onClick: () => void; children
       onClick={onClick}
       className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
     >
-      <PlusIcon className="-mx-0.5 size-3" />
+      <FolderPlusIcon className="-mx-0.5 size-3" />
       {children}
     </button>
   );
@@ -626,7 +600,6 @@ function WikiFilterMenu({
   dispatchMenu,
   onFilter,
   onSettings,
-  onAdd,
 }: {
   readonly overviews: ReadonlyArray<WikiOverview>;
   readonly filter: WikiFilter;
@@ -637,7 +610,6 @@ function WikiFilterMenu({
   readonly dispatchMenu: (action: SidebarProjectScopeMenuAction) => void;
   readonly onFilter: (next: WikiFilter) => void;
   readonly onSettings: (overview: WikiOverview) => void;
-  readonly onAdd: (kind: "folder" | "new") => void;
 }) {
   const { isMobile, open: sidebarOpen } = useSidebar();
   const comboboxFilter = useComboboxFilter();
@@ -780,12 +752,9 @@ function WikiFilterMenu({
         <SidebarPickerFooter>
           <SidebarPickerAction
             icon={FolderPlusIcon}
-            onClick={() => closeAnd(() => onAdd("folder"))}
+            onClick={() => closeAnd(() => openCommandPalette({ open: "add-wiki" }))}
           >
-            Add a folder
-          </SidebarPickerAction>
-          <SidebarPickerAction icon={PlusIcon} onClick={() => closeAnd(() => onAdd("new"))}>
-            New wiki
+            Add a wiki
           </SidebarPickerAction>
         </SidebarPickerFooter>
       </ComboboxPopup>

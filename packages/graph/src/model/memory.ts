@@ -1,3 +1,5 @@
+import type { NodeShape } from "./kinds.ts";
+
 /**
  * A memory as the Atlas Graph reads it: notes, the wikilinks between them, and
  * the skill maps that can be laid over them as lenses. This is the shape of the
@@ -55,6 +57,8 @@ export interface MemoryNote {
   readonly group?: string;
   /** What the note is, in a codebase. */
   readonly kind?: NoteKind;
+  /** How it draws, in place of its kind's shape: a local graph's workspace package is a square. */
+  readonly shape?: NodeShape;
   /** A codebase symbol's declaration line, as written ("function f(a: A): B"). */
   readonly signature?: string;
   /** A codebase symbol's doc comment, plain text; paragraphs split by a blank line. */

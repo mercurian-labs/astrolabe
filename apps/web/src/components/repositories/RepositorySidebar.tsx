@@ -18,9 +18,11 @@ import {
   useState,
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
+import { readLocalApi } from "~/localApi";
 import { isElectron } from "~/env";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
@@ -66,9 +68,9 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useSectionFocusedKey } from "~/panes/sectionPanes";
-import { repositoryPanes } from "./repositoryPanes";
+import { repositoryPanes, showLocalGraph } from "./repositoryPanes";
 import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
-import { fileName, folderOf, repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
+import { fileName, folderOf, repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
@@ -172,7 +174,7 @@ export function RepositorySidebar() {
               searchNoun="file"
               hasProjects
               projectScope={<RepositoryFilter repositories={repositories} scoped={scoped} />}
-              onNewThread={() => openCommandPalette({ open: "add-project" })}
+              onNewThread={() => openCommandPalette({ open: "add-repository" })}
               newThreadDisabled={false}
               newThreadShortcutLabel={null}
               newThreadInProjectShortcutLabel={null}
@@ -243,6 +245,13 @@ export function RepositorySidebar() {
                         onOpenFile={(path) =>
                           repositoryPanes.show(fileKey(scoped, checkout.cwd, path))
                         }
+                        fileMenuActions={[
+                          {
+                            id: "local-graph",
+                            label: "Open local graph",
+                            run: (path) => showLocalGraph(fileTab(scoped, checkout.cwd, path)),
+                          },
+                        ]}
                         workspaceMutationId={null}
                       />
                     </div>
@@ -273,7 +282,7 @@ export function RepositorySidebar() {
   );
 }
 
-type FileTab = Extract<RepositoryTab, { kind: "file" }>;
+type FileTab = RepositoryFileTab;
 
 const fileTab = (repository: EnvironmentProject, cwd: string, path: string): FileTab => ({
   kind: "file",
@@ -299,7 +308,7 @@ function EmptyRepositories() {
       <span>No repositories yet</span>
       <button
         type="button"
-        onClick={() => openCommandPalette({ open: "add-project" })}
+        onClick={() => openCommandPalette({ open: "add-repository" })}
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
       >
         <FolderPlusIcon className="-mx-0.5 size-3" />
@@ -523,6 +532,19 @@ function FileRow({
     else repositoryPanes.show(key);
     onOpened?.();
   };
+  const showMenu = (event: MouseEvent<HTMLElement>) => {
+    const api = readLocalApi();
+    if (!api) return;
+    event.preventDefault();
+    void api.contextMenu
+      .show([{ id: "local-graph", label: "Open local graph" }], {
+        x: event.clientX,
+        y: event.clientY,
+      })
+      .then((clicked) => {
+        if (clicked === "local-graph") showLocalGraph(tab);
+      });
+  };
   const drag = (event: DragEvent<HTMLElement>) =>
     startDrag(
       event,
@@ -551,6 +573,7 @@ function FileRow({
                   : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
               )}
               onClick={open}
+              onContextMenu={showMenu}
               onAuxClick={(event) => {
                 if (event.button === 1) open(event);
               }}
@@ -600,7 +623,8 @@ function RepositoryFilter({
   readonly repositories: ReadonlyArray<EnvironmentProject>;
   readonly scoped: EnvironmentProject | null;
 }) {
-  const { isMobile, open: sidebarOpen } = useSidebar();
+  const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
+  const navigate = useNavigate();
   const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
     open: false,
     query: "",
@@ -687,14 +711,17 @@ function RepositoryFilter({
           <SidebarPickerAction
             icon={SettingsIcon}
             onClick={() =>
-              closeAnd(() => repositoryPanes.show(repositoryTabKey({ kind: "manage" })))
+              closeAnd(() => {
+                setOpenMobile(false);
+                void navigate({ to: "/settings/projects" });
+              })
             }
           >
             Manage repositories
           </SidebarPickerAction>
           <SidebarPickerAction
             icon={FolderPlusIcon}
-            onClick={() => closeAnd(() => openCommandPalette({ open: "add-project" }))}
+            onClick={() => closeAnd(() => openCommandPalette({ open: "add-repository" }))}
           >
             Add a repository
           </SidebarPickerAction>

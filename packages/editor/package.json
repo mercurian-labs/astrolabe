@@ -54,6 +54,14 @@
     "./outline": {
       "types": "./src/outline/outline.ts",
       "default": "./src/outline/outline.ts"
+    },
+    "./lsp": {
+      "types": "./src/lsp/environmentLsp.ts",
+      "default": "./src/lsp/environmentLsp.ts"
+    },
+    "./lsp/diagnostics": {
+      "types": "./src/lsp/diagnostics.ts",
+      "default": "./src/lsp/diagnostics.ts"
     }
   },
   "scripts": {
@@ -69,6 +77,8 @@
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
     "@codemirror/language-data": "^6.5.2",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/lsp-client": "6.3.0",
     "@codemirror/merge": "^6.12.3",
     "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
@@ -86,6 +96,7 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
+    "@codemirror/collab": "6.1.1",
     "@types/react": "~19.2.14",
     "@types/react-dom": "~19.2.3",
     "happy-dom": "^20.14.5",
