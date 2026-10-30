@@ -25,7 +25,7 @@ const isDocumentError = Schema.is(DocumentError);
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 
 /** A failed document call or stream as the session reads it. */
-export function documentFailure(cause: Cause.Cause<unknown>): DocumentFailure {
+function documentFailure(cause: Cause.Cause<unknown>): DocumentFailure {
   for (const reason of cause.reasons) {
     if (reason._tag !== "Fail") continue;
     const error = reason.error;

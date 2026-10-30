@@ -95,11 +95,9 @@ const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabl
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 
 /**
- * A repository file in the wiki editor (Markdown preview, code colours, Vim when on). The file is
- * the environment's live document: edits go to it as you type and it saves them, and edits from
- * other editors, agents and the terminal arrive as they happen. Files without write access are
- * read only; files the environment cannot hold as a document (too big, not text) open read only
- * from disk. The view says when an agent works in the same checkout.
+ * A repository file in the wiki editor, as the environment's live document: it saves your edits
+ * and sends everyone else's as they land. Without write access it is read only; files too big or
+ * not text open read only from disk.
  */
 export function RepositoryFileView({
   tabKey,

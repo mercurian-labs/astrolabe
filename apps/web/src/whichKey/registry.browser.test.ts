@@ -481,6 +481,7 @@ describe("a code file's editing commands", () => {
       ["t", "No changes here"],
       ["a", "No changes here"],
       ["r", "No changes here"],
+      ["b", "No turn changed this file"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],

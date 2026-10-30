@@ -172,8 +172,6 @@ export class DocumentSession {
     this.canWrite = options.canWrite;
   }
 
-  // ---- For the view ----
-
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -221,8 +219,6 @@ export class DocumentSession {
     if (remote === null || this.editor === null) return this.target;
     return { ...this.target, resume: { loadId: remote.loadId, version: remote.version } };
   }
-
-  // ---- From the environment ----
 
   receive(item: DocumentStreamItem): void {
     if (this.status === "closed") return;
@@ -273,8 +269,6 @@ export class DocumentSession {
     this.publish();
   }
 
-  // ---- Actions ----
-
   /** Writes the file now, recreating it if it was deleted. */
   async save(): Promise<DocumentCallResult<DocumentSaveResult> | null> {
     const remote = this.remote;
@@ -321,8 +315,6 @@ export class DocumentSession {
     this.resetToRemote(editor);
     this.publish();
   }
-
-  // ---- Internals ----
 
   private disk(item: { readonly savedVersion: number; readonly missing: boolean }) {
     this.savedVersion = item.savedVersion;

@@ -96,13 +96,13 @@ vi.mock(import("~/state/documents"), async () => {
   const { Atom } = await import("effect/reactivity");
   return {
     documentsEnvironment: {
-      channel: () => ({
+      channel: (): DocumentChannel => ({
         push: (input) => later(() => authority().push(input)),
         save: () => later(() => authority().save()),
         recover: () => later(() => ({ type: "conflict" as const })),
         discard: () => later(() => undefined),
       }),
-      follow: (_environmentId, session) =>
+      follow: (_environmentId: EnvironmentId, session: DocumentSession) =>
         Atom.make((get) => {
           const current = authority();
           current.connect(session);
@@ -153,8 +153,8 @@ describe("RepositoryFileView", () => {
         </div>
       </>,
     );
-    const first = screen.getByTestId("first").locator(".cm-content");
-    const second = screen.getByTestId("second").locator(".cm-content");
+    const first = screen.getByTestId("first").getByRole("textbox");
+    const second = screen.getByTestId("second").getByRole("textbox");
     await expect.element(second).toHaveTextContent("hello");
 
     await userEvent.click(first);
@@ -172,7 +172,7 @@ describe("RepositoryFileView", () => {
   it("offers to save a deleted file with unsaved edits, and saving recreates it", async () => {
     setup("kept\n");
     await using screen = await render(<RepositoryFileView tabKey="only" tab={tab} />);
-    const editor = screen.locator.locator(".cm-content");
+    const editor = screen.getByRole("textbox");
     await expect.element(editor).toHaveTextContent("kept");
 
     authority().removeDisk();
