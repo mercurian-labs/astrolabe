@@ -153,11 +153,10 @@ export function inEditor(origin: KeyOrigin | null, line: string): (() => void) |
 }
 
 /**
- * The editor with in-file search that the key came from: its own, or the one around it (a table
- * cell's editor sits inside its note's); null elsewhere.
+ * The editor with in-file search that the key came from: the one holding the focused element, or
+ * the one around it (a table cell's editor sits inside its note's); null elsewhere.
  */
 function searchableEditor(origin: KeyOrigin | null): EditorView | null {
-  if (origin?.view && hasInFileSearch(origin.view.state)) return origin.view;
   for (
     let editor = origin?.element?.closest(".cm-editor") ?? null;
     editor;
