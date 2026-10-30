@@ -449,6 +449,8 @@ import {
 } from "./documents.ts";
 import {
   LanguageServerError,
+  LanguageServerProblemsInput,
+  LanguageServerProblemsItem,
   LanguageServerSendInput,
   LanguageServerSessionInput,
   LanguageServerSessionItem,
@@ -642,6 +644,7 @@ export const WS_METHODS = {
   languageServersConfirmDownload: "languageServers.confirmDownload",
   languageServersSession: "languageServers.session",
   languageServersSend: "languageServers.send",
+  languageServersProblems: "languageServers.problems",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2181,6 +2184,14 @@ const WsLanguageServersSendRpc = Rpc.make(WS_METHODS.languageServersSend, {
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
+/** A checkout's problems now, then each file's as it changes. */
+const WsLanguageServersProblemsRpc = Rpc.make(WS_METHODS.languageServersProblems, {
+  payload: LanguageServerProblemsInput,
+  success: LanguageServerProblemsItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 /** Every repository's index status now, then each change. */
 const WsCodeIndexSubscribeRpc = Rpc.make(WS_METHODS.codeIndexSubscribe, {
   payload: Schema.Struct({}),
@@ -2578,6 +2589,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsLanguageServersConfirmDownloadRpc,
   WsLanguageServersSessionRpc,
   WsLanguageServersSendRpc,
+  WsLanguageServersProblemsRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

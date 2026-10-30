@@ -150,6 +150,18 @@ export const FileDiagnostics = Schema.Struct({
 });
 export type FileDiagnostics = typeof FileDiagnostics.Type;
 
+/** A checkout's problems: the files language servers have open, or had open since they started. */
+export const LanguageServerProblemsInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
+export type LanguageServerProblemsInput = typeof LanguageServerProblemsInput.Type;
+
+export const LanguageServerProblemsItem = Schema.Union([
+  /** Every file with problems now. */
+  Schema.Struct({ type: Schema.Literal("snapshot"), files: Schema.Array(FileDiagnostics) }),
+  /** One file's problems changed; an empty list means it has none now. */
+  Schema.Struct({ type: Schema.Literal("file"), file: FileDiagnostics }),
+]);
+export type LanguageServerProblemsItem = typeof LanguageServerProblemsItem.Type;
+
 export const LanguageServerErrorReason = Schema.Literals([
   /** No language server serves this file. */
   "unsupported",

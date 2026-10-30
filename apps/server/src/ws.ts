@@ -1302,6 +1302,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.languageServersConfirmDownload]: (_input) => languageServers.confirmDownload,
       [WS_METHODS.languageServersSession]: (input) => languageServers.session(input),
       [WS_METHODS.languageServersSend]: (input) => languageServers.send(input),
+      [WS_METHODS.languageServersProblems]: (input) => languageServers.problems(input.cwd),
     });
   }),
 );

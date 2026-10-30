@@ -86,6 +86,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.languageServersSubscribe,
       WS_METHODS.languageServersSession,
       WS_METHODS.languageServersSend,
+      WS_METHODS.languageServersProblems,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
     }

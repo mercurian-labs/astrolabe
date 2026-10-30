@@ -235,6 +235,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.languageServersConfirmDownload]: "languageServers",
   [WS_METHODS.languageServersSession]: "languageServers",
   [WS_METHODS.languageServersSend]: "languageServers",
+  [WS_METHODS.languageServersProblems]: "languageServers",
   [WS_METHODS.wikiList]: "wiki",
   [WS_METHODS.wikiSubscribe]: "wiki",
   [WS_METHODS.wikiRegister]: "wiki",
