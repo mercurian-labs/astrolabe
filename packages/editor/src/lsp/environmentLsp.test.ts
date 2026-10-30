@@ -158,6 +158,24 @@ describe("environmentLsp", () => {
     }
   });
 
+  it("initializes again when it connects after the gateway session was reset", async () => {
+    const editor = mount("const a = 1;\n");
+    try {
+      await editor.initialize();
+      editor.sent.length = 0;
+      editor.lsp.reset();
+      await editor.initialize();
+      expect(editor.sent.map((entry) => entry.message.method)).toEqual([
+        "initialize",
+        "initialized",
+        "textDocument/didOpen",
+      ]);
+    } finally {
+      editor.view.destroy();
+      editor.lsp.destroy();
+    }
+  });
+
   it("holds diagnostics until the editor has their version, then lands them on the right text", async () => {
     const editor = mount("let value = 1;\n");
     try {

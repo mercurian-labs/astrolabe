@@ -200,16 +200,24 @@ export function environmentLsp(options: {
     }
   };
   const stopFollowing = document.onVersion(release);
+  // lsp-client's `disconnect` keeps its transport, so `client.connected` stays true after it.
+  let attached = false;
+  const detach = () => {
+    if (attached) client.disconnect();
+    attached = false;
+  };
 
   return {
     client,
     extension: client.plugin(options.uri, options.languageId),
     connect: () => {
-      if (!client.connected) client.connect(transport);
+      if (attached) return;
+      attached = true;
+      client.connect(transport);
     },
     reset: () => {
       held.clear();
-      if (client.connected) client.disconnect();
+      detach();
     },
     receive: (message, version) => {
       if (version === undefined) return deliver(message);
@@ -221,7 +229,7 @@ export function environmentLsp(options: {
     destroy: () => {
       stopFollowing();
       held.clear();
-      if (client.connected) client.disconnect();
+      detach();
     },
   };
 }
