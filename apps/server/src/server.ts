@@ -411,8 +411,6 @@ const layerReview = ReviewService.layer.pipe(
 );
 
 const layerVcs = Layer.empty.pipe(
-  // Astrolabe: first, so the review layer and the status broadcaster below provide it.
-  Layer.provideMerge(VcsBaseText.layer),
   Layer.provideMerge(VcsProjectConfig.layer),
   Layer.provideMerge(layerVcsDriverRegistry),
   Layer.provideMerge(VcsProvisioningService.layer.pipe(Layer.provide(layerVcsDriverRegistry))),
@@ -619,6 +617,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderUsageLimitsIngestion.layer,
   layerProviderInstallationRefresh,
   ReplayMarkers.layer,
+  // Astrolabe: an open file's base texts, which read the checkout's status and its turns.
+  VcsBaseText.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
