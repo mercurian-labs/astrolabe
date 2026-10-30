@@ -1,4 +1,4 @@
-import { markdown } from "@codemirror/lang-markdown";
+import { livePreview } from "@mercurian/editor/markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -18,7 +18,7 @@ function editorOf(text: string) {
     state: EditorState.create({
       doc: text.replace("|", ""),
       selection: { anchor: text.indexOf("|") },
-      extensions: markdown(),
+      extensions: livePreview(),
     }),
     parent: document.body,
   });
