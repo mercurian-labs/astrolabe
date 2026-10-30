@@ -14,7 +14,9 @@ import {
   NewWorktreeSwitch,
   SetAsideRows,
   WORKTREE_TREE_CLASS,
+  WORKTREE_TREE_SIZE,
   WorktreeHeader,
+  worktreeChangeId,
 } from "../repositories/RepositoryWorktrees";
 import { useOpenBranch } from "../repositories/worktreeActions";
 import {
@@ -185,20 +187,18 @@ export function WikiWorktreeTrees({
               />
             </ul>
             {expanded(worktree) ? (
-              // The tree's virtualized list needs a definite height; see RepositorySidebar.
               <div className={WORKTREE_TREE_CLASS}>
-                <div className="absolute inset-0 flex flex-col">
-                  <FileBrowserPanel
-                    key={`${overview.environmentId}:${worktree.path}`}
-                    environmentId={overview.environmentId}
-                    cwd={worktree.path}
-                    projectName={`${wiki.name} · ${label}`}
-                    selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
-                    selectedPathRevealId={0}
-                    onOpenFile={(file) => openFile(worktree, file)}
-                    workspaceMutationId={null}
-                  />
-                </div>
+                <FileBrowserPanel
+                  key={`${overview.environmentId}:${worktree.path}`}
+                  environmentId={overview.environmentId}
+                  cwd={worktree.path}
+                  projectName={`${wiki.name} · ${label}`}
+                  selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
+                  selectedPathRevealId={0}
+                  onOpenFile={(file) => openFile(worktree, file)}
+                  workspaceMutationId={worktreeChangeId(worktree)}
+                  sidebar={WORKTREE_TREE_SIZE}
+                />
               </div>
             ) : null}
           </Fragment>

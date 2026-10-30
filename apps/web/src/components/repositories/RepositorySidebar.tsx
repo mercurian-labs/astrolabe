@@ -70,8 +70,10 @@ import {
   OpenBranchPicker,
   SetAsideRows,
   WORKTREE_TREE_CLASS,
+  WORKTREE_TREE_SIZE,
   WorktreeHeader,
   WorktreeRows,
+  worktreeChangeId,
 } from "./RepositoryWorktrees";
 import {
   repositoryScope,
@@ -270,28 +272,24 @@ export function RepositorySidebar() {
                         ) : null}
                       </ul>
                       {expanded(worktree) && files ? (
-                        // The tree's virtualized list is `height: 100%`, and the sidebar's scroll
-                        // area only gives its content a min-height. Each tree fills an absolutely
-                        // placed box instead, whose height is definite.
                         <div className={WORKTREE_TREE_CLASS}>
-                          <div className="absolute inset-0 flex flex-col">
-                            <FileBrowserPanel
-                              key={filesKey}
-                              environmentId={scoped.environmentId}
-                              cwd={worktree.path}
-                              projectName={`${scoped.title} · ${worktree.alias}`}
-                              selectedPath={
-                                worktree.path === focused?.path && focusedTab?.kind === "file"
-                                  ? focusedTab.path
-                                  : null
-                              }
-                              selectedPathRevealId={0}
-                              onOpenFile={(path) =>
-                                repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
-                              }
-                              workspaceMutationId={null}
-                            />
-                          </div>
+                          <FileBrowserPanel
+                            key={filesKey}
+                            environmentId={scoped.environmentId}
+                            cwd={worktree.path}
+                            projectName={`${scoped.title} · ${worktree.alias}`}
+                            selectedPath={
+                              worktree.path === focused?.path && focusedTab?.kind === "file"
+                                ? focusedTab.path
+                                : null
+                            }
+                            selectedPathRevealId={0}
+                            onOpenFile={(path) =>
+                              repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
+                            }
+                            workspaceMutationId={worktreeChangeId(worktree)}
+                            sidebar={WORKTREE_TREE_SIZE}
+                          />
                         </div>
                       ) : null}
                     </Fragment>

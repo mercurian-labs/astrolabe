@@ -162,8 +162,16 @@ export function WorktreeRows({ children }: { readonly children: ReactNode }) {
 }
 
 /** A worktree section's file tree, set in under its header as its rows are. */
-export const WORKTREE_TREE_CLASS =
-  "relative ms-4 -me-2 min-h-40 flex-1 border-s border-sidebar-border";
+export const WORKTREE_TREE_CLASS = "ms-4 border-s border-sidebar-border ps-1";
+/** A tree grows with its open folders, then scrolls. */
+export const WORKTREE_TREE_SIZE = { maxRows: 20 } as const;
+
+/**
+ * Changes when the worktree's commit or count of changed files does, which is when its tree
+ * reads its folders again. The sidebar has nothing finer: it does not watch the disk.
+ */
+export const worktreeChangeId = (worktree: ProjectWorktree) =>
+  `${worktree.head}:${worktree.changedFiles}`;
 
 function WorktreeMenu({
   repository,

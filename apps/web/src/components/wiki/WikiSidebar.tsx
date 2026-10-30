@@ -193,6 +193,8 @@ export function WikiSidebar() {
     overviews.find(
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
     ) ?? null;
+  // A lone wiki can't be picked apart from every wiki, so its worktrees show without picking it.
+  const worktreeWiki = scoped ?? (overviews.length === 1 ? overviews[0]! : null);
   const inKeptWiki = (item: { readonly environmentId: EnvironmentId; readonly wikiId: WikiId }) =>
     kept === null || kept.has(wikiScopeKey(item.environmentId, item.wikiId));
   const keeps = (document: WikiDocumentItem) =>
@@ -397,7 +399,7 @@ export function WikiSidebar() {
               hasProjects
               projectScope={
                 <>
-                  {scoped ? <WikiWorktreePicker overview={scoped} /> : null}
+                  {worktreeWiki ? <WikiWorktreePicker overview={worktreeWiki} /> : null}
                   <WikiFilterMenu
                     overviews={overviews}
                     filter={filter}
@@ -490,8 +492,8 @@ export function WikiSidebar() {
                 </p>
               )
             ) : view === "tree" ? (
-              scoped ? (
-                <WikiWorktreeTrees overview={scoped} focused={focused} />
+              worktreeWiki ? (
+                <WikiWorktreeTrees overview={worktreeWiki} focused={focused} />
               ) : (
                 <p
                   role="status"

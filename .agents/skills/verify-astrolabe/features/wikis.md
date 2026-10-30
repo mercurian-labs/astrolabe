@@ -35,7 +35,7 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
-- **Worktrees** (with a wiki picked): `combobox "Work on a change request in a worktree"`
+- **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a change request in a worktree"`
   beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
   worktree (shared with Repositories: its own, a free one, or a new `t3-<8 hex>`), and
   a typed title offers "New change request “<title>” in a worktree". The filter's foot

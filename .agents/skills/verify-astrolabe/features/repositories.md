@@ -54,11 +54,13 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   rows for T3 Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree, per
   worktree (`astrolabe:repository-worktree-files:v1`); the focused tab's worktree opens on
   its own. Each panel is
-  `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. Toolbar:
-  **Refresh workspace files**, the field `Search <repo> · <branch> files`, **Expand all folders** / **Collapse all
-  folders** (only with folders). Rows live in `file-tree-container`'s open shadow root as
-  `[role=treeitem]` with `data-item-type` (`folder` / `file`) and `data-item-path`. The
-  tree fills an absolutely placed box so its virtualized list gets a height. Rows in the
+  `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. In the sidebar
+  its toolbar (refresh, search, expand all) is `hidden`; the header's **Search files** is
+  the search. It rereads its folders when the worktree's head or changed-file count changes
+  (window focus rereads the worktree list). Rows live in `file-tree-container`'s open shadow
+  root as `[role=treeitem]` with `data-item-type` (`folder` / `file`) and `data-item-path`.
+  The tree is as tall as its visible rows (24px each, up to 20, then it scrolls), so the
+  guide line ends at its last row. Rows in the
   accessibility tree are no proof they paint (a 0px-tall list had them all), and the
   panel's attribute changes with its props even if its rows do not (a tree once kept the
   first repository's files), so Walk 4 and 5 hit-test a row and compare row paths.
