@@ -27,6 +27,11 @@ import {
   type RenameResult,
 } from "@mercurian/editor/lsp/rename";
 import { environmentFormat, formattingOptions } from "@mercurian/editor/lsp/format";
+import {
+  type AppliedCodeAction,
+  type CodeActionHost,
+  environmentCodeActions,
+} from "@mercurian/editor/lsp/code-actions";
 import { fileSave } from "./fileSave";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -220,40 +225,55 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   }));
   const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
   // The environment applied the rename to every file: it offers Undo here, and to Undo Rename.
-  const renamed = useStableCallback((_view: EditorView, result: RenameResult) => {
-    const files = result.files.length;
-    let done = false;
-    const undo: UndoableRename = {
-      label: `Undo rename of ${result.from} to ${result.to}`,
-      run: () => {
-        if (done) return;
-        done = true;
-        if (lastRename.get() === undo) lastRename.set(null);
-        void undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
-          if (outcome._tag !== "Success" || outcome.value.skipped.length === 0) return;
-          toastManager.add({
-            type: "warning",
-            title: "Some files changed since the rename and were left as they are",
-            description: outcome.value.skipped.join(", "),
+  // An edit the environment applied for the language server (a rename, a code action): a notice
+  // with Undo, which Undo Rename runs too while it is the last.
+  const offerUndo = useStableCallback(
+    (title: string, result: AppliedCodeAction | RenameResult, undoLabel: string) => {
+      const files = result.files.length;
+      let done = false;
+      const undo: UndoableRename = {
+        label: undoLabel,
+        run: () => {
+          if (done) return;
+          done = true;
+          if (lastRename.get() === undo) lastRename.set(null);
+          void undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
+            if (outcome._tag !== "Success" || outcome.value.skipped.length === 0) return;
+            toastManager.add({
+              type: "warning",
+              title: "Some files changed since, and were left as they are",
+              description: outcome.value.skipped.join(", "),
+            });
           });
-        });
-      },
-    };
-    lastRename.set(undo);
-    const toast = toastManager.add({
-      type: "success",
-      title: `Renamed ${result.from} to ${result.to}`,
-      description: `${result.edits} ${result.edits === 1 ? "place" : "places"} in ${files} ${files === 1 ? "file" : "files"}`,
-      actionProps: {
-        children: "Undo",
-        onClick: () => {
-          toastManager.close(toast);
-          undo.run();
         },
-      },
-    });
-  });
+      };
+      lastRename.set(undo);
+      const toast = toastManager.add({
+        type: "success",
+        title,
+        description: `${result.edits} ${result.edits === 1 ? "place" : "places"} in ${files} ${files === 1 ? "file" : "files"}`,
+        actionProps: {
+          children: "Undo",
+          onClick: () => {
+            toastManager.close(toast);
+            undo.run();
+          },
+        },
+      });
+    },
+  );
+  const renamed = useStableCallback((_view: EditorView, result: RenameResult) =>
+    offerUndo(
+      `Renamed ${result.from} to ${result.to}`,
+      result,
+      `Undo rename of ${result.from} to ${result.to}`,
+    ),
+  );
   const [rename] = useState<RenameHost>(() => ({ renamed }));
+  const appliedAction = useStableCallback((_view: EditorView, action: AppliedCodeAction) =>
+    offerUndo(action.title, action, `Undo ${action.title}`),
+  );
+  const [codeActions] = useState<CodeActionHost>(() => ({ applied: appliedAction }));
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -334,6 +354,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           languageServer={fromDisk ? null : languageServer.extension}
           navigation={navigation}
           rename={rename}
+          codeActions={codeActions}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
@@ -451,6 +472,7 @@ function FileEditor({
   languageServer,
   navigation,
   rename,
+  codeActions,
   readOnly,
   baseText,
   baseControl,
@@ -468,6 +490,8 @@ function FileEditor({
   readonly navigation: NavigationHost;
   /** Told of each rename the environment applied. */
   readonly rename: RenameHost;
+  /** Told of each code action the environment applied. */
+  readonly codeActions: CodeActionHost;
   readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
@@ -511,6 +535,7 @@ function FileEditor({
     languageServer,
     navigation,
     rename,
+    codeActions,
     readOnly,
     vim,
     wordWrap,
@@ -601,9 +626,7 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer
-          ? languageServerUi(lspKeys, diagnosticKeys, initial.navigation, initial.rename)
-          : [],
+        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial) : [],
       ]),
     });
   }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys]);
@@ -649,8 +672,11 @@ function FileEditor({
 function languageServerUi(
   keys: ReturnType<typeof useLspEditorKeys>,
   diagnosticKeys: ReturnType<typeof useEditorDiagnosticKeys>,
-  navigation: NavigationHost,
-  rename: RenameHost,
+  hosts: {
+    readonly navigation: NavigationHost;
+    readonly rename: RenameHost;
+    readonly codeActions: CodeActionHost;
+  },
 ): Extension {
   return [
     diagnosticsUi({ keys: diagnosticKeys }),
@@ -666,10 +692,11 @@ function languageServerUi(
         implementation: keys["lsp.implementation"],
         references: keys["lsp.references"],
       },
-      host: navigation,
+      host: hosts.navigation,
     }),
-    environmentRename({ keys: keys["lsp.rename"], host: rename }),
+    environmentRename({ keys: keys["lsp.rename"], host: hosts.rename }),
     environmentFormat({ keys: keys["lsp.format"] }),
+    environmentCodeActions({ keys: keys["lsp.codeActions"], host: hosts.codeActions }),
   ];
 }
 

@@ -12,6 +12,9 @@ const starts = NodeFS.readFileSync("starts.log", "utf8").trim().split("\n").leng
 const docs = new Map();
 const received = [];
 const slow = new Map();
+// The server's own requests to the client, by id: what to do with each answer.
+const asked = new Map();
+let askedCount = 0;
 
 const write = (message) => {
   const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", ...message }));
@@ -49,6 +52,11 @@ const handle = (message) => {
   received.push(message.method ?? `response:${message.id}`);
   const { id, method, params } = message;
   const reply = (result) => write({ id, result });
+  if (method === undefined && asked.has(id)) {
+    asked.get(id)(message.result);
+    asked.delete(id);
+    return;
+  }
   switch (method) {
     case "initialize": {
       if (starts <= (config.crashTimes ?? 0)) {
@@ -64,6 +72,8 @@ const handle = (message) => {
             renameProvider: true,
             definitionProvider: true,
             documentFormattingProvider: true,
+            codeActionProvider: { resolveProvider: true },
+            executeCommandProvider: { commands: ["fake.removeLine"] },
             referencesProvider: true,
             completionProvider: { resolveProvider: true, triggerCharacters: ["."] },
           },
@@ -159,6 +169,52 @@ const handle = (message) => {
       }));
       if (config.formatDelay) setTimeout(() => reply(edits), config.formatDelay);
       else reply(edits);
+      return;
+    }
+    case "textDocument/codeAction": {
+      // Each "bad" diagnostic offers a fix that needs resolving, and a command that edits.
+      const actions = (params.context?.diagnostics ?? [])
+        .filter((diagnostic) => diagnostic.message === "bad is not allowed")
+        .flatMap((diagnostic) => [
+          {
+            title: "Replace bad with good",
+            kind: "quickfix",
+            isPreferred: true,
+            data: { uri: params.textDocument.uri, range: diagnostic.range },
+          },
+          {
+            title: "Remove the line",
+            command: "fake.removeLine",
+            arguments: [params.textDocument.uri, diagnostic.range.start.line],
+          },
+        ]);
+      return reply(actions);
+    }
+    case "codeAction/resolve":
+      return reply({
+        ...params,
+        edit: { changes: { [params.data.uri]: [{ range: params.data.range, newText: "good" }] } },
+      });
+    case "workspace/executeCommand": {
+      const [uri, line] = params.arguments;
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, () => reply(null));
+      write({
+        id: askId,
+        method: "workspace/applyEdit",
+        params: {
+          edit: {
+            changes: {
+              [uri]: [
+                {
+                  range: { start: { line, character: 0 }, end: { line: line + 1, character: 0 } },
+                  newText: "",
+                },
+              ],
+            },
+          },
+        },
+      });
       return;
     }
     case "textDocument/rename": {

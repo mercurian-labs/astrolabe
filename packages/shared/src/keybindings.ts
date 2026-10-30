@@ -176,6 +176,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "alt+shift+f12", command: "lsp.references", when: "codeEditorFocus" },
   { key: "f2", command: "lsp.rename", when: "codeEditorFocus" },
   { key: "mod+shift+i", command: "lsp.format", when: "codeEditorFocus" },
+  { key: "mod+.", command: "lsp.codeActions", when: "codeEditorFocus" },
   // Astrolabe: a code file's save, which formats it first (format on save).
   { key: "mod+s", command: "file.save", when: "codeEditorFocus" },
   // Astrolabe: a code file's editing keys, which its editor binds itself while it has focus. The

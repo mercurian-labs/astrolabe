@@ -82,6 +82,10 @@
     "./lsp/format": {
       "types": "./src/lsp/format.ts",
       "default": "./src/lsp/format.ts"
+    },
+    "./lsp/code-actions": {
+      "types": "./src/lsp/codeActions.ts",
+      "default": "./src/lsp/codeActions.ts"
     }
   },
   "scripts": {

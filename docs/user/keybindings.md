@@ -343,20 +343,21 @@ several ran at once, click **Restart** in the header.
 TypeScript and JavaScript files also take these from their language server. Each is in the
 Command Palette, and you can rebind it under **Editors**.
 
-| Key                          | Does                     | Keyboard menu | Vim     |
-| ---------------------------- | ------------------------ | ------------- | ------- |
-| `ctrl+space`                 | Show completions         | `e` `m`       |         |
-| `mod+shift+space`            | Show signature help      | `e` `i`       |         |
-|                              | Show hover               | `e` `h`       | `K`     |
-| `f12`, or `mod`-click a name | Go to definition         | `e` `g` `d`   | `g` `d` |
-|                              | Go to declaration        | `e` `g` `c`   | `g` `D` |
-| `mod+f12`                    | Go to type definition    | `e` `g` `t`   | `g` `y` |
-| `shift+f12`                  | Go to implementation     | `e` `g` `i`   | `g` `I` |
-| `alt+shift+f12`              | Find references          | `e` `g` `r`   | `g` `r` |
-| `f2`                         | Rename symbol            | `e` `e`       |         |
-|                              | Undo rename              | `e` `z`       |         |
-| `mod+shift+i`                | Format document          | `e` `=`       |         |
-| `mod+s`                      | Save the file, formatted |               | `:w`    |
+| Key                          | Does                       | Keyboard menu | Vim     |
+| ---------------------------- | -------------------------- | ------------- | ------- |
+| `ctrl+space`                 | Show completions           | `e` `m`       |         |
+| `mod+shift+space`            | Show signature help        | `e` `i`       |         |
+|                              | Show hover                 | `e` `h`       | `K`     |
+| `f12`, or `mod`-click a name | Go to definition           | `e` `g` `d`   | `g` `d` |
+|                              | Go to declaration          | `e` `g` `c`   | `g` `D` |
+| `mod+f12`                    | Go to type definition      | `e` `g` `t`   | `g` `y` |
+| `shift+f12`                  | Go to implementation       | `e` `g` `i`   | `g` `I` |
+| `alt+shift+f12`              | Find references            | `e` `g` `r`   | `g` `r` |
+| `f2`                         | Rename symbol              | `e` `e`       |         |
+|                              | Undo rename or code action | `e` `z`       |         |
+| `mod+shift+i`                | Format document            | `e` `=`       |         |
+| `mod+.`                      | Show code actions          | `e` `q`       |         |
+| `mod+s`                      | Save the file, formatted   |               | `:w`    |
 
 Completions open as you type a name or a `.`. Tab or Enter accepts the selected one, `ctrl+n`
 and `ctrl+p` move through them, and Escape closes the list (in Vim's insert mode you stay in
@@ -382,6 +383,10 @@ Format Document reformats the file with its language server, as one step you can
 files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and formats the file
 first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
 this off with **Format on save** in Settings → Appearance.
+
+When the server has fixes or refactors for where the cursor rests, a light bulb shows beside the
+line. Click it, or press `mod+.`, for the list; Enter applies one. Like a rename, the environment
+applies it to every file it touches, and the notice's **Undo** (or Undo Rename) takes it back.
 
 ## Find in a diff
 

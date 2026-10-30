@@ -550,6 +550,52 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor({ formatTimeout: "300 millis" }))),
   );
 
+  it.live("offers code actions by title and applies the one picked through the environment", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout("let bad = 1;\nlet fine = 2;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const published = yield* session.diagnostics(
+        (message) => message.params.diagnostics.length > 0,
+      );
+      const ask = (id: number) =>
+        session.request(
+          id,
+          "textDocument/codeAction",
+          {
+            textDocument: { uri: checkout.uri },
+            range: published.params.diagnostics[0].range,
+            context: { diagnostics: published.params.diagnostics },
+          },
+          editor.envelope(),
+        );
+      const offered = yield* ask(1);
+      expect(offered.result).toEqual([
+        { index: 0, title: "Replace bad with good", kind: "quickfix", isPreferred: true },
+        { index: 1, title: "Remove the line" },
+      ]);
+      const read = fileSystem.readFileString(`${checkout.cwd}/${FILE}`);
+      // A fix the server resolves first.
+      const fixed = yield* session.request(2, "astrolabe/applyCodeAction", { index: 0 });
+      expect(fixed.result.applied).toMatchObject({ files: [FILE], edits: 1 });
+      expect(yield* read).toBe("let good = 1;\nlet fine = 2;\n");
+      yield* service.undoEdit({ id: fixed.result.applied.id });
+      // A command whose edit the server sends back while it runs.
+      yield* editor.catchUp;
+      yield* ask(3);
+      const removed = yield* session.request(4, "astrolabe/applyCodeAction", { index: 1 });
+      expect(removed.result.applied).toMatchObject({ files: [FILE] });
+      expect(yield* read).toBe("let fine = 2;\n");
+      // Offered actions are used once.
+      const stale = yield* session.request(5, "astrolabe/applyCodeAction", { index: 1 });
+      expect(stale.error.code).toBe(ContentModified);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("pushes diagnostics to every session with the version they were pulled at", () =>
     Effect.gen(function* () {
       const checkout = yield* makeCheckout(SOURCE);

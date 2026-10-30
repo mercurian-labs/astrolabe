@@ -31,7 +31,9 @@ positions land on the wrong text.
   at the texts the server answered about, through each file's document, and answers with an id.
   It keeps each file's accepted update inverted: undoing pushes the inverse at the version right
   after it, and collab rebases it over whatever landed since. That is why a rename is not in the
-  editor's own undo history.
+  editor's own undo history. Code actions go the same way: the gateway keeps the actions it
+  offered in the server's coordinates and sends the editor only titles; the editor applies one
+  by index, and a command's own `workspace/applyEdit` lands through the same path.
 - **Only pushed diagnostics carry a version.** They are computed on the environment's text at a
   version; the editor holds them until it has that version, then maps them through what it has
   done since.

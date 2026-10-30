@@ -237,6 +237,11 @@ interface Session {
   readonly scope: Scope.Closeable;
   /** The file of the last completion list: `completionItem/resolve` names no document. */
   completionPath: string | null;
+  /** The last code actions offered, as the server gave them, and the texts they are about. */
+  codeActions: {
+    readonly actions: ReadonlyArray<Json>;
+    readonly seen: ReadonlyMap<string, ServerText>;
+  } | null;
 }
 
 interface Running {
@@ -244,6 +249,11 @@ interface Running {
   readonly connection: LspConnection;
   readonly capabilities: Json;
   readonly pull: boolean;
+}
+
+interface ServerEdit {
+  readonly edit: Json;
+  readonly done: (applied: LanguageServerAppliedEdit | null) => void;
 }
 
 interface Instance {
@@ -260,6 +270,10 @@ interface Instance {
   /** Documents waiting for a diagnostics pull. */
   readonly pulls: Queue.Queue<GatewayDoc>;
   running: Running | null;
+  /** The server's `workspace/applyEdit` requests, applied one at a time. */
+  readonly serverEdits: Queue.Queue<ServerEdit>;
+  /** While a command runs for a code action: the edits the server applied meanwhile. */
+  collecting: Array<LanguageServerAppliedEdit> | null;
   /** Resolves when the current or next process is ready. */
   ready: Deferred.Deferred<Running>;
   processScope: Scope.Closeable | null;
@@ -306,10 +320,31 @@ const CLIENT_CAPABILITIES = {
     implementation: {},
     typeDefinition: {},
     references: {},
+    codeAction: {
+      codeActionLiteralSupport: {
+        codeActionKind: {
+          valueSet: [
+            "",
+            "quickfix",
+            "refactor",
+            "refactor.extract",
+            "refactor.inline",
+            "refactor.rewrite",
+            "source",
+            "source.organizeImports",
+            "source.fixAll",
+          ],
+        },
+      },
+      isPreferredSupport: true,
+      disabledSupport: true,
+      dataSupport: true,
+      resolveSupport: { properties: ["edit"] },
+    },
     diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
     publishDiagnostics: { versionSupport: true, relatedInformation: true },
   },
-  workspace: { configuration: true, workspaceFolders: true },
+  workspace: { configuration: true, workspaceFolders: true, applyEdit: true },
   window: { workDoneProgress: false, showMessage: {} },
 };
 
@@ -689,7 +724,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       case "window/showMessageRequest":
         return null;
       case "workspace/applyEdit":
-        return { applied: false };
+        return new Promise((resolve) =>
+          Queue.offerUnsafe(instance.serverEdits, {
+            edit: params?.edit,
+            done: (applied) => resolve({ applied: applied !== null }),
+          }),
+        );
       default:
         return undefined;
     }
@@ -970,6 +1010,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       sessions: new Map(),
       docs: new Map(),
       pulls: yield* Queue.unbounded<GatewayDoc>(),
+      serverEdits: yield* Queue.unbounded<ServerEdit>(),
+      collecting: null,
       running: null,
       ready: Deferred.makeUnsafe(),
       processScope: null,
@@ -980,6 +1022,22 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     instances.set(key, instance);
     yield* Queue.take(instance.pulls).pipe(
       Effect.flatMap((doc) => Effect.forkIn(pull(instance, doc), instance.scope)),
+      Effect.forever,
+      Effect.forkIn(instance.scope, { startImmediately: true }),
+    );
+    // A server applying an edit itself (while a code action's command runs) asks the environment.
+    yield* Queue.take(instance.serverEdits).pipe(
+      Effect.flatMap(({ edit, done }) =>
+        applyWorkspaceEdit(instance, edit, serverTexts(instance)).pipe(
+          Effect.match({
+            onFailure: () => done(null),
+            onSuccess: (applied) => {
+              instance.collecting?.push(applied);
+              done(applied);
+            },
+          }),
+        ),
+      ),
       Effect.forever,
       Effect.forkIn(instance.scope, { startImmediately: true }),
     );
@@ -1339,6 +1397,72 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     },
   );
 
+  /** Several applied edits as one, undone together. */
+  const mergeApplied = (edits: ReadonlyArray<LanguageServerAppliedEdit>) => {
+    if (edits.length <= 1) return edits[0] ?? null;
+    const files = edits.flatMap((edit) => applied.get(edit.id)?.files ?? []);
+    const first = edits[0]!;
+    applied.set(first.id, { cwd: applied.get(first.id)?.cwd ?? "", files });
+    for (const edit of edits.slice(1)) applied.delete(edit.id);
+    return {
+      id: first.id,
+      files: [...new Set(edits.flatMap((edit) => edit.files))],
+      edits: edits.reduce((sum, edit) => sum + edit.edits, 0),
+    };
+  };
+
+  /**
+   * Applies one of the code actions last offered to the session: its edit through the
+   * environment, as a rename's, then its command, whose own edits the server sends back here.
+   */
+  const applyCodeAction = Effect.fn("LanguageServers.applyCodeAction")(function* (
+    instance: Instance,
+    session: Session,
+    index: unknown,
+  ) {
+    const running = yield* Deferred.await(instance.ready);
+    const offered = session.codeActions;
+    const chosen = typeof index === "number" ? offered?.actions[index] : undefined;
+    if (offered === null || chosen === undefined) {
+      return { error: contentModified("The code actions changed; ask for them again.") };
+    }
+    session.codeActions = null;
+    let action: Json = chosen;
+    const isCommand = typeof action.command === "string";
+    if (
+      !isCommand &&
+      action.edit === undefined &&
+      running.capabilities?.codeActionProvider?.resolveProvider
+    ) {
+      action = yield* running.connection
+        .request("codeAction/resolve", action)
+        .response.pipe(Effect.orElseSucceed(() => chosen));
+    }
+    const done: Array<LanguageServerAppliedEdit> = [];
+    if (action.edit) {
+      const edit = yield* applyWorkspaceEdit(instance, action.edit, offered.seen).pipe(
+        Effect.option,
+      );
+      if (Option.isNone(edit))
+        return { error: { code: -32603, message: "The edit could not be applied." } };
+      done.push(edit.value);
+    }
+    const command = isCommand ? action : action.command;
+    if (typeof command?.command === "string") {
+      instance.collecting = done;
+      yield* running.connection
+        .request("workspace/executeCommand", {
+          command: command.command,
+          ...(command.arguments === undefined ? {} : { arguments: command.arguments }),
+        })
+        .response.pipe(
+          Effect.ignore,
+          Effect.ensuring(Effect.sync(() => (instance.collecting = null))),
+        );
+    }
+    return { result: { applied: mergeApplied(done) } };
+  });
+
   const onSessionNotification = Effect.fn("LanguageServers.sessionNotification")(function* (
     instance: Instance,
     session: Session,
@@ -1432,7 +1556,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         : "";
     if (method === "textDocument/completion") session.completionPath = relativePath;
     // A rename is applied here, at the texts the server answers about.
-    const seen = method === "textDocument/rename" ? serverTexts(instance) : null;
+    const seen =
+      method === "textDocument/rename" || method === "textDocument/codeAction"
+        ? serverTexts(instance)
+        : null;
     const request = running.connection.request(method, translated.params);
     pending.serverId = request.id;
     const answer = yield* request.response.pipe(
@@ -1440,6 +1567,20 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
     );
     if (!answer.ok) return { error: errorMessage(answer.error) };
+    if (seen !== null && method === "textDocument/codeAction") {
+      // The editor gets titles; the actions stay here, in the server's coordinates, to apply.
+      const actions: Array<Json> = Array.isArray(answer.result) ? answer.result : [];
+      session.codeActions = { actions, seen };
+      return {
+        result: actions.map((action, index) => ({
+          index,
+          title: String(action?.title ?? ""),
+          ...(typeof action?.kind === "string" ? { kind: action.kind } : {}),
+          ...(action?.isPreferred === true ? { isPreferred: true } : {}),
+          ...(action?.disabled?.reason ? { disabled: String(action.disabled.reason) } : {}),
+        })),
+      };
+    }
     if (seen !== null) {
       if (answer.result == null) return { result: null };
       const done = yield* applyWorkspaceEdit(instance, answer.result, seen).pipe(
@@ -1473,6 +1614,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     pending: PendingForward,
   ) {
     if (message.method === "shutdown") return { result: null };
+    if (message.method === "astrolabe/applyCodeAction") {
+      return yield* applyCodeAction(instance, session, message.params?.index);
+    }
     if (message.method !== "initialize") {
       return yield* forward(instance, session, message, state, pending);
     }
@@ -1528,6 +1672,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           pending: new Map(),
           scope: yield* Scope.fork(instance.scope),
           completionPath: null,
+          codeActions: null,
         };
         instance.sessions.set(opened.id, opened);
         sessions.set(opened.id, { instance, session: opened });

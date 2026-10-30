@@ -72,6 +72,7 @@ export const LSP_KEYBINDING_COMMANDS = [
   "lsp.rename",
   "lsp.undoRename",
   "lsp.format",
+  "lsp.codeActions",
 ] as const;
 export type LspKeybindingCommand = (typeof LSP_KEYBINDING_COMMANDS)[number];
 

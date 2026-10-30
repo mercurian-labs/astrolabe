@@ -213,7 +213,7 @@ export const LanguageServerUndoEditResult = Schema.Struct({
 export type LanguageServerUndoEditResult = typeof LanguageServerUndoEditResult.Type;
 
 /** LSP requests whose answer the environment applies to files, so a send of one writes. */
-const WRITING_METHODS = new Set(["textDocument/rename"]);
+const WRITING_METHODS = new Set(["textDocument/rename", "astrolabe/applyCodeAction"]);
 
 export const LanguageServerErrorReason = Schema.Literals([
   /** No language server serves this file. */

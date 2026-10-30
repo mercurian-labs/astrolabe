@@ -112,6 +112,10 @@ export const mapParams = (params: Json, m: OffsetMapper): Json => {
   if (params?.range) params.range = mapRange(m, params.range, false);
   // A completion item handed back to resolve it carries its edit in the editor's text.
   if (params?.textEdit) mapEdit(m, params.textEdit, false);
+  // A code action request names the diagnostics it is about, as the editor shows them.
+  for (const diagnostic of params?.context?.diagnostics ?? []) {
+    if (diagnostic?.range) diagnostic.range = mapRange(m, diagnostic.range, false);
+  }
   return params;
 };
 
