@@ -6,7 +6,15 @@ export { AtlasGraph } from "./AtlasGraph.tsx";
 export type { AtlasGraphHandle, AtlasGraphProps, AtlasLayoutInfo } from "./AtlasGraph.tsx";
 export { PlayByPlay } from "./PlayByPlay.tsx";
 export { CursorPlays, type CursorPlaysProps } from "./CursorPlays.tsx";
-export { RENDER_MODES, type BenchResult, type RenderMode } from "./render/renderer.ts";
+export {
+  RENDER_MODES,
+  type BenchResult,
+  type RenderMode,
+  type RendererFactory,
+} from "./render/renderer.ts";
+// The only renderer this entry reaches: the app's Graph tab draws with Lean alone. The others
+// (and Pixi) are the playground's, in `render/renderers.ts`.
+export { createLeanRenderer } from "./render/lean/LeanRenderer.ts";
 export type { BenchDriver, FrameSample, GpuMemory, SampleOptions } from "./render/probe.ts";
 export type { LabelBoxes } from "./render/pool.ts";
 export type { PlayByPlayProps } from "./PlayByPlay.tsx";

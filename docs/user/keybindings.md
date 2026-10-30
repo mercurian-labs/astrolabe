@@ -127,6 +127,7 @@ you need.
 | `p`                     | Panes: split, close, maximize, full screen, right panel        |
 | `s` `s`                 | Show or hide the sidebar                                       |
 | `w`                     | Open Wikis, or find or create a document                       |
+| `r` `g`                 | Open the local graph of the repository file in front           |
 | `,`                     | Settings                                                       |
 
 These are the defaults. A row lists every key in its group that runs the same

@@ -89,6 +89,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "buffer.open",
   "document.open",
   "search.clearHighlight",
+  "repository.localGraph",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

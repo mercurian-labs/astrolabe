@@ -21,6 +21,20 @@ code opens with line numbers and its language's colours, with Vim if you turned 
 Settings. Your edits save on their own a moment after you stop typing. A file shows when an agent
 is working in the same copy, and an edit never overwrites newer changes saved there.
 
+## Local graph
+
+A file's local graph shows the file in the middle, the files it imports on one side and the files
+that import it on the other, with arrows from importer to imported. Open it with the graph button
+in a file's header, **Open local graph** in a file's menu in the sidebar, or `r` `g` in the
+[keyboard menu](keybindings.md#keyboard-menu). It opens beside the file and follows the file you
+are reading; turn off **Following** to keep it on one file. Click a file to open it (⌘-click or
+Ctrl-click for a new tab), or a folded folder to unfold it. Hovering a file shows the import that
+links it and highlights that line in the open file. The toolbar sets the depth and whether uses,
+files that use it, tests and outside packages show.
+
+The graph reads the repository's code index, set in **Settings → Projects**. While the index is
+first built, the files that import this one appear once it finishes.
+
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base

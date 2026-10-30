@@ -17,6 +17,7 @@ import {
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
+import { localGraphOpener } from "~/components/repositories/localGraph";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
 import type { FocusDirection } from "~/keyboardNav/regions.logic";
@@ -328,6 +329,8 @@ function astrolabeCommand(
         context.origin?.view ? "Clear search highlight" : "Nothing highlighted here",
         inEditor(context.origin, "nohlsearch"),
       );
+    case "repository.localGraph":
+      return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
   }
 }
 

@@ -30,6 +30,12 @@ export type HoverTarget =
   | { readonly kind: "node"; readonly index: number; readonly x: number; readonly y: number }
   | { readonly kind: "edge"; readonly index: number; readonly x: number; readonly y: number };
 
+/**
+ * Builds a renderer drawing into `host`. A host imports only the factory it draws with, so the
+ * renderers it does not use (and their libraries) never load.
+ */
+export type RendererFactory = (host: HTMLElement, callbacks: RendererCallbacks) => GraphRenderer;
+
 export interface RendererCallbacks {
   onHover(target: HoverTarget | null): void;
   /** A node was clicked (pressed and released without dragging). */
@@ -107,6 +113,11 @@ export interface ViewContext {
   readonly reading: boolean;
   /** The reading is narrowed to the checkpoint's own turn: its story is that turn's links alone. */
   readonly thisTurnOnly: boolean;
+  /**
+   * A local graph (Repositories' file graph): a small graph around its `focus`, without a thread.
+   * Its links draw at rest, and the camera frames all of it rather than the reading density.
+   */
+  readonly localGraph?: boolean;
 }
 
 /**

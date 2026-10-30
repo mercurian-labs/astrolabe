@@ -8,6 +8,14 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./file": {
+      "types": "./src/file.ts",
+      "default": "./src/file.ts"
+    },
+    "./model": {
+      "types": "./src/model.ts",
+      "default": "./src/model.ts"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
