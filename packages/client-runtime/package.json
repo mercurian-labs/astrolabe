@@ -188,6 +188,10 @@
       "types": "./src/delayedStatus.ts",
       "default": "./src/delayedStatus.ts"
     },
+    "./state/codeLocalGraph": {
+      "types": "./src/state/codeLocalGraph.ts",
+      "default": "./src/state/codeLocalGraph.ts"
+    },
     "./state/connections": {
       "types": "./src/state/connections.ts",
       "default": "./src/state/connections.ts"
@@ -383,6 +387,10 @@
     "./state/vcs": {
       "types": "./src/state/vcs.ts",
       "default": "./src/state/vcs.ts"
+    },
+    "./state/codeIndex": {
+      "types": "./src/state/codeIndex.ts",
+      "default": "./src/state/codeIndex.ts"
     },
     "./state/wiki": {
       "types": "./src/state/wiki.ts",

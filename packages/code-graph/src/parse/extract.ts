@@ -42,6 +42,8 @@ export interface Reference {
    * `self` in `self.run()`, `*` for an expression; null for a bare name.
    */
   readonly qualifier: string | null;
+  /** Every 1-based line the reference is made on, in source order. */
+  readonly lines: ReadonlyArray<number>;
 }
 
 /**
@@ -59,6 +61,9 @@ export interface ImportBinding {
   readonly local: string | null;
   /** The name taken from the module, for `named`. */
   readonly imported: string | null;
+  /** The import statement's first line, 1-based, and its text, whitespace-normalised. */
+  readonly line: number;
+  readonly text: string;
 }
 
 export interface FileFacts {
@@ -282,6 +287,12 @@ function shellHash(
   return contentHash(shell + text.slice(at, end) + (doc === "" ? "" : `\u0002${doc}`));
 }
 
+const STATEMENT_TEXT_MAX = 200;
+const statementText = (text: string) => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > STATEMENT_TEXT_MAX ? `${flat.slice(0, STATEMENT_TEXT_MAX - 1)}…` : flat;
+};
+
 function importBindings(language: LanguageId, matches: ReadonlyArray<QueryMatch>) {
   const bindings: Array<ImportBinding> = [];
   const seen = new Set<string>();
@@ -299,20 +310,22 @@ function importBindings(language: LanguageId, matches: ReadonlyArray<QueryMatch>
       language === "go" ? sourceNode.text.replace(/^["`]|["`]$/g, "") : sourceNode.text;
     const name = captureOf(match, "name")?.text ?? null;
     const local = captureOf(match, "local")?.text ?? null;
+    const statement = roleOf(match, "import.")?.node ?? sourceNode;
+    const at = { line: statement.startPosition.row + 1, text: statementText(statement.text) };
     if (role === "named" && name !== null) {
-      add({ kind: "named", source, local: local ?? name, imported: name });
+      add({ kind: "named", source, local: local ?? name, imported: name, ...at });
     } else if (role === "default" && local !== null) {
-      add({ kind: "named", source, local, imported: DEFAULT_EXPORT });
+      add({ kind: "named", source, local, imported: DEFAULT_EXPORT, ...at });
     } else if (role === "namespace") {
       const bound = local ?? (language === "go" ? (source.split("/").at(-1) ?? source) : source);
-      add({ kind: "namespace", source, local: bound, imported: null });
+      add({ kind: "namespace", source, local: bound, imported: null, ...at });
       // `import a.b` also binds `a`, which is how the code reaches `a.b.f()`.
       if (language === "python" && local === null && source.includes(".")) {
         const first = source.slice(0, source.indexOf("."));
-        add({ kind: "namespace", source: first, local: first, imported: null });
+        add({ kind: "namespace", source: first, local: first, imported: null, ...at });
       }
     } else {
-      add({ kind: "module", source, local: null, imported: null });
+      add({ kind: "module", source, local: null, imported: null, ...at });
     }
   }
   return bindings;
@@ -537,17 +550,24 @@ function factsOf(
     return file;
   };
   const references: Array<Reference> = [];
-  const seenReferences = new Set<string>();
-  const push = (reference: Reference) => {
+  // The same reference made again adds its line; it stays one reference.
+  const seenReferences = new Map<string, Array<number>>();
+  const push = (reference: Omit<Reference, "lines">, line: number) => {
     const key = `${reference.from}\u0000${reference.name}\u0000${reference.kind}\u0000${reference.qualifier}`;
-    if (seenReferences.has(key)) return;
-    seenReferences.add(key);
-    references.push(reference);
+    const seen = seenReferences.get(key);
+    if (seen !== undefined) {
+      if (!seen.includes(line)) seen.push(line);
+      return;
+    }
+    const created = [line];
+    seenReferences.set(key, created);
+    references.push({ ...reference, lines: created });
   };
+  const lineOf = (node: Node) => node.startPosition.row + 1;
 
   // Contracts: the types a callable's parameters and return are annotated with. Those
   // annotations are `accepts` and `returns`, not plain type references.
-  const contracts: Array<Reference> = [];
+  const contracts: Array<{ reference: Omit<Reference, "lines">; line: number }> = [];
   const annotated = new Set<string>();
   for (const definition of definitions) {
     if (definition.kind !== "function" && definition.kind !== "method") continue;
@@ -558,7 +578,10 @@ function factsOf(
     ] as const) {
       for (const type of types) {
         annotated.add(nodeKey(type.node));
-        contracts.push({ from: definition.id, name: type.name, kind, qualifier: type.qualifier });
+        contracts.push({
+          reference: { from: definition.id, name: type.name, kind, qualifier: type.qualifier },
+          line: lineOf(type.node),
+        });
       }
     }
   }
@@ -577,7 +600,7 @@ function factsOf(
       const type = scopeTypeName(capture.roleNode);
       from = (type === null ? undefined : typeAt(null, type)?.id) ?? file;
     }
-    let reference: Reference = {
+    let reference: Omit<Reference, "lines"> = {
       from,
       name: capture.nameNode.text,
       kind,
@@ -596,9 +619,9 @@ function factsOf(
         };
       }
     }
-    push(reference);
+    push(reference, lineOf(capture.nameNode));
   }
-  for (const reference of contracts) push(reference);
+  for (const { reference, line } of contracts) push(reference, line);
 
   // Failure paths, from the callable they sit in.
   const callables = new Set(
@@ -609,7 +632,10 @@ function factsOf(
   for (const site of failureSites(language, root)) {
     const from = enclosingOf(site.node);
     if (callables.has(from)) {
-      push({ from, name: site.name, kind: site.kind, qualifier: site.qualifier });
+      push(
+        { from, name: site.name, kind: site.kind, qualifier: site.qualifier },
+        lineOf(site.node),
+      );
     }
   }
 

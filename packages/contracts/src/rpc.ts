@@ -403,6 +403,15 @@ import {
   WikiTransformInput,
 } from "./wiki.ts";
 import {
+  CodeIndexError,
+  CodeIndexProjectInput,
+  CodeIndexPruneResult,
+  CodeIndexStatus,
+  CodeIndexStorage,
+  CodeLocalGraph,
+  CodeLocalGraphInput,
+} from "./codeIndex.ts";
+import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
   ProjectCloneListEvent,
@@ -605,6 +614,13 @@ export const WS_METHODS = {
   documentsSave: "documents.save",
   documentsRecover: "documents.recover",
   documentsDiscard: "documents.discard",
+  // Astrolabe: each repository's code index.
+  codeIndexSubscribe: "codeIndex.subscribe",
+  codeIndexLocalGraph: "codeIndex.localGraph",
+  codeIndexRebuild: "codeIndex.rebuild",
+  codeIndexStorage: "codeIndex.storage",
+  codeIndexPrune: "codeIndex.prune",
+  codeIndexClear: "codeIndex.clear",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2093,6 +2109,45 @@ const WsDocumentsDiscardRpc = Rpc.make(WS_METHODS.documentsDiscard, {
   error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
 });
 
+/** Every repository's index status now, then each change. */
+const WsCodeIndexSubscribeRpc = Rpc.make(WS_METHODS.codeIndexSubscribe, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStatus,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsCodeIndexLocalGraphRpc = Rpc.make(WS_METHODS.codeIndexLocalGraph, {
+  payload: CodeLocalGraphInput,
+  success: CodeLocalGraph,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexRebuildRpc = Rpc.make(WS_METHODS.codeIndexRebuild, {
+  payload: CodeIndexProjectInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexStorageRpc = Rpc.make(WS_METHODS.codeIndexStorage, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStorage,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+/** Remove file versions no branch, worktree or checkpoint uses. */
+const WsCodeIndexPruneRpc = Rpc.make(WS_METHODS.codeIndexPrune, {
+  payload: Schema.Struct({}),
+  success: CodeIndexPruneResult,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexClearRpc = Rpc.make(WS_METHODS.codeIndexClear, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2437,6 +2492,12 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsDocumentsSaveRpc,
   WsDocumentsRecoverRpc,
   WsDocumentsDiscardRpc,
+  WsCodeIndexSubscribeRpc,
+  WsCodeIndexLocalGraphRpc,
+  WsCodeIndexRebuildRpc,
+  WsCodeIndexStorageRpc,
+  WsCodeIndexPruneRpc,
+  WsCodeIndexClearRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

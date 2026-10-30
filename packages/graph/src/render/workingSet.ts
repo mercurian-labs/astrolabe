@@ -4,7 +4,7 @@
  * out, so it never re-glides. Capacity grows with headroom and compacts when well under, and the
  * renderer is told where each kept note moved from.
  */
-import { kindShape } from "../model/kinds.ts";
+import { nodeShape } from "../model/kinds.ts";
 import type { PlayFocus } from "../model/plays.ts";
 import type { Universe, UniverseEdge, UniverseNode } from "../model/universe.ts";
 import {
@@ -344,7 +344,7 @@ export class WorkingSet {
     dense.nodeDegree.set(this.#degree);
     // A slot keeps its note's shape while the note leaves, so nothing changes shape as it fades.
     this.graph.nodes.forEach((node, slot) => {
-      dense.nodeShape[slot] = kindShape(node.kind);
+      dense.nodeShape[slot] = nodeShape(node);
     });
     view.edges.forEach((index, at) => {
       const slot = this.edgeSlotOf(index);

@@ -53,7 +53,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   from suggestions (decisions keyed `thread:<threadId>`); a thread can be in several groups. The
   tab (`change-group:<env>:<id>`) shows
   `switch "Merge with the code"`, **Open as a tab group**, **Ask for suggestions** (when
-  agent suggestions are on; messages the root thread to use `t3_change_group_suggest`),
+  agent suggestions are on; messages the root thread to use `astrolabe_change_group_suggest`),
   **Add a change request**, **Add a thread**, Suggested rows (✓ / ✕, threads too), Code /
   Documentation rows and a **Threads** section (each `button "Open <title>"` with its reason and
   Working / Settled / Idle; opens its chat beside) with ✕ to take out. **Open as a tab group**
@@ -68,7 +68,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   of the run when it is not open; right-click (plain buttons on web): Expand the group /
   Collapse the group (only the pane's front tab stays beside the marker), Merge with the code
   (Stop merging with the code once armed), Close the group's tabs.
-  MCP: `t3_change_groups`, `t3_change_group_suggest`, `t3_change_group_update`.
+  MCP: `astrolabe_change_groups`, `astrolabe_change_group_suggest`, `astrolabe_change_group_update`.
   Mobile: the Changes tab leads with `Groups · N` and cards
   `button "<title>, change group, <state>"` (route `ChangeGroup`: Merge with the code switch,
   members and a Threads section as buttons, "Take … out of the group"); Settings → Changes
@@ -202,7 +202,7 @@ Save a screenshot of the section.
   is focused (it follows only pull requests).
 - A real link test needs a thread with a linked pull request that wrote a wiki change:
   add a scratch folder as a project, start a Claude thread there, ask it to amend a note
-  with `t3_wiki_amend` only, then **Link pull request to thread** (palette) with a merged
+  with `astrolabe_wiki_amend` only, then **Link pull request to thread** (palette) with a merged
   and an open upstream pull request URL; nothing is written to the host.
 - Escape with nothing open goes back to the previous page, whichever section that was (`useEscapeToGoBack`,
   `pullRequest/PullRequestsPage.tsx`). It does not yet clear a selection here as it does in

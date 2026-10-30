@@ -82,6 +82,23 @@ export async function listTree(
   return entries;
 }
 
+/**
+ * Every regular file in the tree, by path, without sizes: `ls-tree` reads each
+ * blob's header for `-l`, which costs most of a large tree's listing.
+ */
+export async function listBlobs(repo: string, ref: string): Promise<Map<string, string>> {
+  const out = await git(repo, ["ls-tree", "-r", "-z", "--full-tree", ref]);
+  const blobs = new Map<string, string>();
+  for (const line of out.split("\0")) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const [mode = "", type, sha] = line.slice(0, tab).split(/\s+/);
+    if (type !== "blob" || !REGULAR_MODES.has(mode) || sha === undefined) continue;
+    blobs.set(line.slice(tab + 1), sha);
+  }
+  return blobs;
+}
+
 export interface ChangedPath {
   readonly path: string;
   /** The blob at the later tree when the path is a regular file there; else null. */

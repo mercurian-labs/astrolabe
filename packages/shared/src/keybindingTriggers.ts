@@ -84,6 +84,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e w", command: "code.toggleSoftWrap" },
   { key: "menu e [", command: "code.foldAll" },
   { key: "menu e ]", command: "code.unfoldAll" },
+  { key: "menu r g", command: "repository.localGraph" },
   { key: "menu ,", command: "section.settings" },
   { key: ":q[uit]", command: "tab.close" },
   { key: ":w[rite]", command: "draft.write" },

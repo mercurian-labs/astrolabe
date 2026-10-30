@@ -36,6 +36,12 @@ const SHAPE_OF: Readonly<Record<NoteKind, NodeShape>> = {
 export const kindShape = (kind: NoteKind | undefined): NodeShape =>
   kind === undefined ? NodeShape.circle : SHAPE_OF[kind];
 
+/** The shape a node draws as: the one it names, else its kind's. */
+export const nodeShape = (node: {
+  readonly kind?: NoteKind | undefined;
+  readonly shape?: NodeShape | undefined;
+}): NodeShape => node.shape ?? kindShape(node.kind);
+
 /** The glyph for each kind's shape, in text. */
 export const KIND_GLYPH: Readonly<Record<NoteKind, string>> = {
   function: "●",

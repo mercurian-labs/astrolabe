@@ -19,21 +19,52 @@ export interface Grammar {
   readonly locals: Query;
 }
 
-const queriesDir = NodeURL.fileURLToPath(new URL("../../queries/", import.meta.url));
-const wasmDir = NodeURL.fileURLToPath(
-  new URL("./wasm/", import.meta.resolve("@vscode/tree-sitter-wasm/package.json")),
-);
+/**
+ * Where the queries and grammars are read from: beside this package's sources,
+ * or, in a bundle that cannot reach them, the directory `useAssets` names.
+ */
+interface Assets {
+  readonly queries: string;
+  readonly wasm: string;
+  /** web-tree-sitter's own runtime, when it is not beside its module. */
+  readonly runtime: string | null;
+}
+
+let assets: Assets | null = null;
+
+const sourceAssets = (): Assets => ({
+  queries: NodeURL.fileURLToPath(new URL("../../queries/", import.meta.url)),
+  wasm: NodeURL.fileURLToPath(
+    new URL("./wasm/", import.meta.resolve("@vscode/tree-sitter-wasm/package.json")),
+  ),
+  runtime: null,
+});
+
+/**
+ * Read the queries and grammars from `dir` instead, laid out as `queries/` (this
+ * package's), `wasm/tree-sitter-<language>.wasm`, and `wasm/web-tree-sitter.wasm`:
+ * what a bundled worker ships beside itself. Call it before anything parses.
+ */
+export function useAssets(dir: string): void {
+  const wasm = NodePath.join(dir, "wasm");
+  assets = {
+    queries: NodePath.join(dir, "queries"),
+    wasm,
+    runtime: NodePath.join(wasm, "web-tree-sitter.wasm"),
+  };
+}
 
 let ready: Promise<void> | null = null;
 const grammars = new Map<LanguageId, Promise<Grammar>>();
 
-const readQuery = (file: string) => NodeFS.readFileSync(NodePath.join(queriesDir, file), "utf8");
-
 async function load(id: LanguageId): Promise<Grammar> {
-  ready ??= Parser.init();
+  assets ??= sourceAssets();
+  const { queries, wasm, runtime } = assets;
+  const readQuery = (file: string) => NodeFS.readFileSync(NodePath.join(queries, file), "utf8");
+  ready ??= Parser.init(runtime === null ? undefined : { locateFile: () => runtime });
   await ready;
   const language = await Language.load(
-    NodeFS.readFileSync(NodePath.join(wasmDir, `tree-sitter-${id}.wasm`)),
+    NodeFS.readFileSync(NodePath.join(wasm, `tree-sitter-${id}.wasm`)),
   );
   const parser = new Parser();
   parser.setLanguage(language);

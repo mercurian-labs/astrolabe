@@ -82,6 +82,7 @@ vi.mock("./render/lean/LeanRenderer.ts", async () => {
 });
 
 const { AtlasGraph } = await import("./AtlasGraph.tsx");
+const { createLeanRenderer } = await import("./render/lean/LeanRenderer.ts");
 
 /** Every ResizeObserver made (the graph's and the renderer's), to say "the frame was resized". */
 const observers: Array<() => void> = [];
@@ -264,6 +265,7 @@ describe.each([true, false])(
               checkpoint: 2,
               turnRunning: true,
               mode: "lean",
+              createRenderer: createLeanRenderer,
               settings: { ...DEFAULT_SETTINGS, depth: defaultDepth(memory, thread) },
               filters: NO_FILTERS,
               onCursor: (play) => cursor.push(play),
@@ -338,6 +340,7 @@ describe("a landing's tour", () => {
           thread,
           checkpoint: 0,
           mode: "lean",
+          createRenderer: createLeanRenderer,
           settings: { ...DEFAULT_SETTINGS, depth: defaultDepth(memory, thread) },
           filters: NO_FILTERS,
           onCursor: (play) => cursor.push(play),

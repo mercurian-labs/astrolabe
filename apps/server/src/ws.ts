@@ -247,6 +247,7 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
+import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1251,7 +1252,14 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
     const baseTexts = yield* VcsBaseText.VcsBaseText;
     const documents = yield* Documents.Documents;
+    const codeIndex = yield* CodeIndex.CodeIndex;
     return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
+      [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
+      [WS_METHODS.codeIndexRebuild]: (input) => codeIndex.rebuild(input).pipe(Effect.as({})),
+      [WS_METHODS.codeIndexStorage]: (_input) => codeIndex.storage,
+      [WS_METHODS.codeIndexPrune]: (_input) => codeIndex.prune,
+      [WS_METHODS.codeIndexClear]: (_input) => codeIndex.clear.pipe(Effect.as({})),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.vcsReadBaseText]: (input) => baseTexts.read(input),
       [WS_METHODS.subscribeVcsBaseText]: (input) => baseTexts.stream(input),

@@ -38,6 +38,13 @@ describe("edgeAttention", () => {
     expect(edgeAttention(rest)).toBe(0);
   });
 
+  it("draws a local graph's links at rest, below a hover's", () => {
+    const local = { ...rest, linksAtRest: true };
+    expect(edgeAttention(local)).toBe(EdgeAttention.localRest);
+    expect(edgeAttention({ ...local, touched: true })).toBe(EdgeAttention.touched);
+    expect(EdgeAttention.localRest).toBeLessThan(EdgeAttention.touched);
+  });
+
   it("keeps only links between matches during a search", () => {
     expect(edgeAttention({ ...rest, searching: true, bothMatch: true })).toBe(0.28);
     expect(edgeAttention({ ...rest, searching: true, touched: true })).toBe(0);

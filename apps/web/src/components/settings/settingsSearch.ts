@@ -246,6 +246,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "code-index-storage",
+    title: "Code index storage",
+    to: "/settings/maintenance",
+    scope: "environment-defaults",
+    searchTerms: ["code index storage size file versions unused clean up clear symbols"],
+  },
+  {
     id: "storage-delete-now",
     title: "Delete now",
     to: "/settings/maintenance",
@@ -1069,6 +1076,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["pull request pr guided review guide preferences taste prompt custom"],
     environmentOnly: true,
     scope: "project-defaults",
+  },
+  {
+    id: "project-code-index",
+    title: "Code index",
+    to: "/settings/projects",
+    searchTerms: ["index symbols definitions imports skipped paths rebuild local graph repository"],
   },
   {
     id: "project-actions",

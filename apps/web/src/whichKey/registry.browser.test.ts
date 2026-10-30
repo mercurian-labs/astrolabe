@@ -161,6 +161,7 @@ describe("the keyboard menu built from the menu rules", () => {
       ["s", "Sidebar"],
       ["w", "Wikis"],
       ["e", "Editor"],
+      ["r", "Repositories"],
       [",", "settings"],
     ]);
     // Only the focus moves and the scrolls repeat, there and nowhere in the groups.

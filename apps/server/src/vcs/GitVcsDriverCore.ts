@@ -3031,6 +3031,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return { baseRef, insertions, deletions };
   }, Effect.scoped);
 
+  const resolveBranchMergeBase: GitVcsDriver.GitVcsDriver["Service"]["resolveBranchMergeBase"] =
+    Effect.fn("resolveBranchMergeBase")(function* (cwd) {
+      const repository = yield* resolveRepositoryPathsUncached(cwd);
+      return yield* resolveReviewMergeBase(
+        repository?.worktreeRoot ?? cwd,
+        repository?.currentBranch ?? null,
+      );
+    });
+
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
     input: ReviewDiffPreviewInput,
   ) {
@@ -4461,6 +4470,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     getReviewDiffFileContents,
     readConfigValue,
     readBranchBase,
+    resolveBranchMergeBase,
     resolveBranchName,
     listRefs,
     createWorktree: Effect.fnUntraced(function* (input, options) {

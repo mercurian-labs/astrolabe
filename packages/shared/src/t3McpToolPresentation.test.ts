@@ -30,6 +30,18 @@ describe("resolveT3McpToolPresentation", () => {
     }
   });
 
+  it("reads Astrolabe's wiki and change-group tools by the t3_ names older threads recorded", () => {
+    for (const [legacy, current] of [
+      ["t3_wiki_amend", "astrolabe_wiki_amend"],
+      ["t3_change_group_suggest", "astrolabe_change_group_suggest"],
+    ]) {
+      expect(resolveT3McpToolPresentation(`mcp__t3-code__${legacy}`)).toEqual(
+        resolveT3McpToolPresentation(`mcp__t3-code__${current}`),
+      );
+    }
+    expect(resolveT3McpToolPresentation("mcp__t3-code__t3_code_find")).toBeNull();
+  });
+
   it("matches OpenCode 2's per-thread server names, whose thread ids hold underscores", () => {
     expect(
       resolveT3McpToolPresentation("t3-code-thread_opencode2-adapter_delegate_task")?.displayName,

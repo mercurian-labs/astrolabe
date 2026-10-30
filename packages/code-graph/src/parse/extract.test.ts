@@ -11,6 +11,9 @@ const references = (facts: FileFacts) =>
     (reference) =>
       `${reference.from} ${reference.kind} ${reference.qualifier === null ? "" : `${reference.qualifier}.`}${reference.name}`,
   );
+/** Each import binding without where it is written. */
+const bindings = (facts: FileFacts) =>
+  facts.imports.map(({ line: _line, text: _text, ...binding }) => binding);
 
 describe("extractFile", () => {
   it("reads TypeScript kinds, parents, heritage, calls, constructions, exports, and imports", async () => {
@@ -41,13 +44,13 @@ describe("extractFile", () => {
       at("function:build"),
       at("interface:Shape"),
     ]);
-    expect(facts.imports).toContainEqual({
+    expect(bindings(facts)).toContainEqual({
       kind: "named",
       source: "./util.ts",
       local: "helper",
       imported: "helper",
     });
-    expect(facts.imports).toContainEqual({
+    expect(bindings(facts)).toContainEqual({
       kind: "namespace",
       source: "./lib.ts",
       local: "Lib",
@@ -80,7 +83,7 @@ describe("extractFile", () => {
     ]);
     // Without `__all__`, a Python module exports nothing by this reading.
     expect(facts.exports).toEqual([]);
-    expect(facts.imports).toContainEqual({
+    expect(bindings(facts)).toContainEqual({
       kind: "named",
       source: ".io",
       local: "InputOutput",
@@ -109,7 +112,7 @@ describe("extractFile", () => {
       at("interface:Handler"),
       at("method:Server.Serve"),
     ]);
-    expect(facts.imports).toEqual([
+    expect(bindings(facts)).toEqual([
       { kind: "namespace", source: "fmt", local: "fmt", imported: null },
       { kind: "namespace", source: "example.com/app/store", local: "st", imported: null },
     ]);
@@ -136,7 +139,7 @@ describe("extractFile", () => {
       `${at("method:Circle.new")} returns Self`,
     ]);
     expect(facts.exports).toEqual([at("class:Circle"), at("method:Circle.new")]);
-    expect(facts.imports).toEqual([
+    expect(bindings(facts)).toEqual([
       { kind: "named", source: "crate::shapes", local: "Shape", imported: "Shape" },
     ]);
   });
@@ -219,7 +222,7 @@ describe("extractFile", () => {
 
   it("reads default imports and the file's default export", async () => {
     const importer = await extractFile("src/app.ts", "typescript", 'import run from "./lib";\n');
-    expect(importer.imports).toContainEqual({
+    expect(bindings(importer)).toContainEqual({
       kind: "named",
       source: "./lib",
       local: "run",
@@ -233,5 +236,33 @@ describe("extractFile", () => {
     ] as const) {
       expect((await extractFile("src/lib.ts", "typescript", text)).defaultExport).toBe(name);
     }
+  });
+
+  it("records the lines a reference is made on and where each import is written", async () => {
+    const text = [
+      'import { helper } from "./util.ts";',
+      "import {",
+      "  other,",
+      '} from "./other.ts";',
+      "export function run() {",
+      "  helper();",
+      "  other();",
+      "  helper();",
+      "}",
+      "",
+    ].join("\n");
+    const facts = await extractFile("src/run.ts", "typescript", text);
+    expect(facts.references.map((reference) => [reference.name, reference.lines])).toEqual([
+      ["helper", [6, 8]],
+      ["other", [7]],
+    ]);
+    expect(
+      facts.imports
+        .filter((binding) => binding.kind === "named")
+        .map((binding) => [binding.local, binding.line, binding.text]),
+    ).toEqual([
+      ["helper", 1, 'import { helper } from "./util.ts";'],
+      ["other", 2, 'import { other, } from "./other.ts";'],
+    ]);
   });
 });

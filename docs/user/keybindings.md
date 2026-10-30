@@ -128,6 +128,7 @@ you need.
 | `s` `s`                 | Show or hide the sidebar                                                                                                                                         |
 | `w`                     | Open Wikis, or find or create a document                                                                                                                         |
 | `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base |
+| `r` `g`                 | Open the local graph of the repository file in front                                                                                                             |
 | `,`                     | Settings                                                                                                                                                         |
 
 These are the defaults. A row lists every key in its group that runs the same

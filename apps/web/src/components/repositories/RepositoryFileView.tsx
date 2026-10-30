@@ -16,7 +16,7 @@ import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
-import { BotIcon } from "lucide-react";
+import { BotIcon, WaypointsIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
 import type {
   DocumentSession,
@@ -24,6 +24,7 @@ import type {
 } from "@t3tools/client-runtime/state/document-session";
 import {
   type ReactNode,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -33,6 +34,7 @@ import {
 
 import { useCodeEditorKeys, useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
+import { PanesHostContext } from "~/panes/panesHost";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
@@ -45,6 +47,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { composerHistory } from "../composerCodeMirror/composerUndo";
 import { useProjectFileQuery } from "../files/projectFilesQueryState";
 import { isTurnRunning } from "../wiki/wiki.logic";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
 import { repositoryFileReveal, revealLine } from "./repositoryFileReveal";
 import {
@@ -54,12 +57,12 @@ import {
   type DiffBaseControl,
   type FileDiffBase,
 } from "./fileDiffBase";
+import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
+import { openLocalGraph } from "./localGraph";
 import { repositoryPanes } from "./repositoryPanes";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
-import type { RepositoryTab } from "./repositoryTabs";
+import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
 import { useRepositoryDocument } from "./useRepositoryDocument";
-
-type FileTab = Extract<RepositoryTab, { kind: "file" }>;
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
 // rebuild the editor's styles.
@@ -91,6 +94,8 @@ const FILE_EDITOR_THEME = EditorView.theme({
     padding: "24px 32px 40vh",
   },
   ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)" },
+  // The import a hovered local-graph node names.
+  ".cm-import-line": { backgroundColor: "color-mix(in oklab, var(--primary) 16%, transparent)" },
 });
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
@@ -150,6 +155,8 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   });
   const baseControl = { current: currentBase, toggle: toggleBase };
   const [trail, setTrail] = useState<OutlineTrail | null>(null);
+  // The panes this file is in, which its local graph opens beside it in.
+  const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -194,6 +201,22 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
         <span className="shrink-0">
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
         </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label="Open local graph"
+                className="shrink-0"
+                size="icon-xs"
+                variant="ghost-muted"
+                onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
+              />
+            }
+          >
+            <WaypointsIcon />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">Open local graph</TooltipPopup>
+        </Tooltip>
       </div>
       {fromDisk || readOnly ? null : (
         <DocumentNotice
@@ -205,6 +228,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
           tabKey={tabKey}
+          file={importLineKey(tab)}
           path={path}
           source={fromDisk ? { contents: contents ?? "" } : { session }}
           readOnly={readOnly}
@@ -318,6 +342,7 @@ function FileNotice({ children }: { readonly children: string }) {
  */
 function FileEditor({
   tabKey,
+  file,
   path,
   source,
   readOnly,
@@ -326,6 +351,8 @@ function FileEditor({
   onOutlinePath,
 }: {
   readonly tabKey: string;
+  /** The file as the import-line highlight names it (`importLineKey`). */
+  readonly file: string;
   readonly path: string;
   /** The live document, or a file read once from disk (read only). */
   readonly source: { readonly session: DocumentSession } | { readonly contents: string };
@@ -356,6 +383,7 @@ function FileEditor({
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
   const [initial] = useState(() => ({
+    file,
     path,
     source,
     readOnly,
@@ -393,6 +421,7 @@ function FileEditor({
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           outline({ onPath: initial.outlinePath }),
+          importLineExtension,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) session?.changed();
           }),
@@ -401,6 +430,7 @@ function FileEditor({
     });
     viewRef.current = view;
     session?.attach(view);
+    const stopLighting = followImportLine(view, initial.file);
     let cancelled = false;
     const language = markdown ? null : codeLanguageFor(initial.path);
     if (language) {
@@ -410,6 +440,7 @@ function FileEditor({
     }
     return () => {
       cancelled = true;
+      stopLighting();
       session?.detach();
       view.destroy();
       viewRef.current = null;

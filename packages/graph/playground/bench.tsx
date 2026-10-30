@@ -27,6 +27,8 @@ import {
   type AtlasGraphHandle,
   type RenderMode,
 } from "../src/index.ts";
+import { rendererFamily } from "../src/render/renderer.ts";
+import { RENDERERS } from "../src/render/renderers.ts";
 import "../src/styles.css";
 import "./styles.css";
 
@@ -229,6 +231,7 @@ function Bench() {
           whole={state.reading === "whole"}
           turnRunning={state.turnRunning}
           mode={state.mode}
+          createRenderer={RENDERERS[rendererFamily(state.mode)]}
           settings={DEFAULT_SETTINGS}
           filters={NO_FILTERS}
           lensSlots={NO_LENSES}

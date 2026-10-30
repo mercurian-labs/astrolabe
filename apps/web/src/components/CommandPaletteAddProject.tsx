@@ -122,9 +122,8 @@ export function NewProjectPublishHostPicker(props: {
 }
 
 export function NewProjectSummary(props: {
-  readonly name: string;
-  readonly pathPreview: string;
-  readonly projectsRoot: string | null;
+  readonly title: string;
+  readonly description: string;
   readonly environmentLabel: string | null;
 }) {
   return (
@@ -134,13 +133,9 @@ export function NewProjectSummary(props: {
           <FolderGit2Icon className={ITEM_ICON_CLASS} />
         </CommandPaletteTitleIcon>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-foreground text-sm">
-            {props.name.length > 0 ? props.name : "New project"}
-          </span>
+          <span className="truncate text-foreground text-sm">{props.title}</span>
           <span className="truncate text-muted-foreground/85 text-xs">
-            {props.name.length > 0
-              ? `Creates ${props.pathPreview}`
-              : `Goes in ${props.projectsRoot}`}
+            {props.description}
             {props.environmentLabel === null ? null : ` on ${props.environmentLabel}`}
           </span>
         </span>

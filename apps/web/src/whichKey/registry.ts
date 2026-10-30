@@ -18,6 +18,7 @@ const GROUP_LABELS: Readonly<Record<string, string>> = {
   s: "Sidebar",
   w: "Wikis",
   e: "Editor",
+  r: "Repositories",
 };
 
 interface Node {
