@@ -7,7 +7,7 @@ name: Mobile EAS Production
 # runner, with corepack pinning pnpm 10.24 in eas.json, local == build.
 #
 # Every merge reconciles native fingerprints and publishes matching OTAs.
-# iOS prereleases use the testflight profile (3.0.0); App Store binaries use
+# iOS prereleases use the testflight profile (0.1.3); App Store binaries use
 # production and the committed app version, built manually. Both receive OTAs
 # for their own major version. Android continues using production automatically.
 # TestFlight beta review may still be required for subsequent builds.
@@ -27,7 +27,7 @@ on:
           - build
           - update
       profile:
-        description: "production: store release; testflight: iOS 3.0.0 beta"
+        description: "production: store release; testflight: iOS 0.1.3 beta"
         required: true
         type: choice
         default: production
