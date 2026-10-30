@@ -132,7 +132,7 @@ publish it. If Git has no name or email on that machine, the project is created 
 first commit.
 
 Use **Add project**, then **Repository**, in the command palette (`Cmd/Ctrl+K` twice), or **Add a
-repository** in Repositories, to clone a repository. Choose a hosting
+repository** in Repos, to clone a repository. Choose a hosting
 provider or paste a Git URL, then choose where to save it. The project opens right away while the
 clone runs in the background: you can write your first prompt, and sending waits until the files
 are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the

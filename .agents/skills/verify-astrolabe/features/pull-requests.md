@@ -86,7 +86,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   Agent suggestions off, check the group's tab loses **Ask for suggestions**, turn it back on.
 - **Project filter** (`changeRequests/ChangeRequestSourceFilter.tsx` over the shared
   `projects/projectFilter.ts`, `combobox "Filter by project: <name>"` beside Sort and Filters, in
-  place of upstream's provider menu): a searchable list of All projects, **Repositories** and
+  place of upstream's provider menu): a searchable list of All projects, **Repos** and
   each repository (a wiki's folder project is left out), **Wikis** and each wiki. The kind
   (`astrolabe:change-request-kind:v1`: all, repositories, wikis) and this section's own wiki
   (`astrolabe:change-request-wiki-scope:v1`, not Wikis' filter) hold the choice; a repository
@@ -97,7 +97,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   is a project (one added through Wikis → Add a folder is), but picks several and adds status
   rows; this filter stays single-pick. Filters still holds Host (with several hosts) and
   upstream's Project, which mirrors the same scope.
-  Mobile's Filters → Project lists All projects, "Repositories" and each repository, then
+  Mobile's Filters → Project lists All projects, "Repos" and each repository, then
   "Wikis" and `<wiki> · Wiki`; the menu scrolls, so walk it with two short `scroll down 0.3`
   steps. The mobile thread list's project menu (`features/projects/threadsProjectFilter.ts`:
   iPhone's `Filter threads by project`, elsewhere the **Project** submenu of

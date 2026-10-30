@@ -13,7 +13,7 @@ sidebar colour. There is no sidebar artwork: the identification setting offers
 the version pill or none, and a stored "artwork" shows the pill.
 
 Below it, the sidebar opens on its **section title**, as ChatGPT's does: a large
-"Agents" (or "Wikis", "Repositories", "Changes"; see [wikis.md](wikis.md)) heading with the section's
+"Agents" (or "Wikis", "Repos", "Changes"; see [wikis.md](wikis.md)) heading with the section's
 actions at its right end.
 
 ## Sub-features
@@ -32,7 +32,7 @@ actions at its right end.
   popup has a `Search filters` field (placeholder `Filter...`; "No matching filters." when
   nothing matches), then a **Status** group (Needs you, Working, Errored, each with the count
   of visible threads in the picked projects) and a **Projects** group: All projects, a
-  **Repositories** heading and each repository, a **Wikis** heading and each wiki (a wiki's
+  **Repos** heading and each repository, a **Wikis** heading and each wiki (a wiki's
   checkout is listed once, as the wiki; a heading shows only when it has entries), and a last
   **New project** row. Every row is a checkbox and picking keeps the popup open. Values in one
   group widen, the two groups narrow. With no project picked, All projects and every row under

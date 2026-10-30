@@ -101,11 +101,11 @@ export function RepositoriesScreen() {
             contentContainerStyle={{ paddingHorizontal: 16, gap: 6, paddingBottom: 8 }}
           >
             <ListFilterMenu
-              label={scoped ? labelOf(scoped) : "Repositories"}
+              label={scoped ? labelOf(scoped) : "Repos"}
               accessibilityLabel="Filter by repository"
               active={scoped !== null}
               actions={[
-                { id: "all", title: "Repositories", state: scoped ? "off" : "on" },
+                { id: "all", title: "Repos", state: scoped ? "off" : "on" },
                 ...repositories.map((repository) => ({
                   id: repositoryKey(repository),
                   title: labelOf(repository),

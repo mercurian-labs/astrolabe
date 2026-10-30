@@ -28,7 +28,7 @@ describe("the project filter", () => {
     });
     expect(options.map((option) => [option.kind, option.label])).toEqual([
       ["all", "All projects"],
-      ["repositories", "Repositories"],
+      ["repositories", "Repos"],
       ["repository", "astrolabe"],
       ["repository", "memory-tools"],
       ["wikis", "Wikis"],

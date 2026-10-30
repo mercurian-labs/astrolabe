@@ -171,7 +171,7 @@ export function RepositorySidebar() {
         fixedHeader={
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
-              title="Repositories"
+              title="Repos"
               searchNoun="file"
               hasProjects
               projectScope={

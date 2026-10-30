@@ -272,12 +272,12 @@ export function usePullRequestListFilters(props: {
           (project) =>
             project.id === value.projectId && project.environmentId === value.projectEnvironmentId,
         )?.title ??
-        (props.repositoriesOnly ? "Repositories" : "Project"),
+        (props.repositoriesOnly ? "Repos" : "Project"),
       subactions: choices(
         "project",
         Object.fromEntries([
           ["", "All projects"],
-          ...(props.onSource && projects.length > 0 ? [[REPOSITORIES_CHOICE, "Repositories"]] : []),
+          ...(props.onSource && projects.length > 0 ? [[REPOSITORIES_CHOICE, "Repos"]] : []),
           ...projects.map((project) => [
             JSON.stringify([project.environmentId, project.id]),
             project.title,

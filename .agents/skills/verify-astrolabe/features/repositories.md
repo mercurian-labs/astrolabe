@@ -1,7 +1,7 @@
 # Repositories
 
 Astrolabe's section for a repository's files and changes, built as Wikis is: a rail
-item (`button "Repositories"`, between Wikis and Changes) swaps the sidebar
+item (`button "Repos"`, between Wikis and Changes) swaps the sidebar
 for the Repositories sidebar and fills the main area with tabs and splits (the same
 panes as Wikis, see [panes.md](panes.md)). Text files open in the editor wikis use;
 diffs and everything that is not text keep T3 Code's viewers. It is the home of a
@@ -9,14 +9,14 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
 
 ## Sub-features
 
-- **Sidebar** (`role=navigation[name='Repositories']`): heading **Repositories** with
+- **Sidebar** (`role=navigation[name='Repos']`): heading **Repos** with
   **Search files**, **Filter by repository** (combobox; its popup starts with a
   `Search repositories` field; named `Filter by repository:
   <name>` once one is picked; kept in `astrolabe:repository-scope:v1`: the
-  **Repositories** heading for all, then each repository; a wiki's checkout and the
+  **Repos** heading for all, then each repository; a wiki's checkout and the
   server's scratch workspace (threads with no project) are left out) and **Add a repository** (the add-project palette; once
   it adds the repository the app leaves `/repositories` for a new draft thread there, so
-  click `button "Repositories"` to come back). The filter's foot holds **Show the file
+  click `button "Repos"` to come back). The filter's foot holds **Show the file
   tree** / **Show as list** (`astrolabe:repository-view:v1`), **Manage repositories** and
   **Add a repository**.
 - **List** (default): with every repository, one group each (collapsible header), a
@@ -77,17 +77,15 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   "Branch changes"): T3 Code's diff renderer; each file's header has **Open**. Line
   comments go to the composer of the thread in that checkout, else the repository's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
-- **Manage tab** (`repo-manage`, titled `tab "Repositories"`): every repository with its
-  path and machine, a gear to Settings → Projects, **Hosting providers** (Settings →
-  Source control) and **Add a repository**.
-- **Open in Repositories**: a thread's right-panel **Files**, a file opened there, and
+- **Manage repositories** (the filter's foot) opens Settings → Projects.
+- **Open in Repos**: a thread's right-panel **Files**, a file opened there, and
   **Diff** offer it in the tab's context menu; it scopes Repositories to the thread's
   repository and checkout and opens the same file, its uncommitted changes, or the tree.
   Repository tabs open in Wikis' and Changes' panes too and offer **Open in
   Repositories** there.
 - **Keyboard and palette**: `menu g r` and the palette's **Open repositories**.
 
-- **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Repositories"`
+- **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Repos"`
   (`features/repositories/RepositoriesScreen.tsx`). `Filter by repository` (Repositories,
   each repository; a name on two machines adds the machine). Every repository: its eight
   latest files under its name. One: **Browse all files** (route `RepositoryFiles`, T3 Code's
@@ -105,7 +103,7 @@ Setup: a throwaway git repository for edits (never this worktree's own files) wi
 commit, a folder holding a `.ts` file and one uncommitted change, added with **Add a
 repository**. With the **server** project that makes two repositories.
 
-1. Click `button "Repositories"`; with no repository picked the list shows one group per
+1. Click `button "Repos"`; with no repository picked the list shows one group per
    repository.
 2. Pick the scratch repository in **Filter by repository**. Expect **Uncommitted · 1**;
    **Review uncommitted changes** opens the diff; **Open** opens the file in a new tab
@@ -151,7 +149,7 @@ repository**. With the **server** project that makes two repositories.
 `apps/web/src/components/repositories/`, `routes/_chat.repositories.tsx`,
 `panes/sectionPanes.ts`, `packages/editor/src/code/`, `review.getRecentFiles` in
 `apps/server/src/review/ReviewService.ts`, `sectionTabs/` (the `repositories` section),
-`panes/rightPanelPaneTabs.tsx` (Open in Repositories), the filter on
+`panes/rightPanelPaneTabs.tsx` (Open in Repos), the filter on
 `components/projects/projectFilter.ts` and `storedChoice.ts`, T3 Code's
 `components/files/FileBrowserPanel.tsx` (the tree). Mobile:
 `apps/mobile/src/features/repositories/`, `apps/mobile/src/state/repositories.ts`, the

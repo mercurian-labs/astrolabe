@@ -528,7 +528,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             isOnWikis
               ? "Wikis"
               : isOnRepositories
-                ? "Repositories"
+                ? "Repos"
                 : isOnPullRequests
                   ? "Changes"
                   : "Agents"

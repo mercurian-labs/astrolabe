@@ -20,7 +20,7 @@ export function repositoryMoveOfSurface(
   const path = surfaceId.startsWith("file:") ? surfaceId.slice("file:".length) : null;
   if (path === null && surfaceId !== "files" && surfaceId !== "diff") return null;
   return {
-    label: "Open in Repositories",
+    label: "Open in Repos",
     run(navigate) {
       const thread = readThreadShell(threadRef);
       if (thread === null) return;

@@ -46,7 +46,7 @@ export function threadsProjectFilterOptions(
   return [
     ...(repositories.length > 0
       ? [
-          { key: REPOSITORIES_SCOPE_KEY, label: "Repositories" },
+          { key: REPOSITORIES_SCOPE_KEY, label: "Repos" },
           ...repositories.map((scope) => ({ key: scope.key, label: scope.title })),
         ]
       : []),

@@ -35,7 +35,7 @@ const checkouts = wikiCheckouts([
 describe("the thread list's project menu", () => {
   it("lists the repositories, then the wikis, each under a heading", () => {
     expect(threadsProjectFilterOptions(scopes, checkouts).map((option) => option.label)).toEqual([
-      "Repositories",
+      "Repos",
       "astrolabe",
       "branding",
       "Wikis",

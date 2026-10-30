@@ -46,7 +46,7 @@ resize and maximize still drive the panel itself.
   its right-click menu: it closes here and opens there (a chat in the chat tab in front,
   a document in the Wikis tab in front, a repository tab in the Repositories panes, a
   change request or change group in Changes). The exception is a thread's
-  right-panel **Files**, **Diff** and opened-file tabs: their **Open in Repositories**
+  right-panel **Files**, **Diff** and opened-file tabs: their **Open in Repos**
   keeps the tab here and opens the thread's checkout in Repositories (the file, its
   uncommitted changes, or the file tree; repositories.md). Section tab keys survive a
   reload; a chat mounts only while its tab is in front.

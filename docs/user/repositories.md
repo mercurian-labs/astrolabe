@@ -1,6 +1,6 @@
-# Repositories
+# Repos
 
-**Repositories** in the icon rail is where you read and edit your repositories' code without
+**Repos** in the icon rail is where you read and edit your repositories' code without
 leaving the app. A repository is one of the two kinds of project, beside a [wiki](wikis.md).
 
 ## Find a file
@@ -41,7 +41,7 @@ is working in the same copy, and an edit never overwrites newer changes saved th
 opens your branch's. Comment on lines to send them to the thread working in that copy, or to the
 repository's new thread.
 
-In a thread, the **Files** and **Diff** tabs offer **Open in Repositories** from their tab menu.
+In a thread, the **Files** and **Diff** tabs offer **Open in Repos** from their tab menu.
 
 ## Manage repositories
 
@@ -50,6 +50,6 @@ folder or clones one, as adding a project does.
 
 ## On your phone
 
-The **Repositories** tab lists the same files: pick a repository in its filter for its uncommitted
+The **Repos** tab lists the same files: pick a repository in its filter for its uncommitted
 changes and recent files, or **Browse all files** for its tree. Files open read only; edit them on
 your computer.

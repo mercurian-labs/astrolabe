@@ -93,7 +93,7 @@ export function projectFilterOptions<Repository>({
   const options: ProjectFilterOption<Repository>[] = [];
   if (kinds === "both") options.push({ value: "all", kind: "all", label: "All projects" });
   if (kinds !== "wikis" && (repositories.length > 0 || kinds === "repositories")) {
-    options.push({ value: "repositories", kind: "repositories", label: "Repositories" });
+    options.push({ value: "repositories", kind: "repositories", label: "Repos" });
     for (const { key, label, repository } of repositories) {
       options.push({
         value: projectFilterValue({ kind: "repository", key }),
