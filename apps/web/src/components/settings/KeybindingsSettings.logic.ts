@@ -230,8 +230,13 @@ const KEYBINDING_GROUPS = [
   // Astrolabe: `draft` is the command line's `:w`.
   { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker", "draft"] },
   // Astrolabe: the editors' own keys: formatting, finding and Vim's search highlight, a code
-  // file's editing, its changes since its last commit, and the outline picker.
-  { id: "editor", title: "Editors", prefixes: ["markdown", "search", "code", "hunk", "outline"] },
+  // file's editing, its changes since its last commit, the outline picker, and its language
+  // server's problems and features.
+  {
+    id: "editor",
+    title: "Editors",
+    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp"],
+  },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
   { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
