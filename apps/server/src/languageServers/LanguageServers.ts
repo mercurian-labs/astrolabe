@@ -1,6 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off - file URLs are converted synchronously, between writes.
 import { ChangeSet, Text } from "@codemirror/state";
 import {
+  type CodeLocation,
+  type CodeLocationKind,
+  type CodeLocations,
   type FileDiagnostic,
   type FileDiagnostics,
   languageServerForPath,
@@ -49,6 +52,8 @@ import {
   browserToAuthority,
   forwardMapper,
   inverseMapper,
+  LOCATION_METHODS,
+  locationsOf,
   mapDiagnostics,
   mapParams,
   mapResult,
@@ -82,6 +87,19 @@ export class LanguageServers extends Context.Service<
       readonly cwd: string;
       readonly relativePath: string;
     }) => Effect.Effect<FileDiagnostics, LanguageServerError>;
+    /**
+     * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
+     * now: a write made before the call is in it.
+     */
+    readonly locate: (input: {
+      readonly cwd: string;
+      readonly relativePath: string;
+      readonly line: number;
+      /** The column, or the symbol's text, whose first occurrence on the line is used. */
+      readonly column?: number;
+      readonly symbol?: string;
+      readonly kind: CodeLocationKind;
+    }) => Effect.Effect<CodeLocations, LanguageServerError>;
   }
 >()("t3/languageServers/LanguageServers") {}
 
@@ -111,6 +129,18 @@ export interface LanguageServersOptions {
 const VERSIONS_KEPT = 200;
 const PULL_RETRIES = 3;
 const DIAGNOSTICS_LISTED = 200;
+const LOCATIONS_LISTED = 200;
+const PREVIEW_LENGTH = 200;
+
+const LOCATE_METHODS: Readonly<
+  Record<CodeLocationKind, { readonly method: string; readonly capability: string }>
+> = {
+  definition: { method: "textDocument/definition", capability: "definitionProvider" },
+  declaration: { method: "textDocument/declaration", capability: "declarationProvider" },
+  typeDefinition: { method: "textDocument/typeDefinition", capability: "typeDefinitionProvider" },
+  implementation: { method: "textDocument/implementation", capability: "implementationProvider" },
+  references: { method: "textDocument/references", capability: "referencesProvider" },
+};
 const SHUTDOWN_TIMEOUT = Duration.seconds(2);
 
 // LSP messages are untyped JSON; each use checks the shape it reads.
@@ -173,6 +203,8 @@ interface Running {
 interface Instance {
   readonly key: string;
   readonly cwd: string;
+  /** `cwd` with links resolved, as servers often name files (`/private/var` on macOS). */
+  readonly realCwd: string;
   readonly spec: LanguageServerSpec;
   readonly lock: Semaphore.Semaphore;
   readonly scope: Scope.Closeable;
@@ -316,6 +348,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const documents = yield* Documents.Documents;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
   const path = yield* Path.Path;
+  const fileSystem = yield* FileSystem.FileSystem;
   const config = yield* ServerConfig.ServerConfig;
   const installer = yield* makeInstaller({
     cacheDir: options.cacheDir ?? path.join(config.providerStatusCacheDir, "language-servers"),
@@ -864,11 +897,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           failure("unsupported", "That folder is not a project here.", cause),
         ),
       );
+    const realCwd = yield* fileSystem
+      .realPath(target.cwd)
+      .pipe(Effect.orElseSucceed(() => target.cwd));
     const again = instances.get(key);
     if (again !== undefined) return again;
     const instance: Instance = {
       key,
       cwd: target.cwd,
+      realCwd,
       spec: options.specs[target.server],
       lock: yield* Semaphore.make(1),
       scope: yield* Scope.fork(serviceScope),
@@ -972,9 +1009,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     } catch {
       return null;
     }
-    const relative = path.relative(instance.cwd, absolute);
-    if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
-    return relative.split(path.sep).join("/");
+    for (const root of [instance.cwd, instance.realCwd]) {
+      const relative = path.relative(root, absolute);
+      if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+      return relative.split(path.sep).join("/");
+    }
+    return null;
   };
 
   /** Replaces the server's uris for this session's documents with the session's own. */
@@ -997,6 +1037,94 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     };
     return walk(value);
   };
+
+  /** Each file's text as the server has it: an open document's, else the file on disk. */
+  const textsOf = Effect.fn("LanguageServers.textsOf")(function* (
+    instance: Instance,
+    uris: Iterable<string>,
+  ) {
+    const texts = new Map<string, Text | null>();
+    for (const uri of uris) {
+      if (texts.has(uri)) continue;
+      const relativePath = relativePathOf(instance, uri);
+      const doc = relativePath === null ? undefined : instance.docs.get(relativePath);
+      const open = doc?.texts.get(doc.version);
+      if (open !== undefined) {
+        texts.set(uri, open);
+        continue;
+      }
+      const read = yield* Effect.try(() => NodeURL.fileURLToPath(uri)).pipe(
+        Effect.flatMap((file) => fileSystem.readFileString(file)),
+        Effect.map((text) => Text.of(text.split(/\r\n?|\n/))),
+        Effect.orElseSucceed(() => null),
+      );
+      texts.set(uri, read);
+    }
+    return texts;
+  });
+
+  const previewOf = (text: Text | null | undefined, line: number) =>
+    text && line >= 0 && line < text.lines
+      ? text
+          .line(line + 1)
+          .text.trim()
+          .slice(0, PREVIEW_LENGTH)
+      : "";
+
+  const describeLocations = Effect.fn("LanguageServers.describeLocations")(function* (
+    instance: Instance,
+    locations: ReadonlyArray<{ readonly uri: string; readonly range: Json }>,
+  ) {
+    const texts = yield* textsOf(
+      instance,
+      locations.map((location) => location.uri),
+    );
+    return locations.map(({ uri, range }): CodeLocation => {
+      const relativePath = relativePathOf(instance, uri);
+      let shown = relativePath;
+      if (shown === null) {
+        try {
+          shown = NodeURL.fileURLToPath(uri);
+        } catch {
+          shown = uri;
+        }
+      }
+      return {
+        path: shown,
+        line: (range.start?.line ?? 0) + 1,
+        column: (range.start?.character ?? 0) + 1,
+        endLine: (range.end?.line ?? 0) + 1,
+        endColumn: (range.end?.character ?? 0) + 1,
+        preview: previewOf(texts.get(uri), range.start?.line ?? 0),
+      };
+    });
+  });
+
+  /**
+   * A location answer for an editor, with each place's line of text (`astrolabe/preview`) for
+   * files other than `own`, which the editor has.
+   */
+  const withPreviews = Effect.fn("LanguageServers.withPreviews")(function* (
+    instance: Instance,
+    result: Json,
+    own: string | undefined,
+  ) {
+    const all = Array.isArray(result) ? result : result == null ? [] : [result];
+    const others = all.filter((location: Json) => (location?.targetUri ?? location?.uri) !== own);
+    if (others.length === 0) return result;
+    const texts = yield* textsOf(
+      instance,
+      others.map((location: Json) => location.targetUri ?? location.uri),
+    );
+    for (const location of others) {
+      const range = location.targetSelectionRange ?? location.targetRange ?? location.range;
+      location["astrolabe/preview"] = previewOf(
+        texts.get(location.targetUri ?? location.uri),
+        range?.start?.line ?? -1,
+      );
+    }
+    return result;
+  });
 
   const onSessionNotification = Effect.fn("LanguageServers.sessionNotification")(function* (
     instance: Instance,
@@ -1099,12 +1227,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     if (!answer.ok) return { error: errorMessage(answer.error) };
     const mapped = mapAnswer(method, answer.result, doc, translated.context, query);
     if ("error" in mapped) return mapped;
-    return {
-      result:
-        method === "textDocument/completion"
-          ? mapped.result
-          : toSessionUris(instance, session, mapped.result),
-    };
+    if (method === "textDocument/completion") return { result: mapped.result };
+    const result = toSessionUris(instance, session, mapped.result);
+    if (!LOCATION_METHODS.has(method)) return { result };
+    return { result: yield* withPreviews(instance, result, clientUri) };
   });
 
   const browserCapabilities = (capabilities: Json) => {
@@ -1311,7 +1437,111 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     );
   });
 
+  const locate: LanguageServers["Service"]["locate"] = Effect.fn("LanguageServers.locate")(
+    function* (input) {
+      const match = languageServerForPath(input.relativePath);
+      if (match === null) {
+        return yield* failure("unsupported", "No language server reads this kind of file.");
+      }
+      const instance = yield* use({ cwd: input.cwd, server: match.server });
+      const state = instance.status.state;
+      if (state === "stopped") {
+        return yield* failure(
+          "not-running",
+          "The language server was stopped; restart it in Astrolabe.",
+        );
+      }
+      if (state === "download-needed") {
+        return yield* failure(
+          "download-needed",
+          "The language server needs a download the user has to allow in Astrolabe first.",
+        );
+      }
+      if (state === "failed") {
+        return yield* failure("failed", instance.status.message ?? "The language server failed.");
+      }
+      const { method, capability } = LOCATE_METHODS[input.kind];
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const doc = yield* Effect.acquireRelease(
+            holdDoc(instance, input.relativePath, match.languageId),
+            (held) => releaseDoc(instance, held),
+          );
+          yield* until(doc, () => doc.loadId !== null || !instance.docs.has(input.relativePath));
+          if (doc.loadId === null) {
+            return yield* failure("document", `'${input.relativePath}' could not be opened.`);
+          }
+          const synced = yield* documents
+            .sync({ cwd: instance.cwd, relativePath: input.relativePath })
+            .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
+          const running = yield* Deferred.await(instance.ready);
+          if (!running.capabilities?.[capability]) {
+            return yield* failure(
+              "unsupported",
+              `The language server cannot find ${input.kind} here.`,
+            );
+          }
+          yield* until(
+            doc,
+            () =>
+              doc.loadId !== synced.loadId ||
+              (doc.version >= synced.version && doc.openOn !== null),
+          );
+          const text = doc.texts.get(doc.version)!;
+          if (input.line > text.lines) {
+            return yield* failure(
+              "document",
+              `'${input.relativePath}' has ${text.lines} lines, not ${input.line}.`,
+            );
+          }
+          const lineText = text.line(input.line).text;
+          const character =
+            input.column !== undefined
+              ? input.column - 1
+              : input.symbol !== undefined
+                ? lineText.indexOf(input.symbol)
+                : 0;
+          if (character < 0) {
+            return yield* failure(
+              "document",
+              `'${input.symbol}' is not on line ${input.line} of '${input.relativePath}'.`,
+            );
+          }
+          if (instance.running !== running) {
+            return yield* failure("failed", "The language server restarted; try again.");
+          }
+          const { response } = running.connection.request(method, {
+            textDocument: { uri: doc.uri },
+            position: { line: input.line - 1, character },
+            ...(input.kind === "references" ? { context: { includeDeclaration: true } } : {}),
+          });
+          const answer = yield* response.pipe(
+            Effect.mapError((error) => failure("failed", error.message, error)),
+          );
+          const all = locationsOf(answer);
+          const listed = all.slice(0, LOCATIONS_LISTED);
+          return {
+            locations: yield* describeLocations(instance, listed),
+            truncated: all.length > listed.length,
+          };
+        }),
+      ).pipe(
+        Effect.timeoutOrElse({
+          duration: options.diagnosticsTimeout,
+          orElse: () =>
+            Effect.fail(
+              failure(
+                "timeout",
+                "The language server is still loading the project. Try again shortly.",
+              ),
+            ),
+        }),
+      );
+    },
+  );
+
   return LanguageServers.of({
+    locate,
     subscribe: SubscriptionRef.changes(statuses),
     restart,
     stop,

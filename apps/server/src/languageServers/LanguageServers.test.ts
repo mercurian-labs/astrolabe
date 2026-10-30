@@ -635,6 +635,84 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("adds each other file's line to a location answer", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE, {
+        elsewhere: { makePoint: { path: "src/point.ts", line: 1, character: 16 } },
+      });
+      yield* checkout.write("src/point.ts", "// points\nexport function makePoint() {}\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const references = yield* session.request(
+        1,
+        "textDocument/references",
+        {
+          textDocument: { uri: checkout.uri },
+          position: editor.position("makePoint"),
+          context: { includeDeclaration: true },
+        },
+        editor.envelope(),
+      );
+      expect(references.result).toEqual([
+        {
+          uri: checkout.uri,
+          range: { start: { line: 0, character: 14 }, end: { line: 0, character: 23 } },
+        },
+        {
+          uri: expect.stringMatching(/\/src\/point\.ts$/),
+          range: { start: { line: 1, character: 16 }, end: { line: 1, character: 25 } },
+          "astrolabe/preview": "export function makePoint() {}",
+        },
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("tells an agent where a symbol is defined and used, as the file is now", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE, {
+        elsewhere: { makePoint: { path: "src/point.ts", line: 1, character: 16 } },
+      });
+      yield* checkout.write("src/point.ts", "// points\nexport function makePoint() {}\n");
+      const definition = yield* service.locate({
+        cwd: checkout.cwd,
+        relativePath: FILE,
+        line: 1,
+        column: 16,
+        kind: "definition",
+      });
+      expect(definition).toEqual({
+        locations: [
+          {
+            path: "src/point.ts",
+            line: 2,
+            column: 17,
+            endLine: 2,
+            endColumn: 26,
+            preview: "export function makePoint() {}",
+          },
+        ],
+        truncated: false,
+      });
+      // A write just before the call is what the answer reads.
+      yield* openEditor(checkout, "editor-a");
+      yield* checkout.write(FILE, `const label = 1;\n${SOURCE}`);
+      const references = yield* service.locate({
+        cwd: checkout.cwd,
+        relativePath: FILE,
+        line: 1,
+        column: 7,
+        kind: "references",
+      });
+      expect(references.locations.map((location) => [location.line, location.preview])).toEqual([
+        [1, "const label = 1;"],
+        [3, "export const label = point;"],
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("gives an agent the diagnostics for the file as its last write left it", () =>
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;

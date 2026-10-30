@@ -171,6 +171,30 @@ const harness = (fakes: Fakes = {}) => {
           map: answer("map", { files: [], links: [], outside: [], truncated: false }),
         }),
         Layer.mock(LanguageServers.LanguageServers)({
+          locate: (input) => {
+            calls.push({ method: "locate", input });
+            if (fakes.diagnosticsFailure !== undefined) {
+              return Effect.fail(
+                new LanguageServerError({
+                  reason: fakes.diagnosticsFailure,
+                  message: "The language server is still loading the project.",
+                }),
+              );
+            }
+            return Effect.succeed({
+              locations: [
+                {
+                  path: "src/session/resolve.ts",
+                  line: 3,
+                  column: 23,
+                  endLine: 3,
+                  endColumn: 37,
+                  preview: "export async function resolveSession(token: string) {",
+                },
+              ],
+              truncated: false,
+            });
+          },
           diagnostics: (input) => {
             calls.push({ method: "diagnostics", input });
             if (input.relativePath.endsWith(".md")) {
@@ -358,6 +382,48 @@ describe("code toolkit handlers", () => {
           ),
         });
       }),
+  );
+
+  it.effect("asks the language server about the symbol on a line of the thread's checkout", () =>
+    Effect.gen(function* () {
+      const tools = harness({ worktreePath: worktree });
+      const input = { path: "src/api/login.ts", line: 4, symbol: "resolveSession" };
+      const definition = yield* tools.call("astrolabe_code_definition", input);
+      yield* tools.call("astrolabe_code_references", input);
+      expect(tools.calls).toEqual([
+        {
+          method: "locate",
+          input: {
+            cwd: worktree,
+            relativePath: input.path,
+            line: 4,
+            symbol: "resolveSession",
+            kind: "definition",
+          },
+        },
+        {
+          method: "locate",
+          input: {
+            cwd: worktree,
+            relativePath: input.path,
+            line: 4,
+            symbol: "resolveSession",
+            kind: "references",
+          },
+        },
+      ]);
+      expect(definition.structuredContent).toMatchObject({
+        locations: [{ path: "src/session/resolve.ts", line: 3 }],
+      });
+      const loading = yield* harness({ diagnosticsFailure: "timeout" }).call(
+        "astrolabe_code_references",
+        input,
+      );
+      expect(declaredFailure(loading)).toMatchObject({
+        code: "orchestration_error",
+        message: expect.stringMatching(/still loading the project\. Use astrolabe_code_find/),
+      });
+    }),
   );
 
   it.effect("needs a calling thread to know which checkout to read", () =>

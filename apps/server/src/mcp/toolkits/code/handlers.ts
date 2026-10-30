@@ -55,6 +55,21 @@ const diagnosticsFailure = (error: LanguageServerError) =>
     message: `${error.message} Run the project's type checker instead.`,
   });
 
+const locateFailure = (error: LanguageServerError) =>
+  new OrchestratorMcpFailure({
+    code:
+      error.reason === "download-needed" ||
+      error.reason === "not-running" ||
+      error.reason === "unsupported" ||
+      error.reason === "document"
+        ? "invalid_request"
+        : "orchestration_error",
+    message:
+      error.reason === "unsupported" || error.reason === "document"
+        ? error.message
+        : `${error.message} Use astrolabe_code_find instead.`,
+  });
+
 /** The calling thread and its checkout: the thread's worktree, else the project's own folder. */
 const readCheckout = Effect.fn("CodeTools.readCheckout")(function* () {
   const { caller } = yield* loadCaller();
@@ -153,6 +168,8 @@ export const layer = McpToolAccess.toLayer(CodeToolkit, {
   astrolabe_code_map: McpToolAccess.readsAsCaller((input) =>
     read((index, checkout) => index.map({ ...checkout, ...input })),
   ),
+  astrolabe_code_definition: McpToolAccess.readsAsCaller((input) => locate(input, "definition")),
+  astrolabe_code_references: McpToolAccess.readsAsCaller((input) => locate(input, "references")),
   astrolabe_code_diagnostics: McpToolAccess.readsAsCaller(({ paths }) =>
     Effect.gen(function* () {
       const { checkout } = yield* readCheckout();
@@ -180,3 +197,21 @@ export const layer = McpToolAccess.toLayer(CodeToolkit, {
     }),
   ),
 });
+
+const locate = (
+  input: { readonly path: string; readonly line: number; readonly symbol: string },
+  kind: "definition" | "references",
+) =>
+  Effect.gen(function* () {
+    const { checkout } = yield* readCheckout();
+    const languageServers = yield* LanguageServers.LanguageServers;
+    return yield* languageServers
+      .locate({
+        cwd: checkout.cwd,
+        relativePath: input.path,
+        line: input.line,
+        symbol: input.symbol,
+        kind,
+      })
+      .pipe(Effect.mapError(locateFailure));
+  });

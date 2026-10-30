@@ -62,6 +62,8 @@ const handle = (message) => {
             diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
             hoverProvider: true,
             renameProvider: true,
+            definitionProvider: true,
+            referencesProvider: true,
             completionProvider: { resolveProvider: true, triggerCharacters: ["."] },
           },
         });
@@ -121,6 +123,31 @@ const handle = (message) => {
       // A word named `huge` answers with more than a hover may carry.
       const contents = word === "huge" ? `\`\`\`ts\n${"x".repeat(200_000)}\n\`\`\`` : word;
       return reply({ contents, range: rangeOf(text, from, to) });
+    }
+    case "textDocument/definition":
+    case "textDocument/references": {
+      // A word's definition is its first use; `elsewhere` in the config places one in another
+      // file, given as a path in the checkout and the 0-based line and character there.
+      const { text } = docs.get(params.textDocument.uri);
+      const { word } = wordAt(text, offsetOf(text, params.position));
+      const found = occurrences(text, word).map((offset) => ({
+        uri: params.textDocument.uri,
+        range: rangeOf(text, offset, offset + word.length),
+      }));
+      const elsewhere = config.elsewhere?.[word];
+      const outside = elsewhere
+        ? [
+            {
+              uri: new URL(elsewhere.path, `file://${process.cwd()}/`).href,
+              range: {
+                start: { line: elsewhere.line, character: elsewhere.character },
+                end: { line: elsewhere.line, character: elsewhere.character + word.length },
+              },
+            },
+          ]
+        : [];
+      if (method === "textDocument/references") return reply([...found, ...outside]);
+      return reply(outside.length > 0 ? outside : found.slice(0, 1));
     }
     case "textDocument/rename": {
       const { text } = docs.get(params.textDocument.uri);

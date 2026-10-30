@@ -150,6 +150,35 @@ export const FileDiagnostics = Schema.Struct({
 });
 export type FileDiagnostics = typeof FileDiagnostics.Type;
 
+/** Where a symbol is: lines and columns count from 1, columns in UTF-16 code units. */
+export const CodeLocation = Schema.Struct({
+  /** Repository-relative, or absolute for a file outside the checkout (a library's types). */
+  path: Schema.String,
+  line: PositiveInt,
+  column: PositiveInt,
+  endLine: PositiveInt,
+  endColumn: PositiveInt,
+  /** The text of the location's first line, cut to 200 characters. */
+  preview: Schema.String,
+});
+export type CodeLocation = typeof CodeLocation.Type;
+
+export const CodeLocationKind = Schema.Literals([
+  "definition",
+  "declaration",
+  "typeDefinition",
+  "implementation",
+  "references",
+]);
+export type CodeLocationKind = typeof CodeLocationKind.Type;
+
+export const CodeLocations = Schema.Struct({
+  locations: Schema.Array(CodeLocation),
+  /** Only the first locations are listed. */
+  truncated: Schema.Boolean,
+});
+export type CodeLocations = typeof CodeLocations.Type;
+
 export const LanguageServerErrorReason = Schema.Literals([
   /** No language server serves this file. */
   "unsupported",

@@ -1607,6 +1607,8 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__astrolabe_code_changes",
   "mcp__t3-code__astrolabe_code_map",
   "mcp__t3-code__astrolabe_code_diagnostics",
+  "mcp__t3-code__astrolabe_code_definition",
+  "mcp__t3-code__astrolabe_code_references",
 ];
 
 // T3 waits can block for an hour; exceed Claude's default 60 s timeout.

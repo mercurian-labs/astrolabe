@@ -115,7 +115,7 @@ export const mapParams = (params: Json, m: OffsetMapper): Json => {
   return params;
 };
 
-const LOCATION_METHODS = new Set([
+export const LOCATION_METHODS = new Set([
   "textDocument/definition",
   "textDocument/declaration",
   "textDocument/typeDefinition",
@@ -261,3 +261,15 @@ export const trimHover = (result: Json): Json => {
   }
   return result;
 };
+
+/** The places a location answer names: `Location`s and `LocationLink`s, one or many. */
+export const locationsOf = (result: Json): Array<{ readonly uri: string; readonly range: Range }> =>
+  (Array.isArray(result) ? result : result == null ? [] : [result]).flatMap((location: Json) => {
+    if (typeof location?.targetUri === "string") {
+      const range = location.targetSelectionRange ?? location.targetRange;
+      return range ? [{ uri: location.targetUri, range }] : [];
+    }
+    return typeof location?.uri === "string" && location.range
+      ? [{ uri: location.uri, range: location.range }]
+      : [];
+  });
