@@ -163,6 +163,8 @@ import {
 import {
   ProjectWorktree,
   ProjectWorktreeCreateInput,
+  ProjectWorktreeChange,
+  ProjectWorktreeChangesInput,
   ProjectWorktreeDiscardSetAsideInput,
   ProjectWorktreeError,
   ProjectWorktreeListInput,
@@ -508,6 +510,7 @@ export const WS_METHODS = {
   worktreesRemove: "worktrees.remove",
   worktreesSetKept: "worktrees.setKept",
   worktreesDiscardSetAside: "worktrees.discardSetAside",
+  worktreesSubscribeChanges: "worktrees.subscribeChanges",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -1605,6 +1608,12 @@ const WsWorktreesDiscardSetAsideRpc = Rpc.make(WS_METHODS.worktreesDiscardSetAsi
   success: Schema.Void,
   error: worktreeError,
 });
+const WsWorktreesSubscribeChangesRpc = Rpc.make(WS_METHODS.worktreesSubscribeChanges, {
+  payload: ProjectWorktreeChangesInput,
+  success: ProjectWorktreeChange,
+  error: worktreeError,
+  stream: true,
+});
 
 const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
   payload: ReviewRecentFilesInput,
@@ -2404,6 +2413,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWorktreesRemoveRpc,
   WsWorktreesSetKeptRpc,
   WsWorktreesDiscardSetAsideRpc,
+  WsWorktreesSubscribeChangesRpc,
   WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,

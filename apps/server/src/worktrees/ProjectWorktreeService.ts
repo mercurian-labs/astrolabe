@@ -3,6 +3,8 @@ import {
   type OrchestrationV2ThreadShell,
   type ProjectId,
   type ProjectWorktree,
+  type ProjectWorktreeChange,
+  type ProjectWorktreeChangesInput,
   type ProjectWorktreeCreateInput,
   type ProjectWorktreeDiscardSetAsideInput,
   ProjectWorktreeError,
@@ -30,6 +32,7 @@ import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -42,6 +45,7 @@ import * as TerminalManager from "../terminal/Manager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { makeIsManagedWorktreePath, resolveWorktreesDirectory } from "../worktreesDirectory.ts";
+import * as WorkspaceWatcher from "./WorkspaceWatcher.ts";
 import { countStatusFiles, type ListedWorktree, parseWorktreeList } from "./worktreeList.ts";
 
 /**
@@ -71,6 +75,10 @@ export class ProjectWorktreeService extends Context.Service<
     readonly discardSetAside: (
       input: ProjectWorktreeDiscardSetAsideInput,
     ) => Effect.Effect<void, ProjectWorktreeError>;
+    /** Changes on disk in one of the project's worktrees, while the stream runs. */
+    readonly changes: (
+      input: ProjectWorktreeChangesInput,
+    ) => Stream.Stream<ProjectWorktreeChange, ProjectWorktreeError>;
   }
 >()("t3/worktrees/ProjectWorktreeService") {}
 
@@ -133,6 +141,7 @@ const make = Effect.gen(function* () {
   const gitWorkflow = yield* GitWorkflow.GitWorkflowService;
   const checkpoints = yield* CheckpointStore.CheckpointStore;
   const terminals = yield* TerminalManager.TerminalManager;
+  const watcher = yield* WorkspaceWatcher.WorkspaceWatcher;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
@@ -654,7 +663,28 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError(failWith("Set-aside work could not be discarded")));
   });
 
-  return ProjectWorktreeService.of({ list, open, create, remove, setKept, discardSetAside });
+  const changes: ProjectWorktreeService["Service"]["changes"] = (input) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const root = yield* repositoryRoot(input.projectId);
+        const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
+          Effect.map((result) => parseWorktreeList(result.stdout)),
+        );
+        if (!listed.some((entry) => entry.path === input.path))
+          return yield* fail("That worktree is not in this repository.");
+        return yield* watcher.changes(input.path);
+      }),
+    );
+
+  return ProjectWorktreeService.of({
+    list,
+    open,
+    create,
+    remove,
+    setKept,
+    discardSetAside,
+    changes,
+  });
 });
 
 export const layer = Layer.effect(ProjectWorktreeService, make);

@@ -7,7 +7,8 @@ leaving the app. A repository is one of the two kinds of project, beside a [wiki
 
 The sidebar leads with what is moving: a repository's uncommitted changes, its branch against
 its base, and the files its commits changed most recently. Pick one repository in the filter to
-see all of that for it; with every repository, each shows its latest files.
+see all of that for it; with every repository, each shows its latest files. It keeps up as files
+change on disk, whoever changes them: an agent, a terminal, or another editor.
 
 - **Search** finds a file by name in the repository you picked, in the worktree of the tab
   you're on.

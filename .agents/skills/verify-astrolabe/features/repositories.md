@@ -56,8 +56,12 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   its own. Each panel is
   `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. In the sidebar
   its toolbar (refresh, search, expand all) is `hidden`; the header's **Search files** is
-  the search. It rereads its folders when the worktree's head or changed-file count changes
-  (window focus rereads the worktree list). Rows live in `file-tree-container`'s open shadow
+  the search. Each worktree header subscribes to `worktrees.subscribeChanges`; while anyone does,
+  the server watches that worktree (@parcel/watcher, skipping `.git`, `node_modules` and
+  git-ignored folders, plus the git dir's `HEAD`/`index`) and every ~250 ms of changes it pushes
+  the changed folders, refreshes git status (`subscribeVcsStatus`) and the search index. The tree
+  rereads its open folders, the worktree list refetches. A worktree that can't be watched shows
+  an eye-off icon in its header and falls back to head/changed-count and window focus. Rows live in `file-tree-container`'s open shadow
   root as `[role=treeitem]` with `data-item-type` (`folder` / `file`) and `data-item-path`.
   The tree is as tall as its visible rows (24px each, up to 20, then it scrolls), so the
   guide line ends at its last row. Rows in the

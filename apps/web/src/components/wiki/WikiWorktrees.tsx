@@ -7,16 +7,13 @@ import { openTab } from "~/panes/arrangement";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment } from "~/state/wiki";
 import { refreshProjectWorktrees, useProjectWorktrees } from "~/state/worktrees";
-import FileBrowserPanel from "../files/FileBrowserPanel";
 import { storedName } from "../projects/storedChoice";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import {
   NewWorktreeSwitch,
   SetAsideRows,
-  WORKTREE_TREE_CLASS,
-  WORKTREE_TREE_SIZE,
+  WorktreeFiles,
   WorktreeHeader,
-  worktreeChangeId,
 } from "../repositories/RepositoryWorktrees";
 import { useOpenBranch } from "../repositories/worktreeActions";
 import {
@@ -187,19 +184,14 @@ export function WikiWorktreeTrees({
               />
             </ul>
             {expanded(worktree) ? (
-              <div className={WORKTREE_TREE_CLASS}>
-                <FileBrowserPanel
-                  key={`${overview.environmentId}:${worktree.path}`}
-                  environmentId={overview.environmentId}
-                  cwd={worktree.path}
-                  projectName={`${wiki.name} · ${label}`}
-                  selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
-                  selectedPathRevealId={0}
-                  onOpenFile={(file) => openFile(worktree, file)}
-                  workspaceMutationId={worktreeChangeId(worktree)}
-                  sidebar={WORKTREE_TREE_SIZE}
-                />
-              </div>
+              <WorktreeFiles
+                key={`${overview.environmentId}:${worktree.path}`}
+                owner={owner}
+                worktree={worktree}
+                projectName={`${wiki.name} · ${label}`}
+                selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
+                onOpenFile={(file) => openFile(worktree, file)}
+              />
             ) : null}
           </Fragment>
         );

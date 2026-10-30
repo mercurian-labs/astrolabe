@@ -101,6 +101,24 @@ export const ProjectWorktreeDiscardSetAsideInput = Schema.Struct({
 });
 export type ProjectWorktreeDiscardSetAsideInput = typeof ProjectWorktreeDiscardSetAsideInput.Type;
 
+/** One of a project's worktrees, by its folder, to follow changes on disk in. */
+export const ProjectWorktreeChangesInput = Schema.Struct({
+  projectId: ProjectId,
+  path: TrimmedNonEmptyString,
+});
+export type ProjectWorktreeChangesInput = typeof ProjectWorktreeChangesInput.Type;
+
+/**
+ * Something changed in a worktree. `directories` are the folders whose listing changed, relative
+ * to the worktree ("" is its top); empty when only file contents or git state did, null when too
+ * many changed to name. `unwatched` says it can't be watched, so nothing more will come.
+ */
+export const ProjectWorktreeChange = Schema.Union([
+  Schema.TaggedStruct("changed", { directories: Schema.NullOr(Schema.Array(Schema.String)) }),
+  Schema.TaggedStruct("unwatched", { reason: Schema.String }),
+]);
+export type ProjectWorktreeChange = typeof ProjectWorktreeChange.Type;
+
 export class ProjectWorktreeError extends Schema.TaggedError<ProjectWorktreeError>()(
   "ProjectWorktreeError",
   { message: Schema.String },

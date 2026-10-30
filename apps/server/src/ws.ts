@@ -1256,6 +1256,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.worktreesRemove]: (input) => worktrees.remove(input),
       [WS_METHODS.worktreesSetKept]: (input) => worktrees.setKept(input),
       [WS_METHODS.worktreesDiscardSetAside]: (input) => worktrees.discardSetAside(input),
+      [WS_METHODS.worktreesSubscribeChanges]: (input) => worktrees.changes(input),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),

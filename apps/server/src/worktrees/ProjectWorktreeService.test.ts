@@ -29,6 +29,7 @@ import {
   layer as projectWorktreeLayer,
   SET_ASIDE_REF_PREFIX,
 } from "./ProjectWorktreeService.ts";
+import * as WorkspaceWatcher from "./WorkspaceWatcher.ts";
 
 const projectId = ProjectId.make("project-1");
 
@@ -80,7 +81,7 @@ const fixture = Effect.gen(function* () {
   yield* command(repo, ["branch", "alpha"]);
   yield* command(repo, ["branch", "beta"]);
 
-  const state = { threads: [] as OrchestrationV2ThreadShell[] };
+  const state = { threads: [] as OrchestrationV2ThreadShell[], watched: [] as string[] };
   const context = yield* Layer.build(projectWorktreeLayer).pipe(
     Effect.provideService(ProjectService.ProjectService, {
       getById: () => Effect.succeedSome({ workspaceRoot: repo }),
@@ -100,6 +101,13 @@ const fixture = Effect.gen(function* () {
       getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
       subscribeChanges: Effect.succeed(Stream.empty),
     } as unknown as Settings.ServerSettingsService["Service"]),
+    Effect.provideService(WorkspaceWatcher.WorkspaceWatcher, {
+      changes: (root: string) =>
+        Effect.sync(() => {
+          state.watched.push(root);
+          return Stream.empty;
+        }),
+    }),
   );
   const service = Context.get(context, ProjectWorktreeService);
   return { fs, repo, worktreesDir, command, service, state };
@@ -260,6 +268,25 @@ describe("ProjectWorktreeService", () => {
         const back = yield* service.open({ projectId, branch: "alpha" });
         expect(back.setAside).toBe("restored");
         expect(yield* fs.readFileString(`${back.worktree.path}/tracked.txt`)).toBe("alpha edit\n");
+      }),
+    ),
+  );
+
+  it.live("follows changes only in the repository's own worktrees", () =>
+    run(
+      Effect.gen(function* () {
+        const { service, repo, fs, state } = yield* fixture;
+        const alpha = yield* service.open({ projectId, branch: "alpha" });
+        yield* Stream.runDrain(service.changes({ projectId, path: alpha.worktree.path }));
+        yield* Stream.runDrain(service.changes({ projectId, path: repo }));
+        expect(state.watched).toEqual([alpha.worktree.path, repo]);
+
+        const elsewhere = yield* fs.makeTempDirectoryScoped({ prefix: "not-a-worktree-" });
+        const refused = yield* Stream.runDrain(
+          service.changes({ projectId, path: elsewhere }),
+        ).pipe(Effect.flip);
+        expect(refused.message).toBe("That worktree is not in this repository.");
+        expect(state.watched).toHaveLength(2);
       }),
     ),
   );

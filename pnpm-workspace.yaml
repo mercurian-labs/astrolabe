@@ -23,6 +23,8 @@ allowBuilds:
   node-pty: true
   # Ships N-API prebuilds; its install script only rebuilds from source.
   objc-js: false
+  # Prebuilds arrive as per-platform optional packages; its install script only builds from source.
+  "@parcel/watcher": false
   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-558767d9.tgz": true
   sharp: true
   "@tsc-rs/typescript": true

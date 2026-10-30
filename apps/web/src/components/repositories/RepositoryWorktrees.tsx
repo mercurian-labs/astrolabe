@@ -2,6 +2,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
 import {
   EllipsisIcon,
+  EyeOffIcon,
   GitBranchIcon,
   GitBranchPlusIcon,
   ListIcon,
@@ -10,13 +11,19 @@ import {
   Trash2Icon,
   UndoIcon,
 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
-import { refreshProjectWorktrees, worktreeEnvironment } from "~/state/worktrees";
+import {
+  refreshProjectWorktrees,
+  refreshProjectWorktreesSoon,
+  useWorktreeWatch,
+  worktreeEnvironment,
+} from "~/state/worktrees";
+import FileBrowserPanel from "../files/FileBrowserPanel";
 import {
   SidebarHeaderIconButton,
   SidebarPickerAction,
@@ -74,8 +81,27 @@ export function WorktreeHeader({
   readonly onToggleFiles?: () => void;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
+  const watch = useWorktreeWatch(repository.environmentId, repository.id, worktree.path);
+  const changes = watch?.changes ?? 0;
+  // oxlint-disable-next-line t3code/react-effect-budget -- its count and branch follow changes on disk
+  useEffect(() => {
+    if (changes > 0) refreshProjectWorktreesSoon(repository.environmentId, repository.id);
+  }, [changes, repository.environmentId, repository.id]);
   const accessory = (
     <span className="flex shrink-0 items-center gap-1.5 text-3xs text-sidebar-muted-foreground/70">
+      {watch?.unwatched ? (
+        <Tooltip>
+          <TooltipTrigger render={<span />}>
+            <EyeOffIcon aria-label="Not watched for changes" className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup side="right" className="max-w-64">
+            <div className="text-xs">{`Not watched for changes: ${watch.unwatched}`}</div>
+            <div className="text-xs text-muted-foreground">
+              It reads its files again when you come back to the window.
+            </div>
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       {worktree.isMain ? <span>main checkout</span> : null}
       {worktree.changedFiles > 0 ? (
         <span className="tabular-nums">{`${worktree.changedFiles} changed`}</span>
@@ -161,17 +187,47 @@ export function WorktreeRows({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** A worktree section's file tree, set in under its header as its rows are. */
-export const WORKTREE_TREE_CLASS = "ms-4 border-s border-sidebar-border ps-1";
 /** A tree grows with its open folders, then scrolls. */
-export const WORKTREE_TREE_SIZE = { maxRows: 20 } as const;
+const WORKTREE_TREE_SIZE = { maxRows: 20 } as const;
 
 /**
- * Changes when the worktree's commit or count of changed files does, which is when its tree
- * reads its folders again. The sidebar has nothing finer: it does not watch the disk.
+ * A worktree section's file tree, set in under its header as its rows are. Its open folders are
+ * read again when the watch reports one changing; unwatched, when its commit or count of changed
+ * files moves.
  */
-export const worktreeChangeId = (worktree: ProjectWorktree) =>
-  `${worktree.head}:${worktree.changedFiles}`;
+export function WorktreeFiles({
+  owner,
+  worktree,
+  projectName,
+  selectedPath,
+  onOpenFile,
+}: {
+  readonly owner: WorktreeOwner;
+  readonly worktree: ProjectWorktree;
+  readonly projectName: string;
+  readonly selectedPath: string | null;
+  readonly onOpenFile: (path: string) => void;
+}) {
+  const watch = useWorktreeWatch(owner.environmentId, owner.id, worktree.path);
+  return (
+    <div className="ms-4 border-s border-sidebar-border ps-1">
+      <FileBrowserPanel
+        environmentId={owner.environmentId}
+        cwd={worktree.path}
+        projectName={projectName}
+        selectedPath={selectedPath}
+        selectedPathRevealId={0}
+        onOpenFile={onOpenFile}
+        workspaceMutationId={
+          watch?.unwatched
+            ? `${worktree.head}:${worktree.changedFiles}`
+            : String(watch?.listings ?? 0)
+        }
+        sidebar={WORKTREE_TREE_SIZE}
+      />
+    </div>
+  );
+}
 
 function WorktreeMenu({
   repository,

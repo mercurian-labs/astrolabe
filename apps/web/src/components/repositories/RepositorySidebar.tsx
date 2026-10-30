@@ -32,7 +32,6 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useProjectWorktrees } from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import FileBrowserPanel from "../files/FileBrowserPanel";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "../projects/ProjectFilterIcon";
 import {
@@ -69,11 +68,9 @@ import { BranchCompareRow } from "./BranchCompareRow";
 import {
   OpenBranchPicker,
   SetAsideRows,
-  WORKTREE_TREE_CLASS,
-  WORKTREE_TREE_SIZE,
+  WorktreeFiles,
   WorktreeHeader,
   WorktreeRows,
-  worktreeChangeId,
 } from "./RepositoryWorktrees";
 import {
   repositoryScope,
@@ -272,25 +269,20 @@ export function RepositorySidebar() {
                         ) : null}
                       </ul>
                       {expanded(worktree) && files ? (
-                        <div className={WORKTREE_TREE_CLASS}>
-                          <FileBrowserPanel
-                            key={filesKey}
-                            environmentId={scoped.environmentId}
-                            cwd={worktree.path}
-                            projectName={`${scoped.title} · ${worktree.alias}`}
-                            selectedPath={
-                              worktree.path === focused?.path && focusedTab?.kind === "file"
-                                ? focusedTab.path
-                                : null
-                            }
-                            selectedPathRevealId={0}
-                            onOpenFile={(path) =>
-                              repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
-                            }
-                            workspaceMutationId={worktreeChangeId(worktree)}
-                            sidebar={WORKTREE_TREE_SIZE}
-                          />
-                        </div>
+                        <WorktreeFiles
+                          key={filesKey}
+                          owner={scoped}
+                          worktree={worktree}
+                          projectName={`${scoped.title} · ${worktree.alias}`}
+                          selectedPath={
+                            worktree.path === focused?.path && focusedTab?.kind === "file"
+                              ? focusedTab.path
+                              : null
+                          }
+                          onOpenFile={(path) =>
+                            repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
+                          }
+                        />
                       ) : null}
                     </Fragment>
                   );

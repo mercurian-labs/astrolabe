@@ -1,5 +1,8 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { createWorktreeEnvironmentAtoms } from "@t3tools/client-runtime/state/worktrees";
+import {
+  createWorktreeEnvironmentAtoms,
+  type WorktreeWatch,
+} from "@t3tools/client-runtime/state/worktrees";
 import type { EnvironmentId, ProjectId, ProjectWorktreeListResult } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { useEffect } from "react";
@@ -36,4 +39,31 @@ export function useProjectWorktrees(
 /** Reads a repository's worktrees again, after anything that changed them. */
 export function refreshProjectWorktrees(environmentId: EnvironmentId, projectId: ProjectId) {
   appAtomRegistry.refresh(listAtom(environmentId, projectId));
+}
+
+const refreshesDue = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Reads a repository's worktrees again shortly, once for however many changes land meanwhile. */
+export function refreshProjectWorktreesSoon(environmentId: EnvironmentId, projectId: ProjectId) {
+  const key = `${environmentId}\u0000${projectId}`;
+  if (refreshesDue.has(key)) return;
+  refreshesDue.set(
+    key,
+    setTimeout(() => {
+      refreshesDue.delete(key);
+      refreshProjectWorktrees(environmentId, projectId);
+    }, 500),
+  );
+}
+
+/** A worktree's watch for changes on disk; null until it reports anything. */
+export function useWorktreeWatch(
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  path: string,
+): WorktreeWatch | null {
+  const result = useAtomValue(
+    worktreeEnvironment.changes({ environmentId, input: { projectId, path } }),
+  );
+  return Option.getOrNull(AsyncResult.value(result));
 }
