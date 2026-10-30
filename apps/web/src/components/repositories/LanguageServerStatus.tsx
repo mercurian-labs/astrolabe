@@ -4,6 +4,7 @@ import type { EnvironmentId, LanguageServerStatus } from "@t3tools/contracts";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = {
   "download-needed": (name) => `${name} needs a download`,
@@ -51,14 +52,22 @@ export function LanguageServerStatusEntry({
               run: () =>
                 void restart({ environmentId, input: { cwd: status.cwd, server: status.server } }),
             };
-  return (
-    <span
-      className="flex shrink-0 items-center gap-1"
-      title={status.message ?? undefined}
-      role="status"
-    >
+  const label = (
+    <span role="status">
       {LABELS[status.state](status.name)}
       {status.restricted ? " (restricted)" : null}
+    </span>
+  );
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {status.message === null ? (
+        label
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={label} />
+          <TooltipPopup side="bottom">{status.message}</TooltipPopup>
+        </Tooltip>
+      )}
       {action ? (
         <Button size="xs" variant="ghost" onClick={action.run}>
           {action.label}

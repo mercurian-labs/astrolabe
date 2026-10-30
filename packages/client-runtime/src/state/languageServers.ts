@@ -1,12 +1,13 @@
 import {
   WS_METHODS,
   type EnvironmentId,
+  type LanguageServerSendInput,
   type LanguageServerSessionItem,
   type LanguageServerTarget,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import type { Atom } from "effect/reactivity";
+import type { Atom, AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { subscribeDynamic } from "../rpc/client.ts";
@@ -64,5 +65,12 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       ),
     );
 
-  return { send, restart, stop, confirmDownload, session };
+  /** An editor's messages to its session, sent in order. */
+  const sender =
+    (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
+    (input: LanguageServerSendInput) => {
+      void send.run(registry, { environmentId, input });
+    };
+
+  return { send, sender, restart, stop, confirmDownload, session };
 }

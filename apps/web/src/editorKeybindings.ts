@@ -164,7 +164,7 @@ export function useCodeEditorKeys(): CodeEditingKeys {
 }
 
 /** A code file's keys to step through its diagnostics (`diagnostic.*`). */
-export function editorDiagnosticKeys(keybindings: ResolvedKeybindingsConfig): DiagnosticKeys {
+function editorDiagnosticKeys(keybindings: ResolvedKeybindingsConfig): DiagnosticKeys {
   const context = { editorFocus: true, codeEditorFocus: true, composerFocus: false };
   const keysFor = (command: KeybindingCommand) =>
     keybindings

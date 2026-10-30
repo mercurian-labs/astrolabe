@@ -129,6 +129,8 @@ export interface EnvironmentLsp {
   readonly extension: Extension;
   /** Call once the gateway's server is ready. */
   readonly connect: () => void;
+  /** The gateway session ended: the next `connect` initializes and opens the file again. */
+  readonly reset: () => void;
   /** A message from the gateway; `version` is set when its positions are in the environment's copy. */
   readonly receive: (message: string, version?: number) => void;
   readonly destroy: () => void;
@@ -204,6 +206,10 @@ export function environmentLsp(options: {
     extension: client.plugin(options.uri, options.languageId),
     connect: () => {
       if (!client.connected) client.connect(transport);
+    },
+    reset: () => {
+      held.clear();
+      if (client.connected) client.disconnect();
     },
     receive: (message, version) => {
       if (version === undefined) return deliver(message);

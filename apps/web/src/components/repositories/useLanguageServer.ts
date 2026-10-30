@@ -12,7 +12,7 @@ import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { languageServersEnvironment } from "~/state/languageServers";
 
 /** A `file:` URI the environment's Node reads back to the same path. */
-export function fileUri(path: string): string {
+function fileUri(path: string): string {
   const slashed = path.replaceAll("\\", "/");
   return `file://${slashed.startsWith("/") ? "" : "/"}${slashed
     .split("/")
@@ -50,6 +50,7 @@ export function useLanguageServer(
     let sessionId = "";
     let status: LanguageServerStatus | null = null;
     const listeners = new Set<() => void>();
+    const send = languageServersEnvironment.sender(registry, environmentId);
     const lsp = environmentLsp({
       uri: fileUri(`${cwd}/${path}`),
       languageId: match.languageId,
@@ -57,10 +58,7 @@ export function useLanguageServer(
       document: session,
       channel: {
         send: (message, document) =>
-          void languageServersEnvironment.send.run(registry, {
-            environmentId,
-            input: { sessionId, message, ...(document === undefined ? {} : { document }) },
-          }),
+          send({ sessionId, message, ...(document === undefined ? {} : { document }) }),
       },
     });
     const follow = languageServersEnvironment.session(
@@ -69,7 +67,7 @@ export function useLanguageServer(
       {
         openSession: () => {
           // A new session knows nothing of this editor: initialize and open the file again.
-          if (lsp.client.connected) lsp.client.disconnect();
+          lsp.reset();
           sessionId = newSessionId();
           return sessionId;
         },
