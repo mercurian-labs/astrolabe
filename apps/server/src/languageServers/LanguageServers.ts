@@ -4,8 +4,13 @@ import {
   type CodeLocation,
   type CodeLocationKind,
   type CodeLocations,
+  type DocumentError,
+  type DocumentStreamItem,
   type FileDiagnostic,
   type FileDiagnostics,
+  type LanguageServerAppliedEdit,
+  type LanguageServerUndoEditInput,
+  type LanguageServerUndoEditResult,
   languageServerForPath,
   LanguageServerError,
   type LanguageServerId,
@@ -15,6 +20,8 @@ import {
   type LanguageServerStatus,
   type LanguageServerTarget,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -64,6 +71,7 @@ import {
   wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
+import { changeSetOf, editsByFile } from "./workspaceEdits.ts";
 
 /**
  * One server per language per checkout, and the environment as its only LSP client; see
@@ -91,6 +99,10 @@ export class LanguageServers extends Context.Service<
      * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
      * now: a write made before the call is in it.
      */
+    /** Puts back the files of an edit the environment applied (a rename), as far as it can. */
+    readonly undoEdit: (
+      input: LanguageServerUndoEditInput,
+    ) => Effect.Effect<LanguageServerUndoEditResult, LanguageServerError>;
     readonly locate: (input: {
       readonly cwd: string;
       readonly relativePath: string;
@@ -129,6 +141,8 @@ export interface LanguageServersOptions {
 const VERSIONS_KEPT = 200;
 const PULL_RETRIES = 3;
 const DIAGNOSTICS_LISTED = 200;
+/** Applied edits kept for undo; older ones can no longer be undone. */
+const EDITS_KEPT = 20;
 const LOCATIONS_LISTED = 200;
 const PREVIEW_LENGTH = 200;
 
@@ -175,6 +189,29 @@ interface GatewayDoc {
   dirty: boolean;
   readonly waiters: Set<() => void>;
   readonly scope: Scope.Closeable;
+}
+
+/** A file as the server last saw it: what its edits' positions are in. */
+interface ServerText {
+  readonly loadId: string;
+  readonly version: number;
+  readonly text: Text;
+}
+
+/** One file of an applied edit: the update it became, and its inverse. */
+interface AppliedFile {
+  readonly relativePath: string;
+  readonly loadId: string;
+  /** The document's version right after the edit. */
+  readonly version: number;
+  readonly inverse: ChangeSet;
+  /** The file's text right after the edit, to recognise it once the document was reloaded. */
+  readonly after: string;
+}
+
+interface AppliedEdit {
+  readonly cwd: string;
+  readonly files: ReadonlyArray<AppliedFile>;
 }
 
 interface PendingForward {
@@ -364,6 +401,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const instances = new Map<string, Instance>();
   const sessions = new Map<string, { readonly instance: Instance; readonly session: Session }>();
   const statuses = yield* SubscriptionRef.make<ReadonlyArray<LanguageServerStatus>>([]);
+  const applied = new Map<string, AppliedEdit>();
+  let editCount = 0;
   let clock = 0;
 
   const fork = <A, E>(effect: Effect.Effect<A, E>, scope: Scope.Scope = serviceScope) =>
@@ -1126,6 +1165,171 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     return result;
   });
 
+  /** Every open document's text as the server has it now, before a request that may edit them. */
+  const serverTexts = (instance: Instance) => {
+    const texts = new Map<string, ServerText>();
+    for (const doc of instance.docs.values()) {
+      const text = doc.texts.get(doc.version);
+      if (doc.loadId !== null && text !== undefined) {
+        texts.set(doc.relativePath, { loadId: doc.loadId, version: doc.version, text });
+      }
+    }
+    return texts;
+  };
+
+  /**
+   * Lands `edits` (in the server's coordinates) on one file's document under `clientId`, and saves.
+   * Returns the update it became, read back from the document, so its inverse is exact.
+   */
+  const applyToFile = Effect.fn("LanguageServers.applyToFile")(function* (
+    cwd: string,
+    relativePath: string,
+    edits: ReadonlyArray<Json>,
+    seen: ServerText | undefined,
+    clientId: string,
+  ) {
+    const items = yield* Queue.unbounded<DocumentStreamItem, Cause.Done | DocumentError>();
+    yield* documents
+      .subscribe({ cwd, relativePath })
+      .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+    const first = yield* Queue.take(items);
+    if (first.type !== "snapshot") return null;
+    let text = Text.of(first.text.split("\n"));
+    let version = first.version;
+    const base: ServerText =
+      seen !== undefined && seen.loadId === first.loadId
+        ? seen
+        : { loadId: first.loadId, version, text };
+    const changes = changeSetOf(base.text, edits);
+    if (changes.empty) return null;
+    yield* documents.push({
+      cwd,
+      relativePath,
+      loadId: first.loadId,
+      version: base.version,
+      updates: [{ clientId, changes: changes.toJSON() }],
+    });
+    for (;;) {
+      const item = yield* Queue.take(items);
+      if (item.type !== "updates") continue;
+      for (const [index, update] of item.updates.entries()) {
+        if (item.version + index < version) continue;
+        const accepted = ChangeSet.fromJSON(update.changes);
+        const before = text;
+        text = accepted.apply(text);
+        version += 1;
+        if (update.clientId !== clientId) continue;
+        yield* documents.save({ cwd, relativePath, loadId: first.loadId });
+        return {
+          relativePath,
+          loadId: first.loadId,
+          version,
+          inverse: accepted.invert(before),
+          after: text.toString(),
+          edits: edits.length,
+        };
+      }
+    }
+  });
+
+  /**
+   * Applies a language server's `WorkspaceEdit` to the files it names, open or not, through their
+   * documents, and keeps each file's inverse to undo it as one. `seen` holds the texts its
+   * positions are in for documents the server had open.
+   */
+  const applyWorkspaceEdit = Effect.fn("LanguageServers.applyWorkspaceEdit")(function* (
+    instance: Instance,
+    edit: Json,
+    seen: ReadonlyMap<string, ServerText>,
+  ) {
+    const byFile = editsByFile(edit);
+    if (byFile === null) {
+      return yield* failure("unsupported", "The edit also creates, renames or deletes files.");
+    }
+    const id = `edit-${++editCount}-${(yield* Clock.currentTimeMillis).toString(36)}`;
+    const files: AppliedFile[] = [];
+    let count = 0;
+    for (const [uri, edits] of byFile) {
+      const relativePath = relativePathOf(instance, uri);
+      if (relativePath === null) continue;
+      const done = yield* applyToFile(
+        instance.cwd,
+        relativePath,
+        edits,
+        seen.get(relativePath),
+        `lsp:${id}`,
+      ).pipe(
+        Effect.scoped,
+        Effect.mapError((cause) =>
+          failure("document", `'${relativePath}' could not be edited.`, cause),
+        ),
+      );
+      if (done === null) continue;
+      files.push(done);
+      count += done.edits;
+    }
+    applied.set(id, { cwd: instance.cwd, files });
+    for (const key of [...applied.keys()].slice(0, -EDITS_KEPT)) applied.delete(key);
+    return {
+      id,
+      files: files.map((file) => file.relativePath),
+      edits: count,
+    } satisfies LanguageServerAppliedEdit;
+  });
+
+  const undoFile = Effect.fn("LanguageServers.undoFile")(function* (
+    cwd: string,
+    file: AppliedFile,
+    clientId: string,
+  ) {
+    const items = yield* Queue.unbounded<DocumentStreamItem, Cause.Done | DocumentError>();
+    yield* documents
+      .subscribe({
+        cwd,
+        relativePath: file.relativePath,
+        resume: { loadId: file.loadId, version: file.version },
+      })
+      .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+    const first = yield* Queue.take(items);
+    // Still loaded: the inverse is rebased over whatever landed since. Reloaded: only a file
+    // nobody changed since takes it.
+    const at =
+      first.type === "resumed"
+        ? { loadId: file.loadId, version: file.version }
+        : first.type === "snapshot" && first.text === file.after
+          ? { loadId: first.loadId, version: first.version }
+          : null;
+    if (at === null) return false;
+    yield* documents.push({
+      cwd,
+      relativePath: file.relativePath,
+      ...at,
+      updates: [{ clientId, changes: file.inverse.toJSON() }],
+    });
+    yield* documents.save({ cwd, relativePath: file.relativePath, loadId: at.loadId });
+    return true;
+  });
+
+  const undoEdit: LanguageServers["Service"]["undoEdit"] = Effect.fn("LanguageServers.undoEdit")(
+    function* (input) {
+      const edit = applied.get(input.id);
+      if (edit === undefined) {
+        return yield* failure("document", "That edit can no longer be undone.");
+      }
+      applied.delete(input.id);
+      const files: string[] = [];
+      const skipped: string[] = [];
+      for (const file of edit.files) {
+        const undone = yield* undoFile(edit.cwd, file, `lsp-undo:${input.id}`).pipe(
+          Effect.scoped,
+          Effect.orElseSucceed(() => false),
+        );
+        (undone ? files : skipped).push(file.relativePath);
+      }
+      return { files, skipped };
+    },
+  );
+
   const onSessionNotification = Effect.fn("LanguageServers.sessionNotification")(function* (
     instance: Instance,
     session: Session,
@@ -1218,6 +1422,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         ? wordBefore(doc.texts.get(doc.version)!, position)
         : "";
     if (method === "textDocument/completion") session.completionPath = relativePath;
+    // A rename is applied here, at the texts the server answers about.
+    const seen = method === "textDocument/rename" ? serverTexts(instance) : null;
     const request = running.connection.request(method, translated.params);
     pending.serverId = request.id;
     const answer = yield* request.response.pipe(
@@ -1225,6 +1431,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
     );
     if (!answer.ok) return { error: errorMessage(answer.error) };
+    if (seen !== null) {
+      if (answer.result == null) return { result: null };
+      const done = yield* applyWorkspaceEdit(instance, answer.result, seen).pipe(
+        Effect.map((edit) => ({ result: { applied: edit } })),
+        Effect.catch((error) =>
+          Effect.succeed({ error: { code: -32603, message: error.message } }),
+        ),
+      );
+      return done;
+    }
     const mapped = mapAnswer(method, answer.result, doc, translated.context, query);
     if ("error" in mapped) return mapped;
     if (method === "textDocument/completion") return { result: mapped.result };
@@ -1542,6 +1758,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   return LanguageServers.of({
     locate,
+    undoEdit,
     subscribe: SubscriptionRef.changes(statuses),
     restart,
     stop,

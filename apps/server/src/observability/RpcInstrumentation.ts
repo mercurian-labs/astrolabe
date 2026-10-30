@@ -231,6 +231,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.codeIndexClear]: "codeIndex",
   [WS_METHODS.languageServersSubscribe]: "languageServers",
   [WS_METHODS.languageServersRestart]: "languageServers",
+  [WS_METHODS.languageServersUndoEdit]: "languageServers",
   [WS_METHODS.languageServersStop]: "languageServers",
   [WS_METHODS.languageServersConfirmDownload]: "languageServers",
   [WS_METHODS.languageServersSession]: "languageServers",

@@ -459,30 +459,60 @@ describe("LanguageServers", () => {
       yield* session.state("ready");
       yield* session.open(checkout.uri);
       const editor = yield* openEditor(checkout, "editor-a");
-      yield* agentEdit(checkout, (text) => ({ from: text.length, insert: "use(point);\n" }));
+      yield* agentEdit(checkout, (text) => ({ from: text.length, insert: "use(1,2);\n" }));
+      const format = () =>
+        session.request(
+          1,
+          "textDocument/formatting",
+          { textDocument: { uri: checkout.uri }, options: { tabSize: 2, insertSpaces: true } },
+          editor.envelope(),
+        );
+      expect((yield* format()).error.code).toBe(ContentModified);
+      yield* editor.catchUp;
+      expect((yield* format()).result).toHaveLength(1);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("applies a rename to every file it names, and undoes it as one", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout(SOURCE, { renameAlso: "src/point.ts" });
+      const POINT = "export function makePoint() {}\nmakePoint();\n";
+      yield* checkout.write("src/point.ts", POINT);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      // An agent adds a use the editor hasn't received: the environment renames it too.
+      yield* agentEdit(checkout, (text) => ({ from: text.length, insert: "makePoint(3, 4);\n" }));
       const rename = yield* session.request(
         1,
         "textDocument/rename",
         {
           textDocument: { uri: checkout.uri },
-          position: editor.position("point", 1),
-          newName: "p",
+          position: editor.position("makePoint", 1),
+          newName: "pointAt",
         },
         editor.envelope(),
       );
-      expect(rename.error.code).toBe(ContentModified);
-      yield* editor.catchUp;
-      const accepted = yield* session.request(
-        2,
-        "textDocument/rename",
-        {
-          textDocument: { uri: checkout.uri },
-          position: editor.position("point", 1),
-          newName: "p",
-        },
-        editor.envelope(),
+      expect(rename.result.applied).toMatchObject({
+        files: [FILE, "src/point.ts"],
+        edits: 4,
+      });
+      const read = (name: string) => fileSystem.readFileString(`${checkout.cwd}/${name}`);
+      expect(yield* read(FILE)).toBe(
+        "const point = pointAt(1, 2);\nexport const label = point;\npointAt(3, 4);\n",
       );
-      expect(accepted.result.changes[checkout.uri]).toHaveLength(3);
+      expect(yield* read("src/point.ts")).toBe("export function pointAt() {}\npointAt();\n");
+      // Someone types after the rename; undo puts the names back and keeps their line.
+      yield* agentEdit(checkout, (text) => ({ from: 0, insert: "// later\n" }));
+      const undone = yield* service.undoEdit({ id: rename.result.applied.id });
+      expect(undone).toEqual({ files: [FILE, "src/point.ts"], skipped: [] });
+      expect(yield* read(FILE)).toBe(`// later\n${SOURCE}makePoint(3, 4);\n`);
+      expect(yield* read("src/point.ts")).toBe(POINT);
+      const again = yield* service.undoEdit({ id: rename.result.applied.id }).pipe(Effect.flip);
+      expect(again.reason).toBe("document");
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 

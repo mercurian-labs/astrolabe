@@ -353,6 +353,8 @@ Command Palette, and you can rebind it under **Editors**.
 | `mod+f12`                    | Go to type definition | `e` `g` `t`   | `g` `y` |
 | `shift+f12`                  | Go to implementation  | `e` `g` `i`   | `g` `I` |
 | `alt+shift+f12`              | Find references       | `e` `g` `r`   | `g` `r` |
+| `f2`                         | Rename symbol         | `e` `e`       |         |
+|                              | Undo rename           | `e` `z`       |         |
 
 Completions open as you type a name or a `.`. Tab or Enter accepts the selected one, `ctrl+n`
 and `ctrl+p` move through them, and Escape closes the list (in Vim's insert mode you stay in
@@ -368,6 +370,11 @@ when it is elsewhere in the checkout. When there are several, places close toget
 selected, and otherwise you pick one from a list; type to narrow it. On a definition itself, it
 finds the references instead. Find References lists every use, the declaration included. With
 `mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
+
+Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. It is
+not in the file's own undo: click **Undo** on the notice, or run Undo Rename, to put every file
+back. Edits made since are kept.
 
 ## Find in a diff
 

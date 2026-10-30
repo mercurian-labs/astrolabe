@@ -450,6 +450,8 @@ import {
   LanguageServerSessionItem,
   LanguageServerStatus,
   LanguageServerTarget,
+  LanguageServerUndoEditInput,
+  LanguageServerUndoEditResult,
 } from "./languageServers.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
@@ -636,6 +638,7 @@ export const WS_METHODS = {
   languageServersConfirmDownload: "languageServers.confirmDownload",
   languageServersSession: "languageServers.session",
   languageServersSend: "languageServers.send",
+  languageServersUndoEdit: "languageServers.undoEdit",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2163,6 +2166,13 @@ const WsLanguageServersSendRpc = Rpc.make(WS_METHODS.languageServersSend, {
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
+/** Undoes an edit the environment applied for a language server (a rename), by its id. */
+const WsLanguageServersUndoEditRpc = Rpc.make(WS_METHODS.languageServersUndoEdit, {
+  payload: LanguageServerUndoEditInput,
+  success: LanguageServerUndoEditResult,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 /** Every repository's index status now, then each change. */
 const WsCodeIndexSubscribeRpc = Rpc.make(WS_METHODS.codeIndexSubscribe, {
   payload: Schema.Struct({}),
@@ -2554,6 +2564,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsCodeIndexClearRpc,
   WsLanguageServersSubscribeRpc,
   WsLanguageServersRestartRpc,
+  WsLanguageServersUndoEditRpc,
   WsLanguageServersStopRpc,
   WsLanguageServersConfirmDownloadRpc,
   WsLanguageServersSessionRpc,

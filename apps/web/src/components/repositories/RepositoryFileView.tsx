@@ -21,6 +21,14 @@ import {
   type NavigationHost,
   type NavigationLocation,
 } from "@mercurian/editor/lsp/navigation";
+import {
+  environmentRename,
+  type RenameHost,
+  type RenameResult,
+} from "@mercurian/editor/lsp/rename";
+import { languageServersEnvironment } from "~/state/languageServers";
+import { useAtomCommand } from "~/state/use-atom-command";
+import { lastRename, type UndoableRename } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -207,6 +215,42 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     open: openLocation,
     pick: pickLocation,
   }));
+  const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
+  // The environment applied the rename to every file: it offers Undo here, and to Undo Rename.
+  const renamed = useStableCallback((_view: EditorView, result: RenameResult) => {
+    const files = result.files.length;
+    let done = false;
+    const undo: UndoableRename = {
+      label: `Undo rename of ${result.from} to ${result.to}`,
+      run: () => {
+        if (done) return;
+        done = true;
+        if (lastRename.get() === undo) lastRename.set(null);
+        void undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
+          if (outcome._tag !== "Success" || outcome.value.skipped.length === 0) return;
+          toastManager.add({
+            type: "warning",
+            title: "Some files changed since the rename and were left as they are",
+            description: outcome.value.skipped.join(", "),
+          });
+        });
+      },
+    };
+    lastRename.set(undo);
+    const toast = toastManager.add({
+      type: "success",
+      title: `Renamed ${result.from} to ${result.to}`,
+      description: `${result.edits} ${result.edits === 1 ? "place" : "places"} in ${files} ${files === 1 ? "file" : "files"}`,
+      actionProps: {
+        children: "Undo",
+        onClick: () => {
+          toastManager.close(toast);
+          undo.run();
+        },
+      },
+    });
+  });
+  const [rename] = useState<RenameHost>(() => ({ renamed }));
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -286,6 +330,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           source={fromDisk ? { contents: contents ?? "" } : { session }}
           languageServer={fromDisk ? null : languageServer.extension}
           navigation={navigation}
+          rename={rename}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
@@ -402,6 +447,7 @@ function FileEditor({
   source,
   languageServer,
   navigation,
+  rename,
   readOnly,
   baseText,
   baseControl,
@@ -417,6 +463,8 @@ function FileEditor({
   readonly languageServer: Extension | null;
   /** Where its definitions and references open. */
   readonly navigation: NavigationHost;
+  /** Told of each rename the environment applied. */
+  readonly rename: RenameHost;
   readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
@@ -451,6 +499,7 @@ function FileEditor({
     source,
     languageServer,
     navigation,
+    rename,
     readOnly,
     vim,
     wordWrap,
@@ -535,7 +584,9 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial.navigation) : [],
+        initial.languageServer
+          ? languageServerUi(lspKeys, diagnosticKeys, initial.navigation, initial.rename)
+          : [],
       ]),
     });
   }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys]);
@@ -582,6 +633,7 @@ function languageServerUi(
   keys: ReturnType<typeof useLspEditorKeys>,
   diagnosticKeys: ReturnType<typeof useEditorDiagnosticKeys>,
   navigation: NavigationHost,
+  rename: RenameHost,
 ): Extension {
   return [
     diagnosticsUi({ keys: diagnosticKeys }),
@@ -599,6 +651,7 @@ function languageServerUi(
       },
       host: navigation,
     }),
+    environmentRename({ keys: keys["lsp.rename"], host: rename }),
   ];
 }
 

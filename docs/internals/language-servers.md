@@ -24,8 +24,14 @@ positions land on the wrong text.
   inverse of the changes it mapped the request through, and lsp-client maps it forward from
   there. Tagging an answer with a version and mapping it in the editor would map it twice.
 - **Edits into unreceived text are refused.** An answer whose edits touch text the editor has not
-  received (a rename reaching a use an agent just wrote) gets `ContentModified`, not a partial
+  received (a format reaching a line an agent just wrote) gets `ContentModified`, not a partial
   edit.
+- **Renames are applied by the environment.** A rename's edits reach files the editor never
+  opened and uses it hasn't received, so the gateway applies the server's `WorkspaceEdit` itself,
+  at the texts the server answered about, through each file's document, and answers with an id.
+  It keeps each file's accepted update inverted: undoing pushes the inverse at the version right
+  after it, and collab rebases it over whatever landed since. That is why a rename is not in the
+  editor's own undo history.
 - **Only pushed diagnostics carry a version.** They are computed on the environment's text at a
   version; the editor holds them until it has that version, then maps them through what it has
   done since.

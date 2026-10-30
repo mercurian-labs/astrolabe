@@ -74,6 +74,10 @@
     "./lsp/navigation": {
       "types": "./src/lsp/navigation.ts",
       "default": "./src/lsp/navigation.ts"
+    },
+    "./lsp/rename": {
+      "types": "./src/lsp/rename.ts",
+      "default": "./src/lsp/rename.ts"
     }
   },
   "scripts": {

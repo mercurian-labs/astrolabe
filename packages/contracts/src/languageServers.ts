@@ -121,7 +121,15 @@ export type LanguageServerSendInput = typeof LanguageServerSendInput.Type;
 export const languageServerSendWrites = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
   const document = (input as { readonly document?: { readonly unconfirmed?: unknown } }).document;
-  return Array.isArray(document?.unconfirmed) && document.unconfirmed.length > 0;
+  if (Array.isArray(document?.unconfirmed) && document.unconfirmed.length > 0) return true;
+  const message = (input as { readonly message?: unknown }).message;
+  if (typeof message !== "string") return false;
+  try {
+    const parsed = JSON.parse(message) as { readonly method?: unknown };
+    return typeof parsed.method === "string" && WRITING_METHODS.has(parsed.method);
+  } catch {
+    return false;
+  }
 };
 
 export const DiagnosticSeverity = Schema.Literals(["error", "warning", "info", "hint"]);
@@ -178,6 +186,34 @@ export const CodeLocations = Schema.Struct({
   truncated: Schema.Boolean,
 });
 export type CodeLocations = typeof CodeLocations.Type;
+
+/**
+ * A language server's edit the environment applied (a rename, a code action): the files it
+ * changed, and the id that undoes it while the environment keeps it.
+ */
+export const LanguageServerAppliedEdit = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  /** Repository-relative. */
+  files: Schema.Array(Schema.String),
+  edits: NonNegativeInt,
+});
+export type LanguageServerAppliedEdit = typeof LanguageServerAppliedEdit.Type;
+
+export const LanguageServerUndoEditInput = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+});
+export type LanguageServerUndoEditInput = typeof LanguageServerUndoEditInput.Type;
+
+export const LanguageServerUndoEditResult = Schema.Struct({
+  /** Repository-relative: the files put back. */
+  files: Schema.Array(Schema.String),
+  /** Files left as they are: closed and changed since, so the edit can't be found in them. */
+  skipped: Schema.Array(Schema.String),
+});
+export type LanguageServerUndoEditResult = typeof LanguageServerUndoEditResult.Type;
+
+/** LSP requests whose answer the environment applies to files, so a send of one writes. */
+const WRITING_METHODS = new Set(["textDocument/rename"]);
 
 export const LanguageServerErrorReason = Schema.Literals([
   /** No language server serves this file. */

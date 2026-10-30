@@ -36,6 +36,10 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     label: "environment-data:language-servers:stop",
     tag: WS_METHODS.languageServersStop,
   });
+  const undoEdit = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:undo-edit",
+    tag: WS_METHODS.languageServersUndoEdit,
+  });
   const confirmDownload = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:language-servers:confirm-download",
     tag: WS_METHODS.languageServersConfirmDownload,
@@ -72,5 +76,5 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       void send.run(registry, { environmentId, input });
     };
 
-  return { send, sender, restart, stop, confirmDownload, session };
+  return { send, sender, restart, stop, confirmDownload, undoEdit, session };
 }

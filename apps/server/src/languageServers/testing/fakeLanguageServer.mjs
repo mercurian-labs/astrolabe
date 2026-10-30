@@ -63,6 +63,7 @@ const handle = (message) => {
             hoverProvider: true,
             renameProvider: true,
             definitionProvider: true,
+            documentFormattingProvider: true,
             referencesProvider: true,
             completionProvider: { resolveProvider: true, triggerCharacters: ["."] },
           },
@@ -149,17 +150,32 @@ const handle = (message) => {
       if (method === "textDocument/references") return reply([...found, ...outside]);
       return reply(outside.length > 0 ? outside : found.slice(0, 1));
     }
+    case "textDocument/formatting": {
+      // Formatting puts one space after each comma; `formatDelay` (ms) makes it slow.
+      const { text } = docs.get(params.textDocument.uri);
+      const edits = [...text.matchAll(/,(?! )/g)].map((match) => ({
+        range: rangeOf(text, match.index + 1, match.index + 1),
+        newText: " ",
+      }));
+      if (config.formatDelay) setTimeout(() => reply(edits), config.formatDelay);
+      else reply(edits);
+      return;
+    }
     case "textDocument/rename": {
       const { text } = docs.get(params.textDocument.uri);
       const { word } = wordAt(text, offsetOf(text, params.position));
-      return reply({
-        changes: {
-          [params.textDocument.uri]: occurrences(text, word).map((offset) => ({
-            range: rangeOf(text, offset, offset + word.length),
-            newText: params.newName,
-          })),
-        },
-      });
+      const editsIn = (fileText) =>
+        occurrences(fileText, word).map((offset) => ({
+          range: rangeOf(fileText, offset, offset + word.length),
+          newText: params.newName,
+        }));
+      const changes = { [params.textDocument.uri]: editsIn(text) };
+      // `renameAlso` names a file the server reads from disk, as it does files nobody opened.
+      if (config.renameAlso) {
+        const uri = new URL(config.renameAlso, `file://${process.cwd()}/`).href;
+        changes[uri] = editsIn(NodeFS.readFileSync(config.renameAlso, "utf8"));
+      }
+      return reply({ changes });
     }
     case "textDocument/completion":
       return reply({

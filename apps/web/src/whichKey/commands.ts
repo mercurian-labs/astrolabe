@@ -24,6 +24,8 @@ import {
   goToImplementation,
   goToTypeDefinition,
 } from "@mercurian/editor/lsp/navigation";
+import { renameSymbol } from "@mercurian/editor/lsp/rename";
+import { lastRename } from "~/components/repositories/renameUndo";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
@@ -462,6 +464,12 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Go to implementation", goToImplementation);
     case "lsp.references":
       return lspEntry(context.origin, "Find references", findReferences);
+    case "lsp.rename":
+      return lspEntry(context.origin, "Rename symbol", renameSymbol);
+    case "lsp.undoRename": {
+      const rename = lastRename.get();
+      return entry(rename?.label ?? "No rename to undo", rename?.run ?? null);
+    }
     case "outline.open": {
       const view = editorFrom(context.origin, hasOutline);
       return entry(

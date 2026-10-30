@@ -415,6 +415,8 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "lsp.typeDefinition": "Go to Type Definition",
   "lsp.implementation": "Go to Implementation",
   "lsp.references": "Find References",
+  "lsp.rename": "Rename Symbol",
+  "lsp.undoRename": "Undo Rename",
   "repository.localGraph": "Repositories: Open Local Graph",
 };
 
