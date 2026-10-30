@@ -238,6 +238,10 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiSetChangeRequestStatus]: "wiki",
   [WS_METHODS.wikiSetMirror]: "wiki",
   [WS_METHODS.wikiPushMirror]: "wiki",
+  [WS_METHODS.documentsSubscribe]: "workspace",
+  [WS_METHODS.documentsPush]: "workspace",
+  [WS_METHODS.documentsSave]: "workspace",
+  [WS_METHODS.documentsRecover]: "workspace",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";

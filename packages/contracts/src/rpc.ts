@@ -421,6 +421,17 @@ import {
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import {
+  DocumentError,
+  DocumentPushInput,
+  DocumentPushResult,
+  DocumentRecoverInput,
+  DocumentRecoverResult,
+  DocumentSaveInput,
+  DocumentSaveResult,
+  DocumentStreamItem,
+  DocumentSubscribeInput,
+} from "./documents.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -581,6 +592,12 @@ export const WS_METHODS = {
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
   wikiPushMirror: "wiki.pushMirror",
+
+  // Astrolabe: open repository files, with the environment as their authority.
+  documentsSubscribe: "documents.subscribe",
+  documentsPush: "documents.push",
+  documentsSave: "documents.save",
+  documentsRecover: "documents.recover",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2023,6 +2040,32 @@ const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+// Astrolabe: subscribing holds the document open; leaving the stream is closing it.
+const WsDocumentsSubscribeRpc = Rpc.make(WS_METHODS.documentsSubscribe, {
+  payload: DocumentSubscribeInput,
+  success: DocumentStreamItem,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsDocumentsPushRpc = Rpc.make(WS_METHODS.documentsPush, {
+  payload: DocumentPushInput,
+  success: DocumentPushResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsSaveRpc = Rpc.make(WS_METHODS.documentsSave, {
+  payload: DocumentSaveInput,
+  success: DocumentSaveResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsRecoverRpc = Rpc.make(WS_METHODS.documentsRecover, {
+  payload: DocumentRecoverInput,
+  success: DocumentRecoverResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2360,6 +2403,10 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,
   WsWikiPushMirrorRpc,
+  WsDocumentsSubscribeRpc,
+  WsDocumentsPushRpc,
+  WsDocumentsSaveRpc,
+  WsDocumentsRecoverRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);
