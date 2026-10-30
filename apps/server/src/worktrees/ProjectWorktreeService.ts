@@ -76,14 +76,43 @@ export class ProjectWorktreeService extends Context.Service<
 
 export const SET_ASIDE_REF_PREFIX = "refs/astrolabe/set-aside/";
 
+/** What the service keeps beside git: worktrees marked Keep, and each repository's numbering. */
 const KeptStore = Schema.Struct({
   version: Schema.Literal(1),
   kept: Schema.Array(Schema.String),
+  /** By repository folder, then worktree folder. */
+  numbers: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Number)).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 type KeptStore = typeof KeptStore.Type;
 const KeptStoreJson = fromJsonStringPretty(KeptStore);
 const decodeKeptStore = Schema.decodeEffect(KeptStoreJson);
 const encodeKeptStore = Schema.encodeEffect(KeptStoreJson);
+
+/**
+ * Numbers a repository's linked worktrees: one keeps its number while it exists, a new one takes
+ * the lowest free number from 1. The same object when nothing changed.
+ */
+export function numberWorktrees(
+  numbers: Readonly<Record<string, number>>,
+  paths: ReadonlyArray<string>,
+): Readonly<Record<string, number>> {
+  const kept = Object.fromEntries(
+    Object.entries(numbers).filter(([worktreePath]) => paths.includes(worktreePath)),
+  );
+  const taken = new Set(Object.values(kept));
+  let changed = Object.keys(kept).length !== Object.keys(numbers).length;
+  for (const worktreePath of paths) {
+    if (kept[worktreePath] !== undefined) continue;
+    let n = 1;
+    while (taken.has(n)) n += 1;
+    kept[worktreePath] = n;
+    taken.add(n);
+    changed = true;
+  }
+  return changed ? kept : numbers;
+}
 
 const fail = (message: string) => new ProjectWorktreeError({ message });
 const failWith = (prefix: string) => (cause: unknown) =>
@@ -169,10 +198,40 @@ const make = Effect.gen(function* () {
             Effect.flatMap(decodeKeptStore),
             Effect.mapError(failWith("Kept worktrees could not be read")),
           )
-      : { version: 1, kept: [] };
+      : { version: 1, kept: [], numbers: {} };
     yield* Ref.set(keptCache, store);
     return store;
   });
+
+  /** Changes the store and saves it; nothing is written when `change` returns it as it was. */
+  const updateStore = (change: (store: KeptStore) => KeptStore) =>
+    keptLock.withPermit(
+      Effect.gen(function* () {
+        const store = yield* loadKept;
+        const next = change(store);
+        if (next === store) return next;
+        const contents = yield* encodeKeptStore(next).pipe(
+          Effect.mapError(failWith("Kept worktrees could not be saved")),
+        );
+        yield* writeFileStringAtomically({ filePath: keptPath, contents: `${contents}\n` }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.mapError(failWith("Kept worktrees could not be saved")),
+        );
+        yield* Ref.set(keptCache, next);
+        return next;
+      }),
+    );
+
+  /** A repository's worktree numbers, after numbering any new worktree and freeing gone ones. */
+  const numbersFor = (root: string, paths: ReadonlyArray<string>) =>
+    updateStore((store) => {
+      const current = store.numbers[root] ?? {};
+      const next = numberWorktrees(current, paths);
+      return next === current && store.numbers[root] !== undefined
+        ? store
+        : { ...store, numbers: { ...store.numbers, [root]: next } };
+    }).pipe(Effect.map((store) => store.numbers[root] ?? {}));
 
   const repositoryRoot = Effect.fn("ProjectWorktreeService.repositoryRoot")(function* (
     projectId: ProjectId,
@@ -260,6 +319,10 @@ const make = Effect.gen(function* () {
       Effect.map((result) => parseWorktreeList(result.stdout)),
     );
     const { kept } = yield* loadKept;
+    const numbers = yield* numbersFor(
+      root,
+      listed.filter((entry) => !entry.isMain).map((entry) => entry.path),
+    );
     const snapshot = yield* projections
       .getShellSnapshot()
       .pipe(Effect.mapError(failWith("Threads could not be read")));
@@ -267,8 +330,14 @@ const make = Effect.gen(function* () {
       (thread) => thread.archivedAt === null && thread.deletedAt === null,
     );
     const now = yield* Clock.currentTimeMillis;
+    // The main checkout first, then by number, so a worktree keeps its place in the list.
+    const ordered = listed.toSorted(
+      (a, b) =>
+        (a.isMain ? 0 : (numbers[a.path] ?? Number.MAX_SAFE_INTEGER)) -
+        (b.isMain ? 0 : (numbers[b.path] ?? Number.MAX_SAFE_INTEGER)),
+    );
     return yield* Effect.forEach(
-      listed,
+      ordered,
       (entry) =>
         Effect.gen(function* () {
           const exists = yield* fileSystem
@@ -282,6 +351,7 @@ const make = Effect.gen(function* () {
             branch: entry.branch,
             head: entry.head,
             alias: entry.branch ?? entry.head?.slice(0, 8) ?? path.basename(entry.path),
+            number: entry.isMain ? null : (numbers[entry.path] ?? null),
             kept: kept.includes(entry.path),
             holds: holdsFor(entry, {
               threads,
@@ -398,9 +468,10 @@ const make = Effect.gen(function* () {
     root: string,
     branch: string,
     start: string | null,
+    reuse: boolean,
   ) {
     const worktrees = yield* listWorktrees(root);
-    const free = freeWorktree(worktrees);
+    const free = reuse ? freeWorktree(worktrees) : undefined;
     let target: string;
     if (free) {
       target = free.path;
@@ -440,7 +511,7 @@ const make = Effect.gen(function* () {
           const worktrees = yield* listWorktrees(root);
           const existing = worktrees.find((worktree) => worktree.branch === input.branch);
           if (existing) return { worktree: existing, setAside: "none" as const };
-          const target = yield* place(root, input.branch, null);
+          const target = yield* place(root, input.branch, null, input.newWorktree !== true);
           const restored = yield* withWorkspaceLease(target, restoreSetAside(target, input.branch));
           return { worktree: yield* reread(root, target), setAside: restored };
         }),
@@ -470,7 +541,12 @@ const make = Effect.gen(function* () {
     if (base.exitCode !== 0) return yield* fail(`${input.base} is not a branch or commit here.`);
     return yield* projectLock(input.projectId).withPermit(
       Effect.gen(function* () {
-        const target = yield* place(root, input.branch, base.stdout.trim());
+        const target = yield* place(
+          root,
+          input.branch,
+          base.stdout.trim(),
+          input.newWorktree !== true,
+        );
         return yield* reread(root, target);
       }),
     );
@@ -549,27 +625,13 @@ const make = Effect.gen(function* () {
   });
 
   const writeKept = (worktreePath: string, kept: boolean) =>
-    keptLock.withPermit(
-      Effect.gen(function* () {
-        const store = yield* loadKept;
-        const next: KeptStore = {
-          version: 1,
-          kept: [
-            ...store.kept.filter((entry) => entry !== worktreePath),
-            ...(kept ? [worktreePath] : []),
-          ],
-        };
-        const contents = yield* encodeKeptStore(next).pipe(
-          Effect.mapError(failWith("Kept worktrees could not be saved")),
-        );
-        yield* writeFileStringAtomically({ filePath: keptPath, contents: `${contents}\n` }).pipe(
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-          Effect.mapError(failWith("Kept worktrees could not be saved")),
-        );
-        yield* Ref.set(keptCache, next);
-      }),
-    );
+    updateStore((store) => ({
+      ...store,
+      kept: [
+        ...store.kept.filter((entry) => entry !== worktreePath),
+        ...(kept ? [worktreePath] : []),
+      ],
+    }));
 
   const setKept: ProjectWorktreeService["Service"]["setKept"] = Effect.fn(
     "ProjectWorktreeService.setKept",

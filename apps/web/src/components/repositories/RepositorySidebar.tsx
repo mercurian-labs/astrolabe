@@ -7,8 +7,6 @@ import {
   FileIcon,
   FolderGit2Icon,
   FolderPlusIcon,
-  ListIcon,
-  ListTreeIcon,
   ListFilterIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -78,7 +76,12 @@ import {
   WorktreeHeader,
   WorktreeRows,
 } from "./RepositoryWorktrees";
-import { repositoryScope, repositoryView } from "./repositoryScope";
+import {
+  repositoryScope,
+  repositoryWorktreeFiles,
+  showWorktreeFiles,
+  worktreeFilesKey,
+} from "./repositoryScope";
 import {
   checkoutOf,
   fileName,
@@ -101,7 +104,7 @@ const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">
 export function RepositorySidebar() {
   const repositories = useRepositories();
   const scope = repositoryScope.useValue();
-  const view = repositoryView.useValue();
+  const filesShown = repositoryWorktreeFiles.useValue();
   const scoped = repositories.find((repository) => repositoryKey(repository) === scope) ?? null;
   const listed = useProjectWorktrees(
     scoped ? { environmentId: scoped.environmentId, projectId: scoped.id } : null,
@@ -125,9 +128,7 @@ export function RepositorySidebar() {
       setChosen(next);
     }
   }
-  const expanded = (worktree: ProjectWorktree) =>
-    chosen.get(worktree.path) ??
-    (view === "list" || worktrees.length === 1 || worktree.path === active?.path);
+  const expanded = (worktree: ProjectWorktree) => chosen.get(worktree.path) ?? true;
   const toggle = (worktree: ProjectWorktree) =>
     setChosen((current) => new Map(current).set(worktree.path, !expanded(worktree)));
   const [searchQuery, setSearchQuery] = useState("");
@@ -238,77 +239,68 @@ export function RepositorySidebar() {
               ) : (
                 <SidebarNote>Pick a repository in the filter to find its files.</SidebarNote>
               )
-            ) : scoped && view === "tree" ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                {worktrees.map((worktree) => (
-                  <Fragment key={worktree.path}>
-                    <ul role="presentation">
-                      <WorktreeHeader
-                        repository={scoped}
-                        worktree={worktree}
-                        expanded={expanded(worktree)}
-                        onToggle={() => toggle(worktree)}
-                      />
-                    </ul>
-                    {expanded(worktree) ? (
-                      // The tree's virtualized list is `height: 100%`, and the sidebar's scroll
-                      // area only gives its content a min-height, so the list collapsed to
-                      // nothing. Each tree fills an absolutely placed box, whose height is definite.
-                      <div className={WORKTREE_TREE_CLASS}>
-                        <div className="absolute inset-0 flex flex-col">
-                          <FileBrowserPanel
-                            key={`${scoped.environmentId}:${worktree.path}`}
-                            environmentId={scoped.environmentId}
-                            cwd={worktree.path}
-                            projectName={`${scoped.title} · ${worktree.alias}`}
-                            selectedPath={
-                              worktree.path === focused?.path && focusedTab?.kind === "file"
-                                ? focusedTab.path
-                                : null
-                            }
-                            selectedPathRevealId={0}
-                            onOpenFile={(path) =>
-                              repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
-                            }
-                            workspaceMutationId={null}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-                  </Fragment>
-                ))}
-                {listed ? (
-                  <ul role="presentation" className="flex flex-col gap-px">
-                    <SetAsideRows repository={scoped} setAside={listed.setAside} />
-                  </ul>
-                ) : null}
-              </div>
             ) : scoped ? (
-              <div className="flex flex-col gap-1">
-                {worktrees.map((worktree) => (
-                  <ul key={worktree.path} role="presentation" className="flex flex-col gap-px">
-                    <WorktreeHeader
-                      repository={scoped}
-                      worktree={worktree}
-                      expanded={expanded(worktree)}
-                      onToggle={() => toggle(worktree)}
-                    />
-                    {expanded(worktree) ? (
-                      <WorktreeRows>
-                        <RepositoryList
+              <div className="flex min-h-0 flex-1 flex-col gap-1">
+                {worktrees.map((worktree) => {
+                  const filesKey = worktreeFilesKey(scoped.environmentId, worktree.path);
+                  const files = filesShown.includes(filesKey);
+                  return (
+                    <Fragment key={worktree.path}>
+                      <ul role="presentation" className="flex flex-col gap-px">
+                        <WorktreeHeader
                           repository={scoped}
-                          cwd={worktree.path}
-                          checkout={checkoutOf(worktree)}
-                          showStatus
-                          showChanges={worktree.isMain}
-                          showRecent={worktree.path === active?.path}
-                          changedFiles={worktree.changedFiles}
-                          head={worktree.head}
+                          worktree={worktree}
+                          expanded={expanded(worktree)}
+                          onToggle={() => toggle(worktree)}
+                          filesShown={files}
+                          onToggleFiles={() => {
+                            showWorktreeFiles(filesKey, !files);
+                            setChosen((current) => new Map(current).set(worktree.path, true));
+                          }}
                         />
-                      </WorktreeRows>
-                    ) : null}
-                  </ul>
-                ))}
+                        {expanded(worktree) && !files ? (
+                          <WorktreeRows>
+                            <RepositoryList
+                              repository={scoped}
+                              cwd={worktree.path}
+                              checkout={checkoutOf(worktree)}
+                              showStatus
+                              showChanges={worktree.isMain}
+                              showRecent={worktree.path === active?.path}
+                              changedFiles={worktree.changedFiles}
+                              head={worktree.head}
+                            />
+                          </WorktreeRows>
+                        ) : null}
+                      </ul>
+                      {expanded(worktree) && files ? (
+                        // The tree's virtualized list is `height: 100%`, and the sidebar's scroll
+                        // area only gives its content a min-height. Each tree fills an absolutely
+                        // placed box instead, whose height is definite.
+                        <div className={WORKTREE_TREE_CLASS}>
+                          <div className="absolute inset-0 flex flex-col">
+                            <FileBrowserPanel
+                              key={filesKey}
+                              environmentId={scoped.environmentId}
+                              cwd={worktree.path}
+                              projectName={`${scoped.title} · ${worktree.alias}`}
+                              selectedPath={
+                                worktree.path === focused?.path && focusedTab?.kind === "file"
+                                  ? focusedTab.path
+                                  : null
+                              }
+                              selectedPathRevealId={0}
+                              onOpenFile={(path) =>
+                                repositoryPanes.show(fileKey(scoped, checkoutOf(worktree), path))
+                              }
+                              workspaceMutationId={null}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
                 {listed ? (
                   <ul role="presentation" className="flex flex-col gap-px">
                     <SetAsideRows repository={scoped} setAside={listed.setAside} />
@@ -317,8 +309,6 @@ export function RepositorySidebar() {
                   <SidebarNote>Reading worktrees…</SidebarNote>
                 )}
               </div>
-            ) : view === "tree" ? (
-              <SidebarNote>Pick a repository in the filter to see its files.</SidebarNote>
             ) : (
               <div className="flex flex-col gap-3">
                 {repositories.map((repository) => (
@@ -680,8 +670,7 @@ type FilterOption = ProjectFilterOption<EnvironmentProject>;
 
 /**
  * The filter: every repository or one, as every section's project filter offers repositories,
- * with how the list shows (as a list, or the whole file tree), Manage repositories and Add a
- * repository at its foot.
+ * with Manage repositories and Add a repository at its foot.
  */
 function RepositoryFilter({
   repositories,
@@ -697,7 +686,6 @@ function RepositoryFilter({
     query: "",
   });
   const filter = useComboboxFilter();
-  const view = repositoryView.useValue();
   const items = projectFilterOptions({
     repositories: repositories.map((repository) => ({
       key: repositoryKey(repository),
@@ -768,12 +756,6 @@ function RepositoryFilter({
           )}
         </ComboboxList>
         <SidebarPickerFooter>
-          <SidebarPickerAction
-            icon={view === "tree" ? ListIcon : ListTreeIcon}
-            onClick={() => closeAnd(() => repositoryView.set(view === "tree" ? "list" : "tree"))}
-          >
-            {view === "tree" ? "Show as list" : "Show the file tree"}
-          </SidebarPickerAction>
           <SidebarPickerAction
             icon={SettingsIcon}
             onClick={() =>

@@ -3,7 +3,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import { repositoryPanes } from "./repositoryPanes";
-import { repositoryScope, repositoryView } from "./repositoryScope";
+import { repositoryScope, showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
 import { repositoryTabKey, type RepositoryCheckout } from "./repositoryTabs";
 
 /**
@@ -47,7 +47,7 @@ export function repositoryMoveOfSurface(
           }),
         );
       } else {
-        repositoryView.set("tree");
+        showWorktreeFiles(worktreeFilesKey(environmentId, cwd), true);
       }
       void navigate({ to: "/repositories" });
     },

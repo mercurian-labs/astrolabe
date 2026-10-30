@@ -11,16 +11,18 @@ see all of that for it; with every repository, each shows its latest files.
 
 - **Search** finds a file by name in the repository you picked, in the worktree of the tab
   you're on.
-- **Show the file tree**, in the filter, swaps the list for each worktree's file tree.
+- The tree button on a worktree's header swaps its changes for its whole file tree, and back.
 
 ## Worktrees and branches
 
 A repository you picked lists each of its worktrees under the branch checked out there, the
-repository's own checkout first. Tabs follow the branch, not the folder: if a worktree later
+repository's own checkout first. Every other worktree has a number, which it keeps while it
+exists, so you can tell where each branch is. Tabs follow the branch, not the folder: if a worktree later
 holds another branch, its old tabs offer to open their branch again.
 
 - **Open a branch**, beside the filter, puts a branch in a worktree: the one it is already in, else
-  a free one, else a new one. Type a new name to make a branch from the main checkout's branch.
+  a free one, else a new one. Turn on **In a new worktree** in it to give every branch you open a
+  worktree of its own instead. Type a new name to make a branch from the main checkout's branch.
 - A worktree is free unless a thread uses it, a terminal is open in it, it is the repository's
   own checkout, or you chose **Keep for this branch** in its menu.
 - When a free worktree takes another branch, its uncommitted work is set aside on its branch and

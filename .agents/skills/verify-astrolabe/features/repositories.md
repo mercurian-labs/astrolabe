@@ -16,9 +16,8 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   **Repos** heading for all, then each repository; a wiki's checkout and the
   server's scratch workspace (threads with no project) are left out) and **Add a repository** (the add-project palette; once
   it adds the repository the app leaves `/repositories` for a new draft thread there, so
-  click `button "Repos"` to come back). The filter's foot holds **Show the file
-  tree** / **Show as list** (`astrolabe:repository-view:v1`), **Manage repositories** and
-  **Add a repository**.
+  click `button "Repos"` to come back). The filter's foot holds **Manage
+  repositories** and **Add a repository**.
 - **List** (default): with every repository, one group each (collapsible header), a
   **Changes →** row (Changes scoped to that repository) and its eight
   most recently committed files. With one repository: one collapsible section per git
@@ -37,8 +36,12 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
 - **Worktrees**: `combobox "Open a branch in a worktree"` (beside the filter, with a
-  repository picked) lists local branches; a pick puts the branch in its worktree, else a
-  free one (no main checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder.
+  repository picked) lists local branches, each noting `main checkout` or `worktree <n>`
+  when checked out; a pick puts the branch in its worktree, else a free one (no main
+  checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder. Its `switch "Open in
+  a new worktree"` (`astrolabe:open-in-new-worktree:v1`, shared with Wikis' picker) skips
+  free ones. Linked worktrees carry a number (server-kept, lowest free, held while the folder
+  exists) on their header and are listed by it.
   A name that is no branch offers "New branch <name> from <main's branch>". A free
   worktree's uncommitted work is set aside as `refs/astrolabe/set-aside/<branch>` (row
   **Set-aside work on <branch>**, **Open** / **Discard**) and comes back when the branch
@@ -49,10 +52,10 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   (`repo-file:<env>:<project>:branch:<branch>:<path>`); main-checkout and detached tabs
   by folder. A branch tab with no worktree reads "<branch> is not checked out in any
   worktree." with **Open <branch>**.
-- **Tree** (**Show the file tree**): one collapsible section per worktree, each with T3
-  Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree; the focused
-  tab's worktree opens on its own. With every repository the sidebar reads "Pick a
-  repository in the filter to see its files." Each panel is
+- **Tree**: a worktree header's `button "Show its files"` / `"Show its changes"` swaps its
+  rows for T3 Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree, per
+  worktree (`astrolabe:repository-worktree-files:v1`); the focused tab's worktree opens on
+  its own. Each panel is
   `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. Toolbar:
   **Refresh workspace files**, the field `Search <repo> · <branch> files`, **Expand all folders** / **Collapse all
   folders** (only with folders). Rows live in `file-tree-container`'s open shadow root as
@@ -112,7 +115,7 @@ repository**. With the **server** project that makes two repositories.
    **Review uncommitted changes** opens the diff; **Open** opens the file in a new tab
    after the diff.
 3. Type in the file; within a second the file on disk changes (`git status` shows it).
-4. **Show the file tree**, wait for `[data-file-browser-panel] >> role=treeitem`, then
+4. **Show its files** on the worktree's header, wait for `[data-file-browser-panel] >> role=treeitem`, then
    prove the rows paint with `preview_evaluate`:
 
    ```js

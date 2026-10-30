@@ -4,11 +4,13 @@ import {
   EllipsisIcon,
   GitBranchIcon,
   GitBranchPlusIcon,
+  ListIcon,
+  ListTreeIcon,
   PinIcon,
   Trash2Icon,
   UndoIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useEnvironmentQuery } from "~/state/query";
@@ -31,7 +33,9 @@ import {
   ComboboxTrigger,
 } from "../ui/combobox";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { openInNewWorktree } from "./repositoryScope";
 import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
 
 /** What the worktree controls need of a project: a repository's or a wiki's. */
@@ -43,8 +47,9 @@ const target = (repository: WorktreeOwner) => ({
 });
 
 /**
- * A worktree's header in the Repositories sidebar: its branch (or commit), how many files it has
- * uncommitted, what holds it, and Keep and Delete. Its contents collapse under it.
+ * A worktree's header: its number and branch (or commit), how many files it has uncommitted, what
+ * holds it, whether it shows its changes or its files, and Keep and Delete. Its contents collapse
+ * under it.
  */
 export function WorktreeHeader({
   repository,
@@ -53,6 +58,8 @@ export function WorktreeHeader({
   onToggle,
   label = worktree.alias,
   menuItems,
+  filesShown = false,
+  onToggleFiles,
 }: {
   readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -62,6 +69,9 @@ export function WorktreeHeader({
   readonly label?: string;
   /** More actions for its menu, above Keep and Delete. */
   readonly menuItems?: ReactNode;
+  /** Whether it shows its file tree in place of its changes, and the switch between them. */
+  readonly filesShown?: boolean;
+  readonly onToggleFiles?: () => void;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
   const accessory = (
@@ -95,10 +105,39 @@ export function WorktreeHeader({
         accessory={accessory}
       >
         <span className="flex items-center gap-1.5">
-          <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+          {worktree.number === null ? (
+            <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
+          ) : (
+            <span
+              aria-label={`Worktree ${worktree.number}`}
+              className="flex size-3.5 shrink-0 items-center justify-center rounded-sm bg-primary text-3xs leading-none font-semibold text-primary-foreground tabular-nums"
+            >
+              {worktree.number}
+            </span>
+          )}
           {label}
         </span>
       </CollapsibleSectionHeader>
+      {onToggleFiles ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={filesShown ? "Show its changes" : "Show its files"}
+                aria-pressed={filesShown}
+                onClick={onToggleFiles}
+                className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              />
+            }
+          >
+            {filesShown ? <ListIcon className="size-3.5" /> : <ListTreeIcon className="size-3.5" />}
+          </TooltipTrigger>
+          <TooltipPopup side="top">
+            {filesShown ? "Show its changes" : "Show its files"}
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
       {worktree.isMain ? null : (
         <WorktreeMenu repository={repository} worktree={worktree} label={label}>
           {menuItems}
@@ -114,7 +153,7 @@ export function WorktreeRows({ children }: { readonly children: ReactNode }) {
     <li className="list-none">
       <ul
         role="presentation"
-        className="ms-[15px] flex flex-col gap-px border-s border-sidebar-border ps-1"
+        className="ms-4 flex flex-col gap-px border-s border-sidebar-border ps-1"
       >
         {children}
       </ul>
@@ -124,7 +163,7 @@ export function WorktreeRows({ children }: { readonly children: ReactNode }) {
 
 /** A worktree section's file tree, set in under its header as its rows are. */
 export const WORKTREE_TREE_CLASS =
-  "relative ms-[15px] -me-2 min-h-40 flex-1 border-s border-sidebar-border";
+  "relative ms-4 -me-2 min-h-40 flex-1 border-s border-sidebar-border";
 
 function WorktreeMenu({
   repository,
@@ -255,7 +294,7 @@ export function SetAsideRows({
 
 /**
  * Opens a branch in a worktree (its own, a free one, or a new one), or makes a new branch from
- * the main checkout's branch in a worktree of its own.
+ * the main checkout's branch. Each branch says where it is checked out already.
  */
 export function OpenBranchPicker({
   repository,
@@ -290,7 +329,11 @@ export function OpenBranchPicker({
     setOpen(false);
     setQuery("");
   };
-  const placedOn = (branch: string) => worktrees.some((worktree) => worktree.branch === branch);
+  const placedOn = (branch: string) => {
+    const holder = worktrees.find((worktree) => worktree.branch === branch);
+    if (holder === undefined) return null;
+    return holder.number === null ? "main checkout" : `worktree ${holder.number}`;
+  };
   return (
     <Combobox
       items={branches}
@@ -321,10 +364,11 @@ export function OpenBranchPicker({
             <ComboboxItem key={branch} hideIndicator value={branch}>
               <GitBranchIcon className="size-3.5 shrink-0 opacity-70" />
               <span className="min-w-0 flex-1 truncate text-sm">{branch}</span>
-              {placedOn(branch) ? <BranchNote>in a worktree</BranchNote> : null}
+              {placedOn(branch) === null ? null : <BranchNote>{placedOn(branch)}</BranchNote>}
             </ComboboxItem>
           )}
         </ComboboxList>
+        <NewWorktreeSwitch />
         {name.length > 0 && !branches.includes(name) ? (
           <SidebarPickerFooter>
             <SidebarPickerAction
@@ -341,6 +385,33 @@ export function OpenBranchPicker({
         ) : null}
       </ComboboxPopup>
     </Combobox>
+  );
+}
+
+/**
+ * Whether a branch opened from a picker gets a worktree of its own even when one is free, kept on
+ * the device for every picker (and the set-aside rows' and tabs' Open).
+ */
+export function NewWorktreeSwitch() {
+  const id = useId();
+  const choice = openInNewWorktree.useValue();
+  return (
+    <label
+      htmlFor={id}
+      className="flex cursor-pointer items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-xs"
+    >
+      <span className="flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
+        <GitBranchPlusIcon aria-hidden className="size-3 shrink-0" />
+        <span className="truncate">In a new worktree</span>
+      </span>
+      <Switch
+        id={id}
+        size="sm"
+        checked={choice === "new"}
+        aria-label="Open in a new worktree"
+        onCheckedChange={(checked) => openInNewWorktree.set(checked ? "new" : "reuse")}
+      />
+    </label>
   );
 }
 

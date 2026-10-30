@@ -24,6 +24,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
+  numberWorktrees,
   ProjectWorktreeService,
   layer as projectWorktreeLayer,
   SET_ASIDE_REF_PREFIX,
@@ -107,6 +108,18 @@ const fixture = Effect.gen(function* () {
 const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof layerBase> | Scope.Scope>) =>
   effect.pipe(Effect.provide(layerBase), Effect.scoped);
 
+describe("numberWorktrees", () => {
+  it("keeps each worktree's number, frees a gone one's, and fills the lowest gap", () => {
+    const numbers = { "/wt/a": 1, "/wt/b": 2, "/wt/c": 3 };
+    expect(numberWorktrees(numbers, ["/wt/a", "/wt/c", "/wt/d"])).toEqual({
+      "/wt/a": 1,
+      "/wt/c": 3,
+      "/wt/d": 2,
+    });
+    expect(numberWorktrees(numbers, ["/wt/a", "/wt/b", "/wt/c"])).toBe(numbers);
+  });
+});
+
 describe("ProjectWorktreeService", () => {
   it.live("opens a checked-out branch where it is, and makes a worktree when none is free", () =>
     run(
@@ -171,6 +184,23 @@ describe("ProjectWorktreeService", () => {
 
         yield* service.discardSetAside({ projectId, branch: "alpha" });
         expect((yield* service.list({ projectId })).setAside).toEqual([]);
+      }),
+    ),
+  );
+
+  it.live("opens a branch in a new worktree when asked, even with one free", () =>
+    run(
+      Effect.gen(function* () {
+        const { service } = yield* fixture;
+        const alpha = yield* service.open({ projectId, branch: "alpha" });
+        const beta = yield* service.open({ projectId, branch: "beta", newWorktree: true });
+        expect(beta.worktree.path).not.toBe(alpha.worktree.path);
+        const listed = yield* service.list({ projectId });
+        expect(listed.worktrees.map((worktree) => [worktree.branch, worktree.number])).toEqual([
+          ["main", null],
+          ["alpha", 1],
+          ["beta", 2],
+        ]);
       }),
     ),
   );

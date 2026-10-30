@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
  * Astrolabe: a repository's worktrees as buckets. A branch is what a person or an agent works on;
@@ -23,6 +23,8 @@ export const ProjectWorktree = Schema.Struct({
   head: Schema.NullOr(TrimmedNonEmptyString),
   /** What to call it: its branch, or its commit when detached. */
   alias: TrimmedNonEmptyString,
+  /** Its number among the repository's worktrees, kept while it exists; null for the main checkout. */
+  number: Schema.NullOr(PositiveInt),
   kept: Schema.Boolean,
   holds: Schema.Array(ProjectWorktreeHold),
   changedFiles: NonNegativeInt,
@@ -51,6 +53,8 @@ export type ProjectWorktreeListResult = typeof ProjectWorktreeListResult.Type;
 export const ProjectWorktreeOpenInput = Schema.Struct({
   projectId: ProjectId,
   branch: TrimmedNonEmptyString,
+  /** A worktree of its own even when one is free; a branch already checked out stays where it is. */
+  newWorktree: Schema.optional(Schema.Boolean),
 });
 export type ProjectWorktreeOpenInput = typeof ProjectWorktreeOpenInput.Type;
 
@@ -61,11 +65,12 @@ export const ProjectWorktreeOpenResult = Schema.Struct({
 });
 export type ProjectWorktreeOpenResult = typeof ProjectWorktreeOpenResult.Type;
 
-/** A new branch, from `base`, in a worktree of its own (a free one when there is one). */
+/** A new branch, from `base`, in a free worktree, or a new one (always with `newWorktree`). */
 export const ProjectWorktreeCreateInput = Schema.Struct({
   projectId: ProjectId,
   branch: TrimmedNonEmptyString,
   base: TrimmedNonEmptyString,
+  newWorktree: Schema.optional(Schema.Boolean),
 });
 export type ProjectWorktreeCreateInput = typeof ProjectWorktreeCreateInput.Type;
 

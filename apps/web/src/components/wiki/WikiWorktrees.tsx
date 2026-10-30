@@ -11,6 +11,7 @@ import FileBrowserPanel from "../files/FileBrowserPanel";
 import { storedName } from "../projects/storedChoice";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import {
+  NewWorktreeSwitch,
   SetAsideRows,
   WORKTREE_TREE_CLASS,
   WorktreeHeader,
@@ -272,6 +273,7 @@ export function WikiWorktreePicker({ overview }: { readonly overview: WikiOvervi
             </ComboboxItem>
           )}
         </ComboboxList>
+        <NewWorktreeSwitch />
         {title.length > 0 ? (
           <SidebarPickerFooter>
             <SidebarPickerAction
