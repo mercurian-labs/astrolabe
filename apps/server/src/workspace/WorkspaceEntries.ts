@@ -8,18 +8,19 @@ import * as Path from "effect/Path";
 import * as RcMap from "effect/RcMap";
 import * as Schema from "effect/Schema";
 
-import type {
-  FilesystemBrowseInput,
-  FilesystemBrowseResult,
-  ProjectEntry,
-  ProjectListEntriesInput,
-  ProjectListEntriesResult,
-  ProjectListIgnoredFilesInput,
-  ProjectListIgnoredFilesResult,
-  ProjectSearchContentsInput,
-  ProjectSearchContentsResult,
-  ProjectSearchEntriesInput,
-  ProjectSearchEntriesResult,
+import {
+  NonNegativeInt,
+  type FilesystemBrowseInput,
+  type FilesystemBrowseResult,
+  type ProjectEntry,
+  type ProjectListEntriesInput,
+  type ProjectListEntriesResult,
+  type ProjectListIgnoredFilesInput,
+  type ProjectListIgnoredFilesResult,
+  type ProjectSearchContentsInput,
+  type ProjectSearchContentsResult,
+  type ProjectSearchEntriesInput,
+  type ProjectSearchEntriesResult,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
@@ -27,6 +28,8 @@ import { normalizeSearchQuery } from "@t3tools/shared/searchRanking";
 
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import { makeContentSearchPathFilter } from "./contentSearchGlobs.ts";
+import { searchIgnoredContents } from "./ignoredContentSearch.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
 
@@ -113,6 +116,27 @@ export class WorkspaceEntries extends Context.Service<
 
 /** Ignored files offered for copying; more than this is a build folder, not config. */
 const IGNORED_FILES_LIMIT = 200;
+
+const CONTENT_SEARCH_TIME_BUDGET_MS = 250;
+
+// Opaque to clients: indexed files come first (fff offsets), then ignored files in walk order.
+const ContentSearchCursor = Schema.fromJsonString(
+  Schema.Union([
+    Schema.Struct({
+      phase: Schema.Literal("indexed"),
+      offset: NonNegativeInt,
+      skip: NonNegativeInt,
+    }),
+    Schema.Struct({
+      phase: Schema.Literal("ignored"),
+      path: Schema.optional(Schema.String),
+      skip: NonNegativeInt,
+    }),
+  ]),
+);
+type ContentSearchCursor = typeof ContentSearchCursor.Type;
+const decodeContentSearchCursor = Schema.decodeUnknownEffect(ContentSearchCursor);
+const encodeContentSearchCursor = Schema.encodeSync(ContentSearchCursor);
 
 /** Paths sent to one `git check-ignore` call when labelling a folder's children. */
 const IGNORE_CHECK_CHUNK_SIZE = 1000;
@@ -266,19 +290,125 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const listIgnoredEntries = Effect.fn("WorkspaceEntries.listIgnoredEntries")(function* (
+    cwd: string,
+  ) {
+    const result = yield* vcsProcess
+      .run({
+        operation: "WorkspaceEntries.listIgnoredEntries",
+        command: "git",
+        args: [
+          "-c",
+          "core.fsmonitor=false",
+          "ls-files",
+          "--others",
+          "--ignored",
+          "--exclude-standard",
+          "--directory",
+          "--no-empty-directory",
+          "-z",
+        ],
+        cwd,
+        allowNonZeroExit: true,
+        timeoutMs: 10_000,
+        maxOutputBytes: 16 * 1024 * 1024,
+      })
+      .pipe(Effect.orElseSucceed(() => undefined));
+    return result?.exitCode === 0 ? result.stdout.split("\0").filter(Boolean) : [];
+  });
+
   const searchContents: WorkspaceEntries["Service"]["searchContents"] = Effect.fn(
     "WorkspaceEntries.searchContents",
   )(function* (input) {
     const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
-    return yield* Effect.gen(function* () {
-      const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
-      return yield* searchIndex.searchContents(input);
-    }).pipe(
-      Effect.provide(
-        workspaceSearchIndexes.get(
-          WorkspaceSearchIndex.workspaceSearchIndexKey(normalizedCwd, "content"),
+    const cursor: ContentSearchCursor =
+      input.cursor === undefined
+        ? { phase: "indexed", offset: 0, skip: 0 }
+        : yield* decodeContentSearchCursor(input.cursor).pipe(
+            Effect.mapError(
+              (cause) =>
+                new WorkspaceSearchIndex.WorkspaceSearchIndexSearchFailed({
+                  cwd: normalizedCwd,
+                  queryLength: input.query.length,
+                  pageSize: input.limit,
+                  reason: "The search cursor is not valid.",
+                  cause,
+                }),
+            ),
+          );
+    const pathFilter = makeContentSearchPathFilter(input);
+    const contextLines = input.contextLines ?? 0;
+    const deadline = performance.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
+    const page = (
+      matches: ProjectSearchContentsResult["matches"],
+      next: ContentSearchCursor | null,
+      limited: boolean,
+      regexFallbackError: string | undefined,
+    ): ProjectSearchContentsResult => ({
+      matches,
+      truncated: next !== null,
+      ...(limited ? { limited } : {}),
+      ...(next !== null ? { nextCursor: encodeContentSearchCursor(next) } : {}),
+      ...(regexFallbackError !== undefined ? { regexFallbackError } : {}),
+    });
+
+    let matches: ProjectSearchContentsResult["matches"] = [];
+    let regexFallbackError: string | undefined;
+    if (cursor.phase === "indexed") {
+      const indexed = yield* Effect.gen(function* () {
+        const searchIndex = yield* WorkspaceSearchIndex.WorkspaceSearchIndex;
+        return yield* searchIndex.searchContents({
+          ...input,
+          contextLines,
+          pathFilter,
+          start: cursor,
+          deadline,
+        });
+      }).pipe(
+        Effect.provide(
+          workspaceSearchIndexes.get(
+            WorkspaceSearchIndex.workspaceSearchIndexKey(normalizedCwd, "content"),
+          ),
         ),
-      ),
+      );
+      matches = indexed.matches;
+      regexFallbackError = indexed.regexFallbackError;
+      if (indexed.next !== null) {
+        return page(
+          matches,
+          { phase: "indexed", ...indexed.next },
+          indexed.limited,
+          regexFallbackError,
+        );
+      }
+    }
+    if (!input.includeIgnored) return page(matches, null, false, regexFallbackError);
+    if (matches.length === input.limit) {
+      return page(matches, { phase: "ignored", skip: 0 }, true, regexFallbackError);
+    }
+
+    const entries = yield* listIgnoredEntries(normalizedCwd);
+    const ignored = yield* Effect.promise(() =>
+      searchIgnoredContents({
+        ...input,
+        cwd: normalizedCwd,
+        entries,
+        limit: input.limit - matches.length,
+        contextLines,
+        pathFilter,
+        start:
+          cursor.phase === "ignored" && cursor.path !== undefined
+            ? { path: cursor.path, skip: cursor.skip }
+            : null,
+        deadline,
+        pageHasMatches: matches.length > 0,
+      }),
+    );
+    return page(
+      [...matches, ...ignored.matches],
+      ignored.next === null ? null : { phase: "ignored", ...ignored.next },
+      ignored.limited,
+      regexFallbackError ?? ignored.regexFallbackError,
     );
   });
 
