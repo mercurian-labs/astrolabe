@@ -150,14 +150,32 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // First, so an app shortcut on the same keys still resolves ahead of them outside the editor's
   // own keymap (mod+b toggles the sidebar, as before).
   { key: "mod+b", command: "markdown.bold", when: "editorFocus" },
-  { key: "mod+i", command: "markdown.italic", when: "editorFocus" },
+  { key: "mod+i", command: "markdown.italic", when: "editorFocus && !codeEditorFocus" },
   { key: "mod+e", command: "markdown.code", when: "editorFocus" },
   { key: "mod+shift+x", command: "markdown.strikethrough", when: "editorFocus" },
   { key: "mod+shift+h", command: "markdown.highlight", when: "editorFocus" },
-  { key: "mod+shift+k", command: "markdown.link", when: "editorFocus" },
+  { key: "mod+shift+k", command: "markdown.link", when: "editorFocus && !codeEditorFocus" },
   // Astrolabe: an editor's find bar, which each editor binds itself; elsewhere mod+f stays
   // `chat.find`, as does the composer, which has no find bar.
   { key: "mod+f", command: "search.find", when: "editorFocus" },
+  // Astrolabe: a code file's editing keys, which its editor binds itself while it has focus. The
+  // app's commands on the same keys stand down there (`!codeEditorFocus`), except mod+u (Usage).
+  { key: "mod+d", command: "code.selectNextOccurrence", when: "codeEditorFocus" },
+  { key: "mod+shift+d", command: "code.skipOccurrence", when: "codeEditorFocus" },
+  { key: "mod+shift+l", command: "code.selectAllOccurrences", when: "codeEditorFocus" },
+  { key: "mod+alt+arrowup", command: "code.addCursorAbove", when: "codeEditorFocus" },
+  { key: "mod+alt+arrowdown", command: "code.addCursorBelow", when: "codeEditorFocus" },
+  { key: "mod+i", command: "code.expandSelection", when: "codeEditorFocus" },
+  { key: "mod+/", command: "code.toggleComment", when: "codeEditorFocus" },
+  { key: "mod+[", command: "code.indentLess", when: "codeEditorFocus" },
+  { key: "mod+]", command: "code.indentMore", when: "codeEditorFocus" },
+  { key: "alt+arrowup", command: "code.moveLineUp", when: "codeEditorFocus" },
+  { key: "alt+arrowdown", command: "code.moveLineDown", when: "codeEditorFocus" },
+  { key: "alt+shift+arrowup", command: "code.copyLineUp", when: "codeEditorFocus" },
+  { key: "alt+shift+arrowdown", command: "code.copyLineDown", when: "codeEditorFocus" },
+  { key: "mod+shift+k", command: "code.deleteLine", when: "codeEditorFocus" },
+  { key: "mod+alt+[", command: "code.fold", when: "codeEditorFocus" },
+  { key: "mod+alt+]", command: "code.unfold", when: "codeEditorFocus" },
   // Astrolabe: Ctrl+H/J/K/L move focus between the sidebar and the panes, as Vim's and tmux's
   // window keys do, only while nothing is being typed into (a field, an editor, a terminal):
   // there they stay the editor's. Early, so where `mod` is Ctrl the terminal (mod+j) and the
@@ -172,8 +190,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+d", command: "scroll.down", when: "!editableFocus && !terminalFocus" },
   { key: "ctrl+u", command: "scroll.up", when: "!editableFocus && !terminalFocus" },
   { key: "mod+b", command: "sidebar.toggle" },
-  { key: "mod+[", command: "navigation.back", when: "!terminalFocus" },
-  { key: "mod+]", command: "navigation.forward", when: "!terminalFocus" },
+  { key: "mod+[", command: "navigation.back", when: "!terminalFocus && !codeEditorFocus" },
+  { key: "mod+]", command: "navigation.forward", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+j", command: "terminal.toggle" },
   { key: "mod+alt+b", command: "rightPanel.toggle" },
   { key: "mod+shift+b", command: "threadPanel.toggle", when: "!terminalFocus" },
@@ -184,7 +202,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+w", command: "terminal.close", when: "terminalFocus" },
   { key: "mod+w", command: "rightPanel.close", when: "!terminalFocus" },
   { key: "mod+shift+t", command: "view.reopenClosed" },
-  { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
+  { key: "mod+d", command: "diff.toggle", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+shift+j", command: "preview.toggle" },
   { key: "mod+r", command: "preview.refresh", when: "previewFocus" },
   { key: "mod+l", command: "preview.focusUrl", when: "previewFocus" },
@@ -196,7 +214,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // is. mod+p is the Command Palette, and the file picker is the menu's `f`
   // (`DEFAULT_TRIGGER_KEYBINDINGS`).
   { key: "mod+k", command: "whichKey.open", when: "!terminalFocus" },
-  { key: "mod+/", command: "commandPalette.toggle", when: "!terminalFocus" },
+  { key: "mod+/", command: "commandPalette.toggle", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+p", command: "commandLine.open", when: "!terminalFocus" },
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
   { key: "mod+u", command: "usage.open", when: "!terminalFocus" },
@@ -233,7 +251,11 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+a", command: "composer.mode", when: "!terminalFocus" },
   { key: "mod+shift+x", command: "composer.workspace", when: "!terminalFocus" },
   { key: "mod+shift+g", command: "composer.branch", when: "!terminalFocus" },
-  { key: "mod+shift+l", command: "composer.previousWorktree", when: "!terminalFocus" },
+  {
+    key: "mod+shift+l",
+    command: "composer.previousWorktree",
+    when: "!terminalFocus && !codeEditorFocus",
+  },
   // Astrolabe: not in an editor, where mod+shift+k inserts a link (`markdown.link`).
   {
     key: "mod+shift+k",

@@ -19,7 +19,7 @@ import {
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
-import { isEditorFocused } from "./lib/editorFocus";
+import { isCodeEditorFocused, isEditorFocused } from "./lib/editorFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
 export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
@@ -38,6 +38,8 @@ export interface ShortcutMatchContext {
    * from the page when unset, so no listener has to pass it.
    */
   editorFocus?: boolean;
+  /** Astrolabe: a code editor's text has focus (see `isCodeEditorFocused`), read the same way. */
+  codeEditorFocus?: boolean;
   [key: string]: boolean;
 }
 
@@ -193,6 +195,7 @@ export function resolveShortcutCommand(
   const context = {
     // Astrolabe
     editorFocus: typeof document !== "undefined" && isEditorFocused(),
+    codeEditorFocus: typeof document !== "undefined" && isCodeEditorFocused(),
     ...resolveContext(options),
   };
 
