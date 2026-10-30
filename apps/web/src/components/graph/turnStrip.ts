@@ -6,7 +6,7 @@ import {
   type PlaybackStep,
   type PlayPick,
   type ThreadRecord,
-} from "@mercurian/graph";
+} from "@mercurian/graph/model";
 
 /**
  * Which turn the graph shows, whether playback walks the thread, and the chosen move. Live by

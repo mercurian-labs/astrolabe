@@ -1,6 +1,7 @@
 import "@mercurian/graph/styles.css";
 import {
   AtlasGraph,
+  createLeanRenderer,
   DEFAULT_SETTINGS,
   defaultDepth,
   holdSeconds,
@@ -475,6 +476,7 @@ function WikiStoryGraph({
           onCursor={onCursor}
           turnRunning={turnRunning}
           mode="lean"
+          createRenderer={createLeanRenderer}
           settings={settings}
           filters={NO_FILTERS}
           themeKey={`${theme}|${resolvedTheme}`}

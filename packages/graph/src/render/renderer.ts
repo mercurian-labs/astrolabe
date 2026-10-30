@@ -30,6 +30,12 @@ export type HoverTarget =
   | { readonly kind: "node"; readonly index: number; readonly x: number; readonly y: number }
   | { readonly kind: "edge"; readonly index: number; readonly x: number; readonly y: number };
 
+/**
+ * Builds a renderer drawing into `host`. A host imports only the factory it draws with, so the
+ * renderers it does not use (and their libraries) never load.
+ */
+export type RendererFactory = (host: HTMLElement, callbacks: RendererCallbacks) => GraphRenderer;
+
 export interface RendererCallbacks {
   onHover(target: HoverTarget | null): void;
   /** A node was clicked (pressed and released without dragging). */

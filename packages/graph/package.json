@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./model": {
+      "types": "./src/model.ts",
+      "default": "./src/model.ts"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {

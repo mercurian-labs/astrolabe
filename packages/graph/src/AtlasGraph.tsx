@@ -1,6 +1,7 @@
 /**
  * A thin React wrapper around a `GraphRenderer`: it derives universe, layout, reading, and view
- * from props; the renderer owns every frame. Switching renderer families keeps selection, pick,
+ * from props; the renderer owns every frame. `createRenderer` builds it, so a host loads only the
+ * renderer it draws with (the app: `createLeanRenderer`). A new factory keeps selection, pick,
  * play, and flat view. Hosts import `@mercurian/graph/styles.css` once and set the `--atlas-*`
  * properties (see `render/theme.ts`) on an ancestor.
  */
@@ -65,22 +66,16 @@ import { cursorRows, turnTour, type TourInner, type TourVisit } from "./model/to
 import { CursorPlays } from "./CursorPlays.tsx";
 import { popoverPlace } from "./render/cursor.ts";
 import type { CursorAt } from "./render/storyteller.ts";
-import { AtlasRenderer } from "./render/AtlasRenderer.ts";
-
 import type { BenchDriver } from "./render/probe.ts";
-import { createLeanRenderer } from "./render/lean/LeanRenderer.ts";
-import { createPixiRenderer } from "./render/pixi/PixiRenderer.ts";
 import {
   handover,
   isFlatMode,
-  rendererFamily,
   type BenchResult,
   type GraphRenderer,
   type Handover,
   type HoverTarget,
   type RenderMode,
-  type RendererCallbacks,
-  type RendererFamily,
+  type RendererFactory,
   type RendererStats,
 } from "./render/renderer.ts";
 
@@ -152,6 +147,11 @@ export interface AtlasGraphProps {
    * on a stripped-down 2D renderer: "lean" (Three.js) or "pixi" (Pixi.js).
    */
   readonly mode?: RenderMode;
+  /**
+   * Builds the renderer for `mode`: `createLeanRenderer` for "lean", or one of `RENDERERS`
+   * (`render/renderers.ts`, the playground's). Keep its identity: a new one replaces the renderer.
+   */
+  readonly createRenderer: RendererFactory;
   readonly settings: GraphSettings;
   readonly filters: GraphFilters;
   /** Shown lenses, by position in `memory.lenses`. */
@@ -194,21 +194,6 @@ export interface AtlasGraphProps {
   /** A codebase's declared layers and the crossings it allows (drawn while `settings.features.boundaries`). */
   readonly boundaries?: Boundaries;
   readonly ref?: Ref<AtlasGraphHandle>;
-}
-
-function createRenderer(
-  family: RendererFamily,
-  host: HTMLElement,
-  callbacks: RendererCallbacks,
-): GraphRenderer {
-  switch (family) {
-    case "atlas":
-      return new AtlasRenderer(host, callbacks);
-    case "lean":
-      return createLeanRenderer(host, callbacks);
-    case "pixi":
-      return createPixiRenderer(host, callbacks);
-  }
 }
 
 const NO_SILHOUETTES: ReadonlyArray<Silhouette> = [];
@@ -261,6 +246,7 @@ export function AtlasGraph(props: AtlasGraphProps) {
     removed = NO_REMOVED,
     turnRunning = false,
     mode = "3d",
+    createRenderer,
     settings,
     filters,
     lensSlots = NO_LENSES,
@@ -352,7 +338,6 @@ export function AtlasGraph(props: AtlasGraphProps) {
   }
   const pickedId = pick !== null && pick.universe === universe.key ? pick.id : null;
   const flat = isFlatMode(mode);
-  const family = rendererFamily(mode);
   const { centerForce, repelForce, linkDistance } = settings;
   const layout = useMemo(
     () => layoutCache.get(universe, { centerForce, repelForce, linkDistance }, flat ? 2 : 3),
@@ -733,11 +718,11 @@ export function AtlasGraph(props: AtlasGraphProps) {
     };
   });
 
-  // One renderer per family; "3d" and "flat" share the Atlas renderer and glide between each other.
+  // One renderer per factory; "3d" and "flat" share the Atlas renderer and glide between each other.
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) return;
-    const created = createRenderer(family, host, {
+    const created = createRenderer(host, {
       onHover: setHover,
       onPick: (index) => {
         const { universe, reading, onOpenNote, onFrontier, closed, view } = latest.current;
@@ -778,13 +763,13 @@ export function AtlasGraph(props: AtlasGraphProps) {
     rendererRef.current = created;
     setRenderer(created);
     return () => {
-      // A switch of family is a cut: the next renderer takes over this one's flat view.
+      // A new renderer is a cut: it takes over this one's flat view.
       carried.current = { view: created.flatView(), following: created.following };
       created.dispose();
       rendererRef.current = null;
       setHover(null);
     };
-  }, [family]);
+  }, [createRenderer]);
 
   useImperativeHandle(
     ref,

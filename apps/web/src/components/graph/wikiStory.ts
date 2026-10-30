@@ -1,4 +1,4 @@
-import type { Memory, MemoryNote, ThreadEvent, ThreadRecord } from "@mercurian/graph";
+import type { Memory, MemoryNote, ThreadEvent, ThreadRecord } from "@mercurian/graph/model";
 import { links } from "@mercurian/wiki";
 import type {
   OrchestrationV2Run,
