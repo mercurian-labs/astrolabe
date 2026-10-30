@@ -156,6 +156,18 @@ describe("a file graph", () => {
     expect(links.get(["app.ts", "a.ts"].sort().join(">"))).toBeCloseTo(EdgeAttention.touched);
   });
 
+  it("keeps its picture when handed an equal graph, as a host reading again does", () => {
+    using _pane = paneSized(700, 500);
+    using _now = vi.spyOn(performance, "now").mockImplementation(() => harness.state.now);
+    using graph = mounted(GRAPH);
+    harness.run();
+    const drawn = harness.state.last?.universe;
+    graph.show({ ...GRAPH, nodes: GRAPH.nodes.map((each) => ({ ...each })) });
+    expect(harness.idle()).toBe(true);
+    expect(harness.run()).toBe(0);
+    expect(harness.state.last?.universe).toBe(drawn);
+  });
+
   it("draws a new graph whole when the centre moves, and rests again", () => {
     using _pane = paneSized(700, 500);
     using _now = vi.spyOn(performance, "now").mockImplementation(() => harness.state.now);

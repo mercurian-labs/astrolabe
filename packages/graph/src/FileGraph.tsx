@@ -10,6 +10,7 @@ import type { Ref } from "react";
 
 import {
   fileGraphLayout,
+  fileGraphSignature,
   fileGraphUniverse,
   fileGraphView,
   type FileGraphData,
@@ -46,9 +47,19 @@ export interface FileGraphProps {
 /** Arrowheads say which way an import runs; nodes a little larger than a memory's, as there are few. */
 const SETTINGS: GraphSettings = { ...DEFAULT_SETTINGS, arrows: true, nodeSize: 1.5 };
 
-export function FileGraph({ graph, onOpen, onHover, labelFont, themeKey, ref }: FileGraphProps) {
+export function FileGraph({
+  graph: given,
+  onOpen,
+  onHover,
+  labelFont,
+  themeKey,
+  ref,
+}: FileGraphProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [renderer, setRenderer] = useState<GraphRenderer | null>(null);
+  // A graph equal to the one drawn (a host reading again) keeps the picture and the camera.
+  const [graph, setGraph] = useState(given);
+  if (given !== graph && fileGraphSignature(given) !== fileGraphSignature(graph)) setGraph(given);
   const universe = useMemo(() => fileGraphUniverse(graph), [graph]);
   const layout = useMemo(() => fileGraphLayout(universe, graph), [universe, graph]);
   const view = useMemo(() => fileGraphView(universe, graph), [universe, graph]);

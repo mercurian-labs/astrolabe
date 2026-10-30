@@ -60,6 +60,14 @@ function keyOf(graph: FileGraphData): string {
   return key;
 }
 
+/** What a graph draws, as one string: two graphs with the same draw the same picture. */
+export const fileGraphSignature = (graph: FileGraphData): string =>
+  JSON.stringify([
+    graph.center,
+    graph.nodes.map((node) => [node.id, node.name, node.kind, node.changed, node.files]),
+    graph.links.map((link) => [link.from, link.to, link.guessed]),
+  ]);
+
 export function fileGraphMemory(graph: FileGraphData): Memory {
   return {
     id: keyOf(graph),
