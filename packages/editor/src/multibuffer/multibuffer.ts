@@ -34,11 +34,9 @@ import {
 } from "./excerpts.ts";
 
 /**
- * Astrolabe: a multi-file view as stacked editors. Each excerpt is its own small editor over its
- * file's whole text, showing only its lines; the excerpts of one file share one live document
- * (one `DocumentSession`, through a headless editor here that is the session's only editor), so an
- * edit in one excerpt reaches the others at once and the environment orders it like any other.
- * Each excerpt keeps its own undo history, which leaves out every edit it did not make.
+ * Astrolabe: a multi-file view as stacked editors, one per excerpt, over its file's whole text. A
+ * file's excerpts share one live document through a headless editor here, the session's only
+ * editor, so an edit in one reaches the others at once. Each excerpt keeps its own undo.
  */
 
 /** A file's live document as the multibuffer needs it: `DocumentSession` fits. */
@@ -469,7 +467,8 @@ export class Multibuffer {
   private local(item: MultibufferExcerpt, tr: Transaction) {
     const file = item.file;
     const hub = file.hub;
-    if (hub === null) return;
+    // An excerpt merged into another may get one more edit before its editor goes.
+    if (hub === null || !file.excerpts.includes(item)) return;
     const userEvent = tr.annotation(Transaction.userEvent);
     file.hub = hub.update({
       changes: tr.changes,

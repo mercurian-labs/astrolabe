@@ -109,6 +109,7 @@ export function useMultibuffer(options: {
   });
   // oxlint-disable-next-line t3code/react-effect-budget -- closes the view's documents with the tab
   useEffect(() => () => binding.multibuffer.release(), [binding]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- tells closing the tab whether edits are still on their way
   useEffect(
     () =>
       registerUnsavedCheck(options.tabKey, () =>

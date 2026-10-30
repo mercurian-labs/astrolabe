@@ -182,7 +182,7 @@ export function useEditorDiagnosticKeys(): DiagnosticKeys {
 }
 
 /** A multi-file view's excerpt keys (`multibuffer.*`), in CodeMirror's notation. */
-export function multibufferKeys(keybindings: ResolvedKeybindingsConfig): ExcerptKeys {
+function multibufferKeys(keybindings: ResolvedKeybindingsConfig): ExcerptKeys {
   const context = {
     editorFocus: true,
     codeEditorFocus: true,

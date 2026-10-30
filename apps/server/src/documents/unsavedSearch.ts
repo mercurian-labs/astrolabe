@@ -12,7 +12,7 @@ import { CONTENT_SEARCH_MAX_MATCHES_PER_FILE } from "../workspace/WorkspaceSearc
 const MAX_LINE_LENGTH = 512;
 
 /** A search's matches in one text, as the index would report them for that file. */
-export function textContentMatches(
+function textContentMatches(
   input: ProjectSearchContentsInput,
   relativePath: string,
   text: string,

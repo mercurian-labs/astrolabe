@@ -73,7 +73,8 @@ export function openSearchResults(
 /**
  * Opens these places (references, definitions, anything with a file and a line) as one editor
  * of excerpts with context, titled `title`. The tab's key names the list; a new call opens a
- * new tab.
+ * new tab. Phase 8's references list is its first caller.
+ * @public
  */
 export function openLocationsInMultibuffer(
   checkout: MultibufferCheckout,

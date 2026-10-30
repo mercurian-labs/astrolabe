@@ -122,7 +122,6 @@ export function RepositorySearchView({
   // oxlint-disable-next-line t3code/react-effect-budget -- runs the project search the tab names, again on refresh
   useEffect(() => {
     let cancelled = false;
-    setState((current) => ({ ...current, status: "searching", message: null }));
     void (async () => {
       const matches = [];
       let cursor: string | undefined;
@@ -164,6 +163,7 @@ export function RepositorySearchView({
     return () => {
       cancelled = true;
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the refresh button searches again by bumping `run`
   }, [registry, environmentId, cwd, search, multibuffer, run]);
 
   const startReplace = useStableCallback(async () => {
@@ -222,7 +222,10 @@ export function RepositorySearchView({
           aria-label="Search again"
           size="icon-xs"
           variant="ghost-muted"
-          onClick={() => setRun((count) => count + 1)}
+          onClick={() => {
+            setState((current) => ({ ...current, status: "searching", message: null }));
+            setRun((count) => count + 1);
+          }}
         >
           <RefreshCwIcon />
         </Button>
@@ -339,22 +342,7 @@ export function RepositoryProblemsView({
         cwd={cwd}
         readOnly={!canWrite}
         extensions={marks}
-        headerExtra={(file) => {
-          const diagnostics = files.get(file.path);
-          if (!diagnostics) return null;
-          const counts = problemCounts(diagnostics);
-          return (
-            <span className="tabular-nums text-muted-foreground">
-              {[
-                counts.errors > 0 ? plural(counts.errors, "error") : null,
-                counts.warnings > 0 ? plural(counts.warnings, "warning") : null,
-                counts.other > 0 ? `${counts.other.toLocaleString()} other` : null,
-              ]
-                .filter(Boolean)
-                .join(", ")}
-            </span>
-          );
-        }}
+        renderHeaderExtra={(file) => <ProblemCountsLabel diagnostics={files.get(file.path)} />}
         empty={
           <Notice>
             Problems show here for files a language server has open: open a file, or let an agent
@@ -363,6 +351,26 @@ export function RepositoryProblemsView({
         }
       />
     </div>
+  );
+}
+
+function ProblemCountsLabel({
+  diagnostics,
+}: {
+  readonly diagnostics: FileDiagnostics | undefined;
+}) {
+  if (diagnostics === undefined) return null;
+  const counts = problemCounts(diagnostics);
+  return (
+    <span className="tabular-nums text-muted-foreground">
+      {[
+        counts.errors > 0 ? plural(counts.errors, "error") : null,
+        counts.warnings > 0 ? plural(counts.warnings, "warning") : null,
+        counts.other > 0 ? `${counts.other.toLocaleString()} other` : null,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+    </span>
   );
 }
 

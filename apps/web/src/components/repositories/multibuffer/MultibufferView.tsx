@@ -93,7 +93,7 @@ export function MultibufferView({
   cwd,
   readOnly,
   extensions,
-  headerExtra,
+  renderHeaderExtra,
   empty,
 }: {
   readonly multibuffer: Multibuffer;
@@ -102,7 +102,7 @@ export function MultibufferView({
   readonly readOnly: boolean;
   /** What the caller adds to every excerpt (match highlights, problems), by file. */
   readonly extensions?: (file: MultibufferFile) => Extension;
-  readonly headerExtra?: (file: MultibufferFile) => ReactNode;
+  readonly renderHeaderExtra?: (file: MultibufferFile) => ReactNode;
   /** Shown with no excerpts. */
   readonly empty: ReactNode;
 }) {
@@ -152,7 +152,7 @@ export function MultibufferView({
           <FileHeader
             file={row.file}
             multibuffer={multibuffer}
-            extra={headerExtra?.(row.file) ?? null}
+            extra={renderHeaderExtra?.(row.file) ?? null}
           />
         ) : (
           <ExcerptRow
@@ -245,7 +245,7 @@ function ExcerptPreview({ item }: { readonly item: MultibufferExcerpt }) {
     lines.push(line);
   }
   return (
-    <div aria-hidden="true" className="py-0.5 font-mono text-[13px] text-muted-foreground">
+    <div aria-hidden="true" className="py-0.5 font-mono text-xs text-muted-foreground">
       {lines.map((line) => (
         <div key={line} className="flex whitespace-pre">
           <span className="w-12 shrink-0 pr-3 text-right tabular-nums opacity-60">{line}</span>
@@ -293,6 +293,8 @@ function ExcerptRow({
   const viewRef = useRef<EditorView | null>(null);
   const file = item.file;
   const open = file.hub !== null;
+  // A file's document opens again after the view let it go: its editors are built again.
+  const liveDocument = file.document;
   const vim = useClientSettings(selectVimModeEnabled);
   const findKeys = useEditorFindKeys();
   const hunkKeys = useEditorHunkKeys();
@@ -310,9 +312,10 @@ function ExcerptRow({
   // oxlint-disable-next-line t3code/react-effect-budget -- opens the file's live document once an excerpt of it is on screen
   useEffect(() => multibuffer.need(file), [multibuffer, file]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- builds the excerpt's CodeMirror view once its document is open
   useLayoutEffect(() => {
     const element = host.current;
-    if (!open || element === null) return;
+    if (!open || liveDocument === null || element === null) return;
     const state = multibuffer.stateFor(item, (excerpt) => {
       const history = composerHistory(() => excerpt.view!);
       setup.vimHistory.set(excerpt, history.vim);
@@ -352,13 +355,14 @@ function ExcerptRow({
       multibuffer.hidden(item, view);
       view.destroy();
     };
-  }, [multibuffer, item, file, open, setup, compartments, initial]);
+  }, [multibuffer, item, file, open, liveDocument, setup, compartments, initial]);
 
   // Settings and keys apply to every excerpt, also one whose state was made under older ones.
   // oxlint-disable-next-line t3code/react-effect-budget -- carries settings and rebound keys into the CodeMirror view
   useLayoutEffect(() => {
     const view = viewRef.current;
-    if (view === null) return;
+    // Runs again right after the view is built, which happens when the document opens.
+    if (!open || liveDocument === null || view === null) return;
     const history = setup.vimHistory.get(item);
     view.dispatch({
       effects: [
@@ -377,6 +381,7 @@ function ExcerptRow({
     });
   }, [
     open,
+    liveDocument,
     item,
     file,
     setup,
@@ -392,7 +397,9 @@ function ExcerptRow({
 
   // oxlint-disable-next-line t3code/react-effect-budget -- hands the file's committed text to the excerpt's change markers
   useEffect(() => {
-    if (baseText !== undefined) viewRef.current?.dispatch({ effects: setGitBase(baseText) });
+    if (open && baseText !== undefined) {
+      viewRef.current?.dispatch({ effects: setGitBase(baseText) });
+    }
   }, [baseText, open]);
 
   if (!open) {

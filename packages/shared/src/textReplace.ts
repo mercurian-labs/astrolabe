@@ -94,11 +94,7 @@ export function lineMatches(line: string, matcher: TextMatcher): RegExpExecArray
  * A regular expression's replacement for one match: `$&`, `$1`…`$99`, `$<name>` and `$$`, plus
  * `\n`, `\t` and `\\`. A plain-text search's replacement is used as written.
  */
-export function expandReplacement(
-  template: string,
-  match: RegExpExecArray,
-  useRegex: boolean,
-): string {
+function expandReplacement(template: string, match: RegExpExecArray, useRegex: boolean): string {
   if (!useRegex) return template;
   return template.replace(
     /\$(\$|&|<([^>]+)>|(\d{1,2}))|\\([nt\\])/g,
