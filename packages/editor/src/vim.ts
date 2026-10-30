@@ -11,7 +11,7 @@ import {
   type RangeValue,
   type Text,
 } from "@codemirror/state";
-import { EditorView, ViewPlugin, showPanel, type Panel } from "@codemirror/view";
+import { EditorView, ViewPlugin, runScopeHandlers, showPanel, type Panel } from "@codemirror/view";
 import { CodeMirror, Vim, getCM, vim, type CodeMirrorV } from "@replit/codemirror-vim";
 import { drawnSelection } from "./drawnSelection.ts";
 import { cellModalLayer } from "./markdown/tableCells.ts";
@@ -221,6 +221,19 @@ function atRest(view: EditorView) {
     input.prefixRepeat.length === 0 &&
     !promptOpen(view)
   );
+}
+
+/**
+ * Runs the editor's own binding for a key held with Ctrl, Alt or Cmd that Vim, with nothing
+ * pending, would read as a bare character (macOS Option keys, which type characters): a rebound
+ * command such as Alt-/ is not Vim's `/`. Unbound, the key stays Vim's.
+ */
+function runModifiedCharacter(view: EditorView, event: KeyboardEvent) {
+  if (!event.ctrlKey && !event.altKey && !event.metaKey) return false;
+  const state = vimState(view);
+  if (!state || !atRest(view)) return false;
+  if (Vim.vimKeyFromEvent(event, state)?.length !== 1) return false;
+  return runScopeHandlers(view, event, "editor");
 }
 
 /** Whether `view`'s Vim is in normal mode with no command pending. */
@@ -433,9 +446,9 @@ function vimSupport(outer: boolean) {
     {
       eventHandlers: {
         // Ahead of Vim's own key handler.
-        keydown() {
+        keydown(event, view) {
           this.beforeKey();
-          return false;
+          return runModifiedCharacter(view, event);
         },
       },
     },
@@ -492,8 +505,8 @@ const panelCells = new WeakMap<
 /**
  * Vim mode for an Atlas editor: the mode in a bottom panel (unless `panel` is false and the host
  * reads `data-vim-mode`), a drawn selection for visual mode, `u`/`U`/`Ctrl-r` on `history`, and the
- * same layer in table cells. Vim's keys win in normal, visual and operator-pending modes; in insert
- * mode every other binding still runs.
+ * same layer in table cells. Vim's keys win in normal, visual and operator-pending modes (but for a
+ * bound modifier key Vim would read as a character); in insert mode every other binding still runs.
  */
 export function vimMode(
   history: VimHistory,
