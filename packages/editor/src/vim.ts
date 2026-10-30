@@ -11,8 +11,9 @@ import {
   type RangeValue,
   type Text,
 } from "@codemirror/state";
-import { EditorView, ViewPlugin, drawSelection, showPanel, type Panel } from "@codemirror/view";
+import { EditorView, ViewPlugin, showPanel, type Panel } from "@codemirror/view";
 import { CodeMirror, Vim, getCM, vim, type CodeMirrorV } from "@replit/codemirror-vim";
+import { drawnSelection } from "./drawnSelection.ts";
 import { cellModalLayer } from "./markdown/tableCells.ts";
 
 // Vim mode (live-preview spec 5.1): `@replit/codemirror-vim` with undo routed to the host's
@@ -443,25 +444,6 @@ function vimSupport(outer: boolean) {
 
 const editorSupport = vimSupport(true);
 const cellSupport = vimSupport(false);
-
-/**
- * The selection and insert-mode caret, drawn by CodeMirror's layers: Vim hides the native
- * selection outside insert mode, so a visual selection shows only through these. A host colours
- * the selection with `--atlas-selection` (focused) and `--atlas-selection-unfocused`, and the
- * caret with `--atlas-caret`, since a `currentColor` caret went unpainted in the desktop composer.
- */
-const drawnSelection: Extension = [
-  drawSelection(),
-  EditorView.theme({
-    ".cm-selectionBackground": {
-      background: "var(--atlas-selection-unfocused, #d9d9d9)",
-    },
-    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
-      background: "var(--atlas-selection, #d7d4f0)",
-    },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--atlas-caret, currentColor)" },
-  }),
-];
 
 /**
  * Outside insert mode the editor's text reads in the monospace font (`--atlas-md-font-mono`), so
