@@ -403,6 +403,14 @@ import {
   WikiTransformInput,
 } from "./wiki.ts";
 import {
+  CodeIndexError,
+  CodeIndexProjectInput,
+  CodeIndexStatus,
+  CodeIndexStorage,
+  CodeLocalGraph,
+  CodeLocalGraphInput,
+} from "./codeIndex.ts";
+import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
   ProjectCloneListEvent,
@@ -581,6 +589,13 @@ export const WS_METHODS = {
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
   wikiPushMirror: "wiki.pushMirror",
+
+  // Astrolabe: each repository's code index.
+  codeIndexSubscribe: "codeIndex.subscribe",
+  codeIndexLocalGraph: "codeIndex.localGraph",
+  codeIndexRebuild: "codeIndex.rebuild",
+  codeIndexStorage: "codeIndex.storage",
+  codeIndexClear: "codeIndex.clear",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2023,6 +2038,38 @@ const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+/** Every repository's index status now, then each change. */
+const WsCodeIndexSubscribeRpc = Rpc.make(WS_METHODS.codeIndexSubscribe, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStatus,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsCodeIndexLocalGraphRpc = Rpc.make(WS_METHODS.codeIndexLocalGraph, {
+  payload: CodeLocalGraphInput,
+  success: CodeLocalGraph,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexRebuildRpc = Rpc.make(WS_METHODS.codeIndexRebuild, {
+  payload: CodeIndexProjectInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexStorageRpc = Rpc.make(WS_METHODS.codeIndexStorage, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStorage,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexClearRpc = Rpc.make(WS_METHODS.codeIndexClear, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2360,6 +2407,11 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,
   WsWikiPushMirrorRpc,
+  WsCodeIndexSubscribeRpc,
+  WsCodeIndexLocalGraphRpc,
+  WsCodeIndexRebuildRpc,
+  WsCodeIndexStorageRpc,
+  WsCodeIndexClearRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

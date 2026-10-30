@@ -245,6 +245,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
+import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1247,7 +1248,13 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
+    const codeIndex = yield* CodeIndex.CodeIndex;
     return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
+      [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
+      [WS_METHODS.codeIndexRebuild]: (input) => codeIndex.rebuild(input).pipe(Effect.as({})),
+      [WS_METHODS.codeIndexStorage]: (_input) => codeIndex.storage,
+      [WS_METHODS.codeIndexClear]: (_input) => codeIndex.clear.pipe(Effect.as({})),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
