@@ -9,7 +9,7 @@ import {
 import { page, userEvent } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { Arrangement } from "~/panes/arrangement";
+import { activateTab, openTab, type Arrangement } from "~/panes/arrangement";
 import { PanesHostContext, type PaneArrangementStore, type PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
 import { render } from "../../../test/render";
@@ -246,6 +246,18 @@ describe("a following local graph", () => {
       },
     }));
     await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "b.ts", expanded: [] }));
+  });
+
+  it("reads nothing new while it is behind another tab", async () => {
+    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    await using _screen = await render(graphView(panes.host));
+    await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
+    // A file goes in front of the graph in its pane, then focus moves to another file.
+    panes.store.update((arrangement) => openTab(arrangement, fileKey("c.ts"), "p2", false));
+    panes.store.update((arrangement) => activateTab(arrangement, fileKey("b.ts")));
+    expect(mocks.requests.every((request) => request.input.path === "a.ts")).toBe(true);
+    panes.store.update((arrangement) => activateTab(arrangement, localGraphKey(checkout), false));
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "b.ts" }));
   });
 
   it("opens a clicked file in the file's pane, which takes the focus", async () => {

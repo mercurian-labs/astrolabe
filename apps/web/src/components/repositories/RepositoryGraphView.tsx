@@ -87,10 +87,13 @@ export default function RepositoryGraphView({
     panes.subscribe,
     () => panes.getSnapshot()?.arrangement ?? null,
   );
-  // A following graph keeps the file it showed while focus moves to a pane without one.
+  // A following graph keeps the file it showed while focus moves to a pane without one, and while
+  // it is behind another tab, where it reads nothing new.
   const [followed, setFollowed] = useState<string | null>(null);
+  const inFront = arrangement !== null && leafWithTab(arrangement.root, tabKey)?.active === tabKey;
   const path =
-    tab.path ?? (arrangement === null ? followed : followedPath(arrangement, tab, followed));
+    tab.path ??
+    (arrangement === null || !inFront ? followed : followedPath(arrangement, tab, followed));
   if (tab.path === null && path !== followed) setFollowed(path);
 
   const options = graphOptions.useValue();
