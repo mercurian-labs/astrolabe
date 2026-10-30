@@ -1,5 +1,6 @@
 import { Spinner } from "~/components/ui/spinner";
 import { AuthFilesystemReadScope, type ProjectContentMatch } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { ListFilterIcon } from "lucide-react";
 
@@ -10,10 +11,13 @@ import { useRenderedAppearance, useTheme } from "~/hooks/useTheme";
 import { cn } from "~/lib/utils";
 import { useProjectContentSearch } from "~/state/queries";
 import { readEnvironmentScope } from "~/state/session";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "~/keybindings";
+import { primaryServerKeybindingsAtom } from "~/state/server";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { openRepositoryFileAtLine } from "../repositories/openInRepositories";
+import { openSearchResults } from "../repositories/multibuffer/openMultibuffer";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
@@ -163,7 +167,41 @@ function OpenContentSearchDialog(props: {
       navigate,
     );
   };
+  // Astrolabe: every result as one editor of excerpts, in the Repositories area.
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const openInEditorContext = { context: { projectSearchFocus: true } };
+  const openInEditorLabel = shortcutLabelForCommand(
+    keybindings,
+    "projectSearch.openInEditor",
+    openInEditorContext,
+  );
+  const openInEditor = () => {
+    if (!canOpenMatches || matches.length === 0) return;
+    if (!readEnvironmentScope(target.environmentId, AuthFilesystemReadScope)) return;
+    props.onOpenChange(false);
+    openSearchResults(
+      target,
+      {
+        query,
+        caseSensitive,
+        wholeWord,
+        useRegex,
+        ...(showFilters && include.trim() !== "" ? { include } : {}),
+        ...(showFilters && exclude.trim() !== "" ? { exclude } : {}),
+        ...(showFilters && includeIgnored ? { includeIgnored: true } : {}),
+      },
+      navigate,
+    );
+  };
   const handleListKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (
+      resolveShortcutCommand(event.nativeEvent, keybindings, openInEditorContext) ===
+      "projectSearch.openInEditor"
+    ) {
+      event.preventDefault();
+      openInEditor();
+      return;
+    }
     if (event.key === "ArrowDown" && matches.length > 0) {
       event.preventDefault();
       setSelectedIndex((current) => (current + 1) % matches.length);
@@ -290,6 +328,14 @@ function OpenContentSearchDialog(props: {
               {search.isLoadingMore ? <Spinner size="sm" /> : null}
             </span>
           )}
+          {matches.length > 0 && canOpenMatches ? (
+            <Button className="ml-auto" size="compact" variant="ghost-muted" onClick={openInEditor}>
+              Open results in editor
+              {openInEditorLabel ? (
+                <span className="text-muted-foreground">{openInEditorLabel}</span>
+              ) : null}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

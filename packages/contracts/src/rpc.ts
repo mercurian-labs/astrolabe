@@ -438,13 +438,19 @@ import {
   DocumentPushResult,
   DocumentRecoverInput,
   DocumentRecoverResult,
+  DocumentReplaceAllInput,
+  DocumentReplaceAllResult,
   DocumentSaveInput,
   DocumentSaveResult,
   DocumentStreamItem,
   DocumentSubscribeInput,
+  DocumentUndoReplaceAllInput,
+  DocumentUndoReplaceAllResult,
 } from "./documents.ts";
 import {
   LanguageServerError,
+  LanguageServerProblemsInput,
+  LanguageServerProblemsItem,
   LanguageServerSendInput,
   LanguageServerSessionInput,
   LanguageServerSessionItem,
@@ -624,6 +630,8 @@ export const WS_METHODS = {
   documentsSave: "documents.save",
   documentsRecover: "documents.recover",
   documentsDiscard: "documents.discard",
+  documentsReplaceAll: "documents.replaceAll",
+  documentsUndoReplaceAll: "documents.undoReplaceAll",
   // Astrolabe: each repository's code index.
   codeIndexSubscribe: "codeIndex.subscribe",
   codeIndexLocalGraph: "codeIndex.localGraph",
@@ -639,6 +647,7 @@ export const WS_METHODS = {
   languageServersSession: "languageServers.session",
   languageServersSend: "languageServers.send",
   languageServersUndoEdit: "languageServers.undoEdit",
+  languageServersProblems: "languageServers.problems",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2127,6 +2136,18 @@ const WsDocumentsDiscardRpc = Rpc.make(WS_METHODS.documentsDiscard, {
   error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
 });
 
+const WsDocumentsReplaceAllRpc = Rpc.make(WS_METHODS.documentsReplaceAll, {
+  payload: DocumentReplaceAllInput,
+  success: DocumentReplaceAllResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsUndoReplaceAllRpc = Rpc.make(WS_METHODS.documentsUndoReplaceAll, {
+  payload: DocumentUndoReplaceAllInput,
+  success: DocumentUndoReplaceAllResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
 /** Every running or waiting language server now, then the whole list again on each change. */
 const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscribe, {
   payload: Schema.Struct({}),
@@ -2171,6 +2192,14 @@ const WsLanguageServersUndoEditRpc = Rpc.make(WS_METHODS.languageServersUndoEdit
   payload: LanguageServerUndoEditInput,
   success: LanguageServerUndoEditResult,
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** A checkout's problems now, then each file's as it changes. */
+const WsLanguageServersProblemsRpc = Rpc.make(WS_METHODS.languageServersProblems, {
+  payload: LanguageServerProblemsInput,
+  success: LanguageServerProblemsItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
 });
 
 /** Every repository's index status now, then each change. */
@@ -2556,6 +2585,8 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsDocumentsSaveRpc,
   WsDocumentsRecoverRpc,
   WsDocumentsDiscardRpc,
+  WsDocumentsReplaceAllRpc,
+  WsDocumentsUndoReplaceAllRpc,
   WsCodeIndexSubscribeRpc,
   WsCodeIndexLocalGraphRpc,
   WsCodeIndexRebuildRpc,
@@ -2569,6 +2600,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsLanguageServersConfirmDownloadRpc,
   WsLanguageServersSessionRpc,
   WsLanguageServersSendRpc,
+  WsLanguageServersProblemsRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

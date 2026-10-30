@@ -69,6 +69,14 @@ export function createDocumentEnvironmentAtoms<R, E>(
     label: "environment-data:documents:discard",
     tag: WS_METHODS.documentsDiscard,
   });
+  const replaceAll = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:documents:replace-all",
+    tag: WS_METHODS.documentsReplaceAll,
+  });
+  const undoReplaceAll = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:documents:undo-replace-all",
+    tag: WS_METHODS.documentsUndoReplaceAll,
+  });
 
   /** A fresh atom per session: mounting it opens the document, unmounting closes it. */
   const follow = (environmentId: EnvironmentId, session: DocumentSession) =>
@@ -99,5 +107,5 @@ export function createDocumentEnvironmentAtoms<R, E>(
       discard.run(registry, { environmentId, input: { ...target, ...input } }).then(callResult),
   });
 
-  return { push, save, recover, discard, follow, channel };
+  return { push, save, recover, discard, replaceAll, undoReplaceAll, follow, channel };
 }

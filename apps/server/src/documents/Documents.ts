@@ -9,12 +9,17 @@ import {
   type DocumentPushResult,
   type DocumentRecoverInput,
   type DocumentRecoverResult,
+  type DocumentReplaceAllInput,
+  type DocumentReplaceAllResult,
   type DocumentSaveInput,
   type DocumentSaveResult,
   type DocumentStreamItem,
   type DocumentSubscribeInput,
   type DocumentTarget,
+  type DocumentUndoReplaceAllInput,
+  type DocumentUndoReplaceAllResult,
 } from "@t3tools/contracts";
+import { replacementsIn, textMatcher } from "@t3tools/shared/textReplace";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -35,6 +40,8 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 
 export const SAVE_DELAY = Duration.millis(500);
 export const IDLE_TIMEOUT = Duration.minutes(5);
+/** How long a replace-all can be undone; its files stay open until then. */
+export const REPLACE_ALL_UNDO_TIMEOUT = Duration.minutes(30);
 // Writers that truncate then write, or write in chunks, report each step; read once they stop.
 export const DISK_QUIET = Duration.millis(75);
 export const settled = <A, E, R>(reports: Stream.Stream<A, E, R>) =>
@@ -69,6 +76,22 @@ export class Documents extends Context.Service<
     ) => Effect.Effect<{ readonly loadId: string; readonly version: number }, DocumentError>;
     /** Each file a document writes to disk, as it writes it; `created` when it wasn't there. */
     readonly writes: Stream.Stream<DocumentWrite>;
+    /**
+     * Replaces a search's matches in each file's live text, as one update per file under the
+     * caller's client id; a file nobody has open is saved at once. Keeps the inverses for one
+     * `undoReplaceAll`, the caller's latest only, until it expires.
+     */
+    readonly replaceAll: (
+      input: DocumentReplaceAllInput,
+    ) => Effect.Effect<DocumentReplaceAllResult, DocumentError>;
+    /** Takes a replace-all back, carried over every edit made since. */
+    readonly undoReplaceAll: (
+      input: DocumentUndoReplaceAllInput,
+    ) => Effect.Effect<DocumentUndoReplaceAllResult, DocumentError>;
+    /** The open documents of a checkout whose text differs from disk, for searching. */
+    readonly unsavedTexts: (
+      cwd: string,
+    ) => Effect.Effect<ReadonlyArray<{ readonly relativePath: string; readonly text: string }>>;
   }
 >()("t3/documents/Documents") {}
 
@@ -79,6 +102,19 @@ export interface DocumentWrite extends DocumentTarget {
 interface AcceptedUpdate {
   readonly clientID: string;
   readonly changes: ChangeSet;
+}
+
+interface ReplacedFile {
+  readonly document: LoadedDocument;
+  /** The version right after the replacement. */
+  readonly version: number;
+  readonly inverse: ChangeSet;
+}
+
+interface ReplaceAllRecord {
+  readonly id: string;
+  readonly clientId: string;
+  readonly files: ReadonlyArray<ReplacedFile>;
 }
 
 interface ResolvedTarget extends DocumentTarget {
@@ -310,6 +346,20 @@ const make = Effect.gen(function* () {
     lock.withLock(
       document.target.key,
       Effect.suspend(() => (isCurrent(document) ? effect : Effect.void)),
+    );
+
+  /** Runs `effect` under the document's lock; fails with `not-loaded` once it was closed. */
+  const whileCurrentResult = <A, E>(
+    document: LoadedDocument,
+    effect: Effect.Effect<A, E>,
+  ): Effect.Effect<A, E | DocumentError> =>
+    lock.withLock(
+      document.target.key,
+      Effect.suspend((): Effect.Effect<A, E | DocumentError> =>
+        isCurrent(document)
+          ? effect
+          : Effect.fail(fail("not-loaded", document.target.relativePath)),
+      ),
     );
 
   // Annotated: saving and syncing schedule each other.
@@ -587,6 +637,132 @@ const make = Effect.gen(function* () {
     );
   });
 
+  // The latest replace-all of each client, by id; each holds its files open.
+  const replaceAlls = new Map<string, ReplaceAllRecord>();
+
+  const dropReplaceAll = (record: ReplaceAllRecord) =>
+    Effect.suspend(() => {
+      if (replaceAlls.get(record.id) !== record) return Effect.void;
+      replaceAlls.delete(record.id);
+      return Effect.forEach(record.files, (file) => release(file.document), { discard: true });
+    });
+
+  /** Applies one client edit made on the server; a document nobody else has open saves now. */
+  const editLocked = Effect.fn("Documents.edit")(function* (
+    document: LoadedDocument,
+    clientId: string,
+    changes: ChangeSet,
+    holders: number,
+  ) {
+    if (changes.newLength > DOCUMENT_MAX_LENGTH) {
+      return yield* fail("too-large", document.target.relativePath);
+    }
+    yield* acceptLocked(document, [{ clientID: clientId, changes }]);
+    if (document.subscribers <= holders) yield* flushLocked(document, false);
+  });
+
+  const replaceAll: Documents["Service"]["replaceAll"] = Effect.fn("Documents.replaceAll")(
+    function* (input) {
+      if (reservedClientId(input.clientId)) return yield* fail("invalid-update", "");
+      const matcher = textMatcher(input);
+      if (matcher.error !== null) return yield* fail("invalid-query", "");
+      for (const previous of replaceAlls.values()) {
+        if (previous.clientId === input.clientId) yield* dropReplaceAll(previous);
+      }
+      const files: ReplacedFile[] = [];
+      const failed: Array<{ relativePath: string; message: string }> = [];
+      let replacements = 0;
+      for (const relativePath of new Set(input.paths)) {
+        const result = yield* Effect.gen(function* () {
+          const target = yield* resolveTarget({ cwd: input.cwd, relativePath });
+          return yield* lock.withLock(
+            target.key,
+            Effect.gen(function* () {
+              let document = documents.get(target.key);
+              if (document === undefined) {
+                document = yield* load(target);
+                documents.set(target.key, document);
+              }
+              const found = replacementsIn(document.doc.toString(), matcher, input.replacement);
+              if (found.length === 0) {
+                if (document.subscribers === 0) yield* scheduleEviction(document);
+                return null;
+              }
+              const changes = ChangeSet.of(found, document.doc.length);
+              const inverse = changes.invert(document.doc);
+              // The record's hold keeps the document, and the history its undo maps through.
+              document.subscribers += 1;
+              document.idleGeneration += 1;
+              yield* editLocked(document, input.clientId, changes, 1);
+              return { document, version: document.updates.length, inverse, count: found.length };
+            }),
+          );
+        }).pipe(
+          Effect.catch((error: DocumentError) =>
+            Effect.sync(() => {
+              failed.push({ relativePath, message: error.message });
+              return null;
+            }),
+          ),
+        );
+        if (result === null) continue;
+        files.push({ document: result.document, version: result.version, inverse: result.inverse });
+        replacements += result.count;
+      }
+      if (files.length === 0) return { files: 0, replacements, failed };
+      const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const record: ReplaceAllRecord = { id, clientId: input.clientId, files };
+      replaceAlls.set(id, record);
+      yield* Effect.sleep(REPLACE_ALL_UNDO_TIMEOUT).pipe(
+        Effect.andThen(dropReplaceAll(record)),
+        Effect.forkIn(serviceScope, { startImmediately: true }),
+      );
+      return { id, files: files.length, replacements, failed };
+    },
+  );
+
+  const undoReplaceAll: Documents["Service"]["undoReplaceAll"] = Effect.fn(
+    "Documents.undoReplaceAll",
+  )(function* (input) {
+    const record = replaceAlls.get(input.id);
+    if (record === undefined || record.files[0]?.document.target.cwd !== input.cwd) {
+      return yield* fail("undo-gone", "");
+    }
+    const skipped: string[] = [];
+    let undone = 0;
+    for (const file of record.files) {
+      const { document } = file;
+      const done = yield* whileCurrentResult(
+        document,
+        Effect.gen(function* () {
+          const later = document.updates
+            .slice(file.version)
+            .reduce(
+              (all, update) => all.compose(update.changes),
+              ChangeSet.empty(file.inverse.length),
+            );
+          const changes = file.inverse.map(later);
+          if (!changes.empty) yield* editLocked(document, record.clientId, changes, 1);
+          return true;
+        }),
+      ).pipe(Effect.orElseSucceed(() => false));
+      if (done) undone += 1;
+      else skipped.push(document.target.relativePath);
+    }
+    yield* dropReplaceAll(record);
+    return { files: undone, skipped };
+  });
+
+  const unsavedTexts: Documents["Service"]["unsavedTexts"] = (cwd) =>
+    Effect.sync(() => {
+      const root = path.resolve(cwd);
+      return [...documents.values()].flatMap((document) =>
+        path.resolve(document.target.cwd) === root && !document.unsaved.empty
+          ? [{ relativePath: document.target.relativePath, text: document.doc.toString() }]
+          : [],
+      );
+    });
+
   yield* Effect.addFinalizer(() =>
     Effect.forEach(
       [...documents.values()],
@@ -606,6 +782,9 @@ const make = Effect.gen(function* () {
     discard,
     sync,
     writes: Stream.fromPubSub(writes),
+    replaceAll,
+    undoReplaceAll,
+    unsavedTexts,
   });
 });
 

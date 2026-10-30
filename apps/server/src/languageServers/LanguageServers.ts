@@ -16,6 +16,7 @@ import {
   languageServerForPath,
   LanguageServerError,
   type LanguageServerId,
+  type LanguageServerProblemsItem,
   type LanguageServerSendInput,
   type LanguageServerSessionInput,
   type LanguageServerSessionItem,
@@ -34,6 +35,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
@@ -106,10 +108,6 @@ export class LanguageServers extends Context.Service<
       readonly relativePath: string;
     }) => Effect.Effect<FileDiagnostics, LanguageServerError>;
     /**
-     * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
-     * now: a write made before the call is in it.
-     */
-    /**
      * The documents' save, formatting the file first when asked and a server can. A formatter
      * slower than `formatTimeout` is skipped: the file saves as it is.
      */
@@ -123,6 +121,10 @@ export class LanguageServers extends Context.Service<
      * burst reaches each server as one `workspace/didChangeWatchedFiles`.
      */
     readonly filesChanged: (input: FilesChangedInput) => Effect.Effect<void>;
+    /**
+     * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
+     * now: a write made before the call is in it.
+     */
     readonly locate: (input: {
       readonly cwd: string;
       readonly relativePath: string;
@@ -132,6 +134,8 @@ export class LanguageServers extends Context.Service<
       readonly symbol?: string;
       readonly kind: CodeLocationKind;
     }) => Effect.Effect<CodeLocations, LanguageServerError>;
+    /** A checkout's problems in every file a server has checked, then each file's changes. */
+    readonly problems: (cwd: string) => Stream.Stream<LanguageServerProblemsItem>;
   }
 >()("t3/languageServers/LanguageServers") {}
 
@@ -510,7 +514,84 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
   };
 
+  /** A document's latest diagnostics, carried to its current version, as tools list them. */
+  const listedDiagnostics = (doc: GatewayDoc): FileDiagnostics => {
+    const latest = doc.latest ?? { version: doc.version, diagnostics: [] };
+    const text = doc.texts.get(latest.version) ?? doc.texts.get(doc.version);
+    const current = doc.texts.get(doc.version);
+    // Pulled before the latest edits: carry them to the version reported.
+    const items =
+      latest.version === doc.version || text === undefined || current === undefined
+        ? latest.diagnostics
+        : mapDiagnostics(
+            structuredClone(latest.diagnostics),
+            forwardMapper(
+              text,
+              current,
+              doc.updates
+                .slice(latest.version - doc.oldest)
+                .reduce((all, update) => all.compose(update.changes), ChangeSet.empty(text.length)),
+            ),
+          );
+    const listed = items.slice(0, DIAGNOSTICS_LISTED).map((item: Json): FileDiagnostic => ({
+      severity: severityName(item.severity),
+      line: (item.range?.start?.line ?? 0) + 1,
+      column: (item.range?.start?.character ?? 0) + 1,
+      endLine: (item.range?.end?.line ?? 0) + 1,
+      endColumn: (item.range?.end?.character ?? 0) + 1,
+      message: String(
+        typeof item.message === "string" ? item.message : (item.message?.value ?? ""),
+      ),
+      ...(item.code === undefined || item.code === null ? {} : { code: String(item.code) }),
+      ...(typeof item.source === "string" ? { source: item.source } : {}),
+    }));
+    return {
+      path: doc.relativePath,
+      version: doc.version,
+      diagnostics: listed,
+      truncated: items.length > listed.length,
+    };
+  };
+
+  // Astrolabe: each checkout's latest problems by file, kept after a file closes until its
+  // server stops, for the problems view.
+  const problems = new Map<
+    string,
+    { readonly instance: string; readonly cwd: string; readonly file: FileDiagnostics }
+  >();
+  const problemEvents = yield* PubSub.unbounded<{
+    readonly cwd: string;
+    readonly file: FileDiagnostics;
+  }>();
+  const problemKey = (cwd: string, relativePath: string) => `${path.resolve(cwd)}\0${relativePath}`;
+
+  const noteProblems = (instance: Instance, doc: GatewayDoc) => {
+    // Closing a file nobody holds clears it for its editors; its problems stay listed.
+    if (doc.holders === 0) return;
+    const file = listedDiagnostics(doc);
+    const key = problemKey(instance.cwd, doc.relativePath);
+    const known = problems.get(key);
+    if (file.diagnostics.length === 0) {
+      if (known === undefined) return;
+      problems.delete(key);
+    } else problems.set(key, { instance: instance.key, cwd: path.resolve(instance.cwd), file });
+    PubSub.publishUnsafe(problemEvents, { cwd: path.resolve(instance.cwd), file });
+  };
+
+  /** Forgets a stopped server's problems for files it no longer has open. */
+  const forgetProblems = (instance: Instance) => {
+    for (const [key, entry] of problems) {
+      if (entry.instance !== instance.key || instance.docs.has(entry.file.path)) continue;
+      problems.delete(key);
+      PubSub.publishUnsafe(problemEvents, {
+        cwd: path.resolve(instance.cwd),
+        file: { ...entry.file, diagnostics: [], truncated: false },
+      });
+    }
+  };
+
   const fanOutDiagnostics = (instance: Instance, doc: GatewayDoc) => {
+    noteProblems(instance, doc);
     const latest = doc.latest ?? { version: doc.version, diagnostics: [] };
     for (const session of instance.sessions.values()) {
       const uri = session.open.get(doc.relativePath);
@@ -534,6 +615,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   };
 
   const clearDiagnostics = (instance: Instance) => {
+    forgetProblems(instance);
     for (const doc of instance.docs.values()) {
       if (doc.latest === null) continue;
       doc.latest = { version: doc.version, diagnostics: [] };
@@ -1803,43 +1885,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
               doc.latest !== null &&
               doc.latest.version >= synced.version),
         );
-        const latest = doc.latest ?? { version: doc.version, diagnostics: [] };
-        const text = doc.texts.get(latest.version) ?? doc.texts.get(doc.version)!;
-        // Pulled before the latest edits: carry them to the version reported.
-        const items =
-          latest.version === doc.version
-            ? latest.diagnostics
-            : mapDiagnostics(
-                structuredClone(latest.diagnostics),
-                forwardMapper(
-                  text,
-                  doc.texts.get(doc.version)!,
-                  doc.updates
-                    .slice(latest.version - doc.oldest)
-                    .reduce(
-                      (all, update) => all.compose(update.changes),
-                      ChangeSet.empty(text.length),
-                    ),
-                ),
-              );
-        const listed = items.slice(0, DIAGNOSTICS_LISTED).map((item: Json): FileDiagnostic => ({
-          severity: severityName(item.severity),
-          line: (item.range?.start?.line ?? 0) + 1,
-          column: (item.range?.start?.character ?? 0) + 1,
-          endLine: (item.range?.end?.line ?? 0) + 1,
-          endColumn: (item.range?.end?.character ?? 0) + 1,
-          message: String(
-            typeof item.message === "string" ? item.message : (item.message?.value ?? ""),
-          ),
-          ...(item.code === undefined || item.code === null ? {} : { code: String(item.code) }),
-          ...(typeof item.source === "string" ? { source: item.source } : {}),
-        }));
-        return {
-          path: input.relativePath,
-          version: doc.version,
-          diagnostics: listed,
-          truncated: items.length > listed.length,
-        };
+        return listedDiagnostics(doc);
       }),
     ).pipe(
       Effect.timeoutOrElse({
@@ -2072,7 +2118,26 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     },
   );
 
+  const problemsOf: LanguageServers["Service"]["problems"] = (cwd) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const root = path.resolve(cwd);
+        const subscription = yield* PubSub.subscribe(problemEvents);
+        const files = [...problems.values()]
+          .filter((entry) => entry.cwd === root)
+          .map((entry) => entry.file);
+        return Stream.concat(
+          Stream.succeed<LanguageServerProblemsItem>({ type: "snapshot", files }),
+          Stream.fromSubscription(subscription).pipe(
+            Stream.filter((event) => event.cwd === root),
+            Stream.map((event): LanguageServerProblemsItem => ({ type: "file", file: event.file })),
+          ),
+        );
+      }),
+    );
+
   return LanguageServers.of({
+    problems: problemsOf,
     save,
     filesChanged,
     locate,

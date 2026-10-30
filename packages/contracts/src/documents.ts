@@ -130,6 +130,51 @@ export const DocumentRecoverResult = Schema.Union([
 ]);
 export type DocumentRecoverResult = typeof DocumentRecoverResult.Type;
 
+/** Files one replace-all can change. */
+export const DOCUMENT_REPLACE_ALL_MAX_FILES = 1000;
+
+/**
+ * Replaces every match of a project search in these files, as edits under `clientId` to each
+ * file's live document (opened for it when nobody has it open). The environment keeps the
+ * inverse of each edit for one `undoReplaceAll`.
+ */
+export const DocumentReplaceAllInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  clientId: DocumentClientId,
+  query: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
+  caseSensitive: Schema.Boolean,
+  wholeWord: Schema.Boolean,
+  useRegex: Schema.Boolean,
+  replacement: Schema.String.check(Schema.isMaxLength(64 * 1024)),
+  paths: Schema.Array(DocumentTarget.fields.relativePath).check(
+    Schema.isMaxLength(DOCUMENT_REPLACE_ALL_MAX_FILES),
+  ),
+});
+export type DocumentReplaceAllInput = typeof DocumentReplaceAllInput.Type;
+
+export const DocumentReplaceAllResult = Schema.Struct({
+  /** Names the edit for `undoReplaceAll`; absent when nothing changed. */
+  id: Schema.optional(DocumentLoadId),
+  files: NonNegativeInt,
+  replacements: NonNegativeInt,
+  /** Files that could not be opened or edited, with why. */
+  failed: Schema.Array(Schema.Struct({ relativePath: Schema.String, message: Schema.String })),
+});
+export type DocumentReplaceAllResult = typeof DocumentReplaceAllResult.Type;
+
+export const DocumentUndoReplaceAllInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  id: DocumentLoadId,
+});
+export type DocumentUndoReplaceAllInput = typeof DocumentUndoReplaceAllInput.Type;
+
+export const DocumentUndoReplaceAllResult = Schema.Struct({
+  files: NonNegativeInt,
+  /** Files closed since, whose replacement could not be taken back. */
+  skipped: Schema.Array(Schema.String),
+});
+export type DocumentUndoReplaceAllResult = typeof DocumentUndoReplaceAllResult.Type;
+
 export const DocumentErrorReason = Schema.Literals([
   /** The load is gone or never existed: subscribe again. */
   "not-loaded",
@@ -139,6 +184,9 @@ export const DocumentErrorReason = Schema.Literals([
   "not-found",
   "outside-workspace",
   "io",
+  "invalid-query",
+  /** The replace-all to undo is gone: undone already, replaced by a newer one, or expired. */
+  "undo-gone",
 ]);
 export type DocumentErrorReason = typeof DocumentErrorReason.Type;
 
@@ -163,6 +211,10 @@ export class DocumentError extends Schema.TaggedError<DocumentError>()("Document
         return `'${this.relativePath}' is outside a known workspace.`;
       case "io":
         return `Reading or writing '${this.relativePath}' failed.`;
+      case "invalid-query":
+        return "The search is not a valid regular expression.";
+      case "undo-gone":
+        return "That replace-all can no longer be undone.";
     }
   }
 }

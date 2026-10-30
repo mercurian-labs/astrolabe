@@ -14,6 +14,7 @@ import type {
   DocumentStreamItem,
   LanguageServerDocumentState,
   LanguageServerError,
+  LanguageServerProblemsItem,
   LanguageServerSessionItem,
   LanguageServerStatus,
 } from "@t3tools/contracts";
@@ -939,6 +940,36 @@ describe("LanguageServers", () => {
         [{ uri: NodeURL.pathToFileURL(`${checkout.cwd}/src/point.ts`).href, type: 2 }],
       ]);
     }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
+  );
+
+  it.live("lists a checkout's problems, keeps a closed file's until its server stops", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(`${SOURCE}const bad = label;\n`);
+      const items = yield* Queue.unbounded<LanguageServerProblemsItem, Cause.Done>();
+      yield* service.problems(checkout.cwd).pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+      expect(yield* Queue.take(items)).toEqual({ type: "snapshot", files: [] });
+
+      // An agent's check opens the file, and closes it when done.
+      yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      const checked = yield* Queue.take(items);
+      expect(checked).toMatchObject({
+        type: "file",
+        file: { path: FILE, diagnostics: [{ line: 3, message: "bad is not allowed" }] },
+      });
+      const later = yield* Queue.unbounded<LanguageServerProblemsItem, Cause.Done>();
+      yield* service.problems(checkout.cwd).pipe(Stream.runIntoQueue(later), Effect.forkScoped);
+      expect(yield* Queue.take(later)).toMatchObject({
+        type: "snapshot",
+        files: [{ path: FILE, diagnostics: [{ line: 3 }] }],
+      });
+
+      yield* service.stop({ cwd: checkout.cwd, server: "typescript" });
+      expect(yield* Queue.take(items)).toMatchObject({
+        type: "file",
+        file: { path: FILE, diagnostics: [] },
+      });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 });
 

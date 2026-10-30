@@ -1,6 +1,7 @@
 import {
   WS_METHODS,
   type EnvironmentId,
+  type LanguageServerProblemsItem,
   type LanguageServerSendInput,
   type LanguageServerSessionItem,
   type LanguageServerTarget,
@@ -69,6 +70,22 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       ),
     );
 
+  /** A checkout's problems while mounted: each item as it arrives, again after a reconnect. */
+  const problems = (
+    environmentId: EnvironmentId,
+    cwd: string,
+    onItem: (item: LanguageServerProblemsItem) => void,
+  ) =>
+    runtime.atom(
+      followStreamInEnvironment(
+        environmentId,
+        subscribeDynamic(WS_METHODS.languageServersProblems, () => Effect.succeed({ cwd })),
+      ).pipe(
+        Stream.runForEach((item) => Effect.sync(() => onItem(item))),
+        Effect.ignore,
+      ),
+    );
+
   /** An editor's messages to its session, sent in order. */
   const sender =
     (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
@@ -76,5 +93,5 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       void send.run(registry, { environmentId, input });
     };
 
-  return { send, sender, restart, stop, confirmDownload, undoEdit, session };
+  return { send, sender, restart, stop, confirmDownload, undoEdit, session, problems };
 }

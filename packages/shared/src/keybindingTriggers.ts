@@ -88,6 +88,11 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e z", command: "lsp.undoRename" },
   { key: "menu e =", command: "lsp.format" },
   { key: "menu e q", command: "lsp.codeActions" },
+  { key: "menu e v", command: "multibuffer.problems" },
+  { key: "menu e x", command: "multibuffer.expand" },
+  { key: "menu e k", command: "multibuffer.openExcerpt" },
+  { key: "menu e }", command: "multibuffer.nextFile" },
+  { key: "menu e {", command: "multibuffer.previousFile" },
   // A code file's editing commands with no shortcut of their own, and a few that have one.
   { key: "menu e c", command: "code.toggleComment" },
   { key: "menu e d", command: "code.duplicateSelection" },

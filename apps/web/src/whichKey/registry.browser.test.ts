@@ -537,6 +537,12 @@ describe("a code file's editing commands", () => {
       ["z", "No rename to undo"],
       ["=", "No language server here"],
       ["q", "No language server here"],
+      // Nor a repository tab in front, or a multi-file view's excerpt.
+      ["v", "No repository in front"],
+      ["x", "No results here"],
+      ["k", "No results here"],
+      ["}", "No results here"],
+      ["{", "No results here"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],

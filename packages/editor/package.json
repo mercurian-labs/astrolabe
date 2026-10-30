@@ -86,6 +86,18 @@
     "./lsp/code-actions": {
       "types": "./src/lsp/codeActions.ts",
       "default": "./src/lsp/codeActions.ts"
+    },
+    "./multibuffer": {
+      "types": "./src/multibuffer/multibuffer.ts",
+      "default": "./src/multibuffer/multibuffer.ts"
+    },
+    "./multibuffer/excerpt": {
+      "types": "./src/multibuffer/excerpt.ts",
+      "default": "./src/multibuffer/excerpt.ts"
+    },
+    "./multibuffer/highlights": {
+      "types": "./src/multibuffer/highlights.ts",
+      "default": "./src/multibuffer/highlights.ts"
     }
   },
   "scripts": {

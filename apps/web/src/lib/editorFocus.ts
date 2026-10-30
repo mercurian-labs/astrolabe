@@ -1,3 +1,4 @@
+import { EXCERPT_ATTRIBUTE } from "@mercurian/editor/multibuffer/excerpt";
 import { OUTLINE_ATTRIBUTE } from "@mercurian/editor/outline";
 
 /**
@@ -38,4 +39,13 @@ export function isOutlineEditorFocused(
 ): boolean {
   const element = target instanceof Element ? target : null;
   return element?.closest(`.cm-editor[${OUTLINE_ATTRIBUTE}]`) != null;
+}
+
+/**
+ * Astrolabe: whether focus is in an excerpt of a multi-file view (search results, problems): the
+ * `multibufferFocus` condition, where the excerpts' own keys apply.
+ */
+export function isMultibufferFocused(target: EventTarget | null = document.activeElement): boolean {
+  const element = target instanceof Element ? target : null;
+  return element?.closest(`.cm-editor[${EXCERPT_ATTRIBUTE}]`) != null;
 }

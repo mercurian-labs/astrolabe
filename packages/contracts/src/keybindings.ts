@@ -122,6 +122,13 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   ...LSP_KEYBINDING_COMMANDS,
   "repository.localGraph",
   "file.save",
+  // Multi-file views (search results, problems): stacked excerpt editors.
+  "multibuffer.expand",
+  "multibuffer.openExcerpt",
+  "multibuffer.nextFile",
+  "multibuffer.previousFile",
+  "multibuffer.problems",
+  "projectSearch.openInEditor",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

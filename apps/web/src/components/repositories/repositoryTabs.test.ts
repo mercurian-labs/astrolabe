@@ -18,6 +18,21 @@ describe("Repositories tab keys", () => {
       { kind: "diff", environmentId, projectId, cwd: "/tmp/wt", source: "branch-range" },
       { kind: "graph", environmentId, projectId, cwd: "/tmp/wt", path: null },
       { kind: "graph", environmentId, projectId, cwd: "/tmp/wt", path: "src/a b:c.ts" },
+      {
+        kind: "search",
+        environmentId,
+        projectId,
+        cwd: "/tmp/wt",
+        search: {
+          query: "a: b",
+          caseSensitive: true,
+          wholeWord: false,
+          useRegex: false,
+          include: "src/**",
+        },
+      },
+      { kind: "problems", environmentId, projectId, cwd: "/tmp/wt" },
+      { kind: "locations", environmentId, projectId, cwd: "/tmp/wt", id: "refs-1" },
     ];
     for (const tab of tabs) expect(parseRepositoryTabKey(repositoryTabKey(tab))).toEqual(tab);
   });
