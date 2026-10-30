@@ -71,6 +71,10 @@ export function browseInputEndPaddingClass(input: {
 // Astrolabe: `outline` is the outline picker of the editor it was opened from.
 export type SearchOverlayMode = "command" | "files" | "content" | "outline";
 
+/** Escape in a child search goes back to the palette; the outline picker closes to its editor. */
+export const escapeReturnsToCommand = (mode: SearchOverlayMode) =>
+  mode !== "command" && mode !== "outline";
+
 export type CommandPaletteOpenIntent =
   | { readonly kind: "add-project" | "new-thread-in" | "change-theme" }
   | {
