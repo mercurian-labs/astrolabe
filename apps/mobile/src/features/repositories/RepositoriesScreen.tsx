@@ -22,7 +22,6 @@ import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { ThreadListV2SectionDivider } from "../threads/thread-list-v2-items";
 import { ListFilterMenu } from "../workspace/ListFilterMenu";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
-import { useWikiCheckouts } from "../wikis/useWikiCheckouts";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
   `${project.environmentId}:${project.id}`;
@@ -39,7 +38,6 @@ export function RepositoriesScreen() {
   const { environments } = useWorkspaceState();
   const projects = useProjects();
   const serverConfigs = useServerConfigs();
-  const checkouts = useWikiCheckouts();
   const scope = useAtomValue(repositoryScopeAtom);
   const setScope = useAtomSet(repositoryScopeAtom);
   const tab = workspace.state.tabs.repositories;
@@ -59,14 +57,13 @@ export function RepositoriesScreen() {
         .filter(
           (project) =>
             connected.has(project.environmentId) &&
-            !checkouts.has(repositoryKey(project)) &&
             !isScratchProject(
               project,
               serverConfigs.get(project.environmentId)?.scratchWorkspaceRoot,
             ),
         )
         .sort((a, b) => a.title.localeCompare(b.title)),
-    [checkouts, connected, projects, serverConfigs],
+    [connected, projects, serverConfigs],
   );
   const scoped = repositories.find((repository) => repositoryKey(repository) === scope) ?? null;
   // A name on two machines is told apart by the machine.

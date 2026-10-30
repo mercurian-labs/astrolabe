@@ -44,18 +44,6 @@ export function useChangeRequestProjectFilter() {
           ],
     [overviews],
   );
-  // A wiki's folder is a project too; the filter lists it once, as the wiki.
-  const wikiProjects = useMemo(
-    () =>
-      new Set(
-        overviews.flatMap((overview) =>
-          overview.wiki.projectId === null
-            ? []
-            : [`${overview.environmentId}:${overview.wiki.projectId}`],
-        ),
-      ),
-    [overviews],
-  );
   return {
     kind,
     wikisOnly: kind === "wikis",
@@ -63,9 +51,6 @@ export function useChangeRequestProjectFilter() {
     /** The wiki in force: one wiki's scope key, or `ALL_WIKIS`. */
     scope,
     choices,
-    withoutWikiProjects: <Project extends { id: string; environmentId: string }>(
-      projects: ReadonlyArray<Project>,
-    ) => projects.filter((project) => !wikiProjects.has(`${project.environmentId}:${project.id}`)),
     selected: kind === "wikis" ? (scope ?? ALL_WIKIS) : null,
     /** Every kind (`"all"`), every repository, or a wiki choice (`ALL_WIKIS` or one wiki). */
     select(value: "all" | "repositories" | string) {

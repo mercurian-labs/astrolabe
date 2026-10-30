@@ -1,7 +1,7 @@
 # Repositories
 
 **Repositories** in the icon rail is where you read and edit your repositories' code without
-leaving the app. A repository is one of the two kinds of project, beside a [wiki](wikis.md).
+leaving the app. A repository can be linked to a [wiki](wikis.md) that holds its research and plans.
 
 ## Find a file
 

@@ -48,7 +48,6 @@ import {
   findThreadsProjectScope,
   threadsProjectFilterOptions,
 } from "../projects/threadsProjectFilter";
-import { useWikiCheckouts } from "../wikis/useWikiCheckouts";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
 import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
 import { useThreadListActions } from "../home/useThreadListActions";
@@ -213,9 +212,8 @@ function ThreadNavigationSidebarPane(
       }),
     [projects, options.selectedEnvironmentId, options.projectGroupingMode],
   );
-  // Astrolabe: repositories, then wikis, each under a heading that picks them all.
-  const checkouts = useWikiCheckouts();
-  const projectFilterOptions = threadsProjectFilterOptions(projectScopes, checkouts);
+  // Astrolabe: the repositories under a heading that picks them all.
+  const projectFilterOptions = threadsProjectFilterOptions(projectScopes);
   const projectTitleByProjectKey = useMemo(
     () =>
       new Map(
@@ -234,7 +232,6 @@ function ThreadNavigationSidebarPane(
   const selectedProjectScope = findThreadsProjectScope(
     projectScopes,
     resolvedProjectKey,
-    checkouts,
     (scopes, key) => (key === null ? null : (scopes.find((scope) => scope.key === key) ?? null)),
   );
   const threadSearch = useThreadSearch(

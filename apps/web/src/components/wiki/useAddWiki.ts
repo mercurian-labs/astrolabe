@@ -8,7 +8,8 @@ import { wikiScopeKey } from "./wikiTabs";
 
 /**
  * Astrolabe: the last step of the palette's add flow when it adds a wiki. Registers a folder or
- * creates an empty wiki, then opens the Wikis section narrowed to it. Resolves whether it did.
+ * creates an empty wiki, then opens the Wikis section narrowed to it. Resolves to the wiki, or
+ * null when it failed.
  */
 export function useAddWiki() {
   const navigate = useNavigate();
@@ -17,11 +18,11 @@ export function useAddWiki() {
   const show = async (
     environmentId: EnvironmentId,
     outcome: WikiCommandOutcome<WikiSummary>,
-  ): Promise<boolean> => {
-    if (!outcome.ok) return false;
+  ): Promise<WikiSummary | null> => {
+    if (!outcome.ok) return null;
     storeWikiFilter({ wikis: [wikiScopeKey(environmentId, outcome.value.wikiId)], changed: false });
     await navigate({ to: "/wikis" });
-    return true;
+    return outcome.value;
   };
   return {
     register: async (environmentId: EnvironmentId, root: string) =>

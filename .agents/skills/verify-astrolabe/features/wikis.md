@@ -140,9 +140,9 @@ a screenshot of the section.
   out and at least one commit; only top-level `*.md` files count (never README,
   AGENTS, CLAUDE). Clone one (for example the almagest vault) anywhere the server
   can read, such as `<home>/wiki-fixtures/`, and register it: **Add a folder** →
-  dialog `Add a folder`, `textbox "Folder"` (absolute path) → **Add wiki**. It also
-  adds a project of the same name. **New wiki** makes a repo with only README, so
-  it lists no documents.
+  dialog `Add a folder`, `textbox "Folder"` (absolute path) → **Add wiki**. No
+  project is made; link it to a repository from its settings or the palette's link
+  step. **New wiki** makes a repo with only README, so it lists no documents.
 - The settings gear in the filter is `aria-hidden`; reach it by
   `[title="Settings for <wiki>"]`.
 - `data-wikilink` holds the raw target (with any `#Heading`).
