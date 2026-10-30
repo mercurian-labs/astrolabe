@@ -480,7 +480,7 @@ it.layer(layerTest)("Documents", (it) => {
           yield* TestClock.adjust(Documents.IDLE_TIMEOUT);
           yield* workspace.writeDisk("an agent rewrote this");
 
-          const item = yield* a.reconnect;
+          expect((yield* a.reconnect).type).toBe("snapshot");
           const result = yield* documents.recover({
             ...workspace.target,
             loadId: a.loadId,
