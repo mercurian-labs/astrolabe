@@ -16,11 +16,9 @@ import { whenClauseHolds } from "./keybindings";
 import { primaryServerKeybindingsAtom } from "./state/server";
 
 /**
- * Astrolabe: the editors' own keys from the keybindings. Each `markdown.*` command's shortcuts
- * whose `when` holds in that editor (`editorFocus`, and `composerFocus` in the composer) become
- * the live preview's keys for it, `search.find`'s open the find bar, `hunk.*`'s act on a code
- * file's changes, and each `code.*` command's (under `codeEditorFocus`) run it in a code file, in
- * CodeMirror's notation.
+ * Astrolabe: the editors' own keys, in CodeMirror's notation, from each command's shortcuts whose
+ * `when` holds there: `markdown.*` format, `search.find` opens the find bar, and in a code file
+ * `hunk.*` act on its changes and `code.*` (under `codeEditorFocus`) edit it.
  */
 
 const CODEMIRROR_KEY_NAMES: Readonly<Record<string, string>> = {
