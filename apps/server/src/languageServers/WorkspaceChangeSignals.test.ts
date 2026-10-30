@@ -129,6 +129,15 @@ const fileEditDone = (name: string): OrchestrationV2DomainEvent => {
   };
 };
 
+const local = {
+  isRepo: true,
+  hasPrimaryRemote: false,
+  isDefaultRef: true,
+  refName: "main",
+  hasWorkingTreeChanges: true,
+  workingTree: { files: [], insertions: 0, deletions: 0 },
+} as const;
+
 /** A git checkout, the signals the test sends, and what the servers are told. */
 const setup = Effect.fn("setup")(function* (threads: ReadonlyArray<string> = []) {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -198,17 +207,9 @@ const setup = Effect.fn("setup")(function* (threads: ReadonlyArray<string> = [])
     remove,
     /** Starts following the checkout as it is now. */
     start: Layer.build(layer).pipe(Effect.andThen(Deferred.await(following))),
-    statusChanged: Queue.offer(status, {
-      _tag: "localUpdated",
-      local: {
-        isRepo: true,
-        hasPrimaryRemote: false,
-        isDefaultRef: true,
-        refName: "main",
-        hasWorkingTreeChanges: true,
-        workingTree: { files: [], insertions: 0, deletions: 0 },
-      },
-    }),
+    statusChanged: Queue.offer(status, { _tag: "localUpdated", local }),
+    /** A full refresh, as when a window comes back. */
+    statusRefreshed: Queue.offer(status, { _tag: "snapshot", local, remote: null }),
     turns,
     /** The next changes the servers are told, by path. */
     told: Queue.take(told).pipe(
@@ -265,5 +266,22 @@ it.effect("reads the checkout again when one of its agents finishes editing a fi
     yield* checkout.write("vectors.ts", "export const scaleVector = 1;\n");
     yield* Queue.offer(checkout.turns, fileEditDone("here"));
     assert.deepStrictEqual(yield* checkout.told, [{ relativePath: "vectors.ts", type: "created" }]);
+  }).pipe(Effect.scoped, Effect.provide(layerServices)),
+);
+
+it.effect("reads the checkout again on a full status refresh, as when a window comes back", () =>
+  Effect.gen(function* () {
+    const checkout = yield* setup();
+    yield* checkout.write("a.ts", "a\n");
+    yield* checkout.git("add", "-A");
+    yield* checkout.git("commit", "-m", "a");
+    yield* checkout.start;
+
+    // Made in a shell: nothing but the window's return signals it.
+    yield* checkout.write("somethingNew.ts", "export const somethingNew = 1;\n");
+    yield* checkout.statusRefreshed;
+    assert.deepStrictEqual(yield* checkout.told, [
+      { relativePath: "somethingNew.ts", type: "created" },
+    ]);
   }).pipe(Effect.scoped, Effect.provide(layerServices)),
 );
