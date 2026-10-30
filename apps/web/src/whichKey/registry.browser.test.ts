@@ -1,5 +1,6 @@
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { codeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { inFileSearch } from "@mercurian/editor/search";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -382,6 +383,64 @@ describe("Find in editor", () => {
     const faint = appCommand("search.find", context().actingFrom(keyIn(composer)));
     expect(faint).toMatchObject({ label: "No editor to find in", disabled: true });
     expect(appCommand("search.find", context().actingFrom(null)).disabled).toBe(true);
+  });
+});
+
+describe("a code file's editing commands", () => {
+  function editor(doc: string, extensions: Extension) {
+    const view = new EditorView({
+      parent: document.body.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc, extensions }),
+    });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("lists them in the Editor group, and runs one in the code file the menu came from", async () => {
+    using _cleanup = cleanup();
+    const view = editor("pear\napple\nfig", codeEditing());
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    const group = root.items.find((item) => item.label === "Editor")?.group;
+    expect(group?.items.map((item) => [item.keys.join(" "), item.label])).toEqual([
+      // This editor has no find bar.
+      ["f", "No editor to find in"],
+      ["c", "Toggle comment"],
+      ["d", "Duplicate selection"],
+      ["j", "Join lines"],
+      ["s", "Sort lines"],
+      ["u", "Upper case"],
+      ["l", "Lower case"],
+      ["w", "Wrap lines"],
+      ["[", "Fold all"],
+      ["]", "Unfold all"],
+    ]);
+    expect(press(root, ["e", "s"])).toBeNull();
+    await vi.waitFor(() => expect(view.state.doc.toString()).toBe("apple\nfig\npear"));
+
+    press(root, ["e", "w"]);
+    await vi.waitFor(() => expect(softWrapOn(view.state)).toBe(true));
+    expect(appCommand("code.toggleSoftWrap", context().actingFrom(keyIn(view))).label).toBe(
+      "Stop wrapping lines",
+    );
+  });
+
+  it("is faint outside a code file, and for edits in one that cannot be edited", () => {
+    using _cleanup = cleanup();
+    const note = editor("a note", []);
+    const notHere = appCommand("code.sortLines", context().actingFrom(keyIn(note)));
+    expect(notHere).toMatchObject({ label: "Sort lines", disabled: true });
+
+    const readOnly = editor("b\na", [codeEditing(), EditorState.readOnly.of(true)]);
+    const from = context().actingFrom(keyIn(readOnly));
+    expect(appCommand("code.sortLines", from).disabled).toBe(true);
+    expect(appCommand("code.foldAll", from).disabled).toBe(false);
+    expect(appCommand("code.toggleSoftWrap", from).disabled).toBe(false);
   });
 });
 

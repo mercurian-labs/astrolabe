@@ -1,14 +1,19 @@
 import {
   ASTROLABE_KEYBINDING_COMMANDS,
+  CODE_EDITOR_KEYBINDING_COMMANDS,
   type AstrolabeKeybindingCommand,
+  type CodeEditorKeybindingCommand,
   type KeybindingCommand,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
+import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
 
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
+import { codeEditingCommandOf } from "~/editorKeybindings";
 import { isEmptyTab } from "~/panes/arrangement";
 import {
   canClosePane,
@@ -153,17 +158,20 @@ export function inEditor(origin: KeyOrigin | null, line: string): (() => void) |
 }
 
 /**
- * The editor with in-file search that the key came from: the one holding the focused element, or
- * the one around it (a table cell's editor sits inside its note's); null elsewhere.
+ * The editor the key came from whose state `has` what is asked: the one holding the focused
+ * element, or the one around it (a table cell's editor sits inside its note's); null elsewhere.
  */
-function searchableEditor(origin: KeyOrigin | null): EditorView | null {
+function editorFrom(
+  origin: KeyOrigin | null,
+  has: (state: EditorState) => boolean,
+): EditorView | null {
   for (
     let editor = origin?.element?.closest(".cm-editor") ?? null;
     editor;
     editor = editor.parentElement?.closest(".cm-editor") ?? null
   ) {
     const view = editor instanceof HTMLElement ? EditorView.findFromDOM(editor) : null;
-    if (view && hasInFileSearch(view.state)) return view;
+    if (view && has(view.state)) return view;
   }
   return null;
 }
@@ -347,7 +355,7 @@ function astrolabeCommand(
         inEditor(context.origin, "nohlsearch"),
       );
     case "search.find": {
-      const view = searchableEditor(context.origin);
+      const view = editorFrom(context.origin, hasInFileSearch);
       return entry(
         view ? "Find in editor" : "No editor to find in",
         view ? () => afterPalette(() => openInFileSearch(view)) : null,
@@ -411,8 +419,83 @@ function upstreamCommand(command: KeybindingCommand, context: AppCommandContext)
   );
 }
 
+const CODE_COMMANDS = new Set<KeybindingCommand>(CODE_EDITOR_KEYBINDING_COMMANDS);
+
+const isCodeEditorCommand = (command: KeybindingCommand): command is CodeEditorKeybindingCommand =>
+  CODE_COMMANDS.has(command);
+
+/** A code file's commands as the menu says them. */
+const CODE_COMMAND_LABELS: Readonly<Record<CodeEditorKeybindingCommand, string>> = {
+  "code.selectNextOccurrence": "Select next occurrence",
+  "code.skipOccurrence": "Skip this occurrence",
+  "code.selectAllOccurrences": "Select all occurrences",
+  "code.addCursorAbove": "Add cursor above",
+  "code.addCursorBelow": "Add cursor below",
+  "code.expandSelection": "Expand selection",
+  "code.toggleComment": "Toggle comment",
+  "code.indentLess": "Indent less",
+  "code.indentMore": "Indent more",
+  "code.moveLineUp": "Move line up",
+  "code.moveLineDown": "Move line down",
+  "code.copyLineUp": "Copy line up",
+  "code.copyLineDown": "Copy line down",
+  "code.deleteLine": "Delete line",
+  "code.joinLines": "Join lines",
+  "code.sortLines": "Sort lines",
+  "code.upperCase": "Upper case",
+  "code.lowerCase": "Lower case",
+  "code.duplicateSelection": "Duplicate selection",
+  "code.fold": "Fold",
+  "code.unfold": "Unfold",
+  "code.foldAll": "Fold all",
+  "code.unfoldAll": "Unfold all",
+  "code.toggleSoftWrap": "Wrap lines",
+};
+
+/** The commands that change no text, so they run in a read-only file too. */
+const READING_CODE_COMMANDS = new Set<CodeEditorKeybindingCommand>([
+  "code.selectNextOccurrence",
+  "code.skipOccurrence",
+  "code.selectAllOccurrences",
+  "code.addCursorAbove",
+  "code.addCursorBelow",
+  "code.expandSelection",
+  "code.fold",
+  "code.unfold",
+  "code.foldAll",
+  "code.unfoldAll",
+  "code.toggleSoftWrap",
+]);
+
+/**
+ * One of a code file's editing commands, run in the code editor the key came from once the
+ * palette has gone; faint elsewhere, and for edits in a file that cannot be edited.
+ */
+function codeEditorCommand(
+  command: CodeEditorKeybindingCommand,
+  context: AppCommandContext,
+): AppCommand {
+  const view = editorFrom(context.origin, hasCodeEditing);
+  const label =
+    command === "code.toggleSoftWrap" && view && softWrapOn(view.state)
+      ? "Stop wrapping lines"
+      : CODE_COMMAND_LABELS[command];
+  const runs = view && (READING_CODE_COMMANDS.has(command) || !view.state.readOnly);
+  return entry(
+    label,
+    runs
+      ? () =>
+          afterPalette(() => {
+            view.focus();
+            runCodeEditing(view, codeEditingCommandOf(command));
+          })
+      : null,
+  );
+}
+
 /** The registry's entry for `command`, as it stands in `context`. */
 export function appCommand(command: KeybindingCommand, context: AppCommandContext): AppCommand {
+  if (isCodeEditorCommand(command)) return codeEditorCommand(command, context);
   return isAppCommand(command)
     ? astrolabeCommand(command, context)
     : upstreamCommand(command, context);
