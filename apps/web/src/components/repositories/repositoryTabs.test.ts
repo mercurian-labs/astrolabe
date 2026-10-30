@@ -42,6 +42,14 @@ describe("Repositories tab keys", () => {
         checkout: { branch: "main" },
         source: "working-tree",
       },
+      {
+        kind: "diff",
+        environmentId,
+        projectId,
+        checkout: { branch: "feature/a" },
+        source: "branch-range",
+        base: "release/2.0",
+      },
     ];
     for (const tab of tabs) expect(parseRepositoryTabKey(repositoryTabKey(tab))).toEqual(tab);
   });
@@ -51,6 +59,7 @@ describe("Repositories tab keys", () => {
     expect(parseRepositoryTabKey("repo-diff:a:b:c:sideways")).toBeNull();
     expect(parseRepositoryTabKey("repo-file:a:b")).toBeNull();
     expect(parseRepositoryTabKey("repo-file:a:b:folder:main:c.ts")).toBeNull();
+    expect(parseRepositoryTabKey("repo-diff:a:b:c:working-tree~main")).toBeNull();
   });
 
   it("name a file's folder", () => {

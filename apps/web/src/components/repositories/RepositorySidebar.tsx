@@ -7,7 +7,6 @@ import {
   FileIcon,
   FolderGit2Icon,
   FolderPlusIcon,
-  GitBranchIcon,
   ListIcon,
   ListTreeIcon,
   ListFilterIcon,
@@ -71,7 +70,14 @@ import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useSectionFocusedKey } from "~/panes/sectionPanes";
 import { repositoryPanes } from "./repositoryPanes";
-import { OpenBranchPicker, SetAsideRows, WorktreeHeader } from "./RepositoryWorktrees";
+import { BranchCompareRow } from "./BranchCompareRow";
+import {
+  OpenBranchPicker,
+  SetAsideRows,
+  WORKTREE_TREE_CLASS,
+  WorktreeHeader,
+  WorktreeRows,
+} from "./RepositoryWorktrees";
 import { repositoryScope, repositoryView } from "./repositoryScope";
 import {
   checkoutOf,
@@ -248,7 +254,7 @@ export function RepositorySidebar() {
                       // The tree's virtualized list is `height: 100%`, and the sidebar's scroll
                       // area only gives its content a min-height, so the list collapsed to
                       // nothing. Each tree fills an absolutely placed box, whose height is definite.
-                      <div className="relative -mx-2 min-h-40 flex-1">
+                      <div className={WORKTREE_TREE_CLASS}>
                         <div className="absolute inset-0 flex flex-col">
                           <FileBrowserPanel
                             key={`${scoped.environmentId}:${worktree.path}`}
@@ -288,16 +294,18 @@ export function RepositorySidebar() {
                       onToggle={() => toggle(worktree)}
                     />
                     {expanded(worktree) ? (
-                      <RepositoryList
-                        repository={scoped}
-                        cwd={worktree.path}
-                        checkout={checkoutOf(worktree)}
-                        showStatus
-                        showChanges={worktree.isMain}
-                        showRecent={worktree.path === active?.path}
-                        changedFiles={worktree.changedFiles}
-                        head={worktree.head}
-                      />
+                      <WorktreeRows>
+                        <RepositoryList
+                          repository={scoped}
+                          cwd={worktree.path}
+                          checkout={checkoutOf(worktree)}
+                          showStatus
+                          showChanges={worktree.isMain}
+                          showRecent={worktree.path === active?.path}
+                          changedFiles={worktree.changedFiles}
+                          head={worktree.head}
+                        />
+                      </WorktreeRows>
                     ) : null}
                   </ul>
                 ))}
@@ -445,13 +453,14 @@ function RepositoryList({
   const uncommittedPaths = new Set(uncommitted.map((file) => file.path));
   const recentFiles = (recent.data?.files ?? []).filter((file) => !uncommittedPaths.has(file.path));
   const branch = status.data?.branchChanges;
-  const diffKey = (source: "working-tree" | "branch-range") =>
+  const diffKey = (source: "working-tree" | "branch-range", base?: string) =>
     repositoryTabKey({
       kind: "diff",
       environmentId: repository.environmentId,
       projectId: repository.id,
       checkout,
       source,
+      ...(base === undefined ? {} : { base }),
     });
   const openChangeRequests = () => {
     changeRequestKindStore.set("repositories");
@@ -500,14 +509,18 @@ function RepositoryList({
               ))}
             </>
           ) : null}
-          {showStatus &&
-          status.data?.isDefaultRef === false &&
-          branch &&
-          (branch.insertions > 0 || branch.deletions > 0) ? (
-            <LinkRow
-              icon={GitBranchIcon}
-              label={`Changes against ${branch.baseRef ?? "the base"}`}
-              onClick={() => repositoryPanes.show(diffKey("branch-range"))}
+          {showStatus && status.data ? (
+            <BranchCompareRow
+              environmentId={repository.environmentId}
+              cwd={cwd}
+              defaultBase={
+                status.data.isDefaultRef === false &&
+                branch &&
+                (branch.insertions > 0 || branch.deletions > 0)
+                  ? (branch.baseRef ?? null)
+                  : null
+              }
+              onOpen={(base) => repositoryPanes.show(diffKey("branch-range", base))}
             />
           ) : null}
           {showRecent && recentFiles.length > 0 ? (

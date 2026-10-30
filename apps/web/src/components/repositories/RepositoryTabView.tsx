@@ -7,7 +7,7 @@ import { useProjectWorktrees } from "~/state/worktrees";
 import { getProjectFileQueryAtom } from "../files/projectFilesQueryState";
 import { Button } from "../ui/button";
 
-import { RepositoryDiffView } from "./RepositoryDiffView";
+import { diffPreviewInput, RepositoryDiffView } from "./RepositoryDiffView";
 import { RepositoryFileView } from "./RepositoryFileView";
 import {
   fileName,
@@ -72,7 +72,10 @@ function CheckedOut({
       appAtomRegistry.refresh(getProjectFileQueryAtom(tab.environmentId, cwd, tab.path));
     } else {
       appAtomRegistry.refresh(
-        reviewEnvironment.diffPreview({ environmentId: tab.environmentId, input: { cwd } }),
+        reviewEnvironment.diffPreview({
+          environmentId: tab.environmentId,
+          input: diffPreviewInput(cwd, tab.base),
+        }),
       );
     }
   }, [cwd, revision, tab]);
@@ -108,7 +111,12 @@ export function repositoryTabLabel(tabKey: string): { title: string; icon: React
       return { title: fileName(tab.path), icon: <FileCodeIcon className="size-3.5 shrink-0" /> };
     case "diff":
       return {
-        title: tab.source === "working-tree" ? "Uncommitted changes" : "Branch changes",
+        title:
+          tab.source === "working-tree"
+            ? "Uncommitted changes"
+            : tab.base === undefined
+              ? "Branch changes"
+              : `Against ${tab.base}`,
         icon: <FileDiffIcon className="size-3.5 shrink-0" />,
       };
   }

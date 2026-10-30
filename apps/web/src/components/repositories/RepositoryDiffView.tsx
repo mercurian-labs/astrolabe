@@ -27,6 +27,10 @@ import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs
 
 type DiffTab = Extract<CheckedOutRepositoryTab, { kind: "diff" }>;
 
+/** What a changes tab reads: the checkout, and the branch it compares with when one was picked. */
+export const diffPreviewInput = (cwd: string, base: string | undefined) =>
+  base === undefined ? { cwd } : { cwd, baseRef: base };
+
 /**
  * Astrolabe: a checkout's changes in the Repositories area: its uncommitted changes, or its
  * branch against its base, in the diff view a thread's Diffs uses. A line's comment goes to the
@@ -34,10 +38,10 @@ type DiffTab = Extract<CheckedOutRepositoryTab, { kind: "diff" }>;
  * file's header opens the file.
  */
 export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
-  const { environmentId, cwd, source: sourceKind } = tab;
+  const { environmentId, cwd, source: sourceKind, base } = tab;
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
   const { resolvedTheme } = useTheme();
-  const previewInput = canReadFiles ? { cwd } : undefined;
+  const previewInput = canReadFiles ? diffPreviewInput(cwd, base) : undefined;
   const preview = useEnvironmentQuery(
     previewInput ? reviewEnvironment.diffPreview({ environmentId, input: previewInput }) : null,
   );
@@ -83,7 +87,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
   const title =
     sourceKind === "working-tree"
       ? "Uncommitted changes"
-      : `Changes against ${source?.baseRef ?? "the base"}`;
+      : `Changes against ${base ?? source?.baseRef ?? "the base"}`;
 
   if (!canReadFiles) return <Notice>This connection cannot read this repository's files.</Notice>;
   if (preview.error !== null && preview.data === null)
@@ -94,7 +98,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       <Notice>
         {sourceKind === "working-tree"
           ? "No uncommitted changes."
-          : "This branch has no changes against its base."}
+          : `This branch has no changes against ${base ?? "its base"}.`}
       </Notice>
     );
   }
@@ -119,11 +123,11 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       </div>
       {target === null ? null : (
         <AnnotatableCodeView
-          codeViewKey={`repository-diff:${cwd}:${sourceKind}`}
+          codeViewKey={`repository-diff:${cwd}:${sourceKind}:${base ?? ""}`}
           className="min-h-0 flex-1 overflow-auto"
           files={files}
           pendingFiles={pendingFiles}
-          sectionId={`repository-diff:${cwd}:${sourceKind}`}
+          sectionId={`repository-diff:${cwd}:${sourceKind}:${base ?? ""}`}
           sectionTitle={title}
           composerDraftTarget={target}
           renderCodeViewFooter={() =>

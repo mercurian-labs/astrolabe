@@ -25,6 +25,8 @@ export type RepositoryTab =
       readonly projectId: ProjectId;
       readonly checkout: RepositoryCheckout;
       readonly source: RepositoryDiffSource;
+      /** The branch a branch-range compares with; absent means the branch's own base. */
+      readonly base?: string;
     };
 
 /** A file or changes tab with the folder its checkout is in now. */
@@ -49,6 +51,8 @@ export type RepositoryDiffSource = "working-tree" | "branch-range";
 
 const FILE_PREFIX = "repo-file:";
 const DIFF_PREFIX = "repo-diff:";
+// A chosen base rides on the source part; git refuses `~` in a ref name, so it never collides.
+const BASE_SEPARATOR = "~";
 
 const encode = (parts: readonly string[]) => parts.map(encodeURIComponent).join(":");
 // A branch checkout adds a marker part; a folder's keeps the four parts keys had before.
@@ -66,7 +70,12 @@ export function repositoryTabKey(tab: RepositoryTab): string {
     case "diff":
       return (
         DIFF_PREFIX +
-        encode([tab.environmentId, tab.projectId, ...checkoutParts(tab.checkout), tab.source])
+        encode([
+          tab.environmentId,
+          tab.projectId,
+          ...checkoutParts(tab.checkout),
+          tab.base === undefined ? tab.source : `${tab.source}${BASE_SEPARATOR}${tab.base}`,
+        ])
       );
   }
 }
@@ -114,14 +123,19 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
   if (key.startsWith(DIFF_PREFIX)) {
     const parts = decode(key.slice(DIFF_PREFIX.length));
     if (parts === null) return null;
-    const [environmentId, projectId, checkout, source] = parts;
+    const [environmentId, projectId, checkout, last] = parts;
+    const separator = last.indexOf(BASE_SEPARATOR);
+    const source = separator === -1 ? last : last.slice(0, separator);
+    const base = separator === -1 ? undefined : last.slice(separator + 1);
     if (source !== "working-tree" && source !== "branch-range") return null;
+    if (base !== undefined && (source !== "branch-range" || base === "")) return null;
     return {
       kind: "diff",
       environmentId: EnvironmentId.make(environmentId),
       projectId: ProjectId.make(projectId),
       checkout,
       source,
+      ...(base === undefined ? {} : { base }),
     };
   }
   return null;

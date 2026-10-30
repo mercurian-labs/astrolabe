@@ -26,7 +26,10 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   commit when detached), the main checkout first and marked **main checkout**, with "N
   changed" and a pin when held (tooltip: the holds). Under each: **Uncommitted · N** with
   **Review uncommitted changes →** and each changed file (`+a −d`), **Changes against
-  `<base>` →** off the default branch. **Changes →** only under the main checkout, and
+  `<base>` →** off the default branch, with `combobox "Compare with another branch"` beside it
+  (any local or remote branch; the tab key's source becomes `branch-range~<base>`), or
+  `combobox "Compare with a branch"` in its place on a branch with nothing against its base. A
+  section's rows sit indented under its header along a guide line. **Changes →** only under the main checkout, and
   **Recently changed** (40 files; `review.getRecentFiles`, `git log --name-only`) only
   under the focused tab's worktree (else main). File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,

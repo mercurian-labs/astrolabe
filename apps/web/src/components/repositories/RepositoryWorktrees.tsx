@@ -108,6 +108,24 @@ export function WorktreeHeader({
   );
 }
 
+/** A worktree section's rows, set in under its header along a guide line from its branch icon. */
+export function WorktreeRows({ children }: { readonly children: ReactNode }) {
+  return (
+    <li className="list-none">
+      <ul
+        role="presentation"
+        className="ms-[15px] flex flex-col gap-px border-s border-sidebar-border ps-1"
+      >
+        {children}
+      </ul>
+    </li>
+  );
+}
+
+/** A worktree section's file tree, set in under its header as its rows are. */
+export const WORKTREE_TREE_CLASS =
+  "relative ms-[15px] -me-2 min-h-40 flex-1 border-s border-sidebar-border";
+
 function WorktreeMenu({
   repository,
   worktree,

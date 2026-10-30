@@ -10,7 +10,11 @@ import { refreshProjectWorktrees, useProjectWorktrees } from "~/state/worktrees"
 import FileBrowserPanel from "../files/FileBrowserPanel";
 import { storedName } from "../projects/storedChoice";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
-import { SetAsideRows, WorktreeHeader } from "../repositories/RepositoryWorktrees";
+import {
+  SetAsideRows,
+  WORKTREE_TREE_CLASS,
+  WorktreeHeader,
+} from "../repositories/RepositoryWorktrees";
 import { useOpenBranch } from "../repositories/worktreeActions";
 import {
   SidebarHeaderIconButton,
@@ -181,7 +185,7 @@ export function WikiWorktreeTrees({
             </ul>
             {expanded(worktree) ? (
               // The tree's virtualized list needs a definite height; see RepositorySidebar.
-              <div className="relative -mx-2 min-h-40 flex-1">
+              <div className={WORKTREE_TREE_CLASS}>
                 <div className="absolute inset-0 flex flex-col">
                   <FileBrowserPanel
                     key={`${overview.environmentId}:${worktree.path}`}
