@@ -18,7 +18,7 @@ import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useCodeEditorKeys, useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -34,6 +34,7 @@ import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFi
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
+import { repositoryFileReveal, revealLine } from "./repositoryFileReveal";
 import type { RepositoryTab } from "./repositoryTabs";
 
 type FileTab = Extract<RepositoryTab, { kind: "file" }>;
@@ -142,6 +143,7 @@ export function RepositoryFileView({
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
           key={`${environmentId}\0${cwd}\0${path}`}
+          tabKey={tabKey}
           path={path}
           contents={contents}
           readOnly={readOnly}
@@ -172,6 +174,7 @@ function FileNotice({ children }: { readonly children: string }) {
  * edits here are still on their way.
  */
 function FileEditor({
+  tabKey,
   path,
   contents,
   readOnly,
@@ -183,6 +186,7 @@ function FileEditor({
   readonly contents: string;
   readonly readOnly: boolean;
   /** The committed text the changes are marked against; null for none, undefined while loading. */
+  readonly tabKey: string;
   readonly baseText: string | null | undefined;
   readonly pendingRef: { readonly current: boolean };
   readonly onChange: (contents: string) => void;
@@ -200,6 +204,8 @@ function FileEditor({
   const hunkKeys = useEditorHunkKeys();
   const editingKeys = useCodeEditorKeys();
   const wordWrap = useClientSettings(selectWordWrap);
+  const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
+  const revealHere = reveal?.tabKey === tabKey ? reveal : null;
   const [compartments] = useState(() => ({
     vim: new Compartment(),
     keys: new Compartment(),
@@ -289,6 +295,15 @@ function FileEditor({
   useEffect(() => {
     if (baseText !== undefined) viewRef.current?.dispatch({ effects: setGitBase(baseText) });
   }, [baseText]);
+
+  // oxlint-disable-next-line t3code/react-effect-budget -- moves the CodeMirror view to the line project search asked for
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !revealHere) return;
+    view.dispatch(revealLine(view.state, revealHere.line));
+    view.focus();
+    repositoryFileReveal.done(revealHere.id);
+  }, [revealHere]);
 
   // oxlint-disable-next-line t3code/react-effect-budget -- carries the word wrap setting into the CodeMirror view
   useEffect(() => {
