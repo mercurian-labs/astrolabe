@@ -111,6 +111,7 @@ import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
+import * as VcsBaseText from "./vcs/VcsBaseText.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -410,6 +411,8 @@ const layerReview = ReviewService.layer.pipe(
 );
 
 const layerVcs = Layer.empty.pipe(
+  // Astrolabe: first, so the review layer and the status broadcaster below provide it.
+  Layer.provideMerge(VcsBaseText.layer),
   Layer.provideMerge(VcsProjectConfig.layer),
   Layer.provideMerge(layerVcsDriverRegistry),
   Layer.provideMerge(VcsProvisioningService.layer.pipe(Layer.provide(layerVcsDriverRegistry))),

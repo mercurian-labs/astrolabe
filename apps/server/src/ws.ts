@@ -215,6 +215,7 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { refreshPushedPullRequests } from "./git/refreshPushedPullRequests.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as VcsBaseText from "./vcs/VcsBaseText.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
@@ -1247,8 +1248,11 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
+    const baseTexts = yield* VcsBaseText.VcsBaseText;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
+      [WS_METHODS.vcsReadBaseText]: (input) => baseTexts.read(input),
+      [WS_METHODS.subscribeVcsBaseText]: (input) => baseTexts.stream(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),

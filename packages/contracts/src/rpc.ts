@@ -421,6 +421,7 @@ import {
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import { VcsBaseTextError, VcsBaseTextInput, VcsBaseTextResult } from "./vcsBaseText.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -562,6 +563,10 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+
+  // Astrolabe: the text an open file's change markers compare against, and its changes.
+  vcsReadBaseText: "vcs.readBaseText",
+  subscribeVcsBaseText: "subscribeVcsBaseText",
 
   // Astrolabe: local wikis.
   wikiList: "wiki.list",
@@ -1919,6 +1924,21 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+// Astrolabe: an open file's base text. The subscription sends it first, then again whenever the
+// checkout's status changes it.
+const WsVcsReadBaseTextRpc = Rpc.make(WS_METHODS.vcsReadBaseText, {
+  payload: VcsBaseTextInput,
+  success: VcsBaseTextResult,
+  error: Schema.Union([VcsBaseTextError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribeVcsBaseTextRpc = Rpc.make(WS_METHODS.subscribeVcsBaseText, {
+  payload: VcsBaseTextInput,
+  success: VcsBaseTextResult,
+  error: Schema.Union([VcsBaseTextError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 // Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
 const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
   payload: Schema.Struct({}),
@@ -2343,6 +2363,8 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,
   WsServerSetVimOptionRpc,
+  WsVcsReadBaseTextRpc,
+  WsSubscribeVcsBaseTextRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
   WsWikiRegisterRpc,
