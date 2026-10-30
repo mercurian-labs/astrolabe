@@ -245,6 +245,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
+import * as Documents from "./documents/Documents.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
@@ -1249,6 +1250,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
     const baseTexts = yield* VcsBaseText.VcsBaseText;
+    const documents = yield* Documents.Documents;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.vcsReadBaseText]: (input) => baseTexts.read(input),
@@ -1276,6 +1278,11 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
       [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
+      [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),
+      [WS_METHODS.documentsPush]: (input) => documents.push(input),
+      [WS_METHODS.documentsSave]: (input) => documents.save(input),
+      [WS_METHODS.documentsRecover]: (input) => documents.recover(input),
+      [WS_METHODS.documentsDiscard]: (input) => documents.discard(input),
     });
   }),
 );

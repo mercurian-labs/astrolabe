@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
   AuthAccessWriteScope,
+  AuthFilesystemWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -47,6 +48,11 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.wikiSetChangeRequestStatus]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiSetMirror]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiPushMirror]: AuthSourceControlWriteScope,
+  // Astrolabe: document edits are file writes.
+  [WS_METHODS.documentsPush]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsSave]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsRecover]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsDiscard]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
