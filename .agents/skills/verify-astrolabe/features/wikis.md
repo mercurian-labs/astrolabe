@@ -79,6 +79,16 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
+- **Linked repositories** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinkMenus.tsx`): a wiki is not
+  a project. Adding a wiki or a repository in the palette ends on a link step
+  ("Link <wiki> to the repository it plans" / "Link <repo> to a wiki…", plus **Not now**);
+  links change from the wiki's settings (**Repositories**) and Settings → Projects (**Wikis**).
+  A new conversation in a linked repository gets an `<astrolabe_wikis>` note on its first
+  prompt (`WikiService.agentNote`); prove it with a real turn that never names the wiki.
+- **`[[` in the composer** (`chat/composerWikiNoteItems.ts`): opens notes of this server's
+  wikis, linked ones first; `[[ ` (space) and no wikis stay text; an unlinked repository
+  gets "Link <wiki> to <repo>" rows while the query is empty. A pick inserts a chip; a
+  sent chip opens the note in the right panel.
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab

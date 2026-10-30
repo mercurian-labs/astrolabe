@@ -52,7 +52,7 @@ export function composerWikiNoteItems(input: {
           wikiId: wiki.wikiId,
           projectId: project.id,
           label: `Link ${wiki.name} to ${project.title}`,
-          description: "Its notes list first in this project",
+          description: "So agents here know where its plans live",
         }))
       : [];
   const noteItems = wikiListEntries(input.overviews, null)
