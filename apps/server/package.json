@@ -38,6 +38,7 @@
     "@effect/platform-node": "catalog:",
     "@effect/platform-node-shared": "catalog:",
     "@ff-labs/fff-node": "0.11.0",
+    "@mercurian/code-graph": "workspace:*",
     "@mercurian/wiki": "workspace:*",
     "@muse-code/sdk": "1.4.6",
     "@napi-rs/keyring": "^1.3.0",

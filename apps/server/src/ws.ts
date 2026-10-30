@@ -1254,6 +1254,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
       [WS_METHODS.codeIndexRebuild]: (input) => codeIndex.rebuild(input).pipe(Effect.as({})),
       [WS_METHODS.codeIndexStorage]: (_input) => codeIndex.storage,
+      [WS_METHODS.codeIndexPrune]: (_input) => codeIndex.prune,
       [WS_METHODS.codeIndexClear]: (_input) => codeIndex.clear.pipe(Effect.as({})),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,

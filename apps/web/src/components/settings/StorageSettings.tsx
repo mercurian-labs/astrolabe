@@ -199,7 +199,9 @@ function CleanupResults({
                 : entry.path?.split(/[\\/]/).findLast(Boolean)) ?? "Worktrees")
             : entry.kind === "logs"
               ? "Rotated logs"
-              : "Browser artifacts";
+              : entry.kind === "code-index"
+                ? "Code index"
+                : "Browser artifacts";
         return (
           <SettingsRow
             key={`${entry.path ?? entry.kind}:${entry.threadId ?? index}`}

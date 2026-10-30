@@ -380,6 +380,10 @@
       "types": "./src/state/vcs.ts",
       "default": "./src/state/vcs.ts"
     },
+    "./state/codeIndex": {
+      "types": "./src/state/codeIndex.ts",
+      "default": "./src/state/codeIndex.ts"
+    },
     "./state/wiki": {
       "types": "./src/state/wiki.ts",
       "default": "./src/state/wiki.ts"

@@ -34,6 +34,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { parse as parseYaml } from "yaml";
 
+import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as ServerConfig from "./config.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
@@ -207,6 +208,7 @@ export class StorageCleanup extends Context.Service<
 const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const settingsService = yield* Settings.ServerSettingsService;
+  const codeIndex = yield* CodeIndex.CodeIndex;
   const projectStore = yield* ProjectStore.ProjectStoreV2;
   const engine = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -1161,6 +1163,39 @@ const make = Effect.gen(function* () {
         ),
       );
     }
+    // Astrolabe: code index file versions no branch, worktree or checkpoint reaches.
+    yield* codeIndex.prune.pipe(
+      Effect.map(({ bytesFreed, fileVersions }) => {
+        if (fileVersions === 0) return;
+        entries.push({
+          kind: "code-index",
+          outcome: "removed",
+          reason: `Removed ${fileVersions} unused file versions`,
+          path: null,
+          projectPath: null,
+          threadId: null,
+          threadTitle: null,
+          bytes: bytesFreed,
+          files: fileVersions,
+        });
+      }),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          entries.push({
+            kind: "code-index",
+            outcome: "failed",
+            reason: cleanupFailureReason(error),
+            path: null,
+            projectPath: null,
+            threadId: null,
+            threadTitle: null,
+            bytes: null,
+            files: null,
+          });
+          yield* Effect.logWarning("code index cleanup failed", { error });
+        }),
+      ),
+    );
     const counts = { removed: 0, kept: 0, failed: 0 };
     let bytesFreed = 0;
     for (const entry of entries) {
