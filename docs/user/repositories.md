@@ -14,6 +14,20 @@ see all of that for it; with every repository, each shows its latest files.
 - **Checkout** appears when a thread works in its own copy of the repository. Pick the thread's
   copy to read and edit what its agent is changing.
 
+## Search the code
+
+`mod+shift+f` searches every file in the current thread's checkout. A result opens its file in a
+Repositories tab.
+
+- **Filters**, beside the match options, limits the search to files that match
+  **Include** and drops those that match **Exclude**. Separate patterns with commas, as in
+  `src/**/*.ts, docs`; commas inside `{a,b}` don't separate. A folder's path covers everything in
+  it, and an exclusion beats an inclusion.
+- **Ignored files** also searches files your `.gitignore` leaves out, such as `node_modules`.
+  Pair it with an **Include** such as `node_modules/some-package` to keep it quick.
+- A search shows 500 results at a time. **Load more results** at the end fetches the next 500;
+  **Keep searching** means the search stopped to stay fast and has more files to look through.
+
 ## Edit
 
 Files open in tabs that split, as wiki documents do. Markdown files open with the live preview;
