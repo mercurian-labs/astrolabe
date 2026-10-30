@@ -403,6 +403,12 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "diagnostic.next": "Next Problem",
   "diagnostic.previous": "Previous Problem",
   "repository.localGraph": "Repositories: Open Local Graph",
+  "multibuffer.expand": "Show More Lines Around Excerpt",
+  "multibuffer.openExcerpt": "Open Excerpt in Its File",
+  "multibuffer.nextFile": "Next File in Results",
+  "multibuffer.previousFile": "Previous File in Results",
+  "multibuffer.problems": "Repositories: Show Problems",
+  "projectSearch.openInEditor": "Open Search Results in Editor",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

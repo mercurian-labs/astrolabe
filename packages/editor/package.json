@@ -70,6 +70,10 @@
     "./multibuffer/excerpt": {
       "types": "./src/multibuffer/excerpt.ts",
       "default": "./src/multibuffer/excerpt.ts"
+    },
+    "./multibuffer/highlights": {
+      "types": "./src/multibuffer/highlights.ts",
+      "default": "./src/multibuffer/highlights.ts"
     }
   },
   "scripts": {

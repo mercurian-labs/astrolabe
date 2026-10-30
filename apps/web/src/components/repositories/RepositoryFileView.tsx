@@ -64,6 +64,7 @@ import {
   type FileDiffBase,
 } from "./fileDiffBase";
 import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
+import { fileEditorChanged, registerFileEditor } from "./openFileEditors";
 import { openLocalGraph } from "./localGraph";
 import { repositoryPanes } from "./repositoryPanes";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
@@ -246,6 +247,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
           tabKey={tabKey}
+          checkout={tab}
           file={importLineKey(tab)}
           path={path}
           source={fromDisk ? { contents: contents ?? "" } : { session }}
@@ -361,6 +363,7 @@ function FileNotice({ children }: { readonly children: string }) {
  */
 function FileEditor({
   tabKey,
+  checkout,
   file,
   path,
   source,
@@ -371,6 +374,8 @@ function FileEditor({
   onOutlinePath,
 }: {
   readonly tabKey: string;
+  /** Where the file is, for edits made to many files at once (`openFileEditors`). */
+  readonly checkout: Pick<FileTab, "environmentId" | "cwd">;
   /** The file as the import-line highlight names it (`importLineKey`). */
   readonly file: string;
   readonly path: string;
@@ -406,6 +411,8 @@ function FileEditor({
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
   const [initial] = useState(() => ({
+    environmentId: checkout.environmentId,
+    cwd: checkout.cwd,
     file,
     path,
     source,
@@ -448,13 +455,23 @@ function FileEditor({
           importLineExtension,
           initial.languageServer ?? [],
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) session?.changed();
+            if (!update.docChanged) return;
+            session?.changed();
+            fileEditorChanged(update.view, update.changes);
           }),
         ],
       }),
     });
     viewRef.current = view;
     session?.attach(view);
+    const unregister = registerFileEditor({
+      environmentId: initial.environmentId,
+      cwd: initial.cwd,
+      path: initial.path,
+      view,
+      writable: () =>
+        session !== null && session.getState().status === "open" && !view.state.readOnly,
+    });
     const stopLighting = followImportLine(view, initial.file);
     let cancelled = false;
     const language = markdown ? null : codeLanguageFor(initial.path);
@@ -465,6 +482,7 @@ function FileEditor({
     }
     return () => {
       cancelled = true;
+      unregister();
       stopLighting();
       session?.detach();
       view.destroy();

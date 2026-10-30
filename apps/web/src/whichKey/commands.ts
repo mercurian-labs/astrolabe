@@ -10,6 +10,7 @@ import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/co
 import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
 import { hasOutline } from "@mercurian/editor/outline";
+import { excerptControls, isExcerpt } from "@mercurian/editor/multibuffer/excerpt";
 import {
   hasDiagnosticsUi,
   nextDiagnostic,
@@ -34,6 +35,7 @@ import {
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
 import { localGraphOpener } from "~/components/repositories/localGraph";
+import { problemsOpener } from "~/components/repositories/multibuffer/openMultibuffer";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
 import type { FocusDirection } from "~/keyboardNav/regions.logic";
@@ -436,6 +438,35 @@ function astrolabeCommand(
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "multibuffer.expand":
+    case "multibuffer.openExcerpt":
+    case "multibuffer.nextFile":
+    case "multibuffer.previousFile": {
+      const view = editorFrom(context.origin, isExcerpt);
+      const controls = view ? excerptControls(view.state) : null;
+      const labels = {
+        "multibuffer.expand": "Show more lines around excerpt",
+        "multibuffer.openExcerpt": "Open excerpt in its file",
+        "multibuffer.nextFile": "Next file in results",
+        "multibuffer.previousFile": "Previous file in results",
+      } as const;
+      return entry(
+        controls ? labels[command] : "No results here",
+        view && controls
+          ? () =>
+              afterPalette(() => {
+                if (command === "multibuffer.expand") controls.expand(0, 0);
+                else if (command === "multibuffer.openExcerpt") {
+                  controls.open(view.state.doc.lineAt(view.state.selection.main.head).number);
+                } else controls.jumpFile(command === "multibuffer.nextFile" ? 1 : -1);
+              })
+          : null,
+      );
+    }
+    case "multibuffer.problems":
+      return entry("Show problems", problemsOpener(panes?.controller ?? null));
+    case "projectSearch.openInEditor":
+      return entry("Open results in editor, from project search", null);
   }
 }
 

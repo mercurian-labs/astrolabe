@@ -46,6 +46,9 @@ interface ExcerptValue {
   readonly marks: readonly ExcerptMark[];
 }
 
+/** Marks an excerpt's editor, for the `multibufferFocus` keybinding condition. */
+export const EXCERPT_ATTRIBUTE = "data-excerpt";
+
 export const setExcerptBounds = StateEffect.define<ExcerptBounds>();
 export const setExcerptMarks = StateEffect.define<readonly ExcerptMark[]>();
 
@@ -308,6 +311,7 @@ export function excerpt(options: {
     keepSelectionInside,
     edgeKeys,
     theme,
+    EditorView.editorAttributes.of({ [EXCERPT_ATTRIBUTE]: "" }),
   ];
 }
 

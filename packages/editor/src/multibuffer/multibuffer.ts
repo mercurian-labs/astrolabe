@@ -137,7 +137,6 @@ export class Multibuffer {
   private readonly focusListeners = new Set<() => void>();
   private focus: FocusRequest | null = null;
   private nextFocusId = 1;
-  private destroyed = false;
 
   constructor(private readonly options: MultibufferOptions) {}
 
@@ -226,7 +225,7 @@ export class Multibuffer {
 
   /** Opens the file's document if it is not open yet; its excerpts get editors once it has text. */
   need(file: MultibufferFile) {
-    if (this.destroyed || file.document !== null || !this.files.includes(file)) return;
+    if (file.document !== null || !this.files.includes(file)) return;
     file.document = this.options.open(file.path);
   }
 
@@ -333,6 +332,11 @@ export class Multibuffer {
     }
   }
 
+  /** Opens a file in its own tab at a 1-based line. */
+  openFileAt(path: string, line: number) {
+    this.options.openFile(path, line);
+  }
+
   /** Puts the caret on 1-based `line` of `item`'s file inside `item`. */
   focusLine(item: MultibufferExcerpt, line: number, column = 0) {
     this.requestFocus(item, line, column);
@@ -356,13 +360,13 @@ export class Multibuffer {
     this.focusDone(request.id);
   }
 
-  /** Closes every document and drops every editor state. */
-  destroy() {
-    this.destroyed = true;
+  /**
+   * Closes every document and drops every editor state; the files and their excerpts stay, and
+   * open again when next needed.
+   */
+  release() {
     for (const file of this.files) this.closeFile(file);
-    this.files = [];
-    this.listeners.clear();
-    this.focusListeners.clear();
+    this.changed();
   }
 
   /** The excerpt's lines as positions, once its document is open. */
@@ -421,7 +425,11 @@ export class Multibuffer {
   }
 
   private closeFile(file: MultibufferFile) {
-    for (const item of file.excerpts) this.dropExcerpt(item);
+    for (const item of file.excerpts) {
+      item.span = this.spanOf(item);
+      item.bounds = null;
+      this.dropExcerpt(item);
+    }
     const document = file.document;
     file.document = null;
     file.hub = null;

@@ -100,6 +100,13 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "diagnostic.next",
   "diagnostic.previous",
   "repository.localGraph",
+  // Multi-file views (search results, problems): stacked excerpt editors.
+  "multibuffer.expand",
+  "multibuffer.openExcerpt",
+  "multibuffer.nextFile",
+  "multibuffer.previousFile",
+  "multibuffer.problems",
+  "projectSearch.openInEditor",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

@@ -9,6 +9,7 @@ import {
 import type { CodeEditingCommand, CodeEditingKeys } from "@mercurian/editor/code/editing";
 import type { HunkCommand } from "@mercurian/editor/git";
 import type { DiagnosticKeys } from "@mercurian/editor/lsp/diagnostics";
+import type { ExcerptKeys } from "@mercurian/editor/multibuffer/excerpt";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
 import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
@@ -178,4 +179,31 @@ function editorDiagnosticKeys(keybindings: ResolvedKeybindingsConfig): Diagnosti
 /** A code file's diagnostic keys, the same object until they change. */
 export function useEditorDiagnosticKeys(): DiagnosticKeys {
   return useStableKeys(editorDiagnosticKeys(useAtomValue(primaryServerKeybindingsAtom)));
+}
+
+/** A multi-file view's excerpt keys (`multibuffer.*`), in CodeMirror's notation. */
+export function multibufferKeys(keybindings: ResolvedKeybindingsConfig): ExcerptKeys {
+  const context = {
+    editorFocus: true,
+    codeEditorFocus: true,
+    multibufferFocus: true,
+    composerFocus: false,
+  };
+  const keysFor = (command: KeybindingCommand) =>
+    keybindings
+      .filter(
+        (binding) => binding.command === command && whenClauseHolds(binding.whenAst, { context }),
+      )
+      .map((binding) => codeMirrorKey(binding.shortcut));
+  return {
+    expand: keysFor("multibuffer.expand"),
+    open: keysFor("multibuffer.openExcerpt"),
+    nextFile: keysFor("multibuffer.nextFile"),
+    previousFile: keysFor("multibuffer.previousFile"),
+  };
+}
+
+/** A multi-file view's excerpt keys, the same object until they change. */
+export function useMultibufferKeys(): ExcerptKeys {
+  return useStableKeys(multibufferKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }

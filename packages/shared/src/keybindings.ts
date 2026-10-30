@@ -167,6 +167,13 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // Astrolabe: a code file's diagnostics from its language server, which the editor binds itself.
   { key: "f8", command: "diagnostic.next", when: "codeEditorFocus" },
   { key: "shift+f8", command: "diagnostic.previous", when: "codeEditorFocus" },
+  // Astrolabe: a multi-file view's excerpts, which each excerpt's editor binds itself; the project
+  // search palette binds its own key to open its results as one.
+  { key: "shift+enter", command: "multibuffer.expand", when: "multibufferFocus" },
+  { key: "alt+enter", command: "multibuffer.openExcerpt", when: "multibufferFocus" },
+  { key: "f7", command: "multibuffer.nextFile", when: "multibufferFocus" },
+  { key: "shift+f7", command: "multibuffer.previousFile", when: "multibufferFocus" },
+  { key: "mod+enter", command: "projectSearch.openInEditor", when: "projectSearchFocus" },
   // Astrolabe: a code file's editing keys, which its editor binds itself while it has focus. The
   // app's commands on the same keys stand down there (`!codeEditorFocus`), except mod+u (Usage).
   { key: "mod+d", command: "code.selectNextOccurrence", when: "codeEditorFocus" },
