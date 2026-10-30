@@ -1,5 +1,6 @@
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { gitChanges, gitHunks, setGitBase } from "@mercurian/editor/git";
 import { inFileSearch } from "@mercurian/editor/search";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -382,6 +383,46 @@ describe("Find in editor", () => {
     const faint = appCommand("search.find", context().actingFrom(keyIn(composer)));
     expect(faint).toMatchObject({ label: "No editor to find in", disabled: true });
     expect(appCommand("search.find", context().actingFrom(null)).disabled).toBe(true);
+  });
+});
+
+describe("a code file's changes from the keyboard menu", () => {
+  /** A code editor showing changes against `base`, gone as the test ends. */
+  function codeEditor(base: string | null, doc: string) {
+    const view = new EditorView({
+      parent: document.body.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc, extensions: gitChanges() }),
+    });
+    view.dispatch({ effects: setGitBase(base) });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("steps to the next change and restores it, with e n and e r", async () => {
+    using _cleanup = cleanup();
+    const view = codeEditor("a\nb\nc\nd\n", "a\nB\nc\nd\n");
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    press(root, ["e", "n"]);
+    await vi.waitFor(() =>
+      expect(view.state.doc.lineAt(view.state.selection.main.head).number).toBe(2),
+    );
+    press(root, ["e", "r"]);
+    await vi.waitFor(() => expect(gitHunks(view.state)).toEqual([]));
+    expect(view.state.doc.toString()).toBe("a\nb\nc\nd\n");
+  });
+
+  it("is faint where the editor shows no changes", () => {
+    using _cleanup = cleanup();
+    const plain = codeEditor(null, "a\n");
+    const faint = appCommand("hunk.next", context().actingFrom(keyIn(plain)));
+    expect(faint).toMatchObject({ label: "No changes here", disabled: true });
+    expect(appCommand("hunk.restore", context().actingFrom(null)).disabled).toBe(true);
   });
 });
 

@@ -1,9 +1,11 @@
 import {
   MARKDOWN_KEYBINDING_COMMANDS,
+  type KeybindingCommand,
   type KeybindingShortcut,
   type MarkdownKeybindingCommand,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import type { HunkCommand } from "@mercurian/editor/git";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
 import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
@@ -14,7 +16,8 @@ import { primaryServerKeybindingsAtom } from "./state/server";
 /**
  * Astrolabe: the editors' own keys from the keybindings. Each `markdown.*` command's shortcuts
  * whose `when` holds in that editor (`editorFocus`, and `composerFocus` in the composer) become
- * the live preview's keys for it, and `search.find`'s open the find bar, in CodeMirror's notation.
+ * the live preview's keys for it, `search.find`'s open the find bar, and `hunk.*`'s act on a code
+ * file's changes, in CodeMirror's notation.
  */
 
 const CODEMIRROR_KEY_NAMES: Readonly<Record<string, string>> = {
@@ -85,18 +88,48 @@ export function useMarkdownEditorKeys(editor: { readonly composer: boolean }) {
   return useStableKeys(markdownEditorKeys(useAtomValue(primaryServerKeybindingsAtom), editor));
 }
 
-/** The keys that open an editor's find bar (`search.find`), in CodeMirror's notation. */
-export function editorFindKeys(keybindings: ResolvedKeybindingsConfig): string[] {
+/** A code or note editor's keys for `command`, in CodeMirror's notation. */
+function editorKeysFor(keybindings: ResolvedKeybindingsConfig, command: KeybindingCommand) {
   const context = { editorFocus: true, composerFocus: false };
   return keybindings
     .filter(
-      (binding) =>
-        binding.command === "search.find" && whenClauseHolds(binding.whenAst, { context }),
+      (binding) => binding.command === command && whenClauseHolds(binding.whenAst, { context }),
     )
     .map((binding) => codeMirrorKey(binding.shortcut));
+}
+
+/** The keys that open an editor's find bar (`search.find`), in CodeMirror's notation. */
+export function editorFindKeys(keybindings: ResolvedKeybindingsConfig): string[] {
+  return editorKeysFor(keybindings, "search.find");
+}
+
+const HUNK_COMMANDS: Readonly<Record<HunkCommand, KeybindingCommand>> = {
+  toggle: "hunk.toggle",
+  expandAll: "hunk.expandAll",
+  restore: "hunk.restore",
+  next: "hunk.next",
+  previous: "hunk.previous",
+};
+
+/** A code file's keys for its changes since the last commit (`hunk.*`). */
+export function editorHunkKeys(
+  keybindings: ResolvedKeybindingsConfig,
+): Record<HunkCommand, string[]> {
+  return {
+    toggle: editorKeysFor(keybindings, HUNK_COMMANDS.toggle),
+    expandAll: editorKeysFor(keybindings, HUNK_COMMANDS.expandAll),
+    restore: editorKeysFor(keybindings, HUNK_COMMANDS.restore),
+    next: editorKeysFor(keybindings, HUNK_COMMANDS.next),
+    previous: editorKeysFor(keybindings, HUNK_COMMANDS.previous),
+  };
 }
 
 /** The find bar's keys, the same array until they change. */
 export function useEditorFindKeys(): readonly string[] {
   return useStableKeys(editorFindKeys(useAtomValue(primaryServerKeybindingsAtom)));
+}
+
+/** A code file's change keys, the same object until they change. */
+export function useEditorHunkKeys() {
+  return useStableKeys(editorHunkKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }

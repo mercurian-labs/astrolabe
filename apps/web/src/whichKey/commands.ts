@@ -4,6 +4,7 @@ import {
   type KeybindingCommand,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
@@ -153,19 +154,49 @@ export function inEditor(origin: KeyOrigin | null, line: string): (() => void) |
 }
 
 /**
- * The editor with in-file search that the key came from: the one holding the focused element, or
- * the one around it (a table cell's editor sits inside its note's); null elsewhere.
+ * The editor `accepts` that the key came from: the one holding the focused element, or the one
+ * around it (a table cell's editor sits inside its note's); null elsewhere.
  */
-function searchableEditor(origin: KeyOrigin | null): EditorView | null {
+function editorFrom(
+  origin: KeyOrigin | null,
+  accepts: (state: EditorView["state"]) => boolean,
+): EditorView | null {
   for (
     let editor = origin?.element?.closest(".cm-editor") ?? null;
     editor;
     editor = editor.parentElement?.closest(".cm-editor") ?? null
   ) {
     const view = editor instanceof HTMLElement ? EditorView.findFromDOM(editor) : null;
-    if (view && hasInFileSearch(view.state)) return view;
+    if (view && accepts(view.state)) return view;
   }
   return null;
+}
+
+const HUNK_ENTRIES: Record<
+  Extract<AstrolabeKeybindingCommand, `hunk.${string}`>,
+  { readonly command: HunkCommand; readonly label: string }
+> = {
+  "hunk.toggle": { command: "toggle", label: "Show or hide change" },
+  "hunk.expandAll": { command: "expandAll", label: "Show all changes" },
+  "hunk.restore": { command: "restore", label: "Restore change" },
+  "hunk.next": { command: "next", label: "Next change" },
+  "hunk.previous": { command: "previous", label: "Previous change" },
+};
+
+/** A change command on the code file the key came from; faint where no file shows changes. */
+function hunkEntry(command: keyof typeof HUNK_ENTRIES, origin: KeyOrigin | null): AppCommand {
+  const { command: hunk, label } = HUNK_ENTRIES[command];
+  const view = editorFrom(origin, hasGitChanges);
+  return entry(
+    view ? label : "No changes here",
+    view
+      ? () =>
+          afterPalette(() => {
+            view.focus();
+            runHunkCommand(view, hunk);
+          })
+      : null,
+  );
 }
 
 /**
@@ -347,12 +378,18 @@ function astrolabeCommand(
         inEditor(context.origin, "nohlsearch"),
       );
     case "search.find": {
-      const view = searchableEditor(context.origin);
+      const view = editorFrom(context.origin, hasInFileSearch);
       return entry(
         view ? "Find in editor" : "No editor to find in",
         view ? () => afterPalette(() => openInFileSearch(view)) : null,
       );
     }
+    case "hunk.toggle":
+    case "hunk.expandAll":
+    case "hunk.restore":
+    case "hunk.next":
+    case "hunk.previous":
+      return hunkEntry(command, context.origin);
   }
 }
 

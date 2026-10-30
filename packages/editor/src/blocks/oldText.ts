@@ -1,5 +1,7 @@
+import type { Language } from "@codemirror/language";
 import type { Extension, Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
+import { classHighlighter, highlightTree } from "@lezer/highlight";
 import type { LineBlock } from "./lineBlocks.ts";
 
 /**
@@ -35,6 +37,8 @@ export interface OldText {
    */
   readonly expand?: (view: EditorView) => void;
   readonly expanded?: boolean;
+  /** As lines only: the language their code is coloured in, as the editor colours its own. */
+  readonly language?: Language;
   readonly actions: readonly OldTextAction[];
 }
 
@@ -44,6 +48,45 @@ const LONG_TEXT = 80;
 /** The text's lines, ignoring the line break a whole-line deletion carries. */
 function textLines(text: string) {
   return text.replace(/^\n|\n$/g, "").split("\n");
+}
+
+/** Old lines' rows: every line of the text, without the line break that ends the last. */
+function blockLines(text: string) {
+  return text.replace(/\n$/, "").split("\n");
+}
+
+// Old lines longer than this stay uncoloured: parsing them on every draw costs too much.
+const LONG_HIGHLIGHT = 3000;
+
+/** The text's syntax colours as `[from, to, classes]` runs over it, in order. */
+function highlightRuns(text: string, language: Language | undefined) {
+  if (!language || text.length > LONG_HIGHLIGHT) return [];
+  const runs: [number, number, string][] = [];
+  highlightTree(language.parser.parse(text), classHighlighter, (from, to, classes) => {
+    runs.push([from, to, classes]);
+  });
+  return runs;
+}
+
+/** Fills `parent` with `line` (at `start` in its text), coloured by the runs that cross it. */
+function appendColoured(
+  parent: HTMLElement,
+  line: string,
+  start: number,
+  runs: readonly [number, number, string][],
+) {
+  const end = start + line.length;
+  let at = start;
+  for (const [from, to, classes] of runs) {
+    if (to <= at || from >= end) continue;
+    if (from > at) parent.append(line.slice(at - start, from - start));
+    const span = document.createElement("span");
+    span.className = classes;
+    span.textContent = line.slice(Math.max(from, at) - start, Math.min(to, end) - start);
+    parent.append(span);
+    at = Math.min(to, end);
+  }
+  if (at < end) parent.append(line.slice(at - start));
 }
 
 function isLong(text: string) {
@@ -77,6 +120,7 @@ class OldTextWidget extends WidgetType {
       !!a.arriving === !!b.arriving &&
       !!a.expanded === !!b.expanded &&
       !a.expand === !b.expand &&
+      a.language === b.language &&
       a.actions.length === b.actions.length &&
       a.actions.every((action, index) => action.label === b.actions[index]?.label)
     );
@@ -96,15 +140,19 @@ class OldTextWidget extends WidgetType {
 
     const collapsed = !this.lines && !!old.expand && !old.expanded && isLong(old.text);
     if (this.lines) {
-      for (const line of textLines(old.text)) {
+      const runs = highlightRuns(old.text, old.language);
+      let start = 0;
+      for (const line of blockLines(old.text)) {
         const row = document.createElement("div");
         row.className = "atlas-old-line";
         const struck = document.createElement("del");
         struck.className = "atlas-old-text-text";
         // An empty row keeps its height.
-        struck.textContent = line === "" ? "​" : line;
+        if (line === "") struck.textContent = "​";
+        else appendColoured(struck, line, start, runs);
         row.append(struck);
         dom.append(row);
+        start += line.length + 1;
       }
     } else if (collapsed) {
       dom.classList.add("atlas-old-text-collapsed");
@@ -167,7 +215,7 @@ export function oldLinesBlock(
     placement,
     from: at,
     widget: new OldTextWidget(old, true),
-    rows: textLines(old.text).length,
+    rows: blockLines(old.text).length,
     ...(priority === undefined ? {} : { priority }),
   };
 }

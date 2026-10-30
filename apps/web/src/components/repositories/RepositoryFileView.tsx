@@ -4,18 +4,23 @@ import "@mercurian/editor/code/theme.css";
 import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { replaceDocText } from "@mercurian/editor/bridge/text-edits";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
+import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon } from "lucide-react";
+import { useAtomMount } from "@effect/atom-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { useEditorFindKeys } from "~/editorKeybindings";
+import { useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
+import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
@@ -100,6 +105,7 @@ export function RepositoryFileView({
   const contents = file.data?.contents ?? null;
   const readOnly = !canWrite || file.data?.truncated === true;
   const agentWorking = useAgentWorkingIn(tab);
+  const baseText = useBaseText(tab, !isMarkdownPath(path));
 
   if (file.error !== null && contents === null) {
     return <FileNotice>{file.error}</FileNotice>;
@@ -133,6 +139,7 @@ export function RepositoryFileView({
           path={path}
           contents={contents}
           readOnly={readOnly}
+          baseText={baseText}
           pendingRef={pendingRef}
           onChange={(next) => {
             setProjectFileQueryData(environmentId, cwd, path, next);
@@ -154,19 +161,22 @@ function FileNotice({ children }: { readonly children: string }) {
 
 /**
  * The CodeMirror view. Built once per file; what changes later goes through compartments: Vim,
- * the file's language once it loads, and read-only. Contents saved by someone else replace the
- * text, unless edits here are still on their way.
+ * the file's language once it loads, and read-only. Contents saved by someone else arrive as
+ * edits, unless edits here are still on their way.
  */
 function FileEditor({
   path,
   contents,
   readOnly,
+  baseText,
   pendingRef,
   onChange,
 }: {
   readonly path: string;
   readonly contents: string;
   readonly readOnly: boolean;
+  /** The committed text the changes are marked against; null for none, undefined while loading. */
+  readonly baseText: string | null | undefined;
   readonly pendingRef: { readonly current: boolean };
   readonly onChange: (contents: string) => void;
 }) {
@@ -180,6 +190,7 @@ function FileEditor({
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   const findKeys = useEditorFindKeys();
+  const hunkKeys = useEditorHunkKeys();
   const [compartments] = useState(() => ({
     vim: new Compartment(),
     language: new Compartment(),
@@ -187,7 +198,7 @@ function FileEditor({
   }));
   // The view is built from the file as it first shows (the parent keys it by path), with the
   // find bar's keys as they are then.
-  const [initial] = useState(() => ({ path, contents, readOnly, vim, findKeys }));
+  const [initial] = useState(() => ({ path, contents, readOnly, vim, findKeys, hunkKeys }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -210,6 +221,7 @@ function FileEditor({
           appVimKeys(() => null),
           // Ahead of the default keymap, so a find key it also binds opens the bar.
           inFileSearch({ keys: initial.findKeys }),
+          markdown ? [] : gitChanges({ keys: initial.hunkKeys }),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
           compartments.language.of([]),
@@ -248,18 +260,18 @@ function FileEditor({
     });
   }, [compartments, readOnly]);
 
-  // Newer contents from elsewhere (an agent's edit, the thread's Files view) replace the text,
-  // unless edits typed here are still saving, which would otherwise be lost.
+  // oxlint-disable-next-line t3code/react-effect-budget -- hands the server's base text to CodeMirror
+  useEffect(() => {
+    if (baseText !== undefined) viewRef.current?.dispatch({ effects: setGitBase(baseText) });
+  }, [baseText]);
+
+  // Newer contents from elsewhere (an agent's edit, the thread's Files view) arrive as their
+  // smallest edits, unless edits typed here are still saving, which would otherwise be lost.
   useEffect(() => {
     const view = viewRef.current;
     if (!view || pendingRef.current) return;
-    const current = view.state.doc.toString();
-    if (current === contents) return;
-    const head = Math.min(view.state.selection.main.head, contents.length);
-    view.dispatch({
-      changes: { from: 0, to: current.length, insert: contents },
-      selection: { anchor: head },
-    });
+    const spec = replaceDocText(view.state, contents);
+    if (spec) view.dispatch(spec);
   }, [contents, pendingRef]);
 
   return (
@@ -275,6 +287,20 @@ function FileEditor({
 
 function readOnlyExtension(readOnly: boolean) {
   return readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [];
+}
+
+/**
+ * A code file's committed text, kept current as commits and checkouts change it (the checkout's
+ * status is read again when the window comes back); undefined while it loads or when not wanted.
+ */
+function useBaseText(tab: FileTab, wanted: boolean): string | null | undefined {
+  const { environmentId, cwd, path } = tab;
+  useAtomMount(vcsStatusRevalidation(wanted ? { environmentId, cwd } : null));
+  const base = useEnvironmentQuery(
+    wanted ? vcsEnvironment.baseText({ environmentId, input: { cwd, path, base: "head" } }) : null,
+  );
+  if (!base.isSuccess) return undefined;
+  return base.data?.text ?? null;
 }
 
 /** Whether a thread's agent is mid-turn in the tab's checkout. */

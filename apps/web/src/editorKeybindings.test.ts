@@ -6,7 +6,12 @@ import {
 } from "@t3tools/shared/keybindings";
 import { describe, expect, it } from "vite-plus/test";
 
-import { codeMirrorKey, editorFindKeys, markdownEditorKeys } from "./editorKeybindings";
+import {
+  codeMirrorKey,
+  editorFindKeys,
+  editorHunkKeys,
+  markdownEditorKeys,
+} from "./editorKeybindings";
 import { resolveShortcutCommand } from "./keybindings";
 
 describe("the Markdown editors' keys from the keybindings", () => {
@@ -71,5 +76,24 @@ describe("the find bar's keys from the keybindings", () => {
     // The composer is an editor without a find bar: mod+f there still finds in the thread.
     expect(resolve(true)).toBe("chat.find");
     expect(resolve(false)).toBe("chat.find");
+  });
+});
+
+describe("a code file's change keys from the keybindings", () => {
+  it("binds Zed's keys by default, and whatever a user binds instead", () => {
+    expect(editorHunkKeys(DEFAULT_RESOLVED_KEYBINDINGS)).toEqual({
+      toggle: ["Mod-'"],
+      expandAll: ["Mod-Shift-'"],
+      restore: ["Mod-Alt-z"],
+      next: ["Mod-F8"],
+      previous: ["Mod-Shift-F8"],
+    });
+    const rules: KeybindingRule[] = [
+      { key: "alt+]", command: "hunk.next", when: "editorFocus" },
+      { key: "alt+[", command: "hunk.previous", when: "!editorFocus" },
+    ];
+    const keys = editorHunkKeys(compileResolvedKeybindingsConfig(rules));
+    // A binding an editor never has focus for does not reach it.
+    expect(keys).toMatchObject({ next: ["Alt-]"], previous: [], toggle: [] });
   });
 });
