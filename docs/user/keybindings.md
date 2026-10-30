@@ -338,6 +338,15 @@ TypeScript when it has one. Without one, the first time an environment needs a l
 it asks to download it: click **Download**. If a server keeps stopping, or was paused because
 several ran at once, click **Restart** in the header.
 
+## Search results and problems in one editor
+
+In a tab of [search results or problems](repositories.md#results-in-one-editor), `f7` and
+`shift+f7` jump to the next and previous file, `shift+enter` shows more lines around an excerpt,
+and `alt+enter` opens the excerpt's file at the cursor. In the keyboard menu they are `e` `}`,
+`e` `{`, `e` `x` and `e` `g`, and `e` `m` opens the problems of the checkout in front. In the
+project search, `mod+enter` opens its results this way. Change them under **Editors**; their
+condition is `multibufferFocus` (`projectSearchFocus` for the search's).
+
 ## Find in a diff
 
 Click into a diff in the Diff panel or a pull request's Code tab, then press

@@ -27,6 +27,32 @@ Repositories tab.
   Pair it with an **Include** such as `node_modules/some-package` to keep it quick.
 - A search shows 500 results at a time. **Load more results** at the end fetches the next 500;
   **Keep searching** means the search stopped to stay fast and has more files to look through.
+- Files open in an editor are searched as they are now, unsaved edits included.
+
+### Results in one editor
+
+**Open results in editor** (`mod+enter` in the search) opens every result as a Repositories tab
+of small editors, one per match with two lines around it, under a header for each file. They are
+the files themselves: what you type there lands in the file and shows in its other tabs, and
+changes from elsewhere show in the results. Matches stay highlighted as you edit; the refresh
+button searches again.
+
+- Arrow keys move from one excerpt into the next. `f7` and `shift+f7` jump to the next and
+  previous file, `shift+enter` shows five more lines around an excerpt (or click **more lines**
+  above or below it; excerpts that meet merge), and `alt+enter` opens the excerpt's file at the
+  cursor. Each excerpt has its own undo, which takes back only what you typed there.
+- **Replace all** replaces every match in the results' files. With more than ten files it asks
+  first. A file open in another tab takes the replacement there, where undo takes it back; the
+  rest are changed and saved for you. **Undo replace-all** takes the whole replacement back, also
+  after you've edited since, for 30 minutes or until your next replace-all in that tab. With
+  **.\*** on, `$1` and `$<name>` in the replacement insert groups, and `\n` a line break.
+
+### Problems
+
+`e` `m` in the keyboard menu (**Repositories: Show Problems** in the Command Palette) opens the
+problems of the checkout in front: every problem language servers found in the files they have
+open, or checked since they started, grouped by file with errors first, as editable excerpts with
+each message below its line. It updates as you and agents edit.
 
 ## Edit
 
