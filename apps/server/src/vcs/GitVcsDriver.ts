@@ -332,6 +332,13 @@ export class GitVcsDriver extends Context.Service<
       cwd: string,
       branch: string,
     ) => Effect.Effect<string | null, GitCommandError>;
+    /** Where the checked-out branch left its base, as Changes compares; `HEAD` when it has none. */
+    readonly resolveBranchMergeBase: (
+      cwd: string,
+    ) => Effect.Effect<
+      { readonly baseRef: string | null; readonly mergeBase: string },
+      GitCommandError
+    >;
     readonly resolveBranchName: (
       cwd: string,
       refName: string,
