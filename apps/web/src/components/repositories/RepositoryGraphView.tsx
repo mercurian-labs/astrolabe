@@ -6,6 +6,7 @@ import {
   type CodeGraphNode,
   type CodeLocalGraph,
 } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ScanIcon } from "lucide-react";
@@ -30,6 +31,7 @@ import {
 } from "~/panes/arrangement";
 import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
+import { codeIndexEnvironment } from "~/state/codeIndex";
 import { codeLocalGraphEnvironment } from "~/state/codeLocalGraph";
 import { useEnvironmentQuery } from "~/state/query";
 import { ATLAS_COLORS } from "../graph/atlasColors";
@@ -64,9 +66,6 @@ const graphOptions = storedChoice<LocalGraphOptions>({
 const isCodeIndexError = Schema.is(CodeIndexError);
 
 const DEPTHS = Array.from({ length: CODE_LOCAL_GRAPH_MAX_DEPTH }, (_, at) => at + 1);
-
-/** While its repository's index builds, a graph reads again this often. */
-const INDEXING_REFRESH_MS = 2_000;
 
 type GraphHover = FileGraphHover & { readonly width: number; readonly height: number };
 
@@ -114,14 +113,18 @@ export default function RepositoryGraphView({
   const graph = path === null || failure !== null ? null : (query.data ?? last);
   const shown = graph === null ? null : shownLocalGraph(graph, options);
 
-  const indexing = query.data?.usedByPending === true || reason === "not-indexed";
+  const status = useAtomValue(codeIndexEnvironment.status(tab.environmentId, tab.projectId));
+  // Progress moves the status, not the graph: a graph changes only when the index finishes or updates.
+  const indexVersion = status === null ? null : `${status.state}|${status.updatedAt ?? ""}`;
   const refresh = query.refresh;
-  // oxlint-disable-next-line t3code/react-effect-budget -- reads the graph again while the index builds
+  const readAtVersion = useRef(indexVersion);
+  // oxlint-disable-next-line t3code/react-effect-budget -- reads the graph again when the index finishes or updates
   useEffect(() => {
-    if (!indexing) return;
-    const timer = setInterval(refresh, INDEXING_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [indexing, refresh]);
+    const previous = readAtVersion.current;
+    if (previous === indexVersion) return;
+    readAtVersion.current = indexVersion;
+    if (previous !== null) refresh();
+  }, [indexVersion, refresh]);
   // oxlint-disable-next-line t3code/react-effect-budget -- a closed graph lets go of the line it lit
   useEffect(() => () => importLineHighlight.set(null), []);
 
@@ -208,7 +211,7 @@ export default function RepositoryGraphView({
   const showValues = (["uses", "usedBy", "tests", "dependencies"] as const).filter(
     (value) => options[value],
   );
-  const progress = graph?.status ?? null;
+  const progress = status ?? graph?.status ?? null;
   const percent =
     progress === null || progress.totalFiles === 0
       ? 0

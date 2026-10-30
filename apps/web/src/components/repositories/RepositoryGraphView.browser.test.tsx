@@ -3,6 +3,7 @@ import {
   EnvironmentId,
   ProjectId,
   type CodeGraphNode,
+  type CodeIndexStatus,
   type CodeLocalGraph,
   type CodeLocalGraphInput,
 } from "@t3tools/contracts";
@@ -32,7 +33,16 @@ const mocks = vi.hoisted(() => ({
   answer: (_input: CodeLocalGraphInput): Answer => ({}),
   /** One answer per request, as a query atom holds one value until it reads again. */
   answers: new Map<string, Answer>(),
+  /** The repository's index status as its subscription last reported it. */
+  status: null as CodeIndexStatus | null,
+  refreshes: 0,
 }));
+
+vi.mock("@effect/atom-react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@effect/atom-react")>()),
+  useAtomValue: () => mocks.status,
+}));
+vi.mock("~/state/codeIndex", () => ({ codeIndexEnvironment: { status: () => ({}) } }));
 
 vi.mock("~/state/codeLocalGraph", () => ({
   codeLocalGraphEnvironment: {
@@ -54,7 +64,9 @@ vi.mock("~/state/query", () => ({
       data,
       failure,
       error: failure === null ? null : "failed",
-      refresh: () => {},
+      refresh: () => {
+        mocks.refreshes += 1;
+      },
       dataUpdatedAt: 1,
       isPending: false,
       isSuccess: data !== null,
@@ -199,6 +211,8 @@ function setup(answer: (input: CodeLocalGraphInput) => Answer) {
   mocks.requests.length = 0;
   mocks.answers.clear();
   mocks.answer = answer;
+  mocks.status = null;
+  mocks.refreshes = 0;
   importLineHighlight.set(null);
   return panesWith(filesAndGraph());
 }
@@ -302,6 +316,27 @@ describe("a following local graph", () => {
         ),
       )
       .toBeVisible();
+  });
+
+  it("reads the graph again when the index finishes, not at each step of its progress", async () => {
+    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    const indexing: CodeIndexStatus = {
+      ...graphOf("a.ts").status,
+      state: "indexing",
+      files: 10,
+      totalFiles: 100,
+    };
+    mocks.status = indexing;
+    await using screen = await render(graphView(panes.host));
+    await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
+
+    mocks.status = { ...indexing, files: 60 };
+    await screen.rerender(graphView(panes.host));
+    expect(mocks.refreshes).toBe(0);
+
+    mocks.status = { ...indexing, state: "ready", files: 100, updatedAt: "2026-10-30T08:00:00Z" };
+    await screen.rerender(graphView(panes.host));
+    await vi.waitFor(() => expect(mocks.refreshes).toBe(1));
   });
 
   it("points to Settings when the repository's index is off", async () => {
