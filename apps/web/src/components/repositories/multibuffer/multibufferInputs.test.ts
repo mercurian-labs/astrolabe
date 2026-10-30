@@ -1,7 +1,7 @@
 import type { FileDiagnostics } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { locationFiles, problemFiles, searchFiles } from "./multibufferInputs";
+import { locationFiles, navigationList, problemFiles, searchFiles } from "./multibufferInputs";
 
 const problem = (severity: "error" | "warning" | "info", line: number, endLine = line) => ({
   severity,
@@ -70,5 +70,43 @@ describe("locationFiles", () => {
   it("marks a whole line when a place has no column", () => {
     const [only] = locationFiles([{ path: "a.ts", line: 4 }]);
     expect(only!.marks).toEqual([{ line: 4, column: 0, endLine: 4, endColumn: Infinity }]);
+  });
+});
+
+describe("navigationList", () => {
+  const place = (uri: string, line: number) => ({
+    uri,
+    line,
+    column: 3,
+    endLine: line,
+    endColumn: 8,
+    preview: "",
+    here: null,
+  });
+  const pathOf = (uri: string) => uri.replace("file:///repo/", "");
+  const places = [
+    place("file:///repo/src/a.ts", 4),
+    place("file:///repo/src/b.ts", 9),
+    place("file:///lib/types.d.ts", 1),
+  ];
+
+  it("shows references and implementations as excerpts of the checkout's places", () => {
+    expect(navigationList("references", "References of point", places, pathOf)).toEqual({
+      title: "References of point, 1 outside the checkout left out",
+      locations: [
+        { path: "src/a.ts", line: 4, column: 2, endLine: 4, endColumn: 7 },
+        { path: "src/b.ts", line: 9, column: 2, endLine: 9, endColumn: 7 },
+      ],
+    });
+    expect(navigationList("implementation", "Implementations", places.slice(0, 2), pathOf)).toEqual(
+      expect.objectContaining({ title: "Implementations" }),
+    );
+  });
+
+  it("leaves jump targets, and places all outside the checkout, to the picker", () => {
+    for (const kind of ["definition", "declaration", "typeDefinition"] as const) {
+      expect(navigationList(kind, "Definitions", places, pathOf)).toBeNull();
+    }
+    expect(navigationList("references", "References", places.slice(2), pathOf)).toBeNull();
   });
 });

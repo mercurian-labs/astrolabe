@@ -371,7 +371,9 @@ several signatures, `mod+shift+Up` and `mod+shift+Down` step through them.
 Go to definition puts the cursor on the definition, opening its file in a tab beside this one
 when it is elsewhere in the checkout. When there are several, places close together are all
 selected, and otherwise you pick one from a list; type to narrow it. On a definition itself, it
-finds the references instead. Find References lists every use, the declaration included. With
+finds the references instead. Find References opens every use, the declaration included, as
+[one editor of excerpts](repositories.md#results-in-one-editor) in a tab beside the file; so does
+Go to Implementation when there are several. Uses outside the checkout are left out of it. With
 `mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
 
 Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to

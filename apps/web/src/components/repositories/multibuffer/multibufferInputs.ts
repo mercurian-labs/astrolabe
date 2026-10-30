@@ -1,7 +1,8 @@
 import type { MultibufferFileInput } from "@mercurian/editor/multibuffer";
+import type { GoToKind, NavigationLocation } from "@mercurian/editor/lsp/navigation";
 import type { FileDiagnostics, ProjectContentMatch } from "@t3tools/contracts";
 
-import type { MultibufferLocation } from "./openMultibuffer";
+import type { LocationList, MultibufferLocation } from "./openMultibuffer";
 
 /**
  * Astrolabe: a multi-file view's files from what its caller lists: project search matches,
@@ -83,4 +84,39 @@ export function locationFiles(locations: readonly MultibufferLocation[]): Multib
       endColumn: location.endColumn ?? (location.column === undefined ? Infinity : location.column),
     })),
   }));
+}
+
+/**
+ * Several places a language server named, as a list to read together: references and
+ * implementations, the checkout's places only. Null leaves them to the picker: definitions,
+ * declarations and type definitions are a jump to one place, and a file outside the checkout
+ * has no excerpt to show.
+ */
+export function navigationList(
+  kind: GoToKind | "references",
+  title: string,
+  places: readonly NavigationLocation[],
+  pathOf: (uri: string) => string,
+): LocationList | null {
+  if (kind !== "references" && kind !== "implementation") return null;
+  const locations = places.flatMap((place): MultibufferLocation[] => {
+    const path = pathOf(place.uri);
+    if (path.startsWith("/") || path.includes("://")) return [];
+    // Navigation counts columns from 1, excerpts from 0.
+    return [
+      {
+        path,
+        line: place.line,
+        column: place.column - 1,
+        endLine: place.endLine,
+        endColumn: place.endColumn - 1,
+      },
+    ];
+  });
+  if (locations.length === 0) return null;
+  const outside = places.length - locations.length;
+  return {
+    title: outside === 0 ? title : `${title}, ${outside} outside the checkout left out`,
+    locations,
+  };
 }

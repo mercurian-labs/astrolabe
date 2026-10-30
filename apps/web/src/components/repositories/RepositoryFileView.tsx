@@ -18,6 +18,7 @@ import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
 import {
   environmentNavigation,
+  type GoToKind,
   type NavigationHost,
   type NavigationLocation,
 } from "@mercurian/editor/lsp/navigation";
@@ -74,6 +75,8 @@ import { activateTab, allTabs, openTab } from "~/panes/arrangement";
 import { leafWithTab } from "~/panes/tree";
 import { toastManager } from "../ui/toast";
 import { openLocationPicker, pathOfUri } from "../outline/LocationPicker";
+import { navigationList } from "./multibuffer/multibufferInputs";
+import { locationsTabKey } from "./multibuffer/openMultibuffer";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
 import { Button } from "../ui/button";
@@ -217,9 +220,21 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     );
     repositoryFileReveal.request(key, location.line, location.column);
   });
+  // References and implementations open as one editor of excerpts beside this file.
   const pickLocation = useStableCallback(
-    (view: EditorView, title: string, locations: readonly NavigationLocation[]) =>
-      openLocationPicker(view, title, locations, cwd),
+    (
+      view: EditorView,
+      title: string,
+      locations: readonly NavigationLocation[],
+      kind: GoToKind | "references",
+    ) => {
+      const list = navigationList(kind, title, locations, (uri) => pathOfUri(uri, cwd));
+      if (list === null) return openLocationPicker(view, title, locations, cwd);
+      const key = locationsTabKey(tab, list);
+      panes.update((arrangement) =>
+        openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+      );
+    },
   );
   const [navigation] = useState<NavigationHost>(() => ({
     open: openLocation,

@@ -44,7 +44,11 @@ async function open(
   extra: { vim?: boolean; hold?: boolean } = {},
 ) {
   const opened: NavigationLocation[] = [];
-  const picked: Array<{ title: string; locations: readonly NavigationLocation[] }> = [];
+  const picked: Array<{
+    title: string;
+    locations: readonly NavigationLocation[];
+    kind: string;
+  }> = [];
   const editor = setup(TEXT, {
     capabilities: { definitionProvider: true, referencesProvider: true },
     answer: (method) => (extra.hold ? undefined : (answers[method] ?? null)),
@@ -61,7 +65,7 @@ async function open(
         },
         host: {
           open: (location) => opened.push(location),
-          pick: (_view, title, locations) => picked.push({ title, locations }),
+          pick: (_view, title, locations, kind) => picked.push({ title, locations, kind }),
         },
       }),
       extra.vim ? vimMode(noHistory) : [],
@@ -123,6 +127,8 @@ describe("environmentNavigation", () => {
         uri: OTHER,
         line: 5,
         column: 17,
+        endLine: 5,
+        endColumn: 26,
         preview: "export function makePoint() {}",
         here: null,
       });
@@ -149,7 +155,10 @@ describe("environmentNavigation", () => {
       listing.view.dispatch({ selection: { anchor: 10 } });
       findReferences(listing.view);
       await vi.waitFor(() => expect(listing.picked).toHaveLength(1));
-      expect(listing.picked[0]!.title).toBe("References of makePoint");
+      expect(listing.picked[0]).toMatchObject({
+        title: "References of makePoint",
+        kind: "references",
+      });
       expect(listing.picked[0]!.locations.map((place) => [place.line, place.preview])).toEqual([
         [1, "function makePoint() {}"],
         [9, "const b = makePoint();"],
@@ -172,7 +181,10 @@ describe("environmentNavigation", () => {
       editor.view.dispatch({ selection: { anchor: TEXT.indexOf("makePoint") + 2 } });
       goToDefinition(editor.view);
       await vi.waitFor(() => expect(editor.picked).toHaveLength(1));
-      expect(editor.picked[0]!.title).toBe("References of makePoint");
+      expect(editor.picked[0]).toMatchObject({
+        title: "References of makePoint",
+        kind: "references",
+      });
     } finally {
       editor.view.destroy();
       editor.lsp.destroy();

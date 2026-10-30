@@ -70,10 +70,20 @@ export function openSearchResults(
   );
 }
 
+/** A new locations tab's key, for these places in the checkout; each call names a new list. */
+export function locationsTabKey(
+  checkout: Pick<MultibufferCheckout, "environmentId" | "projectId" | "cwd">,
+  list: LocationList,
+): string {
+  const id = rememberLocationList(list);
+  const { environmentId, projectId, cwd } = checkout;
+  return repositoryTabKey({ kind: "locations", environmentId, projectId, cwd, id });
+}
+
 /**
  * Opens these places (references, definitions, anything with a file and a line) as one editor
- * of excerpts with context, titled `title`. The tab's key names the list; a new call opens a
- * new tab. Phase 8's references list is its first caller.
+ * of excerpts with context, titled `title`, in the Repositories area. A new call opens a new
+ * tab. A file's own references open beside it instead (`locationsTabKey`).
  * @public
  */
 export function openLocationsInMultibuffer(
@@ -81,9 +91,7 @@ export function openLocationsInMultibuffer(
   list: LocationList,
   navigate: NavigateFn | null,
 ): string {
-  const id = rememberLocationList(list);
-  const { environmentId, projectId, cwd } = checkout;
-  const key = repositoryTabKey({ kind: "locations", environmentId, projectId, cwd, id });
+  const key = locationsTabKey(checkout, list);
   show(checkout, key, navigate);
   return key;
 }

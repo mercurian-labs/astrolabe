@@ -21,6 +21,8 @@ export interface NavigationLocation {
   readonly uri: string;
   readonly line: number;
   readonly column: number;
+  readonly endLine: number;
+  readonly endColumn: number;
   /** The line's text, when known. */
   readonly preview: string;
   /** In this editor's file: the place's range in its text when the answer came. */
@@ -30,11 +32,12 @@ export interface NavigationLocation {
 export interface NavigationHost {
   /** Shows a place in another file. */
   readonly open: (location: NavigationLocation) => void;
-  /** Offers `locations` to pick from; picking one goes there (see `goToLocation`). */
+  /** Shows several places, to pick from or to read together (see `goToLocation`). */
   readonly pick: (
     view: EditorView,
     title: string,
     locations: readonly NavigationLocation[],
+    kind: GoToKind | "references",
   ) => void;
 }
 
@@ -106,6 +109,8 @@ function placesOf(
       uri,
       line: range.start.line + 1,
       column: range.start.character + 1,
+      endLine: range.end.line + 1,
+      endColumn: range.end.character + 1,
       preview,
       here,
     });
@@ -128,7 +133,12 @@ export function goToLocation(view: EditorView, location: NavigationLocation) {
   view.state.facet(navigationHost)?.open(location);
 }
 
-function show(view: EditorView, title: string, places: readonly NavigationLocation[]) {
+function show(
+  view: EditorView,
+  kind: GoToKind | "references",
+  title: string,
+  places: readonly NavigationLocation[],
+) {
   if (places.length === 1) return goToLocation(view, places[0]!);
   const here = places.flatMap((place) => (place.here ? [place.here] : []));
   const lines = here.map((range) => view.state.doc.lineAt(range.from).number);
@@ -142,7 +152,7 @@ function show(view: EditorView, title: string, places: readonly NavigationLocati
     });
     return;
   }
-  view.state.facet(navigationHost)?.pick(view, title, places);
+  view.state.facet(navigationHost)?.pick(view, title, places, kind);
 }
 
 function ask(view: EditorView, kind: GoToKind | "references"): boolean {
@@ -177,7 +187,7 @@ function ask(view: EditorView, kind: GoToKind | "references"): boolean {
             if (kind === "definition") ask(view, "references");
             return;
           }
-          show(view, name ? `${request.label} of ${name}` : request.label, places);
+          show(view, kind, name ? `${request.label} of ${name}` : request.label, places);
         },
         (error) => plugin.reportError(`${request.label} failed`, error),
       ),
