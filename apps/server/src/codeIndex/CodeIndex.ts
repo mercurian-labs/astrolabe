@@ -299,6 +299,10 @@ interface Repo {
   builtTree: string | null;
   readonly manifests: Map<string, WorkspacePackage | null>;
   readonly mergeBases: Map<string, string | null>;
+  /** The objects the repository's branches, worktrees and checkpoints reached at the last look. */
+  reachable: { readonly tips: ReadonlySet<string>; readonly objects: ReadonlySet<string> } | null;
+  /** Each checkout's uncommitted blobs when last asked about; cleanup keeps those still there. */
+  readonly uncommittedSeen: Map<string, ReadonlySet<string>>;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
@@ -596,12 +600,15 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
             .trim()
             .split("\n");
     const uncommitted = new Set<string>();
+    const seen = new Set<string>();
     for (const [index, file] of wanted.entries()) {
       const hash = hashes[index];
       if (hash === undefined) continue;
       (isIndexable(file) ? files : manifests).set(file, hash);
       uncommitted.add(file);
+      seen.add(hash);
     }
+    repo.uncommittedSeen.set(root, seen);
     const filtered = filterListing(
       { tree: listing.tree, files, manifests },
       skipMatcher(repo.settings.skippedPaths),
@@ -870,6 +877,8 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           builtTree: null,
           manifests: new Map(),
           mergeBases: new Map(),
+          reachable: null,
+          uncommittedSeen: new Map(),
         };
         repos.set(shell.id, repo);
         yield* PubSub.publish(changes, repo.status);
@@ -1311,33 +1320,46 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         .split("\n")
         .filter((line) => line !== ""),
     );
-    const worktrees: Array<string> = [];
+    const worktrees = new Set<string>();
     for (const line of (yield* runGit(git, repo.root, "worktrees", [
       "worktree",
       "list",
       "--porcelain",
     ])).split("\n")) {
-      if (line.startsWith("worktree ")) worktrees.push(line.slice("worktree ".length));
+      if (line.startsWith("worktree ")) worktrees.add(line.slice("worktree ".length));
       if (line.startsWith("HEAD ")) tips.add(line.slice("HEAD ".length));
     }
-    const blobs = new Set<string>();
-    if (tips.size > 0) {
+    // Walking every tip's tree takes seconds in a repository with thousands of checkpoints, so
+    // tips only added since the last walk are walked alone; a tip gone means walking them all.
+    const cached = repo.reachable;
+    const kept = cached !== null && [...cached.tips].every((tip) => tips.has(tip));
+    const walk = kept ? [...tips].filter((tip) => !cached.tips.has(tip)) : [...tips];
+    const objects = new Set(kept ? cached.objects : []);
+    if (walk.length > 0) {
       const out = yield* runGit(
         git,
         repo.root,
         "reachable",
         ["rev-list", "--objects", "--no-walk", "--stdin"],
-        { stdin: `${[...tips].join("\n")}\n` },
+        { stdin: `${walk.join("\n")}\n` },
       );
       for (const line of out.split("\n")) {
-        const sha = line.slice(0, line.indexOf(" ") < 0 ? undefined : line.indexOf(" "));
-        if (sha !== "") blobs.add(sha);
+        const space = line.indexOf(" ");
+        const sha = space < 0 ? line : line.slice(0, space);
+        if (sha !== "") objects.add(sha);
       }
     }
-    for (const worktree of worktrees) {
-      if (!(yield* fs.exists(worktree).pipe(Effect.orElseSucceed(() => false)))) continue;
-      const view = yield* viewOfCheckout(repo, worktree).pipe(Effect.option);
-      if (view._tag === "Some") for (const blob of view.value.files.values()) blobs.add(blob);
+    repo.reachable = { tips, objects };
+    const blobs = new Set(objects);
+    for (const [root, seen] of repo.uncommittedSeen) {
+      if (
+        !worktrees.has(root) ||
+        !(yield* fs.exists(root).pipe(Effect.orElseSucceed(() => false)))
+      ) {
+        repo.uncommittedSeen.delete(root);
+        continue;
+      }
+      for (const blob of seen) blobs.add(blob);
     }
     return blobs;
   });
