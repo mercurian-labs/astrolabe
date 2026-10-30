@@ -158,6 +158,12 @@ describe("line commands", () => {
     expect(editor.state.doc.toString()).toBe("one two three\nfour");
   });
 
+  it("joins each cursor's line with the next, cursors on neighbouring lines included", () => {
+    const editor = mount("a|\nb|\nc\nd");
+    run(editor, "joinLines");
+    expect(editor.state.doc.toString()).toBe("a b c\nd");
+  });
+
   it("sorts the lines each selection covers, leaving a line it only touches the start of", () => {
     const editor = mount("[pear\napple\nBanana\n]zebra\nant");
     expect(run(editor, "sortLines")).toBe(true);

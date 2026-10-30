@@ -177,7 +177,7 @@ const selectAllOccurrences: Command = (view) => {
 };
 
 /**
- * The lines the selection covers, as runs of line numbers with overlaps merged. A range that
+ * The lines the selection covers, as runs of line numbers with shared lines merged. A range that
  * ends at the start of a line leaves that line out, as selecting whole lines does.
  */
 function selectedLineRuns(state: EditorState): Array<{ first: number; last: number }> {
@@ -188,7 +188,7 @@ function selectedLineRuns(state: EditorState): Array<{ first: number; last: numb
     const last =
       !range.empty && range.to === end.from && end.number > first ? end.number - 1 : end.number;
     const previous = runs.at(-1);
-    if (previous && first <= previous.last + 1) previous.last = Math.max(previous.last, last);
+    if (previous && first <= previous.last) previous.last = Math.max(previous.last, last);
     else runs.push({ first, last });
   }
   return runs;
