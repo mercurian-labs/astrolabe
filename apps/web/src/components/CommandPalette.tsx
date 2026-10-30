@@ -240,16 +240,24 @@ import { useExLine } from "~/whichKey/exPalette";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
+const ADD_KIND_GROUP = "add-kind";
+/** Astrolabe: the first step of adding a project, which asks whether it is a repository or a wiki. */
+const ADD_KIND_VIEW: CommandPaletteView = {
+  addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
+  groups: [{ value: ADD_KIND_GROUP, label: "", items: [] }],
+};
 const NEW_THREAD_IN_GROUP = "projects";
 
 /** The submenu an open intent starts in; its groups resolve while rendering. */
 function openIntentView(intent: CommandPaletteOpenIntent | null): CommandPaletteView | null {
   switch (intent?.kind) {
     case "add-project":
-      return {
-        addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
-        groups: [{ value: ADD_PROJECT_ENTRY_GROUP, label: "", items: [] }],
-      };
+      return intent.target === null
+        ? ADD_KIND_VIEW
+        : {
+            addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
+            groups: [{ value: ADD_PROJECT_ENTRY_GROUP, label: "", items: [] }],
+          };
     case "new-thread-in":
       return {
         addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
@@ -496,10 +504,12 @@ function OpenCommandPaletteDialog(props: {
   } | null>(null);
   // Astrolabe: the add flow adds a wiki the same way; only its last step differs.
   const [addTarget, setAddTarget] = useState<CommandPaletteAddTarget>(() =>
-    props.openIntent?.kind === "add-project" ? props.openIntent.target : "project",
+    props.openIntent?.kind === "add-project"
+      ? (props.openIntent.target ?? "repository")
+      : "repository",
   );
   const addsWiki = addTarget === "wiki";
-  const addNoun = addsWiki ? "wiki" : "project";
+  const addNoun = addsWiki ? "wiki" : "repository";
   const addWiki = useAddWiki();
   const [newProjectPublishes, setNewProjectPublishes] = useState(false);
   const [newProjectPublishKind, setNewProjectPublishKind] =
@@ -1160,10 +1170,47 @@ function OpenCommandPaletteDialog(props: {
     }
   };
 
+  // Astrolabe: a project is a repository or a wiki, so adding one asks which first.
+  const addKindItems: Array<CommandPaletteActionItem> = [
+    {
+      kind: "action",
+      value: "action:add-project:kind:repository",
+      searchTerms: ["repository", "repo", "code", "folder", "clone", "git"],
+      title: "Repository",
+      description: "Code: open a folder, clone one, or start a new one",
+      icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
+      keepOpen: true,
+      run: async () => {
+        setAddTarget("repository");
+        openAddProjectFlow();
+      },
+    },
+    {
+      kind: "action",
+      value: "action:add-project:kind:wiki",
+      searchTerms: ["wiki", "notes", "markdown", "docs"],
+      title: "Wiki",
+      description: "Notes: a git repository of markdown, yours or a new one",
+      icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
+      keepOpen: true,
+      run: async () => {
+        setAddTarget("wiki");
+        openAddProjectFlow();
+      },
+    },
+  ];
+
   const openNewProjectFlow = () => {
     const firstOption = projectNewEnvironmentOptions[0];
-    setAddTarget("project");
+    setAddTarget("repository");
     if (firstOption) startNewProject(firstOption.environmentId, null);
+  };
+  const firstConnectedEnvironment = addProjectEnvironmentOptions.find(
+    (option) => option.isConnected,
+  );
+  const openNewWikiFlow = () => {
+    setAddTarget("wiki");
+    if (firstConnectedEnvironment) startNewProject(firstConnectedEnvironment.environmentId, null);
   };
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
@@ -1411,12 +1458,26 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:new-project",
-      searchTerms: ["new project", "create project", "empty", "repository", "repo", "git init"],
-      title: "New project",
+      searchTerms: ["new repository", "new project", "create", "empty", "repo", "git init"],
+      title: "New repository",
       icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
         openNewProjectFlow();
+      },
+    });
+  }
+
+  if (firstConnectedEnvironment) {
+    actionItems.push({
+      kind: "action",
+      value: "action:new-wiki",
+      searchTerms: ["new wiki", "new project", "create", "empty", "notes"],
+      title: "New wiki",
+      icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
+      keepOpen: true,
+      run: async () => {
+        openNewWikiFlow();
       },
     });
   }
@@ -1447,8 +1508,7 @@ function OpenCommandPaletteDialog(props: {
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
     keepOpen: true,
     run: async () => {
-      setAddTarget("project");
-      openAddProjectFlow();
+      pushPaletteView(ADD_KIND_VIEW);
     },
   });
 
@@ -1475,7 +1535,7 @@ function OpenCommandPaletteDialog(props: {
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
-        setAddTarget("project");
+        setAddTarget("repository");
         await startAddProjectBrowse(wslAddProjectEnvironmentOption.environmentId);
       },
     });
@@ -1635,15 +1695,17 @@ function OpenCommandPaletteDialog(props: {
           addProjectEnvironmentId,
           buildPaletteRemoteSourceReadiness(sourceControlDiscovery.data),
         )
-      : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
-        ? addProjectEntryGroups()
-        : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
-          ? [{ value: NEW_THREAD_IN_GROUP, label: "Projects", items: projectThreadItems }]
-          : currentView?.groups[0]?.value === "themes"
-            ? changeThemeItem.groups
-            : currentView?.groups[0]?.value === "appearance"
-              ? changeAppearanceItem.groups
-              : (currentView?.groups ?? searchRootGroups);
+      : currentView?.groups[0]?.value === ADD_KIND_GROUP
+        ? [{ value: ADD_KIND_GROUP, label: "Add a project", items: addKindItems }]
+        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
+          ? addProjectEntryGroups()
+          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
+            ? [{ value: NEW_THREAD_IN_GROUP, label: "Projects", items: projectThreadItems }]
+            : currentView?.groups[0]?.value === "themes"
+              ? changeThemeItem.groups
+              : currentView?.groups[0]?.value === "appearance"
+                ? changeAppearanceItem.groups
+                : (currentView?.groups ?? searchRootGroups);
 
   // Astrolabe: Search finds every wiki's documents too.
   const documentSearchItems = useDocumentSearchRows(currentView === null);
@@ -2291,7 +2353,7 @@ function OpenCommandPaletteDialog(props: {
     newProjectFlow !== null
       ? addsWiki
         ? "Wiki name"
-        : "Project name"
+        : "Repository name"
       : field.commandLine
         ? "Run a command…"
         : (remoteProjectInputPlaceholder(addProjectCloneFlow) ??
@@ -2672,7 +2734,7 @@ function OpenCommandPaletteDialog(props: {
               : "This connection needs permission to write source control and add projects."
             : canCreateProject
               ? `${submitActionLabel} (${addShortcutLabel})`
-              : `This connection cannot add ${addNoun}s.`
+              : `This connection cannot add ${addsWiki ? "wikis" : "repositories"}.`
         }
         disabled={
           !canCreateProject ||
@@ -2787,7 +2849,7 @@ function OpenCommandPaletteDialog(props: {
         />
       ) : newProjectPathPreview !== null ? (
         <NewProjectSummary
-          title={newProjectName.length > 0 ? newProjectName : "New project"}
+          title={newProjectName.length > 0 ? newProjectName : "New repository"}
           description={
             newProjectName.length > 0
               ? `Creates ${newProjectPathPreview}`
