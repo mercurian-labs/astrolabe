@@ -109,6 +109,38 @@ export const MARKDOWN_KEYBINDING_COMMANDS = [
 ] as const;
 export type MarkdownKeybindingCommand = (typeof MARKDOWN_KEYBINDING_COMMANDS)[number];
 
+/**
+ * Astrolabe: a code editor's editing commands (`codeEditing` in `@mercurian/editor/code/editing`),
+ * which the repository file editor binds itself while it has focus (`codeEditorFocus`).
+ */
+export const CODE_EDITOR_KEYBINDING_COMMANDS = [
+  "code.selectNextOccurrence",
+  "code.skipOccurrence",
+  "code.selectAllOccurrences",
+  "code.addCursorAbove",
+  "code.addCursorBelow",
+  "code.expandSelection",
+  "code.toggleComment",
+  "code.indentLess",
+  "code.indentMore",
+  "code.moveLineUp",
+  "code.moveLineDown",
+  "code.copyLineUp",
+  "code.copyLineDown",
+  "code.deleteLine",
+  "code.joinLines",
+  "code.sortLines",
+  "code.upperCase",
+  "code.lowerCase",
+  "code.duplicateSelection",
+  "code.fold",
+  "code.unfold",
+  "code.foldAll",
+  "code.unfoldAll",
+  "code.toggleSoftWrap",
+] as const;
+export type CodeEditorKeybindingCommand = (typeof CODE_EDITOR_KEYBINDING_COMMANDS)[number];
+
 export const STATIC_KEYBINDING_COMMANDS = [
   "sidebar.toggle",
   "navigation.back",
@@ -171,6 +203,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   // Astrolabe
   ...ASTROLABE_KEYBINDING_COMMANDS,
   ...MARKDOWN_KEYBINDING_COMMANDS,
+  ...CODE_EDITOR_KEYBINDING_COMMANDS,
 ] as const;
 
 export const SCRIPT_RUN_COMMAND_PATTERN = Schema.TemplateLiteral([

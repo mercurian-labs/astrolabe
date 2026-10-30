@@ -27,3 +27,13 @@
   border: none;
   color: var(--atlas-md-syntax-color);
 }
+/* Fold markers show on the gutter's hover, and always on a folded line. */
+.cm-code .cm-foldGutter .cm-gutterElement {
+  padding: 0 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+.cm-code .cm-gutters:hover .cm-foldGutter .cm-gutterElement,
+.cm-code .cm-foldGutter .cm-gutterElement:has([title="Unfold line"]) {
+  opacity: 1;
+}

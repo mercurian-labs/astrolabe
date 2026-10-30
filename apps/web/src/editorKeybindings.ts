@@ -1,10 +1,12 @@
 import {
+  CODE_EDITOR_KEYBINDING_COMMANDS,
   MARKDOWN_KEYBINDING_COMMANDS,
   type KeybindingCommand,
   type KeybindingShortcut,
   type MarkdownKeybindingCommand,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import type { CodeEditingCommand, CodeEditingKeys } from "@mercurian/editor/code/editing";
 import type { HunkCommand } from "@mercurian/editor/git";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
 import { useAtomValue } from "@effect/atom-react";
@@ -16,8 +18,9 @@ import { primaryServerKeybindingsAtom } from "./state/server";
 /**
  * Astrolabe: the editors' own keys from the keybindings. Each `markdown.*` command's shortcuts
  * whose `when` holds in that editor (`editorFocus`, and `composerFocus` in the composer) become
- * the live preview's keys for it, `search.find`'s open the find bar, and `hunk.*`'s act on a code
- * file's changes, in CodeMirror's notation.
+ * the live preview's keys for it, `search.find`'s open the find bar, `hunk.*`'s act on a code
+ * file's changes, and each `code.*` command's (under `codeEditorFocus`) run it in a code file, in
+ * CodeMirror's notation.
  */
 
 const CODEMIRROR_KEY_NAMES: Readonly<Record<string, string>> = {
@@ -132,4 +135,31 @@ export function useEditorFindKeys(): readonly string[] {
 /** A code file's change keys, the same object until they change. */
 export function useEditorHunkKeys() {
   return useStableKeys(editorHunkKeys(useAtomValue(primaryServerKeybindingsAtom)));
+}
+
+/**
+ * The editor's name for a code command: `code.sortLines` is `sortLines`. Typed so every
+ * `CODE_EDITOR_KEYBINDING_COMMANDS` entry must name one of the editor's commands.
+ */
+export const codeEditingCommandOf = (command: `code.${CodeEditingCommand}`) =>
+  command.slice("code.".length) as CodeEditingCommand;
+
+/** A code file's editing keys: every `code.*` command's shortcuts that hold in a code editor. */
+export function codeEditorKeys(keybindings: ResolvedKeybindingsConfig): CodeEditingKeys {
+  const context = { editorFocus: true, codeEditorFocus: true, composerFocus: false };
+  return Object.fromEntries(
+    CODE_EDITOR_KEYBINDING_COMMANDS.map((command) => [
+      codeEditingCommandOf(command),
+      keybindings
+        .filter(
+          (binding) => binding.command === command && whenClauseHolds(binding.whenAst, { context }),
+        )
+        .map((binding) => codeMirrorKey(binding.shortcut)),
+    ]),
+  );
+}
+
+/** A code file's editing keys, the same object until they change. */
+export function useCodeEditorKeys(): CodeEditingKeys {
+  return useStableKeys(codeEditorKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }

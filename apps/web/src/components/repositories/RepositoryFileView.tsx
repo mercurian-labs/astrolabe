@@ -1,11 +1,16 @@
 import "@mercurian/editor/markdown/theme.css";
 import "@mercurian/editor/code/theme.css";
 
-import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { replaceDocText } from "@mercurian/editor/bridge/text-edits";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
+import {
+  codeEditing,
+  hasCodeEditing,
+  setSoftWrap,
+  softWrapOn,
+} from "@mercurian/editor/code/editing";
 import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
 import { inFileSearch } from "@mercurian/editor/search";
@@ -15,7 +20,7 @@ import { BotIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
+import { useCodeEditorKeys, useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useEnvironmentQuery } from "~/state/query";
@@ -64,6 +69,7 @@ const FILE_EDITOR_THEME = EditorView.theme({
 });
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
+const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 
 /**
  * A repository file in the wiki editor (Markdown preview, code colours, Vim when on). Edits
@@ -161,8 +167,9 @@ function FileNotice({ children }: { readonly children: string }) {
 
 /**
  * The CodeMirror view. Built once per file; what changes later goes through compartments: Vim,
- * the file's language once it loads, and read-only. Contents saved by someone else arrive as
- * edits, unless edits here are still on their way.
+ * the editor's keys, the file's language once it loads, read-only, and wrapping (code follows the
+ * word wrap setting, notes always wrap). Contents saved by someone else arrive as edits, unless
+ * edits here are still on their way.
  */
 function FileEditor({
   path,
@@ -191,14 +198,16 @@ function FileEditor({
   useVimScreenLines();
   const findKeys = useEditorFindKeys();
   const hunkKeys = useEditorHunkKeys();
+  const editingKeys = useCodeEditorKeys();
+  const wordWrap = useClientSettings(selectWordWrap);
   const [compartments] = useState(() => ({
     vim: new Compartment(),
+    keys: new Compartment(),
     language: new Compartment(),
     readOnly: new Compartment(),
   }));
-  // The view is built from the file as it first shows (the parent keys it by path), with the
-  // find bar's keys as they are then.
-  const [initial] = useState(() => ({ path, contents, readOnly, vim, findKeys, hunkKeys }));
+  // The view is built from the file as it first shows (the parent keys it by path).
+  const [initial] = useState(() => ({ path, contents, readOnly, vim, wordWrap }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -219,11 +228,8 @@ function FileEditor({
           history.extension,
           compartments.vim.of(initial.vim ? vimExtension() : []),
           appVimKeys(() => null),
-          // Ahead of the default keymap, so a find key it also binds opens the bar.
-          inFileSearch({ keys: initial.findKeys }),
-          markdown ? [] : gitChanges({ keys: initial.hunkKeys }),
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
+          compartments.keys.of([]),
+          markdown ? livePreview() : codeView(),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           EditorView.updateListener.of((update) => {
@@ -254,6 +260,25 @@ function FileEditor({
     view.dispatch({ effects: compartments.vim.reconfigure(vim ? vimExtension() : []) });
   }, [compartments, vim]);
 
+  // The find bar's, change and editing keys follow the keybindings; wrapping, folds, the find bar
+  // and shown changes stay.
+  // oxlint-disable-next-line t3code/react-effect-budget -- carries rebound keys into the CodeMirror view
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const wrap = hasCodeEditing(view.state)
+      ? softWrapOn(view.state)
+      : isMarkdownPath(initial.path) || initial.wordWrap;
+    view.dispatch({
+      effects: compartments.keys.reconfigure([
+        // Ahead of the default keymap (in `codeEditing`), so a find key it also binds opens the bar.
+        inFileSearch({ keys: findKeys }),
+        isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
+        codeEditing({ keys: editingKeys, softWrap: wrap }),
+      ]),
+    });
+  }, [compartments, initial, findKeys, hunkKeys, editingKeys]);
+
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: compartments.readOnly.reconfigure(readOnlyExtension(readOnly)),
@@ -264,6 +289,12 @@ function FileEditor({
   useEffect(() => {
     if (baseText !== undefined) viewRef.current?.dispatch({ effects: setGitBase(baseText) });
   }, [baseText]);
+
+  // oxlint-disable-next-line t3code/react-effect-budget -- carries the word wrap setting into the CodeMirror view
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view && !isMarkdownPath(initial.path)) setSoftWrap(view, wordWrap);
+  }, [initial, wordWrap]);
 
   // Newer contents from elsewhere (an agent's edit, the thread's Files view) arrive as their
   // smallest edits, unless edits typed here are still saving, which would otherwise be lost.

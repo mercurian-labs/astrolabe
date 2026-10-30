@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  codeEditorKeys,
   codeMirrorKey,
   editorFindKeys,
   editorHunkKeys,
@@ -95,5 +96,102 @@ describe("a code file's change keys from the keybindings", () => {
     const keys = editorHunkKeys(compileResolvedKeybindingsConfig(rules));
     // A binding an editor never has focus for does not reach it.
     expect(keys).toMatchObject({ next: ["Alt-]"], previous: [], toggle: [] });
+  });
+});
+
+describe("a code file's keys from the keybindings", () => {
+  /** What a Mac keypress (`mod` is Cmd) runs in a code file, a wiki note, and elsewhere. */
+  function resolveIn(shortcut: string) {
+    const parsed = parseKeybindingShortcut(shortcut)!;
+    const event = {
+      key: parsed.key,
+      metaKey: parsed.modKey || parsed.metaKey,
+      ctrlKey: parsed.ctrlKey,
+      shiftKey: parsed.shiftKey,
+      altKey: parsed.altKey,
+    };
+    const resolve = (context: { editorFocus: boolean; codeEditorFocus: boolean }) =>
+      resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context,
+      });
+    return {
+      code: resolve({ editorFocus: true, codeEditorFocus: true }),
+      note: resolve({ editorFocus: true, codeEditorFocus: false }),
+      elsewhere: resolve({ editorFocus: false, codeEditorFocus: false }),
+    };
+  }
+
+  it("gives the editor its keys in a code file, and the app keeps them everywhere else", () => {
+    expect(resolveIn("mod+d")).toEqual({
+      code: "code.selectNextOccurrence",
+      note: "diff.toggle",
+      elsewhere: "diff.toggle",
+    });
+    expect(resolveIn("mod+/")).toMatchObject({
+      code: "code.toggleComment",
+      elsewhere: "commandPalette.toggle",
+    });
+    expect(resolveIn("mod+[")).toMatchObject({
+      code: "code.indentLess",
+      elsewhere: "navigation.back",
+    });
+    expect(resolveIn("mod+]")).toMatchObject({
+      code: "code.indentMore",
+      elsewhere: "navigation.forward",
+    });
+    expect(resolveIn("mod+shift+l")).toMatchObject({
+      code: "code.selectAllOccurrences",
+      elsewhere: "composer.previousWorktree",
+    });
+  });
+
+  it("keeps italic and link in a wiki note, where a code file expands the selection and deletes the line", () => {
+    expect(resolveIn("mod+i")).toEqual({
+      code: "code.expandSelection",
+      note: "markdown.italic",
+      elsewhere: null,
+    });
+    expect(resolveIn("mod+shift+k")).toEqual({
+      code: "code.deleteLine",
+      note: "markdown.link",
+      elsewhere: "pullRequest.copyNumber",
+    });
+  });
+
+  it("leaves Usage, the keyboard menu and the Command Palette to the app in a code file", () => {
+    expect(resolveIn("mod+u").code).toBe("usage.open");
+    expect(resolveIn("mod+k").code).toBe("whichKey.open");
+    expect(resolveIn("mod+p").code).toBe("commandLine.open");
+  });
+
+  it("binds each code command to the shortcuts that hold in a code file, and no others", () => {
+    const keys = codeEditorKeys(DEFAULT_RESOLVED_KEYBINDINGS);
+    expect(keys).toMatchObject({
+      selectNextOccurrence: ["Mod-d"],
+      skipOccurrence: ["Mod-Shift-d"],
+      selectAllOccurrences: ["Mod-Shift-l"],
+      addCursorAbove: ["Mod-Alt-ArrowUp"],
+      expandSelection: ["Mod-i"],
+      toggleComment: ["Mod-/"],
+      indentLess: ["Mod-["],
+      moveLineDown: ["Alt-ArrowDown"],
+      copyLineUp: ["Alt-Shift-ArrowUp"],
+      deleteLine: ["Mod-Shift-k"],
+      fold: ["Mod-Alt-["],
+      sortLines: [],
+    });
+    const rules: KeybindingRule[] = [
+      { key: "mod+'", command: "code.toggleComment", when: "codeEditorFocus" },
+      { key: "alt+s", command: "code.sortLines", when: "codeEditorFocus" },
+      { key: "alt+j", command: "code.joinLines", when: "terminalFocus" },
+    ];
+    const custom = codeEditorKeys(compileResolvedKeybindingsConfig(rules));
+    expect(custom).toMatchObject({ toggleComment: ["Mod-'"], sortLines: ["Alt-s"], joinLines: [] });
+  });
+
+  it("leaves the wiki's formatting keys as they were", () => {
+    const keys = markdownEditorKeys(DEFAULT_RESOLVED_KEYBINDINGS, { composer: false });
+    expect(keys).toMatchObject({ italic: ["Mod-i"], link: ["Mod-Shift-k"] });
   });
 });
