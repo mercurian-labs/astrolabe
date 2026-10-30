@@ -562,7 +562,7 @@ function ProjectDetail({
           />
           <SettingsRow
             title="Wikis"
-            description="Where this repository's research and plans live. Its threads are told to read and write them there."
+            description="Where this project's research and plans live. Its threads are told to read and write them there."
             control={<RepositoryWikisMenu checkouts={group.memberProjects} />}
           />
         </SettingsSection>

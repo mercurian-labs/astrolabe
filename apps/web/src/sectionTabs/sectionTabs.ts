@@ -17,7 +17,7 @@ export type SectionId = "threads" | "wikis" | "repositories" | "change-requests"
 export const SECTION_LABELS: Readonly<Record<SectionId, string>> = {
   threads: "Agents",
   wikis: "Wikis",
-  repositories: "Repositories",
+  repositories: "Projects",
   "change-requests": "Changes",
 };
 

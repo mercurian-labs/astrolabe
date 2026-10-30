@@ -252,7 +252,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           ) : (
             <SidebarUtilityItem
               icon={<FolderGit2Icon />}
-              label="Repositories"
+              label="Projects"
               onClick={handleRepositoriesClick}
             />
           )}

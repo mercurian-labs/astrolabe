@@ -245,7 +245,7 @@ import { useExLine } from "~/whichKey/exPalette";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
-/** Astrolabe: the step after adding a repository or a wiki, which offers to link it to the other. */
+/** Astrolabe: the step after adding a project or a wiki, which offers to link it to the other. */
 const WIKI_LINK_VIEW: CommandPaletteView = {
   addonIcon: <LinkIcon className={ADDON_ICON_CLASS} />,
   groups: [{ value: WIKI_LINK_GROUP, label: "", items: [] }],
@@ -509,7 +509,7 @@ function OpenCommandPaletteDialog(props: {
     props.openIntent?.kind === "add-project" ? props.openIntent.target : "repository",
   );
   const addsWiki = addTarget === "wiki";
-  const addNoun = addsWiki ? "wiki" : "repository";
+  const addNoun = addsWiki ? "wiki" : "project";
   const addWiki = useAddWiki();
   const [linkStep, setLinkStep] = useState<WikiLinkStep | null>(null);
   const wikiLinkStep = useWikiLinkStep();
@@ -1172,7 +1172,7 @@ function OpenCommandPaletteDialog(props: {
     }
   };
 
-  /** Astrolabe: after adding a repository or a wiki, offers to link it to the other, else closes. */
+  /** Astrolabe: after adding a project or a wiki, offers to link it to the other, else closes. */
   const finishAdd = (step: WikiLinkStep) => {
     if (!wikiLinkStep.offers(step)) {
       setOpen(false);
@@ -1445,8 +1445,8 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:new-project",
-      searchTerms: ["new repository", "new project", "create", "empty", "repo", "git init"],
-      title: "New repository",
+      searchTerms: ["new project", "new repository", "create", "empty", "repo", "git init"],
+      title: "New project",
       icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
@@ -1491,7 +1491,7 @@ function OpenCommandPaletteDialog(props: {
       "url",
       "environment",
     ],
-    title: "Add repository",
+    title: "Add project",
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
     keepOpen: true,
     run: async () => {
@@ -1569,8 +1569,8 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:repositories",
-    searchTerms: ["repositories", "repository", "repo", "files", "code", "diffs"],
-    title: "Open repositories",
+    searchTerms: ["projects", "repositories", "repository", "repo", "files", "code", "diffs"],
+    title: "Open projects",
     icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/repositories" });
@@ -2749,7 +2749,7 @@ function OpenCommandPaletteDialog(props: {
               : "This connection needs permission to write source control and add projects."
             : canCreateProject
               ? `${submitActionLabel} (${addShortcutLabel})`
-              : `This connection cannot add ${addsWiki ? "wikis" : "repositories"}.`
+              : `This connection cannot add ${addsWiki ? "wikis" : "projects"}.`
         }
         disabled={
           !canCreateProject ||
@@ -2864,7 +2864,7 @@ function OpenCommandPaletteDialog(props: {
         />
       ) : newProjectPathPreview !== null ? (
         <NewProjectSummary
-          title={newProjectName.length > 0 ? newProjectName : "New repository"}
+          title={newProjectName.length > 0 ? newProjectName : "New project"}
           description={
             newProjectName.length > 0
               ? `Creates ${newProjectPathPreview}`

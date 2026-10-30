@@ -63,7 +63,7 @@ export function useWikiLinkStep() {
         label:
           step.kind === "repository"
             ? `Link ${step.title} to a wiki, where its research and plans live`
-            : `Link ${step.name} to the repository it plans`,
+            : `Link ${step.name} to the project it plans`,
         items: [
           ...candidates(step).map((candidate) => ({
             kind: "action" as const,

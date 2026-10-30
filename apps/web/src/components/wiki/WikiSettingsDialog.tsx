@@ -89,7 +89,7 @@ export function WikiSettingsDialog({
                 <WikiPart.Fact label="Open change requests">
                   {wiki.openChangeRequests}
                 </WikiPart.Fact>
-                <WikiPart.Fact label="Repositories">
+                <WikiPart.Fact label="Projects">
                   <WikiRepositoriesMenu environmentId={environmentId} wiki={wiki} />
                 </WikiPart.Fact>
                 <WikiPart.Fact label="Mirror">

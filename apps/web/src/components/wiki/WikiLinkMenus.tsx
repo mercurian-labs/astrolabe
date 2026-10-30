@@ -90,13 +90,7 @@ export function WikiRepositoriesMenu({
       projectId: repository.id,
       linked: wiki.projectIds.includes(repository.id),
     }));
-  return (
-    <LinkMenu
-      rows={rows}
-      label="Repositories this wiki is linked to"
-      emptyLabel="No repositories"
-    />
-  );
+  return <LinkMenu rows={rows} label="Projects this wiki is linked to" emptyLabel="No projects" />;
 }
 
 /**
@@ -134,5 +128,5 @@ export function RepositoryWikisMenu({
       </Button>
     );
   }
-  return <LinkMenu rows={rows} label="Wikis this repository is linked to" emptyLabel="No wikis" />;
+  return <LinkMenu rows={rows} label="Wikis this project is linked to" emptyLabel="No wikis" />;
 }

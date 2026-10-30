@@ -98,11 +98,11 @@ export function RepositoriesScreen() {
             contentContainerStyle={{ paddingHorizontal: 16, gap: 6, paddingBottom: 8 }}
           >
             <ListFilterMenu
-              label={scoped ? labelOf(scoped) : "Repositories"}
-              accessibilityLabel="Filter by repository"
+              label={scoped ? labelOf(scoped) : "All projects"}
+              accessibilityLabel="Filter by project"
               active={scoped !== null}
               actions={[
-                { id: "all", title: "Repositories", state: scoped ? "off" : "on" },
+                { id: "all", title: "All projects", state: scoped ? "off" : "on" },
                 ...repositories.map((repository) => ({
                   id: repositoryKey(repository),
                   title: labelOf(repository),
@@ -116,11 +116,11 @@ export function RepositoriesScreen() {
         {repositories.length === 0 ? (
           <View className="px-8 py-12">
             <EmptyState
-              title={environments.length === 0 ? "Connect an environment" : "No repositories yet"}
+              title={environments.length === 0 ? "Connect an environment" : "No projects yet"}
               detail={
                 environments.length === 0
-                  ? "Add an environment in Settings to browse its repositories."
-                  : "Add a repository from Astrolabe on your computer."
+                  ? "Add an environment in Settings to browse its projects."
+                  : "Add a project from Astrolabe on your computer."
               }
               variant="plain"
             />
