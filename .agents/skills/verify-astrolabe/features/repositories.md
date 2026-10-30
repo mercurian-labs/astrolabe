@@ -18,19 +18,17 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   it adds the repository the app leaves `/repositories` for a new draft thread there, so
   click `button "Repos"` to come back). The filter's foot holds **Manage
   repositories** and **Add a repository**.
-- **List** (default): with every repository, one group each (collapsible header), a
-  **Changes →** row (Changes scoped to that repository) and its eight
-  most recently committed files. With one repository: one collapsible section per git
+- **List** (default): with every repository, one group each (collapsible header) with its
+  eight most recently committed files. With one repository: one collapsible section per git
   worktree (`ProjectWorktreeService`, `worktrees.list`), headed by its branch (or short
   commit when detached), the main checkout first and marked **main checkout**, with "N
   changed" and a pin when held (tooltip: the holds). Under each: **Uncommitted · N** with
   **Review uncommitted changes →** and each changed file (`+a −d`), **Changes against
-  `<base>` →** off the default branch, with `combobox "Compare with another branch"` beside it
-  (any local or remote branch; the tab key's source becomes `branch-range~<base>`), or
-  `combobox "Compare with a branch"` in its place on a branch with nothing against its base. A
-  section's rows sit indented under its header along a guide line. **Changes →** only under the main checkout, and
-  **Recently changed** (40 files; `review.getRecentFiles`, `git log --name-only`) only
-  under the focused tab's worktree (else main). File rows are `button "<path>"` by role (a
+  `<base>` →** (the branch's own base; "Changes against…" opening the picker when it has none)
+  with `combobox "Compare with another branch"` beside it (tooltip; any local or remote
+  branch; the tab key's source becomes `branch-range~<base>`), the same in every worktree,
+  then **Recently changed** (20 files; `review.getRecentFiles`, `git log --name-only`). A
+  section's rows sit indented under its header along a guide line. File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
   in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here

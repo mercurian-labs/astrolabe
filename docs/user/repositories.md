@@ -40,8 +40,8 @@ is working in the same copy, and an edit never overwrites newer changes saved th
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base
-opens your branch's. To compare with any other branch, pick it from the compare button beside
-that row, or from **Compare with a branch** on a branch with nothing against its base. Comment on lines to send them to the thread working in that copy, or to the
+opens your branch's. To compare with any other branch, pick it with the compare button beside
+that row. Comment on lines to send them to the thread working in that copy, or to the
 repository's new thread.
 
 In a thread, the **Files** and **Diff** tabs offer **Open in Repos** from their tab menu.

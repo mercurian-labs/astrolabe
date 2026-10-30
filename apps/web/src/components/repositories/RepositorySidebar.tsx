@@ -5,7 +5,6 @@ import {
   ArrowRightIcon,
   FileDiffIcon,
   FileIcon,
-  FolderGit2Icon,
   FolderPlusIcon,
   ListFilterIcon,
   SettingsIcon,
@@ -33,7 +32,6 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useProjectWorktrees } from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { changeRequestKindStore } from "../changeRequests/changeRequestKind";
 import FileBrowserPanel from "../files/FileBrowserPanel";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "../projects/ProjectFilterIcon";
@@ -43,7 +41,6 @@ import {
   searchProjectFilterOptions,
   type ProjectFilterOption,
 } from "../projects/projectFilter";
-import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { reduceSidebarProjectScopeMenuState } from "../Sidebar.logic";
 import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../sidebar/SidebarCard";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
@@ -265,8 +262,7 @@ export function RepositorySidebar() {
                               cwd={worktree.path}
                               checkout={checkoutOf(worktree)}
                               showStatus
-                              showChanges={worktree.isMain}
-                              showRecent={worktree.path === active?.path}
+                              showRecent
                               changedFiles={worktree.changedFiles}
                               head={worktree.head}
                             />
@@ -323,7 +319,6 @@ export function RepositorySidebar() {
                       cwd={repository.workspaceRoot}
                       checkout={{ cwd: repository.workspaceRoot }}
                       heading
-                      showChanges
                       showRecent
                     />
                   </ul>
@@ -385,10 +380,9 @@ function EmptyRepositories() {
 }
 
 /**
- * One checkout's rows: with `showStatus`, its uncommitted changes and its branch against its
- * base; with `showChanges`, a row into the repository's change requests; with `showRecent`, the
- * files its commits changed most recently. With `heading`, under the repository's name, as in the
- * list of every repository.
+ * One checkout's rows: with `showStatus`, its uncommitted changes and its branch against a base;
+ * with `showRecent`, the files its commits changed most recently. With `heading`, under the
+ * repository's name, as in the list of every repository.
  */
 function RepositoryList({
   repository,
@@ -396,7 +390,6 @@ function RepositoryList({
   checkout,
   heading = false,
   showStatus = false,
-  showChanges = false,
   showRecent = false,
   changedFiles,
   head,
@@ -406,13 +399,11 @@ function RepositoryList({
   readonly checkout: RepositoryCheckout;
   readonly heading?: boolean;
   readonly showStatus?: boolean;
-  readonly showChanges?: boolean;
   readonly showRecent?: boolean;
   /** The worktree list's count and commit; when either moves, the status and recent files reread. */
   readonly changedFiles?: number;
   readonly head?: string | null;
 }) {
-  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(true);
   const status = useEnvironmentQuery(
     showStatus
@@ -423,7 +414,7 @@ function RepositoryList({
     showRecent
       ? reviewEnvironment.recentFiles({
           environmentId: repository.environmentId,
-          input: { cwd, limit: heading ? 8 : 40 },
+          input: { cwd, limit: heading ? 8 : 20 },
         })
       : null,
   );
@@ -452,17 +443,6 @@ function RepositoryList({
       source,
       ...(base === undefined ? {} : { base }),
     });
-  const openChangeRequests = () => {
-    changeRequestKindStore.set("repositories");
-    void navigate({
-      to: "/pull-requests",
-      search: {
-        ...readPullRequestListPreferences(),
-        projectId: repository.id,
-        environmentId: repository.environmentId,
-      },
-    });
-  };
   return (
     <>
       {heading ? (
@@ -478,9 +458,6 @@ function RepositoryList({
       ) : null}
       {heading && !expanded ? null : (
         <>
-          {showChanges ? (
-            <LinkRow icon={FolderGit2Icon} label="Changes" onClick={openChangeRequests} />
-          ) : null}
           {showStatus && uncommitted.length > 0 ? (
             <>
               <SectionLabel>{`Uncommitted · ${uncommitted.length}`}</SectionLabel>
@@ -503,13 +480,7 @@ function RepositoryList({
             <BranchCompareRow
               environmentId={repository.environmentId}
               cwd={cwd}
-              defaultBase={
-                status.data.isDefaultRef === false &&
-                branch &&
-                (branch.insertions > 0 || branch.deletions > 0)
-                  ? (branch.baseRef ?? null)
-                  : null
-              }
+              defaultBase={branch?.baseRef ?? null}
               onOpen={(base) => repositoryPanes.show(diffKey("branch-range", base))}
             />
           ) : null}
