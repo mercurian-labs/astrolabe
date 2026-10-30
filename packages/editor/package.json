@@ -62,6 +62,14 @@
     "./lsp/diagnostics": {
       "types": "./src/lsp/diagnostics.ts",
       "default": "./src/lsp/diagnostics.ts"
+    },
+    "./multibuffer": {
+      "types": "./src/multibuffer/multibuffer.ts",
+      "default": "./src/multibuffer/multibuffer.ts"
+    },
+    "./multibuffer/excerpt": {
+      "types": "./src/multibuffer/excerpt.ts",
+      "default": "./src/multibuffer/excerpt.ts"
     }
   },
   "scripts": {
