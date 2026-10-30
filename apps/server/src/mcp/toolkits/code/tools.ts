@@ -30,7 +30,7 @@ const shared = {
 const Text = Schema.NonEmptyString;
 
 const SCOPE =
-  "Reads the repository's code index at your thread's checkout. Paths are repository-relative. Long lists are cut and say `truncated`.";
+  "Reads the repository's code index at your thread's checkout. Paths are relative to your working directory. Long lists are cut and say `truncated`.";
 
 const CodeOutlineTool = Tool.make("astrolabe_code_outline", {
   ...shared,
