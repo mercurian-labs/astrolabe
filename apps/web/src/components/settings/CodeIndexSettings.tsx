@@ -1,4 +1,5 @@
-import type { CodeIndexStatus, EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { describeCodeIndexStatus } from "@t3tools/client-runtime/state/codeIndex";
 import { useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
@@ -28,33 +29,6 @@ import {
 
 const count = (value: number, noun: string) =>
   `${value.toLocaleString()} ${value === 1 ? noun : `${noun}s`}`;
-
-/** One line for a repository's index: its state, how far it got, and how fresh it is. */
-export function describeCodeIndexStatus(status: CodeIndexStatus, nowMs: number): string {
-  const progress = `${status.files.toLocaleString()} of ${count(status.totalFiles, "file")}`;
-  switch (status.state) {
-    case "off":
-      return "Off";
-    case "waiting":
-      return status.files === 0
-        ? "Waiting for background activity to allow indexing"
-        : `Waiting for background activity · ${progress}`;
-    case "indexing":
-      return `Indexing · ${progress}`;
-    case "failed":
-      return `Failed${status.failure === null ? "" : `: ${status.failure}`}`;
-    case "ready":
-      return [
-        `Ready · ${count(status.totalFiles, "file")}`,
-        status.languages.length > 0 ? status.languages.join(", ") : null,
-        status.updatedAt === null
-          ? null
-          : `updated ${formatRelativeTimeLabel(status.updatedAt, nowMs)}`,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-  }
-}
 
 const rebuildPermissionsAtom = environmentAtomList(
   "web-code-index-rebuild-permissions",
@@ -141,7 +115,7 @@ export function CodeIndexProjectSettings({
                 {indexed.length > 1 && member.environmentLabel !== null
                   ? `${member.environmentLabel}: `
                   : ""}
-                {describeCodeIndexStatus(status, nowMs)}
+                {describeCodeIndexStatus(status, (iso) => formatRelativeTimeLabel(iso, nowMs))}
               </span>
             ))}
           </span>

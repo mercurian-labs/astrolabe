@@ -69,7 +69,7 @@ const under = (path: string, folder: string) => folder === "" || path.startsWith
 
 const TEST_PATH =
   /(^|\/)(__tests__|__mocks__|tests?|spec|testing)\/|\.(test|spec|browser\.test)\.[cm]?[jt]sx?$|_test\.(go|py)$|(^|\/)test_[^/]*\.py$/;
-export const isTestPath = (path: string) => TEST_PATH.test(path);
+const isTestPath = (path: string) => TEST_PATH.test(path);
 
 /** The files of a checkout a path names: the file itself, or every file under a folder. */
 function filesAt(view: View, path: string): ReadonlyArray<string> {
@@ -100,7 +100,7 @@ const surest = (left: CodeResolution, right: CodeResolution): CodeResolution => 
 // The local graph.
 
 /** Past this many files on one side of a ring, files fold into their folders. */
-export const FOLD_LIMIT = 40;
+const FOLD_LIMIT = 40;
 /** Files reached per side before the graph stops widening; folding keeps what is drawn small. */
 const REACH_LIMIT = 3000;
 

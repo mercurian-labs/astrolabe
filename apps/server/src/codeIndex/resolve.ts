@@ -305,7 +305,7 @@ const USE_KINDS: Readonly<Record<ReferenceKind, CodeUse["kind"]>> = {
   catches: "types",
 };
 
-export const useKindOf = (kind: ReferenceKind) => USE_KINDS[kind];
+const useKindOf = (kind: ReferenceKind) => USE_KINDS[kind];
 
 const SKIPS_BUILTINS = new Set<ReferenceKind>(["accepts", "returns", "throws", "catches"]);
 const SELF_QUALIFIERS = new Set(["this", "self", "Self"]);

@@ -18,6 +18,37 @@ import {
 
 const NO_STATUSES: ReadonlyMap<ProjectId, CodeIndexStatus> = new Map();
 
+const count = (value: number, noun: string) =>
+  `${value.toLocaleString()} ${value === 1 ? noun : `${noun}s`}`;
+
+/** One line for a repository's index: its state, how far it got, and how fresh it is. */
+export function describeCodeIndexStatus(
+  status: CodeIndexStatus,
+  ago: (isoDate: string) => string,
+): string {
+  const progress = `${status.files.toLocaleString()} of ${count(status.totalFiles, "file")}`;
+  switch (status.state) {
+    case "off":
+      return "Off";
+    case "waiting":
+      return status.files === 0
+        ? "Waiting for background activity to allow indexing"
+        : `Waiting for background activity · ${progress}`;
+    case "indexing":
+      return `Indexing · ${progress}`;
+    case "failed":
+      return `Failed${status.failure === null ? "" : `: ${status.failure}`}`;
+    case "ready":
+      return [
+        `Ready · ${count(status.totalFiles, "file")}`,
+        status.languages.length > 0 ? status.languages.join(", ") : null,
+        status.updatedAt === null ? null : `updated ${ago(status.updatedAt)}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+  }
+}
+
 /**
  * Astrolabe: each repository's code index. Statuses stream from the server, one repository at a
  * time, and are kept per project. Storage is read when a view asks and again after a cleanup or

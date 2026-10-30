@@ -73,7 +73,7 @@ export function packageNameOf(source: string): string | null {
  * imports, `pkg:<name>` for a bare TypeScript specifier. The used-by side of the index starts
  * from these.
  */
-export function askedKeys(
+function askedKeys(
   language: LanguageId,
   path: string,
   imports: ReadonlyArray<ImportBinding>,
