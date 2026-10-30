@@ -222,7 +222,7 @@ export function readFileGraphTheme(element: Element): {
       node,
       faint: mix(node, paper, 0.55),
       // The theme's rule, a touch darker so a hairline still reads on the paper.
-      link: mix(read("--atlas-rule", FALLBACK.rule), node, 0.25),
+      link: mix(read("--atlas-rule", FALLBACK.rule), node, 0.12),
       accent: read("--atlas-accent", FALLBACK.accent),
       changed: read("--atlas-warning", FALLBACK.warning),
       groups: Array.from({ length: GROUP_SLOTS }, (_, slot) =>
@@ -267,7 +267,8 @@ export class FileGraphRenderer {
   #forces: FileForces | null = null;
   #settings: FileGraphSettings = DEFAULT_FILE_GRAPH_SETTINGS;
   #camera: Camera = { x: 0, y: 0, zoom: 1 };
-  #theme: ReturnType<typeof readFileGraphTheme>;
+  /** Read at the next frame, after the host's effects have applied its theme. */
+  #theme: ReturnType<typeof readFileGraphTheme> | null = null;
   #hovered: string | null = null;
   /** What the hover lights, kept while it fades out. */
   #lit = new Set<string>();
@@ -299,7 +300,6 @@ export class FileGraphRenderer {
     this.#drawer = options.createDrawer(host);
     this.#drawer.resize(this.#width, this.#height);
     this.#scheduler = new FrameScheduler(options.clock ?? browserClock, () => this.#draw());
-    this.#theme = readFileGraphTheme(host);
     this.#resize = new ResizeObserver(() => {
       const width = Math.max(1, this.#host.clientWidth);
       const height = Math.max(1, this.#host.clientHeight);
@@ -353,12 +353,7 @@ export class FileGraphRenderer {
     this.#structure = structure;
     this.#degrees = fileGraphDegrees(graph);
     const sameCenter = previous !== null && previous.center === graph.center;
-    const next = new FileForces(
-      graph,
-      this.#settings,
-      (id) => this.#radiusOf(id),
-      (id) => forces?.positionOf(id) ?? null,
-    );
+    const next = new FileForces(graph, this.#settings, (id) => forces?.positionOf(id) ?? null);
     this.#forces = next;
     if (sameCenter) {
       next.reheat(0.5);
@@ -394,15 +389,14 @@ export class FileGraphRenderer {
       ) {
         forces.setForces(settings);
       }
-      if (before.nodeSize !== settings.nodeSize) forces.setRadius((id) => this.#radiusOf(id));
       if (forces.moving) this.#scheduler.animate(this.#motion);
     }
     this.#scheduler.invalidate();
   }
 
-  /** Read the theme's colours and font again. */
+  /** Read the theme's colours and font again, at the next frame. */
   setTheme(): void {
-    this.#theme = readFileGraphTheme(this.#host);
+    this.#theme = null;
     this.#scheduler.invalidate();
   }
 
@@ -455,6 +449,7 @@ export class FileGraphRenderer {
     const graph = this.#graph;
     const forces = this.#forces;
     if (graph === null || forces === null) return null;
+    this.#theme ??= readFileGraphTheme(this.#host);
     const { colors, font } = this.#theme;
     const settings = this.#settings;
     const camera = this.#camera;

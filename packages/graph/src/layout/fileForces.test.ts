@@ -28,9 +28,8 @@ const GRAPH: FileGraphData = {
   ],
 };
 
-const radius = () => 5;
 const settled = () => {
-  const forces = new FileForces(GRAPH, DEFAULT_FILE_GRAPH_SETTINGS, radius);
+  const forces = new FileForces(GRAPH, DEFAULT_FILE_GRAPH_SETTINGS);
   forces.settle();
   return forces;
 };
@@ -83,9 +82,7 @@ describe("a file graph's forces", () => {
       nodes: [...GRAPH.nodes, node("n9")],
       links: [...GRAPH.links, { from: "n3", to: "n9", guessed: false }],
     };
-    const after = new FileForces(grown, DEFAULT_FILE_GRAPH_SETTINGS, radius, (id) =>
-      before.positionOf(id),
-    );
+    const after = new FileForces(grown, DEFAULT_FILE_GRAPH_SETTINGS, (id) => before.positionOf(id));
     expect(after.positionOf("n5")).toEqual(before.positionOf("n5"));
     expect(distance(after.positionOf("n9"), before.positionOf("n3"))).toBeLessThan(
       DEFAULT_FILE_GRAPH_SETTINGS.linkDistance,
@@ -94,11 +91,7 @@ describe("a file graph's forces", () => {
 
   it("spread wider with a longer link distance", () => {
     const near = settled();
-    const far = new FileForces(
-      GRAPH,
-      { ...DEFAULT_FILE_GRAPH_SETTINGS, linkDistance: 300 },
-      radius,
-    );
+    const far = new FileForces(GRAPH, { ...DEFAULT_FILE_GRAPH_SETTINGS, linkDistance: 300 });
     far.settle();
     expect(distance(far.positionOf("c"), far.positionOf("n5"))).toBeGreaterThan(
       distance(near.positionOf("c"), near.positionOf("n5")) * 1.5,

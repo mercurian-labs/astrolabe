@@ -6,7 +6,6 @@
  * a graph always settles the same.
  */
 import {
-  forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
@@ -59,8 +58,6 @@ export class FileForces {
   readonly #charge;
   readonly #x;
   readonly #y;
-  readonly #collide;
-  #radius: (id: string) => number;
   #moving = false;
 
   /**
@@ -70,10 +67,8 @@ export class FileForces {
   constructor(
     graph: FileGraphData,
     forces: FileGraphForces,
-    radius: (id: string) => number,
     previous: (id: string) => Point | null = () => null,
   ) {
-    this.#radius = radius;
     const indexOf = new Map(graph.nodes.map((node, index) => [node.id, index]));
     const links: Array<ForceLink> = [];
     const degree = graph.nodes.map(() => 0);
@@ -104,7 +99,6 @@ export class FileForces {
     this.#charge = forceManyBody<ForceNode>();
     this.#x = forceX<ForceNode>(0);
     this.#y = forceY<ForceNode>(0);
-    this.#collide = forceCollide<ForceNode>((node) => this.#radius(node.id) + 4);
     // Stopped in the same call that creates it, before d3's timer can fire.
     this.#simulation = forceSimulation(this.#nodes, 2)
       .stop()
@@ -112,8 +106,7 @@ export class FileForces {
       .force("link", this.#link)
       .force("charge", this.#charge)
       .force("x", this.#x)
-      .force("y", this.#y)
-      .force("collide", this.#collide);
+      .force("y", this.#y);
     this.#apply(forces);
   }
 
@@ -136,13 +129,6 @@ export class FileForces {
   setForces(forces: FileGraphForces): void {
     this.#apply(forces);
     this.reheat(0.3);
-  }
-
-  /** New node sizes: nodes keep clear of each other by their radius. */
-  setRadius(radius: (id: string) => number): void {
-    this.#radius = radius;
-    this.#collide.radius((node) => this.#radius(node.id) + 4);
-    this.reheat(0.1);
   }
 
   /** Warm the graph to at least `alpha`, so it moves again. */
@@ -218,7 +204,8 @@ export class FileForces {
     this.#link
       .distance(forces.linkDistance)
       .strength((_, index) => forces.linkForce / (this.#leastDegree[index] ?? 1));
-    this.#charge.strength(-forces.repelForce * REPEL_UNIT).theta(0.9);
+    // A loose Barnes–Hut approximation: a few hundred files settle in a few dozen milliseconds.
+    this.#charge.strength(-forces.repelForce * REPEL_UNIT).theta(1.2);
     this.#x.strength(forces.centerForce * CENTER_UNIT);
     this.#y.strength(forces.centerForce * CENTER_UNIT);
   }

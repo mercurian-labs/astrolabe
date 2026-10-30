@@ -64,7 +64,6 @@ declare module "d3-force-3d" {
 
   export interface CollideForce3D<Node extends SimulationNode3D> extends Force3D<Node> {
     iterations(iterations: number): this;
-    radius(radius: (node: Node) => number): this;
   }
   export function forceCollide<Node extends SimulationNode3D>(
     radius: (node: Node) => number,
