@@ -11,6 +11,7 @@ import {
   AuthSourceControlWriteScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
+import { languageServerSendWrites } from "./languageServers.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
 
@@ -58,6 +59,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexClear]: AuthEnvironmentMaintainScope,
+  // Astrolabe: language servers are processes the environment runs and downloads.
+  [WS_METHODS.languageServersRestart]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersStop]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersConfirmDownload]: AuthEnvironmentMaintainScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
@@ -101,6 +106,10 @@ export function clientRpcRequiredScopes(
       (payload.action === "create_pr" || payload.action === "commit_push_pr")
     )
       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+  }
+  // Astrolabe: a request carrying unconfirmed edits lands them on the file's document.
+  if (method === WS_METHODS.languageServersSend && languageServerSendWrites(input)) {
+    return [AuthFilesystemWriteScope];
   }
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

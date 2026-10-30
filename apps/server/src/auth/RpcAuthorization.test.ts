@@ -79,6 +79,39 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets file readers use language servers, file writers land edits, and maintainers manage them", () => {
+    for (const method of [
+      WS_METHODS.languageServersSubscribe,
+      WS_METHODS.languageServersSession,
+      WS_METHODS.languageServersSend,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
+    }
+    const send = { sessionId: "s", message: "{}" };
+    const document = { loadId: "l", version: 3, clientId: "c" };
+    expect(clientRpcRequiredScopes(WS_METHODS.languageServersSend, send)).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        document: { ...document, unconfirmed: [] },
+      }),
+    ).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        document: { ...document, unconfirmed: [[3, [0, "x"]]] },
+      }),
+    ).toEqual([AuthFilesystemWriteScope]);
+    for (const method of [
+      WS_METHODS.languageServersRestart,
+      WS_METHODS.languageServersStop,
+      WS_METHODS.languageServersConfirmDownload,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
+      expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthEnvironmentMaintainScope]);
+    }
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(

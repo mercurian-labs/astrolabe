@@ -60,6 +60,13 @@ export class Documents extends Context.Service<
     ) => Effect.Effect<DocumentRecoverResult, DocumentError>;
     /** Drops the edits that are not on disk; a document whose file is gone closes. */
     readonly discard: (input: DocumentDiscardInput) => Effect.Effect<void, DocumentError>;
+    /**
+     * Reads an open document's file now rather than after the watcher's quiet period, so a write
+     * made just before lands first. The version after it, for callers holding a subscription.
+     */
+    readonly sync: (
+      input: DocumentTarget,
+    ) => Effect.Effect<{ readonly loadId: string; readonly version: number }, DocumentError>;
   }
 >()("t3/documents/Documents") {}
 
@@ -555,6 +562,19 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const sync: Documents["Service"]["sync"] = Effect.fn("Documents.syncNow")(function* (input) {
+    const target = yield* resolveTarget(input);
+    return yield* lock.withLock(
+      target.key,
+      Effect.gen(function* () {
+        const document = documents.get(target.key);
+        if (document === undefined) return yield* fail("not-loaded", target.relativePath);
+        yield* syncLocked(document);
+        return { loadId: document.loadId, version: document.updates.length };
+      }),
+    );
+  });
+
   yield* Effect.addFinalizer(() =>
     Effect.forEach(
       [...documents.values()],
@@ -566,7 +586,7 @@ const make = Effect.gen(function* () {
     ),
   );
 
-  return Documents.of({ subscribe, push, save, recover, discard });
+  return Documents.of({ subscribe, push, save, recover, discard, sync });
 });
 
 export const layer = Layer.effect(Documents, make);

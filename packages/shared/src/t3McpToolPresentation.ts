@@ -370,6 +370,10 @@ const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   astrolabe_code_find: tool(["Find", "Finding", "Found", "code uses"], "code-read"),
   astrolabe_code_changes: tool(["Read", "Reading", "Read", "code changes"], "code-read"),
   astrolabe_code_map: tool(["Map", "Mapping", "Mapped", "code dependencies"], "code-read"),
+  astrolabe_code_diagnostics: tool(
+    ["Check", "Checking", "Checked", "code diagnostics"],
+    "code-read",
+  ),
 };
 
 // Astrolabe's wiki and change-group tools were `t3_*` until 2026-10-30; older threads still say so.

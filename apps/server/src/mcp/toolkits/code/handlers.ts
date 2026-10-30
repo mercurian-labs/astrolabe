@@ -1,6 +1,7 @@
 import {
   type CodeCheckout,
   type CodeIndexError,
+  type LanguageServerError,
   OrchestratorMcpFailure,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -8,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as CodeIndex from "../../../codeIndex/CodeIndex.ts";
+import * as LanguageServers from "../../../languageServers/LanguageServers.ts";
 import { checkpointRefForScopeOrdinal } from "../../../orchestration-v2/CheckpointService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
@@ -43,6 +45,15 @@ const codeFailure = (error: CodeIndexError) => {
       return new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
   }
 };
+
+const diagnosticsFailure = (error: LanguageServerError) =>
+  new OrchestratorMcpFailure({
+    code:
+      error.reason === "download-needed" || error.reason === "not-running"
+        ? "invalid_request"
+        : "orchestration_error",
+    message: `${error.message} Run the project's type checker instead.`,
+  });
 
 /** The calling thread and its checkout: the thread's worktree, else the project's own folder. */
 const readCheckout = Effect.fn("CodeTools.readCheckout")(function* () {
@@ -141,5 +152,31 @@ export const layer = McpToolAccess.toLayer(CodeToolkit, {
   ),
   astrolabe_code_map: McpToolAccess.readsAsCaller((input) =>
     read((index, checkout) => index.map({ ...checkout, ...input })),
+  ),
+  astrolabe_code_diagnostics: McpToolAccess.readsAsCaller(({ paths }) =>
+    Effect.gen(function* () {
+      const { checkout } = yield* readCheckout();
+      const languageServers = yield* LanguageServers.LanguageServers;
+      const results = yield* Effect.forEach(
+        [...new Set(paths)],
+        (path) =>
+          languageServers.diagnostics({ cwd: checkout.cwd, relativePath: path }).pipe(
+            Effect.map((file) => ({ ok: true as const, file })),
+            Effect.catch((error) =>
+              // A file no server reads, or that cannot be opened, is listed; the rest fail the call.
+              error.reason === "unsupported" || error.reason === "document"
+                ? Effect.succeed({ ok: false as const, path, reason: error.message })
+                : Effect.fail(diagnosticsFailure(error)),
+            ),
+          ),
+        { concurrency: 4 },
+      );
+      return {
+        files: results.flatMap((result) => (result.ok ? [result.file] : [])),
+        skipped: results.flatMap((result) =>
+          result.ok ? [] : [{ path: result.path, reason: result.reason }],
+        ),
+      };
+    }),
   ),
 });

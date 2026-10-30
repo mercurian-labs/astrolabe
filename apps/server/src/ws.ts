@@ -246,6 +246,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
+import * as LanguageServers from "./languageServers/LanguageServers.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
@@ -1253,6 +1254,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const baseTexts = yield* VcsBaseText.VcsBaseText;
     const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
+    const languageServers = yield* LanguageServers.LanguageServers;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
       [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
@@ -1291,6 +1293,12 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.documentsSave]: (input) => documents.save(input),
       [WS_METHODS.documentsRecover]: (input) => documents.recover(input),
       [WS_METHODS.documentsDiscard]: (input) => documents.discard(input),
+      [WS_METHODS.languageServersSubscribe]: (_input) => languageServers.subscribe,
+      [WS_METHODS.languageServersRestart]: (input) => languageServers.restart(input),
+      [WS_METHODS.languageServersStop]: (input) => languageServers.stop(input),
+      [WS_METHODS.languageServersConfirmDownload]: (_input) => languageServers.confirmDownload,
+      [WS_METHODS.languageServersSession]: (input) => languageServers.session(input),
+      [WS_METHODS.languageServersSend]: (input) => languageServers.send(input),
     });
   }),
 );

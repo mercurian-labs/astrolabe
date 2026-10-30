@@ -3,6 +3,7 @@ import {
   CodeFindResult,
   CodeMap,
   CodeOutline,
+  FileDiagnostics,
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
@@ -10,6 +11,7 @@ import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
 import * as CodeIndex from "../../../codeIndex/CodeIndex.ts";
+import * as LanguageServers from "../../../languageServers/LanguageServers.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
@@ -90,9 +92,38 @@ const CodeMapTool = Tool.make("astrolabe_code_map", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
+  ...shared,
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    ProjectService.ProjectService,
+    LanguageServers.LanguageServers,
+  ],
+  description:
+    "The errors and warnings TypeScript's language server reports for TypeScript and JavaScript files at your thread's checkout, as the files are now: everything you wrote before the call is included. Use it after editing to check those files instead of type-checking the whole project. Lines and columns count from 1. The first call in a checkout can take a while as the project loads. Paths are repository-relative.",
+  parameters: Schema.Struct({
+    paths: Schema.Array(Text)
+      .check(Schema.isMinLength(1), Schema.isMaxLength(20))
+      .annotate({ description: "The files to check." }),
+  }),
+  success: Schema.Struct({
+    files: Schema.Array(FileDiagnostics),
+    skipped: Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        reason: Schema.String.annotate({ description: "Why it has no diagnostics." }),
+      }),
+    ),
+  }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 export const CodeToolkit = Toolkit.make(
   CodeOutlineTool,
   CodeFindTool,
   CodeChangesTool,
   CodeMapTool,
+  CodeDiagnosticsTool,
 );

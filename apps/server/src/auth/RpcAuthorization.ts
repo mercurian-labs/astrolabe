@@ -122,6 +122,11 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.codeIndexSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.codeIndexLocalGraph]: AuthFilesystemReadScope,
   [WS_METHODS.codeIndexStorage]: AuthFilesystemReadScope,
+  // Astrolabe: language-server reads are file reads; a send that lands edits, and restarting,
+  // stopping or downloading servers, come from clientRpcRequiredScopes.
+  [WS_METHODS.languageServersSubscribe]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersSession]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersSend]: AuthFilesystemReadScope,
   // Astrolabe: wiki reads are file reads; writes come from CLIENT_GUARDED_RPC_SCOPES.
   [WS_METHODS.wikiList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiSubscribe]: AuthFilesystemReadScope,
