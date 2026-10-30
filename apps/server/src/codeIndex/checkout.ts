@@ -2,15 +2,16 @@
  * What a checkout holds, read from git: each indexable file's path and blob, with uncommitted
  * files hashed as git would hash them. A checkout's code index is this list plus the shared facts.
  */
-import { isIndexable } from "@mercurian/code-graph/languages";
+import { inSkippedDirectory, isIndexable } from "@mercurian/code-graph/languages";
 import { CodeIndexError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import type * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 
 const MANIFEST = "package.json";
+/** A manifest naming one of the repository's own packages; vendored ones name dependencies. */
 export const isManifest = (path: string) =>
-  (path === MANIFEST || path.endsWith(`/${MANIFEST}`)) && !path.split("/").includes("node_modules");
+  (path === MANIFEST || path.endsWith(`/${MANIFEST}`)) && !inSkippedDirectory(path);
 
 /** A git tree's files the index reads. */
 export interface Listing {

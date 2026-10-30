@@ -44,10 +44,15 @@ const SKIPPED_DIRECTORIES = new Set(["node_modules", ".repos", "dist", "vendor",
 
 const GENERATED_NAME = /(\.gen\.|\.generated\.|\.min\.|_pb2\.py$|\.pb\.go$)/;
 
+/** Whether a path sits in a directory never indexed, at any depth. */
+export function inSkippedDirectory(path: string): boolean {
+  return path.split("/").some((segment) => SKIPPED_DIRECTORIES.has(segment));
+}
+
 /** Whether a path is worth parsing at all, before its size or text is known. */
 export function isIndexable(path: string): boolean {
   if (languageOf(path) === null || GENERATED_NAME.test(path)) return false;
-  return !path.split("/").some((segment) => SKIPPED_DIRECTORIES.has(segment));
+  return !inSkippedDirectory(path);
 }
 
 /** Generated files announce themselves in their first lines. */

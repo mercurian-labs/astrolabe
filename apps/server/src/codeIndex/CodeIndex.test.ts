@@ -326,6 +326,33 @@ it.effect("marks files changed on the branch and uncommitted ones", () =>
   ),
 );
 
+it.effect("reads a vendored package.json as vendored code, not a package of the repository", () =>
+  withIndex(
+    {
+      files: {
+        "src/app.ts": 'import * as Effect from "effect/Effect";\nexport const app = Effect;\n',
+        ".repos/effect-smol/packages/effect/package.json":
+          '{ "name": "effect", "exports": { "./*": "./src/*.ts" } }\n',
+        ".repos/effect-smol/packages/effect/src/Effect.ts": "export const succeed = 1;\n",
+      },
+    },
+    (harness) =>
+      Effect.gen(function* () {
+        yield* reach(harness.index, "ready");
+        const graph = yield* harness.index.localGraph(
+          graphInput(harness.root, "src/app.ts", { dependencies: true }),
+        );
+        assert.deepStrictEqual(
+          graph.nodes.map((node) => [node.id, node.kind]),
+          [
+            ["src/app.ts", "file"],
+            ["dependency:effect", "dependency"],
+          ],
+        );
+      }),
+  ),
+);
+
 const crowd = (() => {
   const files: Record<string, string> = {
     "lib/target.ts": 'import { other } from "./other.ts";\nexport const target = other;\n',
