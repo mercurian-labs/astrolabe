@@ -533,23 +533,26 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     return listing;
   });
 
+  /** A ref's commit and tree; null when it names neither. */
   const revision = (cwd: string, ref: string) =>
-    git
-      .execute({
-        operation: "codeIndex.revParse",
-        cwd,
-        args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`, `${ref}^{tree}`],
-        allowNonZeroExit: true,
-      })
-      .pipe(
-        Effect.mapError(gitFailed),
-        Effect.map((result) => {
-          const [commit, tree] = result.stdout.trim().split("\n");
-          return result.exitCode === 0 && commit !== undefined && tree !== undefined
-            ? { commit, tree }
-            : null;
-        }),
-      );
+    // A ref is a client's text: one that reads as an option names nothing.
+    (ref.startsWith("-")
+      ? Effect.succeed({ exitCode: 1, stdout: "" })
+      : git.execute({
+          operation: "codeIndex.revParse",
+          cwd,
+          args: ["rev-parse", `${ref}^{commit}`, `${ref}^{tree}`],
+          allowNonZeroExit: true,
+        })
+    ).pipe(
+      Effect.mapError(gitFailed),
+      Effect.map((result) => {
+        const [commit, tree] = result.stdout.trim().split("\n");
+        return result.exitCode === 0 && commit !== undefined && tree !== undefined
+          ? { commit, tree }
+          : null;
+      }),
+    );
 
   /** A checkout of the repository as it is now, uncommitted files hashed from disk. */
   const viewOfCheckout = Effect.fn("CodeIndex.viewOfCheckout")(function* (
@@ -672,15 +675,18 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     if (runWorker === null) {
       return yield* new CodeIndexError({ reason: "failed", message: NO_WORKER });
     }
-    const job = (chunk: ReadonlyArray<{ path: string; blob: string; disk: string | null }>) =>
-      runWorker(
+    const job = (chunk: ReadonlyArray<{ path: string; blob: string; disk: string | null }>) => {
+      // Another question or build may have parsed some of these while this one waited.
+      const todo = chunk.filter((file) => repo.versions.get(file.path, file.blob) === undefined);
+      if (todo.length === 0) return Effect.void;
+      return runWorker(
         {
           op: "parse",
           db: dbFile,
           projectId: repo.projectId,
           repo: cwd,
           maxBytes: MAX_FILE_BYTES,
-          files: chunk,
+          files: todo,
         },
         (output) =>
           "written" in output
@@ -689,6 +695,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
               )
             : Effect.void,
       ).pipe(storeLock.withPermits(1));
+    };
     yield* Effect.forEach(
       chunks(files, CHUNK_FILES),
       (chunk) => {
