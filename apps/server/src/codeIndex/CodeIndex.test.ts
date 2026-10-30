@@ -394,6 +394,109 @@ it.effect("folds a crowded ring by folder, keeps tests, and opens the folders as
   ),
 );
 
+/**
+ * 269 importers of `lib/target.ts` over nested folders, one alone in its folder, three at the top;
+ * 45 more import `apps/desktop/src/d0.ts` from a folder below it.
+ */
+const sprawl = (() => {
+  const files: Record<string, string> = { "lib/target.ts": "export const target = 1;\n" };
+  const add = (folder: string, prefix: string, count: number, imported = "lib/target.ts") => {
+    const up = folder === "" ? "./" : "../".repeat(folder.split("/").length);
+    for (let index = 0; index < count; index += 1) {
+      const file = `${folder === "" ? "" : `${folder}/`}${prefix}${index}.ts`;
+      files[file] = `import * as imported from "${up}${imported}";\nexport const v = imported;\n`;
+    }
+  };
+  add("apps/desktop/src", "d", 10);
+  add("apps/desktop/src/app", "e", 10);
+  add("apps/web/src", "w", 5);
+  add("apps/web/src/components", "c", 30);
+  add("apps/web/src/hooks", "h", 10);
+  for (let index = 0; index < 10; index += 1) add(`packages/p${index}/src`, "f", 20);
+  add("packages/solo/src", "s", 1);
+  add("", "r", 3);
+  add("apps/desktop/src/app/deep", "x", 45, "apps/desktop/src/d0.ts");
+  return files;
+})();
+
+/** Folder groups drawn inside another drawn folder group. */
+const nestedFolders = (nodes: ReadonlyArray<{ readonly id: string; readonly kind: string }>) => {
+  const folders = nodes.filter((node) => node.kind === "folder").map((node) => node.id);
+  return folders.filter((inner) => folders.some((outer) => inner.startsWith(`${outer}/`)));
+};
+
+it.effect("folds a crowded side at the one finest folder level that fits", () =>
+  withIndex({ files: sprawl }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const folded = yield* harness.index.localGraph(graphInput(harness.root, "lib/target.ts"));
+      const ring = folded.nodes.filter((node) => node.depth === 1);
+      assert.deepStrictEqual(nestedFolders(ring), []);
+      assert.deepStrictEqual(
+        ring.map((node) => [node.id, node.kind, node.files]),
+        [
+          ["apps/desktop/src", "folder", 20],
+          ["apps/web/src", "folder", 45],
+          ...Array.from({ length: 10 }, (_, index) => [`packages/p${index}/src`, "folder", 20]),
+          ["packages/solo/src/s0.ts", "file", null],
+          ["r0.ts", "file", null],
+          ["r1.ts", "file", null],
+          ["r2.ts", "file", null],
+        ],
+      );
+      assert.deepStrictEqual(
+        folded.links.find((link) => link.from === "apps/desktop/src"),
+        {
+          from: "apps/desktop/src",
+          to: "lib/target.ts",
+          line: null,
+          text: null,
+          resolution: "exact",
+        },
+      );
+
+      // An opened folder past the limit folds again below itself.
+      const web = yield* harness.index.localGraph(
+        graphInput(harness.root, "lib/target.ts", { expanded: ["apps/web/src"] }),
+      );
+      const inWeb = web.nodes.filter((node) => node.id.startsWith("apps/web/src/"));
+      assert.deepStrictEqual(
+        inWeb.map((node) => [node.id, node.kind, node.files]),
+        [
+          ["apps/web/src/components", "folder", 30],
+          ["apps/web/src/hooks", "folder", 10],
+          ...Array.from({ length: 5 }, (_, index) => [`apps/web/src/w${index}.ts`, "file", null]),
+        ],
+      );
+      assert.isFalse(web.nodes.some((node) => node.id === "apps/web/src"));
+      assert.deepStrictEqual(nestedFolders(web.nodes), []);
+
+      const components = yield* harness.index.localGraph(
+        graphInput(harness.root, "lib/target.ts", {
+          expanded: ["apps/web/src", "apps/web/src/components"],
+        }),
+      );
+      const shown = components.nodes.filter((node) =>
+        node.id.startsWith("apps/web/src/components/"),
+      );
+      assert.strictEqual(shown.length, 30);
+      assert.isTrue(shown.every((node) => node.kind === "file"));
+
+      // The second ring folds its own way, but a folder inside one the first ring drew joins it.
+      const deeper = yield* harness.index.localGraph(
+        graphInput(harness.root, "lib/target.ts", { depth: 2 }),
+      );
+      assert.deepStrictEqual(nestedFolders(deeper.nodes), []);
+      assert.deepStrictEqual(
+        deeper.nodes
+          .filter((node) => node.id.startsWith("apps/desktop/"))
+          .map((node) => [node.id, node.depth, node.files]),
+        [["apps/desktop/src", 1, 65]],
+      );
+    }),
+  ),
+);
+
 it.effect("cleanup keeps what a branch, worktree or checkpoint reaches and removes the rest", () =>
   withIndex({ files: SOURCES }, (harness) =>
     Effect.gen(function* () {

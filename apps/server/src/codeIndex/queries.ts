@@ -64,7 +64,6 @@ export const normalizePath = (path: string) =>
     .replace(/^\.\//, "")
     .replace(/^\/+|\/+$/g, "");
 
-const dirname = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const under = (path: string, folder: string) => folder === "" || path.startsWith(`${folder}/`);
 
@@ -104,6 +103,51 @@ const surest = (left: CodeResolution, right: CodeResolution): CodeResolution => 
 const FOLD_LIMIT = 40;
 /** Files reached per side before the graph stops widening; folding keeps what is drawn small. */
 const REACH_LIMIT = 3000;
+
+/** The folders above a path, outermost first: the top level `""`, then `a` and `a/b` for `a/b/c`. */
+const foldersAbove = (path: string) => {
+  const segments = path === "" ? [] : path.split("/");
+  return segments.map((_, index) => segments.slice(0, index).join("/"));
+};
+
+/**
+ * Fold one side of a ring at a single folder level: the finest, `from` or deeper, that leaves at
+ * most FOLD_LIMIT nodes (level 0 is the top level, 1 its folders). A folder of one file stays that
+ * file; an opened folder shows its files, folded again below it when they are too many.
+ */
+function foldSide(
+  files: ReadonlyArray<string>,
+  from: number,
+  expanded: ReadonlySet<string>,
+  folded: Map<string, string>,
+) {
+  if (files.length <= FOLD_LIMIT) return;
+  const above = files.map(foldersAbove);
+  const groupsAt = (level: number) => {
+    const groups = new Map<string, Array<string>>();
+    let loose = 0;
+    for (const [index, file] of files.entries()) {
+      const folder = above[index]?.[level];
+      const members = folder === undefined ? undefined : groups.get(folder);
+      if (folder === undefined) loose += 1;
+      else if (members === undefined) groups.set(folder, [file]);
+      else members.push(file);
+    }
+    return { groups, nodes: loose + groups.size };
+  };
+  let level = from;
+  for (const folders of above) level = Math.max(level, folders.length - 1);
+  let found = groupsAt(level);
+  while (found.nodes > FOLD_LIMIT && level > from) {
+    level -= 1;
+    found = groupsAt(level);
+  }
+  for (const [folder, members] of found.groups) {
+    if (members.length < 2) continue;
+    if (expanded.has(folder)) foldSide(members, level + 1, expanded, folded);
+    else for (const member of members) folded.set(member, folder);
+  }
+}
 
 export interface Changes {
   readonly branch: ReadonlySet<string>;
@@ -255,25 +299,24 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
   }
 
   // Fold each crowded side of a ring into folders, except the folders the reader opened.
-  const expanded = new Set(input.expanded.map(normalizePath));
+  const expanded = new Set(
+    input.expanded.map((folder) => normalizePath(folder).replace(/^\.$/, "")),
+  );
   const folded = new Map<string, string>();
-  const rings = new Map<string, Array<DraftNode>>();
+  const rings = new Map<string, Array<string>>();
   for (const node of nodes.values()) {
     if (node.kind !== "file" || node.side === "center") continue;
     const ring = `${node.side}:${node.depth}`;
-    rings.set(ring, [...(rings.get(ring) ?? []), node]);
+    const members = rings.get(ring);
+    if (members === undefined) rings.set(ring, [node.id]);
+    else members.push(node.id);
   }
-  for (const ring of rings.values()) {
-    if (ring.length <= FOLD_LIMIT) continue;
-    const byFolder = new Map<string, Array<DraftNode>>();
-    for (const node of ring) {
-      const folder = dirname(node.id) || ".";
-      byFolder.set(folder, [...(byFolder.get(folder) ?? []), node]);
-    }
-    for (const [folder, members] of byFolder) {
-      if (members.length < 2 || expanded.has(folder)) continue;
-      for (const member of members) folded.set(member.id, folder);
-    }
+  for (const ring of rings.values()) foldSide(ring, 0, expanded, folded);
+  // Each ring folds alone, so one may draw a folder inside another's: the outer one takes its files.
+  const drawn = new Set(folded.values());
+  for (const [file, folder] of folded) {
+    const outer = foldersAbove(folder).find((above) => drawn.has(above)) ?? folder;
+    folded.set(file, outer || ".");
   }
   const foldOf = (id: string) => folded.get(id) ?? id;
 
@@ -305,7 +348,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     output.set(folder, {
       id: folder,
       kind: "folder",
-      name: folder === "." ? "." : basename(folder),
+      name: basename(folder),
       path: folder,
       depth: Math.min(...members.map((member) => member.depth)),
       lines: null,
