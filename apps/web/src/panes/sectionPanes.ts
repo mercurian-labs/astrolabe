@@ -42,9 +42,8 @@ function storage(): Storage | null {
 /**
  * Astrolabe: a section's tabs and splits, one arrangement on the device, kept outside React so
  * its sidebar and links can open tabs into it, as the Wikis area's are (`wikiPanes`). A tab's key
- * names what it shows, so the same thing is the same key; each tab walks back and forward through
- * what it showed. `isKey` says which keys the section keeps across a reload; a tab whose key
- * `keepsPlace` is never shown over: what would replace it opens in a new tab.
+ * names what it shows; each tab walks back and forward through what it showed. `isKey` says which
+ * keys survive a reload; a tab `keepsPlace` names is never shown over, only opened beside.
  */
 export function createSectionPanes({
   storageKey,
