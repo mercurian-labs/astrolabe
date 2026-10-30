@@ -1011,6 +1011,9 @@ importers:
       '@ff-labs/fff-node':
         specifier: 0.11.0
         version: 0.11.0(patch_hash=cc71fcec015f4d39bc96ae2e2bf6b0ca678124c722c66a7841efce9d34b5983c)
+      '@mercurian/code-graph':
+        specifier: workspace:*
+        version: link:../../packages/code-graph
       '@mercurian/wiki':
         specifier: workspace:*
         version: link:../../packages/wiki
