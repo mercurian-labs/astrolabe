@@ -29,12 +29,20 @@ import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { composerHistory } from "../composerCodeMirror/composerUndo";
 import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFilesQueryState";
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
 import { repositoryFileReveal, revealLine } from "./repositoryFileReveal";
+import {
+  diffBaseControl,
+  openingDiffBase,
+  pickDiffBase,
+  type DiffBaseControl,
+  type FileDiffBase,
+} from "./fileDiffBase";
 import type { RepositoryTab } from "./repositoryTabs";
 
 type FileTab = Extract<RepositoryTab, { kind: "file" }>;
@@ -114,7 +122,38 @@ export function RepositoryFileView({
   const contents = file.data?.contents ?? null;
   const readOnly = !canWrite || file.data?.truncated === true;
   const agentWorking = useAgentWorkingIn(tab);
-  const baseText = useBaseText(tab, !isMarkdownPath(path));
+  const bases = useBaseTexts(tab, !isMarkdownPath(path));
+  // The view can be handed another tab, so a choice holds only for the file it was made in.
+  const fileKey = `${environmentId}\0${cwd}\0${path}`;
+  const [choice, setChoice] = useState<{ readonly key: string; readonly base: FileDiffBase }>();
+  // What the file opens on, decided again only when another turn's start becomes the base.
+  const turnKey = bases.turn
+    ? `${fileKey}\0${bases.turn.turn?.threadId}\0${bases.turn.hash}`
+    : null;
+  const [opening, setOpening] = useState<{ readonly key: string; readonly base: FileDiffBase }>();
+  if (bases.turn && turnKey !== null && contents !== null && opening?.key !== turnKey) {
+    setOpening({ key: turnKey, base: openingDiffBase(bases.turn, contents) });
+  }
+  const diffBase = pickDiffBase(
+    choice?.key === fileKey ? choice.base : null,
+    bases.turn,
+    opening?.key === turnKey ? opening.base : undefined,
+  );
+  const baseText =
+    diffBase === "turn" ? bases.turn?.text : diffBase === "head" ? bases.head : undefined;
+  const turnAvailable = bases.turn != null;
+  const chooseBase = (base: FileDiffBase) => setChoice({ key: fileKey, base });
+  const currentBase = useStableCallback(() => ({ base: diffBase ?? "head", turnAvailable }));
+  const toggleBase = useStableCallback(() => {
+    if (turnAvailable) chooseBase(diffBase === "turn" ? "head" : "turn");
+  });
+  const baseControl = { current: currentBase, toggle: toggleBase };
+  // The editor only learns of disk changes when the file is read again.
+  const writingHash = bases.turn?.turn?.running === true ? bases.turn.turn.fileHash : undefined;
+  // oxlint-disable-next-line t3code/react-effect-budget -- reads the file again as a running turn writes it
+  useEffect(() => {
+    if (writingHash !== undefined) refresh();
+  }, [writingHash, refresh]);
 
   if (file.error !== null && contents === null) {
     return <FileNotice>{file.error}</FileNotice>;
@@ -126,6 +165,24 @@ export function RepositoryFileView({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
+        {turnAvailable ? (
+          <ToggleGroup
+            aria-label="Compare changes with"
+            className="shrink-0"
+            value={diffBase === undefined ? [] : [diffBase]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (next === "head" || next === "turn") chooseBase(next);
+            }}
+          >
+            <Toggle value="head" title="Changes since the last commit">
+              HEAD
+            </Toggle>
+            <Toggle value="turn" title="Changes since the latest turn that changed this file">
+              This turn
+            </Toggle>
+          </ToggleGroup>
+        ) : null}
         {agentWorking ? (
           <span className="flex shrink-0 items-center gap-1 text-info-foreground">
             <BotIcon className="size-3.5" />
@@ -150,6 +207,7 @@ export function RepositoryFileView({
           contents={contents}
           readOnly={readOnly}
           baseText={baseText}
+          baseControl={baseControl}
           pendingRef={pendingRef}
           onChange={(next) => {
             setProjectFileQueryData(environmentId, cwd, path, next);
@@ -181,15 +239,17 @@ function FileEditor({
   contents,
   readOnly,
   baseText,
+  baseControl,
   pendingRef,
   onChange,
 }: {
   readonly path: string;
   readonly contents: string;
   readonly readOnly: boolean;
-  /** The committed text the changes are marked against; null for none, undefined while loading. */
   readonly tabKey: string;
+  /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
+  readonly baseControl: DiffBaseControl;
   readonly pendingRef: { readonly current: boolean };
   readonly onChange: (contents: string) => void;
 }) {
@@ -215,7 +275,7 @@ function FileEditor({
     readOnly: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
-  const [initial] = useState(() => ({ path, contents, readOnly, vim, wordWrap }));
+  const [initial] = useState(() => ({ path, contents, readOnly, vim, wordWrap, baseControl }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -237,6 +297,7 @@ function FileEditor({
           compartments.vim.of(initial.vim ? vimExtension() : []),
           appVimKeys(() => null),
           compartments.keys.of([]),
+          markdown ? [] : diffBaseControl.of(initial.baseControl),
           markdown ? livePreview() : codeView(),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
@@ -338,17 +399,24 @@ function readOnlyExtension(readOnly: boolean) {
 }
 
 /**
- * A code file's committed text, kept current as commits and checkouts change it (the checkout's
- * status is read again when the window comes back); undefined while it loads or when not wanted.
+ * A code file's base texts, kept current: its committed text as commits and checkouts change it
+ * (the checkout's status is read again when the window comes back), and the turn base as turns
+ * in the checkout run. Undefined while they load or when not wanted.
  */
-function useBaseText(tab: FileTab, wanted: boolean): string | null | undefined {
+function useBaseTexts(tab: FileTab, wanted: boolean) {
   const { environmentId, cwd, path } = tab;
   useAtomMount(vcsStatusRevalidation(wanted ? { environmentId, cwd } : null));
-  const base = useEnvironmentQuery(
+  const head = useEnvironmentQuery(
     wanted ? vcsEnvironment.baseText({ environmentId, input: { cwd, path, base: "head" } }) : null,
   );
-  if (!base.isSuccess) return undefined;
-  return base.data?.text ?? null;
+  const turn = useEnvironmentQuery(
+    wanted ? vcsEnvironment.baseText({ environmentId, input: { cwd, path, base: "turn" } }) : null,
+  );
+  return {
+    head: head.isSuccess ? (head.data?.text ?? null) : undefined,
+    // A turn base that cannot load (an older server) leaves the file on HEAD.
+    turn: turn.isSuccess ? turn.data : turn.error === null ? undefined : null,
+  };
 }
 
 /** Whether a thread's agent is mid-turn in the tab's checkout. */

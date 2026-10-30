@@ -1,11 +1,12 @@
 import * as Schema from "effect/Schema";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
  * Astrolabe: the text an open file's change markers compare against. `head` is the committed
- * text; the base is a parameter so other bases can join it.
+ * text. `turn` is the file as it was when the latest turn, from any thread, that changed it in
+ * this checkout started; a running turn counts once the file differs from its start.
  */
-export const VcsBaseTextBase = Schema.Literal("head");
+export const VcsBaseTextBase = Schema.Literals(["head", "turn"]);
 export type VcsBaseTextBase = typeof VcsBaseTextBase.Type;
 
 export const VcsBaseTextInput = Schema.Struct({
@@ -18,12 +19,22 @@ export type VcsBaseTextInput = typeof VcsBaseTextInput.Type;
 
 /**
  * The base's text and its Git blob id, or null when the file has none to compare against: not
- * in a repository, untracked, binary, or too big to read whole.
+ * in a repository, untracked, binary, or too big to read whole, and for `turn`, no turn in this
+ * checkout changed it.
  */
 export const VcsBaseTextResult = Schema.NullOr(
   Schema.Struct({
     text: Schema.String,
     hash: Schema.String,
+    /** The `turn` base's turn. */
+    turn: Schema.optional(
+      Schema.Struct({
+        threadId: ThreadId,
+        running: Schema.Boolean,
+        /** While it runs, the file's blob id on disk, which changes as the turn writes it. */
+        fileHash: Schema.optional(Schema.String),
+      }),
+    ),
   }),
 );
 export type VcsBaseTextResult = typeof VcsBaseTextResult.Type;

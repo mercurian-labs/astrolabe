@@ -95,6 +95,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "hunk.restore",
   "hunk.next",
   "hunk.previous",
+  "hunk.toggleBase",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

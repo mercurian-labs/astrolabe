@@ -114,21 +114,21 @@ have pressed show at the top, Backspace goes back a level, and Escape or a click
 elsewhere closes it. A key with nothing bound says so. The menu waits as long as
 you need.
 
-| Key                     | Does                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `:`                     | Command Palette                                                                                              |
-| `/`                     | Search threads, wiki documents, projects, and settings                                                       |
-| `n`                     | New thread, or new document on Wikis                                                                         |
-| `f`                     | Find a file in the current project                                                                           |
-| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                         |
-| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                  |
-| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                               |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                           |
-| `p`                     | Panes: split, close, maximize, full screen, right panel                                                      |
-| `s` `s`                 | Show or hide the sidebar                                                                                     |
-| `w`                     | Open Wikis, or find or create a document                                                                     |
-| `e`                     | [Find](#find-in-a-file-or-note), [edit code](#edit-code) and step through [changes](#changes-in-a-code-file) |
-| `,`                     | Settings                                                                                                     |
+| Key                     | Does                                                                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `:`                     | Command Palette                                                                                                               |
+| `/`                     | Search threads, wiki documents, projects, and settings                                                                        |
+| `n`                     | New thread, or new document on Wikis                                                                                          |
+| `f`                     | Find a file in the current project                                                                                            |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                          |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                   |
+| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                            |
+| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                       |
+| `s` `s`                 | Show or hide the sidebar                                                                                                      |
+| `w`                     | Open Wikis, or find or create a document                                                                                      |
+| `e`                     | [Find](#find-in-a-file-or-note), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base |
+| `,`                     | Settings                                                                                                                      |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
@@ -303,6 +303,14 @@ and Escape leaves insert mode before it hides changes.
 
 Change these shortcuts in **Settings → Keybindings** under **Editors**. Files that are new and
 not yet committed show no strips.
+
+When an agent's turn has changed the file, the header offers **HEAD** and **This turn**. This
+turn marks what changed since the latest turn, from any thread in this checkout, that changed
+the file started, so you see just what the agent did; while that turn runs, its edits show as
+they land. A file opens on This turn while it has changes from that turn, and on HEAD
+otherwise. Restore puts back the lines from the base you are comparing with, so in This turn it
+reverts that change of the agent's. `e` `b` in the keyboard menu, or **Compare With HEAD or
+This Turn** in the Command Palette, switches too.
 
 ## Find in a diff
 

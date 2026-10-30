@@ -13,6 +13,7 @@ import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
 
+import { diffBaseControl, hasDiffBaseControl } from "~/components/repositories/fileDiffBase";
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { codeEditingCommandOf } from "~/editorKeybindings";
 import { isEmptyTab } from "~/panes/arrangement";
@@ -178,7 +179,7 @@ function editorFrom(
 }
 
 const HUNK_ENTRIES: Record<
-  Extract<AstrolabeKeybindingCommand, `hunk.${string}`>,
+  Exclude<Extract<AstrolabeKeybindingCommand, `hunk.${string}`>, "hunk.toggleBase">,
   { readonly command: HunkCommand; readonly label: string }
 > = {
   "hunk.toggle": { command: "toggle", label: "Show or hide change" },
@@ -395,6 +396,18 @@ function astrolabeCommand(
     case "hunk.next":
     case "hunk.previous":
       return hunkEntry(command, context.origin);
+    case "hunk.toggleBase": {
+      const control = editorFrom(context.origin, hasDiffBaseControl)?.state.facet(diffBaseControl);
+      const current = control?.current();
+      return entry(
+        current?.turnAvailable
+          ? current.base === "turn"
+            ? "Compare with HEAD"
+            : "Compare since this turn"
+          : "No turn changed this file",
+        control && current?.turnAvailable ? control.toggle : null,
+      );
+    }
   }
 }
 
