@@ -20,14 +20,14 @@ const contains = (option: { readonly label: string }, query: string) =>
   option.label.toLowerCase().includes(query.toLowerCase());
 
 describe("the project filter", () => {
-  it("lists All projects, the repositories, then the wikis, each under its heading", () => {
+  it("lists All, the projects, then the wikis, each under its heading", () => {
     const options = projectFilterOptions({
       repositories: [repository("r1", "astrolabe"), repository("r2", "memory-tools")],
       wikis: [overview("w1", "Almagest")],
     });
     expect(options.map((option) => [option.kind, option.label])).toEqual([
-      ["all", "All projects"],
-      ["repositories", "Repositories"],
+      ["all", "All"],
+      ["repositories", "Projects"],
       ["repository", "astrolabe"],
       ["repository", "memory-tools"],
       ["wikis", "Wikis"],
@@ -35,21 +35,17 @@ describe("the project filter", () => {
     ]);
   });
 
-  it("leaves out a kind with nothing in it", () => {
-    const options = projectFilterOptions({
+  it("drops the headings from a list of one kind, its All naming that kind", () => {
+    const projects = projectFilterOptions({
       repositories: [repository("r1", "astrolabe")],
       wikis: [],
     });
-    expect(options.map((option) => option.kind)).toEqual(["all", "repositories", "repository"]);
-  });
-
-  it("offers a one-kind section only that kind, its heading standing for all of them", () => {
-    const options = projectFilterOptions({
-      repositories: [repository("r1", "astrolabe")],
-      wikis: [overview("w1", "Almagest")],
-      kinds: "wikis",
-    });
-    expect(options.map((option) => option.label)).toEqual(["Wikis", "Almagest"]);
+    expect(projects.map((option) => [option.kind, option.label])).toEqual([
+      ["all", "All projects"],
+      ["repository", "astrolabe"],
+    ]);
+    const wikis = projectFilterOptions({ repositories: [], wikis: [overview("w1", "Almagest")] });
+    expect(wikis.map((option) => option.label)).toEqual(["All wikis", "Almagest"]);
   });
 
   it("reads an option back as the choice it makes", () => {

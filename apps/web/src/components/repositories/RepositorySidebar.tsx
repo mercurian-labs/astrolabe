@@ -615,14 +615,13 @@ function RepositoryFilter({
       repository,
     })),
     wikis: [],
-    kinds: "repositories",
   });
   const filtered = searchProjectFilterOptions(items, menu.query, (item, query) =>
     filter.contains(item, query, (candidate) => candidate.label),
   );
   const value = scoped
     ? projectFilterValue({ kind: "repository", key: repositoryKey(scoped) })
-    : projectFilterValue({ kind: "repositories" });
+    : projectFilterValue({ kind: "all" });
   const selected = items.find((item) => item.value === value) ?? items[0];
   const closeAnd = (then: () => void) => {
     dispatchMenu({ type: "open-changed", open: false });

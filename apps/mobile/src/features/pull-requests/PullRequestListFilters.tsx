@@ -112,8 +112,9 @@ export function usePullRequestListFilters(props: {
   /** Opens a picker that searches the host, for a label or author no loaded row carries. */
   readonly onSearch: (kind: "labels" | "authors") => void;
   /**
-   * Astrolabe: the project menu lists Repositories and each repository, then each wiki. `onSource`
-   * hears the pick: `"all"`, `"repositories"` (also for one repository) or a wiki's value.
+   * Astrolabe: the project menu lists each project, then each wiki, with a Projects choice for
+   * every project when it lists both. `onSource` hears the pick: `"all"`, `"repositories"` (also
+   * for one project) or a wiki's value.
    */
   readonly wikis?: readonly { value: string; title: string }[];
   readonly wikiValue?: string | null;
@@ -122,6 +123,8 @@ export function usePullRequestListFilters(props: {
 }) {
   const { value } = props;
   const projects = useProjectsInSidebarOrder(props.projects);
+  const listsBothKinds =
+    props.onSource !== undefined && projects.length > 0 && (props.wikis?.length ?? 0) > 0;
   const selectedLabels = value.filters.labels?.flat() ?? [];
   const selectedLabelSet = new Set(selectedLabels);
   const author = value.filters.author;
@@ -272,12 +275,12 @@ export function usePullRequestListFilters(props: {
           (project) =>
             project.id === value.projectId && project.environmentId === value.projectEnvironmentId,
         )?.title ??
-        (props.repositoriesOnly ? "Repositories" : "Project"),
+        (props.repositoriesOnly ? "Projects" : "Project"),
       subactions: choices(
         "project",
         Object.fromEntries([
-          ["", "All projects"],
-          ...(props.onSource && projects.length > 0 ? [[REPOSITORIES_CHOICE, "Repositories"]] : []),
+          ["", listsBothKinds ? "All" : "All projects"],
+          ...(listsBothKinds ? [[REPOSITORIES_CHOICE, "Projects"]] : []),
           ...projects.map((project) => [
             JSON.stringify([project.environmentId, project.id]),
             project.title,

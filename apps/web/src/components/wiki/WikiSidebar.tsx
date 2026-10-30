@@ -707,7 +707,7 @@ function WikiFilterMenu({
                   const overview = overviewByKey.get(value) ?? null;
                   return (
                     <ComboboxItem key={value} hideIndicator value={value}>
-                      <ThreadsFilterCheckbox check={checked(value) ? "checked" : "unchecked"} />
+                      <ThreadsFilterCheckbox checked={checked(value)} />
                       {value === CHANGED_VALUE ? (
                         <ChangedIcon />
                       ) : overview ? (
