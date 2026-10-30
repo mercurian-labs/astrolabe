@@ -851,6 +851,95 @@ describe("LanguageServers", () => {
       expect(unsupported.reason).toBe("unsupported");
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
+
+  it.live("tells a server of the files it watches that change outside its open documents", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout(SOURCE, {
+        watch: [
+          { globPattern: "**/*.ts" },
+          // Created files only, under the checkout's `docs` folder.
+          { globPattern: { baseUri: ".", pattern: "docs/*.md" }, kind: 1 },
+        ],
+      });
+      const uriOf = (name: string) => NodeURL.pathToFileURL(`${checkout.cwd}/${name}`).href;
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      // The server has the file open once its diagnostics are in, and its watchers by then.
+      yield* session.diagnostics();
+      const changed = (changes: LanguageServers.FilesChangedInput["changes"]) =>
+        service.filesChanged({ cwd: checkout.cwd, changes });
+
+      yield* checkout.write("src/vectors.ts", "export const scaleVector = 1;\n");
+      yield* changed([
+        { relativePath: "src/vectors.ts", type: "created" },
+        // The server has this one open: its edits reach it as the document's.
+        { relativePath: FILE, type: "changed" },
+        { relativePath: "README.md", type: "changed" },
+        { relativePath: "docs/notes.md", type: "changed" },
+      ]);
+      // The same burst: still a new file to the server.
+      yield* changed([{ relativePath: "src/vectors.ts", type: "changed" }]);
+      const first = yield* session.request(1, "test/watched", { count: 1 });
+      expect(first.result).toEqual([[{ uri: uriOf("src/vectors.ts"), type: 1 }]]);
+
+      yield* fileSystem.remove(`${checkout.cwd}/src/vectors.ts`);
+      yield* changed([
+        { relativePath: "src/vectors.ts", type: "deleted" },
+        { relativePath: "docs/plan.md", type: "created" },
+      ]);
+      const second = yield* session.request(2, "test/watched", { count: 2 });
+      expect(second.result).toEqual([
+        [{ uri: uriOf("src/vectors.ts"), type: 1 }],
+        [
+          { uri: uriOf("src/vectors.ts"), type: 3 },
+          { uri: uriOf("docs/plan.md"), type: 1 },
+        ],
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
+  );
+
+  it.live("tells a server of a file saved here that it doesn't have open", () =>
+    Effect.gen(function* () {
+      const documents = yield* Documents.Documents;
+      const checkout = yield* makeCheckout(SOURCE, { watch: [{ globPattern: "**/*.ts" }] });
+      yield* checkout.write("src/point.ts", "export const point = 1;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics();
+      // An editor holds the other file without a language server, and saves an edit to it.
+      const items = yield* Queue.unbounded<DocumentStreamItem, Cause.Done | DocumentError>();
+      yield* documents
+        .subscribe({ cwd: checkout.cwd, relativePath: "src/point.ts" })
+        .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+      const first = yield* Queue.take(items);
+      if (first.type !== "snapshot") throw new Error("expected a snapshot");
+      yield* documents.push({
+        cwd: checkout.cwd,
+        relativePath: "src/point.ts",
+        loadId: first.loadId,
+        version: first.version,
+        updates: [
+          {
+            clientId: "editor",
+            changes: ChangeSet.of([{ from: 0, insert: "// x\n" }], first.text.length).toJSON(),
+          },
+        ],
+      });
+      yield* documents.save({
+        cwd: checkout.cwd,
+        relativePath: "src/point.ts",
+        loadId: first.loadId,
+      });
+      const watched = yield* session.request(1, "test/watched", { count: 1 });
+      expect(watched.result).toEqual([
+        [{ uri: NodeURL.pathToFileURL(`${checkout.cwd}/src/point.ts`).href, type: 2 }],
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
+  );
 });
 
 /** A gzipped npm tarball holding `files` under `package/`. */

@@ -40,3 +40,12 @@ positions land on the wrong text.
 
 Each editor opens its own gateway session (`languageServers.session`), so two views of one file
 are two LSP clients of the gateway; the server still sees one.
+
+## Files outside the documents
+
+A server reads every file it has no document for from disk, and hears of their changes only
+through the `workspace/didChangeWatchedFiles` watchers it registers. The kind matters: TypeScript
+7 ignores `Changed` for a file it hasn't read and `Created` for one it has. Until the environment
+watches workspaces, [`WorkspaceChangeSignals`](../../apps/server/src/languageServers/WorkspaceChangeSignals.ts)
+re-reads git's status on each status update and agent file edit, and the documents report their
+own writes; a watcher would replace those signals, not the gateway's matching.

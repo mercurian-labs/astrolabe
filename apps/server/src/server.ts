@@ -106,6 +106,7 @@ import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import * as Documents from "./documents/Documents.ts";
 import * as LanguageServers from "./languageServers/LanguageServers.ts";
+import * as WorkspaceChangeSignals from "./languageServers/WorkspaceChangeSignals.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
@@ -635,6 +636,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ReplayMarkers.layer,
   // Astrolabe: an open file's base texts, which read the checkout's status and its turns.
   VcsBaseText.layer,
+  // Astrolabe: tells language servers of the files the checkout's signals show changed.
+  WorkspaceChangeSignals.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),

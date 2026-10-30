@@ -1,7 +1,9 @@
 // A language server for tests, configured by `fake-server.json` in its working directory:
 // `crashTimes` exits at `initialize` on that many starts (counted in `starts.log`), `waitFor`
-// answers `initialize` once that file exists. Every "bad" is an error diagnostic.
+// answers `initialize` once that file exists, `watch` registers those file watchers (a base uri
+// of "." is its working directory). Every "bad" is an error diagnostic.
 import * as NodeFS from "node:fs";
+import * as NodeURL from "node:url";
 
 const config = NodeFS.existsSync("fake-server.json")
   ? JSON.parse(NodeFS.readFileSync("fake-server.json", "utf8"))
@@ -15,6 +17,15 @@ const slow = new Map();
 // The server's own requests to the client, by id: what to do with each answer.
 const asked = new Map();
 let askedCount = 0;
+// Each `workspace/didChangeWatchedFiles`'s changes, and `test/watched` requests waiting for more.
+const watched = [];
+const watchedWaiting = [];
+const answerWatched = () => {
+  for (const waiting of watchedWaiting.filter(({ count }) => watched.length >= count)) {
+    watchedWaiting.splice(watchedWaiting.indexOf(waiting), 1);
+    write({ id: waiting.id, result: watched });
+  }
+};
 
 const write = (message) => {
   const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", ...message }));
@@ -92,6 +103,38 @@ const handle = (message) => {
       } else answer();
       return;
     }
+    case "initialized": {
+      if (!config.watch) return;
+      const here = `${NodeURL.pathToFileURL(process.cwd()).href}/`;
+      const watchers = config.watch.map((watcher) =>
+        watcher.globPattern?.baseUri === "."
+          ? { ...watcher, globPattern: { ...watcher.globPattern, baseUri: here } }
+          : watcher,
+      );
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, () => {});
+      write({
+        id: askId,
+        method: "client/registerCapability",
+        params: {
+          registrations: [
+            {
+              id: "fake-watch",
+              method: "workspace/didChangeWatchedFiles",
+              registerOptions: { watchers },
+            },
+          ],
+        },
+      });
+      return;
+    }
+    case "workspace/didChangeWatchedFiles":
+      watched.push(params.changes);
+      return answerWatched();
+    case "test/watched":
+      // Answers once `count` notifications have come, with all of them.
+      watchedWaiting.push({ id, count: params.count });
+      return answerWatched();
     case "shutdown":
       return reply(null);
     case "exit":
