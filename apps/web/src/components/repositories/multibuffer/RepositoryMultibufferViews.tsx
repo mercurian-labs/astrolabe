@@ -47,7 +47,8 @@ type Checkout = Pick<RepositoryTab, "environmentId" | "projectId" | "cwd">;
 function useOpenFile(checkout: Checkout) {
   const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
   return (path: string, line: number) => {
-    const key = repositoryTabKey({ kind: "file", ...checkout, path });
+    const { environmentId, projectId, cwd } = checkout;
+    const key = repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path });
     panes.update((next) => openTab(next, key));
     repositoryFileReveal.request(key, line);
   };
@@ -75,8 +76,8 @@ function Notice({ children }: { readonly children: ReactNode }) {
   );
 }
 
-const plural = (count: number, one: string) =>
-  `${count.toLocaleString()} ${one}${count === 1 ? "" : "s"}`;
+const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
 export function RepositorySearchView({
   tabKey,
@@ -187,7 +188,7 @@ export function RepositorySearchView({
     setDone(result.done);
     const failed = result.done.failed.length;
     setReport(
-      `Replaced ${plural(result.done.replacements, "match")} in ${plural(result.done.files, "file")}.${
+      `Replaced ${plural(result.done.replacements, "match", "matches")} in ${plural(result.done.files, "file")}.${
         failed > 0 ? ` ${plural(failed, "file")} could not be changed.` : ""
       }`,
     );
@@ -196,11 +197,16 @@ export function RepositorySearchView({
     if (multibuffer.fileList().length > REPLACE_CONFIRM_FILES) setConfirming(true);
     else void startReplace();
   };
+  const searchAgain = () => {
+    setState((current) => ({ ...current, status: "searching", message: null }));
+    setRun((count) => count + 1);
+  };
   const undo = async () => {
     const record = done;
     if (record === null) return;
     setDone(null);
     setReport((await record.undo()) ?? "Replace-all undone.");
+    searchAgain();
   };
 
   const readOnly = !canWrite;
@@ -222,10 +228,7 @@ export function RepositorySearchView({
           aria-label="Search again"
           size="icon-xs"
           variant="ghost-muted"
-          onClick={() => {
-            setState((current) => ({ ...current, status: "searching", message: null }));
-            setRun((count) => count + 1);
-          }}
+          onClick={searchAgain}
         >
           <RefreshCwIcon />
         </Button>

@@ -43,16 +43,19 @@ function storage(): Storage | null {
  * Astrolabe: a section's tabs and splits, one arrangement on the device, kept outside React so
  * its sidebar and links can open tabs into it, as the Wikis area's are (`wikiPanes`). A tab's key
  * names what it shows, so the same thing is the same key; each tab walks back and forward through
- * what it showed. `isKey` says which keys the section keeps across a reload.
+ * what it showed. `isKey` says which keys the section keeps across a reload; a tab whose key
+ * `keepsPlace` is never shown over: what would replace it opens in a new tab.
  */
 export function createSectionPanes({
   storageKey,
   historyStorageKey,
   isKey,
+  keepsPlace = () => false,
 }: {
   readonly storageKey: string;
   readonly historyStorageKey: string;
   readonly isKey: (key: string) => boolean;
+  readonly keepsPlace?: (key: string) => boolean;
 }) {
   let snapshot: PaneArrangementSnapshot | null = null;
   let histories: TabHistories | null = null;
@@ -154,7 +157,7 @@ export function createSectionPanes({
   /**
    * Shows `key` as a sidebar row's click does: in the focused pane's tab in front (or `paneId`'s,
    * which takes focus), which remembers what it showed. One open already comes to the front; an
-   * empty tab, or one with unsaved edits, makes way for a new tab.
+   * empty tab makes way for a new tab, as does one with unsaved edits or one that keeps its place.
    */
   const show = (key: string, paneId?: string) => {
     const arrangement = current().arrangement;
@@ -162,7 +165,12 @@ export function createSectionPanes({
       (paneId === undefined ? undefined : findLeaf(arrangement.root, paneId)) ??
       focusedPane(arrangement);
     const active = pane.active;
-    if (allTabs(arrangement).includes(key) || isEmptyTab(active) || hasUnsavedEdits(active)) {
+    if (
+      allTabs(arrangement).includes(key) ||
+      isEmptyTab(active) ||
+      hasUnsavedEdits(active) ||
+      keepsPlace(active)
+    ) {
       open(key, "tab", pane.id);
       return;
     }
@@ -183,7 +191,12 @@ export function createSectionPanes({
       target = historyTarget(tabHistories, active, direction);
     }
     const pruned = tabHistories;
-    if (target === null || hasUnsavedEdits(active) || allTabs(arrangement).includes(target)) {
+    if (
+      target === null ||
+      hasUnsavedEdits(active) ||
+      keepsPlace(active) ||
+      allTabs(arrangement).includes(target)
+    ) {
       const goTo = target;
       updateWithHistory(
         (before) =>

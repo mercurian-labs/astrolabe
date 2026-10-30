@@ -13,6 +13,11 @@ export const repositoryPanes = createSectionPanes({
   storageKey: "astrolabe:repository-panes:v1",
   historyStorageKey: "astrolabe:repository-tab-history:v1",
   isKey: (key) => isSectionTabKey(key) || pullRequestTargetOfKey(key) !== null,
+  // Results (a search, problems, places) are worked through, not browsed past.
+  keepsPlace: (key) => {
+    const kind = parseRepositoryTabKey(key)?.kind;
+    return kind === "search" || kind === "problems" || kind === "locations";
+  },
 });
 
 /**
