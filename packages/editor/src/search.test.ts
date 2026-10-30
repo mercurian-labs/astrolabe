@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { getSearchQuery } from "@codemirror/search";
 import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -6,16 +6,6 @@ import { hasInFileSearch, inFileSearch, openInFileSearch } from "./search.ts";
 import { enterInsertMode, vimMode, type VimHistory } from "./vim.ts";
 
 const mac = /Mac/.test(navigator.platform);
-
-// Browsers queue `selectionchange` as a task; happy-dom fires it inside the update that moved
-// focus to the find bar. These tests drive selections through transactions, so it is dropped.
-const dispatchEvent = document.dispatchEvent.bind(document);
-beforeAll(() => {
-  document.dispatchEvent = (event) => event.type === "selectionchange" || dispatchEvent(event);
-});
-afterAll(() => {
-  document.dispatchEvent = dispatchEvent;
-});
 
 let view: EditorView | null = null;
 afterEach(() => {

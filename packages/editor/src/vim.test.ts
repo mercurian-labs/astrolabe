@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { EditorView, keymap } from "@codemirror/view";
@@ -46,17 +46,6 @@ const yjsClock = vi.hoisted(() => {
   };
 });
 afterAll(yjsClock.restore);
-
-// Browsers queue `selectionchange` as a task; happy-dom fires it synchronously, inside the
-// update of a focused child (cell) editor. These tests drive selections through
-// transactions, so the event is dropped here, as the table tests do.
-const dispatchEvent = document.dispatchEvent.bind(document);
-beforeAll(() => {
-  document.dispatchEvent = (event) => event.type === "selectionchange" || dispatchEvent(event);
-});
-afterAll(() => {
-  document.dispatchEvent = dispatchEvent;
-});
 
 const mounted: { root: Root; host: HTMLElement }[] = [];
 afterEach(async () => {

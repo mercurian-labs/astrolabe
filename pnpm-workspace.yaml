@@ -256,9 +256,6 @@ overrides:
   # One copy of hast's types: shiki's 3.0.5 beside hast-util-to-html's 3.0.4 makes each
   # copy's syntax trees unassignable to the other's (MDX nodes are added to one only).
   "@types/hast": 3.0.5
-  # 6.43.14 rewrites the DOM selection in places 6.43.13 left alone; happy-dom fires
-  # selectionchange synchronously, so the editor's tests re-enter a view update.
-  "@codemirror/view": 6.43.13
   # Keep jsdom's optional peer consistent so Vite+ has one test-runner instance.
   "@exodus/bytes>@noble/hashes": "1.8.0"
   # Earlier React Navigation declarations create a circular type alias in TypeScript 7.
