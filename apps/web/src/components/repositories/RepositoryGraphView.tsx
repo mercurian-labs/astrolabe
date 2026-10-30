@@ -378,6 +378,7 @@ function nodeDetails(node: CodeGraphNode): string {
   const parts: string[] = [];
   if (node.kind === "package") parts.push("workspace package");
   if (node.kind === "dependency") parts.push("outside package");
+  if (node.outsideProject === true) parts.push("outside this project");
   if (node.kind === "folder" && node.files !== null) {
     parts.push(`${node.files} files, folded: click to open`);
   }
