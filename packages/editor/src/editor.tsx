@@ -165,8 +165,9 @@ export function AtlasEditor({
           yCollab(text, awareness, { undoManager }),
           Prec.high(keymap.of(yUndoManagerKeymap)),
           isolatedUndoSteps(undoManager),
-          liveMarkdown(livePreviewOptions),
+          // Ahead of the default keymap, so a find key it also binds opens the bar.
           inFileSearch(findKeys ? { keys: findKeys } : {}),
+          liveMarkdown(livePreviewOptions),
           locked ? lockedView : [],
           agentChanges(text, awareness),
           collabTheme,

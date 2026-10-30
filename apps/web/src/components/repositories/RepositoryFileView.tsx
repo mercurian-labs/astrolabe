@@ -208,9 +208,10 @@ function FileEditor({
           history.extension,
           compartments.vim.of(initial.vim ? vimExtension() : []),
           appVimKeys(() => null),
+          // Ahead of the default keymap, so a find key it also binds opens the bar.
+          inFileSearch({ keys: initial.findKeys }),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
-          inFileSearch({ keys: initial.findKeys }),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           EditorView.updateListener.of((update) => {
