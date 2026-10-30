@@ -36,6 +36,11 @@ import {
 /** A checkout's files and the stored facts behind them. */
 export interface Snapshot {
   readonly view: View;
+  /**
+   * Where the asking folder sits in the repository: "" at its top level, `apps/server` for a
+   * project there. Facts and links use repository paths; questions take and answer the asker's.
+   */
+  readonly prefix: string;
   readonly modules: CheckoutModules;
   /** Lines of a file's stored version; null until it is parsed. */
   readonly linesOf: (path: string) => number | null;
@@ -58,11 +63,27 @@ export interface Snapshot {
   ) => Effect.Effect<ReadonlyArray<string>, CodeIndexError>;
 }
 
-export const normalizePath = (path: string) =>
-  path
-    .replace(/\\/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/^\/+|\/+$/g, "");
+/** A path the asking folder names, as a repository path; null when it leaves the repository. */
+export function repositoryPath(prefix: string, path: string): string | null {
+  const segments = prefix === "" ? [] : prefix.split("/");
+  for (const segment of path.replace(/\\/g, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment !== "..") segments.push(segment);
+    else if (segments.pop() === undefined) return null;
+  }
+  return segments.join("/");
+}
+
+/** A repository path as the asking folder names it: `../` for what lies outside the folder. */
+function askerPath(prefix: string, path: string): string {
+  const from = prefix === "" ? [] : prefix.split("/");
+  const to = path === "" ? [] : path.split("/");
+  let shared = 0;
+  while (shared < from.length && from[shared] === to[shared]) shared += 1;
+  return [...from.slice(shared).map(() => ".."), ...to.slice(shared)].join("/") || ".";
+}
+
+const outsideOf = (path: string) => path === ".." || path.startsWith("../");
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const under = (path: string, folder: string) => folder === "" || path.startsWith(`${folder}/`);
@@ -71,9 +92,8 @@ const TEST_PATH =
   /(^|\/)(__tests__|__mocks__|tests?|spec|testing)\/|\.(test|spec|browser\.test)\.[cm]?[jt]sx?$|_test\.(go|py)$|(^|\/)test_[^/]*\.py$/;
 const isTestPath = (path: string) => TEST_PATH.test(path);
 
-/** The files of a checkout a path names: the file itself, or every file under a folder. */
-function filesAt(view: View, path: string): ReadonlyArray<string> {
-  const target = normalizePath(path);
+/** The files a repository path names in a checkout: the file, or every file under a folder. */
+function filesAt(view: View, target: string): ReadonlyArray<string> {
   if (view.files.has(target)) return [target];
   return [...view.files.keys()].filter((file) => under(file, target)).toSorted();
 }
@@ -104,7 +124,7 @@ const FOLD_LIMIT = 40;
 /** Files reached per side before the graph stops widening; folding keeps what is drawn small. */
 const REACH_LIMIT = 3000;
 
-/** The folders above a path, outermost first: the top level `""`, then `a` and `a/b` for `a/b/c`. */
+/** The folders above a path, outermost first: the top level `""`, `a` and `a/b` for `a/b/c`. */
 const foldersAbove = (path: string) => {
   const segments = path === "" ? [] : path.split("/");
   return segments.map((_, index) => segments.slice(0, index).join("/"));
@@ -177,15 +197,17 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
   changes: Changes,
   usedByPending: boolean,
 ) {
-  const center = normalizePath(input.path);
+  const shown = (path: string) => askerPath(snapshot.prefix, path);
+  const center = repositoryPath(snapshot.prefix, input.path);
+  if (center === null) return yield* notFound(`${input.path} is not in this checkout.`);
   if (!snapshot.view.files.has(center)) {
     if (!isIndexable(center)) {
       return yield* new CodeIndexError({
         reason: "unsupported",
-        message: `${center} is not a file the code index reads.`,
+        message: `${shown(center)} is not a file the code index reads.`,
       });
     }
-    return yield* notFound(`${center} is not in this checkout.`);
+    return yield* notFound(`${shown(center)} is not in this checkout.`);
   }
   const maxDepth = Math.min(input.depth, CODE_LOCAL_GRAPH_MAX_DEPTH);
   const nodes = new Map<string, DraftNode>();
@@ -300,7 +322,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
 
   // Fold each crowded side of a ring into folders, except the folders the reader opened.
   const expanded = new Set(
-    input.expanded.map((folder) => normalizePath(folder).replace(/^\.$/, "")),
+    input.expanded.flatMap((folder) => repositoryPath(snapshot.prefix, folder) ?? []),
   );
   const folded = new Map<string, string>();
   const rings = new Map<string, Array<string>>();
@@ -312,17 +334,24 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     else members.push(node.id);
   }
   for (const ring of rings.values()) foldSide(ring, 0, expanded, folded);
-  // Each ring folds alone, so one may draw a folder inside another's: the outer one takes its files.
+  // Each ring folds alone, so one may draw a folder inside another's: the outer takes its files.
   const drawn = new Set(folded.values());
   for (const [file, folder] of folded) {
-    const outer = foldersAbove(folder).find((above) => drawn.has(above)) ?? folder;
-    folded.set(file, outer || ".");
+    const outer = foldersAbove(folder).find((above) => drawn.has(above));
+    if (outer !== undefined) folded.set(file, outer);
   }
   const foldOf = (id: string) => folded.get(id) ?? id;
 
   const changedOf = (path: string): CodeChangeState | null =>
     changes.uncommitted.has(path) ? "uncommitted" : changes.branch.has(path) ? "branch" : null;
+  // Output ids and paths are the asker's; packages and dependencies keep their names.
   const output = new Map<string, CodeGraphNode>();
+  const ids = new Map<string, string>();
+  const put = (key: string, node: CodeGraphNode) => {
+    ids.set(key, node.id);
+    const outside = node.path !== null && outsideOf(node.path);
+    output.set(node.id, outside ? { ...node, outsideProject: true } : node);
+  };
   const groups = new Map<string, Array<DraftNode>>();
   for (const node of nodes.values()) {
     const folder = folded.get(node.id);
@@ -331,11 +360,11 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
       continue;
     }
     const isFile = node.kind === "file";
-    output.set(node.id, {
-      id: node.id,
+    put(node.id, {
+      id: isFile ? shown(node.id) : node.id,
       kind: node.kind,
       name: node.name,
-      path: node.path,
+      path: node.path === null ? null : shown(node.path),
       depth: node.depth,
       lines: isFile ? snapshot.linesOf(node.id) : null,
       test: isFile && isTestPath(node.id),
@@ -345,11 +374,11 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
   }
   for (const [folder, members] of groups) {
     const states = members.map((member) => changedOf(member.id));
-    output.set(folder, {
-      id: folder,
+    put(folder, {
+      id: shown(folder),
       kind: "folder",
-      name: basename(folder),
-      path: folder,
+      name: basename(folder) || ".",
+      path: shown(folder),
       depth: Math.min(...members.map((member) => member.depth)),
       lines: null,
       test: members.every((member) => isTestPath(member.id)),
@@ -370,8 +399,8 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     const key = `${from}\u0000${to}`;
     const existing = outputLinks.get(key);
     outputLinks.set(key, {
-      from,
-      to,
+      from: ids.get(from) ?? from,
+      to: ids.get(to) ?? to,
       line: grouped ? null : link.line,
       text: grouped ? null : link.text,
       resolution:
@@ -379,7 +408,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     });
   }
   return {
-    center,
+    center: shown(center),
     nodes: [...output.values()].toSorted(
       (left, right) => left.depth - right.depth || (left.id < right.id ? -1 : 1),
     ),
@@ -398,8 +427,12 @@ export const outline = Effect.fn("CodeIndex.outline.build")(function* (
   snapshot: Snapshot,
   path: string,
 ) {
-  const paths = filesAt(snapshot.view, path);
-  if (paths.length === 0) return yield* notFound(`${normalizePath(path)} is not in this checkout.`);
+  const target = repositoryPath(snapshot.prefix, path);
+  const paths = target === null ? [] : filesAt(snapshot.view, target);
+  if (paths.length === 0) {
+    const named = target === null ? path : askerPath(snapshot.prefix, target);
+    return yield* notFound(`${named} is not in this checkout.`);
+  }
   const kept = paths.slice(0, OUTLINE_FILES);
   const facts = yield* snapshot.files(kept);
   let symbols = 0;
@@ -411,10 +444,11 @@ export const outline = Effect.fn("CodeIndex.outline.build")(function* (
     if (stored.length > room) truncated = true;
     const taken = stored.slice(0, room);
     symbols += taken.length;
+    const shown = askerPath(snapshot.prefix, file);
     files.push({
-      path: file,
+      path: shown,
       lines: snapshot.linesOf(file) ?? 0,
-      symbols: taken.map((symbol) => entryOf(file, symbol)),
+      symbols: taken.map((symbol) => entryOf(shown, symbol)),
     });
   }
   return { files, truncated } satisfies CodeOutline;
@@ -459,15 +493,15 @@ export const find = Effect.fn("CodeIndex.find.build")(function* (
   name: string,
   path: string | undefined,
 ) {
+  const shown = (file: string) => askerPath(snapshot.prefix, file);
   const all = (yield* definitionsOf(snapshot, [name])).get(name) ?? [];
-  const scope = path === undefined ? null : normalizePath(path);
+  const scope = path === undefined ? "" : repositoryPath(snapshot.prefix, path);
   const definitions = all.filter(
-    (definition) => scope === null || definition.path === scope || under(definition.path, scope),
+    (definition) => scope !== null && (definition.path === scope || under(definition.path, scope)),
   );
   if (definitions.length === 0) {
-    return yield* notFound(
-      `Nothing named ${name} is defined${scope === null ? "" : ` in ${scope}`} in this checkout.`,
-    );
+    const where = path === undefined ? "" : ` in ${scope === null ? path : shown(scope)}`;
+    return yield* notFound(`Nothing named ${name} is defined${where} in this checkout.`);
   }
   const wanted = new Set(definitions.map(definitionId));
   const users = yield* snapshot.users(name);
@@ -480,7 +514,7 @@ export const find = Effect.fn("CodeIndex.find.build")(function* (
     for (const use of usesIn(snapshot.modules, file, name, all)) {
       if (!use.targets.some((target) => wanted.has(definitionId(target)))) continue;
       uses.push({
-        path: user,
+        path: shown(user),
         line: use.line,
         from: use.from,
         kind: use.kind,
@@ -491,7 +525,7 @@ export const find = Effect.fn("CodeIndex.find.build")(function* (
   return {
     definitions: definitions
       .slice(0, FIND_DEFINITIONS)
-      .map((definition) => entryOf(definition.path, definition.symbol)),
+      .map((definition) => entryOf(shown(definition.path), definition.symbol)),
     uses: uses.slice(0, FIND_USES),
     truncated:
       definitions.length > FIND_DEFINITIONS ||
@@ -521,6 +555,7 @@ const linksOf = Effect.fn("CodeIndex.linksOf")(function* (
     ),
   ];
   const byName = yield* definitionsOf(snapshot, names, LINK_NAME_FILES);
+  const shown = (path: string) => askerPath(snapshot.prefix, path);
   const made = new Map<string, CodeChanges["links"][number]>();
   for (const file of files.values()) {
     for (const reference of file.facts.references) {
@@ -531,9 +566,9 @@ const linksOf = Effect.fn("CodeIndex.linksOf")(function* (
         byName.get(reference.name) ?? [],
       );
       if (landed === null) continue;
-      const from = reference.from === null ? file.path : `${file.path}#${reference.from}`;
+      const from = `${shown(file.path)}${reference.from === null ? "" : `#${reference.from}`}`;
       for (const target of landed.targets) {
-        const to = definitionId(target);
+        const to = `${shown(target.path)}#${target.symbol.qualified}`;
         const kind = reference.kind;
         const link = {
           change: "made" as const,
@@ -558,6 +593,7 @@ export const changes = Effect.fn("CodeIndex.changes.build")(function* (
   before: Snapshot,
   after: Snapshot,
 ) {
+  const shown = (path: string) => askerPath(after.prefix, path);
   const files: Array<CodeChanges["files"][number]> = [];
   for (const [path, blob] of after.view.files) {
     const prior = before.view.files.get(path);
@@ -581,12 +617,16 @@ export const changes = Effect.fn("CodeIndex.changes.build")(function* (
     );
     for (const [qualified, symbol] of is) {
       const prior = was.get(qualified);
-      if (prior === undefined) symbols.push({ change: "added", symbol: entryOf(path, symbol) });
-      else if (prior.hash !== symbol.hash)
-        symbols.push({ change: "changed", symbol: entryOf(path, symbol) });
+      if (prior === undefined) {
+        symbols.push({ change: "added", symbol: entryOf(shown(path), symbol) });
+      } else if (prior.hash !== symbol.hash) {
+        symbols.push({ change: "changed", symbol: entryOf(shown(path), symbol) });
+      }
     }
     for (const [qualified, symbol] of was) {
-      if (!is.has(qualified)) symbols.push({ change: "removed", symbol: entryOf(path, symbol) });
+      if (!is.has(qualified)) {
+        symbols.push({ change: "removed", symbol: entryOf(shown(path), symbol) });
+      }
     }
   }
 
@@ -606,7 +646,7 @@ export const changes = Effect.fn("CodeIndex.changes.build")(function* (
     if (!linksAfter.has(key)) links.push({ ...link, change: "broken" });
   }
   return {
-    files: files.slice(0, CHANGED_ENTRIES),
+    files: files.slice(0, CHANGED_ENTRIES).map((file) => ({ ...file, path: shown(file.path) })),
     symbols: symbols.slice(0, CHANGED_ENTRIES),
     links: links.slice(0, CHANGED_ENTRIES),
     truncated:
@@ -625,7 +665,15 @@ export const map = Effect.fn("CodeIndex.map.build")(function* (
   snapshot: Snapshot,
   paths: ReadonlyArray<string>,
 ) {
-  const all = [...new Set(paths.flatMap((path) => filesAt(snapshot.view, path)))].toSorted();
+  const shown = (path: string) => askerPath(snapshot.prefix, path);
+  const all = [
+    ...new Set(
+      paths.flatMap((path) => {
+        const target = repositoryPath(snapshot.prefix, path);
+        return target === null ? [] : filesAt(snapshot.view, target);
+      }),
+    ),
+  ].toSorted();
   if (all.length === 0) return yield* notFound("None of those paths are in this checkout.");
   const slice = all.slice(0, MAP_FILES);
   const inSlice = new Set(slice);
@@ -686,7 +734,7 @@ export const map = Effect.fn("CodeIndex.map.build")(function* (
   );
   return {
     files: slice.map((path) => ({
-      path,
+      path: shown(path),
       lines: snapshot.linesOf(path) ?? 0,
       exports: [
         ...new Set(
@@ -697,12 +745,14 @@ export const map = Effect.fn("CodeIndex.map.build")(function* (
       ],
     })),
     links: [...links.values()].map((link) => ({
-      from: link.from,
-      to: link.to,
+      from: shown(link.from),
+      to: shown(link.to),
       names: [...link.names].toSorted(),
       resolution: link.resolution,
     })),
-    outside: outsideList.slice(0, MAP_OUTSIDE),
+    outside: outsideList
+      .slice(0, MAP_OUTSIDE)
+      .map((entry) => ({ ...entry, path: shown(entry.path) })),
     truncated: all.length > MAP_FILES || outsideList.length > MAP_OUTSIDE,
   } satisfies CodeMap;
 });

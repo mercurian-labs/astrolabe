@@ -158,6 +158,18 @@ describe("folders and clicks", () => {
     });
     expect(nodeAction(node("dependency:react", { kind: "dependency", path: null }))).toBeNull();
   });
+
+  it("leave files outside the project closed, and still open folders there", () => {
+    const outside = { outsideProject: true };
+    expect(nodeAction(node("../web/src/view.ts", outside))).toBeNull();
+    expect(
+      nodeAction(node("@acme/ui", { ...outside, kind: "package", path: "../ui/src/index.ts" })),
+    ).toBeNull();
+    expect(nodeAction(node("../web/src", { ...outside, kind: "folder" }))).toEqual({
+      kind: "expand",
+      folder: "../web/src",
+    });
+  });
 });
 
 describe("stored options", () => {

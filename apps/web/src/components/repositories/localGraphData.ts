@@ -160,7 +160,10 @@ export function importOf(graph: CodeLocalGraph, id: string): CodeGraphLink | nul
   );
 }
 
-/** What a click on a node does: open its file (a package's entry), open a folder, or nothing. */
+/**
+ * What a click on a node does: open its file (a package's entry), open a folder, or nothing. A
+ * file outside the project's folder stays closed: its file tabs read only inside it.
+ */
 export function nodeAction(
   node: CodeGraphNode,
 ):
@@ -168,7 +171,6 @@ export function nodeAction(
   | { readonly kind: "expand"; readonly folder: string }
   | null {
   if (node.path === null) return null;
-  return node.kind === "folder"
-    ? { kind: "expand", folder: node.path }
-    : { kind: "open", path: node.path };
+  if (node.kind === "folder") return { kind: "expand", folder: node.path };
+  return node.outsideProject === true ? null : { kind: "open", path: node.path };
 }

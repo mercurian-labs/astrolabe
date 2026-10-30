@@ -72,6 +72,8 @@ const SOURCES = {
 interface Harness {
   readonly index: CodeIndex.CodeIndex["Service"];
   readonly root: string;
+  /** The project's folder: the repository's top level, or the subfolder it was given. */
+  readonly project: string;
   /** A fresh folder beside the repository. */
   readonly folder: (name: string) => Effect.Effect<string>;
   /** Every job a worker ran, in order. */
@@ -89,6 +91,8 @@ const withIndex = <A, E>(
     readonly files: Readonly<Record<string, string>>;
     readonly settings?: ServerSettings;
     readonly run?: boolean;
+    /** The project's folder inside the repository; its top level by default. */
+    readonly project?: string;
   },
   body: (harness: Harness) => Effect.Effect<A, E, Scope.Scope | NodeServices.NodeServices>,
 ) =>
@@ -101,6 +105,7 @@ const withIndex = <A, E>(
     );
     const folder = (name: string) => Effect.succeed(path.join(scratch, name));
     const root = path.join(scratch, "repo");
+    const project = options.project === undefined ? root : path.join(root, options.project);
     yield* fileSystem.makeDirectory(root);
     yield* git(root, ["init", "--quiet", "--initial-branch=main"]);
     yield* write(root, options.files);
@@ -119,7 +124,7 @@ const withIndex = <A, E>(
             {
               id: PROJECT,
               title: "Repo",
-              workspaceRoot: root,
+              workspaceRoot: project,
             } as unknown as OrchestrationProjectShell,
           ]),
       }),
@@ -160,6 +165,7 @@ const withIndex = <A, E>(
     return yield* body({
       index,
       root,
+      project,
       folder,
       jobs,
       setSettings: (next) =>
@@ -322,6 +328,153 @@ it.effect("marks files changed on the branch and uncommitted ones", () =>
         ],
       );
       assert.isFalse(graph.usedByPending);
+    }),
+  ),
+);
+
+/** A monorepo whose project is `apps/server`, importing a package and imported from beside it. */
+const MONOREPO = {
+  "apps/server/package.json": '{ "name": "@fixture/server" }\n',
+  "apps/server/src/main.ts":
+    'import { helper } from "./helper.ts";\nimport { shared } from "@fixture/shared";\nexport const main = () => helper() + shared();\n',
+  "apps/server/src/helper.ts": "export function helper() {\n  return 1;\n}\n",
+  "apps/web/src/view.ts":
+    'import { helper } from "../../server/src/helper.ts";\nexport const view = helper();\n',
+  "packages/shared/package.json":
+    '{ "name": "@fixture/shared", "exports": { ".": "./src/index.ts" } }\n',
+  "packages/shared/src/index.ts": "export function shared() {\n  return 2;\n}\n",
+};
+
+it.effect("answers a project in a subfolder in paths relative to its folder", () =>
+  withIndex({ files: MONOREPO, project: "apps/server" }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const cwd = harness.project;
+      const sharedEntry = "../../packages/shared/src/index.ts";
+
+      const usedBy = yield* harness.index.localGraph(graphInput(cwd, "src/helper.ts"));
+      assert.strictEqual(usedBy.center, "src/helper.ts");
+      assert.deepStrictEqual(
+        usedBy.nodes.map((node) => [node.id, node.path, node.outsideProject ?? false]),
+        [
+          ["src/helper.ts", "src/helper.ts", false],
+          ["../web/src/view.ts", "../web/src/view.ts", true],
+          ["src/main.ts", "src/main.ts", false],
+        ],
+      );
+      assert.deepStrictEqual(
+        usedBy.links.map((link) => [link.from, link.to]),
+        [
+          ["../web/src/view.ts", "src/helper.ts"],
+          ["src/main.ts", "src/helper.ts"],
+        ],
+      );
+      const uses = yield* harness.index.localGraph(
+        graphInput(cwd, "./src/main.ts", { usedBy: false }),
+      );
+      assert.deepStrictEqual(
+        uses.nodes.map((node) => [node.id, node.kind, node.path, node.outsideProject ?? false]),
+        [
+          ["src/main.ts", "file", "src/main.ts", false],
+          ["@fixture/shared", "package", sharedEntry, true],
+          ["src/helper.ts", "file", "src/helper.ts", false],
+        ],
+      );
+
+      const outline = yield* harness.index.outline({ projectId: PROJECT, cwd, path: "src" });
+      assert.deepStrictEqual(
+        outline.files.map((file) => [file.path, file.symbols.map((symbol) => symbol.path)]),
+        [
+          ["src/helper.ts", ["src/helper.ts"]],
+          ["src/main.ts", ["src/main.ts"]],
+        ],
+      );
+      const beside = yield* harness.index.outline({
+        projectId: PROJECT,
+        cwd,
+        path: "../../packages/shared",
+      });
+      assert.deepStrictEqual(
+        beside.files.map((file) => file.path),
+        [sharedEntry],
+      );
+
+      const helper = yield* harness.index.find({ projectId: PROJECT, cwd, name: "helper" });
+      assert.deepStrictEqual(
+        helper.definitions.map((definition) => definition.path),
+        ["src/helper.ts"],
+      );
+      assert.deepStrictEqual(helper.uses.map((use) => [use.path, use.line, use.kind]).toSorted(), [
+        ["../web/src/view.ts", 1, "imports"],
+        ["../web/src/view.ts", 2, "calls"],
+        ["src/main.ts", 1, "imports"],
+        ["src/main.ts", 3, "calls"],
+      ]);
+      const scoped = yield* harness.index.find({
+        projectId: PROJECT,
+        cwd,
+        name: "shared",
+        path: "../../packages",
+      });
+      assert.deepStrictEqual(
+        scoped.definitions.map((definition) => definition.path),
+        [sharedEntry],
+      );
+
+      const mapped = yield* harness.index.map({ projectId: PROJECT, cwd, paths: ["src"] });
+      assert.deepStrictEqual(
+        mapped.files.map((file) => file.path),
+        ["src/helper.ts", "src/main.ts"],
+      );
+      assert.deepStrictEqual(
+        mapped.links.map((link) => [link.from, link.to]),
+        [["src/main.ts", "src/helper.ts"]],
+      );
+      assert.deepStrictEqual(
+        mapped.outside.map((entry) => [entry.path, entry.direction]).toSorted(),
+        [
+          ["../../packages/shared/src/index.ts", "uses"],
+          ["../web/src/view.ts", "usedBy"],
+        ],
+      );
+
+      yield* write(harness.root, {
+        "apps/server/src/helper.ts":
+          'import { shared } from "@fixture/shared";\nexport function helper() {\n  return shared();\n}\n',
+      });
+      const changed = yield* harness.index.changes({ projectId: PROJECT, cwd, from: "HEAD" });
+      assert.deepStrictEqual(changed.files, [{ path: "src/helper.ts", change: "modified" }]);
+      assert.deepStrictEqual(
+        changed.symbols.map((entry) => [entry.change, entry.symbol.path, entry.symbol.name]),
+        [["changed", "src/helper.ts", "helper"]],
+      );
+      assert.deepStrictEqual(
+        changed.links.map((link) => [link.change, link.from, link.to]),
+        [["made", "src/helper.ts#helper", `${sharedEntry}#shared`]],
+      );
+
+      // From the repository's top level, the same checkout answers in repository paths.
+      const control = yield* harness.index.localGraph(
+        graphInput(harness.root, "apps/server/src/helper.ts"),
+      );
+      assert.deepStrictEqual(
+        control.nodes.map((node) => [node.id, node.outsideProject ?? false]),
+        [
+          ["apps/server/src/helper.ts", false],
+          ["@fixture/shared", false],
+          ["apps/server/src/main.ts", false],
+          ["apps/web/src/view.ts", false],
+        ],
+      );
+      const rootOutline = yield* harness.index.outline({
+        projectId: PROJECT,
+        cwd: harness.root,
+        path: "packages",
+      });
+      assert.deepStrictEqual(
+        rootOutline.files.map((file) => file.path),
+        ["packages/shared/src/index.ts"],
+      );
     }),
   ),
 );

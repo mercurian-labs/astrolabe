@@ -834,20 +834,27 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     failure: null,
   });
 
-  /** The repository a project's folder is in, or null when it is not in one. */
+  /** The repository a folder is in and where in it (`apps/server`, or ""), or null outside one. */
   const locate = (cwd: string) =>
     git
       .execute({
         operation: "codeIndex.locate",
         cwd,
-        args: ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"],
+        args: [
+          "rev-parse",
+          "--path-format=absolute",
+          "--show-toplevel",
+          "--git-common-dir",
+          "--show-prefix",
+        ],
         allowNonZeroExit: true,
       })
       .pipe(
         Effect.map((result) => {
-          const [root, commonDir] = result.stdout.trim().split("\n");
-          return result.exitCode === 0 && root !== undefined && commonDir !== undefined
-            ? { root, commonDir }
+          // The prefix line is empty at the top level, so the output is not trimmed first.
+          const [root, commonDir, prefix] = result.stdout.split("\n");
+          return result.exitCode === 0 && root && commonDir && prefix !== undefined
+            ? { root, commonDir, prefix: prefix.replace(/\/$/, "") }
             : null;
         }),
         Effect.orElseSucceed(() => null),
@@ -1013,9 +1020,9 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       return Effect.succeed(repo);
     });
 
-  /** The checkout's top level, when it is a checkout of the repository. */
-  const checkoutRoot = Effect.fn("CodeIndex.checkoutRoot")(function* (repo: Repo, cwd: string) {
-    if (cwd === repo.root) return repo.root;
+  /** A checkout of the repository: its top level, and where the folder asking sits in it. */
+  const checkoutOf = Effect.fn("CodeIndex.checkoutOf")(function* (repo: Repo, cwd: string) {
+    if (cwd === repo.root) return { root: repo.root, prefix: "" };
     const located = yield* locate(cwd);
     if (located === null || located.commonDir !== repo.commonDir) {
       return yield* new CodeIndexError({
@@ -1023,7 +1030,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         message: `${cwd} is not a checkout of this repository.`,
       });
     }
-    return located.root;
+    return { root: located.root, prefix: located.prefix };
   });
 
   /** The repository's own packages, by the manifests the checkout holds. */
@@ -1065,7 +1072,11 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     return new Packages(found);
   });
 
-  const snapshotOf = Effect.fn("CodeIndex.snapshotOf")(function* (repo: Repo, view: View) {
+  const snapshotOf = Effect.fn("CodeIndex.snapshotOf")(function* (
+    repo: Repo,
+    view: View,
+    prefix: string,
+  ) {
     const versionOf = (file: string) => {
       const blob = view.files.get(file);
       return blob === undefined ? undefined : repo.versions.get(file, blob);
@@ -1108,6 +1119,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const packages = yield* packagesOf(repo, view);
     return {
       view,
+      prefix,
       modules: new CheckoutModules(view.files, packages),
       linesOf: (file) => {
         const version = versionOf(file);
@@ -1175,10 +1187,10 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     repo: Repo,
     cwd: string,
   ) {
-    const root = yield* checkoutRoot(repo, cwd);
+    const { root, prefix } = yield* checkoutOf(repo, cwd);
     const view = yield* viewOfCheckout(repo, root);
     yield* topUp(repo, view, root);
-    return yield* snapshotOf(repo, view);
+    return yield* snapshotOf(repo, view, prefix);
   });
 
   const refSnapshot = Effect.fn("CodeIndex.refSnapshot")(function* (
@@ -1186,10 +1198,10 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     cwd: string,
     ref: string,
   ) {
-    const root = yield* checkoutRoot(repo, cwd);
+    const { root, prefix } = yield* checkoutOf(repo, cwd);
     const view = yield* viewOfRef(repo, root, ref);
     yield* topUp(repo, view, root);
-    return yield* snapshotOf(repo, view);
+    return yield* snapshotOf(repo, view, prefix);
   });
 
   /** Files that differ from the default branch's merge-base, and uncommitted ones. */
@@ -1246,12 +1258,12 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
   const localGraph: CodeIndex["Service"]["localGraph"] = Effect.fn("CodeIndex.localGraph")(
     function* (input) {
       const repo = yield* repoFor(input.projectId);
-      const root = yield* checkoutRoot(repo, input.cwd);
+      const { root, prefix } = yield* checkoutOf(repo, input.cwd);
       const view = yield* viewOfCheckout(repo, root);
       const pending = !repo.ready;
       if (pending) {
         // Before the first build, only the file itself is parsed: what it imports, not who imports it.
-        const center = Queries.normalizePath(input.path);
+        const center = Queries.repositoryPath(prefix, input.path);
         yield* parse(
           repo,
           root,
@@ -1261,7 +1273,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       } else {
         yield* topUp(repo, view, root);
       }
-      const snapshot = yield* snapshotOf(repo, view);
+      const snapshot = yield* snapshotOf(repo, view, prefix);
       const fileChanges = yield* changesOf(repo, view);
       const graph = yield* Queries.localGraph(
         snapshot,

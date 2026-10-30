@@ -9,9 +9,9 @@ import {
 } from "./baseSchemas.ts";
 
 /**
- * Astrolabe: a repository's code index. Each file's facts (definitions, the names it uses, its
- * imports) are stored once per path and blob and shared by every checkout of the repository, so a
- * branch, worktree or checkpoint costs only the files it changed. Paths are repository-relative.
+ * Astrolabe: a repository's code index. Each file's facts are stored once per path and blob and
+ * shared by every checkout of the repository. Questions take and answer paths relative to the
+ * checkout's `cwd`, which may be a folder inside the repository (`../` for files outside it).
  */
 
 export const CodeIndexSettings = Schema.Struct({
@@ -78,7 +78,10 @@ export type CodeIndexPruneResult = typeof CodeIndexPruneResult.Type;
 export const CodeIndexProjectInput = Schema.Struct({ projectId: ProjectId });
 export type CodeIndexProjectInput = typeof CodeIndexProjectInput.Type;
 
-/** A checkout of a project: the repository's own working directory or a thread's worktree. */
+/**
+ * A checkout of a project: the repository's own working directory or a thread's worktree. Paths
+ * are relative to `cwd`, even when it is a folder inside the repository.
+ */
 export const CodeCheckout = Schema.Struct({
   projectId: ProjectId,
   cwd: TrimmedNonEmptyString,
@@ -151,6 +154,8 @@ export const CodeGraphNode = Schema.Struct({
   changed: Schema.NullOr(CodeChangeState),
   /** A folder group's file count; null otherwise. */
   files: Schema.NullOr(PositiveInt),
+  /** True when `path` leaves the checkout's `cwd` (`../`), where its file tabs cannot open it. */
+  outsideProject: Schema.optional(Schema.Boolean),
 });
 export type CodeGraphNode = typeof CodeGraphNode.Type;
 
