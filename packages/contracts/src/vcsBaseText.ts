@@ -31,8 +31,6 @@ export const VcsBaseTextResult = Schema.NullOr(
       Schema.Struct({
         threadId: ThreadId,
         running: Schema.Boolean,
-        /** While it runs, the file's blob id on disk, which changes as the turn writes it. */
-        fileHash: Schema.optional(Schema.String),
       }),
     ),
   }),

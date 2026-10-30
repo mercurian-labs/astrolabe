@@ -431,7 +431,7 @@ it.effect(
     }).pipe(Effect.scoped, Effect.provide(layerServices)),
 );
 
-it.effect("follows a running turn once it writes the file, and again as it writes and ends", () =>
+it.effect("follows a running turn once it writes the file, and again as it ends", () =>
   Effect.gen(function* () {
     const repo = yield* repository;
     const turns = yield* domainEvents;
@@ -458,24 +458,17 @@ it.effect("follows a running turn once it writes the file, and again as it write
     // A turn starts in a new thread here and has not written the file: nothing is sent.
     yield* repo.snapshot("live", 0);
     yield* turns.publish(...threadIn("live", repo.cwd), ...turn("live", 1, "running"));
-    // It writes the file: its start is the base, and each write sends the file's new blob id.
+    // It writes the file: its start is the base.
     yield* repo.write("a.ts", "three\n");
     yield* turns.publish(toolDone("live", 1, "edit", "file_change"));
     const writing = yield* Queue.take(texts);
     assert.deepStrictEqual(
       { text: writing?.text, turn: writing?.turn },
-      {
-        text: "two\n",
-        turn: {
-          threadId: ThreadId.make("thread:live"),
-          running: true,
-          fileHash: yield* repo.blobOf("a.ts"),
-        },
-      },
+      { text: "two\n", turn: { threadId: ThreadId.make("thread:live"), running: true } },
     );
+    // Writing it again leaves the base as it was: nothing is sent.
     yield* repo.write("a.ts", "four\n");
     yield* turns.publish(toolDone("live", 1, "sed", "command_execution"));
-    assert.strictEqual((yield* Queue.take(texts))?.turn?.fileHash, yield* repo.blobOf("a.ts"));
 
     // It ends: the same base, from its checkpoint now.
     yield* repo.snapshot("live", 1);

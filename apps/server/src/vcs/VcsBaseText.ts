@@ -74,8 +74,7 @@ function sameBase(a: VcsBaseTextResult, b: VcsBaseTextResult): boolean {
   return (
     a?.hash === b?.hash &&
     a?.turn?.threadId === b?.turn?.threadId &&
-    a?.turn?.running === b?.turn?.running &&
-    a?.turn?.fileHash === b?.turn?.fileHash
+    a?.turn?.running === b?.turn?.running
   );
 }
 
@@ -196,11 +195,7 @@ const make = Effect.gen(function* () {
         if (start === undefined || start === fileHash) continue;
         const text = yield* readBlob(input, start ?? EMPTY_BLOB_ID);
         if (text === null) return { base: null, threads };
-        const turn = {
-          threadId: ThreadId.make(run.thread_id),
-          running: true,
-          ...(fileHash === null ? {} : { fileHash }),
-        };
+        const turn = { threadId: ThreadId.make(run.thread_id), running: true };
         return { base: { ...text, turn }, threads };
       }
     }
