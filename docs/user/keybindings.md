@@ -128,6 +128,8 @@ you need.
 | `s` `s`                 | Show or hide the sidebar                                       |
 | `w`                     | Open Wikis, or find or create a document                       |
 | `e` `f`                 | [Find](#find-in-a-file-or-note) in the file or note you are in |
+| `e` `n` \| `p`          | Next or previous [change](#changes-in-a-code-file) in a file   |
+| `e` `t` \| `a` \| `r`   | Show a change, show all changes, or restore a change           |
 | `,`                     | Settings                                                       |
 
 These are the defaults. A row lists every key in its group that runs the same
@@ -244,6 +246,23 @@ With Vim on, `/`, `?`, `n`, and `N` stay Vim's own search in normal mode. On Win
 `Ctrl+F` in normal mode is Vim's page down, so use `/` or Space `e` `f` there. Change the
 shortcut in **Settings → Keybindings** under **Find in Editor**. In the composer, `mod+f` finds
 in the thread instead.
+
+## Changes in a code file
+
+In a repository's code file, a strip beside the line numbers marks every line that differs from
+the file's last commit: green where lines were added, yellow where they changed, and a red notch
+where lines were deleted. The strips follow your typing, and refresh when you commit or switch
+branches.
+
+Click a strip, or press `mod+'` with the cursor on a change, to show the lines it replaced above
+it; press again, or Escape, to hide them. `mod+shift+'` shows every change in the file. A shown
+change has a small bar with **Restore**, which puts the committed lines back (undo takes it back),
+and arrows to the changes before and after it. `mod+alt+z` restores the changes under the cursor
+without showing them, and `mod+f8` and `mod+shift+f8` move to the next and previous change,
+wrapping at the ends of the file. With Vim on, Escape leaves insert mode first.
+
+Change these shortcuts in **Settings → Keybindings** under **Editors**. Files that are new and
+not yet committed show no strips.
 
 ## Find in a diff
 

@@ -90,6 +90,11 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "document.open",
   "search.clearHighlight",
   "search.find",
+  "hunk.toggle",
+  "hunk.expandAll",
+  "hunk.restore",
+  "hunk.next",
+  "hunk.previous",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

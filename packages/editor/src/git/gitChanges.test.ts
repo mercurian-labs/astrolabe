@@ -3,6 +3,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { vimMode, type VimHistory } from "../vim.ts";
 import {
   expandedHunks,
   gitChanges,
@@ -216,5 +217,26 @@ describe("expanding hunks", () => {
     const row = editor.contentDOM.querySelector(".atlas-git-old-lines .atlas-old-line");
     expect(row?.textContent).toBe("# Old title");
     expect(row?.querySelector("span[class*='tok-']")).not.toBeNull();
+  });
+
+  it("with Vim on, Escape leaves insert mode first, then collapses from normal mode", () => {
+    const noHistory: VimHistory = {
+      undo() {},
+      redo() {},
+      stopCapturing() {},
+      groupExplicitly() {},
+    };
+    const editor = mount(base, doc, vimMode(noHistory));
+    editor.focus();
+    runHunkCommand(editor, "expandAll");
+    const key = (name: string, keyCode: number) =>
+      editor.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: name, keyCode, bubbles: true, cancelable: true }),
+      );
+    key("i", 73);
+    key("Escape", 27);
+    expect(expandedHunks(editor.state)).toHaveLength(3);
+    key("Escape", 27);
+    expect(expandedHunks(editor.state)).toEqual([]);
   });
 });
