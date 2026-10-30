@@ -57,6 +57,26 @@ const MODEL_PICKER_KEYBINDING_COMMANDS = [
 export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMANDS)[number];
 
 /**
+ * Astrolabe: a code file's language-server commands, which its editor binds itself while it has
+ * focus (`codeEditorFocus`) and the command registry runs too.
+ */
+export const LSP_KEYBINDING_COMMANDS = [
+  "lsp.complete",
+  "lsp.hover",
+  "lsp.signatureHelp",
+  "lsp.definition",
+  "lsp.declaration",
+  "lsp.typeDefinition",
+  "lsp.implementation",
+  "lsp.references",
+  "lsp.rename",
+  "lsp.undoRename",
+  "lsp.format",
+  "lsp.codeActions",
+] as const;
+export type LspKeybindingCommand = (typeof LSP_KEYBINDING_COMMANDS)[number];
+
+/**
  * Astrolabe: commands the client's command registry runs (`apps/web/src/whichKey/commands.ts`),
  * reached from the keyboard menu, the Command Palette's aliases, and shortcuts alike.
  */
@@ -99,7 +119,9 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "outline.open",
   "diagnostic.next",
   "diagnostic.previous",
+  ...LSP_KEYBINDING_COMMANDS,
   "repository.localGraph",
+  "file.save",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

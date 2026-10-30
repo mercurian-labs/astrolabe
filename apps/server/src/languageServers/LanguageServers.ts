@@ -1,8 +1,18 @@
 // @effect-diagnostics nodeBuiltinImport:off - file URLs are converted synchronously, between writes.
 import { ChangeSet, Text } from "@codemirror/state";
 import {
+  type CodeLocation,
+  type CodeLocationKind,
+  type CodeLocations,
+  type DocumentError,
+  type DocumentSaveInput,
+  type DocumentSaveResult,
+  type DocumentStreamItem,
   type FileDiagnostic,
   type FileDiagnostics,
+  type LanguageServerAppliedEdit,
+  type LanguageServerUndoEditInput,
+  type LanguageServerUndoEditResult,
   languageServerForPath,
   LanguageServerError,
   type LanguageServerId,
@@ -12,6 +22,8 @@ import {
   type LanguageServerStatus,
   type LanguageServerTarget,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -49,14 +61,19 @@ import {
   browserToAuthority,
   forwardMapper,
   inverseMapper,
+  LOCATION_METHODS,
+  locationsOf,
   mapDiagnostics,
   mapParams,
   mapResult,
   toPosition,
   trimCompletion,
+  trimHover,
   Unrepresentable,
+  wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
+import { changeSetOf, editsByFile } from "./workspaceEdits.ts";
 
 /**
  * One server per language per checkout, and the environment as its only LSP client; see
@@ -80,6 +97,28 @@ export class LanguageServers extends Context.Service<
       readonly cwd: string;
       readonly relativePath: string;
     }) => Effect.Effect<FileDiagnostics, LanguageServerError>;
+    /**
+     * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
+     * now: a write made before the call is in it.
+     */
+    /**
+     * The documents' save, formatting the file first when asked and a server can. A formatter
+     * slower than `formatTimeout` is skipped: the file saves as it is.
+     */
+    readonly save: (input: DocumentSaveInput) => Effect.Effect<DocumentSaveResult, DocumentError>;
+    /** Puts back the files of an edit the environment applied (a rename), as far as it can. */
+    readonly undoEdit: (
+      input: LanguageServerUndoEditInput,
+    ) => Effect.Effect<LanguageServerUndoEditResult, LanguageServerError>;
+    readonly locate: (input: {
+      readonly cwd: string;
+      readonly relativePath: string;
+      readonly line: number;
+      /** The column, or the symbol's text, whose first occurrence on the line is used. */
+      readonly column?: number;
+      readonly symbol?: string;
+      readonly kind: CodeLocationKind;
+    }) => Effect.Effect<CodeLocations, LanguageServerError>;
   }
 >()("t3/languageServers/LanguageServers") {}
 
@@ -94,6 +133,8 @@ export interface LanguageServersOptions {
   readonly restartDelays: ReadonlyArray<Duration.Input>;
   readonly initializeTimeout: Duration.Input;
   readonly diagnosticsTimeout: Duration.Input;
+  /** How long a save waits for its formatter. */
+  readonly formatTimeout: Duration.Input;
   readonly registry: string;
   /** Defaults to `caches/language-servers` under T3 home, shared by every checkout. */
   readonly cacheDir?: string;
@@ -109,6 +150,20 @@ export interface LanguageServersOptions {
 const VERSIONS_KEPT = 200;
 const PULL_RETRIES = 3;
 const DIAGNOSTICS_LISTED = 200;
+/** Applied edits kept for undo; older ones can no longer be undone. */
+const EDITS_KEPT = 20;
+const LOCATIONS_LISTED = 200;
+const PREVIEW_LENGTH = 200;
+
+const LOCATE_METHODS: Readonly<
+  Record<CodeLocationKind, { readonly method: string; readonly capability: string }>
+> = {
+  definition: { method: "textDocument/definition", capability: "definitionProvider" },
+  declaration: { method: "textDocument/declaration", capability: "declarationProvider" },
+  typeDefinition: { method: "textDocument/typeDefinition", capability: "typeDefinitionProvider" },
+  implementation: { method: "textDocument/implementation", capability: "implementationProvider" },
+  references: { method: "textDocument/references", capability: "referencesProvider" },
+};
 const SHUTDOWN_TIMEOUT = Duration.seconds(2);
 
 // LSP messages are untyped JSON; each use checks the shape it reads.
@@ -145,6 +200,29 @@ interface GatewayDoc {
   readonly scope: Scope.Closeable;
 }
 
+/** A file as the server last saw it: what its edits' positions are in. */
+interface ServerText {
+  readonly loadId: string;
+  readonly version: number;
+  readonly text: Text;
+}
+
+/** One file of an applied edit: the update it became, and its inverse. */
+interface AppliedFile {
+  readonly relativePath: string;
+  readonly loadId: string;
+  /** The document's version right after the edit. */
+  readonly version: number;
+  readonly inverse: ChangeSet;
+  /** The file's text right after the edit, to recognise it once the document was reloaded. */
+  readonly after: string;
+}
+
+interface AppliedEdit {
+  readonly cwd: string;
+  readonly files: ReadonlyArray<AppliedFile>;
+}
+
 interface PendingForward {
   serverId: number | null;
   fiber: Fiber.Fiber<void> | null;
@@ -157,6 +235,13 @@ interface Session {
   readonly open: Map<string, string>;
   readonly pending: Map<number | string, PendingForward>;
   readonly scope: Scope.Closeable;
+  /** The file of the last completion list: `completionItem/resolve` names no document. */
+  completionPath: string | null;
+  /** The last code actions offered, as the server gave them, and the texts they are about. */
+  codeActions: {
+    readonly actions: ReadonlyArray<Json>;
+    readonly seen: ReadonlyMap<string, ServerText>;
+  } | null;
 }
 
 interface Running {
@@ -166,9 +251,16 @@ interface Running {
   readonly pull: boolean;
 }
 
+interface ServerEdit {
+  readonly edit: Json;
+  readonly done: (applied: LanguageServerAppliedEdit | null) => void;
+}
+
 interface Instance {
   readonly key: string;
   readonly cwd: string;
+  /** `cwd` with links resolved, as servers often name files (`/private/var` on macOS). */
+  readonly realCwd: string;
   readonly spec: LanguageServerSpec;
   readonly lock: Semaphore.Semaphore;
   readonly scope: Scope.Closeable;
@@ -178,6 +270,10 @@ interface Instance {
   /** Documents waiting for a diagnostics pull. */
   readonly pulls: Queue.Queue<GatewayDoc>;
   running: Running | null;
+  /** The server's `workspace/applyEdit` requests, applied one at a time. */
+  readonly serverEdits: Queue.Queue<ServerEdit>;
+  /** While a command runs for a code action: the edits the server applied meanwhile. */
+  collecting: Array<LanguageServerAppliedEdit> | null;
   /** Resolves when the current or next process is ready. */
   ready: Deferred.Deferred<Running>;
   processScope: Scope.Closeable | null;
@@ -202,6 +298,7 @@ const CLIENT_CAPABILITIES = {
         snippetSupport: true,
         documentationFormat: ["markdown", "plaintext"],
         insertReplaceSupport: false,
+        resolveSupport: { properties: ["documentation", "detail", "additionalTextEdits"] },
       },
       completionList: { itemDefaults: ["commitCharacters", "editRange", "insertTextFormat"] },
       completionItemKind: { valueSet: [] },
@@ -223,10 +320,31 @@ const CLIENT_CAPABILITIES = {
     implementation: {},
     typeDefinition: {},
     references: {},
+    codeAction: {
+      codeActionLiteralSupport: {
+        codeActionKind: {
+          valueSet: [
+            "",
+            "quickfix",
+            "refactor",
+            "refactor.extract",
+            "refactor.inline",
+            "refactor.rewrite",
+            "source",
+            "source.organizeImports",
+            "source.fixAll",
+          ],
+        },
+      },
+      isPreferredSupport: true,
+      disabledSupport: true,
+      dataSupport: true,
+      resolveSupport: { properties: ["edit"] },
+    },
     diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
     publishDiagnostics: { versionSupport: true, relatedInformation: true },
   },
-  workspace: { configuration: true, workspaceFolders: true },
+  workspace: { configuration: true, workspaceFolders: true, applyEdit: true },
   window: { workDoneProgress: false, showMessage: {} },
 };
 
@@ -281,8 +399,14 @@ const mapAnswer = (
   raw: Json,
   doc: GatewayDoc | undefined,
   context: Translation | null,
+  query: string,
 ): { readonly result: Json } | { readonly error: Json } => {
-  const result = method === "textDocument/completion" ? trimCompletion(raw) : raw;
+  const result =
+    method === "textDocument/completion"
+      ? trimCompletion(raw, query)
+      : method === "textDocument/hover"
+        ? trimHover(raw)
+        : raw;
   if (context === null || doc === undefined) return { result };
   try {
     return {
@@ -305,6 +429,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const documents = yield* Documents.Documents;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
   const path = yield* Path.Path;
+  const fileSystem = yield* FileSystem.FileSystem;
   const config = yield* ServerConfig.ServerConfig;
   const installer = yield* makeInstaller({
     cacheDir: options.cacheDir ?? path.join(config.providerStatusCacheDir, "language-servers"),
@@ -320,6 +445,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const instances = new Map<string, Instance>();
   const sessions = new Map<string, { readonly instance: Instance; readonly session: Session }>();
   const statuses = yield* SubscriptionRef.make<ReadonlyArray<LanguageServerStatus>>([]);
+  const applied = new Map<string, AppliedEdit>();
+  let editCount = 0;
   let clock = 0;
 
   const fork = <A, E>(effect: Effect.Effect<A, E>, scope: Scope.Scope = serviceScope) =>
@@ -597,7 +724,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       case "window/showMessageRequest":
         return null;
       case "workspace/applyEdit":
-        return { applied: false };
+        return new Promise((resolve) =>
+          Queue.offerUnsafe(instance.serverEdits, {
+            edit: params?.edit,
+            done: (applied) => resolve({ applied: applied !== null }),
+          }),
+        );
       default:
         return undefined;
     }
@@ -853,11 +985,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           failure("unsupported", "That folder is not a project here.", cause),
         ),
       );
+    const realCwd = yield* fileSystem
+      .realPath(target.cwd)
+      .pipe(Effect.orElseSucceed(() => target.cwd));
     const again = instances.get(key);
     if (again !== undefined) return again;
     const instance: Instance = {
       key,
       cwd: target.cwd,
+      realCwd,
       spec: options.specs[target.server],
       lock: yield* Semaphore.make(1),
       scope: yield* Scope.fork(serviceScope),
@@ -874,6 +1010,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       sessions: new Map(),
       docs: new Map(),
       pulls: yield* Queue.unbounded<GatewayDoc>(),
+      serverEdits: yield* Queue.unbounded<ServerEdit>(),
+      collecting: null,
       running: null,
       ready: Deferred.makeUnsafe(),
       processScope: null,
@@ -884,6 +1022,22 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     instances.set(key, instance);
     yield* Queue.take(instance.pulls).pipe(
       Effect.flatMap((doc) => Effect.forkIn(pull(instance, doc), instance.scope)),
+      Effect.forever,
+      Effect.forkIn(instance.scope, { startImmediately: true }),
+    );
+    // A server applying an edit itself (while a code action's command runs) asks the environment.
+    yield* Queue.take(instance.serverEdits).pipe(
+      Effect.flatMap(({ edit, done }) =>
+        applyWorkspaceEdit(instance, edit, serverTexts(instance)).pipe(
+          Effect.match({
+            onFailure: () => done(null),
+            onSuccess: (applied) => {
+              instance.collecting?.push(applied);
+              done(applied);
+            },
+          }),
+        ),
+      ),
       Effect.forever,
       Effect.forkIn(instance.scope, { startImmediately: true }),
     );
@@ -961,9 +1115,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     } catch {
       return null;
     }
-    const relative = path.relative(instance.cwd, absolute);
-    if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) return null;
-    return relative.split(path.sep).join("/");
+    for (const root of [instance.cwd, instance.realCwd]) {
+      const relative = path.relative(root, absolute);
+      if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+      return relative.split(path.sep).join("/");
+    }
+    return null;
   };
 
   /** Replaces the server's uris for this session's documents with the session's own. */
@@ -986,6 +1143,325 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     };
     return walk(value);
   };
+
+  /** Each file's text as the server has it: an open document's, else the file on disk. */
+  const textsOf = Effect.fn("LanguageServers.textsOf")(function* (
+    instance: Instance,
+    uris: Iterable<string>,
+  ) {
+    const texts = new Map<string, Text | null>();
+    for (const uri of uris) {
+      if (texts.has(uri)) continue;
+      const relativePath = relativePathOf(instance, uri);
+      const doc = relativePath === null ? undefined : instance.docs.get(relativePath);
+      const open = doc?.texts.get(doc.version);
+      if (open !== undefined) {
+        texts.set(uri, open);
+        continue;
+      }
+      const read = yield* Effect.try(() => NodeURL.fileURLToPath(uri)).pipe(
+        Effect.flatMap((file) => fileSystem.readFileString(file)),
+        Effect.map((text) => Text.of(text.split(/\r\n?|\n/))),
+        Effect.orElseSucceed(() => null),
+      );
+      texts.set(uri, read);
+    }
+    return texts;
+  });
+
+  const previewOf = (text: Text | null | undefined, line: number) =>
+    text && line >= 0 && line < text.lines
+      ? text
+          .line(line + 1)
+          .text.trim()
+          .slice(0, PREVIEW_LENGTH)
+      : "";
+
+  const describeLocations = Effect.fn("LanguageServers.describeLocations")(function* (
+    instance: Instance,
+    locations: ReadonlyArray<{ readonly uri: string; readonly range: Json }>,
+  ) {
+    const texts = yield* textsOf(
+      instance,
+      locations.map((location) => location.uri),
+    );
+    return locations.map(({ uri, range }): CodeLocation => {
+      const relativePath = relativePathOf(instance, uri);
+      let shown = relativePath;
+      if (shown === null) {
+        try {
+          shown = NodeURL.fileURLToPath(uri);
+        } catch {
+          shown = uri;
+        }
+      }
+      return {
+        path: shown,
+        line: (range.start?.line ?? 0) + 1,
+        column: (range.start?.character ?? 0) + 1,
+        endLine: (range.end?.line ?? 0) + 1,
+        endColumn: (range.end?.character ?? 0) + 1,
+        preview: previewOf(texts.get(uri), range.start?.line ?? 0),
+      };
+    });
+  });
+
+  /**
+   * A location answer for an editor, with each place's line of text (`astrolabe/preview`) for
+   * files other than `own`, which the editor has.
+   */
+  const withPreviews = Effect.fn("LanguageServers.withPreviews")(function* (
+    instance: Instance,
+    result: Json,
+    own: string | undefined,
+  ) {
+    const all = Array.isArray(result) ? result : result == null ? [] : [result];
+    const others = all.filter((location: Json) => (location?.targetUri ?? location?.uri) !== own);
+    if (others.length === 0) return result;
+    const texts = yield* textsOf(
+      instance,
+      others.map((location: Json) => location.targetUri ?? location.uri),
+    );
+    for (const location of others) {
+      const range = location.targetSelectionRange ?? location.targetRange ?? location.range;
+      location["astrolabe/preview"] = previewOf(
+        texts.get(location.targetUri ?? location.uri),
+        range?.start?.line ?? -1,
+      );
+    }
+    return result;
+  });
+
+  /** Every open document's text as the server has it now, before a request that may edit them. */
+  const serverTexts = (instance: Instance) => {
+    const texts = new Map<string, ServerText>();
+    for (const doc of instance.docs.values()) {
+      const text = doc.texts.get(doc.version);
+      if (doc.loadId !== null && text !== undefined) {
+        texts.set(doc.relativePath, { loadId: doc.loadId, version: doc.version, text });
+      }
+    }
+    return texts;
+  };
+
+  /**
+   * Lands `edits` (in the server's coordinates) on one file's document under `clientId`, and saves.
+   * Returns the update it became, read back from the document, so its inverse is exact.
+   */
+  const applyToFile = Effect.fn("LanguageServers.applyToFile")(function* (
+    cwd: string,
+    relativePath: string,
+    edits: ReadonlyArray<Json>,
+    seen: ServerText | undefined,
+    clientId: string,
+  ) {
+    const items = yield* Queue.unbounded<DocumentStreamItem, Cause.Done | DocumentError>();
+    yield* documents
+      .subscribe({ cwd, relativePath })
+      .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+    const first = yield* Queue.take(items);
+    if (first.type !== "snapshot") return null;
+    let text = Text.of(first.text.split("\n"));
+    let version = first.version;
+    const base: ServerText =
+      seen !== undefined && seen.loadId === first.loadId
+        ? seen
+        : { loadId: first.loadId, version, text };
+    const changes = changeSetOf(base.text, edits);
+    if (changes.empty) return null;
+    yield* documents.push({
+      cwd,
+      relativePath,
+      loadId: first.loadId,
+      version: base.version,
+      updates: [{ clientId, changes: changes.toJSON() }],
+    });
+    for (;;) {
+      const item = yield* Queue.take(items);
+      if (item.type !== "updates") continue;
+      for (const [index, update] of item.updates.entries()) {
+        if (item.version + index < version) continue;
+        const accepted = ChangeSet.fromJSON(update.changes);
+        const before = text;
+        text = accepted.apply(text);
+        version += 1;
+        if (update.clientId !== clientId) continue;
+        yield* documents.save({ cwd, relativePath, loadId: first.loadId });
+        return {
+          relativePath,
+          loadId: first.loadId,
+          version,
+          inverse: accepted.invert(before),
+          after: text.toString(),
+          edits: edits.length,
+        };
+      }
+    }
+  });
+
+  /**
+   * Applies a language server's `WorkspaceEdit` to the files it names, open or not, through their
+   * documents, and keeps each file's inverse to undo it as one. `seen` holds the texts its
+   * positions are in for documents the server had open.
+   */
+  const applyWorkspaceEdit = Effect.fn("LanguageServers.applyWorkspaceEdit")(function* (
+    instance: Instance,
+    edit: Json,
+    seen: ReadonlyMap<string, ServerText>,
+  ) {
+    const byFile = editsByFile(edit);
+    if (byFile === null) {
+      return yield* failure("unsupported", "The edit also creates, renames or deletes files.");
+    }
+    const id = `edit-${++editCount}-${(yield* Clock.currentTimeMillis).toString(36)}`;
+    const files: AppliedFile[] = [];
+    let count = 0;
+    for (const [uri, edits] of byFile) {
+      const relativePath = relativePathOf(instance, uri);
+      if (relativePath === null) continue;
+      const done = yield* applyToFile(
+        instance.cwd,
+        relativePath,
+        edits,
+        seen.get(relativePath),
+        `lsp:${id}`,
+      ).pipe(
+        Effect.scoped,
+        Effect.mapError((cause) =>
+          failure("document", `'${relativePath}' could not be edited.`, cause),
+        ),
+      );
+      if (done === null) continue;
+      files.push(done);
+      count += done.edits;
+    }
+    applied.set(id, { cwd: instance.cwd, files });
+    for (const key of [...applied.keys()].slice(0, -EDITS_KEPT)) applied.delete(key);
+    return {
+      id,
+      files: files.map((file) => file.relativePath),
+      edits: count,
+    } satisfies LanguageServerAppliedEdit;
+  });
+
+  const undoFile = Effect.fn("LanguageServers.undoFile")(function* (
+    cwd: string,
+    file: AppliedFile,
+    clientId: string,
+  ) {
+    const items = yield* Queue.unbounded<DocumentStreamItem, Cause.Done | DocumentError>();
+    yield* documents
+      .subscribe({
+        cwd,
+        relativePath: file.relativePath,
+        resume: { loadId: file.loadId, version: file.version },
+      })
+      .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+    const first = yield* Queue.take(items);
+    // Still loaded: the inverse is rebased over whatever landed since. Reloaded: only a file
+    // nobody changed since takes it.
+    const at =
+      first.type === "resumed"
+        ? { loadId: file.loadId, version: file.version }
+        : first.type === "snapshot" && first.text === file.after
+          ? { loadId: first.loadId, version: first.version }
+          : null;
+    if (at === null) return false;
+    yield* documents.push({
+      cwd,
+      relativePath: file.relativePath,
+      ...at,
+      updates: [{ clientId, changes: file.inverse.toJSON() }],
+    });
+    yield* documents.save({ cwd, relativePath: file.relativePath, loadId: at.loadId });
+    return true;
+  });
+
+  const undoEdit: LanguageServers["Service"]["undoEdit"] = Effect.fn("LanguageServers.undoEdit")(
+    function* (input) {
+      const edit = applied.get(input.id);
+      if (edit === undefined) {
+        return yield* failure("document", "That edit can no longer be undone.");
+      }
+      applied.delete(input.id);
+      const files: string[] = [];
+      const skipped: string[] = [];
+      for (const file of edit.files) {
+        const undone = yield* undoFile(edit.cwd, file, `lsp-undo:${input.id}`).pipe(
+          Effect.scoped,
+          Effect.orElseSucceed(() => false),
+        );
+        (undone ? files : skipped).push(file.relativePath);
+      }
+      return { files, skipped };
+    },
+  );
+
+  /** Several applied edits as one, undone together. */
+  const mergeApplied = (edits: ReadonlyArray<LanguageServerAppliedEdit>) => {
+    if (edits.length <= 1) return edits[0] ?? null;
+    const files = edits.flatMap((edit) => applied.get(edit.id)?.files ?? []);
+    const first = edits[0]!;
+    applied.set(first.id, { cwd: applied.get(first.id)?.cwd ?? "", files });
+    for (const edit of edits.slice(1)) applied.delete(edit.id);
+    return {
+      id: first.id,
+      files: [...new Set(edits.flatMap((edit) => edit.files))],
+      edits: edits.reduce((sum, edit) => sum + edit.edits, 0),
+    };
+  };
+
+  /**
+   * Applies one of the code actions last offered to the session: its edit through the
+   * environment, as a rename's, then its command, whose own edits the server sends back here.
+   */
+  const applyCodeAction = Effect.fn("LanguageServers.applyCodeAction")(function* (
+    instance: Instance,
+    session: Session,
+    index: unknown,
+  ) {
+    const running = yield* Deferred.await(instance.ready);
+    const offered = session.codeActions;
+    const chosen = typeof index === "number" ? offered?.actions[index] : undefined;
+    if (offered === null || chosen === undefined) {
+      return { error: contentModified("The code actions changed; ask for them again.") };
+    }
+    session.codeActions = null;
+    let action: Json = chosen;
+    const isCommand = typeof action.command === "string";
+    if (
+      !isCommand &&
+      action.edit === undefined &&
+      running.capabilities?.codeActionProvider?.resolveProvider
+    ) {
+      action = yield* running.connection
+        .request("codeAction/resolve", action)
+        .response.pipe(Effect.orElseSucceed(() => chosen));
+    }
+    const done: Array<LanguageServerAppliedEdit> = [];
+    if (action.edit) {
+      const edit = yield* applyWorkspaceEdit(instance, action.edit, offered.seen).pipe(
+        Effect.option,
+      );
+      if (Option.isNone(edit))
+        return { error: { code: -32603, message: "The edit could not be applied." } };
+      done.push(edit.value);
+    }
+    const command = isCommand ? action : action.command;
+    if (typeof command?.command === "string") {
+      instance.collecting = done;
+      yield* running.connection
+        .request("workspace/executeCommand", {
+          command: command.command,
+          ...(command.arguments === undefined ? {} : { arguments: command.arguments }),
+        })
+        .response.pipe(
+          Effect.ignore,
+          Effect.ensuring(Effect.sync(() => (instance.collecting = null))),
+        );
+    }
+    return { result: { applied: mergeApplied(done) } };
+  });
 
   const onSessionNotification = Effect.fn("LanguageServers.sessionNotification")(function* (
     instance: Instance,
@@ -1042,7 +1518,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const running = yield* Deferred.await(instance.ready);
     const method: string = message.method;
     const clientUri = message.params?.textDocument?.uri;
-    const relativePath = relativePathOf(instance, clientUri);
+    const relativePath =
+      method === "completionItem/resolve"
+        ? session.completionPath
+        : relativePathOf(instance, clientUri);
     const doc = relativePath === null ? undefined : instance.docs.get(relativePath);
     if (doc !== undefined && state !== undefined) {
       // A file just opened: its text may still be on its way from Documents.
@@ -1070,6 +1549,17 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const translated = translateRequest(doc, state, message.params);
     if ("error" in translated) return translated;
     if (instance.running !== running) return { error: contentModified("The server restarted.") };
+    const position = translated.params?.position;
+    const query =
+      method === "textDocument/completion" && doc !== undefined && position
+        ? wordBefore(doc.texts.get(doc.version)!, position)
+        : "";
+    if (method === "textDocument/completion") session.completionPath = relativePath;
+    // A rename is applied here, at the texts the server answers about.
+    const seen =
+      method === "textDocument/rename" || method === "textDocument/codeAction"
+        ? serverTexts(instance)
+        : null;
     const request = running.connection.request(method, translated.params);
     pending.serverId = request.id;
     const answer = yield* request.response.pipe(
@@ -1077,14 +1567,36 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
     );
     if (!answer.ok) return { error: errorMessage(answer.error) };
-    const mapped = mapAnswer(method, answer.result, doc, translated.context);
+    if (seen !== null && method === "textDocument/codeAction") {
+      // The editor gets titles; the actions stay here, in the server's coordinates, to apply.
+      const actions: Array<Json> = Array.isArray(answer.result) ? answer.result : [];
+      session.codeActions = { actions, seen };
+      return {
+        result: actions.map((action, index) => ({
+          index,
+          title: String(action?.title ?? ""),
+          ...(typeof action?.kind === "string" ? { kind: action.kind } : {}),
+          ...(action?.isPreferred === true ? { isPreferred: true } : {}),
+          ...(action?.disabled?.reason ? { disabled: String(action.disabled.reason) } : {}),
+        })),
+      };
+    }
+    if (seen !== null) {
+      if (answer.result == null) return { result: null };
+      const done = yield* applyWorkspaceEdit(instance, answer.result, seen).pipe(
+        Effect.map((edit) => ({ result: { applied: edit } })),
+        Effect.catch((error) =>
+          Effect.succeed({ error: { code: -32603, message: error.message } }),
+        ),
+      );
+      return done;
+    }
+    const mapped = mapAnswer(method, answer.result, doc, translated.context, query);
     if ("error" in mapped) return mapped;
-    return {
-      result:
-        method === "textDocument/completion"
-          ? mapped.result
-          : toSessionUris(instance, session, mapped.result),
-    };
+    if (method === "textDocument/completion") return { result: mapped.result };
+    const result = toSessionUris(instance, session, mapped.result);
+    if (!LOCATION_METHODS.has(method)) return { result };
+    return { result: yield* withPreviews(instance, result, clientUri) };
   });
 
   const browserCapabilities = (capabilities: Json) => {
@@ -1102,6 +1614,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     pending: PendingForward,
   ) {
     if (message.method === "shutdown") return { result: null };
+    if (message.method === "astrolabe/applyCodeAction") {
+      return yield* applyCodeAction(instance, session, message.params?.index);
+    }
     if (message.method !== "initialize") {
       return yield* forward(instance, session, message, state, pending);
     }
@@ -1156,6 +1671,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           open: new Map(),
           pending: new Map(),
           scope: yield* Scope.fork(instance.scope),
+          completionPath: null,
+          codeActions: null,
         };
         instance.sessions.set(opened.id, opened);
         sessions.set(opened.id, { instance, session: opened });
@@ -1290,7 +1807,169 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     );
   });
 
+  const locate: LanguageServers["Service"]["locate"] = Effect.fn("LanguageServers.locate")(
+    function* (input) {
+      const match = languageServerForPath(input.relativePath);
+      if (match === null) {
+        return yield* failure("unsupported", "No language server reads this kind of file.");
+      }
+      const instance = yield* use({ cwd: input.cwd, server: match.server });
+      const state = instance.status.state;
+      if (state === "stopped") {
+        return yield* failure(
+          "not-running",
+          "The language server was stopped; restart it in Astrolabe.",
+        );
+      }
+      if (state === "download-needed") {
+        return yield* failure(
+          "download-needed",
+          "The language server needs a download the user has to allow in Astrolabe first.",
+        );
+      }
+      if (state === "failed") {
+        return yield* failure("failed", instance.status.message ?? "The language server failed.");
+      }
+      const { method, capability } = LOCATE_METHODS[input.kind];
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const doc = yield* Effect.acquireRelease(
+            holdDoc(instance, input.relativePath, match.languageId),
+            (held) => releaseDoc(instance, held),
+          );
+          yield* until(doc, () => doc.loadId !== null || !instance.docs.has(input.relativePath));
+          if (doc.loadId === null) {
+            return yield* failure("document", `'${input.relativePath}' could not be opened.`);
+          }
+          const synced = yield* documents
+            .sync({ cwd: instance.cwd, relativePath: input.relativePath })
+            .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
+          const running = yield* Deferred.await(instance.ready);
+          if (!running.capabilities?.[capability]) {
+            return yield* failure(
+              "unsupported",
+              `The language server cannot find ${input.kind} here.`,
+            );
+          }
+          yield* until(
+            doc,
+            () =>
+              doc.loadId !== synced.loadId ||
+              (doc.version >= synced.version && doc.openOn !== null),
+          );
+          const text = doc.texts.get(doc.version)!;
+          if (input.line > text.lines) {
+            return yield* failure(
+              "document",
+              `'${input.relativePath}' has ${text.lines} lines, not ${input.line}.`,
+            );
+          }
+          const lineText = text.line(input.line).text;
+          const character =
+            input.column !== undefined
+              ? input.column - 1
+              : input.symbol !== undefined
+                ? lineText.indexOf(input.symbol)
+                : 0;
+          if (character < 0) {
+            return yield* failure(
+              "document",
+              `'${input.symbol}' is not on line ${input.line} of '${input.relativePath}'.`,
+            );
+          }
+          if (instance.running !== running) {
+            return yield* failure("failed", "The language server restarted; try again.");
+          }
+          const { response } = running.connection.request(method, {
+            textDocument: { uri: doc.uri },
+            position: { line: input.line - 1, character },
+            ...(input.kind === "references" ? { context: { includeDeclaration: true } } : {}),
+          });
+          const answer = yield* response.pipe(
+            Effect.mapError((error) => failure("failed", error.message, error)),
+          );
+          const all = locationsOf(answer);
+          const listed = all.slice(0, LOCATIONS_LISTED);
+          return {
+            locations: yield* describeLocations(instance, listed),
+            truncated: all.length > listed.length,
+          };
+        }),
+      ).pipe(
+        Effect.timeoutOrElse({
+          duration: options.diagnosticsTimeout,
+          orElse: () =>
+            Effect.fail(
+              failure(
+                "timeout",
+                "The language server is still loading the project. Try again shortly.",
+              ),
+            ),
+        }),
+      );
+    },
+  );
+
+  /** The file's formatting edits at the document's version, landed under `clientId`. */
+  const formatForSave = Effect.fn("LanguageServers.formatForSave")(function* (
+    input: DocumentSaveInput & { readonly format: NonNullable<DocumentSaveInput["format"]> },
+  ) {
+    const match = languageServerForPath(input.relativePath);
+    if (match === null) return;
+    const instance = instances.get(`${input.cwd}\0${match.server}`);
+    const doc = instance?.docs.get(input.relativePath);
+    const running = instance?.running;
+    // Only a file an editor holds open here has a running server and the text it formats.
+    if (
+      !instance ||
+      !doc ||
+      !running ||
+      doc.loadId !== input.loadId ||
+      doc.openOn !== running.generation
+    ) {
+      return;
+    }
+    if (!running.capabilities?.documentFormattingProvider) return;
+    const version = doc.version;
+    const text = doc.texts.get(version)!;
+    const request = running.connection.request("textDocument/formatting", {
+      textDocument: { uri: doc.uri },
+      options: input.format,
+    });
+    const edits = yield* request.response.pipe(
+      Effect.orElseSucceed(() => null),
+      // Past the save's patience: the server can stop working on it.
+      Effect.onInterrupt(() => Effect.sync(() => running.connection.cancel(request.id))),
+    );
+    if (!Array.isArray(edits) || edits.length === 0) return;
+    const changes = changeSetOf(text, edits);
+    if (changes.empty) return;
+    yield* documents.push({
+      cwd: input.cwd,
+      relativePath: input.relativePath,
+      loadId: input.loadId,
+      version,
+      updates: [{ clientId: `lsp-format:${++editCount}`, changes: changes.toJSON() }],
+    });
+  });
+
+  const save: LanguageServers["Service"]["save"] = Effect.fn("LanguageServers.save")(
+    function* (input) {
+      const format = input.format;
+      if (format !== undefined) {
+        yield* formatForSave({ ...input, format }).pipe(
+          Effect.timeoutOption(options.formatTimeout),
+          Effect.ignore({ log: "Warn", message: "Formatting before a save failed." }),
+        );
+      }
+      return yield* documents.save(input);
+    },
+  );
+
   return LanguageServers.of({
+    save,
+    locate,
+    undoEdit,
     subscribe: SubscriptionRef.changes(statuses),
     restart,
     stop,
@@ -1310,6 +1989,7 @@ export const defaultOptions: LanguageServersOptions = {
   restartDelays: [Duration.seconds(1), Duration.seconds(2), Duration.seconds(4)],
   initializeTimeout: Duration.minutes(1),
   diagnosticsTimeout: Duration.minutes(1),
+  formatTimeout: Duration.seconds(2),
   registry: DEFAULT_REGISTRY,
   trusted: () => Effect.succeed(true),
 };

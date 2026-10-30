@@ -114,22 +114,22 @@ have pressed show at the top, Backspace goes back a level, and Escape or a click
 elsewhere closes it. A key with nothing bound says so. The menu waits as long as
 you need.
 
-| Key                     | Does                                                                                                                                                                                                       |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:`                     | Command Palette                                                                                                                                                                                            |
-| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                                                                     |
-| `n`                     | New thread, or new document on Wikis                                                                                                                                                                       |
-| `f`                     | Find a file in the current project                                                                                                                                                                         |
-| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                       |
-| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                |
-| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                                                                                             |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                                                                                                         |
-| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                    |
-| `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                   |
-| `w`                     | Open Wikis, or find or create a document                                                                                                                                                                   |
-| `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, and [problems](#problems-in-a-code-file) |
-| `r` `g`                 | Open the local graph of the repository file in front                                                                                                                                                       |
-| `,`                     | Settings                                                                                                                                                                                                   |
+| Key                     | Does                                                                                                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `:`                     | Command Palette                                                                                                                                                                                                                                                    |
+| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                                                                                                                             |
+| `n`                     | New thread, or new document on Wikis                                                                                                                                                                                                                               |
+| `f`                     | Find a file in the current project                                                                                                                                                                                                                                 |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                                                                               |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                                                                        |
+| `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings                                                                                                                                                                                                     |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward                                                                                                                                                                                                                 |
+| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                                                                            |
+| `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                                                                           |
+| `w`                     | Open Wikis, or find or create a document                                                                                                                                                                                                                           |
+| `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, [problems](#problems-in-a-code-file), and [language features](#language-features-in-a-code-file) |
+| `r` `g`                 | Open the local graph of the repository file in front                                                                                                                                                                                                               |
+| `,`                     | Settings                                                                                                                                                                                                                                                           |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
@@ -337,6 +337,56 @@ The header names the language server and says when it is starting. It runs the p
 TypeScript when it has one. Without one, the first time an environment needs a language server
 it asks to download it: click **Download**. If a server keeps stopping, or was paused because
 several ran at once, click **Restart** in the header.
+
+## Language features in a code file
+
+TypeScript and JavaScript files also take these from their language server. Each is in the
+Command Palette, and you can rebind it under **Editors**.
+
+| Key                          | Does                       | Keyboard menu | Vim     |
+| ---------------------------- | -------------------------- | ------------- | ------- |
+| `ctrl+space`                 | Show completions           | `e` `m`       |         |
+| `mod+shift+space`            | Show signature help        | `e` `i`       |         |
+|                              | Show hover                 | `e` `h`       | `K`     |
+| `f12`, or `mod`-click a name | Go to definition           | `e` `g` `d`   | `g` `d` |
+|                              | Go to declaration          | `e` `g` `c`   | `g` `D` |
+| `mod+f12`                    | Go to type definition      | `e` `g` `t`   | `g` `y` |
+| `shift+f12`                  | Go to implementation       | `e` `g` `i`   | `g` `I` |
+| `alt+shift+f12`              | Find references            | `e` `g` `r`   | `g` `r` |
+| `f2`                         | Rename symbol              | `e` `e`       |         |
+|                              | Undo rename or code action | `e` `z`       |         |
+| `mod+shift+i`                | Format document            | `e` `=`       |         |
+| `mod+.`                      | Show code actions          | `e` `q`       |         |
+| `mod+s`                      | Save the file, formatted   |               | `:w`    |
+
+Completions open as you type a name or a `.`. Tab or Enter accepts the selected one, `ctrl+n`
+and `ctrl+p` move through them, and Escape closes the list (in Vim's insert mode you stay in
+insert mode). Accepting a name another module exports also adds its import.
+
+Pointing at a name shows what the server knows about it; so does Show Hover at the cursor, until
+you move or type. Edits an agent makes elsewhere in the file leave it open. Signature help opens
+as you type a call's `(` or `,`, with the parameter you are on in bold; when a function has
+several signatures, `mod+shift+Up` and `mod+shift+Down` step through them.
+
+Go to definition puts the cursor on the definition, opening its file in a tab beside this one
+when it is elsewhere in the checkout. When there are several, places close together are all
+selected, and otherwise you pick one from a list; type to narrow it. On a definition itself, it
+finds the references instead. Find References lists every use, the declaration included. With
+`mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
+
+Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. It is
+not in the file's own undo: click **Undo** on the notice, or run Undo Rename, to put every file
+back. Edits made since are kept.
+
+Format Document reformats the file with its language server, as one step you can undo. Repository
+files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and formats the file
+first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
+this off with **Format on save** in Settings → Appearance.
+
+When the server has fixes or refactors for where the cursor rests, a light bulb shows beside the
+line. Click it, or press `mod+.`, for the list; Enter applies one. Like a rename, the environment
+applies it to every file it touches, and the notice's **Undo** (or Undo Rename) takes it back.
 
 ## Find in a diff
 

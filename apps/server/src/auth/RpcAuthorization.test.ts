@@ -102,6 +102,16 @@ describe("RPC authorization scopes", () => {
         document: { ...document, unconfirmed: [[3, [0, "x"]]] },
       }),
     ).toEqual([AuthFilesystemWriteScope]);
+    // A rename's answer is applied to the files it names.
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        message: JSON.stringify({ id: 4, method: "textDocument/rename", params: {} }),
+      }),
+    ).toEqual([AuthFilesystemWriteScope]);
+    expect(requiredScopeForRpcMethod(WS_METHODS.languageServersUndoEdit)).toBe(
+      AuthFilesystemWriteScope,
+    );
     for (const method of [
       WS_METHODS.languageServersRestart,
       WS_METHODS.languageServersStop,

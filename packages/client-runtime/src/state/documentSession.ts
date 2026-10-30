@@ -19,6 +19,7 @@ import type {
   DocumentPushResult,
   DocumentRecoverInput,
   DocumentRecoverResult,
+  DocumentSaveInput,
   DocumentSaveResult,
   DocumentStreamItem,
   DocumentSubscribeInput,
@@ -52,6 +53,7 @@ export interface DocumentChannel {
   ) => Promise<DocumentCallResult<DocumentPushResult>>;
   readonly save: (input: {
     readonly loadId: string;
+    readonly format?: DocumentSaveInput["format"];
   }) => Promise<DocumentCallResult<DocumentSaveResult>>;
   readonly recover: (
     input: Loaded<DocumentRecoverInput>,
@@ -334,11 +336,19 @@ export class DocumentSession {
     this.publish();
   }
 
-  /** Writes the file now, recreating it if it was deleted. */
-  async save(): Promise<DocumentCallResult<DocumentSaveResult> | null> {
+  /**
+   * Writes the file now, recreating it if it was deleted; with `format`, its language server
+   * formats it first.
+   */
+  async save(
+    options: { readonly format?: DocumentSaveInput["format"] } = {},
+  ): Promise<DocumentCallResult<DocumentSaveResult> | null> {
     const remote = this.remote;
     if (remote === null || this.status !== "open") return null;
-    const result = await this.channel.save({ loadId: remote.loadId });
+    const result = await this.channel.save({
+      loadId: remote.loadId,
+      ...(options.format === undefined ? {} : { format: options.format }),
+    });
     if (!result.ok) this.report(result.error);
     return result;
   }

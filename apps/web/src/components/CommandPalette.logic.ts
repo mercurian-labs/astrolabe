@@ -69,11 +69,11 @@ export function browseInputEndPaddingClass(input: {
 }
 
 // Astrolabe: `outline` is the outline picker of the editor it was opened from.
-export type SearchOverlayMode = "command" | "files" | "content" | "outline";
+export type SearchOverlayMode = "command" | "files" | "content" | "outline" | "locations";
 
-/** Escape in a child search goes back to the palette; the outline picker closes to its editor. */
+/** Escape in a child search goes back to the palette; the outline and location pickers close to their editor. */
 export const escapeReturnsToCommand = (mode: SearchOverlayMode) =>
-  mode !== "command" && mode !== "outline";
+  mode !== "command" && mode !== "outline" && mode !== "locations";
 
 /**
  * Astrolabe: what the add flow adds, a project of either kind; a wiki shares a repository's

@@ -230,8 +230,13 @@ const KEYBINDING_GROUPS = [
   // Astrolabe: `draft` is the command line's `:w`.
   { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker", "draft"] },
   // Astrolabe: the editors' own keys: formatting, finding and Vim's search highlight, a code
-  // file's editing, its changes since its last commit, and the outline picker.
-  { id: "editor", title: "Editors", prefixes: ["markdown", "search", "code", "hunk", "outline"] },
+  // file's editing, its changes since its last commit, the outline picker, and its language
+  // server's problems and features.
+  {
+    id: "editor",
+    title: "Editors",
+    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp", "file"],
+  },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
   { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
@@ -402,6 +407,19 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "outline.open": "Go to Symbol in File",
   "diagnostic.next": "Next Problem",
   "diagnostic.previous": "Previous Problem",
+  "lsp.complete": "Show Completions",
+  "lsp.hover": "Show Hover",
+  "lsp.signatureHelp": "Show Signature Help",
+  "lsp.definition": "Go to Definition",
+  "lsp.declaration": "Go to Declaration",
+  "lsp.typeDefinition": "Go to Type Definition",
+  "lsp.implementation": "Go to Implementation",
+  "lsp.references": "Find References",
+  "lsp.rename": "Rename Symbol",
+  "lsp.undoRename": "Undo Rename or Code Action",
+  "lsp.format": "Format Document",
+  "lsp.codeActions": "Show Code Actions",
+  "file.save": "Save File",
   "repository.localGraph": "Repositories: Open Local Graph",
 };
 

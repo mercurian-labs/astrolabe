@@ -14,6 +14,28 @@ import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
 import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
+import { environmentCompletion } from "@mercurian/editor/lsp/completion";
+import { environmentHover } from "@mercurian/editor/lsp/hover";
+import {
+  environmentNavigation,
+  type NavigationHost,
+  type NavigationLocation,
+} from "@mercurian/editor/lsp/navigation";
+import {
+  environmentRename,
+  type RenameHost,
+  type RenameResult,
+} from "@mercurian/editor/lsp/rename";
+import { environmentFormat, formattingOptions } from "@mercurian/editor/lsp/format";
+import {
+  type AppliedCodeAction,
+  type CodeActionHost,
+  environmentCodeActions,
+} from "@mercurian/editor/lsp/code-actions";
+import { fileSave } from "./fileSave";
+import { languageServersEnvironment } from "~/state/languageServers";
+import { useAtomCommand } from "~/state/use-atom-command";
+import { lastRename, type UndoableRename } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -38,6 +60,7 @@ import {
   useEditorDiagnosticKeys,
   useEditorFindKeys,
   useEditorHunkKeys,
+  useLspEditorKeys,
 } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { PanesHostContext } from "~/panes/panesHost";
@@ -46,6 +69,10 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
 import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
+import { activateTab, allTabs, openTab } from "~/panes/arrangement";
+import { leafWithTab } from "~/panes/tree";
+import { toastManager } from "../ui/toast";
+import { openLocationPicker, pathOfUri } from "../outline/LocationPicker";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
 import { Button } from "../ui/button";
@@ -67,7 +94,7 @@ import { followImportLine, importLineExtension, importLineKey } from "./importLi
 import { openLocalGraph } from "./localGraph";
 import { repositoryPanes } from "./repositoryPanes";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
-import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
+import { repositoryTabKey, type RepositoryFileTab as FileTab } from "./repositoryTabs";
 import { LanguageServerStatusEntry } from "./LanguageServerStatus";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
@@ -108,6 +135,7 @@ const FILE_EDITOR_THEME = EditorView.theme({
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
+const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
 
 /**
  * A repository file in the wiki editor, as the environment's live document: it saves your edits
@@ -172,6 +200,80 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   const [trail, setTrail] = useState<OutlineTrail | null>(null);
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
+  // A definition in another file of the checkout opens as a tab in this file's pane.
+  const openLocation = useStableCallback((location: NavigationLocation) => {
+    const target = pathOfUri(location.uri, cwd);
+    if (target.startsWith("/") || target.includes("://")) {
+      toastManager.add({ type: "info", title: "Outside this checkout", description: target });
+      return;
+    }
+    const key = repositoryTabKey({ ...tab, path: target });
+    panes.update((arrangement) =>
+      allTabs(arrangement).includes(key)
+        ? activateTab(arrangement, key)
+        : openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+    );
+    repositoryFileReveal.request(key, location.line, location.column);
+  });
+  const pickLocation = useStableCallback(
+    (view: EditorView, title: string, locations: readonly NavigationLocation[]) =>
+      openLocationPicker(view, title, locations, cwd),
+  );
+  const [navigation] = useState<NavigationHost>(() => ({
+    open: openLocation,
+    pick: pickLocation,
+  }));
+  const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
+  // The environment applied the rename to every file: it offers Undo here, and to Undo Rename.
+  // An edit the environment applied for the language server (a rename, a code action): a notice
+  // with Undo, which Undo Rename runs too while it is the last.
+  const offerUndo = useStableCallback(
+    (title: string, result: AppliedCodeAction | RenameResult, undoLabel: string) => {
+      const files = result.files.length;
+      let done = false;
+      const undo: UndoableRename = {
+        label: undoLabel,
+        run: () => {
+          if (done) return;
+          done = true;
+          if (lastRename.get() === undo) lastRename.set(null);
+          void undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
+            if (outcome._tag !== "Success" || outcome.value.skipped.length === 0) return;
+            toastManager.add({
+              type: "warning",
+              title: "Some files changed since, and were left as they are",
+              description: outcome.value.skipped.join(", "),
+            });
+          });
+        },
+      };
+      lastRename.set(undo);
+      const toast = toastManager.add({
+        type: "success",
+        title,
+        description: `${result.edits} ${result.edits === 1 ? "place" : "places"} in ${files} ${files === 1 ? "file" : "files"}`,
+        actionProps: {
+          children: "Undo",
+          onClick: () => {
+            toastManager.close(toast);
+            undo.run();
+          },
+        },
+      });
+    },
+  );
+  const renamed = useStableCallback((_view: EditorView, result: RenameResult) =>
+    offerUndo(
+      `Renamed ${result.from} to ${result.to}`,
+      result,
+      `Undo rename of ${result.from} to ${result.to}`,
+    ),
+  );
+  const [rename] = useState<RenameHost>(() => ({ renamed }));
+  const appliedAction = useStableCallback((_view: EditorView, action: AppliedCodeAction) =>
+    offerUndo(action.title, action, `Undo ${action.title}`),
+  );
+  const [codeActions] = useState<CodeActionHost>(() => ({ applied: appliedAction }));
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -250,6 +352,9 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           path={path}
           source={fromDisk ? { contents: contents ?? "" } : { session }}
           languageServer={fromDisk ? null : languageServer.extension}
+          navigation={navigation}
+          rename={rename}
+          codeActions={codeActions}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
@@ -365,6 +470,9 @@ function FileEditor({
   path,
   source,
   languageServer,
+  navigation,
+  rename,
+  codeActions,
   readOnly,
   baseText,
   baseControl,
@@ -378,6 +486,12 @@ function FileEditor({
   readonly source: { readonly session: DocumentSession } | { readonly contents: string };
   /** The file's language server client, when one reads it. */
   readonly languageServer: Extension | null;
+  /** Where its definitions and references open. */
+  readonly navigation: NavigationHost;
+  /** Told of each rename the environment applied. */
+  readonly rename: RenameHost;
+  /** Told of each code action the environment applied. */
+  readonly codeActions: CodeActionHost;
   readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
@@ -395,7 +509,16 @@ function FileEditor({
   const hunkKeys = useEditorHunkKeys();
   const editingKeys = useCodeEditorKeys();
   const diagnosticKeys = useEditorDiagnosticKeys();
+  const lspKeys = useLspEditorKeys();
   const wordWrap = useClientSettings(selectWordWrap);
+  const formatOnSave = useClientSettings(selectFormatOnSave);
+  // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
+  const save = useStableCallback(() => {
+    const view = viewRef.current;
+    if (!view || !("session" in source) || view.state.readOnly) return;
+    const format = formatOnSave && languageServer ? formattingOptions(view.state) : undefined;
+    void source.session.save(format ? { format } : {});
+  });
   const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
   const revealHere = reveal?.tabKey === tabKey ? reveal : null;
   const [compartments] = useState(() => ({
@@ -410,11 +533,15 @@ function FileEditor({
     path,
     source,
     languageServer,
+    navigation,
+    rename,
+    codeActions,
     readOnly,
     vim,
     wordWrap,
     baseControl,
     outlinePath,
+    save,
   }));
 
   useLayoutEffect(() => {
@@ -438,7 +565,12 @@ function FileEditor({
           history.extension,
           document?.extension ?? [],
           compartments.vim.of(initial.vim ? vimExtension() : []),
-          appVimKeys(() => null),
+          session ? fileSave.of(initial.save) : [],
+          appVimKeys((target) =>
+            session && !target.state.readOnly
+              ? { label: "Save the file", run: initial.save }
+              : null,
+          ),
           compartments.keys.of([]),
           markdown ? [] : diffBaseControl.of(initial.baseControl),
           markdown ? livePreview() : codeView(),
@@ -494,10 +626,10 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer ? diagnosticsUi({ keys: diagnosticKeys }) : [],
+        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial) : [],
       ]),
     });
-  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys]);
+  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys]);
 
   useEffect(() => {
     viewRef.current?.dispatch({
@@ -514,7 +646,7 @@ function FileEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !revealHere) return;
-    view.dispatch(revealLine(view.state, revealHere.line));
+    view.dispatch(revealLine(view.state, revealHere.line, revealHere.column));
     view.focus();
     repositoryFileReveal.done(revealHere.id);
   }, [revealHere]);
@@ -534,6 +666,38 @@ function FileEditor({
       }}
     />
   );
+}
+
+/** What a code file with a language server shows and binds, under the keybindings' keys. */
+function languageServerUi(
+  keys: ReturnType<typeof useLspEditorKeys>,
+  diagnosticKeys: ReturnType<typeof useEditorDiagnosticKeys>,
+  hosts: {
+    readonly navigation: NavigationHost;
+    readonly rename: RenameHost;
+    readonly codeActions: CodeActionHost;
+  },
+): Extension {
+  return [
+    diagnosticsUi({ keys: diagnosticKeys }),
+    environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
+    environmentHover({
+      keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },
+    }),
+    environmentNavigation({
+      keys: {
+        definition: keys["lsp.definition"],
+        declaration: keys["lsp.declaration"],
+        typeDefinition: keys["lsp.typeDefinition"],
+        implementation: keys["lsp.implementation"],
+        references: keys["lsp.references"],
+      },
+      host: hosts.navigation,
+    }),
+    environmentRename({ keys: keys["lsp.rename"], host: hosts.rename }),
+    environmentFormat({ keys: keys["lsp.format"] }),
+    environmentCodeActions({ keys: keys["lsp.codeActions"], host: hosts.codeActions }),
+  ];
 }
 
 function readOnlyExtension(readOnly: boolean) {

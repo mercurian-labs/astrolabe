@@ -167,6 +167,18 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // Astrolabe: a code file's diagnostics from its language server, which the editor binds itself.
   { key: "f8", command: "diagnostic.next", when: "codeEditorFocus" },
   { key: "shift+f8", command: "diagnostic.previous", when: "codeEditorFocus" },
+  // Astrolabe: a code file's language-server features, which the editor binds itself.
+  { key: "ctrl+space", command: "lsp.complete", when: "codeEditorFocus" },
+  { key: "mod+shift+space", command: "lsp.signatureHelp", when: "codeEditorFocus" },
+  { key: "f12", command: "lsp.definition", when: "codeEditorFocus" },
+  { key: "mod+f12", command: "lsp.typeDefinition", when: "codeEditorFocus" },
+  { key: "shift+f12", command: "lsp.implementation", when: "codeEditorFocus" },
+  { key: "alt+shift+f12", command: "lsp.references", when: "codeEditorFocus" },
+  { key: "f2", command: "lsp.rename", when: "codeEditorFocus" },
+  { key: "mod+shift+i", command: "lsp.format", when: "codeEditorFocus" },
+  { key: "mod+.", command: "lsp.codeActions", when: "codeEditorFocus" },
+  // Astrolabe: a code file's save, which formats it first (format on save).
+  { key: "mod+s", command: "file.save", when: "codeEditorFocus" },
   // Astrolabe: a code file's editing keys, which its editor binds itself while it has focus. The
   // app's commands on the same keys stand down there (`!codeEditorFocus`), except mod+u (Usage).
   { key: "mod+d", command: "code.selectNextOccurrence", when: "codeEditorFocus" },
@@ -233,7 +245,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+a", command: "theme.select", when: "!terminalFocus" },
   { key: "mod+alt+shift+a", command: "appearance.cycle", when: "!terminalFocus" },
   { key: "mod+alt+shift+t", command: "themeEditor.toggle" },
-  { key: "mod+s", command: "composer.stash", when: "!terminalFocus" },
+  { key: "mod+s", command: "composer.stash", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+shift+enter", command: "thread.steerQueuedMessage", when: "!terminalFocus" },
   { key: "alt+arrowup", command: "thread.editQueuedMessage", when: "composerFocus" },
   { key: "mod+enter", command: "composer.sendAlternate", when: "composerFocus && turnRunning" },

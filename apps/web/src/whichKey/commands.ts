@@ -15,6 +15,21 @@ import {
   nextDiagnostic,
   previousDiagnostic,
 } from "@mercurian/editor/lsp/diagnostics";
+import { startCompletion } from "@mercurian/editor/lsp/completion";
+import { showHover, showSignatureHelp } from "@mercurian/editor/lsp/hover";
+import {
+  findReferences,
+  goToDeclaration,
+  goToDefinition,
+  goToImplementation,
+  goToTypeDefinition,
+} from "@mercurian/editor/lsp/navigation";
+import { renameSymbol } from "@mercurian/editor/lsp/rename";
+import { formatCode } from "@mercurian/editor/lsp/format";
+import { showCodeActions } from "@mercurian/editor/lsp/code-actions";
+import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
+import { lastRename } from "~/components/repositories/renameUndo";
+import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
@@ -196,6 +211,15 @@ const HUNK_ENTRIES: Record<
   "hunk.next": { command: "next", label: "Next change" },
   "hunk.previous": { command: "previous", label: "Previous change" },
 };
+
+/** A language-server command on the code file the key came from; faint where none serves it. */
+function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorView) => boolean) {
+  const view = editorFrom(origin, hasLanguageServer);
+  return entry(
+    view ? label : "No language server here",
+    view ? () => afterPalette(() => void run(view)) : null,
+  );
+}
 
 /** A change command on the code file the key came from; faint where no file shows changes. */
 function hunkEntry(command: keyof typeof HUNK_ENTRIES, origin: KeyOrigin | null): AppCommand {
@@ -426,6 +450,37 @@ function astrolabeCommand(
           ? () => afterPalette(() => void (next ? nextDiagnostic : previousDiagnostic)(view))
           : null,
       );
+    }
+    case "lsp.complete":
+      return lspEntry(context.origin, "Show completions", startCompletion);
+    case "lsp.hover":
+      return lspEntry(context.origin, "Show hover", showHover);
+    case "lsp.signatureHelp":
+      return lspEntry(context.origin, "Show signature help", showSignatureHelp);
+    case "lsp.definition":
+      return lspEntry(context.origin, "Go to definition", goToDefinition);
+    case "lsp.declaration":
+      return lspEntry(context.origin, "Go to declaration", goToDeclaration);
+    case "lsp.typeDefinition":
+      return lspEntry(context.origin, "Go to type definition", goToTypeDefinition);
+    case "lsp.implementation":
+      return lspEntry(context.origin, "Go to implementation", goToImplementation);
+    case "lsp.references":
+      return lspEntry(context.origin, "Find references", findReferences);
+    case "lsp.rename":
+      return lspEntry(context.origin, "Rename symbol", renameSymbol);
+    case "lsp.format":
+      return lspEntry(context.origin, "Format document", formatCode);
+    case "lsp.codeActions":
+      return lspEntry(context.origin, "Show code actions", showCodeActions);
+    case "file.save": {
+      const view = editorFrom(context.origin, hasFileSave);
+      const run = view?.state.facet(fileSave) ?? null;
+      return entry(run ? "Save file" : "No file to save here", run);
+    }
+    case "lsp.undoRename": {
+      const rename = lastRename.get();
+      return entry(rename?.label ?? "No rename to undo", rename?.run ?? null);
     }
     case "outline.open": {
       const view = editorFrom(context.origin, hasOutline);

@@ -459,30 +459,140 @@ describe("LanguageServers", () => {
       yield* session.state("ready");
       yield* session.open(checkout.uri);
       const editor = yield* openEditor(checkout, "editor-a");
-      yield* agentEdit(checkout, (text) => ({ from: text.length, insert: "use(point);\n" }));
+      yield* agentEdit(checkout, (text) => ({ from: text.length, insert: "use(1,2);\n" }));
+      const format = () =>
+        session.request(
+          1,
+          "textDocument/formatting",
+          { textDocument: { uri: checkout.uri }, options: { tabSize: 2, insertSpaces: true } },
+          editor.envelope(),
+        );
+      expect((yield* format()).error.code).toBe(ContentModified);
+      yield* editor.catchUp;
+      expect((yield* format()).result).toHaveLength(1);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("applies a rename to every file it names, and undoes it as one", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout(SOURCE, { renameAlso: "src/point.ts" });
+      const POINT = "export function makePoint() {}\nmakePoint();\n";
+      yield* checkout.write("src/point.ts", POINT);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      // An agent adds a use the editor hasn't received: the environment renames it too.
+      yield* agentEdit(checkout, (text) => ({ from: text.length, insert: "makePoint(3, 4);\n" }));
       const rename = yield* session.request(
         1,
         "textDocument/rename",
         {
           textDocument: { uri: checkout.uri },
-          position: editor.position("point", 1),
-          newName: "p",
+          position: editor.position("makePoint", 1),
+          newName: "pointAt",
         },
         editor.envelope(),
       );
-      expect(rename.error.code).toBe(ContentModified);
+      expect(rename.result.applied).toMatchObject({
+        files: [FILE, "src/point.ts"],
+        edits: 4,
+      });
+      const read = (name: string) => fileSystem.readFileString(`${checkout.cwd}/${name}`);
+      expect(yield* read(FILE)).toBe(
+        "const point = pointAt(1, 2);\nexport const label = point;\npointAt(3, 4);\n",
+      );
+      expect(yield* read("src/point.ts")).toBe("export function pointAt() {}\npointAt();\n");
+      // Someone types after the rename; undo puts the names back and keeps their line.
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// later\n" }));
+      const undone = yield* service.undoEdit({ id: rename.result.applied.id });
+      expect(undone).toEqual({ files: [FILE, "src/point.ts"], skipped: [] });
+      expect(yield* read(FILE)).toBe(`// later\n${SOURCE}makePoint(3, 4);\n`);
+      expect(yield* read("src/point.ts")).toBe(POINT);
+      const again = yield* service.undoEdit({ id: rename.result.applied.id }).pipe(Effect.flip);
+      expect(again.reason).toBe("document");
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("formats an open file before saving it when asked, and saves without waiting long", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const run = Effect.fn("run")(function* (formatDelay: number) {
+        const checkout = yield* makeCheckout("f(1,2);\n", { formatDelay });
+        const session = yield* openSession(checkout);
+        yield* session.state("ready");
+        yield* session.open(checkout.uri);
+        const editor = yield* openEditor(checkout, "editor-a");
+        // The server has the file open once its diagnostics are in.
+        yield* session.diagnostics();
+        const save = (format: boolean) =>
+          service.save({
+            cwd: checkout.cwd,
+            relativePath: FILE,
+            loadId: editor.loadId,
+            ...(format ? { format: { tabSize: 2, insertSpaces: true } } : {}),
+          });
+        const read = fileSystem.readFileString(`${checkout.cwd}/${FILE}`);
+        yield* agentEdit(checkout, () => ({ from: 0, insert: "g(3,4);\n" }));
+        yield* save(false);
+        const unformatted = yield* read;
+        yield* save(true);
+        return { unformatted, saved: yield* read };
+      });
+      const quick = yield* run(0);
+      expect(quick).toEqual({ unformatted: "g(3,4);\nf(1,2);\n", saved: "g(3, 4);\nf(1, 2);\n" });
+      // A formatter slower than the save's patience is skipped.
+      const slow = yield* run(10_000);
+      expect(slow.saved).toBe("g(3,4);\nf(1,2);\n");
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ formatTimeout: "300 millis" }))),
+  );
+
+  it.live("offers code actions by title and applies the one picked through the environment", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout("let bad = 1;\nlet fine = 2;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const published = yield* session.diagnostics(
+        (message) => message.params.diagnostics.length > 0,
+      );
+      const ask = (id: number) =>
+        session.request(
+          id,
+          "textDocument/codeAction",
+          {
+            textDocument: { uri: checkout.uri },
+            range: published.params.diagnostics[0].range,
+            context: { diagnostics: published.params.diagnostics },
+          },
+          editor.envelope(),
+        );
+      const offered = yield* ask(1);
+      expect(offered.result).toEqual([
+        { index: 0, title: "Replace bad with good", kind: "quickfix", isPreferred: true },
+        { index: 1, title: "Remove the line" },
+      ]);
+      const read = fileSystem.readFileString(`${checkout.cwd}/${FILE}`);
+      // A fix the server resolves first.
+      const fixed = yield* session.request(2, "astrolabe/applyCodeAction", { index: 0 });
+      expect(fixed.result.applied).toMatchObject({ files: [FILE], edits: 1 });
+      expect(yield* read).toBe("let good = 1;\nlet fine = 2;\n");
+      yield* service.undoEdit({ id: fixed.result.applied.id });
+      // A command whose edit the server sends back while it runs.
       yield* editor.catchUp;
-      const accepted = yield* session.request(
-        2,
-        "textDocument/rename",
-        {
-          textDocument: { uri: checkout.uri },
-          position: editor.position("point", 1),
-          newName: "p",
-        },
-        editor.envelope(),
-      );
-      expect(accepted.result.changes[checkout.uri]).toHaveLength(3);
+      yield* ask(3);
+      const removed = yield* session.request(4, "astrolabe/applyCodeAction", { index: 1 });
+      expect(removed.result.applied).toMatchObject({ files: [FILE] });
+      expect(yield* read).toBe("let fine = 2;\n");
+      // Offered actions are used once.
+      const stale = yield* session.request(5, "astrolabe/applyCodeAction", { index: 1 });
+      expect(stale.error.code).toBe(ContentModified);
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
@@ -556,6 +666,160 @@ describe("LanguageServers", () => {
       expect(completion.result.isIncomplete).toBe(true);
       expect(completion.result.items).toHaveLength(200);
       expect(completion.result.items[0]).toEqual({ label: "item0", sortText: "0000" });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("keeps the items the word being typed can still match", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout("const x = item12;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const completion = yield* session.request(
+        1,
+        "textDocument/completion",
+        { textDocument: { uri: checkout.uri }, position: editor.position("item12", 6) },
+        editor.envelope(),
+      );
+      // item12, item120..item129 and item412 hold "item12" in order; nothing else is sent.
+      expect(completion.result.isIncomplete).toBe(false);
+      expect(completion.result.items.map((item: any) => item.label)).toContain("item412");
+      expect(completion.result.items).toHaveLength(
+        Array.from({ length: 500 }, (_, index) => `item${index}`).filter((label) =>
+          /i.*t.*e.*m.*1.*2/.test(label),
+        ).length,
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("resolves a completion item against the file its list came from", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const completion = yield* session.request(
+        1,
+        "textDocument/completion",
+        { textDocument: { uri: checkout.uri }, position: editor.position("label") },
+        editor.envelope(),
+      );
+      // The editor types a line at the top before it accepts; the import still lands above it.
+      editor.type(0, "// mine\n");
+      const resolved = yield* session.request(
+        2,
+        "completionItem/resolve",
+        completion.result.items[0],
+        editor.envelope(),
+      );
+      expect(resolved.result.documentation).toBe("About item0");
+      expect(resolved.result.additionalTextEdits).toEqual([
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          newText: 'import { item0 } from "./lib";\n',
+        },
+      ]);
+      // The editor's line reached the environment first, as for any request.
+      const state = yield* session.request(3, "test/state", {});
+      expect(state.result.docs[checkout.uri].text).toBe(`// mine\n${SOURCE}`);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("cuts a hover too big to send, closing its code block", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout("const huge = 1;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const hover = yield* session.request(
+        1,
+        "textDocument/hover",
+        { textDocument: { uri: checkout.uri }, position: editor.position("huge") },
+        editor.envelope(),
+      );
+      expect(hover.result.contents.length).toBeLessThan(100_010);
+      expect(hover.result.contents.endsWith("\n```\n…")).toBe(true);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("adds each other file's line to a location answer", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE, {
+        elsewhere: { makePoint: { path: "src/point.ts", line: 1, character: 16 } },
+      });
+      yield* checkout.write("src/point.ts", "// points\nexport function makePoint() {}\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const references = yield* session.request(
+        1,
+        "textDocument/references",
+        {
+          textDocument: { uri: checkout.uri },
+          position: editor.position("makePoint"),
+          context: { includeDeclaration: true },
+        },
+        editor.envelope(),
+      );
+      expect(references.result).toEqual([
+        {
+          uri: checkout.uri,
+          range: { start: { line: 0, character: 14 }, end: { line: 0, character: 23 } },
+        },
+        {
+          uri: expect.stringMatching(/\/src\/point\.ts$/),
+          range: { start: { line: 1, character: 16 }, end: { line: 1, character: 25 } },
+          "astrolabe/preview": "export function makePoint() {}",
+        },
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("tells an agent where a symbol is defined and used, as the file is now", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE, {
+        elsewhere: { makePoint: { path: "src/point.ts", line: 1, character: 16 } },
+      });
+      yield* checkout.write("src/point.ts", "// points\nexport function makePoint() {}\n");
+      const definition = yield* service.locate({
+        cwd: checkout.cwd,
+        relativePath: FILE,
+        line: 1,
+        column: 16,
+        kind: "definition",
+      });
+      expect(definition).toEqual({
+        locations: [
+          {
+            path: "src/point.ts",
+            line: 2,
+            column: 17,
+            endLine: 2,
+            endColumn: 26,
+            preview: "export function makePoint() {}",
+          },
+        ],
+        truncated: false,
+      });
+      // A write just before the call is what the answer reads.
+      yield* openEditor(checkout, "editor-a");
+      yield* checkout.write(FILE, `const label = 1;\n${SOURCE}`);
+      const references = yield* service.locate({
+        cwd: checkout.cwd,
+        relativePath: FILE,
+        line: 1,
+        column: 7,
+        kind: "references",
+      });
+      expect(references.locations.map((location) => [location.line, location.preview])).toEqual([
+        [1, "const label = 1;"],
+        [3, "export const label = point;"],
+      ]);
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 

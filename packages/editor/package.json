@@ -62,6 +62,30 @@
     "./lsp/diagnostics": {
       "types": "./src/lsp/diagnostics.ts",
       "default": "./src/lsp/diagnostics.ts"
+    },
+    "./lsp/completion": {
+      "types": "./src/lsp/completion.ts",
+      "default": "./src/lsp/completion.ts"
+    },
+    "./lsp/hover": {
+      "types": "./src/lsp/hover.ts",
+      "default": "./src/lsp/hover.ts"
+    },
+    "./lsp/navigation": {
+      "types": "./src/lsp/navigation.ts",
+      "default": "./src/lsp/navigation.ts"
+    },
+    "./lsp/rename": {
+      "types": "./src/lsp/rename.ts",
+      "default": "./src/lsp/rename.ts"
+    },
+    "./lsp/format": {
+      "types": "./src/lsp/format.ts",
+      "default": "./src/lsp/format.ts"
+    },
+    "./lsp/code-actions": {
+      "types": "./src/lsp/codeActions.ts",
+      "default": "./src/lsp/codeActions.ts"
     }
   },
   "scripts": {

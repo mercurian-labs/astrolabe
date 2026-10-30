@@ -33,7 +33,10 @@ export interface LspCommand {
 
 export interface LspHandlers {
   readonly onNotification: (method: string, params: unknown) => void;
-  /** Answers the server's own requests; `undefined` means the method isn't supported. */
+  /**
+   * Answers the server's own requests; `undefined` means the method isn't supported. A promise
+   * answers when it settles.
+   */
   readonly onRequest: (method: string, params: unknown) => unknown;
 }
 
@@ -103,6 +106,14 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
       return;
     }
     const result = handlers.onRequest(message.method, message.params);
+    const id = message.id;
+    if (result instanceof Promise) {
+      void result.then(
+        (value) => write({ id, result: value ?? null }),
+        () => write({ id, error: { code: -32603, message: "Failed" } }),
+      );
+      return;
+    }
     write(
       result === undefined
         ? { id: message.id, error: { code: MethodNotFound, message: "Not supported" } }

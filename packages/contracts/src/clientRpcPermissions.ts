@@ -63,6 +63,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.languageServersRestart]: AuthEnvironmentMaintainScope,
   [WS_METHODS.languageServersStop]: AuthEnvironmentMaintainScope,
   [WS_METHODS.languageServersConfirmDownload]: AuthEnvironmentMaintainScope,
+  // Astrolabe: undoing a rename writes the files it changed.
+  [WS_METHODS.languageServersUndoEdit]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,

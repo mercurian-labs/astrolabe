@@ -1,4 +1,12 @@
-import type { ChangeSet, Extension, Text } from "@codemirror/state";
+import {
+  type ChangeSet,
+  type EditorState,
+  type Extension,
+  Facet,
+  StateEffect,
+  StateField,
+  type Text,
+} from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import {
   LSPClient,
@@ -120,6 +128,46 @@ const positionOf = (doc: Text, offset: number) => {
   return { line: line.number - 1, character: offset - line.from };
 };
 
+/** Marks an editor whose file has a language server, for menus that run its features. */
+const languageServed = Facet.define<boolean>();
+
+/** Whether `state`'s editor talks to a language server (the commands that ask it can run). */
+export function hasLanguageServer(state: EditorState): boolean {
+  return state.facet(languageServed).length > 0;
+}
+
+/** A diagnostic as the server sent it (code actions need its `code`), where it is in the text. */
+export interface ServerDiagnostic {
+  readonly from: number;
+  readonly to: number;
+  readonly diagnostic: { readonly message: unknown; readonly [field: string]: unknown };
+}
+
+const setServerDiagnostics = StateEffect.define<readonly ServerDiagnostic[]>();
+
+const serverDiagnosticsField = StateField.define<readonly ServerDiagnostic[]>({
+  create: () => [],
+  update(value, tr) {
+    for (const effect of tr.effects) if (effect.is(setServerDiagnostics)) return effect.value;
+    if (!tr.docChanged || value.length === 0) return value;
+    return value.map((entry) => {
+      const from = tr.changes.mapPos(entry.from, 1);
+      return { ...entry, from, to: Math.max(from, tr.changes.mapPos(entry.to, -1)) };
+    });
+  },
+});
+
+/** The server's diagnostics touching `from`-`to`, as it sent them, in the text now. */
+export function serverDiagnosticsAt(
+  state: EditorState,
+  from: number,
+  to: number,
+): readonly ServerDiagnostic[] {
+  return (state.field(serverDiagnosticsField, false) ?? []).filter(
+    (entry) => entry.from <= to && entry.to >= from,
+  );
+}
+
 /** Cold projects take seconds before a server answers; lsp-client's default is 3. */
 const REQUEST_TIMEOUT = 30_000;
 
@@ -160,7 +208,11 @@ export function environmentLsp(options: {
         method?: string;
         params?: { textDocument?: { uri?: string } };
       };
-      const uri = parsed.params?.textDocument?.uri;
+      // An item handed back to resolve names no file: it is this editor's one.
+      const uri =
+        parsed.method === "completionItem/resolve"
+          ? workspace?.files[0]?.uri
+          : parsed.params?.textDocument?.uri;
       const file =
         parsed.id !== undefined && parsed.method !== undefined && uri !== undefined
           ? (workspace?.getFile(uri) as EnvironmentFile | null)
@@ -185,6 +237,7 @@ export function environmentLsp(options: {
       held.delete(uri);
       if (since === "gone" || !file) continue;
       const current = file.view.state.doc;
+      const kept: ServerDiagnostic[] = [];
       for (const diagnostic of entry.message.params.diagnostics) {
         const from = since.changes.mapPos(offsetOf(since.text, diagnostic.range.start), 1);
         const to = Math.max(
@@ -192,7 +245,13 @@ export function environmentLsp(options: {
           since.changes.mapPos(offsetOf(since.text, diagnostic.range.end), -1),
         );
         diagnostic.range = { start: positionOf(current, from), end: positionOf(current, to) };
+        kept.push({
+          from,
+          to,
+          diagnostic: diagnostic as unknown as ServerDiagnostic["diagnostic"],
+        });
       }
+      file.view.dispatch({ effects: setServerDiagnostics.of(kept) });
       // lsp-client reads positions against its synced text and drops other versions: make both now.
       client.sync();
       entry.message.params.version = file.version;
@@ -209,7 +268,11 @@ export function environmentLsp(options: {
 
   return {
     client,
-    extension: client.plugin(options.uri, options.languageId),
+    extension: [
+      client.plugin(options.uri, options.languageId),
+      languageServed.of(true),
+      serverDiagnosticsField,
+    ],
     connect: () => {
       if (attached) return;
       attached = true;

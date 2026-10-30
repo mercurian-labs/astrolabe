@@ -110,10 +110,16 @@ const mapEdit = (m: OffsetMapper, edit: Json, strict: boolean) => {
 export const mapParams = (params: Json, m: OffsetMapper): Json => {
   if (params?.position) params.position = mapPoint(m, params.position, -1);
   if (params?.range) params.range = mapRange(m, params.range, false);
+  // A completion item handed back to resolve it carries its edit in the editor's text.
+  if (params?.textEdit) mapEdit(m, params.textEdit, false);
+  // A code action request names the diagnostics it is about, as the editor shows them.
+  for (const diagnostic of params?.context?.diagnostics ?? []) {
+    if (diagnostic?.range) diagnostic.range = mapRange(m, diagnostic.range, false);
+  }
   return params;
 };
 
-const LOCATION_METHODS = new Set([
+export const LOCATION_METHODS = new Set([
   "textDocument/definition",
   "textDocument/declaration",
   "textDocument/typeDefinition",
@@ -139,6 +145,10 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
       }
       return result;
     }
+    case "completionItem/resolve":
+      if (result.textEdit) mapEdit(m, result.textEdit, false);
+      for (const edit of result.additionalTextEdits ?? []) mapEdit(m, edit, true);
+      return result;
     case "textDocument/hover":
       if (result.range) result.range = mapRange(m, result.range, false);
       return result;
@@ -186,21 +196,84 @@ export const mapDiagnostics = (diagnostics: Json, m: OffsetMapper): Json => {
 
 const COMPLETION_MAX_ITEMS = 200;
 
+/** Whether `query`'s characters appear in `text` in order, ignoring case. */
+const subsequence = (query: string, text: string) => {
+  let at = 0;
+  for (const char of text.toLowerCase()) if (char === query[at]) at++;
+  return at === query.length;
+};
+
 /**
- * Completion lists can run to thousands of items and megabytes. Keep the best-sorted few, without
- * documentation (resolve fetches it), and say the list is incomplete so the editor asks again.
+ * Completion lists can run to thousands of items and megabytes. Keep the items the word being
+ * typed (`query`) can still match, the best-sorted few of them, without documentation (resolve
+ * fetches it); a list cut short says it is incomplete, so the editor asks again as you type.
  */
-export const trimCompletion = (result: Json): Json => {
+export const trimCompletion = (result: Json, query = ""): Json => {
   if (result == null) return result;
   const list = Array.isArray(result) ? { isIncomplete: false, items: result } : result;
   if (!Array.isArray(list.items)) return result;
-  for (const item of list.items) delete item.documentation;
-  if (list.items.length > COMPLETION_MAX_ITEMS) {
+  const lowered = query.toLowerCase();
+  const items = lowered
+    ? list.items.filter((item: Json) => subsequence(lowered, String(item.filterText ?? item.label)))
+    : list.items;
+  for (const item of items) delete item.documentation;
+  if (items.length > COMPLETION_MAX_ITEMS) {
     const key = (item: Json) => String(item.sortText ?? item.label ?? "");
-    list.items = list.items
+    list.items = items
       .toSorted((a: Json, b: Json) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
       .slice(0, COMPLETION_MAX_ITEMS);
     list.isIncomplete = true;
+  } else {
+    list.items = items;
   }
   return list;
 };
+
+/** The identifier characters before `position`: what a completion there is matched against. */
+export const wordBefore = (doc: Text, position: Position): string => {
+  const offset = fromPosition(doc, position);
+  const line = doc.lineAt(offset);
+  return /[\w$]*$/.exec(line.text.slice(0, offset - line.from))![0];
+};
+
+const HOVER_MAX_LENGTH = 100_000;
+
+/** `text` cut to `length` characters, closing a code fence the cut leaves open. */
+const cutMarkdown = (text: string, length: number) => {
+  if (text.length <= length) return text;
+  const kept = text.slice(0, length);
+  const fences = kept.match(/^```/gm)?.length ?? 0;
+  return `${kept}${fences % 2 === 1 ? "\n```" : ""}\n…`;
+};
+
+/** A hover's text kept within 100 000 characters across its parts; later parts are dropped. */
+export const trimHover = (result: Json): Json => {
+  if (result == null) return result;
+  const contents = result.contents;
+  if (typeof contents === "string") result.contents = cutMarkdown(contents, HOVER_MAX_LENGTH);
+  else if (typeof contents?.value === "string") {
+    contents.value = cutMarkdown(contents.value, HOVER_MAX_LENGTH);
+  } else if (Array.isArray(contents)) {
+    let left = HOVER_MAX_LENGTH;
+    result.contents = contents.flatMap((part: Json) => {
+      if (left <= 0) return [];
+      const value = typeof part === "string" ? part : String(part?.value ?? "");
+      const kept = cutMarkdown(value, left);
+      left -= value.length;
+      return [typeof part === "string" ? kept : { ...part, value: kept }];
+    });
+  }
+  return result;
+};
+
+/** The places a location answer names: `Location`s and `LocationLink`s, one or many. */
+export const locationsOf = (result: Json): Array<{ readonly uri: string; readonly range: Range }> =>
+  (Array.isArray(result) ? result : result == null ? [] : [result]).flatMap((location: Json) => {
+    if (typeof location?.targetUri === "string") {
+      const range = location.targetSelectionRange ?? location.targetRange;
+      return range ? [{ uri: location.targetUri, range }] : [];
+    }
+    return typeof location?.uri === "string" && location.range
+      ? [{ uri: location.uri, range: location.range }]
+      : [];
+  });

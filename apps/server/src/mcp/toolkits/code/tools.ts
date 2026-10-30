@@ -1,6 +1,7 @@
 import {
   CodeChanges,
   CodeFindResult,
+  CodeLocations,
   CodeMap,
   CodeOutline,
   FileDiagnostics,
@@ -120,10 +121,52 @@ const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const languageServerDependencies = [
+  McpInvocationContext.McpInvocationContext,
+  ThreadManagementService.ThreadManagementService,
+  ProjectService.ProjectService,
+  LanguageServers.LanguageServers,
+];
+
+const SYMBOL_AT = Schema.Struct({
+  path: Text.annotate({ description: "The repository-relative file the symbol is written in." }),
+  line: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).annotate({
+    description: "The line it is on, from 1.",
+  }),
+  symbol: Text.annotate({
+    description: "The symbol as written on that line; its first occurrence there is used.",
+  }),
+});
+
+const LANGUAGE_SERVER_SCOPE =
+  "Asks TypeScript's language server about TypeScript and JavaScript files at your thread's checkout, as they are now, so it is exact where a name is shared, re-exported, or imported under another name. Lines and columns count from 1; each location has its line's text. The first call in a checkout can take a while as the project loads.";
+
+const CodeDefinitionTool = Tool.make("astrolabe_code_definition", {
+  ...shared,
+  dependencies: languageServerDependencies,
+  description: `Where the symbol written at a file's line is defined: follows imports and aliases to the declaration. Use it to jump from a use you are reading to the code behind it. ${LANGUAGE_SERVER_SCOPE}`,
+  parameters: SYMBOL_AT,
+  success: CodeLocations,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const CodeReferencesTool = Tool.make("astrolabe_code_references", {
+  ...shared,
+  dependencies: languageServerDependencies,
+  description: `Every place the symbol written at a file's line is used, its declaration included. Use it before changing or removing a function, type, or field you have open, to find each caller you must update. ${LANGUAGE_SERVER_SCOPE} Long lists are cut and say \`truncated\`.`,
+  parameters: SYMBOL_AT,
+  success: CodeLocations,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 export const CodeToolkit = Toolkit.make(
   CodeOutlineTool,
   CodeFindTool,
   CodeChangesTool,
   CodeMapTool,
   CodeDiagnosticsTool,
+  CodeDefinitionTool,
+  CodeReferencesTool,
 );

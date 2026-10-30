@@ -1290,7 +1290,8 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
       [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),
       [WS_METHODS.documentsPush]: (input) => documents.push(input),
-      [WS_METHODS.documentsSave]: (input) => documents.save(input),
+      // Astrolabe: saving goes through the language servers, which format first when asked.
+      [WS_METHODS.documentsSave]: (input) => languageServers.save(input),
       [WS_METHODS.documentsRecover]: (input) => documents.recover(input),
       [WS_METHODS.documentsDiscard]: (input) => documents.discard(input),
       [WS_METHODS.languageServersSubscribe]: (_input) => languageServers.subscribe,
@@ -1299,6 +1300,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.languageServersConfirmDownload]: (_input) => languageServers.confirmDownload,
       [WS_METHODS.languageServersSession]: (input) => languageServers.session(input),
       [WS_METHODS.languageServersSend]: (input) => languageServers.send(input),
+      [WS_METHODS.languageServersUndoEdit]: (input) => languageServers.undoEdit(input),
     });
   }),
 );

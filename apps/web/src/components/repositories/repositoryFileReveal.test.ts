@@ -16,6 +16,13 @@ describe("revealing a line in a Repositories file", () => {
     expect(anchorOf(40)).toBe("one\ntwo\n".length);
   });
 
+  it("puts it at a column when asked, and at the line's end past it", () => {
+    const at = (line: number, column: number) =>
+      state.update(revealLine(state, line, column)).state.selection.main.head;
+    expect(at(2, 2)).toBe("one\nt".length);
+    expect(at(2, 40)).toBe("one\ntwo".length);
+  });
+
   it("is shown once: a tab opened again after it does not jump back", () => {
     repositoryFileReveal.request("tab", 3);
     const first = repositoryFileReveal.get()!;

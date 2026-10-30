@@ -9,6 +9,8 @@ import { EditorView } from "@codemirror/view";
 export interface RepositoryFileReveal {
   readonly tabKey: string;
   readonly line: number;
+  /** From 1; the line's start when not given. */
+  readonly column?: number;
   readonly id: number;
 }
 
@@ -21,8 +23,8 @@ function changed() {
 }
 
 export const repositoryFileReveal = {
-  request(tabKey: string, line: number) {
-    current = { tabKey, line, id: nextId++ };
+  request(tabKey: string, line: number, column?: number) {
+    current = { tabKey, line, ...(column === undefined ? {} : { column }), id: nextId++ };
     changed();
   },
   get: (): RepositoryFileReveal | null => current,
@@ -40,11 +42,15 @@ export const repositoryFileReveal = {
   },
 };
 
-/** The cursor at the start of 1-based `line` (the last line past the end), scrolled to the middle. */
-export function revealLine(state: EditorState, line: number): TransactionSpec {
-  const { from } = state.doc.line(Math.min(Math.max(line, 1), state.doc.lines));
+/**
+ * The cursor at 1-based `line` (the last line past the end) and `column` (its start when not
+ * given, its end past the end), scrolled to the middle.
+ */
+export function revealLine(state: EditorState, line: number, column = 1): TransactionSpec {
+  const { from, to } = state.doc.line(Math.min(Math.max(line, 1), state.doc.lines));
+  const at = Math.min(from + Math.max(column, 1) - 1, to);
   return {
-    selection: { anchor: from },
-    effects: EditorView.scrollIntoView(from, { y: "center" }),
+    selection: { anchor: at },
+    effects: EditorView.scrollIntoView(at, { y: "center" }),
   };
 }
