@@ -5,6 +5,7 @@
  */
 import { isIndexable, languageOf } from "@mercurian/code-graph/languages";
 import {
+  CODE_LOCAL_GRAPH_MAX_DEPTH,
   CodeIndexError,
   type CodeChangeState,
   type CodeChanges,
@@ -142,6 +143,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     }
     return yield* notFound(`${center} is not in this checkout.`);
   }
+  const maxDepth = Math.min(input.depth, CODE_LOCAL_GRAPH_MAX_DEPTH);
   const nodes = new Map<string, DraftNode>();
   const links = new Map<string, DraftLink>();
   const addNode = (node: DraftNode) => {
@@ -171,7 +173,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
 
   if (input.uses) {
     let frontier = [center];
-    for (let depth = 1; depth <= input.depth && frontier.length > 0; depth += 1) {
+    for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth += 1) {
       const imports = yield* snapshot.imports(frontier);
       const next: Array<string> = [];
       for (const from of frontier) {
@@ -218,7 +220,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
   if (input.usedBy && !usedByPending) {
     let frontier = [center];
     let reached = 0;
-    for (let depth = 1; depth <= input.depth && frontier.length > 0; depth += 1) {
+    for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth += 1) {
       const targets = new Set(frontier);
       const keys = [...new Set(frontier.flatMap((path) => snapshot.modules.keysFor(path)))];
       const candidates = (yield* snapshot.askers(keys)).filter((path) => path !== center);

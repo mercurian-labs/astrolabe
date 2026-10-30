@@ -798,11 +798,14 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         failure: null,
       });
     });
+    const failed = (failure: string) =>
+      generation === repo.generation ? setStatus(repo, { state: "failed", failure }) : Effect.void;
     yield* work.pipe(
-      Effect.catch((error: CodeIndexError) =>
-        generation === repo.generation
-          ? setStatus(repo, { state: "failed", failure: error.message })
-          : Effect.void,
+      Effect.catch((error: CodeIndexError) => failed(error.message)),
+      Effect.catchDefect((defect) =>
+        Effect.logError("code index build failed", { defect }).pipe(
+          Effect.andThen(failed("The code index failed unexpectedly.")),
+        ),
       ),
     );
   });
