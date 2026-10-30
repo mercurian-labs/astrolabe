@@ -23,6 +23,8 @@ const TEST_CONFIG_PACKAGES = [
   "apps/server",
   "apps/web",
   "packages/client-runtime",
+  // Astrolabe: the graph's tests need its happy-dom environment.
+  "packages/graph",
 ];
 
 // `vp test run <file>` from the repo root hands each file to its package's
