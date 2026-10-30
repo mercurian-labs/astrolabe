@@ -1,11 +1,6 @@
 /**
- * The code index's worker process (see `workerJob.ts`):
- *
- *   node worker.ts [--assets <dir>] < job.json
- *
- * Reads a `WorkerJob` as JSON on stdin and prints one `WorkerOutput` JSON line per commit.
- * `--assets` names the directory a bundle ships the grammars and queries in. A failure exits 1
- * with its message on stderr; what was committed before it stays.
+ * The code index's worker process: `node worker.ts [--assets <dir>] < job.json`. Prints one
+ * output line per commit; `--assets` is where a bundle ships the grammars and queries.
  */
 import { useAssets } from "@mercurian/code-graph";
 import * as Schema from "effect/Schema";
