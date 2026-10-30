@@ -463,8 +463,10 @@ function astrolabeCommand(
           : null,
       );
     }
-    case "multibuffer.problems":
-      return entry("Show problems", problemsOpener(panes?.controller ?? null));
+    case "multibuffer.problems": {
+      const open = problemsOpener(panes?.controller ?? null);
+      return entry(open ? "Show problems" : "No repository in front", open);
+    }
     case "projectSearch.openInEditor":
       return entry("Open results in editor, from project search", null);
   }

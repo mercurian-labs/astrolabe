@@ -528,6 +528,12 @@ describe("a code file's editing commands", () => {
       // Nor a language server's problems.
       [".", "No problems shown here"],
       [",", "No problems shown here"],
+      // Nor a repository tab in front, or a multi-file view's excerpt.
+      ["m", "No repository in front"],
+      ["x", "No results here"],
+      ["g", "No results here"],
+      ["}", "No results here"],
+      ["{", "No results here"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],
