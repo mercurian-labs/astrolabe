@@ -19,6 +19,15 @@
   inset: 0;
 }
 
+/* A file graph (`FileGraph`): the pane's own background shows through its canvas. */
+.file-graph {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
 /* A cluster's name (a silhouette): small, receded, hoverable to light its members. */
 .atlas-tag {
   position: absolute;

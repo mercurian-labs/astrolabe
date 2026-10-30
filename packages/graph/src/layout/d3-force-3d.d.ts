@@ -21,7 +21,11 @@ declare module "d3-force-3d" {
   export interface Simulation3D<Node extends SimulationNode3D> {
     tick(iterations?: number): this;
     stop(): this;
+    alpha(): number;
     alpha(alpha: number): this;
+    alphaTarget(): number;
+    alphaTarget(target: number): this;
+    alphaDecay(decay: number): this;
     force(name: string, force: Force3D<Node> | null): this;
     nodes(): Array<Node>;
   }
@@ -38,7 +42,7 @@ declare module "d3-force-3d" {
     id(id: (node: Node) => string): this;
     /** A distance for every link, or one per link (called with the link as given). */
     distance(distance: number | ((link: Link, index: number) => number)): this;
-    strength(strength: number): this;
+    strength(strength: number | ((link: Link, index: number) => number)): this;
   }
   export function forceLink<Node extends SimulationNode3D, Link>(
     links: Array<Link>,
@@ -60,6 +64,7 @@ declare module "d3-force-3d" {
 
   export interface CollideForce3D<Node extends SimulationNode3D> extends Force3D<Node> {
     iterations(iterations: number): this;
+    radius(radius: (node: Node) => number): this;
   }
   export function forceCollide<Node extends SimulationNode3D>(
     radius: (node: Node) => number,

@@ -1,90 +1,59 @@
 /**
- * A file graph (`model/fileGraph.ts`) on the Lean renderer, links drawn at rest and arrows from
- * importer to imported. No thread: each new graph is a new picture, framed whole, and the renderer
- * sleeps once it settles. Hosts import `@mercurian/graph/styles.css` and set `--atlas-*`, as for
- * `AtlasGraph`.
+ * A file graph (`model/fileGraph.ts`) drawn as Obsidian draws a vault, on Pixi (`render/file`):
+ * forces lay it out, a node drags, the view pans and zooms, and it sleeps once it settles. Hosts
+ * import `@mercurian/graph/styles.css` and set the `--atlas-*` colours on an ancestor, as for
+ * `AtlasGraph`; labels take the host's font.
  */
-import { useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import type { Ref } from "react";
 
-import {
-  fileGraphLayout,
-  fileGraphSignature,
-  fileGraphUniverse,
-  fileGraphView,
-  type FileGraphData,
-} from "./model/fileGraph.ts";
-import { DEFAULT_SETTINGS, type GraphSettings } from "./model/settings.ts";
-import { createLeanRenderer } from "./render/lean/LeanRenderer.ts";
-import type { GraphRenderer, HoverTarget, RendererStats } from "./render/renderer.ts";
+import type { FileGraphData } from "./model/fileGraph.ts";
+import { DEFAULT_FILE_GRAPH_SETTINGS, type FileGraphSettings } from "./model/fileGraphSettings.ts";
+import { FileGraphRenderer, type FileGraphHover } from "./render/file/FileGraphRenderer.ts";
+import { createPixiFileDrawer } from "./render/file/pixiFileDrawer.ts";
+
+export type { FileGraphHover } from "./render/file/FileGraphRenderer.ts";
 
 export interface FileGraphHandle {
   /** Frame the whole graph. */
   fit(): void;
-  stats(now: number): RendererStats | null;
-}
-
-/** The hovered node, and where it sits in the graph's frame, in CSS pixels. */
-export interface FileGraphHover {
-  readonly id: string;
-  readonly x: number;
-  readonly y: number;
+  /** Lay it out again from a scatter. */
+  animate(): void;
 }
 
 export interface FileGraphProps {
   readonly graph: FileGraphData;
+  readonly settings?: FileGraphSettings;
   /** A node was clicked; `modifier` while ⌘ or Ctrl was held. */
   readonly onOpen: (id: string, modifier: boolean) => void;
   readonly onHover?: (hover: FileGraphHover | null) => void;
-  /** A font file (woff, ttf, or otf) for labels. */
-  readonly labelFont?: string;
-  /** Changing this re-reads the `--atlas-*` colors. */
+  /** Changing this re-reads the `--atlas-*` colours and the font. */
   readonly themeKey?: string;
   readonly ref?: Ref<FileGraphHandle>;
 }
 
-/** Arrowheads say which way an import runs; nodes a little larger than a memory's, as there are few. */
-const SETTINGS: GraphSettings = { ...DEFAULT_SETTINGS, arrows: true, nodeSize: 1.5 };
-
 export function FileGraph({
-  graph: given,
+  graph,
+  settings = DEFAULT_FILE_GRAPH_SETTINGS,
   onOpen,
   onHover,
-  labelFont,
   themeKey,
   ref,
 }: FileGraphProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [renderer, setRenderer] = useState<GraphRenderer | null>(null);
-  // A graph equal to the one drawn (a host reading again) keeps the picture and the camera.
-  const [graph, setGraph] = useState(given);
-  if (given !== graph && fileGraphSignature(given) !== fileGraphSignature(graph)) setGraph(given);
-  const universe = useMemo(() => fileGraphUniverse(graph), [graph]);
-  const layout = useMemo(() => fileGraphLayout(universe, graph), [universe, graph]);
-  const view = useMemo(() => fileGraphView(universe, graph), [universe, graph]);
-  /** Whether ⌘ or Ctrl was held as the last press began: a pick fires on its release. */
-  const modifier = useRef(false);
+  const [renderer, setRenderer] = useState<FileGraphRenderer | null>(null);
+  const hovered = useEffectEvent((hover: FileGraphHover | null) => onHover?.(hover));
+  const opened = useEffectEvent((id: string, modifier: boolean) => onOpen(id, modifier));
 
-  const hovered = useEffectEvent((target: HoverTarget | null) => {
-    const id = target?.kind === "node" ? universe.nodes[target.index]?.id : undefined;
-    onHover?.(id === undefined || target === null ? null : { id, x: target.x, y: target.y });
-  });
-  const picked = useEffectEvent((index: number) => {
-    const id = universe.nodes[index]?.id;
-    if (id !== undefined) onOpen(id, modifier.current);
-  });
-
-  // oxlint-disable-next-line t3code/react-effect-budget -- owns the WebGL renderer for the mount
+  // oxlint-disable-next-line t3code/react-effect-budget -- owns the Pixi renderer for the mount
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) return;
-    const created = createLeanRenderer(host, {
-      onHover: (target) => hovered(target),
-      onPick: (index) => picked(index),
-      onBackground: () => {},
-      onFollowingChange: () => {},
-    });
-    created.setSettings(SETTINGS);
+    const created = new FileGraphRenderer(
+      host,
+      { onHover: (hover) => hovered(hover), onOpen: (id, modifier) => opened(id, modifier) },
+      { createDrawer: createPixiFileDrawer },
+    );
     setRenderer(created);
     return () => {
       created.dispose();
@@ -92,42 +61,19 @@ export function FileGraph({
     };
   }, []);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the theme and font
-  useEffect(() => {
-    renderer?.setLabelFont(labelFont);
-    renderer?.setThemeKey(themeKey);
-  }, [renderer, labelFont, themeKey]);
-
+  // Settings land before the first graph, so it lays out with the forces the host keeps.
+  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the theme
+  useEffect(() => renderer?.setTheme(), [renderer, themeKey]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the settings
+  useEffect(() => renderer?.setSettings(settings), [renderer, settings]);
   // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer each new graph
-  useEffect(() => {
-    if (renderer === null) return;
-    renderer.setGraph(universe, layout, true);
-    renderer.setView(view, {
-      layout,
-      gathering: null,
-      reading: false,
-      thisTurnOnly: false,
-      localGraph: true,
-    });
-  }, [renderer, universe, layout, view]);
+  useEffect(() => renderer?.setGraph(graph), [renderer, graph]);
 
   useImperativeHandle(
     ref,
-    () => ({
-      fit: () => renderer?.fit(),
-      stats: (now) => renderer?.stats(now) ?? null,
-    }),
+    () => ({ fit: () => renderer?.fit(), animate: () => renderer?.animate() }),
     [renderer],
   );
 
-  return (
-    <div
-      className="atlas-graph"
-      onPointerDownCapture={(event) => {
-        modifier.current = event.metaKey || event.ctrlKey;
-      }}
-    >
-      <div ref={hostRef} className="atlas-graph-canvas" />
-    </div>
-  );
+  return <div ref={hostRef} className="file-graph" />;
 }

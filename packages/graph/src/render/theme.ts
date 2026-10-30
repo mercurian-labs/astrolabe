@@ -59,6 +59,13 @@ export function cssToHex(
   return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
+/** A custom property as `#rrggbb`, or `fallback` when it is unset or cannot be painted. */
+export function cssHex(style: CSSStyleDeclaration, name: string, fallback: string): string {
+  const value = style.getPropertyValue(name).trim();
+  const context = paintContext();
+  return (value.length > 0 && context !== null ? cssToHex(value, context) : null) ?? fallback;
+}
+
 function read(style: CSSStyleDeclaration, name: string, fallback: string): Color {
   const value = style.getPropertyValue(name).trim();
   const color = new Color();
