@@ -75,7 +75,10 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
   const http = yield* HttpClient.HttpClient;
   const platform = yield* HostProcess.Platform;
   const arch = yield* HostProcess.Architecture;
-  const environment = yield* HostProcess.Environment;
+  const environment = { ...(yield* HostProcess.Environment) };
+  // Set by the dev server's `node --watch`; a forked Node child that inherits it reports its
+  // imports over IPC, which typescript-language-server takes for a broken tsserver and exits.
+  delete environment.WATCH_REPORT_DEPENDENCIES;
 
   const exists = (file: string) => fileSystem.exists(file).pipe(Effect.orElseSucceed(() => false));
 
@@ -119,8 +122,13 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
       if (launch.toolchain !== undefined) {
         const folder = path.join(cwd, "node_modules", launch.toolchain.package);
         const manifest = yield* readJson(path.join(folder, "package.json"));
+        // A drop-in installed under the name (tsc-rs) has neither tsserver nor `--lsp`.
         const found =
-          typeof manifest === "object" && manifest !== null && "version" in manifest
+          typeof manifest === "object" &&
+          manifest !== null &&
+          "version" in manifest &&
+          "name" in manifest &&
+          manifest.name === launch.toolchain.package
             ? String(manifest.version)
             : null;
         if (found === null) continue;

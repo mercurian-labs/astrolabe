@@ -13,8 +13,8 @@ import { readTar, TarError } from "./tar.ts";
 
 const unusedHttp = HttpClient.make(() => Effect.die("no downloads here"));
 
-/** A checkout whose node_modules holds TypeScript at `version`, and a cache folder beside it. */
-const setup = Effect.fn("setup")(function* (version: string | null) {
+/** A checkout whose node_modules holds TypeScript (or a package `name`d otherwise) at `version`, and a cache folder beside it. */
+const setup = Effect.fn("setup")(function* (version: string | null, name = "typescript") {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-install-" });
@@ -26,7 +26,7 @@ const setup = Effect.fn("setup")(function* (version: string | null) {
       .makeDirectory(path.dirname(path.join(cwd, file)), { recursive: true })
       .pipe(Effect.andThen(fileSystem.writeFileString(path.join(cwd, file), contents)));
   if (version !== null) {
-    yield* put("node_modules/typescript/package.json", JSON.stringify({ version }));
+    yield* put("node_modules/typescript/package.json", JSON.stringify({ name, version }));
   }
   const installer = yield* makeInstaller({ cacheDir: path.join(root, "cache"), registry: "" }).pipe(
     Effect.provideService(HttpClient.HttpClient, unusedHttp),
@@ -104,6 +104,34 @@ describe("language server resolution", () => {
           server: { name: "TypeScript 7.0.2", source: "cache", executable: `${cached}/lib/tsc` },
         });
       }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("treats a drop-in installed as `typescript` as no project TypeScript", () =>
+    Effect.gen(function* () {
+      const env = yield* setup("0.8.0", "@tsc-rs/typescript");
+      expect(yield* resolve(env)).toMatchObject({
+        type: "download",
+        npm: { name: "@typescript/typescript-darwin-arm64", version: "7.0.2" },
+      });
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps `node --watch`'s dependency reporting out of the servers it starts", () =>
+    Effect.gen(function* () {
+      const env = yield* setup("7.0.2");
+      yield* env.put("node_modules/@typescript/typescript-darwin-arm64/lib/tsc");
+      const resolution = yield* resolve(env);
+      if (resolution.type !== "ready") return expect.unreachable();
+      expect(resolution.server.env).toEqual({ HOME: "/home" });
+    }).pipe(
+      Effect.scoped,
+      Effect.provideService(HostProcess.Environment, {
+        HOME: "/home",
+        WATCH_REPORT_DEPENDENCIES: "1",
+      }),
+      onMac,
+      Effect.provide(NodeServices.layer),
+    ),
   );
 });
 
