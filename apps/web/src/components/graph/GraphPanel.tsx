@@ -23,7 +23,7 @@ import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { ChevronLeftIcon, ChevronRightIcon, PauseIcon, PlayIcon } from "lucide-react";
-import { useContext, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { PanesHostContext } from "~/panes/panesHost";
@@ -41,6 +41,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { WikiPart } from "../wiki/WikiParts";
 import { wikiTabKey, type WikiTab } from "../wiki/wikiTabs";
+import { ATLAS_COLORS } from "./atlasColors";
 import { coordinatorWork, threadChangeRequestOn, type CoordinatorWork } from "./coordinatorWork";
 import {
   useGraphPanelStore,
@@ -61,21 +62,6 @@ import {
 } from "./wikiStory";
 
 /** The graph reads its colours from these on its own element; they follow the app's theme. */
-const ATLAS_COLORS = {
-  "--atlas-paper": "var(--background)",
-  "--atlas-ink": "var(--foreground)",
-  "--atlas-accent": "var(--primary)",
-  "--atlas-warning": "var(--color-amber-600)",
-  "--atlas-rule": "var(--border)",
-  "--atlas-muted": "var(--muted-foreground)",
-  "--atlas-lens-1": "var(--color-teal-600)",
-  "--atlas-lens-2": "var(--color-yellow-600)",
-  "--atlas-lens-3": "var(--color-violet-600)",
-  "--atlas-lens-4": "var(--color-green-600)",
-  "--atlas-lens-5": "var(--color-pink-600)",
-  "--atlas-lens-6": "var(--color-sky-600)",
-  "--atlas-font": "var(--font-mono)",
-} as CSSProperties;
 
 const NO_CALLS: WikiToolCall[] = [];
 const NO_RUNS: StoryRun[] = [];

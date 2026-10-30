@@ -16,6 +16,7 @@ import {
   allTabs,
   closeTab,
   focusedPane,
+  focusPane,
   isEmptyTab,
   openBeside,
   openTab,
@@ -26,7 +27,7 @@ import {
 } from "./arrangement";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
 import { isStarting, parseArrangement } from "./persistence";
-import type { Side } from "./tree";
+import { findLeaf, type Side } from "./tree";
 
 const PERSIST_DELAY_MS = 150;
 
@@ -151,19 +152,22 @@ export function createSectionPanes({
   ) => updateWithHistory((arrangement) => placeTabs(arrangement, keys, paneId, drop, front));
 
   /**
-   * Shows `key` as a sidebar row's click does: in the focused pane's tab in front, which
-   * remembers what it showed. One open already comes to the front; an empty tab, or one with
-   * unsaved edits, makes way for a new tab.
+   * Shows `key` as a sidebar row's click does: in the focused pane's tab in front (or `paneId`'s,
+   * which takes focus), which remembers what it showed. One open already comes to the front; an
+   * empty tab, or one with unsaved edits, makes way for a new tab.
    */
-  const show = (key: string) => {
+  const show = (key: string, paneId?: string) => {
     const arrangement = current().arrangement;
-    const active = focusedPane(arrangement).active;
+    const pane =
+      (paneId === undefined ? undefined : findLeaf(arrangement.root, paneId)) ??
+      focusedPane(arrangement);
+    const active = pane.active;
     if (allTabs(arrangement).includes(key) || isEmptyTab(active) || hasUnsavedEdits(active)) {
-      open(key);
+      open(key, "tab", pane.id);
       return;
     }
     updateWithHistory(
-      (before) => replaceTab(before, active, key),
+      (before) => focusPane(replaceTab(before, active, key), pane.id),
       (tabHistories) => replaceInHistory(tabHistories, active, key),
     );
   };
