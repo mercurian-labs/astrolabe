@@ -412,7 +412,12 @@ function OpenContentSearchDialog(props: {
 }
 
 export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProps) {
-  const target = useActiveProjectTarget();
+  const active = useActiveProjectTarget();
+  // Astrolabe: opening a match leaves the thread while the palette closes; swapping to the empty
+  // dialog then would drop the focused field, and the closing dialog would take focus back.
+  const [opened, setOpened] = useState(active);
+  if (opened === null && active !== null) setOpened(active);
+  const target = opened ?? active;
 
   return target ? (
     <OpenContentSearchDialog
