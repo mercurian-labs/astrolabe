@@ -130,7 +130,7 @@ const quoteList = (names: ReadonlyArray<string>) => {
 };
 
 /** What a thread's agent is told about the wikis its repository is linked to. */
-export const linkedWikiNote = (names: ReadonlyArray<string>): string | null =>
+const linkedWikiNote = (names: ReadonlyArray<string>): string | null =>
   names.length === 0
     ? null
     : `<astrolabe_wikis>
