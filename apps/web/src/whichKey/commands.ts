@@ -8,12 +8,14 @@ import {
 } from "@t3tools/contracts";
 import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
+import { hasOutline } from "@mercurian/editor/outline";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
 import { EditorView } from "@codemirror/view";
 
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { codeEditingCommandOf } from "~/editorKeybindings";
+import { openOutlinePicker } from "~/components/outline/OutlinePicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import {
   canClosePane,
@@ -359,6 +361,13 @@ function astrolabeCommand(
       return entry(
         view ? "Find in editor" : "No editor to find in",
         view ? () => afterPalette(() => openInFileSearch(view)) : null,
+      );
+    }
+    case "outline.open": {
+      const view = editorFrom(context.origin, hasOutline);
+      return entry(
+        view ? "Go to symbol" : "No file to outline",
+        view ? () => afterPalette(() => openOutlinePicker(view)) : null,
       );
     }
   }

@@ -67,6 +67,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu w w", command: "section.wikis" },
   { key: "menu w f", command: "wiki.findDocument" },
   { key: "menu e f", command: "search.find" },
+  { key: "menu e o", command: "outline.open" },
   // A code file's editing commands with no shortcut of their own, and a few that have one.
   { key: "menu e c", command: "code.toggleComment" },
   { key: "menu e d", command: "code.duplicateSelection" },

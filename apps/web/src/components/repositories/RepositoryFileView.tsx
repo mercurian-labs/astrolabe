@@ -11,6 +11,7 @@ import {
   softWrapOn,
 } from "@mercurian/editor/code/editing";
 import { livePreview } from "@mercurian/editor/markdown";
+import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -29,6 +30,7 @@ import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFi
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
+import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
 import type { RepositoryTab } from "./repositoryTabs";
 
 type FileTab = Extract<RepositoryTab, { kind: "file" }>;
@@ -106,6 +108,7 @@ export function RepositoryFileView({
   const contents = file.data?.contents ?? null;
   const readOnly = !canWrite || file.data?.truncated === true;
   const agentWorking = useAgentWorkingIn(tab);
+  const [trail, setTrail] = useState<OutlineTrail | null>(null);
 
   if (file.error !== null && contents === null) {
     return <FileNotice>{file.error}</FileNotice>;
@@ -116,7 +119,7 @@ export function RepositoryFileView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
+        <FileBreadcrumbs path={path} trail={trail} />
         {agentWorking ? (
           <span className="flex shrink-0 items-center gap-1 text-info-foreground">
             <BotIcon className="size-3.5" />
@@ -140,6 +143,7 @@ export function RepositoryFileView({
           contents={contents}
           readOnly={readOnly}
           pendingRef={pendingRef}
+          onOutlinePath={(next, view) => setTrail({ path: next, view })}
           onChange={(next) => {
             setProjectFileQueryData(environmentId, cwd, path, next);
             save.change(next);
@@ -169,21 +173,26 @@ function FileEditor({
   contents,
   readOnly,
   pendingRef,
+  onOutlinePath,
   onChange,
 }: {
   readonly path: string;
   readonly contents: string;
   readonly readOnly: boolean;
   readonly pendingRef: { readonly current: boolean };
+  /** The outline items around the cursor, whenever they change (the header's breadcrumbs). */
+  readonly onOutlinePath: (path: readonly OutlineItem[], view: EditorView) => void;
   readonly onChange: (contents: string) => void;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const vimRef = useRef<(() => Extension) | null>(null);
   const onChangeRef = useRef(onChange);
+  const onOutlinePathRef = useRef(onOutlinePath);
   useLayoutEffect(() => {
     onChangeRef.current = onChange;
-  }, [onChange]);
+    onOutlinePathRef.current = onOutlinePath;
+  }, [onChange, onOutlinePath]);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   const findKeys = useEditorFindKeys();
@@ -221,6 +230,7 @@ function FileEditor({
           markdown ? livePreview() : codeView(),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
+          outline({ onPath: (path, view) => onOutlinePathRef.current(path, view) }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           }),

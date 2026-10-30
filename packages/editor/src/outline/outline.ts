@@ -98,13 +98,13 @@ export interface OutlineOptions {
    * Called with the items around the cursor whenever their kinds or names change, not on every
    * keystroke: a position in the path can go stale, so act on `outlinePath` of the state then.
    */
-  readonly onPath?: (path: readonly OutlineItem[]) => void;
+  readonly onPath?: (path: readonly OutlineItem[], view: EditorView) => void;
 }
 
 const pathKey = (path: readonly OutlineItem[]) =>
   path.map((item) => `${item.kind}\0${item.name}`).join("\n");
 
-function pathReporter(onPath: (path: readonly OutlineItem[]) => void) {
+function pathReporter(onPath: NonNullable<OutlineOptions["onPath"]>) {
   return ViewPlugin.define((view) => {
     let key: string | null = null;
     const report = (state: EditorState) => {
@@ -112,7 +112,7 @@ function pathReporter(onPath: (path: readonly OutlineItem[]) => void) {
       const next = pathKey(path);
       if (next === key) return;
       key = next;
-      onPath(path);
+      onPath(path, view);
     };
     report(view.state);
     return {

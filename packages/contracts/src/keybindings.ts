@@ -90,6 +90,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "document.open",
   "search.clearHighlight",
   "search.find",
+  "outline.open",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

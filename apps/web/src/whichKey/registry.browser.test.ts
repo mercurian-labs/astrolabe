@@ -1,12 +1,14 @@
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { codeEditing, softWrapOn } from "@mercurian/editor/code/editing";
+import { outline } from "@mercurian/editor/outline";
 import { inFileSearch } from "@mercurian/editor/search";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { isOutlineEditorFocused } from "~/lib/editorFocus";
 import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/panes/arrangement";
 import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
@@ -386,6 +388,43 @@ describe("Find in editor", () => {
   });
 });
 
+describe("Go to symbol", () => {
+  function editor(extensions: Extension, parent: HTMLElement = document.body) {
+    const view = new EditorView({
+      parent: parent.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc: "# Title", extensions }),
+    });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("acts on the file or note the key came from, through a table cell's editor too", () => {
+    using _cleanup = cleanup();
+    const note = editor(outline());
+    const cell = editor([], note.dom);
+    expect(appCommand("outline.open", context().actingFrom(keyIn(note)))).toMatchObject({
+      label: "Go to symbol",
+      disabled: false,
+    });
+    expect(appCommand("outline.open", context().actingFrom(keyIn(cell))).disabled).toBe(false);
+
+    // The composer has no outline, so mod+shift+o stays a new thread there.
+    const composer = editor([]);
+    expect(appCommand("outline.open", context().actingFrom(keyIn(composer)))).toMatchObject({
+      label: "No file to outline",
+      disabled: true,
+    });
+    composer.focus();
+    expect(isOutlineEditorFocused()).toBe(false);
+    cell.focus();
+    expect(isOutlineEditorFocused()).toBe(true);
+  });
+});
+
 describe("a code file's editing commands", () => {
   function editor(doc: string, extensions: Extension) {
     const view = new EditorView({
@@ -410,6 +449,7 @@ describe("a code file's editing commands", () => {
     expect(group?.items.map((item) => [item.keys.join(" "), item.label])).toEqual([
       // This editor has no find bar.
       ["f", "No editor to find in"],
+      ["o", "No file to outline"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],
