@@ -42,7 +42,7 @@ export interface IgnoredContentSearchResult {
 }
 
 /** Orders paths the way a sorted depth-first walk visits them. */
-export function compareWalkPaths(left: string, right: string): number {
+function compareWalkPaths(left: string, right: string): number {
   const leftSegments = left.split("/");
   const rightSegments = right.split("/");
   const length = Math.min(leftSegments.length, rightSegments.length);
