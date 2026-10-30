@@ -60,7 +60,16 @@ export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMA
  * Astrolabe: a code file's language-server commands, which its editor binds itself while it has
  * focus (`codeEditorFocus`) and the command registry runs too.
  */
-export const LSP_KEYBINDING_COMMANDS = ["lsp.complete", "lsp.hover", "lsp.signatureHelp"] as const;
+export const LSP_KEYBINDING_COMMANDS = [
+  "lsp.complete",
+  "lsp.hover",
+  "lsp.signatureHelp",
+  "lsp.definition",
+  "lsp.declaration",
+  "lsp.typeDefinition",
+  "lsp.implementation",
+  "lsp.references",
+] as const;
 export type LspKeybindingCommand = (typeof LSP_KEYBINDING_COMMANDS)[number];
 
 /**

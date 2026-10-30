@@ -70,6 +70,10 @@
     "./lsp/hover": {
       "types": "./src/lsp/hover.ts",
       "default": "./src/lsp/hover.ts"
+    },
+    "./lsp/navigation": {
+      "types": "./src/lsp/navigation.ts",
+      "default": "./src/lsp/navigation.ts"
     }
   },
   "scripts": {

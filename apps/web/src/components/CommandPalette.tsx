@@ -214,6 +214,7 @@ import {
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { Checkbox } from "./ui/checkbox";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
+import { LocationPicker, locationPickerEditor } from "./outline/LocationPicker";
 import { OutlinePicker, outlinePickerEditor } from "./outline/OutlinePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
@@ -293,7 +294,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
             !open &&
             eventDetails.reason === "escape-key" &&
             state.mode !== "command" &&
-            state.mode !== "outline"
+            state.mode !== "outline" &&
+            state.mode !== "locations"
           ) {
             eventDetails.cancel();
             dispatchCommandPalette({ _tag: "BackToCommand" });
@@ -340,14 +342,21 @@ function CommandPaletteDialog(props: {
             ? "Search project contents"
             : props.mode === "outline"
               ? "Go to symbol"
-              : "Search"
+              : props.mode === "locations"
+                ? "Pick a location"
+                : "Search"
       }
       className={cn("overflow-hidden", props.mode === "content" && "h-105")}
       data-command-palette="true"
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
-        const editor = props.mode === "outline" ? outlinePickerEditor() : null;
+        const editor =
+          props.mode === "outline"
+            ? outlinePickerEditor()
+            : props.mode === "locations"
+              ? locationPickerEditor()
+              : null;
         if (editor) {
           editor.focus();
           return false;
@@ -370,6 +379,8 @@ function CommandPaletteDialog(props: {
         <ProjectFilePicker setOpen={props.setOpen} />
       ) : props.mode === "outline" ? (
         <OutlinePicker setOpen={props.setOpen} />
+      ) : props.mode === "locations" ? (
+        <LocationPicker setOpen={props.setOpen} />
       ) : props.mode === "content" ? (
         <ProjectContentSearchDialog onOpenChange={props.setOpen} />
       ) : (

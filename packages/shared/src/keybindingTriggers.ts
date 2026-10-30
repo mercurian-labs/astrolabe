@@ -79,6 +79,11 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e m", command: "lsp.complete" },
   { key: "menu e h", command: "lsp.hover" },
   { key: "menu e i", command: "lsp.signatureHelp" },
+  { key: "menu e g d", command: "lsp.definition" },
+  { key: "menu e g c", command: "lsp.declaration" },
+  { key: "menu e g t", command: "lsp.typeDefinition" },
+  { key: "menu e g i", command: "lsp.implementation" },
+  { key: "menu e g r", command: "lsp.references" },
   // A code file's editing commands with no shortcut of their own, and a few that have one.
   { key: "menu e c", command: "code.toggleComment" },
   { key: "menu e d", command: "code.duplicateSelection" },

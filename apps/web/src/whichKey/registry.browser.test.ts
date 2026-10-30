@@ -532,6 +532,7 @@ describe("a code file's editing commands", () => {
       ["m", "No language server here"],
       ["h", "No language server here"],
       ["i", "No language server here"],
+      ["g", "Go to code"],
       ["c", "Toggle comment"],
       ["d", "Duplicate selection"],
       ["j", "Join lines"],

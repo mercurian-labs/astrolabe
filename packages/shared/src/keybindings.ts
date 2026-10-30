@@ -170,6 +170,10 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // Astrolabe: a code file's language-server features, which the editor binds itself.
   { key: "ctrl+space", command: "lsp.complete", when: "codeEditorFocus" },
   { key: "mod+shift+space", command: "lsp.signatureHelp", when: "codeEditorFocus" },
+  { key: "f12", command: "lsp.definition", when: "codeEditorFocus" },
+  { key: "mod+f12", command: "lsp.typeDefinition", when: "codeEditorFocus" },
+  { key: "shift+f12", command: "lsp.implementation", when: "codeEditorFocus" },
+  { key: "alt+shift+f12", command: "lsp.references", when: "codeEditorFocus" },
   // Astrolabe: a code file's editing keys, which its editor binds itself while it has focus. The
   // app's commands on the same keys stand down there (`!codeEditorFocus`), except mod+u (Usage).
   { key: "mod+d", command: "code.selectNextOccurrence", when: "codeEditorFocus" },

@@ -17,6 +17,13 @@ import {
 } from "@mercurian/editor/lsp/diagnostics";
 import { startCompletion } from "@mercurian/editor/lsp/completion";
 import { showHover, showSignatureHelp } from "@mercurian/editor/lsp/hover";
+import {
+  findReferences,
+  goToDeclaration,
+  goToDefinition,
+  goToImplementation,
+  goToTypeDefinition,
+} from "@mercurian/editor/lsp/navigation";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
@@ -445,6 +452,16 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Show hover", showHover);
     case "lsp.signatureHelp":
       return lspEntry(context.origin, "Show signature help", showSignatureHelp);
+    case "lsp.definition":
+      return lspEntry(context.origin, "Go to definition", goToDefinition);
+    case "lsp.declaration":
+      return lspEntry(context.origin, "Go to declaration", goToDeclaration);
+    case "lsp.typeDefinition":
+      return lspEntry(context.origin, "Go to type definition", goToTypeDefinition);
+    case "lsp.implementation":
+      return lspEntry(context.origin, "Go to implementation", goToImplementation);
+    case "lsp.references":
+      return lspEntry(context.origin, "Find references", findReferences);
     case "outline.open": {
       const view = editorFrom(context.origin, hasOutline);
       return entry(

@@ -16,6 +16,11 @@ import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
+import {
+  environmentNavigation,
+  type NavigationHost,
+  type NavigationLocation,
+} from "@mercurian/editor/lsp/navigation";
 import { inFileSearch } from "@mercurian/editor/search";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
@@ -49,6 +54,10 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
 import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
+import { activateTab, allTabs, openTab } from "~/panes/arrangement";
+import { leafWithTab } from "~/panes/tree";
+import { toastManager } from "../ui/toast";
+import { openLocationPicker, pathOfUri } from "../outline/LocationPicker";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
 import { Button } from "../ui/button";
@@ -70,7 +79,7 @@ import { followImportLine, importLineExtension, importLineKey } from "./importLi
 import { openLocalGraph } from "./localGraph";
 import { repositoryPanes } from "./repositoryPanes";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
-import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
+import { repositoryTabKey, type RepositoryFileTab as FileTab } from "./repositoryTabs";
 import { LanguageServerStatusEntry } from "./LanguageServerStatus";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
@@ -175,6 +184,29 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   const [trail, setTrail] = useState<OutlineTrail | null>(null);
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
+  // A definition in another file of the checkout opens as a tab in this file's pane.
+  const openLocation = useStableCallback((location: NavigationLocation) => {
+    const target = pathOfUri(location.uri, cwd);
+    if (target.startsWith("/") || target.includes("://")) {
+      toastManager.add({ type: "info", title: "Outside this checkout", description: target });
+      return;
+    }
+    const key = repositoryTabKey({ ...tab, path: target });
+    panes.update((arrangement) =>
+      allTabs(arrangement).includes(key)
+        ? activateTab(arrangement, key)
+        : openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+    );
+    repositoryFileReveal.request(key, location.line, location.column);
+  });
+  const pickLocation = useStableCallback(
+    (view: EditorView, title: string, locations: readonly NavigationLocation[]) =>
+      openLocationPicker(view, title, locations, cwd),
+  );
+  const [navigation] = useState<NavigationHost>(() => ({
+    open: openLocation,
+    pick: pickLocation,
+  }));
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -253,6 +285,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           path={path}
           source={fromDisk ? { contents: contents ?? "" } : { session }}
           languageServer={fromDisk ? null : languageServer.extension}
+          navigation={navigation}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
@@ -368,6 +401,7 @@ function FileEditor({
   path,
   source,
   languageServer,
+  navigation,
   readOnly,
   baseText,
   baseControl,
@@ -381,6 +415,8 @@ function FileEditor({
   readonly source: { readonly session: DocumentSession } | { readonly contents: string };
   /** The file's language server client, when one reads it. */
   readonly languageServer: Extension | null;
+  /** Where its definitions and references open. */
+  readonly navigation: NavigationHost;
   readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
@@ -414,6 +450,7 @@ function FileEditor({
     path,
     source,
     languageServer,
+    navigation,
     readOnly,
     vim,
     wordWrap,
@@ -498,7 +535,7 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys) : [],
+        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial.navigation) : [],
       ]),
     });
   }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys]);
@@ -518,7 +555,7 @@ function FileEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !revealHere) return;
-    view.dispatch(revealLine(view.state, revealHere.line));
+    view.dispatch(revealLine(view.state, revealHere.line, revealHere.column));
     view.focus();
     repositoryFileReveal.done(revealHere.id);
   }, [revealHere]);
@@ -544,12 +581,23 @@ function FileEditor({
 function languageServerUi(
   keys: ReturnType<typeof useLspEditorKeys>,
   diagnosticKeys: ReturnType<typeof useEditorDiagnosticKeys>,
+  navigation: NavigationHost,
 ): Extension {
   return [
     diagnosticsUi({ keys: diagnosticKeys }),
     environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
     environmentHover({
       keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },
+    }),
+    environmentNavigation({
+      keys: {
+        definition: keys["lsp.definition"],
+        declaration: keys["lsp.declaration"],
+        typeDefinition: keys["lsp.typeDefinition"],
+        implementation: keys["lsp.implementation"],
+        references: keys["lsp.references"],
+      },
+      host: navigation,
     }),
   ];
 }

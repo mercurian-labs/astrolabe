@@ -69,7 +69,7 @@ export function browseInputEndPaddingClass(input: {
 }
 
 // Astrolabe: `outline` is the outline picker of the editor it was opened from.
-export type SearchOverlayMode = "command" | "files" | "content" | "outline";
+export type SearchOverlayMode = "command" | "files" | "content" | "outline" | "locations";
 
 /**
  * Astrolabe: what the add flow adds, a project of either kind; a wiki shares a repository's

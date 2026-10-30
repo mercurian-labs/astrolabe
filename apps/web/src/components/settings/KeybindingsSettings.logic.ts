@@ -410,6 +410,11 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "lsp.complete": "Show Completions",
   "lsp.hover": "Show Hover",
   "lsp.signatureHelp": "Show Signature Help",
+  "lsp.definition": "Go to Definition",
+  "lsp.declaration": "Go to Declaration",
+  "lsp.typeDefinition": "Go to Type Definition",
+  "lsp.implementation": "Go to Implementation",
+  "lsp.references": "Find References",
   "repository.localGraph": "Repositories: Open Local Graph",
 };
 

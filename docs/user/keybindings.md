@@ -343,11 +343,16 @@ several ran at once, click **Restart** in the header.
 TypeScript and JavaScript files also take these from their language server. Each is in the
 Command Palette, and you can rebind it under **Editors**.
 
-| Key                      | Does                | Keyboard menu |
-| ------------------------ | ------------------- | ------------- |
-| `ctrl+space`             | Show completions    | `e` `m`       |
-| `mod+shift+space`        | Show signature help | `e` `i`       |
-| `K` in Vim's normal mode | Show hover          | `e` `h`       |
+| Key                          | Does                  | Keyboard menu | Vim     |
+| ---------------------------- | --------------------- | ------------- | ------- |
+| `ctrl+space`                 | Show completions      | `e` `m`       |         |
+| `mod+shift+space`            | Show signature help   | `e` `i`       |         |
+|                              | Show hover            | `e` `h`       | `K`     |
+| `f12`, or `mod`-click a name | Go to definition      | `e` `g` `d`   | `g` `d` |
+|                              | Go to declaration     | `e` `g` `c`   | `g` `D` |
+| `mod+f12`                    | Go to type definition | `e` `g` `t`   | `g` `y` |
+| `shift+f12`                  | Go to implementation  | `e` `g` `i`   | `g` `I` |
+| `alt+shift+f12`              | Find references       | `e` `g` `r`   | `g` `r` |
 
 Completions open as you type a name or a `.`. Tab or Enter accepts the selected one, `ctrl+n`
 and `ctrl+p` move through them, and Escape closes the list (in Vim's insert mode you stay in
@@ -357,6 +362,12 @@ Pointing at a name shows what the server knows about it; so does Show Hover at t
 you move or type. Edits an agent makes elsewhere in the file leave it open. Signature help opens
 as you type a call's `(` or `,`, with the parameter you are on in bold; when a function has
 several signatures, `mod+shift+Up` and `mod+shift+Down` step through them.
+
+Go to definition puts the cursor on the definition, opening its file in a tab beside this one
+when it is elsewhere in the checkout. When there are several, places close together are all
+selected, and otherwise you pick one from a list; type to narrow it. On a definition itself, it
+finds the references instead. Find References lists every use, the declaration included. With
+`mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
 
 ## Find in a diff
 
