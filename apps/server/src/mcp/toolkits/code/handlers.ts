@@ -198,20 +198,19 @@ export const layer = McpToolAccess.toLayer(CodeToolkit, {
   ),
 });
 
-const locate = (
+const locate = Effect.fn("CodeTools.locate")(function* (
   input: { readonly path: string; readonly line: number; readonly symbol: string },
   kind: "definition" | "references",
-) =>
-  Effect.gen(function* () {
-    const { checkout } = yield* readCheckout();
-    const languageServers = yield* LanguageServers.LanguageServers;
-    return yield* languageServers
-      .locate({
-        cwd: checkout.cwd,
-        relativePath: input.path,
-        line: input.line,
-        symbol: input.symbol,
-        kind,
-      })
-      .pipe(Effect.mapError(locateFailure));
-  });
+) {
+  const { checkout } = yield* readCheckout();
+  const languageServers = yield* LanguageServers.LanguageServers;
+  return yield* languageServers
+    .locate({
+      cwd: checkout.cwd,
+      relativePath: input.path,
+      line: input.line,
+      symbol: input.symbol,
+      kind,
+    })
+    .pipe(Effect.mapError(locateFailure));
+});
