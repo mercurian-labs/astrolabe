@@ -23,6 +23,7 @@ import {
   type Command,
   type KeyBinding,
 } from "@codemirror/view";
+import { Vim } from "@replit/codemirror-vim";
 import { lineBlocks, setLineBlocks, type LineBlock } from "../blocks/lineBlocks.ts";
 import { oldLinesBlock, oldTextStyles } from "../blocks/oldText.ts";
 
@@ -581,11 +582,24 @@ function bindings(keys: GitChangesOptions["keys"]): KeyBinding[] {
   return bound;
 }
 
+let vimKeysDefined = false;
+
+/** Vim's `]c` and `[c` step to the next and previous hunk, in normal mode, where there are hunks. */
+function defineVimKeys() {
+  if (vimKeysDefined) return;
+  vimKeysDefined = true;
+  Vim.defineAction("atlasNextHunk", (cm) => void runHunkCommand(cm.cm6, "next"));
+  Vim.defineAction("atlasPreviousHunk", (cm) => void runHunkCommand(cm.cm6, "previous"));
+  Vim.mapCommand("]c", "action", "atlasNextHunk", {}, { context: "normal" });
+  Vim.mapCommand("[c", "action", "atlasPreviousHunk", {}, { context: "normal" });
+}
+
 /**
  * Change markers against a base text set with `setGitBase`, with their commands on `keys`.
  * Escape collapses expanded hunks, below other uses of Escape (closing the find bar).
  */
 export function gitChanges(options: GitChangesOptions = {}): Extension {
+  defineVimKeys();
   return [
     gitField,
     syncBlocks,

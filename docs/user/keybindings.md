@@ -259,7 +259,8 @@ it; press again, or Escape, to hide them. `mod+shift+'` shows every change in th
 change has a small bar with **Restore**, which puts the committed lines back (undo takes it back),
 and arrows to the changes before and after it. `mod+alt+z` restores the changes under the cursor
 without showing them, and `mod+f8` and `mod+shift+f8` move to the next and previous change,
-wrapping at the ends of the file. With Vim on, Escape leaves insert mode first.
+wrapping at the ends of the file. With Vim on, `]c` and `[c` move between changes in normal mode,
+and Escape leaves insert mode before it hides changes.
 
 Change these shortcuts in **Settings → Keybindings** under **Editors**. Files that are new and
 not yet committed show no strips.

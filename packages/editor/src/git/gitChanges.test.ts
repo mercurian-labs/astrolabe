@@ -256,4 +256,29 @@ describe("expanding hunks", () => {
     key("Escape", 27);
     expect(expandedHunks(editor.state)).toEqual([]);
   });
+
+  it("with Vim on, ]c and [c step to the next and previous hunk", () => {
+    const noHistory: VimHistory = {
+      undo() {},
+      redo() {},
+      stopCapturing() {},
+      groupExplicitly() {},
+    };
+    const editor = mount(base, doc, vimMode(noHistory));
+    editor.focus();
+    const type = (...keys: string[]) => {
+      for (const key of keys) {
+        editor.contentDOM.dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+        );
+      }
+    };
+    const line = () => editor.state.doc.lineAt(editor.state.selection.main.head).number;
+    type("]", "c");
+    expect(line()).toBe(2);
+    type("]", "c");
+    expect(line()).toBe(5);
+    type("[", "c", "[", "c");
+    expect(line()).toBe(8);
+  });
 });
