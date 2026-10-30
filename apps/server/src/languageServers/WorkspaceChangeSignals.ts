@@ -17,9 +17,10 @@ import * as LanguageServers from "./LanguageServers.ts";
 import type { WatchedFileChange } from "./watchedFiles.ts";
 
 /**
- * Astrolabe: until the environment watches workspaces, a checkout's status updates and its agents'
- * file edits and commands each re-read git's status, and the servers hear what was created,
- * changed or deleted since. Ignored files, and changes nothing signals, go unseen.
+ * Astrolabe: until the environment watches workspaces, a checkout's status updates (a window's
+ * return refreshes it too) and its agents' file edits and commands each re-read git's status, and
+ * the servers hear what was created, changed or deleted since. Ignored files, and changes nothing
+ * signals, go unseen.
  */
 
 /** Past this many changed files the checkout isn't followed: too many to read on every signal. */
@@ -168,9 +169,10 @@ export const layer = Layer.effectDiscard(
     const follow = Effect.fn("WorkspaceChangeSignals.follow")(function* (cwd: string) {
       let previous = yield* snapshot(cwd).pipe(Effect.orElseSucceed(() => null));
       const threads = yield* Ref.make(yield* threadsIn(cwd));
+      // A full refresh (a window's return) comes as a snapshot; only a remote update has no files.
       const statusSignals = statusBroadcaster
         .streamStatus({ cwd, includeRemote: false })
-        .pipe(Stream.filter((event) => event._tag === "localUpdated"));
+        .pipe(Stream.filter((event) => event._tag !== "remoteUpdated"));
       const turnSignals = threadManagement.streamDomainEvents.pipe(
         Stream.tap((event) =>
           event.type === "checkpoint-scope.created" && event.payload.cwd === cwd
