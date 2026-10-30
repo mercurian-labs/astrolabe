@@ -28,10 +28,6 @@
       "types": "./src/bridge/fileText.ts",
       "default": "./src/bridge/fileText.ts"
     },
-    "./bridge/text-edits": {
-      "types": "./src/bridge/textEdits.ts",
-      "default": "./src/bridge/textEdits.ts"
-    },
     "./bridge/file-mirror": {
       "types": "./src/bridge/fileMirror.ts",
       "default": "./src/bridge/fileMirror.ts"

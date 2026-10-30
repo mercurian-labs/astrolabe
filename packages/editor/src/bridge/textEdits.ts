@@ -1,4 +1,3 @@
-import type { EditorState, TransactionSpec } from "@codemirror/state";
 import diff from "fast-diff";
 
 interface Edit {
@@ -33,14 +32,4 @@ export function textEdits(from: string, to: string): Edit[] {
   }
   if (pending) edits.push(pending);
   return edits;
-}
-
-/**
- * The transaction that makes `state`'s text `next` (newer contents saved elsewhere, such as an
- * agent's edit) by its smallest edits, so selections, folds and anything else anchored in the text
- * map through them; null when the text already matches.
- */
-export function replaceDocText(state: EditorState, next: string): TransactionSpec | null {
-  const changes = textEdits(state.doc.toString(), next);
-  return changes.length === 0 ? null : { changes };
 }

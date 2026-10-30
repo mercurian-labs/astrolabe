@@ -3,7 +3,6 @@ import "@mercurian/editor/code/theme.css";
 
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { replaceDocText } from "@mercurian/editor/bridge/text-edits";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
 import {
   codeEditing,
@@ -18,7 +17,18 @@ import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import type {
+  DocumentSession,
+  DocumentSessionState,
+} from "@t3tools/client-runtime/state/document-session";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { useCodeEditorKeys, useEditorFindKeys, useEditorHunkKeys } from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -29,10 +39,10 @@ import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
+import { Button } from "../ui/button";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { composerHistory } from "../composerCodeMirror/composerUndo";
-import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFilesQueryState";
-import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
+import { useProjectFileQuery } from "../files/projectFilesQueryState";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { registerUnsavedCheck } from "../wiki/wikiPanes";
 import { repositoryFileReveal, revealLine } from "./repositoryFileReveal";
@@ -43,7 +53,9 @@ import {
   type DiffBaseControl,
   type FileDiffBase,
 } from "./fileDiffBase";
+import { repositoryPanes } from "./repositoryPanes";
 import type { RepositoryTab } from "./repositoryTabs";
+import { useRepositoryDocument } from "./useRepositoryDocument";
 
 type FileTab = Extract<RepositoryTab, { kind: "file" }>;
 
@@ -83,10 +95,11 @@ const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabl
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 
 /**
- * A repository file in the wiki editor (Markdown preview, code colours, Vim when on). Edits
- * autosave after typing stops through the thread Files view's save, which never overwrites newer
- * contents an agent or another editor saved. Files without write access or too big to read whole
- * are read only, and the view says when an agent works in the same checkout.
+ * A repository file in the wiki editor (Markdown preview, code colours, Vim when on). The file is
+ * the environment's live document: edits go to it as you type and it saves them, and edits from
+ * other editors, agents and the terminal arrive as they happen. Files without write access are
+ * read only; files the environment cannot hold as a document (too big, not text) open read only
+ * from disk. The view says when an agent works in the same checkout.
  */
 export function RepositoryFileView({
   tabKey,
@@ -96,71 +109,59 @@ export function RepositoryFileView({
   readonly tab: FileTab;
 }) {
   const { environmentId, cwd, path } = tab;
-  const file = useProjectFileQuery(environmentId, cwd, path);
-  const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
-  const [pending, setPending] = useState(false);
-  const pendingRef = useRef(false);
-  // One identity: the save coordinator starts over when its pending callback changes.
-  const onPendingChange = useStableCallback((_path: string, next: boolean) => {
-    pendingRef.current = next;
-    setPending(next);
-  });
-  const save = useFileSaveCoordinator({
-    environmentId,
-    cwd,
-    relativePath: path,
-    onPendingChange,
-  });
-  useEffect(() => registerUnsavedCheck(tabKey, () => pendingRef.current), [tabKey]);
-  // What an agent or another editor saved meanwhile shows when the window comes back.
-  const refresh = file.refresh;
-  useEffect(() => {
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [refresh]);
+  // The view can be handed another tab: each file gets its own document session.
+  return <RepositoryFile key={`${environmentId}\0${cwd}\0${path}`} tabKey={tabKey} tab={tab} />;
+}
 
-  const contents = file.data?.contents ?? null;
-  const readOnly = !canWrite || file.data?.truncated === true;
+// Files these failures leave out open read only from disk, as before documents.
+const READ_FROM_DISK = new Set(["too-large", "not-text", "other"]);
+
+function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab: FileTab }) {
+  const { environmentId, cwd, path } = tab;
+  const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
+  const { session, state } = useRepositoryDocument(environmentId, cwd, path, canWrite);
+  const fromDisk =
+    state.status === "failed" && state.failure !== null && READ_FROM_DISK.has(state.failure.reason);
+  const file = useProjectFileQuery(environmentId, cwd, path, fromDisk);
+  useEffect(() => registerUnsavedCheck(tabKey, () => session.getState().unsent), [tabKey, session]);
+
+  const contents = fromDisk ? (file.data?.contents ?? null) : session.text();
+  const readOnly = !canWrite || fromDisk;
   const agentWorking = useAgentWorkingIn(tab);
   const bases = useBaseTexts(tab, !isMarkdownPath(path));
-  // The view can be handed another tab, so a choice holds only for the file it was made in.
-  const fileKey = `${environmentId}\0${cwd}\0${path}`;
-  const [choice, setChoice] = useState<{ readonly key: string; readonly base: FileDiffBase }>();
+  const [choice, setChoice] = useState<FileDiffBase | null>(null);
   // What the file opens on, decided again only when another turn's start becomes the base.
-  const turnKey = bases.turn
-    ? `${fileKey}\0${bases.turn.turn?.threadId}\0${bases.turn.hash}`
-    : null;
+  const turnKey = bases.turn ? `${bases.turn.turn?.threadId}\0${bases.turn.hash}` : null;
   const [opening, setOpening] = useState<{ readonly key: string; readonly base: FileDiffBase }>();
   if (bases.turn && turnKey !== null && contents !== null && opening?.key !== turnKey) {
     setOpening({ key: turnKey, base: openingDiffBase(bases.turn, contents) });
   }
   const diffBase = pickDiffBase(
-    choice?.key === fileKey ? choice.base : null,
+    choice,
     bases.turn,
     opening?.key === turnKey ? opening.base : undefined,
   );
   const baseText =
     diffBase === "turn" ? bases.turn?.text : diffBase === "head" ? bases.head : undefined;
   const turnAvailable = bases.turn != null;
-  const chooseBase = (base: FileDiffBase) => setChoice({ key: fileKey, base });
   const currentBase = useStableCallback(() => ({ base: diffBase ?? "head", turnAvailable }));
   const toggleBase = useStableCallback(() => {
-    if (turnAvailable) chooseBase(diffBase === "turn" ? "head" : "turn");
+    if (turnAvailable) setChoice(diffBase === "turn" ? "head" : "turn");
   });
   const baseControl = { current: currentBase, toggle: toggleBase };
-  // The editor only learns of disk changes when the file is read again.
-  const writingHash = bases.turn?.turn?.running === true ? bases.turn.turn.fileHash : undefined;
-  // oxlint-disable-next-line t3code/react-effect-budget -- reads the file again as a running turn writes it
-  useEffect(() => {
-    if (writingHash !== undefined) refresh();
-  }, [writingHash, refresh]);
 
-  if (file.error !== null && contents === null) {
-    return <FileNotice>{file.error}</FileNotice>;
+  if (fromDisk) {
+    if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
+    if (file.data === null) return <FileNotice>Opening…</FileNotice>;
+  } else if (state.status === "failed") {
+    return <FileNotice>{state.failure?.message ?? "This file cannot be opened."}</FileNotice>;
+  } else if (state.status === "closed") {
+    return <FileNotice>This file was deleted.</FileNotice>;
+  } else if (state.status === "opening") {
+    return <FileNotice>Opening…</FileNotice>;
   }
-  if (contents === null) {
-    return <FileNotice>{file.isPending ? "Opening…" : "Nothing to show."}</FileNotice>;
-  }
+  const tooBig =
+    fromDisk && (file.data?.truncated === true || state.failure?.reason === "too-large");
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
@@ -172,7 +173,7 @@ export function RepositoryFileView({
             value={diffBase === undefined ? [] : [diffBase]}
             onValueChange={(value) => {
               const next = value[0];
-              if (next === "head" || next === "turn") chooseBase(next);
+              if (next === "head" || next === "turn") setChoice(next);
             }}
           >
             <Toggle value="head" title="Changes since the last commit">
@@ -190,31 +191,111 @@ export function RepositoryFileView({
           </span>
         ) : null}
         <span className="shrink-0">
-          {readOnly
-            ? file.data?.truncated
-              ? "Too big to edit here"
-              : "Read only"
-            : pending
-              ? "Saving…"
-              : "Saved"}
+          {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
         </span>
       </div>
+      {fromDisk || readOnly ? null : (
+        <DocumentNotice
+          state={state}
+          session={session}
+          onClosed={() => repositoryPanes.close(tabKey)}
+        />
+      )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
-          key={`${environmentId}\0${cwd}\0${path}`}
           tabKey={tabKey}
           path={path}
-          contents={contents}
+          source={fromDisk ? { contents: contents ?? "" } : { session }}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
-          pendingRef={pendingRef}
-          onChange={(next) => {
-            setProjectFileQueryData(environmentId, cwd, path, next);
-            save.change(next);
-          }}
         />
       </div>
+    </div>
+  );
+}
+
+function documentStatusLabel(state: DocumentSessionState): string {
+  if (state.status === "conflict" || state.status === "recovering") return "Not saved";
+  if (state.missing) return state.unsaved ? "Deleted, not saved" : "Deleted";
+  return state.unsaved ? "Saving…" : "Saved";
+}
+
+/** What needs a decision: a deleted file, edits the environment refused, a failed push. */
+function DocumentNotice({
+  state,
+  session,
+  onClosed,
+}: {
+  readonly state: DocumentSessionState;
+  readonly session: DocumentSession;
+  readonly onClosed: () => void;
+}) {
+  if (state.status === "conflict") {
+    return (
+      <NoticeBar
+        message={`This file changed while your edits were offline, so they were not applied. Your text is kept here.${
+          state.failure ? ` ${state.failure.message}` : ""
+        }`}
+      >
+        <Button size="xs" variant="outline" onClick={() => session.keepMine()}>
+          Keep mine
+        </Button>
+        <Button size="xs" variant="ghost" onClick={() => session.takeTheirs()}>
+          Use the file’s
+        </Button>
+      </NoticeBar>
+    );
+  }
+  if (state.status === "recovering") {
+    return <NoticeBar message="Sending your offline edits…" />;
+  }
+  if (state.missing) {
+    return (
+      <NoticeBar
+        message={
+          state.unsaved
+            ? "This file was deleted. Save to recreate it, or discard."
+            : "This file was deleted. Save to recreate it."
+        }
+      >
+        <Button size="xs" variant="outline" onClick={() => void session.save()}>
+          Save
+        </Button>
+        {state.unsaved ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => {
+              void session.discard().then((result) => {
+                if (result?.ok) onClosed();
+              });
+            }}
+          >
+            Discard
+          </Button>
+        ) : null}
+      </NoticeBar>
+    );
+  }
+  if (state.failure !== null) return <NoticeBar message={state.failure.message} />;
+  return null;
+}
+
+function NoticeBar({
+  message,
+  children,
+}: {
+  readonly message: string;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex shrink-0 items-center gap-2 border-b border-border bg-warning-surface px-3 py-1.5 text-xs text-warning-foreground"
+    >
+      <span className="min-w-0 flex-1">{message}</span>
+      {children}
     </div>
   );
 }
@@ -230,36 +311,29 @@ function FileNotice({ children }: { readonly children: string }) {
 /**
  * The CodeMirror view. Built once per file; what changes later goes through compartments: Vim,
  * the editor's keys, the file's language once it loads, read-only, and wrapping (code follows the
- * word wrap setting, notes always wrap). Contents saved by someone else arrive as edits, unless
- * edits here are still on their way.
+ * word wrap setting, notes always wrap). A document's edits from elsewhere arrive through its
+ * session and stay out of undo.
  */
 function FileEditor({
   tabKey,
   path,
-  contents,
+  source,
   readOnly,
   baseText,
   baseControl,
-  pendingRef,
-  onChange,
 }: {
-  readonly path: string;
-  readonly contents: string;
-  readonly readOnly: boolean;
   readonly tabKey: string;
+  readonly path: string;
+  /** The live document, or a file read once from disk (read only). */
+  readonly source: { readonly session: DocumentSession } | { readonly contents: string };
+  readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
   readonly baseControl: DiffBaseControl;
-  readonly pendingRef: { readonly current: boolean };
-  readonly onChange: (contents: string) => void;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const vimRef = useRef<(() => Extension) | null>(null);
-  const onChangeRef = useRef(onChange);
-  useLayoutEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   const findKeys = useEditorFindKeys();
@@ -275,12 +349,14 @@ function FileEditor({
     readOnly: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
-  const [initial] = useState(() => ({ path, contents, readOnly, vim, wordWrap, baseControl }));
+  const [initial] = useState(() => ({ path, source, readOnly, vim, wordWrap, baseControl }));
 
   useLayoutEffect(() => {
     const element = host.current;
     if (!element) return;
     const markdown = isMarkdownPath(initial.path);
+    const session = "session" in initial.source ? initial.source.session : null;
+    const document = session?.initialState() ?? null;
     const history = composerHistory(() => viewRef.current!);
     const vimExtension = (): Extension => [
       vimMode(history.vim, { panel: false }),
@@ -290,10 +366,11 @@ function FileEditor({
     const view = new EditorView({
       parent: element,
       state: EditorState.create({
-        doc: initial.contents,
+        doc: document?.text ?? ("contents" in initial.source ? initial.source.contents : ""),
         extensions: [
           FILE_EDITOR_THEME,
           history.extension,
+          document?.extension ?? [],
           compartments.vim.of(initial.vim ? vimExtension() : []),
           appVimKeys(() => null),
           compartments.keys.of([]),
@@ -302,12 +379,13 @@ function FileEditor({
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+            if (update.docChanged) session?.changed();
           }),
         ],
       }),
     });
     viewRef.current = view;
+    session?.attach(view);
     let cancelled = false;
     const language = markdown ? null : codeLanguageFor(initial.path);
     if (language) {
@@ -317,6 +395,7 @@ function FileEditor({
     }
     return () => {
       cancelled = true;
+      session?.detach();
       view.destroy();
       viewRef.current = null;
     };
@@ -373,15 +452,6 @@ function FileEditor({
     const view = viewRef.current;
     if (view && !isMarkdownPath(initial.path)) setSoftWrap(view, wordWrap);
   }, [initial, wordWrap]);
-
-  // Newer contents from elsewhere (an agent's edit, the thread's Files view) arrive as their
-  // smallest edits, unless edits typed here are still saving, which would otherwise be lost.
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view || pendingRef.current) return;
-    const spec = replaceDocText(view.state, contents);
-    if (spec) view.dispatch(spec);
-  }, [contents, pendingRef]);
 
   return (
     <div

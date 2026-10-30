@@ -1430,6 +1430,9 @@ importers:
         specifier: ^5.0.11
         version: 5.0.14(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.6.0(react@19.3.0))
     devDependencies:
+      '@codemirror/collab':
+        specifier: 6.1.1
+        version: 6.1.1
       '@effect/platform-node':
         specifier: 4.0.5
         version: 4.0.5(bufferutil@4.1.0)(effect@4.0.5)(redis@6.2.1)(utf-8-validate@6.0.6)
@@ -1678,6 +1681,12 @@ importers:
 
   packages/client-runtime:
     dependencies:
+      '@codemirror/collab':
+        specifier: 6.1.1
+        version: 6.1.1
+      '@codemirror/state':
+        specifier: ^6.7.6
+        version: 6.7.6
       '@electric-sql/client':
         specifier: 1.5.28
         version: 1.5.28

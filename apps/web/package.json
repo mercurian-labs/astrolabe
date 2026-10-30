@@ -100,6 +100,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@codemirror/collab": "6.1.1",
     "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@tailwindcss/vite": "^4.0.0",
