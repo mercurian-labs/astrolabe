@@ -458,6 +458,42 @@ describe("DocumentSession", () => {
     expect(a.session.getState().status).toBe("closed");
   });
 
+  it("tells a language-server request which version it is at and what it hasn't sent", async () => {
+    const authority = new Authority("abc");
+    const a = open(authority, "a");
+    authority.writeDisk("abcd");
+    a.editor.type({ from: 0, insert: "x" });
+    const state = a.session.lspState();
+    expect(state).toMatchObject({ loadId: "load-1", version: 1, clientId: "a" });
+    expect(
+      state?.unconfirmed.map((json) =>
+        ChangeSet.fromJSON(json)
+          .apply(Text.of(["abcd"]))
+          .toString(),
+      ),
+    ).toEqual(["xabcd"]);
+    await a.network.next("push").deliver();
+    expect(a.session.lspState()).toMatchObject({ version: 2, unconfirmed: [] });
+  });
+
+  it("brings positions from an environment version forward to the editor's text", async () => {
+    const authority = new Authority("one\ntwo");
+    const a = open(authority, "a");
+    authority.writeDisk("zero\none\ntwo");
+    a.editor.type({ from: 0, insert: "// mine\n" });
+    const at = a.session.changesSince(0);
+    if (typeof at === "string") throw new Error(at);
+    expect(at.text.toString()).toBe("one\ntwo");
+    // "two" at the old start of line 2 is now three lines further down.
+    expect(at.changes.mapPos(4)).toBe(a.editor.text.indexOf("two"));
+    expect(a.session.changesSince(5)).toBe("behind");
+    let advanced = 0;
+    a.session.onVersion(() => advanced++);
+    await a.network.next("push").deliver();
+    expect(advanced).toBe(1);
+    expect(a.session.changesSince(2)).toMatchObject({ text: Text.of(a.editor.text.split("\n")) });
+  });
+
   it("never pushes from a read-only connection", () => {
     const authority = new Authority("abc");
     const a = open(authority, "a", false);

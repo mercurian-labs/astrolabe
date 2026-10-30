@@ -119,6 +119,17 @@ export function replacingChanges(from: string, to: string): ChangeSet {
   );
 }
 
+/** How many of the environment's versions the session keeps, to bring diagnostics forward. */
+const HISTORY_KEPT = 200;
+
+/** What a language-server request's positions are relative to (`LanguageServerDocumentState`). */
+export interface DocumentLspState {
+  readonly loadId: string;
+  readonly version: number;
+  readonly clientId: string;
+  readonly unconfirmed: ReadonlyArray<ReturnType<ChangeSet["toJSON"]>>;
+}
+
 /** The environment's copy as this session last heard it. */
 interface Remote {
   readonly loadId: string;
@@ -159,6 +170,9 @@ export class DocumentSession {
   private recovery: Recovery | null = null;
   private snapshot: DocumentSessionState = OPENING;
   private readonly listeners = new Set<() => void>();
+  /** The environment's text at `history.base`, and each update since, oldest first. */
+  private history: { base: number; text: Text; updates: Array<ChangeSet> } | null = null;
+  private readonly versionListeners = new Set<() => void>();
 
   constructor(options: {
     readonly target: DocumentTarget;
@@ -192,6 +206,56 @@ export class DocumentSession {
   text(): string | null {
     return this.editor?.state.doc.toString() ?? this.opened?.text ?? null;
   }
+
+  /**
+   * The editor's document as an LSP request sees it: the environment version its confirmed text is
+   * at, and its unconfirmed edits. Null while the editor is not open on a load.
+   */
+  lspState(): DocumentLspState | null {
+    const editor = this.editor;
+    const remote = this.remote;
+    if (editor === null || remote === null || this.status !== "open") return null;
+    return {
+      loadId: remote.loadId,
+      version: getSyncedVersion(editor.state) + this.offset,
+      clientId: this.clientId,
+      unconfirmed: sendableUpdates(editor.state).map((update) => update.changes.toJSON()),
+    };
+  }
+
+  /**
+   * The environment's text at `version` and the changes from it to the editor's text now, for
+   * positions computed there. `behind` until the editor has that version; `gone` once it is older
+   * than what the session keeps, or from another load.
+   */
+  changesSince(
+    version: number,
+  ): { readonly text: Text; readonly changes: ChangeSet } | "behind" | "gone" {
+    const editor = this.editor;
+    const history = this.history;
+    const remote = this.remote;
+    if (editor === null || history === null || remote === null || this.status !== "open") {
+      return "gone";
+    }
+    if (version > remote.version) return "behind";
+    if (version < history.base) return "gone";
+    let text = history.text;
+    for (const update of history.updates.slice(0, version - history.base)) {
+      text = update.apply(text);
+    }
+    let changes = ChangeSet.empty(text.length);
+    for (const update of history.updates.slice(version - history.base)) {
+      changes = changes.compose(update);
+    }
+    for (const update of sendableUpdates(editor.state)) changes = changes.compose(update.changes);
+    return { text, changes };
+  }
+
+  /** Called whenever the editor takes more of the environment's versions. */
+  readonly onVersion = (listener: () => void): (() => void) => {
+    this.versionListeners.add(listener);
+    return () => this.versionListeners.delete(listener);
+  };
 
   /** Binds the editor built from `initialState`, and catches it up. */
   attach(editor: DocumentEditor): void {
@@ -232,6 +296,7 @@ export class DocumentSession {
       };
       this.disk(item);
       this.status = "open";
+      this.restartHistory();
       return this.publish();
     }
     if (this.editor === null) {
@@ -340,10 +405,30 @@ export class DocumentSession {
     for (const update of fresh) remote.text = update.changes.apply(remote.text);
     remote.version += fresh.length;
     if (this.status === "open") {
+      this.record(fresh.map((update) => update.changes));
       editor.dispatch(receiveUpdates(editor.state, fresh));
+      for (const listener of this.versionListeners) listener();
     } else if (this.status === "recovering") {
       this.finishRecovery();
     }
+  }
+
+  private record(changes: ReadonlyArray<ChangeSet>) {
+    const history = this.history;
+    if (history === null) return;
+    history.updates.push(...changes);
+    while (history.updates.length > HISTORY_KEPT) {
+      history.text = history.updates.shift()!.apply(history.text);
+      history.base += 1;
+    }
+  }
+
+  /** The editor's text is the environment's at its current version: history starts over there. */
+  private restartHistory() {
+    const remote = this.remote;
+    this.history =
+      remote === null ? null : { base: remote.version, text: remote.text, updates: [] };
+    for (const listener of this.versionListeners) listener();
   }
 
   private newLoad(item: Extract<DocumentStreamItem, { type: "snapshot" }>) {
@@ -420,6 +505,7 @@ export class DocumentSession {
     this.offset = remote.version - getSyncedVersion(editor.state);
     this.recovery = null;
     this.status = "open";
+    this.restartHistory();
     this.flush();
     this.publish();
   }
@@ -456,6 +542,7 @@ export class DocumentSession {
     this.recovery = null;
     this.status = "open";
     this.failure = null;
+    this.restartHistory();
   }
 
   private flush() {
