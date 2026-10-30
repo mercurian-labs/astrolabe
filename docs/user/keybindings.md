@@ -127,12 +127,12 @@ you need.
 | `p`                     | Panes: split, close, maximize, full screen, right panel        |
 | `s` `s`                 | Show or hide the sidebar                                       |
 | `w`                     | Open Wikis, or find or create a document                       |
-| `e` `f`                 | [Find](#find-in-a-file-or-note) in the file or note you are in |
+| `e`                     | [Find](#find-in-a-file-or-note) and [edit code](#edit-code)    |
 | `,`                     | Settings                                                       |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
-opens Search from anywhere but the terminal. Change either shortcut in
+opens Search from anywhere but the terminal and a code file. Change either shortcut in
 **Settings → Keybindings** under **Keyboard Menu: Open** and **Search**. The file picker has no shortcut by default (`mod+p` opens the Command
 Palette); bind **File Picker: Toggle** to give it one.
 
@@ -142,8 +142,8 @@ you choose another key, or None, in **Settings → Keybindings → This device �
 Leader key**; `mod+k` works either way. The menu appears after a moment, so a
 quick sequence like Space `g` `w` runs without it showing.
 
-In the composer and wiki notes, `mod+shift+k` inserts a link. Elsewhere it copies
-an open pull request's number (below).
+In the composer and wiki notes, `mod+shift+k` inserts a link, and in a code file it
+deletes the line. Elsewhere it copies an open pull request's number (below).
 
 ### Moving focus
 
@@ -245,6 +245,47 @@ With Vim on, `/`, `?`, `n`, and `N` stay Vim's own search in normal mode. On Win
 shortcut in **Settings → Keybindings** under **Find in Editor**. In the composer, `mod+f` finds
 in the thread instead.
 
+## Edit code
+
+A repository file edits like a code editor. Add cursors and selections and type into all of
+them at once, drag with `Alt` held to select a column, and fold blocks from the markers that
+show when you point at the gutter. Brackets and quotes close as you type, and the bracket
+matching the one at the cursor is outlined.
+
+While a code file has focus, these keys are the editor's, and the app's command on the same
+key works everywhere else:
+
+| Key                             | In a code file                                            | Elsewhere                    |
+| ------------------------------- | --------------------------------------------------------- | ---------------------------- |
+| `mod+d`                         | Select the next occurrence (the word at the cursor first) | Show or hide the diff        |
+| `mod+shift+d`                   | Skip this occurrence: the last one moves to the next      |                              |
+| `mod+shift+l`                   | Select every occurrence                                   | Previous worktree (composer) |
+| `mod+i`                         | Expand the selection to the enclosing code                | Italic in notes              |
+| `mod+shift+k`                   | Delete the line                                           | Link in notes                |
+| `mod+[` `mod+]`                 | Indent less or more                                       | Back or forward              |
+| `mod+/`                         | Comment or uncomment                                      | Search                       |
+| `mod+alt+Up` `mod+alt+Down`     | Add a cursor above or below                               |                              |
+| `alt+Up` `alt+Down`             | Move the line up or down                                  |                              |
+| `alt+shift+Up` `alt+shift+Down` | Copy the line up or down                                  |                              |
+| `mod+alt+[` `mod+alt+]`         | Fold or unfold the block at the cursor                    |                              |
+
+`mod+u` stays Usage, and `mod+k` (the keyboard menu) and `mod+p` (the Command Palette) still
+open from a code file. Space `e` then a key runs the commands with no shortcut of their own,
+which the Command Palette also lists: `c` comment, `d` duplicate the selection, `j` join lines,
+`s` sort lines, `u` and `l` upper and lower case, `w` wrap long lines, and `[` and `]` fold or
+unfold everything.
+
+Code files wrap long lines when **Settings → Appearance → Typography → Word wrap** is on; Space
+`e` `w` switches one file. Markdown files in a repository edit the same way, but always wrap,
+and `mod+i` and `mod+shift+k` stay italic and link there.
+
+With Vim on, normal mode keeps its keys. Selecting occurrences enters visual mode, where `c`
+changes them all and Escape keeps a cursor at each. On Windows and Linux `mod` is Ctrl, so in
+normal mode `Ctrl+D`, `Ctrl+I` and `Ctrl+[` stay Vim's.
+
+Change any of these in **Settings → Keybindings** under **Editors**; their names start with
+**Code:**, and their condition is `codeEditorFocus`.
+
 ## Find in a diff
 
 Click into a diff in the Diff panel or a pull request's Code tab, then press
@@ -311,7 +352,9 @@ menu key or alias, and can restore it.
 
 The composer's and notes' formatting keys are commands too: `markdown.bold`,
 `markdown.italic`, `markdown.code`, `markdown.strikethrough`,
-`markdown.highlight`, and `markdown.link`, with the `editorFocus` condition.
+`markdown.highlight`, and `markdown.link`, with the `editorFocus` condition. A code
+file's editing commands are `code.*`, such as `code.selectNextOccurrence` and
+`code.sortLines`, with the `codeEditorFocus` condition.
 
 Project scripts use `script.{id}.run`, such as `script.test.run`.
 
@@ -325,9 +368,10 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
 `previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
-`turnRunning`, `editableFocus`, `editorFocus`, `isWeb`, and `isDesktop`.
+`turnRunning`, `editableFocus`, `editorFocus`, `codeEditorFocus`, `isWeb`, and `isDesktop`.
 `editableFocus` is true while a text field, the composer, or another editor has
-the keyboard. `editorFocus` is true while the composer or a wiki note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
+the keyboard. `editorFocus` is true while the composer, a wiki note, or a repository file has
+it, and `codeEditorFocus` only while a repository file's text has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the
