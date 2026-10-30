@@ -34,6 +34,10 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 
 export const SAVE_DELAY = Duration.millis(500);
 export const IDLE_TIMEOUT = Duration.minutes(5);
+// Writers that truncate then write, or write in chunks, report each step; read once they stop.
+export const DISK_QUIET = Duration.millis(75);
+export const settled = <A, E, R>(reports: Stream.Stream<A, E, R>) =>
+  reports.pipe(Stream.debounce(DISK_QUIET));
 
 /**
  * The environment's copy of each open repository file, kept with `@codemirror/collab`'s
@@ -337,6 +341,7 @@ const make = Effect.gen(function* () {
     const name = path.basename(document.target.absolutePath);
     return fileSystem.watch(path.dirname(document.target.absolutePath)).pipe(
       Stream.filter((event) => path.basename(event.path) === name),
+      settled,
       Stream.runForEach(() =>
         whileCurrent(document, syncLocked(document)).pipe(
           Effect.ignore({ log: "Warn", message: "Reading a changed document failed." }),

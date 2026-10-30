@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import type { DocumentError, DocumentStreamItem, DocumentTarget } from "@t3tools/contracts";
 import type * as Cause from "effect/Cause";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -332,6 +333,7 @@ it.layer(layerTest)("Documents", (it) => {
 
           yield* workspace.writeDisk("one\ntwo\nthree\nfour\n");
           yield* workspace.notify;
+          yield* TestClock.adjust(Documents.DISK_QUIET);
           const update = yield* a.next;
           expect(update).toMatchObject({
             type: "updates",
@@ -345,6 +347,26 @@ it.layer(layerTest)("Documents", (it) => {
           expect(yield* workspace.readDisk).toBe("ONE\ntwo\nthree\nfour\n");
         }),
       ),
+    );
+
+    it.effect("reads a burst of outside change reports once, after they stop", () =>
+      Effect.gen(function* () {
+        const reports = yield* Queue.unbounded<string>();
+        const reads = yield* Queue.unbounded<string, Cause.Done>();
+        yield* Documents.settled(Stream.fromQueue(reports)).pipe(
+          Stream.runIntoQueue(reads),
+          Effect.forkChild,
+        );
+
+        // A writer that truncates and then writes reports a change at each step.
+        yield* Queue.offer(reports, "truncated");
+        yield* TestClock.adjust(Duration.millis(10));
+        yield* Queue.offer(reports, "written");
+        yield* TestClock.adjust(Documents.DISK_QUIET);
+
+        expect(yield* Queue.take(reads)).toBe("written");
+        expect(yield* Queue.size(reads)).toBe(0);
+      }),
     );
 
     it.effect("never saves over a newer file, even when no watch event arrived", () =>
@@ -374,6 +396,7 @@ it.layer(layerTest)("Documents", (it) => {
 
           yield* workspace.removeDisk;
           yield* workspace.notify;
+          yield* TestClock.adjust(Documents.DISK_QUIET);
           expect(yield* a.nextDisk).toEqual({ savedVersion: 0, missing: true });
           a.edit({ from: 3, insert: "d" });
           yield* a.push();
