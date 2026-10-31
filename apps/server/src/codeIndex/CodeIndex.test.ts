@@ -9,13 +9,16 @@ import {
   type OrchestrationProjectShell,
   type ServerSettings,
 } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
-import type * as Scope from "effect/Scope";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
@@ -80,6 +83,18 @@ interface Harness {
   readonly jobs: Array<WorkerJob>;
   readonly setSettings: (settings: ServerSettings) => Effect.Effect<void>;
   readonly setPolicy: (run: boolean) => Effect.Effect<void>;
+  /**
+   * Stop the index and start another over the same state, as a server restart does; it registers
+   * the repositories once `registering` completes.
+   */
+  readonly restart: (
+    registering: Deferred.Deferred<void>,
+  ) => Effect.Effect<CodeIndex.CodeIndex["Service"], never, NodeServices.NodeServices>;
+  /** Hold the next delete job until `release` runs; `held` waits until it is held. */
+  readonly holdNextDelete: Effect.Effect<{
+    readonly held: Effect.Effect<void>;
+    readonly release: Effect.Effect<void>;
+  }>;
 }
 
 const policySnapshot = (run: boolean) =>
@@ -117,51 +132,70 @@ const withIndex = <A, E>(
     const policyChanges = yield* PubSub.unbounded<BackgroundPolicySnapshot>();
     const jobs: Array<WorkerJob> = [];
 
-    const services = Layer.mergeAll(
-      Layer.mock(ProjectService.ProjectService)({
-        listShells: () =>
-          Effect.succeed([
-            {
-              id: PROJECT,
-              title: "Repo",
-              workspaceRoot: project,
-            } as unknown as OrchestrationProjectShell,
-          ]),
-      }),
-      Layer.mock(WikiService.WikiService)({
-        list: Effect.succeed({ wikis: [] }),
-        subscribe: Stream.never,
-      }),
-      Layer.mock(ServerSettingsService.ServerSettingsService)({
-        getSettings: Ref.get(settings),
-        subscribeChanges: Effect.succeed(Stream.fromPubSub(settingsChanges)),
-      }),
-      Layer.mock(BackgroundPolicy.BackgroundPolicy)({
-        subscribe: Effect.succeed({
-          latest: policySnapshot(options.run ?? true),
-          changes: Stream.fromPubSub(policyChanges),
+    let hold: {
+      readonly held: Deferred.Deferred<void>;
+      readonly release: Deferred.Deferred<void>;
+    } | null = null;
+
+    const services = (registering: Effect.Effect<void>) =>
+      Layer.mergeAll(
+        Layer.mock(ProjectService.ProjectService)({
+          listShells: () =>
+            Effect.succeed([
+              {
+                id: PROJECT,
+                title: "Repo",
+                workspaceRoot: project,
+              } as unknown as OrchestrationProjectShell,
+            ]),
         }),
-      }),
-      Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
-        latestApplicationSequence: Effect.succeed(0),
-        streamProjectedApplicationEvents: () => Stream.never,
-      }),
-      GitVcsDriver.layer.pipe(
-        Layer.provide(VcsProcess.layer),
-        Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
-      ),
-    );
-    const index = yield* Effect.gen(function* () {
-      const command = yield* CodeIndex.workerCommand();
-      assert.isNotNull(command);
-      const runWorker = yield* CodeIndex.makeWorkerRunner(command!);
-      return yield* CodeIndex.make({
-        runWorker: (job, onOutput) => {
-          jobs.push(job);
-          return runWorker(job, onOutput);
-        },
-      });
-    }).pipe(Effect.provide(services));
+        Layer.mock(WikiService.WikiService)({
+          list: Effect.succeed({ wikis: [] }),
+          subscribe: Stream.never,
+        }),
+        Layer.mock(ServerSettingsService.ServerSettingsService)({
+          getSettings: Ref.get(settings),
+          subscribeChanges: Effect.succeed(Stream.fromPubSub(settingsChanges)),
+        }),
+        Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+          subscribe: Effect.succeed({
+            latest: policySnapshot(options.run ?? true),
+            changes: Stream.fromPubSub(policyChanges),
+          }),
+        }),
+        // The index registers its repositories after reading this.
+        Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
+          latestApplicationSequence: registering.pipe(Effect.as(0)),
+          streamProjectedApplicationEvents: () => Stream.never,
+        }),
+        GitVcsDriver.layer.pipe(
+          Layer.provide(VcsProcess.layer),
+          Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
+        ),
+      );
+    const open = (registering: Effect.Effect<void>) =>
+      Effect.gen(function* () {
+        const command = yield* CodeIndex.workerCommand();
+        assert.isNotNull(command);
+        const runWorker = yield* CodeIndex.makeWorkerRunner(command!);
+        return yield* CodeIndex.make({
+          runWorker: (job, onOutput) => {
+            jobs.push(job);
+            const gate = job.op === "delete" ? hold : null;
+            if (gate !== null) hold = null;
+            const waited =
+              gate === null
+                ? Effect.void
+                : Deferred.succeed(gate.held, undefined).pipe(
+                    Effect.andThen(Deferred.await(gate.release)),
+                  );
+            return waited.pipe(Effect.andThen(runWorker(job, onOutput)));
+          },
+        });
+      }).pipe(Effect.provide(services(registering)));
+    const outer = yield* Effect.scope;
+    let running = yield* Scope.fork(outer);
+    const index = yield* open(Effect.void).pipe(Scope.provide(running));
     return yield* body({
       index,
       root,
@@ -171,6 +205,20 @@ const withIndex = <A, E>(
       setSettings: (next) =>
         Ref.set(settings, next).pipe(Effect.andThen(PubSub.publish(settingsChanges, next))),
       setPolicy: (run) => PubSub.publish(policyChanges, policySnapshot(run)).pipe(Effect.asVoid),
+      restart: (registering) =>
+        Effect.gen(function* () {
+          yield* Scope.close(running, Exit.void);
+          running = yield* Scope.fork(outer);
+          return yield* open(Deferred.await(registering)).pipe(Scope.provide(running));
+        }).pipe(Effect.orDie),
+      holdNextDelete: Effect.gen(function* () {
+        const gate = { held: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() };
+        hold = gate;
+        return {
+          held: Deferred.await(gate.held),
+          release: Deferred.succeed(gate.release, undefined).pipe(Effect.asVoid),
+        };
+      }),
     });
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
@@ -676,6 +724,63 @@ it.effect("cleanup keeps what a branch, worktree or checkpoint reaches and remov
       assert.deepStrictEqual([after.fileVersions, after.unusedFileVersions], [3, 0]);
 
       // The repository's own checkout still answers.
+      const outline = yield* harness.index.outline({
+        projectId: PROJECT,
+        cwd: harness.root,
+        path: "src",
+      });
+      assert.strictEqual(outline.files.length, 3);
+    }),
+  ),
+);
+
+it.effect(
+  "keeps the index when cleanup runs before a restarted server registers repositories",
+  () =>
+    withIndex({ files: SOURCES }, (harness) =>
+      Effect.gen(function* () {
+        yield* reach(harness.index, "ready");
+        const registering = yield* Deferred.make<void>();
+        const restarted = yield* harness.restart(registering);
+        const pruned = yield* restarted.prune;
+        assert.strictEqual(pruned.fileVersions, 0);
+
+        yield* Deferred.succeed(registering, undefined);
+        const ready = yield* reach(restarted, "ready");
+        assert.strictEqual(ready?.files, 3);
+        // Built from what was stored: nothing parsed again.
+        assert.strictEqual(harness.jobs.filter((job) => job.op === "parse").length, 1);
+      }),
+    ),
+);
+
+it.effect("builds a repository again when cleanup deletes its index after it was turned on", () =>
+  withIndex({ files: SOURCES }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      yield* harness.setSettings({
+        ...DEFAULT_SERVER_SETTINGS,
+        projectSettingsOverrides: {
+          [PROJECT]: { codeIndex: { enabled: false, skippedPaths: [] } },
+        },
+      });
+      yield* reach(harness.index, "off");
+      // Cleanup decides to drop the turned-off index; it is turned back on before the delete runs.
+      const gate = yield* harness.holdNextDelete;
+      const pruning = yield* Effect.forkChild(harness.index.prune);
+      yield* gate.held;
+      yield* harness.setSettings(DEFAULT_SERVER_SETTINGS);
+      yield* reach(harness.index, "ready");
+      yield* gate.release;
+      assert.strictEqual((yield* Fiber.join(pruning)).fileVersions, 3);
+
+      const rebuilt = yield* reach(harness.index, "ready");
+      assert.strictEqual(rebuilt?.files, 3);
+      assert.deepStrictEqual(parsedPaths(harness.jobs.at(-1)), [
+        "src/a.ts",
+        "src/b.ts",
+        "src/c.ts",
+      ]);
       const outline = yield* harness.index.outline({
         projectId: PROJECT,
         cwd: harness.root,

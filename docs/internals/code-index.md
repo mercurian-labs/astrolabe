@@ -45,8 +45,9 @@ The build of a repository's own checkout waits while the Background activity pol
 opportunistic work, which includes no client being connected, and uses fewer workers under
 battery saver. A question about another checkout parses what it is missing without waiting.
 
-Cleanup keeps file versions reachable from `refs/heads`, `refs/t3/*` (both checkpoint namespaces)
-and worktree HEADs. Uncommitted versions count only for checkouts the index was asked about in
+Cleanup drops a repository's index when the project list says it is gone, a wiki, or off, never
+from the repositories registered so far: at startup none are. It keeps file versions reachable from
+`refs/heads`, `refs/t3/*` (both checkpoint namespaces) and worktree HEADs. Uncommitted versions count only for checkouts the index was asked about in
 this server run; one pruned too early is parsed again on the next question.
 
 ## Measured cost

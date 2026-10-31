@@ -860,17 +860,22 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         Effect.orElseSucceed(() => null),
       );
 
-  /** Match the repositories to the projects and their settings; start the builds that changed. */
-  const reconcile = Effect.fn("CodeIndex.reconcile")(function* () {
+  /** Every project but the wikis, with its index settings: what the index may hold. */
+  const indexedProjects = Effect.fn("CodeIndex.indexedProjects")(function* () {
     const settings = yield* serverSettings.getSettings;
     const shells = yield* projects.listShells();
     const registered = yield* wikis.list.pipe(Effect.orElseSucceed(() => ({ wikis: [] })));
     const wikiProjects = new Set(registered.wikis.flatMap((wiki) => wiki.projectId ?? []));
     const wikiRoots = new Set(registered.wikis.map((wiki) => wiki.root));
+    return shells
+      .filter((shell) => !wikiProjects.has(shell.id) && !wikiRoots.has(shell.workspaceRoot))
+      .map((shell) => ({ shell, wanted: settingsFor(settings, shell.id) }));
+  });
+
+  /** Match the repositories to the projects and their settings; start the builds that changed. */
+  const reconcile = Effect.fn("CodeIndex.reconcile")(function* () {
     const seen = new Set<ProjectId>();
-    for (const shell of shells) {
-      if (wikiProjects.has(shell.id) || wikiRoots.has(shell.workspaceRoot)) continue;
-      const wanted = settingsFor(settings, shell.id);
+    for (const { shell, wanted } of yield* indexedProjects()) {
       let repo = repos.get(shell.id);
       if (repo === undefined) {
         const located = yield* locate(shell.workspaceRoot);
@@ -1383,12 +1388,16 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
 
   /** What cleanup would delete: repositories gone or turned off, and unreachable versions. */
   const unused = Effect.fn("CodeIndex.unused")(function* () {
+    // Decided by the projects, not by `repos`, which is empty until the repositories register.
+    const kept = new Set<string>(
+      (yield* indexedProjects().pipe(Effect.mapError(failedWith("Could not list the projects."))))
+        .filter(({ wanted }) => wanted.enabled)
+        .map(({ shell }) => shell.id),
+    );
     const stored = yield* read(
       sql<{ readonly projectId: string }>`SELECT project_id AS "projectId" FROM repos`,
     );
-    const dropped = stored
-      .map((row) => row.projectId)
-      .filter((projectId) => repos.get(projectId as ProjectId)?.settings.enabled !== true);
+    const dropped = stored.map((row) => row.projectId).filter((projectId) => !kept.has(projectId));
     let droppedVersions = 0;
     if (dropped.length > 0) {
       const rows = yield* read(
@@ -1402,7 +1411,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const versionIds: Array<number> = [];
     const byRepo = new Map<Repo, Array<number>>();
     for (const repo of repos.values()) {
-      if (!repo.settings.enabled) continue;
+      if (!repo.settings.enabled || !kept.has(repo.projectId)) continue;
       yield* loadVersions(repo);
       const reachable = yield* reachableBlobs(repo);
       const ids: Array<number> = [];
@@ -1443,9 +1452,14 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     }
     for (const projectId of found.dropped) {
       const repo = repos.get(projectId as ProjectId);
-      if (repo !== undefined) {
-        yield* forget(repo);
-        repo.loaded = false;
+      if (repo === undefined) continue;
+      repo.generation += 1;
+      yield* forget(repo);
+      repo.loaded = false;
+      // An index turned off says so already; one turned back on meanwhile builds again.
+      if (repo.settings.enabled) {
+        yield* setStatus(repo, { state: "waiting", files: 0 });
+        yield* builds.enqueue(repo.projectId, { rebuild: false });
       }
     }
     return { bytesFreed: Math.max(0, before - (yield* fileBytes)), fileVersions: deleted };
