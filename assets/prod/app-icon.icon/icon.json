@@ -28,6 +28,20 @@
           }
         },
         {
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:0.91765,0.86667,0.78039,1.00000"
+              }
+            },
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.91765,0.86667,0.78039,1.00000"
+              }
+            }
+          ],
           "glass": false,
           "image-name": "mark.svg",
           "name": "Mark",
