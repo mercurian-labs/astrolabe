@@ -82,8 +82,6 @@ export function neighbourhood(graph: FileGraphData, id: string): Set<string> {
   return lit;
 }
 
-/** What a node's label says: its name, a folded folder's with a slash and its file count. */
+/** What a node's label says: its name, a folded folder's with its file count. */
 export const nodeLabel = (node: FileGraphNode): string =>
-  node.kind === "folder"
-    ? `${node.name}/${node.files === null ? "" : ` · ${node.files}`}`
-    : node.name;
+  node.kind === "folder" && node.files !== null ? `${node.name} · ${node.files}` : node.name;
