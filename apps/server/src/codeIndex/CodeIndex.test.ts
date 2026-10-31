@@ -554,6 +554,70 @@ it.effect("reads a vendored package.json as vendored code, not a package of the 
   ),
 );
 
+/**
+ * A web app importing through its tsconfig `paths` and its package.json `imports`, and a CLI whose
+ * tsconfig takes its `paths` from the repository's base config.
+ */
+const ALIASED = {
+  "tsconfig.base.json":
+    '{\n  // Every app extends this.\n  "compilerOptions": { "paths": { "@shared/*": ["./packages/shared/src/*"] }, },\n}\n',
+  "apps/web/tsconfig.json":
+    '{ "extends": "../../tsconfig.base.json", "compilerOptions": { "paths": { "~/*": ["./src/*"] } } }\n',
+  "apps/web/package.json":
+    '{ "name": "@fixture/web", "imports": { "#lib/*": "./src/lib/*.ts" } }\n',
+  "apps/web/src/main.ts":
+    'import { arrange } from "~/panes/arrangement";\nimport { tree } from "~/panes/tree.js";\nimport { util } from "#lib/util";\nimport "~/app.css";\nexport const main = () => arrange() + tree() + util();\n',
+  "apps/web/src/panes/arrangement.ts": "export function arrange() {\n  return 1;\n}\n",
+  "apps/web/src/panes/tree.ts": "export function tree() {\n  return 2;\n}\n",
+  "apps/web/src/lib/util.ts": "export function util() {\n  return 3;\n}\n",
+  "apps/cli/tsconfig.json": '{ "extends": "../../tsconfig.base.json" }\n',
+  "apps/cli/src/run.ts":
+    'import { words } from "@shared/strings";\nexport const run = () => words();\n',
+  "packages/shared/src/strings.ts": "export function words() {\n  return 4;\n}\n",
+};
+
+it.effect("resolves imports through tsconfig paths and package.json imports", () =>
+  withIndex({ files: ALIASED }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const uses = yield* harness.index.localGraph(
+        graphInput(harness.root, "apps/web/src/main.ts", { usedBy: false, dependencies: true }),
+      );
+      assert.deepStrictEqual(
+        uses.nodes.map((node) => [node.id, node.kind]),
+        [
+          ["apps/web/src/main.ts", "file"],
+          ["apps/web/src/lib/util.ts", "file"],
+          ["apps/web/src/panes/arrangement.ts", "file"],
+          ["apps/web/src/panes/tree.ts", "file"],
+        ],
+      );
+      assert.isTrue(uses.links.every((link) => link.resolution === "exact"));
+
+      const usedBy = yield* harness.index.localGraph(
+        graphInput(harness.root, "apps/web/src/panes/arrangement.ts", { uses: false }),
+      );
+      assert.deepStrictEqual(
+        usedBy.links.map((link) => [link.from, link.to, link.line]),
+        [["apps/web/src/main.ts", "apps/web/src/panes/arrangement.ts", 1]],
+      );
+
+      const words = yield* harness.index.find({
+        projectId: PROJECT,
+        cwd: harness.root,
+        name: "words",
+      });
+      assert.deepStrictEqual(
+        words.uses.map((use) => [use.path, use.line, use.kind, use.resolution]),
+        [
+          ["apps/cli/src/run.ts", 1, "imports", "exact"],
+          ["apps/cli/src/run.ts", 2, "calls", "exact"],
+        ],
+      );
+    }),
+  ),
+);
+
 const crowd = (() => {
   const files: Record<string, string> = {
     "lib/target.ts": 'import { other } from "./other.ts";\nexport const target = other;\n',

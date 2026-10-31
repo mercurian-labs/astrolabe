@@ -16,6 +16,11 @@ per branch. Facts depend on one file only, so they are shared. Most by-name link
 anyway (90% of 1.31 M edges in the in-memory prototype), and resolving them on demand costs
 milliseconds.
 
+Path aliases (tsconfig `paths` through `extends`, package.json `imports`) resolve the same way,
+from tsconfigs and manifests read once per blob. An aliased import's stored key names only its
+first segments (`pkg:~` for `~/panes/tree`), so finding who imports a file asks every file using
+an alias the file is reachable through, then resolves each.
+
 ## Keyed by (path, blob)
 
 Facts are keyed by path and blob together, never by blob alone: a symbol's identity embeds its

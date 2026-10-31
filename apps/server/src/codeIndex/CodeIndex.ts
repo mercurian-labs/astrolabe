@@ -55,6 +55,7 @@ import {
   filterListing,
   gitFailed,
   isManifest,
+  isTsConfig,
   parseLsTree,
   parseStatus,
   runGit,
@@ -68,7 +69,9 @@ import {
   CheckoutModules,
   Packages,
   readManifest,
+  readTsConfig,
   type FileView,
+  type TsConfig,
   type WorkspacePackage,
 } from "./resolve.ts";
 import {
@@ -299,7 +302,9 @@ interface Repo {
   readonly listings: Map<string, Listing>;
   /** The tree of the project's checkout at the last build. */
   builtTree: string | null;
+  /** Manifests and tsconfigs read, by blob. */
   readonly manifests: Map<string, WorkspacePackage | null>;
+  readonly tsConfigs: Map<string, TsConfig | null>;
   readonly mergeBases: Map<string, string | null>;
   /** The objects the repository's branches, worktrees and checkpoints reached at the last look. */
   reachable: { readonly tips: ReadonlySet<string>; readonly objects: ReadonlySet<string> } | null;
@@ -893,6 +898,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           listings: new Map(),
           builtTree: null,
           manifests: new Map(),
+          tsConfigs: new Map(),
           mergeBases: new Map(),
           reachable: null,
           uncommittedSeen: new Map(),
@@ -1038,9 +1044,15 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     return { root: located.root, prefix: located.prefix };
   });
 
-  /** The repository's own packages, by the manifests the checkout holds. */
-  const packagesOf = Effect.fn("CodeIndex.packagesOf")(function* (repo: Repo, view: View) {
-    const unread = [...view.manifests].filter(([, blob]) => !repo.manifests.has(blob));
+  /** The checkout's modules: its files, and the packages and path aliases its manifests name. */
+  const modulesOf = Effect.fn("CodeIndex.modulesOf")(function* (repo: Repo, view: View) {
+    const known = (file: string, blob: string) =>
+      (isTsConfig(file) ? repo.tsConfigs : repo.manifests).has(blob);
+    const keep = (file: string, blob: string, text: string | null) => {
+      if (isTsConfig(file)) repo.tsConfigs.set(blob, text === null ? null : readTsConfig(text));
+      else repo.manifests.set(blob, text === null ? null : readManifest(file, text));
+    };
+    const unread = [...view.manifests].filter(([file, blob]) => !known(file, blob));
     const fromGit: Array<[string, string]> = [];
     for (const [file, blob] of unread) {
       if (view.root === null || !view.uncommitted.has(file)) {
@@ -1050,7 +1062,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       const text = yield* fs
         .readFileString(path.join(view.root, file))
         .pipe(Effect.orElseSucceed(() => null));
-      repo.manifests.set(blob, text === null ? null : readManifest(file, text));
+      keep(file, blob, text);
     }
     if (fromGit.length > 0) {
       const texts = yield* Effect.tryPromise({
@@ -1064,17 +1076,20 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         },
         catch: gitFailed,
       });
-      for (const [index, [file, blob]] of fromGit.entries()) {
-        const text = texts[index];
-        repo.manifests.set(blob, text === undefined ? null : readManifest(file, text));
-      }
+      for (const [index, [file, blob]] of fromGit.entries()) keep(file, blob, texts[index] ?? null);
     }
     const found: Array<WorkspacePackage> = [];
-    for (const blob of view.manifests.values()) {
-      const manifest = repo.manifests.get(blob);
-      if (manifest !== null && manifest !== undefined) found.push(manifest);
+    const tsConfigs = new Map<string, TsConfig>();
+    for (const [file, blob] of view.manifests) {
+      if (isTsConfig(file)) {
+        const config = repo.tsConfigs.get(blob);
+        if (config) tsConfigs.set(file, config);
+      } else {
+        const manifest = repo.manifests.get(blob);
+        if (manifest) found.push(manifest);
+      }
     }
-    return new Packages(found);
+    return new CheckoutModules(view.files, new Packages(found), tsConfigs);
   });
 
   const snapshotOf = Effect.fn("CodeIndex.snapshotOf")(function* (
@@ -1121,11 +1136,11 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       }
       return out;
     });
-    const packages = yield* packagesOf(repo, view);
+    const modules = yield* modulesOf(repo, view);
     return {
       view,
       prefix,
-      modules: new CheckoutModules(view.files, packages),
+      modules,
       linesOf: (file) => {
         const version = versionOf(file);
         return version?.state === VersionState.parsed ? version.lines : null;
