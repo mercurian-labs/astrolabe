@@ -284,7 +284,7 @@ interface Labels {
   /** How much of its label each node shows at rest, easing towards `fits`; null until placed. */
   shown: Float64Array | null;
   readonly rest: Int32Array;
-  /** While a hover lights some: their labels lead and show whatever they meet. */
+  /** While a hover lights some: their labels lead; the first `forced` show whatever they meet. */
   lit: Int32Array;
   forced: number;
   readonly boxes: LabelBoxes;
@@ -564,7 +564,7 @@ export class FileGraphRenderer {
         labelAlpha: !lighting
           ? restLabel
           : restLabel +
-            ((isLit ? 1 : FADED_NODE * (labels.litAlpha[index] ?? 0)) - restLabel) * share,
+            ((isLit ? 1 : FADED_NODE) * (labels.litAlpha[index] ?? 0) - restLabel) * share,
         order: isLit ? 1 : 0,
       };
     });
@@ -654,7 +654,9 @@ export class FileGraphRenderer {
       return id !== undefined && lit.has(id) ? 2 : 3;
     };
     labels.lit = labelOrder(graph.nodes.length, rank, (index) => labels.weights[index] ?? 0);
-    labels.forced = labels.lit.findIndex((index) => rank(index) === 3);
+    // Only the centre and the hovered node always show: a hub's forty neighbours named at once
+    // would pile up, so they claim room first but still give way to each other.
+    labels.forced = labels.lit.findIndex((index) => rank(index) >= 2);
     if (labels.forced < 0) labels.forced = labels.lit.length;
   }
 

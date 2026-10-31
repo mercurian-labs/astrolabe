@@ -354,6 +354,29 @@ describe("a file graph", () => {
     );
   });
 
+  it("keeps a hovered hub's neighbours from naming themselves over each other", () => {
+    using _pane = paneSized(700, 500);
+    const leaves = Array.from({ length: 30 }, (_, at) => `feature-${at}/someLongFileName.ts`);
+    const crowded: FileGraphData = {
+      center: "hub.ts",
+      nodes: [
+        node("hub.ts"),
+        node("apps/web/src", { kind: "folder", files: 500 }),
+        ...leaves.map((id) => node(id)),
+      ],
+      links: ["apps/web/src", ...leaves].map((from) => ({ from, to: "hub.ts", guessed: false })),
+    };
+    using graph = mounted(crowded);
+    harness.run();
+    const at = screenOf("hub.ts");
+    graph.pointer("pointermove", at.x, at.y);
+    harness.run();
+    expect(drawn("hub.ts")?.labelAlpha).toBe(1);
+    const named = leaves.filter((id) => drawn(id)?.labelAlpha === 1);
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.length).toBeLessThan(leaves.length);
+  });
+
   it("lights a hovered node, its neighbours and their links, fades the rest, and names it", () => {
     using _pane = paneSized(700, 500);
     using graph = mounted(GRAPH);
