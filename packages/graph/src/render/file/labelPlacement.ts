@@ -54,8 +54,10 @@ export function placeLabels(
     const index = order[at] ?? 0;
     if ((alpha[index] ?? 0) <= LABEL_VISIBLE) continue;
     let crowded = false;
-    for (let each = 0; each < count && at >= forced && !crowded; each += 1) {
-      crowded = crowds(boxes, index, placed[each] ?? 0);
+    if (at >= forced) {
+      for (let each = 0; each < count && !crowded; each += 1) {
+        crowded = crowds(boxes, index, placed[each] ?? 0);
+      }
     }
     if (crowded) {
       alpha[index] = 0;
