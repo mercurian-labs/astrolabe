@@ -103,7 +103,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
       "threads": "Agents",
       "pullRequests": "Changes",
       "wikis": "Wikis",
-      "repositories": "Repositories",
+      "repositories": "Projects",
       "usage": "Usage",
       "settings": "Settings",
     ]

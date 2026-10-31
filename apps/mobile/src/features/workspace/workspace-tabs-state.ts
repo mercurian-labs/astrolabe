@@ -15,7 +15,7 @@ export type WorkspaceTab = NavigationTab;
 /** Lists with their own search: the searchable tabs and the Settings list. */
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
 
-/** Astrolabe: Wikis and Repositories wait on their own iPad and Android design. */
+/** Astrolabe: Wikis and Projects wait on their own iPad and Android design. */
 export function registeredWorkspaceTabs(device: "iphone" | "other"): readonly WorkspaceTab[] {
   return device === "iphone"
     ? NAVIGATION_TAB_ORDER
