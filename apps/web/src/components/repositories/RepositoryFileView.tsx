@@ -38,6 +38,9 @@ import { languageServersEnvironment } from "~/state/languageServers";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { lastRename, type UndoableRename } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
+import { codeContextMenu, type CodeContextMenuHost } from "@mercurian/editor/lsp/context-menu";
+import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { readLocalApi } from "~/localApi";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon, WaypointsIcon } from "lucide-react";
@@ -240,6 +243,21 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     open: openLocation,
     pick: pickLocation,
   }));
+  const showGraph = useStableCallback(() =>
+    panes.update((arrangement) => openLocalGraph(arrangement, tab)),
+  );
+  const [contextMenu] = useState<CodeContextMenuHost>(() => ({
+    show: async (entries, at) => (await readLocalApi()?.contextMenu.show(entries, at)) ?? null,
+    readClipboard: () => readTextFromClipboard(),
+    writeClipboard: async (text) => void (await writeTextToClipboard(text)),
+    fileEntries: [
+      {
+        label: "Copy Relative Path",
+        run: () => void writeTextToClipboard(path).catch(() => undefined),
+      },
+      { label: "Open Local Graph", run: showGraph },
+    ],
+  }));
   const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
   // The environment applied the rename to every file: it offers Undo here, and to Undo Rename.
   // An edit the environment applied for the language server (a rename, a code action): a notice
@@ -371,6 +389,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           source={fromDisk ? { contents: contents ?? "" } : { session }}
           languageServer={fromDisk ? null : languageServer.extension}
           navigation={navigation}
+          contextMenu={contextMenu}
           rename={rename}
           codeActions={codeActions}
           readOnly={readOnly}
@@ -490,6 +509,7 @@ function FileEditor({
   source,
   languageServer,
   navigation,
+  contextMenu,
   rename,
   codeActions,
   readOnly,
@@ -509,6 +529,8 @@ function FileEditor({
   readonly languageServer: Extension | null;
   /** Where its definitions and references open. */
   readonly navigation: NavigationHost;
+  /** What a code file's right-click menu shows and runs beyond the editor's own. */
+  readonly contextMenu: CodeContextMenuHost;
   /** Told of each rename the environment applied. */
   readonly rename: RenameHost;
   /** Told of each code action the environment applied. */
@@ -558,6 +580,7 @@ function FileEditor({
     source,
     languageServer,
     navigation,
+    contextMenu,
     rename,
     codeActions,
     readOnly,
@@ -597,7 +620,7 @@ function FileEditor({
           ),
           compartments.keys.of([]),
           markdown ? [] : diffBaseControl.of(initial.baseControl),
-          markdown ? livePreview() : codeView(),
+          markdown ? livePreview() : [codeView(), codeContextMenu(initial.contextMenu)],
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           outline({ onPath: initial.outlinePath }),

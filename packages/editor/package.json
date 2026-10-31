@@ -83,6 +83,10 @@
       "types": "./src/lsp/format.ts",
       "default": "./src/lsp/format.ts"
     },
+    "./lsp/context-menu": {
+      "types": "./src/lsp/contextMenu.ts",
+      "default": "./src/lsp/contextMenu.ts"
+    },
     "./lsp/code-actions": {
       "types": "./src/lsp/codeActions.ts",
       "default": "./src/lsp/codeActions.ts"
