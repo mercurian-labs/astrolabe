@@ -4,8 +4,10 @@ The open chats show as tabs across the top of the chat column. The route's
 thread is the tab in front. Showing a thread anywhere (a sidebar row's plain
 click, Search, `:b`, a fork, a new thread) replaces what the tab in front shows,
 as a browser tab follows a link; a thread already open in another tab brings that
-tab forward instead (no duplicates). A new tab opens only on Option/Alt-click,
-middle-click, the row menu's **Open in new tab**, or Alt+Enter on a focused row.
+tab forward instead (no duplicates). From the sidebar, a new tab opens on Option/Alt-click,
+middle-click, the row menu's **Open in new tab**, Alt+Enter on a focused row, or a drag
+onto the strip; a thread clicked in Lineage, one opened from a change group's tab, and
+**Open as a tab group** also add tabs.
 Each tab keeps its own back/forward history. Beneath the strip, the chat in front
 keeps T3 Code's own header (one borderless line as tall as the strip), conversation
 and bottom terminal drawer. Its right panel runs the full height beside it (see
@@ -15,11 +17,14 @@ panes.md).
 
 - **Replace**: a plain click on a sidebar thread (or draft) shows it in the tab
   in front: the strip keeps its count, the front tab's title changes. A thread open
-  in another tab brings that tab forward instead. Cmd/Ctrl-click and Shift-click stay
-  upstream's multi-select and range select, opening nothing.
+  in another tab brings that tab forward instead. On a thread row, Cmd/Ctrl-click and
+  Shift-click stay upstream's multi-select and range select, opening nothing; on a draft row
+  they fall through to a plain click and replace the front tab.
 - **New tab**: Option-click (Alt-click), middle-click, right-click › **Open in new
   tab** (first item of the thread and draft row menus), or Alt+Enter on a focused
-  row, open it in a new tab right after the one in front.
+  row, open it in a new tab right after the one in front. Alt+Enter works because keyboard
+  navigation (`keyboardNav/placeLists.ts`) turns it into an Alt-click; the rows' own key
+  handlers ignore Alt.
   A draft has a "New thread" tab that keeps its place when the draft is sent.
 - **History**: each tab remembers what it showed (thread keys, last 50 each way).
   The sidebar title-bar row's **Back**/**Forward** buttons (`[data-tab-history]`),
@@ -66,14 +71,17 @@ panes.md).
   insertion line and opens there as a tab, in front (`chatTabs/threadTabDrop.ts`, fed by the
   sidebar's drag past its list, as the composer's context drop is). A Cmd/Shift selection
   that includes the row opens together, in sidebar order; one already open moves to the line;
-  the pin order is untouched. Only rows the sidebar lets you drag (pin-reorderable servers, not
-  the Working shelf). The rows use a pointer sensor, not HTML5 drag; Gotchas has how to walk it.
+  the pin order is untouched. Only rows the sidebar lets you drag: pin-reorderable servers, and
+  the Working shelf (its drags are always context drags, so they reach the strip). The rows use
+  a pointer sensor, not HTML5 drag; Gotchas has how to walk it.
 - **Persistence**: the list, the tab in front and the histories survive a reload,
   per device (`localStorage['t3code:chat-tabs:v1']`, `state.keys`, `state.active`,
   `state.histories`); a stored value with only `keys` (older builds) still loads.
 - **Pruning**: a tab whose thread was deleted or whose draft was discarded
-  closes once its environment's threads have loaded. If that tab is in front,
-  the thread page redirects first and the tab closes after.
+  closes once its environment's threads have loaded. When the first connect leaves a thread
+  out (older settled threads, idle subagents), the tab reads "New thread" and loads that
+  thread's family first; it closes only if that read leaves the thread out too. If the tab is
+  in front, the thread page redirects first and the tab closes after.
 - **The chat's controls end the strip**: Toggle thread details panel, then
   Toggle terminal drawer, plus Toggle right panel while the panel is closed.
   With the panel open (inline, viewport over 980px), only Maximize panel and
@@ -100,7 +108,7 @@ breadcrumb header is the row below.
 
 ```
 preview_act click  role=button[name=/^<title>, /]                 # sidebar row: "<title>, [<status>, ]<project>"
-preview_act click  [data-testid=sidebar-row-card] >> nth=1          # or by position
+preview_act click  [data-testid=sidebar-row-card] >> nth=1          # or by position; settled/snoozed rows are sidebar-row-slim, drafts sidebar-draft-row
 preview_wait_for  locator=role=tab[name='<title>'][selected]
 preview_act click  role=tab[name='<other title>']
 preview_act click  role=button[name='Close <title>']

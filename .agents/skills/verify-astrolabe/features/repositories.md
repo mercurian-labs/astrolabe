@@ -17,15 +17,17 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   project) is left out) and **Add a project** (the add-project palette; once
   it adds the project the app leaves `/repositories` for a new draft thread there, so
   click `button "Projects"` to come back). The filter's foot holds **Show the file
-  tree** / **Show as list** (`astrolabe:repository-view:v1`), **Manage projects** and
-  **Add a project**.
+  tree** / **Show as list** (`astrolabe:repository-view:v1`), **Manage projects** (opens
+  `/settings/projects`) and **Add a project**. With no projects the list reads "No projects
+  yet" with its own **Add a project**.
 - **List** (default): with every project, one group each (collapsible header), a
-  **Changes →** row (Changes scoped to that project) and its eight
+  **Changes →** row (Changes scoped to that project; its name is `Changes`, as is the rail's
+  button, so scope locators to `role=navigation[name='Projects']`) and its eight
   most recently committed files. With one project: **Changes →**, then
   **Uncommitted · N** with **Review uncommitted changes →** and each changed file
   (`+a −d`), **Changes against `<base>` →** off the default branch, then **Recently
-  changed** (40 files; `review.getRecentFiles`, `git log --name-only`, deleted files and
-  files already under Uncommitted left out). File rows are `button "<path>"` by role (a
+  changed** (up to 40 files from the last 40 commits; `review.getRecentFiles`,
+  `git log --name-only`, deleted files and files already under Uncommitted left out). File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
   in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
@@ -38,7 +40,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   project the sidebar reads "Pick a project in the filter to see its files." The
   panel is `[data-file-browser-panel="<env>:<cwd>"]` and is keyed by that pair, so a new
   project or checkout remounts it on the new root. Toolbar: **Refresh workspace
-  files**, the field `Search <repo> files`, **Expand all folders** / **Collapse all
+  files**, the field `Search <project title> files`, **Expand all folders** / **Collapse all
   folders** (only with folders). Rows live in `file-tree-container`'s open shadow root as
   `[role=treeitem]` with `data-item-type` (`folder` / `file`) and `data-item-path`. The
   tree fills an absolutely placed box so its virtualized list gets a height. Rows in the
@@ -72,9 +74,11 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 
 - **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Projects"`
   (`features/repositories/RepositoriesScreen.tsx`). `Filter by project` (All projects,
-  each project; a name on two machines adds the machine). Every project: its eight
-  latest files under its name. One: **Browse all files** (route `RepositoryFiles`, T3 Code's
-  tree with no thread), **Changes** (selects that tab, kind Projects),
+  each project; a name on two machines adds the machine). The pick lives in memory only, so
+  an app restart returns to All projects. Every project: its eight latest files under its
+  name; a project with no recent files is left out. One: **Browse all files** (route
+  `RepositoryFiles`, T3 Code's tree with no thread), **Changes** (selects that tab with its
+  project kind, which the Changes filter names "Projects" only while it lists wikis too),
   **Uncommitted · N**, **Recently changed**. Rows are buttons named by path; a file opens
   read only on route `RepositoryFile`. Search (the tab's `Search files`) finds files by
   name in a picked project (`projects.searchEntries`); with every project it narrows
@@ -86,7 +90,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 
 Setup: a throwaway git repository for edits (never this worktree's own files) with a
 commit, a folder holding a `.ts` file and one uncommitted change, added with **Add a
-project**. With the **server** project that makes two projects.
+project**. When a wiki exists on that server, the palette then asks to link it; pick **Not
+now**. With the **server** project that makes two projects.
 
 1. Click `button "Projects"`; with no project picked the list shows one group per
    project.

@@ -14,7 +14,7 @@ resize and maximize still drive the panel itself.
 - **New tab menu** (`+` in every strip): the same surfaces. Items without a
   source are disabled, and hovering one shows why ("Browser previews are only
   available in the Astrolabe desktop app."). `mod+t` (`rightPanel.new`) opens the
-  focused pane's menu, with the panel open. Astrolabe adds **Document** (`O`), which
+  focused pane's menu, with the panel open and the terminal not focused. Astrolabe adds **Document** (`O`), which
   opens the wiki finder and puts the pick in that pane as a document tab.
 - **Lineage** (`I`, `components/lineage/`): the thread's fork family drawn left to
   right in `section[aria-label="Thread lineage"]`. The viewed thread runs along the
@@ -36,11 +36,13 @@ resize and maximize still drive the panel itself.
   thread has a fork, parent or merge-back), which opens or focuses the tab.
 - **Tabs from other sections** (`apps/web/src/sectionTabs/`): the Wikis, Projects
   and Changes panes can hold a chat (`chat:<env>:<thread>`), a document or wiki
-  change request (`wiki-note:`, `wiki-change:`), a repository file, diff or Manage tab
-  (`repo-file:`, `repo-diff:`, `repo-manage`), a change group (`change-group:<env>:<id>`)
+  change request (`wiki-note:`, `wiki-change:`), a project file or diff tab
+  (`repo-file:`, `repo-diff:`), a change group (`change-group:<env>:<id>`)
   and a pull request named in full, beside their own tabs. A change request's **Open
   thread** opens its thread beside it. A thread's right panel takes only wiki tabs
-  (Document, or a Graph tab click, which opens one beside the graph) and change-group tabs
+  (Document, a Graph tab click, which opens one beside the graph, or a `[[` wiki-note chip
+  in the composer or a sent message, `button "Wiki note, <note> in <wiki>"`, which opens or
+  brings forward a `wiki-note:` tab in the focused pane and opens the panel) and change-group tabs
   (from the group's shared run; see below). A tab outside its
   own section has **Open in Agents / Wikis / Projects / Changes** first in
   its right-click menu: it closes here and opens there (a chat in the chat tab in front,

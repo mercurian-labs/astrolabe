@@ -22,8 +22,7 @@ actions at its right end.
   as a rail button, 6px corners) heads the rail. Where the open sidebar meets the rail and the
   title bar, `[data-app-rail-corner]` rounds the join with the tab's 6px radius (`--radius-md`). With the
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
-  corner the same way, where the rail's edge meets the title bar's bottom border (strips,
-  and the Settings and Usage headers).
+  corner the same way, where the rail's edge meets the title bar's bottom border (strips).
 - Title row: heading **Agents**, then **Search threads**, **Filter threads**, **New thread**.
   The filter is a multi-select combobox (`projects/useThreadsFilter.ts` over the pure model in
   `projects/threadsFilter.ts` and the shared `projects/projectFilter.ts`; pills and checkboxes
@@ -31,13 +30,18 @@ actions at its right end.
   `Filter threads`, or `Filter threads (filtered)` with a dot while anything is picked. Its
   popup has a `Search filters` field (placeholder `Filter...`; "No matching filters." when
   nothing matches), then a **Status** group (Needs you, Working, Errored, each with the count
-  of visible threads in the picked projects) and a **Projects** group: All projects, each
-  project (wikis are not projects, so none is listed), and a last **New project** row. Every
-  row is a checkbox and picking keeps the popup open. Values in one group widen, the two
-  groups narrow. With no project picked, All projects and every project show ticked;
+  of visible threads in the picked projects) and a **Projects** group: All projects, then each
+  project (wikis are not projects, so none is listed); All projects drops out while the field
+  holds a query. Under the list, `button "New project"` is a plain button, not an option.
+  Every option is a checkbox and picking keeps the popup open. Values in one group widen, the
+  two groups narrow. With no project picked, All projects and every project show ticked;
   unticking one keeps the rest, and ticking every project or unticking the last is All
   projects again. The filter is kept in localStorage `astrolabe:threads-filter:v1` as
-  `{projects, statuses}` (removed when empty; an older stored `kinds` is dropped). An empty list reads "No threads match these filters".
+  `{projects, statuses}`, `projects` being project group keys (a repository identity such as
+  `github.com/owner/name`), not names; it is removed when empty, and an older stored `kinds` is
+  ignored on read but stays in storage until the next pick. The trigger and the pills show only
+  with at least one project; with none the list reads "No projects yet" with
+  `button "Add project"`. An empty list reads "No threads match these filters".
 - **Pills** (`[aria-label='Thread filters']`, under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
@@ -56,7 +60,8 @@ actions at its right end.
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
   list, the "New thread in…" picker. It is disabled with no projects. Each project row in
-  the filter's popup has a `Project settings for <name>` gear.
+  the filter's popup has a gear named only by its title, `[title="Project settings for <name>"]`
+  (it is `aria-hidden` with `tabIndex=-1`); right-clicking the row also opens project settings.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
   (Agents, Wikis, Projects, Changes when the server supports pull requests),
@@ -65,8 +70,10 @@ actions at its right end.
   configured, Settings is the account menu instead of a link (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
   Rail mark).
-  Usage has no sidebar: there it shows collapsed and the toggle is gone (`mod+b` does
-  nothing), and leaving Usage restores the open state. The rail's sections are the keyboard menu's Go to
+  Usage and Settings open as full-screen modals (`dialog "Usage"`, `dialog "Settings"`) over
+  the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
+  hidden, but `mod+b` still toggles the sidebar behind the modal. While one is open, two rail
+  buttons carry `aria-current="page"`: the section underneath and Usage (or Settings). The rail's sections are the keyboard menu's Go to
   (`useAppSections`). Agents returns to the last chat. Projects and Changes are
   sections like Wikis, each with its own sidebar and panes ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
@@ -76,8 +83,9 @@ actions at its right end.
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
   account menu), Wikis, Projects, Changes (when the server supports pull requests) and
   Usage; while on Wikis, Projects or Changes, that section's button reads Agents
-  instead. On Settings (legacy `/projects/…` links included) and Usage it shows only Back,
-  beside the account menu when there is one.
+  instead. Only legacy `/projects/…` pages show Back there (beside the account menu when
+  there is one); Settings and Usage keep the footer of the section underneath, and their modal
+  covers the sheet.
 - **Toggle main sidebar** is drawn over the rail's title-bar cell, above the monogram (same icon,
   tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while open; outside the rail's list,
   so `j`/`k` no longer reach it). On narrow windows (no rail) the toggle stays in the
@@ -87,8 +95,8 @@ actions at its right end.
   height, through the title bar (`[data-app-sidebar]::after`); collapsed there is
   none. Collapsed, the start of the main title bar (where its content starts) holds the
   section's Back and Forward (`[data-sidebar-control] [data-tab-history]`, in sections
-  with tabs only), not Search or the filter. Settings has no tabs: its header
-  (Settings / page) is the title bar, as Usage's is.
+  with tabs only), not Search or the filter. Settings and Usage have no tabs: their headers
+  (Settings / page, Usage / environment / provider) sit inside their modals.
 - **Thread rows** (`[data-testid=sidebar-row-card]`): one line with the project picture, the
   title, the terminal and machine glyphs, and the age or status; a smaller second line only when
   the thread has something particular, its parts joined by `·`: `Draft`
@@ -130,15 +138,15 @@ The trigger is a `role=combobox` button, and status rows carry their count in th
 (`Working3`), so match them with a leading regex. Clicking the trigger through
 `preview_evaluate` (`.click()`) does not open Base UI's popup; use `preview_act click`. Read
 the boxes from the drawn checkbox: `[...document.querySelectorAll('[role=option]')].map(o =>
-[o.textContent, o.querySelector('svg.lucide-check') ? 'x' : o.querySelector('svg.lucide-minus')
-? '-' : ' '])`. The sidebar's own search looks only inside the filter ("No threads found"
+[o.textContent, o.querySelector('svg.lucide-check') ? 'x' : ' '])` (there is no partial
+state). The sidebar's own search looks only inside the filter ("No threads found"
 for a hidden thread), so prove the reveal from the Search palette instead: Cmd+K `/`, type
 the hidden thread's title, Enter; the stored filter is gone and its row shows.
 
 **Proof:** each action's result (the field focused and
 `[role=listbox][aria-label="Thread search results"] [role=option]` rows as you
 type, the filter popup with its `Search filters` field, the Status and Projects groups and
-the New project row, every box ticked under All projects, the stored filter and the pill
+the New project button, every box ticked under All projects, the stored filter and the pill
 after a pick, the row count dropping to the picked projects and returning after the pill's ×,
 the picker or a new `/draft/` URL), plus a saved screenshot of the rows and pills. Rows in the accessibility
 tree are not proof they paint: for `[data-app-rail-mark]`, `[data-app-rail-toggle] button` and
