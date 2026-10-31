@@ -13,6 +13,7 @@ import {
   DEFAULT_LOCAL_GRAPH_PANEL,
   expandFolder,
   expandedFor,
+  folderNames,
   groupOf,
   importOf,
   localGraphInput,
@@ -154,6 +155,65 @@ describe("a local graph as the renderer draws it", () => {
   });
 });
 
+describe("folder names", () => {
+  it("are the fewest trailing parts of a path that no other folder ends in too", () => {
+    const names = folderNames([
+      "apps/web/src",
+      "apps/server/src",
+      "packages/contracts/src",
+      "scripts",
+      "apps/web/src/components",
+    ]);
+    expect(Object.fromEntries(names)).toEqual({
+      "apps/web/src": "web/src",
+      "apps/server/src": "server/src",
+      "packages/contracts/src": "contracts/src",
+      scripts: "scripts",
+      "apps/web/src/components": "components",
+    });
+  });
+
+  it("are the whole path when only it tells two apart, or when one ends the other", () => {
+    expect(Object.fromEntries(folderNames(["apps/web/src", "packages/web/src", "src"]))).toEqual({
+      "apps/web/src": "apps/web/src",
+      "packages/web/src": "packages/web/src",
+      src: "src",
+    });
+    expect(Object.fromEntries(folderNames(["../packages/ui/src", "apps/ui/src"]))).toEqual({
+      "../packages/ui/src": "packages/ui/src",
+      "apps/ui/src": "apps/ui/src",
+    });
+  });
+
+  it("name the graph's folded folders apart, the hover card keeping the path", () => {
+    const folders: CodeLocalGraph = {
+      ...GRAPH,
+      nodes: [
+        ...GRAPH.nodes,
+        node("apps/web/src", { kind: "folder", name: "src", lines: null, files: 975 }),
+        node("apps/server/src", { kind: "folder", name: "src", lines: null, files: 751 }),
+      ],
+      links: [
+        ...GRAPH.links,
+        link("apps/web/src", "app.ts", null),
+        link("apps/server/src", "app.ts", null),
+      ],
+    };
+    const names = Object.fromEntries(
+      shownLocalGraph(folders, DEFAULT_LOCAL_GRAPH_OPTIONS).data.nodes.map((each) => [
+        each.id,
+        each.name,
+      ]),
+    );
+    expect(names).toMatchObject({
+      "apps/web/src": "web/src",
+      "apps/server/src": "server/src",
+      "src/ui": "ui",
+      "lib.ts": "lib.ts",
+    });
+  });
+});
+
 describe("a hovered node's import", () => {
   it("is the line its link to the centre is written on, whichever file holds it", () => {
     expect(importOf(GRAPH, "lib.ts")).toMatchObject({ from: "app.ts", line: 3 });
@@ -218,7 +278,12 @@ describe("stored options", () => {
       depth: 3,
       tests: false,
       groups: [{ query: "packages/", color: 3 }],
-      settings: { ...DEFAULT_FILE_GRAPH_SETTINGS, arrows: true, linkDistance: 250 },
+      settings: {
+        ...DEFAULT_FILE_GRAPH_SETTINGS,
+        arrows: true,
+        changedFiles: true,
+        linkDistance: 250,
+      },
       panel: { ...DEFAULT_LOCAL_GRAPH_PANEL, open: true, forces: true },
     };
     expect(parseLocalGraphOptions(JSON.stringify(options))).toEqual(options);

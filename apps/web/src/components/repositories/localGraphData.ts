@@ -178,9 +178,29 @@ export interface ShownLocalGraph {
 }
 
 /**
+ * Each folder's name in a graph: the fewest trailing parts of its path that no other folder's
+ * path ends in too, so `apps/web/src` and `apps/server/src` read `web/src` and `server/src`.
+ */
+export function folderNames(paths: ReadonlyArray<string>): Map<string, string> {
+  const parts = paths.map((path) => path.split("/").filter((part) => part.length > 0));
+  const tail = (each: ReadonlyArray<string>, count: number) => each.slice(-count).join("/");
+  return new Map(
+    paths.map((path, at) => {
+      const own = parts[at] ?? [];
+      const sharedAt = (count: number) =>
+        parts.some((other, index) => index !== at && tail(other, count) === tail(own, count));
+      let count = 1;
+      while (count < own.length && sharedAt(count)) count += 1;
+      return [path, own.length === 0 ? path : tail(own, count)];
+    }),
+  );
+}
+
+/**
  * What the graph draws of an answer: hidden tests and dependencies dropped, with their links, and
  * then whatever no longer reaches the centre through what is left. A search keeps the centre and
- * the files whose name holds it; groups tint the files their query matches.
+ * the files whose name holds it; groups tint the files their query matches. A folded folder is
+ * named apart from the answer's other folders (`folderNames`).
  */
 export function shownLocalGraph(
   graph: CodeLocalGraph,
@@ -214,12 +234,15 @@ export function shownLocalGraph(
     (query === "" || node.id === graph.center || node.name.toLowerCase().includes(query));
   const nodes = kept.filter(drawn);
   const drawnIds = new Set(nodes.map((node) => node.id));
+  const folders = folderNames(
+    graph.nodes.flatMap((node) => (node.kind === "folder" ? [node.path ?? node.id] : [])),
+  );
   return {
     data: {
       center: graph.center,
       nodes: nodes.map((node) => ({
         id: node.id,
-        name: node.name,
+        name: node.kind === "folder" ? (folders.get(node.path ?? node.id) ?? node.name) : node.name,
         kind: node.kind,
         changed: node.changed !== null,
         test: node.test,

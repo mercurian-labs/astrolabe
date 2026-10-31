@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { FileGraphHandle, FileGraphProps } from "./FileGraph.tsx";
 import type { FileGraphData, FileGraphNode } from "./model/fileGraph.ts";
+import { DEFAULT_FILE_GRAPH_SETTINGS, type FileGraphSettings } from "./model/fileGraphSettings.ts";
 import type { FileGraphFrame } from "./render/file/FileGraphRenderer.ts";
 
 // The file graph as Repositories drives it, its frames handed to a recording drawer (happy-dom has
@@ -82,7 +83,7 @@ function paneSized(width: number, height: number) {
   };
 }
 
-function mounted(graph: FileGraphData) {
+function mounted(graph: FileGraphData, settings: FileGraphSettings = DEFAULT_FILE_GRAPH_SETTINGS) {
   harness.state.frames.length = 0;
   const host = document.createElement("div");
   document.body.append(host);
@@ -90,8 +91,12 @@ function mounted(graph: FileGraphData) {
   const onOpen = vi.fn<FileGraphProps["onOpen"]>();
   const onHover = vi.fn<NonNullable<FileGraphProps["onHover"]>>();
   const ref = createRef<FileGraphHandle>();
-  const show = (next: FileGraphData) =>
-    act(() => root.render(createElement(FileGraph, { graph: next, onOpen, onHover, ref })));
+  const show = (next: FileGraphData, nextSettings = settings) =>
+    act(() =>
+      root.render(
+        createElement(FileGraph, { graph: next, settings: nextSettings, onOpen, onHover, ref }),
+      ),
+    );
   show(graph);
   const canvas = () => host.querySelector(".file-graph") as HTMLElement;
   return {
@@ -271,6 +276,82 @@ describe("a file graph", () => {
     }
     harness.run();
     expect(harness.idle()).toBe(true);
+  });
+
+  it("draws plain dots, a folded folder lighter, and changed files amber only when asked", () => {
+    using _pane = paneSized(700, 500);
+    const changed: FileGraphData = {
+      ...GRAPH,
+      nodes: [
+        ...GRAPH.nodes.map((each) =>
+          each.id === "app.ts" || each.id === "b.ts" ? { ...each, changed: true } : each,
+        ),
+        node("src/ui", { kind: "folder", files: 9 }),
+      ],
+      links: [...GRAPH.links, { from: "app.ts", to: "src/ui", guessed: false }],
+    };
+    using graph = mounted(changed);
+    harness.run();
+    const file = drawn("a.ts")?.fill;
+    const accent = drawn("app.ts")?.fill;
+    expect(drawn("b.ts")?.fill).toBe(file);
+    expect(drawn("src/ui")?.fill).not.toBe(file);
+
+    graph.show(changed, { ...DEFAULT_FILE_GRAPH_SETTINGS, changedFiles: true });
+    harness.run();
+    expect(drawn("b.ts")?.fill).not.toBe(file);
+    expect(drawn("b.ts")?.fill).not.toBe(accent);
+    expect(drawn("a.ts")?.fill).toBe(file);
+    // The centre stays in the accent, changed or not.
+    expect(drawn("app.ts")?.fill).toBe(accent);
+  });
+
+  it("hides a crowded label at rest until a hover or the zoom makes room, then rests", () => {
+    using _pane = paneSized(700, 500);
+    const leaves = Array.from({ length: 30 }, (_, at) => `feature-${at}/someLongFileName.ts`);
+    const crowded: FileGraphData = {
+      center: "hub.ts",
+      nodes: [
+        node("hub.ts"),
+        node("apps/web/src", { kind: "folder", files: 500 }),
+        ...leaves.map((id) => node(id)),
+      ],
+      links: ["apps/web/src", ...leaves].map((from) => ({ from, to: "hub.ts", guessed: false })),
+    };
+    using graph = mounted(crowded);
+    harness.run();
+    const shown = () => (last()?.nodes ?? []).filter((each) => each.labelAlpha > 0.5).length;
+    expect(drawn("hub.ts")?.labelAlpha).toBe(1);
+    expect(drawn("apps/web/src")?.labelAlpha).toBe(1);
+    const hidden = leaves.find((id) => drawn(id)?.labelAlpha === 0);
+    expect(hidden).toBeDefined();
+    const atRest = shown();
+
+    const at = screenOf(hidden ?? "");
+    graph.pointer("pointermove", at.x, at.y);
+    harness.run();
+    expect(drawn(hidden ?? "")?.labelAlpha).toBe(1);
+    expect(drawn("hub.ts")?.labelAlpha).toBe(1);
+    graph.pointer("pointerleave", 0, 0);
+    harness.run();
+    expect(drawn(hidden ?? "")?.labelAlpha).toBe(0);
+
+    const centre = screenOf("hub.ts");
+    const wheel = new WheelEvent("wheel", { deltaY: -600, bubbles: true });
+    Object.defineProperties(wheel, {
+      clientX: { value: centre.x },
+      clientY: { value: centre.y },
+      ctrlKey: { value: false },
+    });
+    act(() => {
+      document.querySelector(".file-graph")?.dispatchEvent(wheel);
+    });
+    harness.run();
+    expect(harness.idle()).toBe(true);
+    expect(shown()).toBeGreaterThan(atRest);
+    expect(last()?.nodes.every((each) => each.labelAlpha === 0 || each.labelAlpha === 1)).toBe(
+      true,
+    );
   });
 
   it("lights a hovered node, its neighbours and their links, fades the rest, and names it", () => {

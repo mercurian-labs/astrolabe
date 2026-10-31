@@ -72,9 +72,9 @@ describe("a file graph", () => {
     expect(fileGraphStructure(narrowed)).not.toBe(fileGraphStructure(GRAPH));
   });
 
-  it("names a folded folder with a slash and its file count", () => {
-    expect(nodeLabel(node("src/ui", { kind: "folder", files: 7 }))).toBe("ui/ · 7");
-    expect(nodeLabel(node("src/ui", { kind: "folder" }))).toBe("ui/");
+  it("names a folded folder with its file count", () => {
+    expect(nodeLabel(node("src/ui", { kind: "folder", files: 7 }))).toBe("ui · 7");
+    expect(nodeLabel(node("src/ui", { kind: "folder" }))).toBe("ui");
     expect(nodeLabel(node("src/app.ts"))).toBe("app.ts");
   });
 });

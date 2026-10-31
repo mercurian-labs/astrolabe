@@ -29,11 +29,14 @@ header, **Open local graph** in a file's menu in the sidebar, or `r` `g` in the
 [keyboard menu](keybindings.md#keyboard-menu). It opens beside the file and follows the file you
 are reading; turn off **Following** in its header to keep it on one file.
 
-Click a file to open it (⌘-click or Ctrl-click for a new tab), or a folded folder (a ring) to
-unfold it; **Fold folders** in the header folds them again. Drag a file to move it, drag the
-background to pan, and scroll to zoom. Hovering a file lights it and its neighbours, shows the
-import that links it, and highlights that line in the open file. A thin ring marks a file changed
-on your branch or not yet committed; outside packages are lighter dots.
+Click a file to open it (⌘-click or Ctrl-click for a new tab), or a folded folder (a lighter dot
+named by the end of its path, such as `web/src · 975`) to unfold it; **Fold folders** in the
+header folds them again. Drag a file to move it, drag the background to pan, and scroll to zoom.
+Where names would overlap, the bigger file's shows and the other waits until you zoom in.
+Hovering a file names it and its neighbours, lights them, shows the import that links it, and
+highlights that line in the open file. Outside packages are the lightest dots. To see which files
+changed on your branch or are not yet committed, turn on **Changed files** in the panel's
+Display.
 
 **Graph settings** in the header opens a panel to search the files shown, set the depth and whether
 uses, files that use it, tests and outside packages show, and tune the display and the forces that
