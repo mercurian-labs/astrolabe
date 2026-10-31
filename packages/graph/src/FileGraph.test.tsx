@@ -354,6 +354,43 @@ describe("a file graph", () => {
     );
   });
 
+  it("keeps a graph framed as files arrive around the same file, until the reader pans", () => {
+    using _pane = paneSized(700, 500);
+    const small: FileGraphData = {
+      center: "hub.ts",
+      nodes: [node("hub.ts"), node("a.ts")],
+      links: [{ from: "a.ts", to: "hub.ts", guessed: false }],
+    };
+    const leaves = Array.from({ length: 40 }, (_, at) => `leaf-${at}.ts`);
+    const grown: FileGraphData = {
+      ...small,
+      nodes: [...small.nodes, ...leaves.map((id) => node(id))],
+      links: [...small.links, ...leaves.map((from) => ({ from, to: "hub.ts", guessed: false }))],
+    };
+    const inView = (id: string) => {
+      const at = screenOf(id);
+      return at.x >= 0 && at.x <= 700 && at.y >= 0 && at.y <= 500;
+    };
+    using graph = mounted(small);
+    harness.run();
+    graph.show(grown);
+    harness.run();
+    expect(harness.idle()).toBe(true);
+    expect(["hub.ts", "a.ts", ...leaves].every(inView)).toBe(true);
+
+    const camera = last()?.camera;
+    const at = screenOf("hub.ts");
+    graph.pointer("pointerdown", at.x + 300, at.y + 200);
+    graph.pointer("pointermove", at.x + 340, at.y + 200);
+    graph.pointer("pointerup", at.x + 340, at.y + 200);
+    harness.run();
+    const panned = last()?.camera;
+    expect(panned).not.toEqual(camera);
+    graph.show(small);
+    harness.run();
+    expect(last()?.camera).toEqual(panned);
+  });
+
   it("keeps a hovered hub's neighbours from naming themselves over each other", () => {
     using _pane = paneSized(700, 500);
     const leaves = Array.from({ length: 30 }, (_, at) => `feature-${at}/someLongFileName.ts`);

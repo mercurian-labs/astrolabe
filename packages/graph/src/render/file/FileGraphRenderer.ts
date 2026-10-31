@@ -330,9 +330,15 @@ export class FileGraphRenderer {
   /** 0 with nothing hovered, 1 with a hover fully lit. */
   #hoverMix = 0;
   #press: Press | null = null;
+  /** Whether the camera still frames the graph as `fit` left it; a pan or zoom lets go. */
+  #framed = true;
+  /** While a graph around the same file settles, a framed camera widens to keep it all in view. */
+  #reframe = false;
   readonly #motion: Animation = {
     step: (dt) => {
       const moving = this.#forces?.step() ?? false;
+      if (this.#reframe && this.#press === null && !this.#allInView()) this.fit();
+      if (!moving) this.#reframe = false;
       const target = this.#hovered === null ? 0 : 1;
       const delta = dt / FADE_SECONDS;
       this.#hoverMix =
@@ -424,6 +430,7 @@ export class FileGraphRenderer {
     this.#forces = next;
     if (sameCenter) {
       next.reheat(0.5);
+      this.#reframe = this.#framed;
       this.#scheduler.animate(this.#motion);
       return;
     }
@@ -493,7 +500,31 @@ export class FileGraphRenderer {
       this.#width,
       this.#height,
     );
+    this.#framed = true;
     this.#scheduler.invalidate();
+  }
+
+  /** Whether every node and its name sit inside the frame. */
+  #allInView(): boolean {
+    const graph = this.#graph;
+    const forces = this.#forces;
+    if (graph === null || forces === null) return true;
+    const positions = forces.positions();
+    const { x, y, zoom } = this.#camera;
+    return graph.nodes.every((node, index) => {
+      const at = positions[index];
+      if (at === undefined) return true;
+      const radius = this.#radiusOf(node.id);
+      const half = Math.max(radius, (nodeLabel(node).length * LABEL_CHAR) / 2) * zoom;
+      const left = (at.x - x) * zoom + this.#width / 2;
+      const top = (at.y - y) * zoom + this.#height / 2;
+      return (
+        left - half >= 0 &&
+        left + half <= this.#width &&
+        top - radius * zoom >= 0 &&
+        top + (radius + LABEL_GAP + LABEL_LINE) * zoom <= this.#height
+      );
+    });
   }
 
   /** Lay the graph out again from a scatter, as Obsidian's Animate does. */
@@ -840,6 +871,8 @@ export class FileGraphRenderer {
     }
     if (press.pointer !== event.pointerId) return;
     if (press.kind === "pan") {
+      this.#framed = false;
+      this.#reframe = false;
       this.#camera = {
         ...press.camera,
         x: press.camera.x - (at.x - press.x) / press.camera.zoom,
@@ -851,6 +884,7 @@ export class FileGraphRenderer {
     if (!press.moved && Math.hypot(at.x - press.x, at.y - press.y) < CLICK_SLOP) return;
     if (!press.moved) {
       press.moved = true;
+      this.#reframe = false;
       // The card would ride over the dragged node: it goes until the drag ends.
       this.#setHovered(press.id);
       this.#callbacks.onHover(null);
@@ -898,6 +932,8 @@ export class FileGraphRenderer {
     const factor = Math.exp(-pixels * (event.ctrlKey ? 0.01 : 0.002));
     const before = this.#toWorld(at.x, at.y);
     const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.#camera.zoom * factor));
+    this.#framed = false;
+    this.#reframe = false;
     // The world point under the pointer stays under it.
     this.#camera = {
       zoom,
