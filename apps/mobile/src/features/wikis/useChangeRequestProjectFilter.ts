@@ -11,10 +11,10 @@ import { resolveWikiScope } from "./wikisList";
 export const ALL_WIKIS = "wikis";
 
 /**
- * Astrolabe: the Change requests tab's project filter, as every section's is: All projects, then
- * Repositories and each repository, then Wikis and each wiki. A repository is the list's own
- * project control; this keeps the kind and the tab's own wiki. `selected` is the wiki choice in
- * force, or null while the pull requests show.
+ * Astrolabe: the Change requests tab's project filter, as every section's is: All, then Projects
+ * and each project, then Wikis and each wiki. A project is the list's own project control; this
+ * keeps the kind and the tab's own wiki. `selected` is the wiki choice in force, or null while
+ * the pull requests show.
  */
 export function useChangeRequestProjectFilter() {
   const kind = useAtomValue(changeRequestProjectKindAtom);

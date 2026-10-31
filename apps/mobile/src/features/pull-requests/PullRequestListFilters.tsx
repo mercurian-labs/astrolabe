@@ -36,7 +36,7 @@ const ROW_STYLE =
 const id = (field: string, value: string) => JSON.stringify([field, value]);
 /** Astrolabe: a wiki's choice in the project menu, told apart from a project's. */
 const WIKI_CHOICE = "wiki:";
-/** Astrolabe: every repository's pull requests, the project menu's Repositories heading. */
+/** Astrolabe: every project's pull requests, the project menu's Projects heading. */
 const REPOSITORIES_CHOICE = "kind:repositories";
 
 function choices(field: string, options: Readonly<Record<string, string>>, selected: string) {
