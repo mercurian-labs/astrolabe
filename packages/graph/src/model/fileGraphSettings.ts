@@ -1,9 +1,10 @@
 /**
  * How a file graph is drawn and laid out, as Obsidian's graph settings say it: Display (arrows,
- * text fade, node size, link thickness) and Forces (center, repel, link force, link distance),
- * with Obsidian's ranges. The host keeps them on the device; a stored set that no longer decodes
- * reads as the defaults.
+ * changed files, text fade, node size, link thickness) and Forces (center, repel, link force,
+ * link distance), with Obsidian's ranges. The host keeps them on the device; a stored set that no
+ * longer decodes reads as the defaults.
  */
+import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -27,6 +28,8 @@ const ranged = (key: FileGraphRangeKey) =>
 export const FileGraphSettings = Schema.Struct({
   /** Arrowheads from importer to imported. */
   arrows: Schema.Boolean,
+  /** Changed files filled amber. A set stored before it reads as off. */
+  changedFiles: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** How soon labels fade as the graph zooms out: higher fades them sooner. */
   textFade: ranged("textFade"),
   nodeSize: ranged("nodeSize"),
@@ -46,6 +49,7 @@ export type FileGraphForces = Pick<
 /** Obsidian's defaults, but for a shorter link distance: a file's graph is crowded around it. */
 export const DEFAULT_FILE_GRAPH_SETTINGS: FileGraphSettings = {
   arrows: false,
+  changedFiles: false,
   textFade: 0,
   nodeSize: 1,
   linkThickness: 1,

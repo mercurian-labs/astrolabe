@@ -193,6 +193,13 @@ export function LocalGraphPanel({
             checked={settings.arrows}
             onChange={(arrows) => onChange({ ...options, settings: { ...settings, arrows } })}
           />
+          <SwitchRow
+            label="Changed files"
+            checked={settings.changedFiles}
+            onChange={(changedFiles) =>
+              onChange({ ...options, settings: { ...settings, changedFiles } })
+            }
+          />
           <SliderRow label="Text fade threshold" {...setting("textFade")} />
           <SliderRow label="Node size" {...setting("nodeSize")} />
           <SliderRow label="Link thickness" {...setting("linkThickness")} />

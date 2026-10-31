@@ -278,7 +278,12 @@ describe("stored options", () => {
       depth: 3,
       tests: false,
       groups: [{ query: "packages/", color: 3 }],
-      settings: { ...DEFAULT_FILE_GRAPH_SETTINGS, arrows: true, linkDistance: 250 },
+      settings: {
+        ...DEFAULT_FILE_GRAPH_SETTINGS,
+        arrows: true,
+        changedFiles: true,
+        linkDistance: 250,
+      },
       panel: { ...DEFAULT_LOCAL_GRAPH_PANEL, open: true, forces: true },
     };
     expect(parseLocalGraphOptions(JSON.stringify(options))).toEqual(options);

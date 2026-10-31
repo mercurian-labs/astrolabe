@@ -9,13 +9,13 @@ export type FileGraphNodeKind = "file" | "package" | "dependency" | "folder";
 export interface FileGraphNode {
   readonly id: string;
   readonly name: string;
-  /** A dependency is a lighter dot, a folded folder a ring; files and packages are plain dots. */
+  /** A dependency is the lightest dot, a folded folder a lighter one; files and packages are plain. */
   readonly kind: FileGraphNodeKind;
-  /** Changed on its branch or not yet committed: it carries a thin ring. */
+  /** Changed on its branch or not yet committed: filled amber while Changed files is on. */
   readonly changed: boolean;
   /** A test: its label is quieter. */
   readonly test: boolean;
-  /** A folded folder's file count, said in its label. */
+  /** A folded folder's file count, said in its label and sizing its dot. */
   readonly files: number | null;
   /** The group whose colour tints it (one of `GROUP_SLOTS`), or null. */
   readonly group: number | null;

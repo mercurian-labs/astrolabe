@@ -13,18 +13,20 @@ import {
   Ticker,
 } from "pixi.js";
 
-import { LABEL_GAP, type FileGraphDrawer, type FileGraphFrame } from "./FileGraphRenderer.ts";
+import {
+  LABEL_GAP,
+  LABEL_SIZE,
+  type FileGraphDrawer,
+  type FileGraphFrame,
+} from "./FileGraphRenderer.ts";
+import { LABEL_VISIBLE } from "./labelPlacement.ts";
 
-/** Labels are set at this size in world units: 12 CSS pixels at zoom 1. */
-const LABEL_PIXELS = 12;
 /** An arrowhead's length and half-width, in CSS pixels at link thickness 1. */
 const ARROW_LENGTH = 7;
 const ARROW_HALF = 2.6;
-/** A changed file's ring stands this far outside its node, in world units. */
-const RING_GAP = 2.5;
 
-/** Labels are rasterised for the zoom they are drawn at, in steps, so they stay crisp. */
-const resolutionStep = (zoom: number) => (zoom > 2 ? 4 : zoom > 1 ? 2 : 1);
+/** Labels are rasterised for the scale they are drawn at, in steps, so they stay crisp. */
+const resolutionStep = (scale: number) => (scale > 2 ? 4 : scale > 1 ? 2 : 1);
 
 class PixiFileDrawer implements FileGraphDrawer {
   readonly #host: HTMLElement;
@@ -163,19 +165,7 @@ class PixiFileDrawer implements FileGraphDrawer {
 
     nodes.clear();
     for (const node of frame.nodes) {
-      if (node.hollow) {
-        nodes
-          .circle(node.x, node.y, node.radius)
-          .fill(frame.paper, node.alpha)
-          .stroke({ width: 1.5 / zoom, color: node.fill, alpha: node.alpha });
-      } else {
-        nodes.circle(node.x, node.y, node.radius).fill(node.fill, node.alpha);
-      }
-      if (node.ring !== null) {
-        nodes
-          .circle(node.x, node.y, node.radius + RING_GAP)
-          .stroke({ width: 1.2 / zoom, color: node.ring, alpha: node.alpha });
-      }
+      nodes.circle(node.x, node.y, node.radius).fill(node.fill, node.alpha);
     }
 
     this.#drawLabels(frame, labels);
@@ -185,12 +175,14 @@ class PixiFileDrawer implements FileGraphDrawer {
   }
 
   #drawLabels(frame: FileGraphFrame, labels: Container): void {
-    const resolution = this.#pixelRatio * resolutionStep(frame.camera.zoom);
+    const resolution = this.#pixelRatio * resolutionStep(frame.labelScale);
+    // Labels live in the world but keep the size `labelScale` gives them on screen.
+    const scale = frame.labelScale / frame.camera.zoom;
     const restyled = this.#style === null || this.#style.fontFamily !== frame.font;
     if (restyled) {
       this.#style = new TextStyle({
         fontFamily: frame.font,
-        fontSize: LABEL_PIXELS,
+        fontSize: LABEL_SIZE,
         fill: 0xffffff,
       });
     }
@@ -210,9 +202,10 @@ class PixiFileDrawer implements FileGraphDrawer {
         if (restyled) text.style = style;
         if (this.#resolution !== resolution) text.resolution = resolution;
       }
-      text.visible = node.labelAlpha > 0.01;
+      text.visible = node.labelAlpha > LABEL_VISIBLE;
       text.alpha = node.labelAlpha;
       text.tint = node.labelColor;
+      text.scale.set(scale);
       text.position.set(node.x, node.y + node.radius + LABEL_GAP);
     }
     for (const [id, text] of this.#texts) {

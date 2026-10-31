@@ -1,7 +1,8 @@
 /**
  * A file graph drawn the way Obsidian draws a vault: grey dots sized by their links, names under
- * them, hairline links at rest, the file in front in the accent. Forces run only while something
- * moves; frames are drawn only on a change, by a drawer that only paints (`FileGraphDrawer`).
+ * them, hairline links at rest, the file in front in the accent. Where names would collide the
+ * more important keeps its place (`labelPlacement.ts`). Forces run only while something moves;
+ * frames are drawn only on a change, by a drawer that only paints (`FileGraphDrawer`).
  */
 import { FileForces, type Point } from "../../layout/fileForces.ts";
 import { seededPoint } from "../../layout/forceLayout.ts";
@@ -21,6 +22,13 @@ import {
 } from "../../model/fileGraphSettings.ts";
 import { browserClock, FrameScheduler, type Animation, type FrameClock } from "../scheduler.ts";
 import { cssHex } from "../theme.ts";
+import {
+  LABEL_VISIBLE,
+  labelBoxes,
+  labelOrder,
+  placeLabels,
+  type LabelBoxes,
+} from "./labelPlacement.ts";
 
 /** A node as the drawer paints it: world units, colours as 0xrrggbb. */
 export interface DrawnNode {
@@ -30,10 +38,6 @@ export interface DrawnNode {
   readonly radius: number;
   readonly fill: number;
   readonly alpha: number;
-  /** A folded folder: a ring, its middle the paper's colour. */
-  readonly hollow: boolean;
-  /** A changed file's thin ring, in this colour. */
-  readonly ring: number | null;
   readonly label: string;
   readonly labelColor: number;
   readonly labelAlpha: number;
@@ -65,9 +69,10 @@ export interface FileGraphFrame {
   /** Faded first, so what a hover lights draws over the rest. */
   readonly links: ReadonlyArray<DrawnLink>;
   readonly nodes: ReadonlyArray<DrawnNode>;
-  /** A link's width and an outline's, in CSS pixels whatever the zoom. */
+  /** A link's width, in CSS pixels whatever the zoom. */
   readonly lineWidth: number;
-  readonly paper: number;
+  /** How large labels draw against `LABEL_SIZE`: see `labelScale`. */
+  readonly labelScale: number;
   /** The labels' CSS font family: the app's own. */
   readonly font: string;
 }
@@ -97,10 +102,11 @@ export interface FileGraphRendererOptions {
 }
 
 interface FileGraphColors {
-  readonly paper: number;
   readonly ink: number;
   readonly node: number;
-  /** An outside package: lighter, as Obsidian draws an attachment. */
+  /** A folded folder: a touch lighter than a file. */
+  readonly folder: number;
+  /** An outside package: lighter still, as Obsidian draws an attachment. */
   readonly faint: number;
   readonly link: number;
   readonly accent: number;
@@ -124,13 +130,17 @@ const RADIUS_GROWTH = 1;
 const MAX_RADIUS = 16;
 /** Labels sit this far under their node. */
 export const LABEL_GAP = 3;
+/** Labels are set at this size: CSS pixels at zoom 1. */
+export const LABEL_SIZE = 12;
+/** A label's box is this many times its size tall. */
+const LABEL_HEIGHT = 1.2;
 /** What a hover leaves of everything it does not light. */
 const FADED_NODE = 0.2;
 const FADED_LINK = 0.08;
 /** A link resolved by name alone draws at this share of a link's alpha. */
 const GUESSED = 0.5;
-/** How long a hover takes to light or fade, in seconds. */
-const HOVER_SECONDS = 0.15;
+/** How long a hover takes to light or fade, and a label to make way or come back, in seconds. */
+const FADE_SECONDS = 0.15;
 /** A press that moves less than this, in CSS pixels, is a click. */
 const CLICK_SLOP = 4;
 /** A pointer this near a node's edge, in CSS pixels, is on it. */
@@ -144,10 +154,16 @@ const FIT_PADDING = 32;
 const LABEL_CHAR = 6.5;
 const LABEL_LINE = 16;
 
+/** What sizes a node: its links, a folded folder's files. */
+const nodeWeight = (node: FileGraphNode, degree: number): number =>
+  node.kind === "folder" ? Math.max(degree, node.files ?? 0) : degree;
+
 /** A node's radius in world units: bigger with more links, a folded folder with more files. */
 export function nodeRadius(node: FileGraphNode, degree: number, nodeSize: number): number {
-  const weight = node.kind === "folder" ? Math.max(degree, node.files ?? 0) : degree;
-  return nodeSize * Math.min(MAX_RADIUS, BASE_RADIUS + RADIUS_GROWTH * Math.sqrt(weight));
+  return (
+    nodeSize *
+    Math.min(MAX_RADIUS, BASE_RADIUS + RADIUS_GROWTH * Math.sqrt(nodeWeight(node, degree)))
+  );
 }
 
 /**
@@ -158,6 +174,12 @@ export function labelOpacity(zoom: number, textFade: number): number {
   const gone = 0.4 * 2 ** textFade;
   return Math.max(0, Math.min(1, (zoom - gone) / (gone * 0.5)));
 }
+
+/**
+ * How large labels draw at `zoom`, against their size at zoom 1: with the graph zoomed out, and
+ * more slowly zoomed in, so zooming in makes room between labels that collide.
+ */
+export const labelScale = (zoom: number): number => (zoom <= 1 ? zoom : Math.sqrt(zoom));
 
 /** The camera that frames `points` (each with the room around it) in a `width` × `height` frame. */
 export function fitCamera(
@@ -216,9 +238,9 @@ export function readFileGraphTheme(element: Element): {
   const node = read("--atlas-muted", FALLBACK.muted);
   return {
     colors: {
-      paper,
       ink: read("--atlas-ink", FALLBACK.ink),
       node,
+      folder: mix(node, paper, 0.3),
       faint: mix(node, paper, 0.55),
       // The theme's rule, a touch darker so a hairline still reads on the paper.
       link: mix(read("--atlas-rule", FALLBACK.rule), node, 0.12),
@@ -250,6 +272,37 @@ type Press =
       readonly camera: Camera;
     };
 
+/** What the label pass keeps between frames for one graph: one slot per node, in its order. */
+interface Labels {
+  readonly texts: ReadonlyArray<string>;
+  readonly weights: Float64Array;
+  /** Measured in `font` at `LABEL_SIZE`, or not yet (null). */
+  widths: Float64Array;
+  font: string | null;
+  /** Whether a label has room at rest (1) or makes way (0), as the last frame placed it. */
+  readonly fits: Float64Array;
+  /** How much of its label each node shows at rest, easing towards `fits`; null until placed. */
+  shown: Float64Array | null;
+  readonly rest: Int32Array;
+  /** While a hover lights some: their labels lead and show whatever they meet. */
+  lit: Int32Array;
+  forced: number;
+  readonly boxes: LabelBoxes;
+  readonly restAlpha: Float64Array;
+  readonly litAlpha: Float64Array;
+  readonly placed: Int32Array;
+}
+
+let measureContext: CanvasRenderingContext2D | null | undefined;
+
+/** A label's width at `LABEL_SIZE` in `font`, estimated where there is no canvas to measure it. */
+function measureLabel(text: string, font: string): number {
+  measureContext ??= document.createElement("canvas").getContext("2d");
+  if (measureContext === null) return text.length * LABEL_CHAR;
+  measureContext.font = `${LABEL_SIZE}px ${font}`;
+  return measureContext.measureText(text).width;
+}
+
 export class FileGraphRenderer {
   readonly #host: HTMLElement;
   readonly #callbacks: FileGraphCallbacks;
@@ -263,6 +316,7 @@ export class FileGraphRenderer {
   #structure = "";
   #degrees = new Map<string, number>();
   #nodesById = new Map<string, FileGraphNode>();
+  #labels: Labels | null = null;
   #forces: FileForces | null = null;
   #settings: FileGraphSettings = DEFAULT_FILE_GRAPH_SETTINGS;
   #camera: Camera = { x: 0, y: 0, zoom: 1 };
@@ -280,15 +334,16 @@ export class FileGraphRenderer {
     step: (dt) => {
       const moving = this.#forces?.step() ?? false;
       const target = this.#hovered === null ? 0 : 1;
-      const delta = dt / HOVER_SECONDS;
+      const delta = dt / FADE_SECONDS;
       this.#hoverMix =
         target > this.#hoverMix
           ? Math.min(target, this.#hoverMix + delta)
           : Math.max(target, this.#hoverMix - delta);
-      if (this.#hoverMix === 0) this.#lit = new Set();
+      if (this.#hoverMix === 0 && this.#lit.size > 0) this.#lit = new Set();
+      const fading = this.#fadeLabels(delta);
       // A hovered node the forces move takes its card along.
       if (moving && this.#hovered !== null && this.#press === null) this.#tellHover();
-      return moving || this.#hoverMix !== target;
+      return moving || this.#hoverMix !== target || fading;
     },
   };
 
@@ -346,12 +401,13 @@ export class FileGraphRenderer {
       else this.#setHovered(null);
     }
     const structure = fileGraphStructure(graph);
+    if (structure !== this.#structure) this.#degrees = fileGraphDegrees(graph);
+    this.#labels = this.#labelsOf(graph);
     if (structure === this.#structure && forces !== null) {
       this.#scheduler.invalidate();
       return;
     }
     this.#structure = structure;
-    this.#degrees = fileGraphDegrees(graph);
     const sameCenter = previous !== null && previous.center === graph.center;
     // A folder just unfolded: its files start where it stood.
     const folders = (previous?.nodes ?? []).filter((node) => node.kind === "folder");
@@ -379,6 +435,7 @@ export class FileGraphRenderer {
     const before = this.#settings;
     if (
       before.arrows === settings.arrows &&
+      before.changedFiles === settings.changedFiles &&
       before.textFade === settings.textFade &&
       before.nodeSize === settings.nodeSize &&
       before.linkThickness === settings.linkThickness &&
@@ -471,6 +528,7 @@ export class FileGraphRenderer {
     const lighting = share > 0 && lit.size > 0;
     const positions = forces.positions();
     const zoomLabels = labelOpacity(camera.zoom, settings.textFade);
+    const labels = this.#placeLabels(graph, positions, font, zoomLabels, lighting);
     const placed = new Map<
       string,
       { readonly x: number; readonly y: number; readonly radius: number }
@@ -482,13 +540,17 @@ export class FileGraphRenderer {
       const base =
         node.id === graph.center
           ? colors.accent
-          : node.group !== null
-            ? (colors.groups[node.group] ?? colors.node)
-            : node.kind === "dependency"
-              ? colors.faint
-              : colors.node;
+          : settings.changedFiles && node.changed
+            ? colors.changed
+            : node.group !== null
+              ? (colors.groups[node.group] ?? colors.node)
+              : node.kind === "dependency"
+                ? colors.faint
+                : node.kind === "folder"
+                  ? colors.folder
+                  : colors.node;
       const isLit = lighting && lit.has(node.id);
-      const restLabel = node.id === graph.center ? 1 : zoomLabels;
+      const restLabel = labels.restAlpha[index] ?? 0;
       return {
         id: node.id,
         x: at.x,
@@ -496,15 +558,13 @@ export class FileGraphRenderer {
         radius,
         fill: isLit ? mix(base, colors.accent, share) : base,
         alpha: lighting && !isLit ? 1 - (1 - FADED_NODE) * share : 1,
-        hollow: node.kind === "folder",
-        ring: node.changed ? colors.changed : null,
-        label: nodeLabel(node),
+        label: labels.texts[index] ?? "",
         labelColor: node.test ? colors.node : colors.ink,
+        // A hover takes each label from where it rests to where the hover places it.
         labelAlpha: !lighting
           ? restLabel
-          : isLit
-            ? restLabel + (1 - restLabel) * share
-            : restLabel * (1 - (1 - FADED_NODE) * share),
+          : restLabel +
+            ((isLit ? 1 : FADED_NODE * (labels.litAlpha[index] ?? 0)) - restLabel) * share,
         order: isLit ? 1 : 0,
       };
     });
@@ -542,14 +602,139 @@ export class FileGraphRenderer {
       links: links.toSorted(byOrder).map(({ order: _, ...link }) => link),
       nodes: nodes.toSorted(byOrder).map(({ order: _, ...node }) => node),
       lineWidth: settings.linkThickness,
-      paper: colors.paper,
+      labelScale: labelScale(camera.zoom),
       font,
     };
   }
 
   #draw(): void {
     const frame = this.frame();
-    if (frame !== null) this.#drawer.draw(frame);
+    if (frame === null) return;
+    this.#drawer.draw(frame);
+    if (this.#labelsMoving()) this.#scheduler.animate(this.#motion);
+  }
+
+  /** The label pass's buffers for `graph`, ordered by the hover lighting it now. */
+  #labelsOf(graph: FileGraphData): Labels {
+    const count = graph.nodes.length;
+    const weights = Float64Array.from(graph.nodes, (node) =>
+      nodeWeight(node, this.#degrees.get(node.id) ?? 0),
+    );
+    const labels: Labels = {
+      texts: graph.nodes.map(nodeLabel),
+      weights,
+      widths: new Float64Array(count),
+      font: null,
+      fits: new Float64Array(count),
+      shown: null,
+      rest: labelOrder(
+        count,
+        (index) => (graph.nodes[index]?.id === graph.center ? 0 : 1),
+        (index) => weights[index] ?? 0,
+      ),
+      lit: new Int32Array(0),
+      forced: 0,
+      boxes: labelBoxes(count),
+      restAlpha: new Float64Array(count),
+      litAlpha: new Float64Array(count),
+      placed: new Int32Array(count),
+    };
+    this.#orderLit(graph, labels);
+    return labels;
+  }
+
+  /** The centre, then the hovered node, then what it lights, then the rest, each bigger first. */
+  #orderLit(graph: FileGraphData, labels: Labels): void {
+    const lit = this.#lit;
+    const from = this.#litFrom;
+    const rank = (index: number) => {
+      const id = graph.nodes[index]?.id;
+      if (id === graph.center) return 0;
+      if (id === from) return 1;
+      return id !== undefined && lit.has(id) ? 2 : 3;
+    };
+    labels.lit = labelOrder(graph.nodes.length, rank, (index) => labels.weights[index] ?? 0);
+    labels.forced = labels.lit.findIndex((index) => rank(index) === 3);
+    if (labels.forced < 0) labels.forced = labels.lit.length;
+  }
+
+  /**
+   * Where each label shows at rest (`restAlpha`) and, while a hover lights some, under it
+   * (`litAlpha`): the zoom's fade, then what collisions leave it.
+   */
+  #placeLabels(
+    graph: FileGraphData,
+    positions: ReadonlyArray<Point>,
+    font: string,
+    zoomLabels: number,
+    lighting: boolean,
+  ): Labels {
+    const labels = this.#labels ?? this.#labelsOf(graph);
+    this.#labels = labels;
+    if (labels.font !== font) {
+      for (let index = 0; index < labels.texts.length; index += 1) {
+        labels.widths[index] = measureLabel(labels.texts[index] ?? "", font);
+      }
+      labels.font = font;
+    }
+    const { boxes, restAlpha, litAlpha } = labels;
+    const { x, y, zoom } = this.#camera;
+    const scale = labelScale(zoom);
+    const height = LABEL_SIZE * LABEL_HEIGHT * scale;
+    for (let index = 0; index < graph.nodes.length; index += 1) {
+      const node = graph.nodes[index];
+      const at = positions[index];
+      if (node === undefined || at === undefined) continue;
+      const below = at.y + this.#radiusOf(node.id) + LABEL_GAP;
+      boxes.x[index] = (at.x - x) * zoom + this.#width / 2;
+      boxes.top[index] = (below - y) * zoom + this.#height / 2;
+      boxes.width[index] = (labels.widths[index] ?? 0) * scale;
+      boxes.height[index] = height;
+      const alone = node.id === graph.center ? 1 : zoomLabels;
+      restAlpha[index] = alone;
+      litAlpha[index] = lighting && this.#lit.has(node.id) ? 1 : alone;
+    }
+    placeLabels(boxes, restAlpha, labels.rest, 0, labels.placed);
+    if (lighting) placeLabels(boxes, litAlpha, labels.lit, labels.forced, labels.placed);
+    const { fits } = labels;
+    // A new graph's labels start where they are placed; after that they ease there.
+    const shown = labels.shown ?? fits;
+    for (let index = 0; index < graph.nodes.length; index += 1) {
+      const alone = graph.nodes[index]?.id === graph.center ? 1 : zoomLabels;
+      // A label the zoom has faded out keeps the room it had, for when it comes back.
+      if (alone > LABEL_VISIBLE) fits[index] = (restAlpha[index] ?? 0) > LABEL_VISIBLE ? 1 : 0;
+      restAlpha[index] = alone * (shown[index] ?? 0);
+    }
+    labels.shown ??= Float64Array.from(fits);
+    return labels;
+  }
+
+  /** Eases each label towards the room it has, by `delta`; true while one still moves. */
+  #fadeLabels(delta: number): boolean {
+    const shown = this.#labels?.shown;
+    const fits = this.#labels?.fits;
+    if (shown === undefined || shown === null || fits === undefined) return false;
+    let fading = false;
+    for (let index = 0; index < shown.length; index += 1) {
+      const from = shown[index] ?? 0;
+      const to = fits[index] ?? 0;
+      if (from === to) continue;
+      const next = to > from ? Math.min(to, from + delta) : Math.max(to, from - delta);
+      shown[index] = next;
+      if (next !== to) fading = true;
+    }
+    return fading;
+  }
+
+  /** Whether a label the last frame placed has yet to get there. */
+  #labelsMoving(): boolean {
+    const shown = this.#labels?.shown;
+    const fits = this.#labels?.fits;
+    if (shown === undefined || shown === null || fits === undefined) return false;
+    for (let index = 0; index < shown.length; index += 1) {
+      if (shown[index] !== fits[index]) return true;
+    }
+    return false;
   }
 
   #radiusOf(id: string): number {
@@ -607,6 +792,7 @@ export class FileGraphRenderer {
     if (id !== null && this.#graph !== null) {
       this.#lit = neighbourhood(this.#graph, id);
       this.#litFrom = id;
+      if (this.#labels !== null) this.#orderLit(this.#graph, this.#labels);
     }
     this.#host.style.cursor = id === null ? "" : "pointer";
     this.#scheduler.animate(this.#motion);
