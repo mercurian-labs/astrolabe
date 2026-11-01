@@ -1,7 +1,7 @@
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
-import { memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Navigate, useNavigate } from "@tanstack/react-router";
+import { Activity, memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { chatRouteOf, ChatTabWatch, type ChatRoute } from "~/chatTabs/chatTabLabel";
@@ -10,10 +10,10 @@ import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { RepositoryTabView } from "~/components/repositories/RepositoryTabView";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
-import { ThreadRouteView } from "~/components/ThreadRouteView";
 import { SidebarInset } from "~/components/ui/sidebar";
-import { useComposerDraftStore } from "~/composerDraftStore";
+import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { PaneChat, SectionTabContent } from "~/sectionTabs/SectionTabContent";
+import { useSidebarPendingFileDropStore } from "~/sidebarPendingFileDropStore";
 import { chatTabKey, parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { useChangeGroups } from "~/state/changeGroups";
 import {
@@ -27,11 +27,11 @@ import { insertIndex } from "./drag";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { ChatOwnerContext, WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
+import { recentChats } from "./recentChats";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
 import { findLeaf, leaves } from "./tree";
 import {
   useWorkspaceArrangement,
-  useWorkspaceFront,
   useWorkspaceSnapshot,
   useWorkspaceTabHistory,
   workspace,
@@ -39,17 +39,21 @@ import {
 } from "./workspace";
 import { closeWorkspaceTab, createWorkspaceHost } from "./workspaceTabs";
 
-/** The thread a route shows: a server thread's own ref, or the thread a draft reserved. */
+/**
+ * The thread a route shows: a server thread's own ref, or the thread a draft reserved, which it
+ * still names once the draft became that thread and the route is about to follow.
+ */
 function useRouteThreadRef(target: ThreadRouteTarget | null): ScopedThreadRef | null {
   const draftId = target?.kind === "draft" ? target.draftId : null;
   const draft = useComposerDraftStore((store) =>
     draftId === null ? null : store.getDraftSession(draftId),
   );
+  const promoted = useComposerDraftStore((store) =>
+    draftId === null ? null : store.getPromotedDraftRedirect(draftId),
+  );
   if (target === null) return null;
-  const environmentId =
-    target.kind === "server" ? target.threadRef.environmentId : draft?.environmentId;
-  const threadId = target.kind === "server" ? target.threadRef.threadId : draft?.threadId;
-  return environmentId && threadId ? scopeThreadRef(environmentId, threadId) : null;
+  if (target.kind === "server") return target.threadRef;
+  return draft ? scopeThreadRef(draft.environmentId, draft.threadId) : promoted;
 }
 
 function routeParams(route: ChatRoute) {
@@ -60,8 +64,8 @@ function routeParams(route: ChatRoute) {
 
 /**
  * Astrolabe: the main area, the same in every section: the shared panes (`workspace.ts`). A
- * thread's route puts its chat in front, drawn by T3 Code's route view so one ChatView stays
- * mounted across thread switches. `background`: under Settings or Usage, mounted and inert.
+ * thread's route brings its chat to the front, and follows the chat the panes bring there; the
+ * panes alone decide which chat shows. `background`: under Settings or Usage, mounted and inert.
  */
 export function WorkspaceView({
   routeTarget,
@@ -152,7 +156,7 @@ export function WorkspaceView({
 
   return (
     <BackgroundThreadContext value={background}>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none" inert={background}>
         <WorkspaceHostContext.Provider value={host}>
           <PanesHostContext.Provider value={host}>
             <PanesLayoutKeyContext.Provider value={WORKSPACE_LAYOUT_KEY}>
@@ -162,11 +166,10 @@ export function WorkspaceView({
               >
                 {snapshot ? <PaneTree snapshot={snapshot} panelMaximized /> : null}
               </div>
-              <WorkspaceTabContents
-                routeTarget={routeTarget}
-                routeChatKey={routeChatKey}
-                background={background}
-              />
+              <WorkspaceTabContents />
+              {routeTarget?.kind === "draft" && !background ? (
+                <DraftRouteRedirect draftId={routeTarget.draftId} />
+              ) : null}
               <GroupsSync />
             </PanesLayoutKeyContext.Provider>
           </PanesHostContext.Provider>
@@ -210,66 +213,70 @@ function dropThreads(threadKeys: readonly string[], x: number, front: string) {
 }
 
 /**
- * Every open tab's content, each portaled into its container. A chat mounts only while its tab
- * is in front, since a conversation listens to the whole window's keys and pastes; the route's
- * chat stays mounted behind other tabs, inert, so switching back never remounts it.
+ * A draft's route, once the draft became its thread, gives way to the thread's route; once the
+ * draft is gone, to the start page. Its chat's tab stays as it is throughout.
  */
-function WorkspaceTabContents({
-  routeTarget,
-  routeChatKey,
-  background,
-}: {
-  readonly routeTarget: ThreadRouteTarget | null;
-  readonly routeChatKey: string | null;
-  readonly background: boolean;
-}) {
+function DraftRouteRedirect({ draftId }: { readonly draftId: DraftId }) {
+  const drafting = useComposerDraftStore((store) => store.getDraftSession(draftId) !== null);
+  const promoted = useComposerDraftStore((store) => store.getPromotedDraftRedirect(draftId));
+  if (drafting) return null;
+  return promoted ? (
+    <Navigate to="/$environmentId/$threadId" params={buildThreadRouteParams(promoted)} replace />
+  ) : (
+    <Navigate to="/" replace />
+  );
+}
+
+/**
+ * Every open tab's content, each portaled into its own container, which never changes. A chat
+ * renders once it is shown and stays mounted while it is among the most recently shown
+ * (`recentChats`), hidden by `Activity` behind other tabs: hiding cleans up its effects, so a chat
+ * out of sight never hears the window's keys or pastes.
+ */
+function WorkspaceTabContents() {
   const host = useHost();
   const arrangement = useWorkspaceArrangement();
-  const front = useWorkspaceFront();
   const keys = allTabs(arrangement);
-  const fronts = new Set(leaves(arrangement.root).map((leaf) => leaf.active));
+  const panes = leaves(arrangement.root);
   const focusedFront = focusedPane(arrangement).active;
-  // Containers of closed tabs go; the route's chat renders into one node, which moves into its
-  // tab's container.
-  // oxlint-disable-next-line t3code/react-effect-budget -- moves DOM nodes the panes render into
+  const fronts = new Set(panes.map((leaf) => leaf.active));
+  const onScreen = [...new Set([focusedFront, ...fronts])].filter(
+    (key) => parseChatTabKey(key) !== null,
+  );
+  const [recent, setRecent] = useState<readonly string[]>([]);
+  const kept = recentChats(recent, onScreen, new Set(keys));
+  if (kept !== recent) setRecent(kept);
+  // Containers of closed tabs go.
+  // oxlint-disable-next-line t3code/react-effect-budget -- drops DOM nodes the panes render into
   useLayoutEffect(() => {
     host.prune(new Set(keys));
-    if (routeChatKey === null || !keys.includes(routeChatKey)) return;
-    const container = host.containerFor(routeChatKey);
-    if (host.routeNode.parentNode !== container) container.appendChild(host.routeNode);
-  }, [host, keys, routeChatKey]);
-  const shown = keys.filter(
-    (key) =>
-      !isEmptyTab(key) &&
-      parseChatSurfaceKey(key) === null &&
-      (fronts.has(key) || parseChatTabKey(key) === null),
+  }, [host, keys]);
+  const others = keys.filter(
+    (key) => !isEmptyTab(key) && parseChatSurfaceKey(key) === null && parseChatTabKey(key) === null,
   );
-  const routeBehind = !fronts.has(routeChatKey ?? "");
   return (
     <>
-      {shown.map((key) => {
-        const chat = parseChatTabKey(key) !== null;
-        // The route's chat renders below; one brought to the front leads the route to it.
-        if (chat && routeTarget !== null && (key === routeChatKey || key === front)) return null;
-        // Only a pull request listens to the keys of its tab in front: the rest skip a render as
-        // focus moves.
-        const listens = !chat && parseRepositoryTabKey(key) === null && key === focusedFront;
-        return createPortal(
-          <TabContent tabKey={key} active={listens} />,
+      {others.map((key) =>
+        createPortal(
+          // Only a pull request listens to the keys of its tab in front: the rest skip a render
+          // as focus moves.
+          <TabContent
+            tabKey={key}
+            active={parseRepositoryTabKey(key) === null && key === focusedFront}
+          />,
           host.containerFor(key),
           key,
-        );
-      })}
-      {routeTarget !== null
-        ? createPortal(
-            <RouteChat
-              target={routeTarget}
-              chatKey={routeChatKey}
-              background={background || routeBehind}
-            />,
-            host.routeNode,
-          )
-        : null}
+        ),
+      )}
+      {kept.map((key) =>
+        createPortal(
+          <Activity mode={fronts.has(key) ? "visible" : "hidden"}>
+            <TabContent tabKey={key} active={false} />
+          </Activity>,
+          host.containerFor(key),
+          key,
+        ),
+      )}
       {keys.flatMap((key) =>
         parseChatTabKey(key) === null
           ? []
@@ -300,26 +307,11 @@ const TabContent = memo(function TabContent({
   return <SectionTabContent tabKey={tabKey} store={workspace.store} active={active} />;
 });
 
-/** The route's chat, drawn by T3 Code's route view; inert while behind another tab. */
-const RouteChat = memo(function RouteChat({
-  target,
-  chatKey,
-  background,
-}: {
-  readonly target: ThreadRouteTarget;
-  readonly chatKey: string | null;
-  readonly background: boolean;
-}) {
-  return (
-    <BackgroundThreadContext value={background}>
-      <ChatOwnerContext value={chatKey}>
-        <ThreadRouteView target={target} background={background} />
-      </ChatOwnerContext>
-    </BackgroundThreadContext>
-  );
-});
-
-const closeGoneChat = (chatKey: string) => workspace.close(chatKey);
+const closeGoneChat = (chatKey: string) => {
+  const ref = parseChatTabKey(chatKey);
+  if (ref) useSidebarPendingFileDropStore.getState().clearPendingFileDropsForThread(ref);
+  workspace.close(chatKey);
+};
 
 function useHost() {
   const host = useContext(WorkspaceHostContext);

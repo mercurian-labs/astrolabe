@@ -104,9 +104,6 @@ export function createWorkspaceHost(): WorkspaceHost {
   const surface = document.createElement("div");
   surface.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col";
   surface.dataset.panesContent = "surface";
-  const routeNode = document.createElement("div");
-  routeNode.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col";
-  routeNode.dataset.routeChat = "";
   const containers = new Map<string, HTMLDivElement>();
   const containerFor = (key: string) => {
     let container = containers.get(key);
@@ -157,7 +154,6 @@ export function createWorkspaceHost(): WorkspaceHost {
     controller: workspace.store,
     tabs,
     surface,
-    routeNode,
     containerFor,
     prune(open) {
       for (const [key, container] of containers) {
