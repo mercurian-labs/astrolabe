@@ -71,7 +71,7 @@ export function ComposerControlIcon(props: {
   return (
     <ControlIcon {...iconProps}>
       {control === "send" ? (
-        <Path d="M19 10H24Q26 10 26 12V14Q26 16 24 16H6M12 10L6 16L12 22" />
+        <Path d="M24.5 8.5V14Q24.5 16 22.5 16H5M11 10L5 16L11 22" />
       ) : control === "stop" ? (
         <Rect x={9} y={9} width={14} height={14} rx={0.5} fill="currentColor" stroke="none" />
       ) : control === "queue" ? (

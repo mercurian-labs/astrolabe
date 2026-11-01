@@ -52,7 +52,7 @@ function ControlIcon({
 export function SendControlIcon({ className }: { className?: string | undefined }) {
   return (
     <ControlIcon className={className}>
-      <path d="M19 10H24Q26 10 26 12V14Q26 16 24 16H6M12 10L6 16L12 22" />
+      <path d="M24.5 8.5V14Q24.5 16 22.5 16H5M11 10L5 16L11 22" />
     </ControlIcon>
   );
 }
