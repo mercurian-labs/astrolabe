@@ -243,6 +243,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiMerge]: "wiki",
   [WS_METHODS.wikiSetChangeRequestStatus]: "wiki",
   [WS_METHODS.wikiSetMirror]: "wiki",
+  [WS_METHODS.wikiSetProjectLink]: "wiki",
   [WS_METHODS.wikiPushMirror]: "wiki",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 

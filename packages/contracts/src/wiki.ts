@@ -49,8 +49,8 @@ export const WikiSummary = Schema.Struct({
   /** Absolute path of the checkout of the main line. */
   root: TrimmedNonEmptyString,
   mainBranch: TrimmedNonEmptyString,
-  /** The T3 project standing in the same folder, when one exists. */
-  projectId: Schema.NullOr(ProjectId),
+  /** The repositories this wiki is linked to; their threads are told it holds their plans. */
+  projectIds: Schema.Array(ProjectId),
   mirror: Schema.NullOr(WikiMirrorStatus),
   openChangeRequests: NonNegativeInt,
   createdAt: IsoDateTime,
@@ -325,6 +325,13 @@ export const WikiSetMirrorInput = Schema.Struct({
 });
 export type WikiSetMirrorInput = typeof WikiSetMirrorInput.Type;
 
+export const WikiSetProjectLinkInput = Schema.Struct({
+  wikiId: WikiId,
+  projectId: ProjectId,
+  linked: Schema.Boolean,
+});
+export type WikiSetProjectLinkInput = typeof WikiSetProjectLinkInput.Type;
+
 export const WikiEventKind = Schema.Literals([
   "registered",
   "removed",
@@ -333,6 +340,7 @@ export const WikiEventKind = Schema.Literals([
   "status",
   "mirror",
   "main-moved",
+  "linked",
 ]);
 
 /** Pushed to subscribers after any change, so open views know to read again. */

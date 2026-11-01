@@ -271,8 +271,7 @@ const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
 // One per server: it holds each wiki's write lock, the event stream, and index caches.
-const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProjectService));
-// Astrolabe: the code index skips the projects that are wikis.
+const layerWikiServiceProvided = WikiService.layer;
 const layerCodeIndexProvided = CodeIndex.layer.pipe(
   Layer.provide(Layer.mergeAll(layerProjectService, layerWikiServiceProvided)),
   Layer.provide(GitVcsDriver.layer),
@@ -377,7 +376,8 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
-  layer.pipe(Layer.provide(layerProjectService)),
+  // Astrolabe: turn start reads the wiki service when it is there, to tell agents their wikis.
+  layer.pipe(Layer.provide(Layer.merge(layerProjectService, layerWikiServiceProvided))),
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,

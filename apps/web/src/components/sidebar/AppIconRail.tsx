@@ -90,7 +90,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "repositories",
-      label: "Repositories",
+      label: "Projects",
       icon: <FolderGit2Icon />,
       active: onRepositories,
       open: () => void navigate({ to: "/repositories" }),

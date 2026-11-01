@@ -2886,7 +2886,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                     if (project) handleProjectSettings(event, project);
                                   }}
                                 >
-                                  <ThreadsFilterCheckbox check={projectFilter.checkOf(item)} />
+                                  <ThreadsFilterCheckbox checked={projectFilter.isChecked(item)} />
                                   {item.kind === "status" ? (
                                     <ThreadStatusFilterIcon status={item.status} />
                                   ) : (

@@ -17,12 +17,18 @@ it: the settings nav and search leave Workspaces out, and `/settings/workspaces`
 
 ## Setup
 
-It needs a cloud: run the stack in `infra/cloud` (`alchemy dev --stage <name>`
-with its own `CLOUD_POSTGRES_PORT`) and give the worktree a gitignored `.env`
-with `T3CODE_AUTH_URL=<the API URL it prints>` and a relay URL. Cloud features
-turn on only when **both** are set; without them the page says sign-in isn't
-set up. `T3CODE_RELAY_URL=https://relay.invalid` is enough when relay features
-aren't under test. Restart the dev server after changing `.env`.
+It needs a cloud: run the stack with `vp run dev` in `infra/cloud` (it builds
+`@mercurian/auth` first; plain `alchemy dev --stage <name>` skips that), with its own
+`CLOUD_POSTGRES_PORT`, and give the worktree a `.env` with
+`T3CODE_AUTH_URL=<the API URL it prints>` and a relay URL. Cloud features turn on only when
+**both** are set; without them the route redirects to `/settings/general` (see above).
+`T3CODE_RELAY_URL=https://relay.invalid` is enough when relay features aren't under test.
+Restart the dev server after changing `.env`. Worktree setup links `.env` to the main
+checkout's, so replace the link with a real file before adding lines, or you write into the
+main checkout.
+
+Signed out with cloud config, the page reads "Sign in to work with your team" with a
+**Sign in** button.
 
 Sign in from the page or the account menu, then approve the code with
 `scripts/cloud-kit.sh approve <code> <email>` (see SKILL.md, Cloud). The kit
@@ -36,13 +42,13 @@ pages works too (`<API>/device?user_code=<code>`, codes from
 ## Driving it with the Browser panel
 
 ```
-preview_act click  main >> role=button[name="New workspace"]
-preview_act type   role=dialog >> role=textbox[name="Name"]   text=Acme
-preview_act click  role=dialog >> role=button[name="Create workspace"]
+preview_act click  role=dialog[name="Settings"] >> role=button[name="New workspace"]
+preview_act type   role=dialog[name="New workspace"] >> role=textbox[name="Name"]   text=Acme
+preview_act click  role=dialog[name="New workspace"] >> role=button[name="Create workspace"]
 preview_wait_for  text="Who can create teams"
-preview_act click  main >> role=button[name="Invite"]
-preview_act type   role=dialog >> role=textbox[name="Email"]  text=ben@example.test
-preview_act click  role=dialog >> role=button[name="Send invitation"]
+preview_act click  #workspace-people >> role=button[name="Invite"]
+preview_act type   role=dialog[name="Invite to Acme"] >> role=textbox[name="Email"]  text=ben@example.test
+preview_act click  role=dialog[name="Invite to Acme"] >> role=button[name="Send invitation"]
 # after the second person accepts (a pending invitation only offers Revoke):
 preview_act click  #workspace-people >> role=combobox[name="Role"]   then role=option[name="Admin"]
 preview_act click  #workspace-teams >> role=button[name="Manage"] >> nth=0   # rename, owners, "Delete team…"
@@ -50,14 +56,21 @@ preview_act click  #workspace-leave >> role=button[name="Hand over…"]        #
 preview_act click  #workspace-leave >> role=button[name="Delete…"]
 ```
 
-**New workspace** shows only for an approved account that owns no workspace
-yet; the cloud enforces the same rule. Rerun with a fresh `cloud-kit.sh person`
-or delete the workspace first.
+Settings is a modal (`role=dialog[name="Settings"]`), so nothing here is under `main`, and
+the workspace dialogs open beside it: scope to their own names. **New workspace** shows only
+for an approved account that owns no workspace yet; the cloud enforces the same rule. Rerun
+with a fresh `cloud-kit.sh person` or delete the workspace first. A new workspace starts with
+a team of the same name, invite policy "Owner and admins" and team policy "Everyone"
+(`#workspace-invite-policy`, `#workspace-team-policy`, each combobox named by its row title).
+The **Workspace** picker shows only when you are in more than one. A person's remove button
+is `Remove <name> from the workspace`. Five seats count pending invitations; past that the
+cloud refuses (`ORGANIZATION_FULL`). Invitations for you show only for a verified email.
 
 Sections have ids: `#workspace`, `#workspace-people`, `#workspace-teams`,
 `#workspace-leave`, `#workspace-invitations-for-you`. Read state with
 `preview_evaluate` on their `innerText` and confirm writes in the stack's
-Postgres (`auth.organization`, `auth.member`, `auth.team`, `auth.team_owner`).
+Postgres (`auth.organization`, `auth.member`, `auth.invitation`, `auth.team`,
+`auth.team_member`, `auth.team_owner`).
 
 ## End state that proves it
 
@@ -79,8 +92,9 @@ Postgres (`auth.organization`, `auth.member`, `auth.team`, `auth.team_owner`).
   settles.
 - Closing every tab of the incognito profile drops its pairing and cloud
   session; mint a new pairing token and type it into `/pair`.
-- Names and the workspace name save on blur. `preview_act press Enter` may not
-  reach a focused input; dispatch the key from `preview_evaluate`
+- The workspace name saves on blur (Enter blurs it); a team's name saves through its
+  **Rename** button. `preview_act press Enter` may not reach a focused input; dispatch the
+  key from `preview_evaluate`
   (`el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))`)
   or click elsewhere, then confirm in Postgres.
 - `preview_act type` has left stray text in a field; read the input's value back
@@ -91,14 +105,15 @@ Postgres (`auth.organization`, `auth.member`, `auth.team`, `auth.team_owner`).
 ## Mobile
 
 The same screens live under Settings → Workspaces in the app (row shown once
-signed in). Walk them with `test-t3-mobile`: sign in from the header's menu or Account, read the
+signed in). Walk them with `test-t3-mobile`: sign in from Settings → Account (the phone has
+no account menu) or the Workspaces screen's own row, read the
 pending code from `auth.device_code` (`client_id='astrolabe-mobile'`) and
 approve it with `cloud-kit.sh approve-latest astrolabe-mobile <email>`. Each
 view is its own stack entry: on iOS the native back button is labelled with the
 previous view's title, on Android it reads "Navigate up". Shared client code
 runs on the phone's JavaScript engine, not Node, so exercise an optimistic
 write (a rename) and a live arrival on the device, then check the phone's
-`astrolabe-workspaces-<user>.db` appears after opening Workspaces and
+`astrolabe-workspaces-<user id>.db` appears after opening Workspaces and
 disappears on sign-out.
 
 ## Owns

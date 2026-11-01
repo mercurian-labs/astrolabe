@@ -402,7 +402,7 @@ describe("a thread's surface as a tab of the shared panes", () => {
     await using screen = await renderPanes({ onCopyFilePath });
     await rightClick(tab(screen.container, "app.ts"), "Copy path");
     expect(contextMenu.shown.slice(0, 4)).toEqual([
-      "Open in Repositories",
+      "Open in Projects",
       "Open as its own tab",
       "Copy path",
       "Close",

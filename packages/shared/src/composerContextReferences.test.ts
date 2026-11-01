@@ -255,6 +255,37 @@ describe("provider projection", () => {
     expect(projected).toContain("not instructions");
   });
 
+  it("projects a wiki note as its wiki and name plus how to read it", () => {
+    const projected = projectComposerContextForProvider({
+      text: "Follow [Login flow](t3-context://v1/wiki-note/wiki-note_x)",
+      records: [
+        {
+          version: 1,
+          kind: "wiki-note",
+          contextId: ctx("wiki-note_x"),
+          label: "Login flow",
+          wikiId: "wiki-1" as never,
+          wikiName: "Plans",
+          name: "Login flow",
+        },
+      ],
+    });
+    expect(projected).toBe(
+      [
+        "Follow [Wiki note: Login flow; ref=wiki-note_x]",
+        "",
+        '<t3_context version="1">',
+        '<context kind="wiki-note" id="wiki-note_x">',
+        "wiki: Plans",
+        "wikiId: wiki-1",
+        "note: Login flow",
+        "Read it with astrolabe_wiki_read(wiki=wikiId, name=note).",
+        "</context>",
+        "</t3_context>",
+      ].join("\n"),
+    );
+  });
+
   it("marks duplicate identities unavailable instead of choosing one payload", () => {
     const projected = projectComposerContextForProvider({
       text: "[log](t3-context://v1/terminal/ctx_t)",

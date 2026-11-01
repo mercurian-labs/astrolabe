@@ -876,10 +876,9 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const settings = yield* serverSettings.getSettings;
     const shells = yield* projects.listShells();
     const registered = yield* wikis.list.pipe(Effect.orElseSucceed(() => ({ wikis: [] })));
-    const wikiProjects = new Set(registered.wikis.flatMap((wiki) => wiki.projectId ?? []));
     const wikiRoots = new Set(registered.wikis.map((wiki) => wiki.root));
     return shells
-      .filter((shell) => !wikiProjects.has(shell.id) && !wikiRoots.has(shell.workspaceRoot))
+      .filter((shell) => !wikiRoots.has(shell.workspaceRoot))
       .map((shell) => ({ shell, wanted: settingsFor(settings, shell.id) }));
   });
 

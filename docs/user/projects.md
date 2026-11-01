@@ -1,17 +1,17 @@
-# Repositories
+# Projects
 
-**Repositories** in the icon rail is where you read and edit your repositories' code without
-leaving the app. A repository is one of the two kinds of project, beside a [wiki](wikis.md).
+**Projects** in the icon rail is where you read and edit your projects' code without leaving the
+app. A project can be linked to a [wiki](wikis.md) that holds its research and plans.
 
 ## Find a file
 
-The sidebar leads with what is moving: a repository's uncommitted changes, its branch against
-its base, and the files its commits changed most recently. Pick one repository in the filter to
-see all of that for it; with every repository, each shows its latest files.
+The sidebar leads with what is moving: a project's uncommitted changes, its branch against its
+base, and the files its commits changed most recently. Pick one project in the filter to see all
+of that for it; with every project, each shows its latest files.
 
-- **Search** finds a file by name in the repository you picked.
+- **Search** finds a file by name in the project you picked.
 - **Show the file tree**, in the filter, swaps the list for the whole tree.
-- **Checkout** appears when a thread works in its own copy of the repository. Pick the thread's
+- **Checkout** appears when a thread works in its own copy of the project. Pick the thread's
   copy to read and edit what its agent is changing.
 
 ## Edit
@@ -44,24 +44,24 @@ whether uses, files that use it, tests and outside packages show, and tune the d
 forces that lay the graph out. A group colours the files whose path holds every word of its query. **Animate**
 lays the graph out again.
 
-The graph reads the repository's code index, set in **Settings → Projects**. While the index is
+The graph reads the project's code index, set in **Settings → Projects**. While the index is
 first built, the files that import this one appear once it finishes.
 
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base
 opens your branch's. Comment on lines to send them to the thread working in that copy, or to the
-repository's new thread.
+project's new thread.
 
-In a thread, the **Files** and **Diff** tabs offer **Open in Repositories** from their tab menu.
+In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.
 
-## Manage repositories
+## Manage projects
 
-**Manage repositories**, in the filter, opens **Settings → Projects**. **Add a repository** adds a
-folder or clones one, as adding a project does.
+**Manage projects**, in the filter, opens **Settings → Projects**. **Add a project** adds a
+folder or clones a repository.
 
 ## On your phone
 
-The **Repositories** tab lists the same files: pick a repository in its filter for its uncommitted
+The **Projects** tab lists the same files: pick a project in its filter for its uncommitted
 changes and recent files, or **Browse all files** for its tree. Files open read only; edit them on
 your computer.

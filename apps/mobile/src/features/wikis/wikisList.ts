@@ -1,4 +1,3 @@
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import {
   wikiScopeKey,
@@ -7,8 +6,6 @@ import {
   type WikiListEntries,
 } from "@t3tools/client-runtime/wikiList";
 import type { EnvironmentId } from "@t3tools/contracts";
-
-import { scopedProjectKey } from "../../lib/scopedEntities";
 
 /**
  * Astrolabe: the Wikis tab and the Change requests tab's wiki group, each one flat list laid out
@@ -29,24 +26,14 @@ export type WikiListItem =
       readonly type: "document";
       readonly key: string;
       readonly entry: WikiDocumentEntry;
-      /** The project standing in the wiki's folder, whose icon the row draws. */
-      readonly project: EnvironmentProject | null;
       readonly showTrailingDivider: boolean;
     }
   | {
       readonly type: "change";
       readonly key: string;
       readonly entry: WikiChangeEntry;
-      readonly project: EnvironmentProject | null;
       readonly showTrailingDivider: boolean;
     };
-
-function projectFinder(projects: ReadonlyMap<string, EnvironmentProject>) {
-  return (entry: WikiDocumentEntry | WikiChangeEntry) =>
-    entry.wiki.projectId === null
-      ? null
-      : (projects.get(scopedProjectKey(entry.environmentId, entry.wiki.projectId)) ?? null);
-}
 
 /** A hairline separates two rows; section labels, links and shelves draw their own rule. */
 function withDividers(items: WikiListItem[]): WikiListItem[] {
@@ -59,14 +46,7 @@ function withDividers(items: WikiListItem[]): WikiListItem[] {
 }
 
 /** The Wikis tab: a row counting the open changes, when there are any, then the documents. */
-export function buildWikiListItems(
-  entries: WikiListEntries,
-  options: {
-    /** Projects by `scopedProjectKey`. */
-    readonly projects: ReadonlyMap<string, EnvironmentProject>;
-  },
-): WikiListItem[] {
-  const projectOf = projectFinder(options.projects);
+export function buildWikiListItems(entries: WikiListEntries): WikiListItem[] {
   const items: WikiListItem[] = [];
   if (entries.changes.length > 0) {
     items.push({ type: "changes-link", key: "changes-link", count: entries.changes.length });
@@ -76,7 +56,6 @@ export function buildWikiListItems(
       type: "document",
       key: entry.key,
       entry,
-      project: projectOf(entry),
       showTrailingDivider: false,
     });
   }
@@ -89,17 +68,12 @@ export function buildWikiListItems(
  */
 export function buildWikiChangeItems(
   entries: WikiListEntries,
-  options: {
-    readonly settledExpanded: boolean;
-    readonly projects: ReadonlyMap<string, EnvironmentProject>;
-  },
+  options: { readonly settledExpanded: boolean },
 ): WikiListItem[] {
-  const projectOf = projectFinder(options.projects);
   const change = (entry: WikiChangeEntry): WikiListItem => ({
     type: "change",
     key: entry.key,
     entry,
-    project: projectOf(entry),
     showTrailingDivider: false,
   });
   if (entries.changes.length === 0 && entries.settled.length === 0) return [];

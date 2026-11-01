@@ -48,6 +48,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
+import * as WikiService from "../wiki/WikiService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 
 const isDomainEvent = Schema.is(OrchestrationV2DomainEvent);
@@ -263,6 +264,7 @@ it.each([
 
 function makeLocalCommandHarness(input: {
   readonly text: string;
+  readonly wikiNote?: string;
   readonly worktreePath?: string;
   readonly worktreesDir?: string;
   readonly workspaceRoot?: string;
@@ -753,6 +755,11 @@ function makeLocalCommandHarness(input: {
         Layer.mock(RuntimePolicy.RuntimePolicyV2)({
           resolve: resolveRuntimePolicy,
         }),
+        input.wikiNote === undefined
+          ? Layer.empty
+          : Layer.mock(WikiService.WikiService)({
+              agentNote: () => Effect.succeed(input.wikiNote ?? null),
+            }),
       ),
     ),
   );
@@ -984,6 +991,49 @@ effectIt.effect.each([
 
     expect(harness.interruptTurn).not.toHaveBeenCalled();
     expect(harness.projection().runs.at(-1)?.status).toBe("running");
+  }),
+);
+
+effectIt.effect.each([
+  { label: "a new native conversation", text: "Plan the importer", noted: true },
+  { label: "a native conversation with turns", text: "Plan the importer", noted: false },
+  { label: "a slash command", text: "/review", noted: false },
+] as const)("tells $label about the repository's linked wikis: $noted", (scenario) =>
+  Effect.gen(function* () {
+    const wikiNote = '<astrolabe_wikis>linked to the wiki "Plans"</astrolabe_wikis>';
+    const continues = scenario.label === "a native conversation with turns";
+    const harness = makeLocalCommandHarness({
+      text: scenario.text,
+      wikiNote,
+      ...(continues
+        ? { previousTurn: { runStatus: "completed", turnStatus: "completed" } as const }
+        : { failReadsAfterRunning: true }),
+    });
+    // A provider's own slash command, not one the app handles.
+    harness.tryHandlePromptCommand.mockImplementation(() => Effect.succeed(false));
+    if (continues) {
+      const projection = harness.projection();
+      const previous = projection.runs[0]!;
+      harness.setProjection({
+        ...projection,
+        attempts: [
+          {
+            ...projection.attempts[0]!,
+            id: RunAttemptId.make("previous-failed-attempt"),
+            runId: previous.id,
+            status: "completed",
+            nativeThreadId: "existing-native-conversation",
+          },
+          ...projection.attempts,
+        ],
+      });
+    }
+
+    yield* harness.start;
+
+    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(
+      scenario.noted ? `${scenario.text}\n\n${wikiNote}` : scenario.text,
+    );
   }),
 );
 

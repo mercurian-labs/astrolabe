@@ -61,7 +61,12 @@ describe("wiki tab keys", () => {
 });
 
 const wiki = (id: string, name: string): WikiSummary =>
-  ({ wikiId: id as WikiId, name, root: `/w/${id}`, projectId: null }) as WikiSummary;
+  ({
+    wikiId: id as WikiId,
+    name,
+    root: `/w/${id}`,
+    projectIds: [] as WikiSummary["projectIds"],
+  }) as WikiSummary;
 
 const index = (notes: Array<{ name: string; editedAt?: string }>): WikiIndexResult =>
   ({

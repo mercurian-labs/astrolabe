@@ -33,12 +33,16 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   read `← | h`; repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll
   down and `u` Scroll up (repeatable), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
   `w` Wikis, `,` Settings. `n`'s
-  label follows the section (on Wikis: "New document").
+  label follows the section (on Wikis "New document", on Projects "Add a project", which opens
+  the palette's add flow; where no section header is mounted, such as Changes, it is
+  upstream's "New thread"). The popup is `aria-label="Keyboard commands"` (`[data-which-key]`),
+  and Not bound / Not available here is a `role=status` note. After a command runs the
+  popover fades out, so wait for `[data-which-key]` to detach before reading "closed".
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Agents, w Wikis, r Repositories, p Changes,
+- **Groups** (defaults): `g` t Agents, w Wikis, r Projects, p Changes,
   u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `k` link or unlink the focused tab (panes.md, Linked tabs), `r` reopen closed (panel and
   browser tabs, not chats), `h` Back and `l` Forward (upstream's
-  `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Repositories
+  `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Projects
   and Changes they walk the tab in front's history and are faint at either
   end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
@@ -92,7 +96,7 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   `keybinding-<command>`, and command ids contain a dot, so select it with
   `[id='keybinding-chatTab.next']` or `document.getElementById(...)`
   (`#keybinding-chatTab.next` matches nothing). Several bindings of one kind share
-  a cell joined by `|`, an empty cell shows `—`. A filter select (`aria-label="Kinds of keybinding shown"`: All,
+  a cell joined by `|`, an empty cell shows `–` (an en dash, hidden while the row is hovered or focused, when `+` takes its place). `g r`'s command reads "Section: Projects". A filter select (`aria-label="Kinds of keybinding shown"`: All,
   Shortcuts, Menu keys, Aliases) narrows the columns and drops rows with nothing
   of that kind; the search box matches labels and keys (`t ]`, `menu t ]`, `⌘W`,
   `mod+w`). A shortcut's keycaps (`aria-label="Edit shortcut for …"`) open a
@@ -146,7 +150,7 @@ and copy the backup back when done. The server picks changes up live.
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
    with the sixteen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
-   `Menu › Go to`, rows Agents, Wikis, Repositories, Changes (a faint row
+   `Menu › Go to`, rows Agents, Wikis, Projects, Changes (a faint "Section: Changes"
    where pull requests are unsupported), Usage, Settings → click **Backspace back**
    → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `w`,
    or `r` (`/repositories`) → the URL changes, menu closed.
@@ -180,9 +184,9 @@ and copy the backup back when done. The server picks changes up live.
    restore the file.
 9. **Keybindings table.** Settings › Keybindings, search `t ]` (field
    `aria-label="Search keybindings"`) → the Chat Tab: Next row
-   (`[id='keybinding-chatTab.next']`), `t ]` in Menu keys and `—` in Shortcut (it
+   (`[id='keybinding-chatTab.next']`), `t ]` in Menu keys and `–` (an en dash) in Shortcut (it
    has no default shortcut; ⌘⇧] is Thread: Next's). Search `Section: Wikis` → one
-   row, Menu keys `g w | w w`, Alias `—` → `⋯` Remove g w → `g w` struck through and
+   row, Menu keys `g w | w w`, Alias `–` → `⋯` Remove g w → `g w` struck through and
    `{"key":"menu g w","command":"-section.wikis"}` in the file → `⋯` Restore default
    g w → the rule is gone → click `button "Edit menu keys for Section: Wikis: g w"` (the
    field starts with `g w` and appends each key, so press Backspace twice), press `g` `x`,

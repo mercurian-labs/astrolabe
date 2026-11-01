@@ -14,7 +14,7 @@
 - [SnapShots](./user/snap-shot.md)
 - [Visual replies](./user/html-renders.md)
 - [Wikis](./user/wikis.md)
-- [Repositories](./user/repositories.md)
+- [Projects](./user/projects.md)
 - [Code graph](./user/code-graph.md)
 - [Import browser sessions](./user/browser-import.md)
 - [Use T3 Code as your default browser](./user/default-browser.md)

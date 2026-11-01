@@ -16,7 +16,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 
 ## Sub-features
 
-- **Switching sections** (rail, which-key `g`, Command Palette's Open wikis/repositories/pull
+- **Switching sections** (rail, which-key `g`, Command Palette's Open wikis/projects/pull
   requests, the narrow window's footer): changes only the sidebar, never the arrangement, focus,
   the front chat or which ChatViews are mounted. The rail's Agents (`useNavigateToAgents`,
   `panes/agentsRoute.ts`) goes to the focused tab's thread when focus is on a chat or one of its

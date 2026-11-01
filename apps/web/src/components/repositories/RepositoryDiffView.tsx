@@ -101,7 +101,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
     </div>
   );
 
-  if (!canReadFiles) return notice("This connection cannot read this repository's files.");
+  if (!canReadFiles) return notice("This connection cannot read this project's files.");
   if (preview.error !== null && preview.data === null) return notice(String(preview.error));
   if (preview.data === null) return notice("Reading changes…");
   if (source === null || (!lazySource && renderablePatch === null)) {
@@ -190,7 +190,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
         />
       )}
       {target === null ? (
-        <Notice>Start a thread in this repository to review its changes line by line.</Notice>
+        <Notice>Start a thread in this project to review its changes line by line.</Notice>
       ) : null}
     </div>
   );

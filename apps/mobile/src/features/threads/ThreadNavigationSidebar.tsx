@@ -44,11 +44,6 @@ import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
 import { useHomeListOptions } from "../home/home-list-options";
 import { buildHomeListFilterMenu } from "../home/home-list-filter-menu";
 import { buildHomeProjectScopes } from "../home/homeThreadList";
-import {
-  findThreadsProjectScope,
-  threadsProjectFilterOptions,
-} from "../projects/threadsProjectFilter";
-import { useWikiCheckouts } from "../wikis/useWikiCheckouts";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
 import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
 import { useThreadListActions } from "../home/useThreadListActions";
@@ -213,9 +208,10 @@ function ThreadNavigationSidebarPane(
       }),
     [projects, options.selectedEnvironmentId, options.projectGroupingMode],
   );
-  // Astrolabe: repositories, then wikis, each under a heading that picks them all.
-  const checkouts = useWikiCheckouts();
-  const projectFilterOptions = threadsProjectFilterOptions(projectScopes, checkouts);
+  const projectFilterOptions = projectScopes.map((scope) => ({
+    key: scope.key,
+    label: scope.title,
+  }));
   const projectTitleByProjectKey = useMemo(
     () =>
       new Map(
@@ -231,12 +227,10 @@ function ThreadNavigationSidebarPane(
       ),
     [projectScopes],
   );
-  const selectedProjectScope = findThreadsProjectScope(
-    projectScopes,
-    resolvedProjectKey,
-    checkouts,
-    (scopes, key) => (key === null ? null : (scopes.find((scope) => scope.key === key) ?? null)),
-  );
+  const selectedProjectScope =
+    resolvedProjectKey === null
+      ? null
+      : (projectScopes.find((scope) => scope.key === resolvedProjectKey) ?? null);
   const threadSearch = useThreadSearch(
     searchEnvironmentIds,
     props.searchQuery,

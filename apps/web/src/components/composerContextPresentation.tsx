@@ -1,7 +1,11 @@
 import ChatMarkdown from "./ChatMarkdown";
 import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
-import type { PreviewAnnotationPayload, ThreadContextRecord } from "@t3tools/contracts";
+import type {
+  PreviewAnnotationPayload,
+  ThreadContextRecord,
+  WikiNoteContextRecord,
+} from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { videoMimeType } from "@t3tools/shared/video";
 import { MessageCircleIcon, MousePointerClickIcon } from "lucide-react";
@@ -33,6 +37,7 @@ import type { TerminalContextDraft } from "~/lib/terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { ThreadContextChip } from "./ThreadContextChip";
+import { WikiNoteContextChip } from "./WikiNoteContextChip";
 import {
   createContextPresentationRegistry,
   type ContextPresentationCapability,
@@ -59,7 +64,8 @@ export type ComposerDraftContextRecord =
     }
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
-  | { kind: "thread"; record: ThreadContextRecord };
+  | { kind: "thread"; record: ThreadContextRecord }
+  | { kind: "wiki-note"; record: WikiNoteContextRecord };
 
 export interface ComposerContextActions {
   environmentId: EnvironmentId | null;
@@ -98,6 +104,7 @@ export function composerContextRecordsFromDraft(input: {
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
+  wikiNotes?: ReadonlyArray<WikiNoteContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -133,6 +140,9 @@ export function composerContextRecordsFromDraft(input: {
   }
   for (const record of input.threadContexts ?? []) {
     records.set(record.contextId, { kind: "thread", record });
+  }
+  for (const record of input.wikiNotes ?? []) {
+    records.set(record.contextId, { kind: "wiki-note", record });
   }
   return records;
 }
@@ -343,6 +353,11 @@ function ComposerThreadContextChip(props: { record: ThreadContextRecord }) {
   );
 }
 
+function ComposerWikiNoteContextChip(props: { record: WikiNoteContextRecord }) {
+  const { environmentId } = use(ComposerContextActionsContext);
+  return <WikiNoteContextChip record={props.record} environmentId={environmentId} />;
+}
+
 function UnresolvedContextChip(props: { label: string }) {
   return (
     <UnresolvedChip
@@ -361,7 +376,15 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
   ComposerContextRenderContext,
   ReactElement
 >({
-  requiredKinds: ["image", "file", "terminal", "review-comment", "preview-annotation", "thread"],
+  requiredKinds: [
+    "image",
+    "file",
+    "terminal",
+    "review-comment",
+    "preview-annotation",
+    "thread",
+    "wiki-note",
+  ],
   handlers: [
     {
       kind: "terminal",
@@ -453,6 +476,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "thread" ? (
           <ComposerThreadContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "wiki-note",
+      canRender: (entry) => entry.kind === "wiki-note",
+      render: (entry, context) =>
+        entry.kind === "wiki-note" ? (
+          <ComposerWikiNoteContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

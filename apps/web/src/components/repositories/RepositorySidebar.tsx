@@ -87,7 +87,7 @@ function useCheckouts(repository: EnvironmentProject | null): ReadonlyArray<Chec
   const threads = useThreadShells();
   if (repository === null) return [];
   const seen = new Set([repository.workspaceRoot]);
-  const own: Checkout[] = [{ cwd: repository.workspaceRoot, label: "Repository checkout" }];
+  const own: Checkout[] = [{ cwd: repository.workspaceRoot, label: "Project checkout" }];
   const trees = threads
     .filter(
       (thread) =>
@@ -170,16 +170,16 @@ export function RepositorySidebar() {
         fixedHeader={
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
-              title="Repositories"
+              title="Projects"
               searchNoun="file"
               hasProjects
               projectScope={<RepositoryFilter repositories={repositories} scoped={scoped} />}
-              onNewThread={() => openCommandPalette({ open: "add-repository" })}
+              onNewThread={() => openCommandPalette({ open: "add-project" })}
               newThreadDisabled={false}
               newThreadShortcutLabel={null}
               newThreadInProjectShortcutLabel={null}
               showNewThreadInProjectHint={false}
-              newItemLabel="Add a repository"
+              newItemLabel="Add a project"
               searchInputRef={searchInputRef}
               searchQuery={searchQuery}
               onSearchQueryChange={(value) => {
@@ -216,7 +216,7 @@ export function RepositorySidebar() {
                   ) : null}
                 </ul>
               ) : (
-                <SidebarNote>Pick a repository in the filter to find its files.</SidebarNote>
+                <SidebarNote>Pick a project in the filter to find its files.</SidebarNote>
               )
             ) : scoped && checkout ? (
               <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -259,7 +259,7 @@ export function RepositorySidebar() {
                 )}
               </div>
             ) : view === "tree" ? (
-              <SidebarNote>Pick a repository in the filter to see its files.</SidebarNote>
+              <SidebarNote>Pick a project in the filter to see its files.</SidebarNote>
             ) : (
               <div className="flex flex-col gap-3">
                 {repositories.map((repository) => (
@@ -303,14 +303,14 @@ function SidebarNote({ children }: { readonly children: string }) {
 function EmptyRepositories() {
   return (
     <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-      <span>No repositories yet</span>
+      <span>No projects yet</span>
       <button
         type="button"
-        onClick={() => openCommandPalette({ open: "add-repository" })}
+        onClick={() => openCommandPalette({ open: "add-project" })}
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
       >
         <FolderPlusIcon className="-mx-0.5 size-3" />
-        Add a repository
+        Add a project
       </button>
     </div>
   );
@@ -610,9 +610,8 @@ function FileRow({
 type FilterOption = ProjectFilterOption<EnvironmentProject>;
 
 /**
- * The filter: every repository or one, as every section's project filter offers repositories,
- * with how the list shows (as a list, or the whole file tree), Manage repositories and Add a
- * repository at its foot.
+ * The filter: every project or one, as every section's project filter offers them, with how the
+ * list shows (as a list, or the whole file tree), Manage projects and Add a project at its foot.
  */
 function RepositoryFilter({
   repositories,
@@ -636,14 +635,13 @@ function RepositoryFilter({
       repository,
     })),
     wikis: [],
-    kinds: "repositories",
   });
   const filtered = searchProjectFilterOptions(items, menu.query, (item, query) =>
     filter.contains(item, query, (candidate) => candidate.label),
   );
   const value = scoped
     ? projectFilterValue({ kind: "repository", key: repositoryKey(scoped) })
-    : projectFilterValue({ kind: "repositories" });
+    : projectFilterValue({ kind: "all" });
   const selected = items.find((item) => item.value === value) ?? items[0];
   const closeAnd = (then: () => void) => {
     dispatchMenu({ type: "open-changed", open: false });
@@ -668,7 +666,7 @@ function RepositoryFilter({
       <ComboboxTrigger
         render={
           <SidebarHeaderIconButton
-            label={scoped ? `Filter by repository: ${scoped.title}` : "Filter by repository"}
+            label={scoped ? `Filter by project: ${scoped.title}` : "Filter by project"}
           />
         }
       >
@@ -685,12 +683,12 @@ function RepositoryFilter({
         className="min-w-56 max-w-[min(18rem,var(--available-width))] overflow-hidden"
       >
         <ComboboxSearchInput
-          aria-label="Search repositories"
-          placeholder="Search repositories..."
+          aria-label="Search projects"
+          placeholder="Search projects..."
           value={menu.query}
           onChange={(event) => dispatchMenu({ type: "query-changed", query: event.target.value })}
         />
-        <ComboboxEmpty>No matching repositories.</ComboboxEmpty>
+        <ComboboxEmpty>No matching projects.</ComboboxEmpty>
         <ComboboxList>
           {(item: FilterOption) => (
             <ComboboxItem key={item.value} hideIndicator value={item}>
@@ -715,13 +713,13 @@ function RepositoryFilter({
               })
             }
           >
-            Manage repositories
+            Manage projects
           </SidebarPickerAction>
           <SidebarPickerAction
             icon={FolderPlusIcon}
-            onClick={() => closeAnd(() => openCommandPalette({ open: "add-repository" }))}
+            onClick={() => closeAnd(() => openCommandPalette({ open: "add-project" }))}
           >
-            Add a repository
+            Add a project
           </SidebarPickerAction>
         </SidebarPickerFooter>
       </ComboboxPopup>
