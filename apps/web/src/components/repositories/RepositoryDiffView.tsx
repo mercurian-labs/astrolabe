@@ -22,7 +22,7 @@ import { AnnotatableCodeView } from "../diffs/AnnotatableCodeView";
 import { DiffFileLoadingBoundary } from "../diffs/DiffFileLoadingBoundary";
 import { useReviewFilePatches } from "../diffs/useReviewFilePatches";
 import { Button } from "../ui/button";
-import { repositoryPanes } from "./repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
 
@@ -120,9 +120,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
     );
   }
   const openFile = (fileDiff: FileDiffMetadata) =>
-    repositoryPanes.open(
-      repositoryTabKey({ ...tab, kind: "file", path: resolveFileDiffPath(fileDiff) }),
-    );
+    workspace.open(repositoryTabKey({ ...tab, kind: "file", path: resolveFileDiffPath(fileDiff) }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {header}

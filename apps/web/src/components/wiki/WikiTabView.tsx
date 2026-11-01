@@ -15,7 +15,7 @@ import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import { WikiNoteView } from "./WikiNoteView";
-import { hasUnsavedEdits, registerUnsavedCheck } from "./wikiPanes";
+import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
 import { parseWikiTabKey, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 /**

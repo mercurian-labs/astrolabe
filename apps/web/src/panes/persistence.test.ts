@@ -3,11 +3,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { openBeside, openTab, startingArrangement, surfaceKey } from "./arrangement";
 import {
   arrangementStorageKey,
+  joinLayouts,
   loadArrangement,
   parseArrangement,
+  parseLinkedArrangement,
   writeArrangement,
   type StorageLike,
 } from "./persistence";
+import { leaves } from "./tree";
 
 function memoryStorage(): StorageLike & { readonly items: Map<string, string> } {
   const items = new Map<string, string>();
@@ -120,5 +123,45 @@ describe("reading a stored arrangement", () => {
     expect(
       parseArrangement({ root: { type: "leaf", id: "p0", tabs: ["conversation"] } }),
     ).toBeNull();
+  });
+});
+
+describe("the shared panes on the device", () => {
+  const isKey = (key: string) =>
+    key.startsWith("chat:") || key.startsWith("file:") || key.startsWith("empty/");
+
+  it("join the chat tabs and each section's panes once, side by side, every tab open once", () => {
+    const files = openBeside(openTab(startingArrangement(), "file:a"), "file:b", "p0", "right");
+    const joined = joinLayouts(
+      ["chat:e:1", "chat:e:2"],
+      "chat:e:2",
+      [files, startingArrangement()],
+      isKey,
+    );
+    expect(joined && leaves(joined.root).map((leaf) => [leaf.id, leaf.tabs])).toEqual([
+      ["p0", ["chat:e:1", "chat:e:2"]],
+      ["p1", ["file:a"]],
+      ["p2", ["file:b"]],
+    ]);
+    expect(joined && leaves(joined.root)[0]?.active).toBe("chat:e:2");
+    expect(joinLayouts([], null, [startingArrangement()], isKey)).toBeNull();
+  });
+
+  it("keep the links of tabs open or set aside, and nothing set aside without an owner", () => {
+    const parsed = parseLinkedArrangement(
+      {
+        ...openTab(openTab(startingArrangement(), "chat:e:1"), "file:a"),
+        owners: { "file:a": "chat:e:1", "file:gone": "chat:e:1", "file:b": "chat:e:1" },
+        parked: {
+          "file:b": { pane: "p9", index: 2, active: true },
+          "file:c": { pane: "p9", index: 0 },
+        },
+        front: "chat:e:1",
+      },
+      isKey,
+    );
+    expect(parsed?.owners).toEqual({ "file:a": "chat:e:1", "file:b": "chat:e:1" });
+    expect(parsed?.parked).toEqual({ "file:b": { pane: "p9", index: 2, active: true } });
+    expect(parsed?.front).toBe("chat:e:1");
   });
 });

@@ -67,8 +67,8 @@ import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { useSectionFocusedKey } from "~/panes/sectionPanes";
-import { repositoryPanes, showLocalGraph } from "./repositoryPanes";
+import { showLocalGraph } from "./repositoryPanes";
+import { useWorkspaceFocusedKey, workspace } from "~/panes/workspace";
 import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
 import { fileName, folderOf, repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
@@ -143,7 +143,7 @@ export function RepositorySidebar() {
   };
   const openResult = (path: string) => {
     if (!scoped || !checkout) return;
-    repositoryPanes.show(fileKey(scoped, checkout.cwd, path));
+    workspace.show(fileKey(scoped, checkout.cwd, path));
     clearSearch();
   };
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -242,9 +242,7 @@ export function RepositorySidebar() {
                         projectName={scoped.title}
                         selectedPath={null}
                         selectedPathRevealId={0}
-                        onOpenFile={(path) =>
-                          repositoryPanes.show(fileKey(scoped, checkout.cwd, path))
-                        }
+                        onOpenFile={(path) => workspace.show(fileKey(scoped, checkout.cwd, path))}
                         fileMenuActions={[
                           {
                             id: "local-graph",
@@ -420,7 +418,7 @@ function RepositoryList({
               <LinkRow
                 icon={FileDiffIcon}
                 label="Review uncommitted changes"
-                onClick={() => repositoryPanes.show(diffKey("working-tree"))}
+                onClick={() => workspace.show(diffKey("working-tree"))}
               />
               {uncommitted.map((file) => (
                 <FileRow
@@ -439,7 +437,7 @@ function RepositoryList({
             <LinkRow
               icon={GitBranchIcon}
               label={`Changes against ${branch.baseRef ?? "the base"}`}
-              onClick={() => repositoryPanes.show(diffKey("branch-range"))}
+              onClick={() => workspace.show(diffKey("branch-range"))}
             />
           ) : null}
           {recentFiles.length > 0 ? (
@@ -524,12 +522,12 @@ function FileRow({
   readonly onOpened?: () => void;
 }) {
   const key = repositoryTabKey(tab);
-  const focused = useSectionFocusedKey(repositoryPanes);
+  const focused = useWorkspaceFocusedKey();
   const active = focused === key;
   const open = (event: RowClick) => {
     const intent = rowClickIntent(event, isMacPlatform(navigator.platform));
-    if (intent === "new-tab" || intent === "mod") repositoryPanes.open(key, "tab");
-    else repositoryPanes.show(key);
+    if (intent === "new-tab" || intent === "mod") workspace.open(key, "tab");
+    else workspace.show(key);
     onOpened?.();
   };
   const showMenu = (event: MouseEvent<HTMLElement>) => {
@@ -548,7 +546,7 @@ function FileRow({
   const drag = (event: DragEvent<HTMLElement>) =>
     startDrag(
       event,
-      { key, keys: [], place: (paneId, drop) => repositoryPanes.place([key], key, paneId, drop) },
+      { key, keys: [], place: (paneId, drop) => workspace.place([key], key, paneId, drop) },
       fileName(tab.path),
       0,
     );

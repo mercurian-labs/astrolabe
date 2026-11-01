@@ -6,7 +6,6 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
-import { useSyncExternalStore } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { act, fakeTimers, render, stubGlobal } from "../../test/render";
@@ -43,15 +42,18 @@ vi.mock(import("~/localApi"), async (original) => ({
 }));
 
 import { useRightPanelStore } from "../rightPanelStore";
-import { splitTab, surfaceKey } from "./arrangement";
-import { createPanesController, type PanelProps } from "./panesController";
+import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { openTab, splitTab, startingArrangement } from "./arrangement";
+import type { PanelProps } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
-import { PanesThreadContext, RightPanelHostContext } from "./PaneSurfaceHost";
+import { WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
-import { createRightPanelHost } from "./rightPanelPaneTabs";
+import { useWorkspaceSnapshot, workspace, WORKSPACE_LAYOUT_KEY } from "./workspace";
+import { createWorkspaceHost } from "./workspaceTabs";
 
 const ref = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-1"));
 const threadKey = scopedThreadKey(ref);
+const chat = chatTabKey(ref);
 const device = { hostId: "mac", deviceId: "pixel", platform: "android" as const, name: "Pixel 9" };
 const deviceSurfaceId = "device:mac:pixel";
 const session: PreviewSessionSnapshot = {
@@ -139,7 +141,10 @@ async function settle() {
   await act(() => vi.advanceTimersToNextFrame());
 }
 
-/** The thread's right panel drawn as panes, as ChatView draws it, over the record as it stands. */
+/**
+ * The shared panes holding the thread's chat alone, its surfaces linked beside it as the record
+ * stands, with the panel props its ChatView hands them.
+ */
 async function renderPanes(overrides: Partial<PanelProps> = {}) {
   await using stack = new AsyncDisposableStack();
   stack.use(fakeTimers());
@@ -156,33 +161,30 @@ async function renderPanes(overrides: Partial<PanelProps> = {}) {
   // Menus wait for exit animations to finish, which never happens under fake timers.
   stack.use(vi.spyOn(Element.prototype, "getAnimations").mockReturnValue([]));
   stack.use(vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel"));
-  const controller = createPanesController(null);
-  const host = createRightPanelHost(controller);
-  controller.load(ref, threadKey);
-  stack.defer(controller.follow());
-  controller.setPanel(panelProps(overrides));
+  const host = createWorkspaceHost();
+  // Anything an earlier test left goes with its chat.
+  workspace.update(() => openTab(startingArrangement(), chat));
+  stack.defer(workspace.follow());
+  workspace.setPanel(panelProps(overrides));
   function Panes() {
-    const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+    const snapshot = useWorkspaceSnapshot();
     return snapshot ? <PaneTree snapshot={snapshot} panelMaximized={false} /> : null;
   }
   const screen = stack.use(
     await render(
-      <PanesHostContext.Provider value={host}>
-        <RightPanelHostContext.Provider value={host}>
-          <PanesLayoutKeyContext.Provider value={threadKey}>
-            <PanesThreadContext.Provider value={ref}>
-              <Panes />
-            </PanesThreadContext.Provider>
+      <WorkspaceHostContext.Provider value={host}>
+        <PanesHostContext.Provider value={host}>
+          <PanesLayoutKeyContext.Provider value={WORKSPACE_LAYOUT_KEY}>
+            <Panes />
           </PanesLayoutKeyContext.Provider>
-        </RightPanelHostContext.Provider>
-      </PanesHostContext.Provider>,
+        </PanesHostContext.Provider>
+      </WorkspaceHostContext.Provider>,
     ),
   );
   await settle();
   const environment = stack.move();
   return {
     container: screen.container,
-    controller,
     [Symbol.asyncDispose]: () => environment.disposeAsync(),
   };
 }
@@ -234,7 +236,7 @@ function emptyPanel(): Disposable {
   return { [Symbol.dispose]: reset };
 }
 
-describe("Mod+T in the right panel's panes", () => {
+describe("Mod+T in the shared panes", () => {
   it("opens the focused pane's New tab menu and adds the surface picked", async () => {
     using _panel = emptyPanel();
     const store = useRightPanelStore.getState();
@@ -243,12 +245,13 @@ describe("Mod+T in the right panel's panes", () => {
     const onAddTerminal = vi.fn();
     await using screen = await renderPanes({ onAddTerminal });
     await act(() =>
-      screen.controller.update((arrangement) =>
-        splitTab(arrangement, surfaceKey("files"), "right"),
+      workspace.update((arrangement) =>
+        splitTab(arrangement, chatSurfaceKey(chat, "files"), "right"),
       ),
     );
     const panes = [...screen.container.querySelectorAll<HTMLElement>("[data-pane-id]")];
-    expect(panes).toHaveLength(2);
+    // The chat, then its Diff and Files split apart.
+    expect(panes).toHaveLength(3);
     const focused = panes.find((pane) => pane.dataset.focused !== undefined)!;
     const other = panes.find((pane) => pane !== focused)!;
 
@@ -263,15 +266,17 @@ describe("Mod+T in the right panel's panes", () => {
     expect(document.querySelector('[role="menu"]:not([data-closed])')).toBeNull();
   });
 
-  it("leaves the shortcut alone while the panel is closed", async () => {
+  it("opens the menu while the chat's panel is closed too, adding the surface beside the chat", async () => {
     using _panel = emptyPanel();
-    await using _screen = await renderPanes({ open: false });
-    expect((await press("t", { metaKey: true })).defaultPrevented).toBe(false);
-    expect(document.querySelector('[role="menu"]:not([data-closed])')).toBeNull();
+    const onAddDiff = vi.fn();
+    await using _screen = await renderPanes({ open: false, onAddDiff });
+    expect((await press("t", { metaKey: true })).defaultPrevented).toBe(true);
+    await press("d");
+    expect(onAddDiff).toHaveBeenCalledOnce();
   });
 });
 
-describe("a right-panel tab in a pane", () => {
+describe("a thread's surface as a tab of the shared panes", () => {
   it("cancels the middle button's defaults and closes once on middle-click", async () => {
     using _panel = emptyPanel();
     useRightPanelStore.getState().open(ref, "diff");

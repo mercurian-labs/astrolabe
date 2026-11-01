@@ -43,9 +43,9 @@ export interface PaneTabMenuItem {
 }
 
 /**
- * What the tabs of a set of panes are, given by whoever mounts the panes: the right panel's
- * tabs are a thread's surfaces, the Wikis area's are documents. The panes themselves only
- * arrange keys.
+ * What the tabs of a set of panes are, given by whoever mounts the panes: the shared panes' are
+ * chats, files, documents and threads' surfaces, Changes' are pull requests. The panes themselves
+ * only arrange keys.
  */
 export interface PaneTabs {
   /**
@@ -54,6 +54,8 @@ export interface PaneTabs {
    * title comes from.
    */
   readonly Label: ComponentType<PaneTabLabelProps>;
+  /** Astrolabe: drawn at a tab's end before its close button, as a linked tab's marker. */
+  readonly Marker?: ComponentType<{ readonly tabKey: string }>;
   /** What a tab's menu offers of its own, ahead of closing and splitting it, as a file's Copy path. */
   readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */

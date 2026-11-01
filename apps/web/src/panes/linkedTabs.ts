@@ -73,7 +73,7 @@ export function ownedTabs(state: LinkedArrangement, owner: string): string[] {
 
 /** Links a tab to `owner`; it shows from now on only while its owner does. */
 export function linkTab(state: LinkedArrangement, key: string, owner: string): LinkedArrangement {
-  if (state.owners[key] === owner || key === owner) return state;
+  if (state.owners[key] === owner) return state;
   return { ...state, owners: { ...state.owners, [key]: owner } };
 }
 

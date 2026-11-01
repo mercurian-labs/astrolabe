@@ -22,10 +22,10 @@ import { composerHistory } from "../composerCodeMirror/composerUndo";
 import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFilesQueryState";
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
-import { registerUnsavedCheck } from "../wiki/wikiPanes";
+import { registerUnsavedCheck } from "~/panes/unsavedEdits";
 import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
 import { openLocalGraph } from "./localGraph";
-import { repositoryPanes } from "./repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
 
@@ -104,7 +104,7 @@ export function RepositoryFileView({
   const readOnly = !canWrite || file.data?.truncated === true;
   const agentWorking = useAgentWorkingIn(tab);
   // The panes this file is in, which its local graph opens beside it in.
-  const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
+  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
 
   const header = (
     <RepositoryTabHeader.Root>

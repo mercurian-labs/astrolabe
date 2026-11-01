@@ -1,7 +1,7 @@
 import { useContext, type ComponentProps } from "react";
 
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
-import { RightPanelHostContext } from "./PaneSurfaceHost";
+import { ChatOwnerContext } from "./PaneSurfaceHost";
 
 /** What makes ChatView's header the window's title bar, which a pane's header is not. */
 const TITLEBAR_CLASSES = new Set([
@@ -16,7 +16,7 @@ const TITLEBAR_CLASSES = new Set([
  * and the inset that clears a collapsed sidebar's toggle.
  */
 export function PaneChatHeader({ className, ...props }: ComponentProps<"header">) {
-  const inPanes = useContext(RightPanelHostContext) !== null;
+  const inPanes = useContext(ChatOwnerContext) !== null;
   return (
     <header
       className={

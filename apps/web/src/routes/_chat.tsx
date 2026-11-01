@@ -2,8 +2,13 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { Outlet, createFileRoute, redirect, useMatches } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { ChatTabs } from "../chatTabs/ChatTabs";
-import { isAppModalPage } from "../components/sidebar/mainAppLocation";
+import {
+  isAppModalPage,
+  isRepositoriesPath,
+  isWikisPath,
+  useSectionPathname,
+} from "../components/sidebar/mainAppLocation";
+import { WorkspaceView } from "../panes/WorkspaceView";
 import { SidebarInset } from "../components/ui/sidebar";
 import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../threadRoutes";
 import { retainThreadFindForRoute } from "../components/chat/threadFindStore";
@@ -28,19 +33,22 @@ function ChatRouteLayout() {
     setBackgroundTarget(threadTarget);
   }
   const shownTarget = modalOpen ? backgroundTarget : threadTarget;
+  // Astrolabe: threads, Repositories and Wikis share one set of panes; their routes only say
+  // which sidebar shows and which chat is in front.
+  const sectionPathname = useSectionPathname();
+  const inWorkspace =
+    shownTarget !== null || isRepositoriesPath(sectionPathname) || isWikisPath(sectionPathname);
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (
         <ThreadLinkPrompt threadRef={shownTarget.threadRef} />
       ) : null}
-      {shownTarget ? (
-        <ChatTabs target={shownTarget} background={modalOpen} />
+      {inWorkspace ? (
+        <WorkspaceView routeTarget={shownTarget} background={modalOpen} />
       ) : modalOpen ? (
         <SidebarInset className="h-dvh" />
-      ) : (
-        <Outlet />
-      )}
-      {modalOpen ? <Outlet /> : null}
+      ) : null}
+      {modalOpen || !inWorkspace || shownTarget === null ? <Outlet /> : null}
     </>
   );
 }

@@ -238,7 +238,8 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
-import { useChatTabsStore } from "../chatTabs/chatTabsStore";
+import { workspace } from "../panes/workspace";
+import { chatTabKey } from "../sectionTabs/sectionTabs";
 import { rowClickIntent } from "../tabNavigation.logic";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import {
@@ -1289,7 +1290,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   };
   // Astrolabe: a thread in a new chat tab, after the one in front (or the tab already showing it).
   const openThreadInNewTab = (threadRef: ScopedThreadRef) => {
-    useChatTabsStore.getState().openNew(scopedThreadKey(threadRef));
+    workspace.openChatNew(chatTabKey(threadRef));
     void navigateToThread(threadRef);
   };
 
@@ -1322,9 +1323,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       ? useComposerDraftStore.getState().getDraftSession(draftId)
       : null;
     if (session) {
-      useChatTabsStore
-        .getState()
-        .openNew(scopedThreadKey(scopeThreadRef(session.environmentId, session.threadId)));
+      workspace.openChatNew(chatTabKey(scopeThreadRef(session.environmentId, session.threadId)));
     }
     if (isMobile) {
       setOpenMobile(false);

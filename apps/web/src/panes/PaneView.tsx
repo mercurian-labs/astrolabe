@@ -320,6 +320,7 @@ function LabeledTabPill({
       ) : (
         <TabTitle title={title} tooltip={tooltip} />
       )}
+      {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
       {closable ? (
         <TabCloseButton
           label={`Close ${title}`}

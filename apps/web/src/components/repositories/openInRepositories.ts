@@ -2,7 +2,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
-import { repositoryPanes } from "./repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
 import { repositoryTabKey } from "./repositoryTabs";
 
@@ -30,11 +30,9 @@ export function repositoryMoveOfSurface(
       repositoryScope.set(`${environmentId}:${projectId}`);
       repositoryCheckout.set(thread.worktreePath);
       if (path !== null) {
-        repositoryPanes.show(
-          repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path }),
-        );
+        workspace.show(repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path }));
       } else if (surfaceId === "diff") {
-        repositoryPanes.show(
+        workspace.show(
           repositoryTabKey({ kind: "diff", environmentId, projectId, cwd, source: "working-tree" }),
         );
       } else {

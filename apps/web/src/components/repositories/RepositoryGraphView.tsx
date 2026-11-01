@@ -47,7 +47,7 @@ import {
   shownLocalGraph,
   type LocalGraphOptions,
 } from "./localGraphData";
-import { repositoryPanes } from "./repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { fileName, repositoryTabKey, type RepositoryGraphTab } from "./repositoryTabs";
 
@@ -75,7 +75,7 @@ export default function RepositoryGraphView({
   readonly tabKey: string;
   readonly tab: RepositoryGraphTab;
 }) {
-  const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
+  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   const arrangement = useSyncExternalStore(
     panes.subscribe,
     () => panes.getSnapshot()?.arrangement ?? null,
@@ -164,9 +164,9 @@ export default function RepositoryGraphView({
       }
       return;
     }
-    if (panes === repositoryPanes.store) {
-      if (newTab) repositoryPanes.open(key, "tab", paneId);
-      else repositoryPanes.show(key, paneId);
+    if (panes === workspace.store) {
+      if (newTab) workspace.open(key, "tab", paneId);
+      else workspace.show(key, paneId);
       return;
     }
     panes.update((arrangement) =>

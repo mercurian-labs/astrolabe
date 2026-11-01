@@ -2632,6 +2632,16 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   --tab-rule-color: var(--border);
 }
 
+/* A linked tab's marker and its owner's (`panes/workspaceTabs.tsx`): a chain in the owner's ink.
+   The first owner on screen inks in the primary colour; the rest mix it toward other hues, kept
+   as quiet as the muted text beside them. */
+:root {
+  --link-ink-1: var(--primary);
+  --link-ink-2: color-mix(in oklab, var(--primary) 35%, oklch(0.68 0.13 150));
+  --link-ink-3: color-mix(in oklab, var(--primary) 35%, oklch(0.7 0.13 60));
+  --link-ink-4: color-mix(in oklab, var(--primary) 35%, oklch(0.66 0.14 330));
+}
+
 /* A tab group's run (`panes/tabGroups.tsx`), in a pane's strip or the chat tabs, is underlined in
    the theme's primary colour (`--tab-group`, the same for every group) as Chrome's are, a 2px
    line along the strip's foot. Its tab in front is outlined in that line, so the line rises
