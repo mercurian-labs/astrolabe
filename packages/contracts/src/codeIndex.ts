@@ -278,7 +278,8 @@ export const CodeGraphShowInput = Schema.Struct({
   title: Schema.optional(
     Schema.NonEmptyString.annotate({ description: "A few words naming the picture or story." }),
   ),
-  steps: Schema.NonEmptyArray(CodeGraphStepInput).annotate({
+  // A plain array with a minimum: a non-empty tuple advertises every step's schema twice.
+  steps: Schema.Array(CodeGraphStepInput).check(Schema.isMinLength(1)).annotate({
     description:
       "One step for a single picture; several, in order, for a story the user steps through. Every step draws over the same nodes: all the steps' focus nodes.",
   }),
