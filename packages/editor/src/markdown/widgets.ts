@@ -3,7 +3,7 @@ import { syntaxTree } from "@codemirror/language";
 import { Transaction } from "@codemirror/state";
 import { EditorView, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
-import { previewConfig } from "./config.ts";
+import { previewConfig, type CodeBlockRenderer } from "./config.ts";
 import { foldableBlockAt } from "./documentIndex.ts";
 import { lineMarkers } from "./lineMarkers.ts";
 import { fillMath } from "./math.ts";
@@ -343,6 +343,56 @@ export class MathWidget extends WidgetType {
       placeCaret(view, view.posAtDOM(element));
     });
     return element;
+  }
+
+  override ignoreEvent() {
+    return true;
+  }
+}
+
+const cleanups = new WeakMap<HTMLElement, () => void>();
+const HOST_CONTROLS =
+  "a, button, input, select, textarea, [role='button'], [role='link'], [tabindex]";
+
+/**
+ * A fenced block the host draws, in place of its lines. A click on the drawing's own surface
+ * puts the caret in the block to edit its source; clicks on the host's controls stay theirs.
+ */
+export class HostBlockWidget extends WidgetType {
+  constructor(
+    readonly language: string,
+    readonly source: string,
+    readonly render: CodeBlockRenderer,
+  ) {
+    super();
+  }
+
+  override eq(other: HostBlockWidget) {
+    return (
+      other.language === this.language &&
+      other.source === this.source &&
+      other.render === this.render
+    );
+  }
+
+  toDOM(view: EditorView) {
+    const element = document.createElement("div");
+    element.className = "cm-md-host-block";
+    element.dataset.language = this.language;
+    const cleanup = this.render(this.source, element);
+    if (cleanup) cleanups.set(element, cleanup);
+    element.addEventListener("mousedown", (event) => {
+      if (event.button !== 0 || !view.state.facet(EditorView.editable)) return;
+      if (event.target instanceof Element && event.target.closest(HOST_CONTROLS)) return;
+      event.preventDefault();
+      placeCaret(view, view.posAtDOM(element));
+    });
+    return element;
+  }
+
+  override destroy(dom: HTMLElement) {
+    cleanups.get(dom)?.();
+    cleanups.delete(dom);
   }
 
   override ignoreEvent() {
