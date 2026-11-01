@@ -649,6 +649,23 @@ section {
 :root:is([data-twilight="astronomical"], [data-twilight="night"]) .mast__night {
   display: inline;
 }
+/* GitHub, a cell like the sky glyph's, on every width. */
+.mast__gh {
+  display: grid;
+  place-items: center;
+  width: var(--head);
+  border-left: 1px solid var(--rule);
+  color: var(--ink-2);
+  transition: color 0.2s;
+}
+.mast__gh:hover {
+  color: var(--ink);
+}
+.mast__gh svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  fill: currentColor;
+}
 .mast__nav {
   grid-column: span 6;
   display: grid;
