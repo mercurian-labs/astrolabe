@@ -6,6 +6,7 @@ import { ChatOwnerContext } from "./PaneSurfaceHost";
 /** What makes ChatView's header the window's title bar, which a pane's header is not. */
 const TITLEBAR_CLASSES = new Set([
   "drag-region",
+  "wco:pr-(--workspace-native-controls-inset)",
   ...COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS.split(" "),
 ]);
 
@@ -13,7 +14,7 @@ const TITLEBAR_CLASSES = new Set([
  * ChatView's header bar, T3 Code's own `<header>` as drawn. Inside the panes each thread, the
  * host's or a guest's, keeps it at the top of its own tab, panel controls and all; the tab
  * strip above is the window's title bar, so the header drops what made it one: the drag region,
- * and the inset that clears a collapsed sidebar's toggle.
+ * and the insets that clear a collapsed sidebar's toggle and the window's own controls.
  */
 export function PaneChatHeader({ className, ...props }: ComponentProps<"header">) {
   const inPanes = useContext(ChatOwnerContext) !== null;
