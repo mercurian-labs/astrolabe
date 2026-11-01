@@ -8,8 +8,8 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 
 ## Sub-features
 
-- **Thread Graph tab**: right-panel launcher **Graph** (`G`). Header: Back/Forward
-  (`TabHeader.History`, always faint here: a linked tab builds no history), the view menu
+- **Thread Graph tab**: right-panel launcher **Graph** (`G`). Header: no Back/Forward
+  (a thread's surface never navigates in place), the view menu
   (`combobox "Graph view"`, only once an agent has shown a view: **Changes**, then each picture or
   story by title), **Back to the thread's changes** (after a click re-rooted it), **Reset the graph**
   (after an expansion), **Fit the graph**, **Graph settings**. Roots are the files in the thread's

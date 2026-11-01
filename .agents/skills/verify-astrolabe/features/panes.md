@@ -200,14 +200,14 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   request, a change group, a pull request), each a breadcrumb in the chat's type (muted place,
   then the page) with quiet status and ghost icon actions.
 - **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
-  `TabHeader.History`; the chat's through `PaneChatHeader`), as Obsidian's tab headers do. They
-  step that tab's own history (`workspace.step(direction, tabKey)`), focused or not, and are
-  disabled with nothing that way; on a linked surface (the thread's Graph tab, a thread's pull
-  request) they render but are always disabled, since linked tabs build no history. Tabs
-  with no header row have none: the New tab launcher and the thread's other surfaces
-  (terminal, preview, diff, files, pull requests, device, lineage).
-  `mod+[`/`mod+]`, Space `t h`/`t l` and the palette's Back/Forward still act on the focused
-  pane's tab in front. Proof: two panes, click Back in the unfocused one's header; only its tab
+  `TabHeader.History`), as Obsidian's tab headers do. They step that tab's own history
+  (`workspace.step(direction, tabKey)`), focused or not, and are disabled with nothing that way.
+  A chat's header and a thread surface's (the Graph tab, a thread's pull request) have none,
+  and `step`/`canStep` refuse them (`navigatesInPlace`): a chat never shows anything else in its
+  place, so its linked tabs are never left without their chat. Tabs with no header row have
+  none either: the New tab launcher and the thread's other surfaces (terminal, preview, diff,
+  files, pull requests, device, lineage). `mod+[`/`mod+]`, Space `t h`/`t l` and the palette's
+  Back/Forward still act on the focused pane's tab in front, and do nothing on a chat. Proof: two panes, click Back in the unfocused one's header; only its tab
   changes. What scrolls beneath a header fades out under it (`topbar-scroll-fade`, static).
 - **Drag a tab** to another strip or a pane edge. Cmd/Ctrl-click and
   Shift-click select several tabs, which drag together. The page draws the drag's

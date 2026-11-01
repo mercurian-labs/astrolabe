@@ -14,7 +14,7 @@ import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { PaneTabKeyContext } from "./PaneSurfaceHost";
-import { useWorkspaceTabHistory, workspace } from "./workspace";
+import { navigatesInPlace, useWorkspaceTabHistory, workspace } from "./workspace";
 
 /**
  * Astrolabe: a pane tab's header row, drawn as a chat's: no border, the tab's back and forward,
@@ -40,11 +40,13 @@ function Root({ className, children, ...props }: ComponentProps<"header">) {
 /**
  * Back and forward through what this tab showed, as Obsidian's tab headers start: the tab whose
  * header they sit in, focused or not, faint with nothing that way. Nothing outside the shared
- * panes.
+ * panes, nor for a tab that never shows anything else in its place (`navigatesInPlace`).
  */
 function History({ className }: { readonly className?: string }) {
   const tabKey = useContext(PaneTabKeyContext);
-  return tabKey === null ? null : <TabHistory tabKey={tabKey} className={className} />;
+  return tabKey === null || !navigatesInPlace(tabKey) ? null : (
+    <TabHistory tabKey={tabKey} className={className} />
+  );
 }
 
 function TabHistory({

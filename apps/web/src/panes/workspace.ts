@@ -113,6 +113,13 @@ const isWorkspaceKey = (key: string) =>
   pullRequestTargetOfKey(key) !== null ||
   parseChatSurfaceKey(key) !== null;
 
+/**
+ * Whether a tab can show something else in its place and step back to it. A chat never can, so
+ * its linked tabs are never left without their chat; nor can a thread's surface.
+ */
+export const navigatesInPlace = (key: string) =>
+  parseChatTabKey(key) === null && parseChatSurfaceKey(key) === null;
+
 function isRecordObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -646,7 +653,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const { arrangement } = current();
     const active = key ?? focusedPane(arrangement).active;
     const pane = leafWithTab(arrangement.root, active);
-    if (!pane) return;
+    if (!pane || !navigatesInPlace(active)) return;
     let tabHistories = histories;
     let goTo = historyTarget(tabHistories, active, direction);
     // Entries gone from between can leave the tab's own key nearest, which leads nowhere.
@@ -681,7 +688,8 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   const canStep = (direction: HistoryDirection, key?: string) => {
     // Reads the panes first: the first read loads the histories with them.
     const { arrangement } = current();
-    return historyTarget(histories, key ?? focusedPane(arrangement).active, direction) !== null;
+    const active = key ?? focusedPane(arrangement).active;
+    return navigatesInPlace(active) && historyTarget(histories, active, direction) !== null;
   };
 
   const close = (key: string) => update((arrangement) => closeTab(arrangement, key));

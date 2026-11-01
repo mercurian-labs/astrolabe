@@ -71,7 +71,8 @@ goes together).
 
 A file or document tab remembers what it showed. The arrows at the start of its header go back
 and forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do the same in the
-focused tab.
+focused tab. A chat has no arrows: nothing ever takes a chat's place, so the terminal, browser
+and other tabs linked to it always stay with their chat.
 
 `mod+j` opens and closes the terminal drawer of the chat in the focused tab. With a file, a
 document or any other tab in focus it does nothing, even with a chat showing in another pane.

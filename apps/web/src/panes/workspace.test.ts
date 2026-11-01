@@ -328,6 +328,38 @@ describe("the shared panes", () => {
   });
 
   it("never step a tab to itself once the entries between are gone", () => {
+    const one = repositoryTabKey({
+      kind: "file",
+      environmentId: "env-1" as EnvironmentId,
+      projectId: ProjectId.make("project-1"),
+      cwd: "/work/tree",
+      path: "one.ts",
+    });
+    const device = memoryStorage({
+      [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+        root: { type: "leaf", id: "p0", tabs: [one], active: one },
+        focused: "p0",
+        seq: 1,
+        owners: {},
+        parked: {},
+        front: null,
+      }),
+      // The file came back in place of a tab whose key no longer reads.
+      "astrolabe:workspace-tab-history:v1": JSON.stringify({
+        [one]: { back: [one, "gone/1"], forward: [] },
+      }),
+    });
+    const workspace = createWorkspace(() => device);
+    expect(panes(workspace)).toEqual([[one]]);
+    expect(workspace.canStep("back")).toBe(true);
+
+    workspace.step("back");
+
+    expect(panes(workspace)).toEqual([[one]]);
+    expect(workspace.canStep("back")).toBe(false);
+  });
+
+  it("never step a chat back or forward, so its linked tabs never lose their chat", () => {
     const device = memoryStorage({
       [WORKSPACE_STORAGE_KEY]: JSON.stringify({
         root: { type: "leaf", id: "p0", tabs: [chatA], active: chatA },
@@ -337,19 +369,17 @@ describe("the shared panes", () => {
         parked: {},
         front: chatA,
       }),
-      // A came back in place of a tab whose key no longer reads.
+      // History saved before chats stopped taking each other's place.
       "astrolabe:workspace-tab-history:v1": JSON.stringify({
-        [chatA]: { back: [chatA, "gone/1"], forward: [] },
+        [chatA]: { back: [chatB], forward: [] },
       }),
     });
     const workspace = createWorkspace(() => device);
-    expect(panes(workspace)).toEqual([[chatA]]);
-    expect(workspace.canStep("back")).toBe(true);
+    expect(workspace.canStep("back")).toBe(false);
 
     workspace.step("back");
 
     expect(panes(workspace)).toEqual([[chatA]]);
-    expect(workspace.canStep("back")).toBe(false);
   });
 
   it("put a new chat in the New tab in focus, where it stood", () => {
