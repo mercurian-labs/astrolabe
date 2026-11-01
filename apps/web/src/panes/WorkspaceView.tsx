@@ -5,7 +5,6 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 
 import { chatRouteOf, ChatTabWatch, type ChatRoute } from "~/chatTabs/chatTabLabel";
-import { ChatTabStripContext } from "~/chatTabs/ChatTabStrip";
 import { registerThreadTabDrop } from "~/chatTabs/threadTabDrop";
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
@@ -153,28 +152,26 @@ export function WorkspaceView({
 
   return (
     <BackgroundThreadContext value={background}>
-      <ChatTabStripContext.Provider value={null}>
-        <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-          <WorkspaceHostContext.Provider value={host}>
-            <PanesHostContext.Provider value={host}>
-              <PanesLayoutKeyContext.Provider value={WORKSPACE_LAYOUT_KEY}>
-                <div
-                  ref={root}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
-                >
-                  {snapshot ? <PaneTree snapshot={snapshot} panelMaximized /> : null}
-                </div>
-                <WorkspaceTabContents
-                  routeTarget={routeTarget}
-                  routeChatKey={routeChatKey}
-                  background={background}
-                />
-                <GroupsSync />
-              </PanesLayoutKeyContext.Provider>
-            </PanesHostContext.Provider>
-          </WorkspaceHostContext.Provider>
-        </SidebarInset>
-      </ChatTabStripContext.Provider>
+      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+        <WorkspaceHostContext.Provider value={host}>
+          <PanesHostContext.Provider value={host}>
+            <PanesLayoutKeyContext.Provider value={WORKSPACE_LAYOUT_KEY}>
+              <div
+                ref={root}
+                className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
+              >
+                {snapshot ? <PaneTree snapshot={snapshot} panelMaximized /> : null}
+              </div>
+              <WorkspaceTabContents
+                routeTarget={routeTarget}
+                routeChatKey={routeChatKey}
+                background={background}
+              />
+              <GroupsSync />
+            </PanesLayoutKeyContext.Provider>
+          </PanesHostContext.Provider>
+        </WorkspaceHostContext.Provider>
+      </SidebarInset>
     </BackgroundThreadContext>
   );
 }

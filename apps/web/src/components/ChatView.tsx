@@ -358,7 +358,6 @@ import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { setReadingTurn } from "./lineage/readingTurn";
-import { useChatTabStrip } from "../chatTabs/ChatTabStrip";
 import { ThreadChangeGroupPill } from "./changeRequests/groups/ThreadChangeGroupPill";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
 import { keepsListFocus } from "../keyboardNav/placeLists";
@@ -999,8 +998,6 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     panelAnimationDurationMs,
   );
-  // Astrolabe: the open chats' tabs, across the top of the chat column.
-  const chatTabStrip = useChatTabStrip();
   const rightPanelPresent = rightPanelPresence.present;
   const rightPanelControlsInPanel =
     shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
@@ -3165,8 +3162,7 @@ export default function ChatView(props: ChatViewProps) {
   const panelToggleControls = (
     <PanelLayoutControls
       {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar && !chatTabStrip}
-      showTerminalControl={!chatTabStrip}
+      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
     />
   );
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -3206,17 +3202,6 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
       >
-        {chatTabStrip?.({
-          atWindowEdge: !rightPanelControlsAtRoot,
-          // The chat's own controls end its strip; the right panel's toggle joins them while
-          // the panel is closed, and otherwise sits over the panel with its maximize control.
-          trailing: (
-            <PanelLayoutControls
-              {...panelToggleControlProps}
-              showRightPanelControl={!rightPanelControlsAtRoot}
-            />
-          ),
-        })}
         <PaneChatHeader
           ref={threadPanelPopoverAnchorRef}
           data-chat-header
@@ -3239,10 +3224,8 @@ export default function ChatView(props: ChatViewProps) {
               className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
             />
           ) : null}
-          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && !chatTabStrip
-            ? panelLayoutControls
-            : null}
-          {inlineRightPanelOwnsTitleBar && !chatTabStrip ? threadPanelHeaderControl : null}
+          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
+          {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}

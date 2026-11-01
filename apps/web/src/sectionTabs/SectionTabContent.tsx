@@ -29,7 +29,6 @@ import {
 } from "~/components/wiki/WikiTabView";
 import { hasUnsavedEdits } from "~/panes/unsavedEdits";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
-import { ChatTabStripContext } from "~/chatTabs/ChatTabStrip";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import { ensureLocalApi } from "~/localApi";
@@ -278,26 +277,22 @@ export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef })
   const draftId = useComposerDraftStore((store) =>
     shell ? null : store.getDraftIdByRef(threadRef),
   );
-  return (
-    <ChatTabStripContext.Provider value={null}>
-      {draftId ? (
-        <ChatView
-          key={draftId}
-          draftId={draftId}
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          routeKind="draft"
-          reserveTitleBarControlInset={false}
-        />
-      ) : (
-        <ChatView
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          routeKind="server"
-          reserveTitleBarControlInset={false}
-        />
-      )}
-    </ChatTabStripContext.Provider>
+  return draftId ? (
+    <ChatView
+      key={draftId}
+      draftId={draftId}
+      environmentId={threadRef.environmentId}
+      threadId={threadRef.threadId}
+      routeKind="draft"
+      reserveTitleBarControlInset={false}
+    />
+  ) : (
+    <ChatView
+      environmentId={threadRef.environmentId}
+      threadId={threadRef.threadId}
+      routeKind="server"
+      reserveTitleBarControlInset={false}
+    />
   );
 }
 

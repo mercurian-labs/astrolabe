@@ -141,7 +141,7 @@ export function createWorkspaceHost(): WorkspaceHost {
       }
     },
     Overlay: SurfaceOverlay,
-    reservesTopRight: true,
+    reservesTopRight: false,
     openElsewhere: (tabKey) => {
       const parsed = parseChatSurfaceKey(tabKey);
       if (parsed !== null) {
@@ -364,6 +364,11 @@ function useTabLabel(tabKey: string): PaneTabLabel {
  * names the owner (or what the owner keeps) on hover. Quiet and still: no motion.
  */
 function LinkMarker({ tabKey }: { readonly tabKey: string }) {
+  const markKey = useSyncExternalStore(subscribeMarks, () => linkMarkKeyOf(tabKey));
+  return markKey === null ? null : <LinkMark tabKey={tabKey} />;
+}
+
+function LinkMark({ tabKey }: { readonly tabKey: string }) {
   const owner = useTabOwner(tabKey);
   const followed = useSyncExternalStore(followedGraphFiles.subscribe, () =>
     followedGraphFiles.fileOf(tabKey),
