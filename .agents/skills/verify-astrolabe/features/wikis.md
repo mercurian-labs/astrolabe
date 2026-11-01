@@ -35,9 +35,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
 - **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`). A plain click on a row (or Enter on a focused row)
-  replaces what the focused pane's tab in front shows; a document already open in
-  another tab comes forward there instead (no duplicates); an empty tab, or a note
-  with unsaved edits, makes way for a new tab. Option/Alt-click, middle-click, the
+  replaces what the focused pane's tab in front shows, whatever it is (a file or a pull
+  request too); a document already open in another tab comes forward there instead (no
+  duplicates); an empty tab is filled, and a chat, a chat's linked tab or a tab with unsaved
+  edits makes way for a new tab. Option/Alt-click, middle-click, the
   row's right-click **Open in new tab**, or Alt+Enter open a new tab after the one in
   front. Mod-click (Cmd on macOS, Ctrl elsewhere) and Shift-click select rows
   (`sidebarRowSelection.ts`, `data-selected` with the selected fill; Escape clears; with a row focused the first

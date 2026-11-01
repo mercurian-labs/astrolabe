@@ -14,6 +14,7 @@ import {
 } from "~/panes/arrangement";
 import type { Side } from "~/panes/tree";
 import { hasUnsavedEdits } from "~/panes/unsavedEdits";
+import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { workspace } from "~/panes/workspace";
 import { rekeyHistory, replaceInHistory, type HistoryDirection } from "~/tabNavigation.logic";
 import { parseWikiTabKey, sameWikiTab, wikiTabKey, type WikiTab } from "./wikiTabs";
@@ -97,9 +98,10 @@ export function replaceWikiTab(from: string, next: WikiTab, { rekey = false } = 
 }
 
 /**
- * Shows a document as a click on its sidebar row does, in the focused pane's tab in front, which
- * remembers what it showed (see `replaceWikiTab`). One open already comes to the front where it
- * is; an empty tab, a chat, a linked tab, or one with unsaved edits makes way for a new tab.
+ * Shows a document as a click on its sidebar row does, in place of the focused pane's tab in
+ * front whatever it shows, as `workspace.show` does for files: that tab remembers what it showed
+ * (see `replaceWikiTab`). One open already comes to the front where it is; an empty tab is
+ * filled, and a chat, a linked tab or one with unsaved edits makes way for a new tab.
  */
 export function showWikiTab(tab: WikiTab) {
   const linked = workspace.linked();
@@ -108,7 +110,7 @@ export function showWikiTab(tab: WikiTab) {
     openKeyFor(linked.arrangement, tab) !== null ||
     isEmptyTab(active) ||
     hasUnsavedEdits(active) ||
-    parseWikiTabKey(active) === null ||
+    parseChatTabKey(active) !== null ||
     active in linked.owners
   ) {
     openWikiTab(tab);
