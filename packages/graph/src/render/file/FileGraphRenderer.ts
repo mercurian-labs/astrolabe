@@ -4,9 +4,10 @@
  * more important keeps its place (`labelPlacement.ts`). Forces run only while something moves;
  * frames are drawn only on a change, by a drawer that only paints (`FileGraphDrawer`).
  */
-import { FileForces, type Point } from "../../layout/fileForces.ts";
+import { CLUSTER_PAD, FileForces, type Point } from "../../layout/fileForces.ts";
 import { seededPoint } from "../../layout/forceLayout.ts";
 import {
+  clusterChains,
   fileGraphDegrees,
   fileGraphSignature,
   fileGraphStructure,
@@ -14,6 +15,7 @@ import {
   neighbourhood,
   nodeLabel,
   type FileGraphData,
+  type FileGraphFocus,
   type FileGraphNode,
 } from "../../model/fileGraph.ts";
 import {
@@ -54,6 +56,21 @@ export interface DrawnLink {
   readonly arrow: boolean;
 }
 
+/** An open cluster: a soft disc around what it holds, its name above it. */
+export interface DrawnHull {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
+  readonly fill: number;
+  readonly fillAlpha: number;
+  readonly rim: number;
+  readonly rimAlpha: number;
+  readonly label: string;
+  readonly labelColor: number;
+  readonly labelAlpha: number;
+}
+
 export interface Camera {
   /** The world point at the middle of the frame. */
   readonly x: number;
@@ -66,6 +83,8 @@ export interface FileGraphFrame {
   readonly width: number;
   readonly height: number;
   readonly camera: Camera;
+  /** Outermost first, under the links. */
+  readonly hulls: ReadonlyArray<DrawnHull>;
   /** Faded first, so what a hover lights draws over the rest. */
   readonly links: ReadonlyArray<DrawnLink>;
   readonly nodes: ReadonlyArray<DrawnNode>;
@@ -90,10 +109,23 @@ export interface FileGraphHover {
   readonly y: number;
 }
 
+/** What a right-click landed on, and where in the frame (CSS pixels). */
+export interface FileGraphContextMenu {
+  readonly target: "node" | "cluster";
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+}
+
 export interface FileGraphCallbacks {
   readonly onHover: (hover: FileGraphHover | null) => void;
-  /** A node was clicked; `modifier` while ⌘ or Ctrl was held. */
-  readonly onOpen: (id: string, modifier: boolean) => void;
+  /** A node was clicked once; `modifier` while ⌘ or Ctrl was held. */
+  readonly onClick: (id: string, modifier: boolean) => void;
+  /** A node was double-clicked; its single click never fires. */
+  readonly onDoubleClick: (id: string) => void;
+  /** An open cluster's disc was clicked, off its nodes. */
+  readonly onClusterClick: (id: string) => void;
+  readonly onContextMenu: (menu: FileGraphContextMenu) => void;
 }
 
 export interface FileGraphRendererOptions {
@@ -137,10 +169,19 @@ const LABEL_HEIGHT = 1.2;
 /** What a hover leaves of everything it does not light. */
 const FADED_NODE = 0.2;
 const FADED_LINK = 0.08;
+/** What a story's step leaves of everything it does not light: quieter than a hover. */
+const FOCUS_FADED_NODE = 0.3;
+const FOCUS_FADED_LINK = 0.12;
+/** A cluster's disc and rim, as shares of the node colour over the paper. */
+const HULL_FILL = 0.05;
+const HULL_RIM = 0.18;
+const HULL_ROOT_RIM = 0.45;
 /** A link resolved by name alone draws at this share of a link's alpha. */
 const GUESSED = 0.5;
 /** How long a hover takes to light or fade, and a label to make way or come back, in seconds. */
 const FADE_SECONDS = 0.15;
+/** A second click on a node this soon after the first, in ms, is a double-click. */
+export const DOUBLE_CLICK_MS = 280;
 /** A press that moves less than this, in CSS pixels, is a click. */
 const CLICK_SLOP = 4;
 /** A pointer this near a node's edge, in CSS pixels, is on it. */
@@ -270,7 +311,16 @@ type Press =
       readonly x: number;
       readonly y: number;
       readonly camera: Camera;
+      /** The cluster pressed on, which a click without a drag closes. */
+      readonly cluster: string | null;
+      moved: boolean;
     };
+
+interface Circle {
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
+}
 
 /** What the label pass keeps between frames for one graph: one slot per node, in its order. */
 interface Labels {
@@ -291,6 +341,59 @@ interface Labels {
   readonly restAlpha: Float64Array;
   readonly litAlpha: Float64Array;
   readonly placed: Int32Array;
+}
+
+/** What holds a node, nearest first: its definition's owner and file, then its folders. */
+function holdersOf(id: string): ReadonlyArray<string> {
+  const hash = id.indexOf("#");
+  const path = hash < 0 ? id : id.slice(0, hash);
+  const holders: Array<string> = [];
+  if (hash >= 0) {
+    const parts = id.slice(hash + 1).split(".");
+    for (let count = parts.length - 1; count > 0; count -= 1) {
+      holders.push(`${path}#${parts.slice(0, count).join(".")}`);
+    }
+    holders.push(path);
+  }
+  const segments = path.split("/");
+  for (let count = segments.length - 1; count > 0; count -= 1) {
+    holders.push(segments.slice(0, count).join("/"));
+  }
+  return holders;
+}
+
+/**
+ * Where a node new to the picture starts: beside the node that held it (a file opened into its
+ * definitions, a folder into its files), else amid what it now holds (a folder closed over them).
+ */
+function derivedStart(
+  previous: FileGraphData,
+  forces: FileForces | null,
+  id: string,
+  cluster: string | null,
+): Point | null {
+  if (forces === null) return null;
+  for (const holder of [...(cluster === null ? [] : [cluster]), ...holdersOf(id)]) {
+    const at = forces.positionOf(holder);
+    if (at === null) continue;
+    const [dx, dy] = seededPoint(id, 24);
+    return { x: at.x + dx, y: at.y + dy };
+  }
+  const folder = id.startsWith("module:") ? id.slice("module:".length) : id;
+  const inside = (other: string) =>
+    folder === "" || folder === "." || other.startsWith(`${folder}/`) || other.startsWith(`${id}#`);
+  let x = 0;
+  let y = 0;
+  let count = 0;
+  for (const node of previous.nodes) {
+    if (!inside(node.id) && node.cluster !== id) continue;
+    const at = forces.positionOf(node.id);
+    if (at === null) continue;
+    x += at.x;
+    y += at.y;
+    count += 1;
+  }
+  return count === 0 ? null : { x: x / count, y: y / count };
 }
 
 let measureContext: CanvasRenderingContext2D | null | undefined;
@@ -316,6 +419,10 @@ export class FileGraphRenderer {
   #structure = "";
   #degrees = new Map<string, number>();
   #nodesById = new Map<string, FileGraphNode>();
+  #roots = new Set<string>();
+  #rootsKey = "";
+  #chains = new Map<string, ReadonlyArray<string>>();
+  #focus: { readonly nodes: Set<string>; readonly links: Set<string> } | null = null;
   #labels: Labels | null = null;
   #forces: FileForces | null = null;
   #settings: FileGraphSettings = DEFAULT_FILE_GRAPH_SETTINGS;
@@ -330,6 +437,9 @@ export class FileGraphRenderer {
   /** 0 with nothing hovered, 1 with a hover fully lit. */
   #hoverMix = 0;
   #press: Press | null = null;
+  /** A single click waiting out the double-click window. */
+  #pendingClick: { readonly id: string; readonly timer: ReturnType<typeof setTimeout> } | null =
+    null;
   /** Whether the camera still frames the graph as `fit` left it; a pan or zoom lets go. */
   #framed = true;
   /** While a graph around the same file settles, a framed camera widens to keep it all in view. */
@@ -377,6 +487,7 @@ export class FileGraphRenderer {
     host.addEventListener("pointercancel", this.#onPointerCancel);
     host.addEventListener("pointerleave", this.#onPointerLeave);
     host.addEventListener("wheel", this.#onWheel, { passive: false });
+    host.addEventListener("contextmenu", this.#onContextMenu);
   }
 
   get camera(): Camera {
@@ -402,6 +513,8 @@ export class FileGraphRenderer {
     this.#graph = graph;
     this.#signature = signature;
     this.#nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+    this.#roots = new Set(graph.roots);
+    this.#chains = clusterChains(graph);
     if (this.#hovered !== null) {
       if (this.#nodesById.has(this.#hovered)) this.#lit = neighbourhood(graph, this.#hovered);
       else this.#setHovered(null);
@@ -414,21 +527,24 @@ export class FileGraphRenderer {
       return;
     }
     this.#structure = structure;
-    const sameCenter = previous !== null && previous.center === graph.center;
-    // A folder just unfolded: its files start where it stood.
-    const folders = (previous?.nodes ?? []).filter((node) => node.kind === "folder");
-    const startOf = (id: string): Point | null => {
-      const kept = forces?.positionOf(id) ?? null;
-      if (kept !== null) return kept;
-      const folder = folders.find((each) => id.startsWith(`${each.id}/`));
-      const at = folder === undefined ? null : (forces?.positionOf(folder.id) ?? null);
-      if (at === null) return null;
-      const [dx, dy] = seededPoint(id, 24);
-      return { x: at.x + dx, y: at.y + dy };
-    };
+    const rootsKey = JSON.stringify(graph.roots.toSorted());
+    const sameRoots = previous !== null && rootsKey === this.#rootsKey;
+    this.#rootsKey = rootsKey;
+    const startOf = (id: string): Point | null =>
+      forces?.positionOf(id) ??
+      (previous === null
+        ? null
+        : derivedStart(previous, forces, id, this.#nodesById.get(id)?.cluster ?? null));
+    // Opening or closing a node, or a new level, keeps the picture: the roots grow from where
+    // what held them, or what they held, stood.
+    const regrouped =
+      !sameRoots &&
+      previous !== null &&
+      graph.roots.length > 0 &&
+      graph.roots.every((id) => forces?.positionOf(id) == null && startOf(id) !== null);
     const next = new FileForces(graph, this.#settings, startOf);
     this.#forces = next;
-    if (sameCenter) {
+    if (sameRoots || regrouped) {
       next.reheat(0.5);
       this.#reframe = this.#framed;
       this.#scheduler.animate(this.#motion);
@@ -436,6 +552,26 @@ export class FileGraphRenderer {
     }
     next.settle();
     this.fit();
+  }
+
+  /** A story's step to light, or none. */
+  setFocus(focus: FileGraphFocus | null): void {
+    const next =
+      focus === null
+        ? null
+        : {
+            nodes: new Set(focus.nodes),
+            links: new Set(focus.links.map((link) => `${link.from}\u0000${link.to}`)),
+          };
+    const same =
+      next === null || this.#focus === null
+        ? next === this.#focus
+        : [...next.nodes].join("\u0000") === [...this.#focus.nodes].join("\u0000") &&
+          [...next.links].join("\u0001") === [...this.#focus.links].join("\u0001");
+    if (same) return;
+    this.#focus = next;
+    if (this.#graph !== null) this.#labels = this.#labelsOf(this.#graph);
+    this.#scheduler.invalidate();
   }
 
   setSettings(settings: FileGraphSettings): void {
@@ -542,6 +678,8 @@ export class FileGraphRenderer {
     this.#host.removeEventListener("pointercancel", this.#onPointerCancel);
     this.#host.removeEventListener("pointerleave", this.#onPointerLeave);
     this.#host.removeEventListener("wheel", this.#onWheel);
+    this.#host.removeEventListener("contextmenu", this.#onContextMenu);
+    if (this.#pendingClick !== null) clearTimeout(this.#pendingClick.timer);
     this.#drawer.dispose();
   }
 
@@ -557,29 +695,30 @@ export class FileGraphRenderer {
     const lit = this.#lit;
     const share = this.#hoverMix;
     const lighting = share > 0 && lit.size > 0;
+    const focus = this.#focus;
     const positions = forces.positions();
     const zoomLabels = labelOpacity(camera.zoom, settings.textFade);
     const labels = this.#placeLabels(graph, positions, font, zoomLabels, lighting);
-    const placed = new Map<
-      string,
-      { readonly x: number; readonly y: number; readonly radius: number }
-    >();
+    const placed = new Map<string, Circle>();
     const nodes: Array<DrawnNode & { readonly order: number }> = graph.nodes.map((node, index) => {
       const at = positions[index] ?? { x: 0, y: 0 };
       const radius = this.#radiusOf(node.id);
       placed.set(node.id, { x: at.x, y: at.y, radius });
-      const base =
-        node.id === graph.center
-          ? colors.accent
-          : settings.changedFiles && node.changed
-            ? colors.changed
-            : node.group !== null
-              ? (colors.groups[node.group] ?? colors.node)
-              : node.kind === "dependency"
-                ? colors.faint
-                : node.kind === "folder"
-                  ? colors.folder
-                  : colors.node;
+      const plain =
+        settings.changedFiles && node.changed
+          ? colors.changed
+          : node.group !== null
+            ? (colors.groups[node.group] ?? colors.node)
+            : node.kind === "dependency"
+              ? colors.faint
+              : node.kind === "folder" || node.kind === "module"
+                ? colors.folder
+                : colors.node;
+      const base = this.#roots.has(node.id) ? colors.accent : plain;
+      // A story's step lights its nodes in the accent and quiets the rest; a hover goes over it.
+      const focused = focus !== null && focus.nodes.has(node.id);
+      const still = focused ? colors.accent : base;
+      const stillAlpha = focus === null || focused ? 1 : FOCUS_FADED_NODE;
       const isLit = lighting && lit.has(node.id);
       const restLabel = labels.restAlpha[index] ?? 0;
       return {
@@ -587,16 +726,16 @@ export class FileGraphRenderer {
         x: at.x,
         y: at.y,
         radius,
-        fill: isLit ? mix(base, colors.accent, share) : base,
-        alpha: lighting && !isLit ? 1 - (1 - FADED_NODE) * share : 1,
+        fill: isLit ? mix(still, colors.accent, share) : still,
+        alpha: lighting ? stillAlpha + ((isLit ? 1 : FADED_NODE) - stillAlpha) * share : stillAlpha,
         label: labels.texts[index] ?? "",
         labelColor: node.test ? colors.node : colors.ink,
         // A hover takes each label from where it rests to where the hover places it.
         labelAlpha: !lighting
-          ? restLabel
+          ? restLabel * (focus === null || focused ? 1 : FOCUS_FADED_NODE)
           : restLabel +
             ((isLit ? 1 : FADED_NODE) * (labels.litAlpha[index] ?? 0) - restLabel) * share,
-        order: isLit ? 1 : 0,
+        order: isLit ? 2 : focused ? 1 : 0,
       };
     });
     const links: Array<DrawnLink & { readonly order: number }> = [];
@@ -612,30 +751,113 @@ export class FileGraphRenderer {
         lighting &&
         this.#litFrom !== null &&
         (link.from === this.#litFrom || link.to === this.#litFrom);
+      const focused =
+        focus !== null &&
+        (focus.links.has(`${link.from}\u0000${link.to}`) ||
+          (focus.nodes.has(link.from) && focus.nodes.has(link.to)));
+      const stillAlpha = focus === null || focused ? 1 : FOCUS_FADED_LINK;
+      const still = focused ? colors.accent : colors.link;
       const alpha =
-        (link.guessed ? GUESSED : 1) * (lighting && !isLit ? 1 - (1 - FADED_LINK) * share : 1);
+        (link.guessed ? GUESSED : 1) *
+        (lighting ? stillAlpha + ((isLit ? 1 : FADED_LINK) - stillAlpha) * share : stillAlpha);
       links.push({
         x1: from.x + ux * from.radius,
         y1: from.y + uy * from.radius,
         x2: to.x - ux * to.radius,
         y2: to.y - uy * to.radius,
-        color: isLit ? mix(colors.link, colors.accent, share) : colors.link,
+        color: isLit ? mix(still, colors.accent, share) : still,
         alpha,
         arrow: settings.arrows,
-        order: isLit ? 1 : 0,
+        order: isLit ? 2 : focused ? 1 : 0,
       });
     }
+    const hulls: Array<DrawnHull> = [];
+    const circles = this.#hullCircles(graph, placed);
+    for (const cluster of graph.clusters ?? []) {
+      const circle = circles.get(cluster.id);
+      if (circle === undefined) continue;
+      const depth = this.#chains.get(cluster.id)?.length ?? 1;
+      hulls.push({
+        id: cluster.id,
+        ...circle,
+        fill: colors.node,
+        fillAlpha: HULL_FILL,
+        rim: cluster.root ? colors.accent : colors.node,
+        rimAlpha: cluster.root ? HULL_ROOT_RIM : HULL_RIM,
+        label: cluster.name,
+        labelColor: colors.node,
+        labelAlpha: Math.max(zoomLabels, cluster.root ? 1 : 0) / Math.sqrt(depth),
+      });
+    }
+    hulls.sort((left, right) => right.radius - left.radius);
     const byOrder = (left: { order: number }, right: { order: number }) => left.order - right.order;
     return {
       width: this.#width,
       height: this.#height,
       camera,
+      hulls,
       links: links.toSorted(byOrder).map(({ order: _, ...link }) => link),
       nodes: nodes.toSorted(byOrder).map(({ order: _, ...node }) => node),
       lineWidth: settings.linkThickness,
       labelScale: labelScale(camera.zoom),
       font,
     };
+  }
+
+  /** Each open cluster's disc: around its nodes and the discs of the clusters inside it. */
+  #hullCircles(graph: FileGraphData, placed: ReadonlyMap<string, Circle>): Map<string, Circle> {
+    const inside = new Map<string, Array<Circle>>();
+    for (const node of graph.nodes) {
+      const at = placed.get(node.id);
+      if (node.cluster == null || at === undefined) continue;
+      inside.set(node.cluster, [...(inside.get(node.cluster) ?? []), at]);
+    }
+    const circles = new Map<string, Circle>();
+    const deepestFirst = (graph.clusters ?? []).toSorted(
+      (left, right) =>
+        (this.#chains.get(right.id)?.length ?? 0) - (this.#chains.get(left.id)?.length ?? 0),
+    );
+    for (const cluster of deepestFirst) {
+      const parts = [
+        ...(inside.get(cluster.id) ?? []),
+        ...(graph.clusters ?? []).flatMap((child) =>
+          child.parent === cluster.id ? (circles.get(child.id) ?? []) : [],
+        ),
+      ];
+      if (parts.length === 0) continue;
+      const x = parts.reduce((sum, part) => sum + part.x, 0) / parts.length;
+      const y = parts.reduce((sum, part) => sum + part.y, 0) / parts.length;
+      const radius = Math.max(
+        ...parts.map((part) => Math.hypot(part.x - x, part.y - y) + part.radius),
+      );
+      circles.set(cluster.id, { x, y, radius: radius + CLUSTER_PAD });
+    }
+    return circles;
+  }
+
+  /** The innermost cluster disc under a point in the frame. */
+  clusterAt(x: number, y: number): string | null {
+    const graph = this.#graph;
+    const forces = this.#forces;
+    if (graph === null || forces === null || (graph.clusters ?? []).length === 0) return null;
+    const positions = forces.positions();
+    const placed = new Map<string, Circle>(
+      graph.nodes.map((node, index) => {
+        const at = positions[index] ?? { x: 0, y: 0 };
+        return [node.id, { x: at.x, y: at.y, radius: this.#radiusOf(node.id) }];
+      }),
+    );
+    const world = this.#toWorld(x, y);
+    let best: string | null = null;
+    let bestRadius = Infinity;
+    for (const [id, circle] of this.#hullCircles(graph, placed)) {
+      const distance = Math.hypot(circle.x - world.x, circle.y - world.y);
+      if (distance <= circle.radius && circle.radius < bestRadius) {
+        best = id;
+        bestRadius = circle.radius;
+      }
+    }
+    return best;
   }
 
   #draw(): void {
@@ -660,7 +882,7 @@ export class FileGraphRenderer {
       shown: null,
       rest: labelOrder(
         count,
-        (index) => (graph.nodes[index]?.id === graph.center ? 0 : 1),
+        (index) => (this.#named(graph.nodes[index]?.id) ? 0 : 1),
         (index) => weights[index] ?? 0,
       ),
       lit: new Int32Array(0),
@@ -680,7 +902,7 @@ export class FileGraphRenderer {
     const from = this.#litFrom;
     const rank = (index: number) => {
       const id = graph.nodes[index]?.id;
-      if (id === graph.center) return 0;
+      if (this.#named(id)) return 0;
       if (id === from) return 1;
       return id !== undefined && lit.has(id) ? 2 : 3;
     };
@@ -723,7 +945,7 @@ export class FileGraphRenderer {
       boxes.top[index] = (below - y) * zoom + this.#height / 2;
       boxes.width[index] = (labels.widths[index] ?? 0) * scale;
       boxes.height[index] = height;
-      const alone = node.id === graph.center ? 1 : zoomLabels;
+      const alone = this.#named(node.id) ? 1 : zoomLabels;
       restAlpha[index] = alone;
       litAlpha[index] = lighting && this.#lit.has(node.id) ? 1 : alone;
     }
@@ -733,7 +955,7 @@ export class FileGraphRenderer {
     // A new graph's labels start where they are placed; after that they ease there.
     const shown = labels.shown ?? fits;
     for (let index = 0; index < graph.nodes.length; index += 1) {
-      const alone = graph.nodes[index]?.id === graph.center ? 1 : zoomLabels;
+      const alone = this.#named(graph.nodes[index]?.id) ? 1 : zoomLabels;
       // A label the zoom has faded out keeps the room it had, for when it comes back.
       if (alone > LABEL_VISIBLE) fits[index] = (restAlpha[index] ?? 0) > LABEL_VISIBLE ? 1 : 0;
       restAlpha[index] = alone * (shown[index] ?? 0);
@@ -770,6 +992,11 @@ export class FileGraphRenderer {
     return false;
   }
 
+  /** A root or a node of a story's step: named whatever the zoom, and first to claim room. */
+  #named(id: string | undefined): boolean {
+    return id !== undefined && (this.#roots.has(id) || (this.#focus?.nodes.has(id) ?? false));
+  }
+
   #radiusOf(id: string): number {
     const node = this.#nodesById.get(id);
     return node === undefined
@@ -793,7 +1020,7 @@ export class FileGraphRenderer {
     };
   }
 
-  #local(event: PointerEvent | WheelEvent): Point {
+  #local(event: MouseEvent): Point {
     const bounds = this.#host.getBoundingClientRect();
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   }
@@ -849,7 +1076,15 @@ export class FileGraphRenderer {
     const id = this.nodeAt(at.x, at.y);
     this.#press =
       id === null
-        ? { kind: "pan", pointer: event.pointerId, x: at.x, y: at.y, camera: this.#camera }
+        ? {
+            kind: "pan",
+            pointer: event.pointerId,
+            x: at.x,
+            y: at.y,
+            camera: this.#camera,
+            cluster: this.clusterAt(at.x, at.y),
+            moved: false,
+          }
         : {
             kind: "node",
             id,
@@ -871,6 +1106,8 @@ export class FileGraphRenderer {
     }
     if (press.pointer !== event.pointerId) return;
     if (press.kind === "pan") {
+      if (!press.moved && Math.hypot(at.x - press.x, at.y - press.y) < CLICK_SLOP) return;
+      press.moved = true;
       this.#framed = false;
       this.#reframe = false;
       this.#camera = {
@@ -898,7 +1135,10 @@ export class FileGraphRenderer {
     if (press === null || press.pointer !== event.pointerId) return;
     this.#press = null;
     this.#host.releasePointerCapture?.(event.pointerId);
-    if (press.kind !== "node") return;
+    if (press.kind === "pan") {
+      if (!press.moved && press.cluster !== null) this.#callbacks.onClusterClick(press.cluster);
+      return;
+    }
     if (press.moved) {
       this.#forces?.release(press.id);
       this.#scheduler.animate(this.#motion);
@@ -907,7 +1147,35 @@ export class FileGraphRenderer {
       this.#tellHover();
       return;
     }
-    this.#callbacks.onOpen(press.id, press.modifier || event.metaKey || event.ctrlKey);
+    const pending = this.#pendingClick;
+    if (pending !== null) {
+      clearTimeout(pending.timer);
+      this.#pendingClick = null;
+      if (pending.id === press.id) {
+        this.#callbacks.onDoubleClick(press.id);
+        return;
+      }
+    }
+    const modifier = press.modifier || event.metaKey || event.ctrlKey;
+    const id = press.id;
+    this.#pendingClick = {
+      id,
+      timer: setTimeout(() => {
+        this.#pendingClick = null;
+        this.#callbacks.onClick(id, modifier);
+      }, DOUBLE_CLICK_MS),
+    };
+  };
+
+  readonly #onContextMenu = (event: MouseEvent): void => {
+    event.preventDefault();
+    const at = this.#local(event);
+    const node = this.nodeAt(at.x, at.y);
+    const cluster = node === null ? this.clusterAt(at.x, at.y) : null;
+    if (node !== null) this.#callbacks.onContextMenu({ target: "node", id: node, ...at });
+    else if (cluster !== null) {
+      this.#callbacks.onContextMenu({ target: "cluster", id: cluster, ...at });
+    }
   };
 
   readonly #onPointerCancel = (event: PointerEvent): void => {

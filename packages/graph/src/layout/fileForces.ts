@@ -12,7 +12,7 @@ import {
   type SimulationNode3D,
 } from "d3-force-3d";
 
-import type { FileGraphData } from "../model/fileGraph.ts";
+import { clusterChains, type FileGraphData } from "../model/fileGraph.ts";
 import type { FileGraphForces } from "../model/fileGraphSettings.ts";
 import { seededPoint } from "./forceLayout.ts";
 
@@ -30,6 +30,11 @@ const REPEL_UNIT = 32;
 const CENTER_UNIT = 0.12;
 /** The most ticks a picture shown whole settles in. */
 const SETTLE_TICKS = 600;
+/** How hard a cluster draws its nodes to its middle (halved per level out) and pushes others out. */
+const CLUSTER_PULL = 0.2;
+const CLUSTER_PUSH = 0.5;
+/** Room around a cluster's nodes inside its rim, in world pixels. */
+export const CLUSTER_PAD = 14;
 
 export interface Point {
   readonly x: number;
@@ -104,7 +109,8 @@ export class FileForces {
       .force("link", this.#link)
       .force("charge", this.#charge)
       .force("x", this.#x)
-      .force("y", this.#y);
+      .force("y", this.#y)
+      .force("cluster", clusterForce(graph, this.#nodes));
     this.#apply(forces);
   }
 
@@ -207,4 +213,65 @@ export class FileForces {
     this.#x.strength(forces.centerForce * CENTER_UNIT);
     this.#y.strength(forces.centerForce * CENTER_UNIT);
   }
+}
+
+/**
+ * Keeps each open cluster together and its disc clear: its nodes drift to its middle, and a node
+ * of no cluster or another one inside its disc drifts out.
+ */
+function clusterForce(graph: FileGraphData, nodes: ReadonlyArray<ForceNode>) {
+  const chains = clusterChains(graph);
+  const memberships = graph.nodes.map((node) =>
+    node.cluster == null ? [] : (chains.get(node.cluster) ?? []),
+  );
+  const clusters = [...chains.keys()];
+  const force = (alpha: number) => {
+    if (clusters.length === 0) return;
+    const sums = new Map<string, { x: number; y: number; count: number }>();
+    for (const [index, chain] of memberships.entries()) {
+      const node = nodes[index];
+      if (node === undefined) continue;
+      for (const id of chain) {
+        const sum = sums.get(id) ?? { x: 0, y: 0, count: 0 };
+        sum.x += node.x ?? 0;
+        sum.y += node.y ?? 0;
+        sum.count += 1;
+        sums.set(id, sum);
+      }
+    }
+    const middles = new Map<string, { x: number; y: number; radius: number }>();
+    for (const [id, sum] of sums) {
+      const x = sum.x / sum.count;
+      const y = sum.y / sum.count;
+      let radius = 0;
+      for (const [index, chain] of memberships.entries()) {
+        const node = nodes[index];
+        if (node !== undefined && chain.includes(id)) {
+          radius = Math.max(radius, Math.hypot((node.x ?? 0) - x, (node.y ?? 0) - y));
+        }
+      }
+      middles.set(id, { x, y, radius: radius + CLUSTER_PAD });
+    }
+    for (const [index, node] of nodes.entries()) {
+      const chain = memberships[index] ?? [];
+      for (const [level, id] of chain.entries()) {
+        const middle = middles.get(id);
+        if (middle === undefined) continue;
+        const pull = (CLUSTER_PULL * alpha) / 2 ** level;
+        node.vx = (node.vx ?? 0) + (middle.x - (node.x ?? 0)) * pull;
+        node.vy = (node.vy ?? 0) + (middle.y - (node.y ?? 0)) * pull;
+      }
+      for (const [id, middle] of middles) {
+        if (chain.includes(id)) continue;
+        const dx = (node.x ?? 0) - middle.x;
+        const dy = (node.y ?? 0) - middle.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance >= middle.radius || distance === 0) continue;
+        const push = ((middle.radius - distance) / distance) * CLUSTER_PUSH * alpha;
+        node.vx = (node.vx ?? 0) + dx * push;
+        node.vy = (node.vy ?? 0) + dy * push;
+      }
+    }
+  };
+  return force;
 }

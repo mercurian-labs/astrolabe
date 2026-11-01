@@ -25,6 +25,9 @@ import { LABEL_VISIBLE } from "./labelPlacement.ts";
 const ARROW_LENGTH = 7;
 const ARROW_HALF = 2.6;
 
+/** A cluster's name draws at this share of a node's label size. */
+const HULL_LABEL_SCALE = 0.85;
+
 /** Labels are rasterised for the scale they are drawn at, in steps, so they stay crisp. */
 const resolutionStep = (scale: number) => (scale > 2 ? 4 : scale > 1 ? 2 : 1);
 
@@ -33,6 +36,9 @@ class PixiFileDrawer implements FileGraphDrawer {
   readonly #pixelRatio: number;
   #app: Application | null = null;
   #world: Container | null = null;
+  #hulls: Graphics | null = null;
+  #hullLabels: Container | null = null;
+  readonly #hullTexts = new Map<string, Text>();
   #links: Graphics | null = null;
   #nodes: Graphics | null = null;
   #labels: Container | null = null;
@@ -85,14 +91,18 @@ class PixiFileDrawer implements FileGraphDrawer {
     canvas.style.height = "100%";
     this.#host.append(canvas);
     const world = new Container();
+    const hulls = new Graphics();
+    const hullLabels = new Container();
     const links = new Graphics();
     const nodes = new Graphics();
     const labels = new Container();
-    world.addChild(links, nodes, labels);
+    world.addChild(hulls, hullLabels, links, nodes, labels);
     app.stage.addChild(world);
     app.stage.eventMode = "none";
     this.#app = app;
     this.#world = world;
+    this.#hulls = hulls;
+    this.#hullLabels = hullLabels;
     this.#links = links;
     this.#nodes = nodes;
     this.#labels = labels;
@@ -121,7 +131,17 @@ class PixiFileDrawer implements FileGraphDrawer {
     const links = this.#links;
     const nodes = this.#nodes;
     const labels = this.#labels;
-    if (app === null || world === null || links === null || nodes === null || labels === null) {
+    const hulls = this.#hulls;
+    const hullLabels = this.#hullLabels;
+    if (
+      app === null ||
+      world === null ||
+      links === null ||
+      nodes === null ||
+      labels === null ||
+      hulls === null ||
+      hullLabels === null
+    ) {
       this.#pending = frame;
       return;
     }
@@ -131,6 +151,14 @@ class PixiFileDrawer implements FileGraphDrawer {
     world.position.set(frame.width / 2 - camera.x * zoom, frame.height / 2 - camera.y * zoom);
     // Lines keep their width on screen whatever the zoom: world widths are divided by it.
     const line = frame.lineWidth / zoom;
+
+    hulls.clear();
+    for (const hull of frame.hulls) {
+      hulls
+        .circle(hull.x, hull.y, hull.radius)
+        .fill({ color: hull.fill, alpha: hull.fillAlpha })
+        .stroke({ width: line, color: hull.rim, alpha: hull.rimAlpha });
+    }
 
     links.clear();
     for (const link of frame.links) {
@@ -169,6 +197,7 @@ class PixiFileDrawer implements FileGraphDrawer {
     }
 
     this.#drawLabels(frame, labels);
+    this.#drawHullLabels(frame, hullLabels);
     app.renderer.render(app.stage);
     // The system ticker only collects unused textures here; it steps when a frame draws.
     Ticker.system.update();
@@ -222,8 +251,39 @@ class PixiFileDrawer implements FileGraphDrawer {
     this.#resolution = resolution;
   }
 
+  /** Each cluster's name, small and centred above its rim. */
+  #drawHullLabels(frame: FileGraphFrame, container: Container): void {
+    const style = this.#style;
+    if (style === null) return;
+    const scale = (frame.labelScale * HULL_LABEL_SCALE) / frame.camera.zoom;
+    const resolution = this.#pixelRatio * resolutionStep(frame.labelScale);
+    const seen = new Set<string>();
+    for (const hull of frame.hulls) {
+      seen.add(hull.id);
+      let text = this.#hullTexts.get(hull.id);
+      if (text === undefined) {
+        text = new Text({ text: hull.label, style, resolution });
+        text.anchor.set(0.5, 1);
+        container.addChild(text);
+        this.#hullTexts.set(hull.id, text);
+      } else if (text.text !== hull.label) text.text = hull.label;
+      text.visible = hull.labelAlpha > LABEL_VISIBLE;
+      text.alpha = hull.labelAlpha;
+      text.tint = hull.labelColor;
+      text.scale.set(scale);
+      text.position.set(hull.x, hull.y - hull.radius - LABEL_GAP / frame.camera.zoom);
+    }
+    for (const [id, text] of this.#hullTexts) {
+      if (seen.has(id)) continue;
+      text.destroy();
+      this.#hullTexts.delete(id);
+    }
+  }
+
   dispose(): void {
     this.#disposed = true;
+    for (const text of this.#hullTexts.values()) text.destroy();
+    this.#hullTexts.clear();
     for (const text of this.#texts.values()) text.destroy();
     this.#texts.clear();
     this.#app?.destroy(true, { children: true });

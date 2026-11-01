@@ -7,12 +7,16 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import type { Ref } from "react";
 
-import type { FileGraphData } from "./model/fileGraph.ts";
+import type { FileGraphData, FileGraphFocus } from "./model/fileGraph.ts";
 import { DEFAULT_FILE_GRAPH_SETTINGS, type FileGraphSettings } from "./model/fileGraphSettings.ts";
-import { FileGraphRenderer, type FileGraphHover } from "./render/file/FileGraphRenderer.ts";
+import {
+  FileGraphRenderer,
+  type FileGraphContextMenu,
+  type FileGraphHover,
+} from "./render/file/FileGraphRenderer.ts";
 import { createPixiFileDrawer } from "./render/file/pixiFileDrawer.ts";
 
-export type { FileGraphHover } from "./render/file/FileGraphRenderer.ts";
+export type { FileGraphContextMenu, FileGraphHover } from "./render/file/FileGraphRenderer.ts";
 
 export interface FileGraphHandle {
   /** Frame the whole graph. */
@@ -24,8 +28,14 @@ export interface FileGraphHandle {
 export interface FileGraphProps {
   readonly graph: FileGraphData;
   readonly settings?: FileGraphSettings;
-  /** A node was clicked; `modifier` while ⌘ or Ctrl was held. */
-  readonly onOpen: (id: string, modifier: boolean) => void;
+  /** A story's step to light, or none. */
+  readonly focus?: FileGraphFocus | null;
+  /** A node was clicked once; `modifier` while ⌘ or Ctrl was held. */
+  readonly onClick: (id: string, modifier: boolean) => void;
+  readonly onDoubleClick?: (id: string) => void;
+  /** An open cluster's disc was clicked, off its nodes. */
+  readonly onClusterClick?: (id: string) => void;
+  readonly onContextMenu?: (menu: FileGraphContextMenu) => void;
   readonly onHover?: (hover: FileGraphHover | null) => void;
   /** Changing this re-reads the `--atlas-*` colours and the font. */
   readonly themeKey?: string;
@@ -35,7 +45,11 @@ export interface FileGraphProps {
 export function FileGraph({
   graph,
   settings = DEFAULT_FILE_GRAPH_SETTINGS,
-  onOpen,
+  focus = null,
+  onClick,
+  onDoubleClick,
+  onClusterClick,
+  onContextMenu,
   onHover,
   themeKey,
   ref,
@@ -43,7 +57,10 @@ export function FileGraph({
   const hostRef = useRef<HTMLDivElement>(null);
   const [renderer, setRenderer] = useState<FileGraphRenderer | null>(null);
   const hovered = useEffectEvent((hover: FileGraphHover | null) => onHover?.(hover));
-  const opened = useEffectEvent((id: string, modifier: boolean) => onOpen(id, modifier));
+  const clicked = useEffectEvent((id: string, modifier: boolean) => onClick(id, modifier));
+  const doubleClicked = useEffectEvent((id: string) => onDoubleClick?.(id));
+  const clusterClicked = useEffectEvent((id: string) => onClusterClick?.(id));
+  const menu = useEffectEvent((at: FileGraphContextMenu) => onContextMenu?.(at));
 
   // oxlint-disable-next-line t3code/react-effect-budget -- owns the Pixi renderer for the mount
   useEffect(() => {
@@ -51,7 +68,13 @@ export function FileGraph({
     if (host === null) return;
     const created = new FileGraphRenderer(
       host,
-      { onHover: (hover) => hovered(hover), onOpen: (id, modifier) => opened(id, modifier) },
+      {
+        onHover: (hover) => hovered(hover),
+        onClick: (id, modifier) => clicked(id, modifier),
+        onDoubleClick: (id) => doubleClicked(id),
+        onClusterClick: (id) => clusterClicked(id),
+        onContextMenu: (at) => menu(at),
+      },
       { createDrawer: createPixiFileDrawer },
     );
     setRenderer(created);
@@ -68,6 +91,8 @@ export function FileGraph({
   useEffect(() => renderer?.setSettings(settings), [renderer, settings]);
   // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer each new graph
   useEffect(() => renderer?.setGraph(graph), [renderer, graph]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer a story's step
+  useEffect(() => renderer?.setFocus(focus), [renderer, focus]);
 
   useImperativeHandle(
     ref,
