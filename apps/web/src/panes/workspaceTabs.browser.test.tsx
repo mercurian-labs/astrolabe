@@ -513,50 +513,75 @@ describe("a chat's linked tabs toggle", () => {
     />
   );
   const toggleButton = (root: ParentNode) =>
-    root.querySelector<HTMLButtonElement>("[data-right-panel-toggle]")!;
+    root.querySelector<HTMLButtonElement>("[data-right-panel-toggle]");
+  const newLinkedButton = (root: ParentNode) =>
+    root.querySelector<HTMLButtonElement>("[data-new-linked-tab]")!;
   const linkedPanes = () =>
     leaves(workspace.arrangement().root)
       .slice(1)
       .map((leaf) => leaf.tabs);
-  const menuItems = () =>
-    [...document.querySelectorAll('[role="menu"]:not([data-closed]) [role="menuitem"]')].map(
-      (item) => item.textContent,
-    );
+  const linkedActive = () => leaves(workspace.arrangement().root)[1]?.active;
 
-  it("hides the tabs, then brings them back from its menu with the one picked in front", async () => {
+  it("hides the tabs, then brings them all back from their count as they stood", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    useRightPanelStore.getState().open(ref, "files");
+    useRightPanelStore.getState().activateSurface(ref, "diff");
+    await using screen = await renderPanes({}, toggle);
+    const diff = chatSurfaceKey(chat, "diff");
+    const files = chatSurfaceKey(chat, "files");
+    expect(linkedPanes()).toEqual([[diff, files]]);
+
+    expect(toggleButton(screen.container)?.ariaLabel).toBe("Hide tabs");
+    await act(() => toggleButton(screen.container)!.click());
+    expect(linkedPanes()).toEqual([]);
+    const hidden = toggleButton(screen.container)!;
+    expect(hidden.ariaLabel).toBe("Show tabs (2 hidden)");
+    expect(hidden.textContent).toBe("2");
+
+    await act(() => hidden.click());
+    await settle();
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(linkedPanes()).toEqual([[diff, files]]);
+    expect(linkedActive()).toBe(diff);
+    expect(toggleButton(screen.container)?.ariaLabel).toBe("Hide tabs");
+  });
+
+  it("opens a new linked tab in front beside the tabs showing", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    await using screen = await renderPanes({}, toggle);
+    const diff = chatSurfaceKey(chat, "diff");
+    await act(() => newLinkedButton(screen.container).click());
+    await settle();
+    expect(linkedPanes()).toEqual([[diff, expect.stringMatching(/^empty\//)]]);
+    expect(linkedActive()).toBe(linkedPanes()[0]?.[1]);
+    expect(screen.container.querySelector('[aria-label="Open a surface"]')).not.toBeNull();
+    expect(toggleButton(screen.container)?.ariaLabel).toBe("Hide tabs");
+  });
+
+  it("brings hidden tabs back with a new linked tab in front among them", async () => {
     using _panel = emptyPanel();
     useRightPanelStore.getState().open(ref, "diff");
     useRightPanelStore.getState().open(ref, "files");
     await using screen = await renderPanes({}, toggle);
     const diff = chatSurfaceKey(chat, "diff");
     const files = chatSurfaceKey(chat, "files");
-    expect(linkedPanes()).toEqual([[diff, files]]);
-
-    expect(toggleButton(screen.container).ariaLabel).toBe("Hide tabs");
-    await act(() => toggleButton(screen.container).click());
+    await act(() => toggleButton(screen.container)!.click());
     expect(linkedPanes()).toEqual([]);
-    const hidden = toggleButton(screen.container);
-    expect(hidden.ariaLabel).toBe("Open tabs (2 hidden)");
-    expect(hidden.textContent).toBe("2");
 
-    await act(() => hidden.click());
+    await act(() => newLinkedButton(screen.container).click());
     await settle();
-    expect(menuItems()).toEqual(["Diff", "Files", "New tab"]);
-    const pick = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent === "Diff",
-    )!;
-    await act(() => pick.click());
-    await settle();
-    expect(linkedPanes()).toEqual([[diff, files]]);
-    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(diff);
-    expect(toggleButton(screen.container).ariaLabel).toBe("Hide tabs");
+    expect(linkedPanes()).toEqual([[diff, files, expect.stringMatching(/^empty\//)]]);
+    expect(linkedActive()).toBe(linkedPanes()[0]?.[2]);
+    expect(toggleButton(screen.container)?.ariaLabel).toBe("Hide tabs");
   });
 
   it("puts the surface picked in its linked New tab in that tab's place, linked", async () => {
     using _panel = emptyPanel();
     const onAddDiff = () => useRightPanelStore.getState().open(ref, "diff");
     await using screen = await renderPanes({ onAddDiff }, toggle);
-    await act(() => toggleButton(screen.container).click());
+    await act(() => newLinkedButton(screen.container).click());
     await settle();
     const [linked] = linkedPanes();
     expect(linked).toEqual([expect.stringMatching(/^empty\//)]);
@@ -571,16 +596,18 @@ describe("a chat's linked tabs toggle", () => {
     expect(workspace.linked().owners[diff]).toBe(chat);
   });
 
-  it("closes a linked New tab for good from its ✕, leaving nothing to bring back", async () => {
+  it("shows no toggle with no linked tabs, and none after a lone New tab closes for good", async () => {
     using _panel = emptyPanel();
     await using screen = await renderPanes({}, toggle);
-    expect(toggleButton(screen.container).ariaLabel).toBe("New tab");
-    await act(() => toggleButton(screen.container).click());
+    expect(toggleButton(screen.container)).toBeNull();
+    expect(newLinkedButton(screen.container).ariaLabel).toBe("New linked tab");
+    await act(() => newLinkedButton(screen.container).click());
     const [linked] = linkedPanes();
     expect(linked).toHaveLength(1);
+    expect(toggleButton(screen.container)?.ariaLabel).toBe("Hide tabs");
 
     await act(() => button(tab(screen.container, "New tab"), "Close New tab")!.click());
     expect(linkedPanes()).toEqual([]);
-    expect(toggleButton(screen.container).ariaLabel).toBe("New tab");
+    expect(toggleButton(screen.container)).toBeNull();
   });
 });

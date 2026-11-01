@@ -166,7 +166,7 @@ describe("the shared panes", () => {
     stop();
   });
 
-  it("hide a chat's linked tabs with its panel, and bring them back with the one picked in front", () => {
+  it("hide a chat's linked tabs with its panel, and bring them back as they stood", () => {
     const workspace = createWorkspace(chatTabsDevice);
     const stop = workspace.follow();
     const diff = chatSurfaceKey(chatA, "diff");
@@ -180,7 +180,8 @@ describe("the shared panes", () => {
     // Another chat's toggle counts only its own.
     expect(workspace.toggleOf(chatB)).toEqual({ kind: "none" });
 
-    workspace.showLinked(chatA, diff);
+    useRightPanelStore.getState().activateSurface(refA, "diff");
+    useRightPanelStore.getState().show(refA);
     expect(panes(workspace)).toEqual([
       [chatA, chatB],
       [diff, files],
@@ -195,10 +196,37 @@ describe("the shared panes", () => {
     const stop = workspace.follow();
     useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().close(refA);
-    workspace.showLinked(chatA, null);
+    workspace.newLinkedTab(chatA);
     const [, linked] = panes(workspace);
     expect(linked).toEqual([chatSurfaceKey(chatA, "diff"), expect.stringMatching(/^empty\//)]);
     expect(leaves(workspace.arrangement().root)[1]?.active).toBe(linked?.[1]);
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "showing" });
+    stop();
+  });
+
+  it("open a new linked tab in front beside the ones showing", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    const diff = chatSurfaceKey(chatA, "diff");
+    const files = chatSurfaceKey(chatA, "files");
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "files");
+    workspace.newLinkedTab(chatA);
+    const [, linked] = panes(workspace);
+    expect(linked).toEqual([diff, files, expect.stringMatching(/^empty\//)]);
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(linked?.[2]);
+    expect(workspace.linked().owners[linked?.[2] ?? ""]).toBe(chatA);
+    expect(workspace.arrangement().focused).toBe("p0");
+    stop();
+  });
+
+  it("open a chat with no linked tabs one new tab in a pane beside it", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "none" });
+    workspace.newLinkedTab(chatA);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [expect.stringMatching(/^empty\//)]]);
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "showing" });
     stop();
   });
 
@@ -398,7 +426,7 @@ describe("the shared panes", () => {
     const workspace = createWorkspace(chatTabsDevice);
     const stop = workspace.follow();
     useRightPanelStore.getState().open(refA, "files");
-    workspace.showLinked(chatA, null);
+    workspace.newLinkedTab(chatA);
     const linkedPane = leaves(workspace.arrangement().root)[1]!;
     const [files, blank] = linkedPane.tabs as [string, string];
     workspace.targetPane(linkedPane.id, blank);

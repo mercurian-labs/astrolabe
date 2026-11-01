@@ -266,7 +266,7 @@ function TabLabel({ tabKey, children }: PaneTabLabelProps) {
  * on its icon, a playing browser tab its speaker, and a device tab names its machine on hover and
  * can be renamed.
  */
-export function useTabLabel(tabKey: string): PaneTabLabel {
+function useTabLabel(tabKey: string): PaneTabLabel {
   const parsed = parseChatSurfaceKey(tabKey);
   const front = useWorkspaceFront();
   const livePanel = usePanel();

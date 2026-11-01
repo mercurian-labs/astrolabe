@@ -347,6 +347,10 @@ function astrolabeCommand(
       const link = focused ? (panes?.tabs.link?.(focused.leaf.active) ?? null) : null;
       return entry(link?.label ?? "Unlink tab", link?.run ?? null);
     }
+    case "tab.newLinked": {
+      const chat = focusedChatOf(workspace.linked());
+      return entry("New linked tab", chat ? () => workspace.newLinkedTab(chat) : null);
+    }
   }
 }
 

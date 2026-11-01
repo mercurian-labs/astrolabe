@@ -797,18 +797,23 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   const unlink = (key: string) => apply((before) => unlinkTab(before, key));
 
   /**
-   * Brings back the chat `owner`'s linked tabs set aside with its panel, its chat coming to the
-   * front: `key` in front among them, or with `key` null, a new empty one.
+   * Opens a New tab linked to the chat `owner`, its chat coming to the front: in front among its
+   * linked tabs, the hidden ones back first; with none, the empty one its panel opens with.
    */
-  const showLinked = (owner: string, key: string | null) => {
+  const newLinkedTab = (owner: string) => {
     const ref = refOf(owner);
     if (ref === null) return;
+    const before = new Set(allTabs(current().arrangement));
     update((arrangement) => activateTab(arrangement, owner));
     if (!recordOf(ref).isOpen) useRightPanelStore.getState().show(ref);
     apply((linked) => {
-      if (key !== null)
-        return { ...linked, arrangement: activateTab(linked.arrangement, key, false) };
       const { arrangement } = linked;
+      const opened = allTabs(arrangement).find(
+        (key) => isEmptyTab(key) && linked.owners[key] === owner && !before.has(key),
+      );
+      if (opened !== undefined) {
+        return { ...linked, arrangement: activateTab(arrangement, opened, false) };
+      }
       const empty = `empty/${arrangement.seq}`;
       return openLinked(
         { ...linked, arrangement: { ...arrangement, seq: arrangement.seq + 1 } },
@@ -836,7 +841,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     openChatsBesideFront,
     openLinked: openLinkedTab,
     unlink,
-    showLinked,
+    newLinkedTab,
     /** What the chat `owner`'s linked-tabs toggle offers now. */
     toggleOf: (owner: string): LinkedToggle => linkedToggle(current(), owner, context),
     /** The thread of the chat in front, whose surfaces the panes show. */

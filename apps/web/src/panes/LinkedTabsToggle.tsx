@@ -1,22 +1,12 @@
 import { SquareMinus, SquarePlus } from "lucide-react";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 
 import { Kbd } from "~/components/ui/kbd";
-import {
-  Menu,
-  MenuGroup,
-  MenuGroupLabel,
-  MenuItem,
-  MenuPopup,
-  MenuSeparator,
-  MenuTrigger,
-} from "~/components/ui/menu";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useRightPanelStore } from "~/rightPanelStore";
 import type { LinkedToggle } from "./linkedTabs";
 import { workspace } from "./workspace";
-import { useTabLabel } from "./workspaceTabs";
 
 function subscribe(listener: () => void) {
   const stopPanes = workspace.store.subscribe(listener);
@@ -27,33 +17,31 @@ function subscribe(listener: () => void) {
   };
 }
 
-/** The chat's toggle as a string, stable between changes, read back into its state. */
-function useLinkedToggle(owner: string): LinkedToggle {
-  const key = useSyncExternalStore(subscribe, () => {
+/** The chat's toggle as its kind and hidden count, stable between changes. */
+function useLinkedToggle(owner: string): LinkedToggle["kind"] | number {
+  return useSyncExternalStore(subscribe, () => {
     const toggle = workspace.toggleOf(owner);
-    return toggle.kind === "hidden" ? ["hidden", ...toggle.tabs].join("\n") : toggle.kind;
+    return toggle.kind === "hidden" ? toggle.tabs.length : toggle.kind;
   });
-  const [kind, ...tabs] = key.split("\n");
-  return kind === "hidden" ? { kind, tabs } : { kind: kind === "showing" ? "showing" : "none" };
 }
 
 interface LinkedTabsToggleProps {
-  /** The chat whose header holds it, by tab key. */
+  /** The chat whose header holds them, by tab key. */
   readonly owner: string;
   readonly available: boolean;
   readonly shortcutLabel: string | null;
   /**
-   * T3 Code's right-panel toggle, which hides the tabs, or shows them: the hidden ones back where
-   * they stood, else an empty panel's launcher. Its shortcut does the same.
+   * T3 Code's right-panel toggle, which hides the tabs, or brings the hidden ones back where they
+   * stood. Its shortcut does the same.
    */
   readonly onToggle: () => void;
 }
 
 /**
- * Astrolabe: the chat's linked tabs toggle, where T3 Code's right-panel toggle stood, as ChatGPT's
- * is: with none, a new tab; with some hidden, their count and a menu bringing them back; with them
- * showing, hiding them. Hidden tabs are set aside, not closed: each tab's ✕ closes it for good.
- * The shortcut skips the menu and brings them all back, so pressing it twice hides and restores.
+ * Astrolabe: the chat's linked tabs controls, where T3 Code's right-panel toggle stood. A New
+ * linked tab button, always; and with linked tabs, a toggle hiding them, or with them hidden,
+ * their count, which brings them all back. Hidden tabs are set aside, not closed: each tab's ✕
+ * closes it for good.
  */
 export function LinkedTabsToggle({
   owner,
@@ -62,89 +50,53 @@ export function LinkedTabsToggle({
   onToggle,
 }: LinkedTabsToggleProps) {
   const toggle = useLinkedToggle(owner);
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  if (toggle.kind === "hidden") {
-    const bringBack = (key: string | null) => {
-      setMenuOpen(false);
-      workspace.showLinked(owner, key);
-    };
-    return (
-      <Menu open={menuOpen} onOpenChange={setMenuOpen}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <MenuTrigger
-                render={
-                  <Toggle
-                    className="shrink-0 [-webkit-app-region:no-drag]"
-                    pressed={false}
-                    aria-label={`Open tabs (${toggle.tabs.length} hidden)`}
-                    data-right-panel-toggle
-                    variant="ghost"
-                    size="sm"
-                    disabled={!available}
-                  />
-                }
-              />
-            }
+  const hidden = typeof toggle === "number" ? toggle : 0;
+  const showing = toggle === "showing";
+  const label = showing ? "Hide tabs" : `Show tabs (${hidden} hidden)`;
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger render={<span className="flex shrink-0" />}>
+          <Toggle
+            className="shrink-0 [-webkit-app-region:no-drag]"
+            pressed={false}
+            onPressedChange={() => workspace.newLinkedTab(owner)}
+            aria-label="New linked tab"
+            data-new-linked-tab
+            variant="ghost"
+            size="sm"
+            disabled={!available}
           >
-            <HiddenCount count={toggle.tabs.length} />
+            <SquarePlus className="size-4" />
+          </Toggle>
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">New linked tab</TooltipPopup>
+      </Tooltip>
+      {toggle === "none" ? null : (
+        <Tooltip>
+          <TooltipTrigger render={<span className="flex shrink-0" />}>
+            <Toggle
+              className="shrink-0 [-webkit-app-region:no-drag]"
+              pressed={showing}
+              onPressedChange={onToggle}
+              aria-label={label}
+              data-right-panel-toggle
+              variant="ghost"
+              size="sm"
+              disabled={!available}
+            >
+              {showing ? <SquareMinus className="size-4" /> : <HiddenCount count={hidden} />}
+            </Toggle>
           </TooltipTrigger>
           <TooltipPopup side="bottom">
-            <ShortcutTip label="Open tabs" shortcut={shortcutLabel} />
+            <span className="flex items-center gap-2">
+              {label}
+              {shortcutLabel ? <Kbd>{shortcutLabel}</Kbd> : null}
+            </span>
           </TooltipPopup>
         </Tooltip>
-        <MenuPopup align="end" side="bottom" sideOffset={6}>
-          <MenuGroup>
-            <MenuGroupLabel>Open tabs</MenuGroupLabel>
-            {toggle.tabs.map((key) => (
-              <HiddenTabItem key={key} tabKey={key} onPick={() => bringBack(key)} />
-            ))}
-          </MenuGroup>
-          <MenuSeparator />
-          <MenuItem onClick={() => bringBack(null)}>
-            <TabIcon>
-              <SquarePlus />
-            </TabIcon>
-            New tab
-          </MenuItem>
-        </MenuPopup>
-      </Menu>
-    );
-  }
-
-  const showing = toggle.kind === "showing";
-  const label = showing ? "Hide tabs" : "New tab";
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="flex shrink-0" />}>
-        <Toggle
-          className="shrink-0 [-webkit-app-region:no-drag]"
-          pressed={showing}
-          onPressedChange={onToggle}
-          aria-label={label}
-          data-right-panel-toggle
-          variant="ghost"
-          size="sm"
-          disabled={!available}
-        >
-          {showing ? <SquareMinus className="size-4" /> : <SquarePlus className="size-4" />}
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        <ShortcutTip label={label} shortcut={shortcutLabel} />
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
-
-function ShortcutTip({ label, shortcut }: { label: string; shortcut: string | null }) {
-  return (
-    <span className="flex items-center gap-2">
-      {label}
-      {shortcut ? <Kbd>{shortcut}</Kbd> : null}
-    </span>
+      )}
+    </>
   );
 }
 
@@ -173,18 +125,4 @@ function HiddenCount({ count }: { count: number }) {
       </text>
     </svg>
   );
-}
-
-function HiddenTabItem({ tabKey, onPick }: { tabKey: string; onPick: () => void }) {
-  const { title, icon } = useTabLabel(tabKey);
-  return (
-    <MenuItem onClick={onPick}>
-      <TabIcon>{icon}</TabIcon>
-      <span className="min-w-0 truncate">{title}</span>
-    </MenuItem>
-  );
-}
-
-function TabIcon({ children }: { children: ReactNode }) {
-  return <span className="flex size-4 shrink-0 items-center justify-center">{children}</span>;
 }

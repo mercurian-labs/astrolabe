@@ -225,7 +225,7 @@ describe("a chat's linked-tabs toggle", () => {
     });
   });
 
-  it("offers a new tab with nothing set aside", () => {
+  it("has nothing to toggle with nothing set aside", () => {
     const state = settle(linkedArrangement(openTab(startingArrangement(), chatA)));
     expect(withClosed([chatA], () => linkedToggle(state, chatA, context))).toEqual({
       kind: "none",
@@ -237,6 +237,37 @@ describe("a chat's linked-tabs toggle", () => {
     state = withClosed([chatA], () => settle(state));
     expect(withClosed([chatA], () => hiddenLinkedTabs(state, chatA, context))).toEqual([terminalA]);
     expect(panes(settle(state))).toEqual([[chatB, chatA], [terminalA]]);
+  });
+});
+
+describe("a new linked tab", () => {
+  const empty = "empty/7";
+
+  it("opens in front beside the chat's tabs showing, the focus staying on the chat", () => {
+    const state = settle(openLinked(withPanel(), empty));
+    expect(panes(state)).toEqual([
+      [chatB, chatA],
+      [terminalA, diffA, empty],
+    ]);
+    expect(leaves(state.arrangement.root)[1]?.active).toBe(empty);
+    expect(state.arrangement.focused).toBe("p0");
+  });
+
+  it("opens in front among the chat's hidden tabs once they are back where they stood", () => {
+    const hidden = withClosed([chatA], () => settle(withPanel()));
+    expect(panes(hidden)).toEqual([[chatB, chatA]]);
+    const back = settle(hidden);
+    expect(panes(back)).toEqual([
+      [chatB, chatA],
+      [terminalA, diffA],
+    ]);
+    expect(leaves(back.arrangement.root)[1]?.active).toBe(diffA);
+    const state = settle(openLinked(back, empty));
+    expect(panes(state)).toEqual([
+      [chatB, chatA],
+      [terminalA, diffA, empty],
+    ]);
+    expect(leaves(state.arrangement.root)[1]?.active).toBe(empty);
   });
 });
 
