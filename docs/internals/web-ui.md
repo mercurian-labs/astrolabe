@@ -60,9 +60,14 @@ Astrolabe's sections share one arrangement ([`workspace.ts`](../../apps/web/src/
 T3 Code's ChatView still renders only its thread's one active right-panel surface, so a thread's
 surface tabs are always linked to its chat ([`linkedTabs.ts`](../../apps/web/src/panes/linkedTabs.ts))
 and park while another chat is in front: only the front chat's ChatView feeds the panes
-([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). Content that must not remount
-(the live surface, the route's ChatView) renders into one DOM node that moves between panes; a
-portal whose container changes remounts its children. A pane's content has `contain: layout
+([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). The live surface renders into one
+DOM node that moves between panes; a portal whose container changes remounts its children. Each
+chat tab has its own ChatView in its own container, which never moves: moving a chat's subtree
+forces layout of all of it and resets its scroll. Chats behind other tabs stay mounted under
+`<Activity mode="hidden">`, whose effect cleanup stops their window key and paste listeners, up to
+the most recently shown few ([`recentChats.ts`](../../apps/web/src/panes/recentChats.ts)). The
+panes, not the router, decide which chat shows; the route follows a commit later and renders no
+chat. A pane's content has `contain: layout
 paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
 built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
 (`useChatOwner`).
