@@ -94,7 +94,7 @@ export interface WorkspaceSnapshot extends PaneArrangementSnapshot {
 }
 
 /** The tabs the shared panes keep across a reload. */
-export const isWorkspaceKey = (key: string) =>
+const isWorkspaceKey = (key: string) =>
   isEmptyTab(key) ||
   isSectionTabKey(key) ||
   pullRequestTargetOfKey(key) !== null ||
@@ -117,7 +117,7 @@ function readJson(storage: StorageLike | null, key: string): unknown {
  * The shared panes as the device last left them; on first opening, the chat tabs and each
  * section's panes as they were left, joined (`joinLayouts`). Thread right panels start fresh.
  */
-export function loadWorkspace(storage: StorageLike | null): {
+function loadWorkspace(storage: StorageLike | null): {
   readonly linked: LinkedArrangement;
   readonly histories: TabHistories;
 } {

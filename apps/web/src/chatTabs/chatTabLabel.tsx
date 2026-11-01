@@ -43,7 +43,7 @@ export function chatRouteOf(chatKey: string): ChatRoute | null {
  * idle subagents out of the shell, so a thread missing there is gone only once a settled read of
  * its family leaves it out too.
  */
-export function isChatTabGone(input: {
+function isChatTabGone(input: {
   readonly live: boolean;
   readonly shell: { readonly deletedAt?: unknown } | null;
   readonly hasDraft: boolean;

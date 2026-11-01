@@ -14,7 +14,7 @@ import {
 } from "~/panes/arrangement";
 import type { Side } from "~/panes/tree";
 import { hasUnsavedEdits } from "~/panes/unsavedEdits";
-import { useWorkspaceTabHistory, workspace } from "~/panes/workspace";
+import { workspace } from "~/panes/workspace";
 import { rekeyHistory, replaceInHistory, type HistoryDirection } from "~/tabNavigation.logic";
 import { parseWikiTabKey, sameWikiTab, wikiTabKey, type WikiTab } from "./wikiTabs";
 
@@ -119,9 +119,6 @@ export function showWikiTab(tab: WikiTab) {
 
 /** Steps the focused pane's tab in front back or forward through what it showed. */
 export const stepWikiTab = (direction: HistoryDirection) => workspace.step(direction);
-
-/** Whether the focused pane's tab in front has anything back (or forward) to show. */
-export const useWikiTabHistory = useWorkspaceTabHistory;
 
 /** Closes the tabs showing anything of a wiki, as when it is removed. */
 export function closeWikiTabs(match: (tab: WikiTab) => boolean) {

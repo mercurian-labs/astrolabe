@@ -15,15 +15,7 @@ import {
 } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
-import {
-  activateTab,
-  allTabs,
-  closeTab,
-  openBeside,
-  openTab,
-  replaceTab,
-  type Arrangement,
-} from "~/panes/arrangement";
+import { activateTab, openBeside, openTab } from "~/panes/arrangement";
 import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
 import { codeIndexEnvironment } from "~/state/codeIndex";

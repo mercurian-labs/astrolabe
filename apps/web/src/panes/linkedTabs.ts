@@ -47,7 +47,7 @@ export function linkedArrangement(arrangement: Arrangement): LinkedArrangement {
  * The owner in front: the focused pane's tab when it is one, or that tab's owner; else the last
  * one while still in front somewhere; else the first in front, in reading order.
  */
-export function frontOwner(
+function frontOwner(
   arrangement: Arrangement,
   owners: LinkedArrangement["owners"],
   previous: string | null,
@@ -62,11 +62,6 @@ export function frontOwner(
   }
   if (previous !== null && fronts.includes(previous)) return previous;
   return fronts.find(isOwner) ?? null;
-}
-
-/** The tabs `owner` owns, open or set aside. */
-export function ownedTabs(state: LinkedArrangement, owner: string): string[] {
-  return Object.keys(state.owners).filter((key) => state.owners[key] === owner);
 }
 
 /** Links a tab to `owner`; it shows from now on only while its owner does. */
@@ -87,7 +82,7 @@ export function unlinkTab(state: LinkedArrangement, key: string): LinkedArrangem
  * The pane the front owner's linked tabs stand in, where another of its tabs opens: one holding
  * a tab it owns, else null (a new one splits off beside the owner, see `openLinked`).
  */
-export function linkedPaneOf(state: LinkedArrangement, front: string | null): string | null {
+function linkedPaneOf(state: LinkedArrangement, front: string | null): string | null {
   if (front === null) return null;
   return (
     leaves(state.arrangement.root).find((leaf) =>
