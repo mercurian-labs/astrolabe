@@ -38,6 +38,7 @@ import {
   wikiDocumentAuthor,
   wikiDocumentSubtitle,
 } from "./document/wikiDocument.logic";
+import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiSaveSheet, type WikiSaveTarget } from "./document/WikiSaveSheet";
 import type { WikiDocumentParams } from "./wikiRoutes";
@@ -166,8 +167,25 @@ export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumen
       editor.current?.send({ type: "requestText", requestId });
     });
 
+  // The ```base blocks the page shows, run here where the connection is; answers are kept so a
+  // reloaded page gets them again at once.
+  const [baseSources, setBaseSources] = useState<ReadonlyArray<string>>([]);
+  const baseAnswers = useRef(new Map<string, WikiBaseAnswer>());
+  const onBaseAnswer = useCallback((source: string, answer: WikiBaseAnswer) => {
+    baseAnswers.current.set(source, answer);
+    editor.current?.send({ type: "baseResult", source, ...answer });
+  }, []);
+
   const onEvent = (event: WikiEditorEvent) => {
     switch (event.type) {
+      case "queryBase": {
+        const known = baseAnswers.current.get(event.source);
+        if (known) editor.current?.send({ type: "baseResult", source: event.source, ...known });
+        setBaseSources((sources) =>
+          sources.includes(event.source) ? sources : [...sources, event.source],
+        );
+        return;
+      }
       case "state":
         setState({ dirty: event.dirty, changedUnderneath: event.changedUnderneath });
         return;
@@ -338,6 +356,14 @@ export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumen
         <Notice text={`No document is called ${name} yet. Write it, then save it.`} />
       ) : null}
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} />
+      <WikiBaseQueries
+        sources={baseSources}
+        environmentId={environmentId}
+        wikiId={wikiId}
+        changeRequestId={changeRequestId}
+        note={note.data.name}
+        onAnswer={onBaseAnswer}
+      />
       {saving ? (
         <WikiSaveSheet
           noteName={name}
