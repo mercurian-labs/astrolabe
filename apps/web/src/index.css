@@ -2642,6 +2642,25 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   --link-ink-4: color-mix(in oklab, var(--primary) 35%, oklch(0.66 0.14 330));
 }
 
+/* A linked tab's chain mark stands where its ✕ would (`panes/PaneView.tsx`), which takes its place
+   on hovering the tab, saving the tab's title the ✕'s width. Without hover, both show. */
+@media (hover: hover) {
+  [data-tab-end]:has([data-link-mark]) > [data-tab-close] {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    opacity: 0;
+  }
+  [data-pane-tab]:hover [data-tab-end] > [data-tab-close],
+  [data-tab-end] > [data-tab-close]:focus-visible {
+    opacity: 1;
+  }
+  [data-pane-tab]:hover [data-tab-end]:has([data-tab-close]) > [data-link-mark],
+  [data-tab-end]:has([data-tab-close]:focus-visible) > [data-link-mark] {
+    opacity: 0;
+  }
+}
+
 /* A tab group's run (`panes/tabGroups.tsx`), in a pane's strip, is underlined in
    the theme's primary colour (`--tab-group`, the same for every group) as Chrome's are, a 2px
    line along the strip's foot. Its tab in front is outlined in that line, so the line rises

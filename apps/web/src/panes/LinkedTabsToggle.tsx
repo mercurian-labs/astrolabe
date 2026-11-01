@@ -8,6 +8,7 @@ import {
   MenuGroupLabel,
   MenuItem,
   MenuPopup,
+  MenuSeparator,
   MenuTrigger,
 } from "~/components/ui/menu";
 import { Toggle } from "~/components/ui/toggle";
@@ -101,8 +102,11 @@ export function LinkedTabsToggle({
               <HiddenTabItem key={key} tabKey={key} onPick={() => bringBack(key)} />
             ))}
           </MenuGroup>
+          <MenuSeparator />
           <MenuItem onClick={() => bringBack(null)}>
-            <SquarePlus />
+            <TabIcon>
+              <SquarePlus />
+            </TabIcon>
             New tab
           </MenuItem>
         </MenuPopup>

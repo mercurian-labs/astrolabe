@@ -321,16 +321,18 @@ function LabeledTabPill({
       ) : (
         <TabTitle title={title} tooltip={tooltip} />
       )}
-      {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
-      {closable ? (
-        <TabCloseButton
-          label={`Close ${title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            tabs.close(tabKey);
-          }}
-        />
-      ) : null}
+      <span data-tab-end className="relative flex shrink-0 items-center gap-1.5">
+        {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
+        {closable ? (
+          <TabCloseButton
+            label={`Close ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              tabs.close(tabKey);
+            }}
+          />
+        ) : null}
+      </span>
     </div>
   );
 }

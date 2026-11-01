@@ -92,7 +92,7 @@ panes of its own (pull-requests.md).
   presses hide and restore; with none they open the linked New tab. Only the button's click
   opens the menu. The header has no maximize of its own; the pane strip's does that.
 - **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
-  (`[data-link-mark=<ink>]`) before the ✕ on every linked tab on screen and on its owner, with
+  (`[data-link-mark=<ink>]`) in the ✕'s place on every linked tab on screen and on its owner (hovering the tab swaps it for the ✕; on a device without hover both show), with
   the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
   the next ink in reading order (`--link-ink-1..4`, the first is `--primary`). No motion.
 - **Change groups**: **Open as a tab group** in a group's tab opens its threads after the chat
@@ -146,7 +146,7 @@ panes of its own (pull-requests.md).
   Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
   **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
   Escape clears a selection. A middle-click (`preview_act click button="middle"`) closes a
-  tab. Every tab has a ✕ (a linked one beside its chain mark) except a lone pane's lone empty
+  tab. Every tab has a ✕ (a linked one's shows on hover, over its chain mark) except a lone pane's lone empty
   tab.
 - **Dividers**: between panes, a 1px line with a 3px `role=separator` handle
   (`aria-orientation` vertical for a side-by-side split, horizontal for a stacked one)
