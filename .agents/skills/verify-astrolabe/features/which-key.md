@@ -36,13 +36,13 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   label follows the section (on Wikis: "New document").
   A prefix the user added with no built-in name shows as `+N` (its entry count).
 - **Groups** (defaults): `g` t Agents, w Wikis, r Repositories, p Changes,
-  u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
-  browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
+  u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `k` link or unlink the focused tab (panes.md, Linked tabs), `r` reopen closed (panel and
+  browser tabs, not chats), `h` Back and `l` Forward (upstream's
   `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Repositories
   and Changes they walk the tab in front's history and are faint at either
   end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
-  right panel (faint with no chat on screen); the focus moves are root keys now, not in Panes.
+  right panel (parks or restores the front chat's linked tabs); the focus moves are root keys now, not in Panes.
   `s` `s` toggle sidebar. `w` `w` open
   Wikis, `f` find or create a document.
 - **Search** (Cmd+/, the menu's `/`, Cmd+K again; the palette's plain mode, dialog
@@ -155,11 +155,11 @@ and copy the backup back when done. The server picks changes up live.
    the finder (`[data-testid=wiki-finder]`) open with focus in its field.
 3. **Settings door.** Cmd+K `,` → `/settings/general`, with Settings / General in the
    title bar (Settings has no tabs).
-4. **Chat tabs.** With several chat tabs, focus off the composer, Cmd+K `t` `[` → the
-   previous chat tab is in front (strip read in chat-tabs.md).
+4. **Tabs.** With several tabs in the focused pane, focus off the composer, Cmd+K `t` `[` → the
+   previous tab of that pane is in front (panes read in panes.md).
 5. **Panes.** Open the right panel with two surfaces in one pane; focus a non-terminal
    tab → Cmd+K `p` `v` → two panes, focus in the new right pane → Cmd+K `:` `q`
-   Enter → one pane, chat strip unchanged (panes.md read).
+   Enter → one pane, the chat's pane unchanged (panes.md read).
 6. **Palette.** Cmd+K Cmd+K → Search, empty query, Recent Threads only; Escape,
    then Cmd+/ → Search again. On a Mac, Ctrl+N, Ctrl+N, Ctrl+P move the highlighted
    row (`[data-command-palette] [data-slot=command-item][data-active]`) down, down,

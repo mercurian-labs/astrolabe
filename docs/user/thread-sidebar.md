@@ -48,17 +48,40 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 A thread's branch and agent show under its title only when they differ from your defaults, beside
 its pull request and **Draft** for an unsent message. Hover a row for its full context.
 
-## Chat tabs
+## Tabs and splits
 
-Open chats sit as tabs above the chat. Clicking a thread in the sidebar shows it in
-the tab in front, as a link does in a browser; a thread already open in another tab
-comes to the front there instead. To open one in a new tab, Option-click it
-(Alt-click on Windows and Linux), middle-click it, or right-click it and choose
-**Open in new tab**, or drag it onto the tabs to open it where you drop it (a selection of
-threads goes together). Search, `:b`, and new threads also show in the tab in front.
+Agents, Repositories and Wikis share one set of tabs on this device: chats, files, changes,
+documents and a thread's terminals and browsers can stand side by side, and every tab splits.
+Switching sections changes what the sidebar lists, not the tabs. Drag a tab to a pane's edge to
+split it, or onto another pane's tabs to move it there.
+
+Clicking a thread in the sidebar shows it in place of the chat in front, as a link does in a
+browser; a thread already open in another tab comes to the front there instead. To open one in a
+new tab, Option-click it (Alt-click on Windows and Linux), middle-click it, or right-click it and
+choose **Open in new tab**, or drag it onto a pane's tabs to open it where you drop it (a
+selection of threads goes together). Search, `:b`, and new threads also show in place of the chat
+in front.
 
 Each tab remembers what it showed. The arrows at the top of the sidebar, `mod+[`
-and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the tab in front.
+and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the focused tab.
+
+### Linked tabs
+
+A thread's terminals, browsers, diff and other right-panel tabs are linked to its chat, and show
+only while that chat is in front: bring another chat to the front and the pane beside it shows
+that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
+the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
+and browsers for the next time you open it. The right panel's toggle (`mod+b`) shows or hides
+the linked tabs of the chat in front, and its maximize control fills the window with the pane
+showing them.
+
+A linked tab and its owner carry the same chain mark; hover it to see what it belongs to. To
+link another tab, a document or a file, to the chat in front, right-click it and choose **Link to
+the chat in front**; **Unlink tab** lets it stay put whichever chat is in front. Space `t` `k`
+does either for the focused tab. A thread's own surfaces stay linked to their thread.
+
+A change group's **Open as a tab group** links its change requests to the group, so they show
+beside every thread in the group and no other.
 The sidebar's toggle is in the top-left corner, above the icon rail (after the window buttons in the macOS app).
 
 ## Pin and reorder threads

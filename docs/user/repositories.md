@@ -16,7 +16,7 @@ see all of that for it; with every repository, each shows its latest files.
 
 ## Edit
 
-Files open in tabs that split, as wiki documents do. Markdown files open with the live preview;
+Files open in the tabs Agents and Wikis share (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Markdown files open with the live preview;
 code opens with line numbers and its language's colours, with Vim if you turned it on in
 Settings. Your edits save on their own a moment after you stop typing. A file shows when an agent
 is working in the same copy, and an edit never overwrites newer changes saved there.
@@ -27,9 +27,12 @@ A file's local graph shows the file in the accent colour with the files it impor
 that import it, drawn the way Obsidian draws its graph. Open it with the graph button in a file's
 header, **Open local graph** in a file's menu in the sidebar, or `r` `g` in the
 [keyboard menu](keybindings.md#keyboard-menu). It opens beside the file and follows the file you
-are reading; turn off **Following** in its header to keep it on one file.
+are reading, carrying the same chain mark as that file's tab; turn off **Following** in its
+header, or choose **Unlink tab** in its tab menu, to keep it on one file.
 
-Click a file to open it (⌘-click or Ctrl-click for a new tab), or a folded folder (a lighter dot
+Click a file to open it in place of the file the graph shows (⌘-click or Ctrl-click for a new
+tab), and the graph moves to it; a graph kept on one file moves to the file you click. Click a
+folded folder (a lighter dot
 named by the end of its path, such as `web/src · 975`) to unfold it; **Fold folders** in the
 header folds them again. Drag a file to move it, drag the background to pan, and scroll to zoom.
 Where names would overlap, the bigger file's shows and the other waits until you zoom in.

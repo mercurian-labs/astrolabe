@@ -4,7 +4,7 @@ The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark 
 rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds and, in
 each section with tabs (Agents, Wikis, Repositories, and Changes where the server
 supports pull requests), **Back** and **Forward** at its right end (`[data-tab-history]`, from
-`SidebarTabHistory.tsx`; see chat-tabs.md, wikis.md, repositories.md and pull-requests.md). It has a bottom border in
+`SidebarTabHistory.tsx`; see panes.md, wikis.md, repositories.md and pull-requests.md). It has a bottom border in
 line with the tab strip's and keeps the icon rail's colour (`bg-sidebar`), so the
 rail's title-bar cell and this row read as one band. Below it the sidebar's body
 (section title and list) takes the main area's background

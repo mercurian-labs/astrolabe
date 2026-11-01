@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -178,10 +178,9 @@ when the feature needs a real thread. Then:
   node is created and never updates it, so walking up from it can read the previous
   render: a walk once reported a local graph that never redrew when the page was fine.
   Read rendered output (DOM text, a screenshot) or query the state's own atom.
-- Right-panel arrangements live in localStorage under
-  `t3code:right-panel-panes:v1:<environmentId>:<threadId>`. Reading that key proves a
-  layout change without a screenshot, and surviving `location.reload()` proves
-  persistence.
+- The shared panes live in localStorage under `astrolabe:workspace:v1` (the tree, plus
+  `owners`, `parked` and `front` for linked tabs). Reading that key proves a layout change
+  without a screenshot, and surviving `location.reload()` proves persistence.
 
 ## Evidence
 

@@ -47,11 +47,9 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   first repository's files), so Walk 4 and 5 hit-test a row and compare row paths.
 - **Search**: the header's search finds files by name in the scoped repository
   (`projects.searchEntries`); with every repository it asks for one.
-- **Main area**: one arrangement on the device (localStorage
-  `astrolabe:repository-panes:v1`, removed while it is the starting single empty tab) and
-  each tab's Back/Forward history (`astrolabe:repository-tab-history:v1`); a reload keeps
-  both. Each open tab renders into `[data-repository-tab="<tab key>"]`. An empty tab
-  reads **No file open**.
+- **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`, history
+  `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
+  `[data-workspace-tab="<tab key>"]`. An empty tab in Repositories reads **Nothing open**.
 - **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (path, "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
   Read only / Too big to edit here). Markdown opens with the live preview (a centred

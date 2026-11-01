@@ -35,8 +35,7 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
-- **Main area**: one arrangement on the device (localStorage
-  `astrolabe:wiki-panes:v1`). A plain click on a row (or Enter on a focused row)
+- **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`). A plain click on a row (or Enter on a focused row)
   replaces what the focused pane's tab in front shows; a document already open in
   another tab comes forward there instead (no duplicates); an empty tab, or a note
   with unsaved edits, makes way for a new tab. Option/Alt-click, middle-click, the
@@ -71,9 +70,8 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   anywhere in a Documents group; a pick shows it in the focused pane's tab in front,
   as a click does (or brings an open copy forward), and goes to `/wikis`.
 - **Chats and pull requests beside documents**: a change request's **Open thread** opens
-  its thread's chat in a new pane to the right (`chat:<env>:<thread>` tab, a full
-  ChatView without the chat tabs; it mounts only while in front). Its tab menu offers
-  **Open in Agents**. See panes.md, "Tabs from other sections".
+  its thread's chat after the chat in front (`chat:<env>:<thread>` tab; it mounts only while
+  in front). See panes.md, "Chats as tabs".
 - **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
   files that open inside the change request).
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
@@ -120,7 +118,7 @@ preview_act click     role=button[name='Find or create a document']  # in an emp
 
 **Proof:** read the arrangement from the DOM
 (`[data-pane-id]` → its `[data-pane-tab]` labels, `aria-selected`) or from
-`JSON.parse(localStorage['astrolabe:wiki-panes:v1'])` (written within 150 ms; absent while
+`JSON.parse(localStorage['astrolabe:workspace:v1'])` (written within 150 ms; absent while
 the arrangement is the starting one), and the lit row
 (`[data-testid^=wiki-sidebar-row][aria-current=page]`). A change group's tabs here (its wiki
 change requests, its threads' chats, its pull requests, and the `change-group:` tab a click on

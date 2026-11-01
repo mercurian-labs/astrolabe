@@ -2626,7 +2626,7 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
    into the strip's bottom border, and outside it the content's background fills the join. The
    other tabs are bare until hovered, with a rule between two at rest, centred in the strip's gap
    (`gap-1`). */
-:is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
+[data-pane-tab][aria-selected="true"] {
   --tab-ear: var(--radius-md);
   --tab-rule: 1px;
   --tab-rule-color: var(--border);
@@ -2650,19 +2650,19 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   --tab-group: var(--primary);
 }
 
-[data-tab-group-run] > :is([data-pane-tab], [data-chat-tab]) {
+[data-tab-group-run] > [data-pane-tab] {
   width: auto;
 }
 
-[data-tab-group-run] > :is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
+[data-tab-group-run] > [data-pane-tab][aria-selected="true"] {
   --tab-rule: 2px;
   --tab-rule-color: var(--tab-group);
   border-color: var(--tab-group);
   border-width: 2px 2px 0;
 }
 
-:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::before,
-:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
+[data-pane-tab][aria-selected="true"]::before,
+[data-pane-tab][aria-selected="true"]::after {
   content: "";
   position: absolute;
   bottom: 0;
@@ -2671,7 +2671,7 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   pointer-events: none;
 }
 
-:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::before {
+[data-pane-tab][aria-selected="true"]::before {
   left: calc(-1 * var(--tab-rule) - var(--tab-ear));
   background: radial-gradient(
     circle at 0 0,
@@ -2682,7 +2682,7 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   );
 }
 
-:is([data-pane-tab], [data-chat-tab])[aria-selected="true"]::after {
+[data-pane-tab][aria-selected="true"]::after {
   right: calc(-1 * var(--tab-rule) - var(--tab-ear));
   background: radial-gradient(
     circle at 100% 0,
@@ -2694,9 +2694,7 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
 }
 
 [data-pane-tab]:not([aria-selected="true"], :hover, [data-selected])
-  + [data-pane-tab]:not([aria-selected="true"], :hover, [data-selected])::before,
-[data-chat-tab]:not([aria-selected="true"], :hover)
-  + [data-chat-tab]:not([aria-selected="true"], :hover)::before {
+  + [data-pane-tab]:not([aria-selected="true"], :hover, [data-selected])::before {
   content: "";
   position: absolute;
   top: 50%;
@@ -2730,13 +2728,13 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
    transition. The tab's own focus ring would only repeat the bar, so it drops there; a tab
    elsewhere in the strip keeps the ring. */
 :is([data-pane-id], [data-chat-column-maximized-away])[data-focused-place]
-  :is([data-pane-tab], [data-chat-tab])[aria-selected="true"]:focus-visible {
+  [data-pane-tab][aria-selected="true"]:focus-visible {
   --tw-ring-shadow: 0 0 #0000;
   --tw-inset-ring-shadow: 0 0 #0000;
 }
 
 :is([data-pane-id], [data-chat-column-maximized-away])[data-focused-place]
-  :is([data-pane-tab], [data-chat-tab])[aria-selected="true"] {
+  [data-pane-tab][aria-selected="true"] {
   background-image: linear-gradient(var(--focus-bar), var(--focus-bar));
   background-size: calc(100% - 1rem) 2px;
   background-position: center top;

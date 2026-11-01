@@ -123,7 +123,7 @@ you need.
 | Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right           |
 | `d` `u`                 | [Scroll](#scrolling) down or up half a page                    |
 | `g`                     | Go to Agents, Wikis, Repositories, Changes, Usage, or Settings |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward             |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward, link       |
 | `p`                     | Panes: split, close, maximize, full screen, right panel        |
 | `s` `s`                 | Show or hide the sidebar                                       |
 | `w`                     | Open Wikis, or find or create a document                       |
@@ -357,12 +357,13 @@ field gets its own undo back. Terminals always keep their native shortcut.
 
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
 through the pages you have visited, like a browser's back and forward buttons. On
-Agents and Wikis they go back and forward in the tab in front instead, as the
+Agents, Repositories and Wikis they go back and forward in the focused tab instead, as the
 arrows at the top of the sidebar do.
 
-Space `p` `f` takes the focused pane full screen: it fills its panes and, in a
-thread's right panel, the panel covers the chat too. Press it again to restore
-both. Space `p` `r` shows or hides the right panel.
+Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
+again to restore it. Space `p` `r` shows or hides the
+[linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, and Space
+`t` `k` links the focused tab to the chat in front, or unlinks it.
 
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your
