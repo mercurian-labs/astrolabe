@@ -9,8 +9,17 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { Profiler, startTransition, useEffect, useLayoutEffect, useState } from "react";
+import {
+  Profiler,
+  startTransition,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
 
@@ -67,6 +76,42 @@ vi.mock(import("~/chatTabs/chatTabLabel"), async (original) => ({
 vi.mock(import("~/components/ChatView"), async () => {
   const { LinkedPanel } = await import("./LinkedPanel");
   const { useChatShortcuts } = await import("~/components/chat/useChatShortcuts");
+  const { useChatComposerRef } = await import("~/composerHandleContext");
+  type ComposerRef = ReturnType<typeof useChatComposerRef>;
+  function Composer({ composerRef }: { composerRef: ComposerRef }) {
+    const node = useRef<HTMLDivElement>(null);
+    useImperativeHandle(
+      composerRef,
+      () =>
+        ({
+          focusAtEnd: () => node.current?.focus(),
+          // As the composer's type-to-focus does: the key lands at its end, with focus.
+          insertTextAtEnd: (text: string) => {
+            node.current!.append(text);
+            node.current!.focus();
+            return true;
+          },
+        }) as never,
+      [],
+    );
+    return <div ref={node} contentEditable data-testid="composer-editor" />;
+  }
+  // As ChatView's drawer does: opening focuses its terminal, closing gives focus to the composer.
+  function TerminalDrawer({ composerRef }: { composerRef: ComposerRef }) {
+    const [open, setOpen] = useState(false);
+    const toggle = () => {
+      setOpen(!open);
+      if (open) composerRef.current?.focusAtEnd();
+    };
+    return (
+      <>
+        <button type="button" aria-label="Toggle terminal drawer" onClick={toggle}>
+          drawer
+        </button>
+        {open ? <textarea aria-label="Terminal" autoFocus /> : null}
+      </>
+    );
+  }
   function Surface({ thread }: { thread: string }) {
     const [id] = useState(() => Math.random().toString(36).slice(2));
     useState(() => probe.surfaces.push(`${thread}#${id}`));
@@ -78,6 +123,7 @@ vi.mock(import("~/components/ChatView"), async () => {
     const instances = probe.instances.get(threadId) ?? new Set<string>();
     instances.add(id);
     probe.instances.set(threadId, instances);
+    const composerRef = useChatComposerRef();
     useChatShortcuts({
       enabled: probe.shortcuts,
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
@@ -92,7 +138,7 @@ vi.mock(import("~/components/ChatView"), async () => {
         isDesktop: false,
       }),
       threadFindActive: false,
-      composerRef: { current: null },
+      composerRef,
       branchToolbarRef: { current: null },
       closeThreadFind: () => {},
       commands: {
@@ -122,6 +168,8 @@ vi.mock(import("~/components/ChatView"), async () => {
         <LinkedPanel {...(panelProps(threadId) as unknown as Omit<PanelProps, "children">)}>
           <Surface thread={threadId} />
         </LinkedPanel>
+        <TerminalDrawer composerRef={composerRef} />
+        <Composer composerRef={composerRef} />
       </div>
     );
   }
@@ -145,6 +193,7 @@ vi.mock(import("~/components/ChatView"), async () => {
 });
 
 import { chatRouteOf } from "../chatTabs/chatTabLabel";
+import { ComposerHandleContext, focusedChatComposerRef } from "../composerHandleContext";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
@@ -184,13 +233,16 @@ function Harness({ initial, onCommit }: { initial: string | null; onCommit: () =
     };
   }, []);
   return (
-    <Profiler id="workspace" onRender={onCommit}>
-      <WorkspaceView
-        routeTarget={threadId === null ? null : { kind: "server", threadRef: refOf(threadId) }}
-        agents={agents}
-      />
-      <output data-route-thread>{threadId ?? ""}</output>
-    </Profiler>
+    // As the Command Palette does, around every chat.
+    <ComposerHandleContext value={focusedChatComposerRef}>
+      <Profiler id="workspace" onRender={onCommit}>
+        <WorkspaceView
+          routeTarget={threadId === null ? null : { kind: "server", threadRef: refOf(threadId) }}
+          agents={agents}
+        />
+        <output data-route-thread>{threadId ?? ""}</output>
+      </Profiler>
+    </ComposerHandleContext>
   );
 }
 
@@ -356,6 +408,59 @@ describe("WorkspaceView chat tabs", () => {
     await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A")))));
     pressModJ();
     expect(probe.terminalToggles).toEqual(["A", "A"]);
+  });
+
+  it("gives focus back to its own composer as a chat's drawer closes, with another chat beside it", async () => {
+    setup();
+    workspace.update(() => openTab(startingArrangement(), chatOf("A")));
+    await using _screen = await mount("A");
+    // B opens beside A after it, so its composer is the last to mount.
+    await change(() =>
+      workspace.update((a) => splitTab(openTab(a, chatOf("B")), chatOf("B"), "right")),
+    );
+    expect(shows("A") && shows("B")).toBe(true);
+    const paneOf = (key: string) =>
+      leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))!.id;
+    const inChat = (thread: string, selector: string) =>
+      chatNode(thread)!.querySelector<HTMLElement>(selector)!;
+    const toggleA = inChat("A", "[aria-label='Toggle terminal drawer']");
+
+    await userEvent.click(toggleA);
+    await vi.waitFor(() => expect(document.activeElement).toBe(inChat("A", "textarea")));
+    await userEvent.click(toggleA);
+
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(inChat("A", "[data-testid='composer-editor']")),
+    );
+    expect(workspace.arrangement().focused).toBe(paneOf(chatOf("A")));
+    expect(workspace.linked().front).toBe(chatOf("A"));
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-route-thread]")?.textContent).toBe("A"),
+    );
+  });
+
+  it("types into the focused chat's composer, not the one beside it", async () => {
+    setup();
+    probe.shortcuts = true;
+    workspace.update(() => openTab(startingArrangement(), chatOf("B")));
+    await using _screen = await mount("B");
+    // A opens beside B after it, so B hears the window's keys first.
+    await change(() =>
+      workspace.update((a) => splitTab(openTab(a, chatOf("A")), chatOf("A"), "right")),
+    );
+    const paneA = leaves(workspace.arrangement().root).find(
+      (leaf) => leaf.active === chatOf("A"),
+    )!.id;
+    await change(() => workspace.update((a) => focusPane(a, paneA)));
+    const composerOf = (thread: string) =>
+      chatNode(thread)!.querySelector<HTMLElement>("[data-testid='composer-editor']")!;
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "x", cancelable: true }));
+
+    expect(composerOf("A").textContent).toBe("x");
+    expect(composerOf("B").textContent).toBe("");
+    expect(document.activeElement).toBe(composerOf("A"));
+    expect(workspace.arrangement().focused).toBe(paneA);
   });
 
   it("hides and brings back the focused chat's linked tabs from mod+alt+b, and no other chat's", async () => {

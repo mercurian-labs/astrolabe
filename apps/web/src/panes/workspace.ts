@@ -931,6 +931,14 @@ export const workspace = createWorkspace();
  * focused pane's tab in front. Null is a ChatView outside the shared panes, which always does.
  */
 export function takesTerminalToggle(owner: string | null): boolean {
+  return isFocusedChatTab(owner);
+}
+
+/**
+ * Whether the chat tab `owner` is the focused pane's tab in front, so its ChatView may move focus
+ * on its own. Null is a ChatView outside the shared panes, which always may.
+ */
+export function isFocusedChatTab(owner: string | null): boolean {
   return owner === null || focusedPane(workspace.arrangement()).active === owner;
 }
 

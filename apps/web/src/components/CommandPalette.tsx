@@ -225,8 +225,11 @@ import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/com
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
-import type { ChatComposerHandle } from "./chat/ChatComposer";
+import {
+  ComposerHandleContext,
+  focusedChatComposerRef,
+  useComposerHandleContext,
+} from "../composerHandleContext";
 import { buildSidebarProjectPickerEntries } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
@@ -282,10 +285,8 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const setOpen = (open: boolean) => dispatchCommandPalette({ _tag: "SetOpen", open });
   const openChildSearch = (mode: "files" | "content", context: CommandPaletteReturnContext) =>
     dispatchCommandPalette({ _tag: "OpenChildSearch", mode, context });
-  const composerHandleRef = useRef<ChatComposerHandle | null>(null);
-
   return (
-    <ComposerHandleContext value={composerHandleRef}>
+    <ComposerHandleContext value={focusedChatComposerRef}>
       <CommandDialog
         open={state.open}
         onOpenChange={(open, eventDetails) => {
