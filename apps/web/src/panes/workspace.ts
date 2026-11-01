@@ -649,7 +649,8 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     if (!pane) return;
     let tabHistories = histories;
     let goTo = historyTarget(tabHistories, active, direction);
-    while (goTo !== null && !isWorkspaceKey(goTo)) {
+    // Entries gone from between can leave the tab's own key nearest, which leads nowhere.
+    while (goTo !== null && (goTo === active || !isWorkspaceKey(goTo))) {
       tabHistories = dropHistoryTarget(tabHistories, active, direction);
       goTo = historyTarget(tabHistories, active, direction);
     }
@@ -677,8 +678,11 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   };
 
   /** Whether the tab `key` (the focused pane's tab in front by default) has anything that way. */
-  const canStep = (direction: HistoryDirection, key?: string) =>
-    historyTarget(histories, key ?? focusedPane(current().arrangement).active, direction) !== null;
+  const canStep = (direction: HistoryDirection, key?: string) => {
+    // Reads the panes first: the first read loads the histories with them.
+    const { arrangement } = current();
+    return historyTarget(histories, key ?? focusedPane(arrangement).active, direction) !== null;
+  };
 
   const close = (key: string) => update((arrangement) => closeTab(arrangement, key));
 

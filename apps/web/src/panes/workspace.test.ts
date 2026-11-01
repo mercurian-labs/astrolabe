@@ -272,6 +272,31 @@ describe("the shared panes", () => {
     expect(workspace.arrangement().focused).toBe("p0");
   });
 
+  it("never step a tab to itself once the entries between are gone", () => {
+    const device = memoryStorage({
+      [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+        root: { type: "leaf", id: "p0", tabs: [chatA], active: chatA },
+        focused: "p0",
+        seq: 1,
+        owners: {},
+        parked: {},
+        front: chatA,
+      }),
+      // A came back in place of a tab whose key no longer reads.
+      "astrolabe:workspace-tab-history:v1": JSON.stringify({
+        [chatA]: { back: [chatA, "gone/1"], forward: [] },
+      }),
+    });
+    const workspace = createWorkspace(() => device);
+    expect(panes(workspace)).toEqual([[chatA]]);
+    expect(workspace.canStep("back")).toBe(true);
+
+    workspace.step("back");
+
+    expect(panes(workspace)).toEqual([[chatA]]);
+    expect(workspace.canStep("back")).toBe(false);
+  });
+
   it("put a new chat in the New tab in focus, where it stood", () => {
     const workspace = createWorkspace(chatTabsDevice);
     workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
