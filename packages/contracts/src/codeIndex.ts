@@ -227,6 +227,71 @@ export const CodeLocalGraph = Schema.Struct({
 });
 export type CodeLocalGraph = typeof CodeLocalGraph.Type;
 
+// A view of the code graph an agent shows the user: one step for a picture, several for a story
+// they step through. It is the `astrolabe_code_graph_show` call's input, kept in the thread like
+// any tool call, and the thread's Graph tab draws it from there. Descriptions use the plain
+// NonEmptyString: a trimmed string's annotations never reach the MCP schema.
+
+const GraphId = Schema.NonEmptyString;
+
+export const CodeGraphStepInput = Schema.Struct({
+  caption: Schema.NonEmptyString.annotate({
+    description: "One or two sentences the user reads under the graph for this step.",
+  }),
+  focus: Schema.Array(GraphId).annotate({
+    description:
+      "The nodes this step is about, lit in the graph: file or folder paths, or definitions as `path#Qualified.name` (the `id` that astrolabe_code_outline and astrolabe_code_find return).",
+  }),
+  links: Schema.optional(
+    Schema.Array(Schema.Struct({ from: GraphId, to: GraphId })).annotate({
+      description:
+        "Links to light, from the node that imports or uses to the one it uses. Links between focus nodes light anyway.",
+    }),
+  ),
+  level: Schema.optional(
+    CodeGraphLevel.annotate({
+      description:
+        "How fine the nodes are: directory, module, file (the default), symbol (top-level definitions), or member (methods).",
+    }),
+  ),
+  depth: Schema.optional(
+    Schema.Literals([0, 1, 2, 3]).annotate({
+      description:
+        "Links out from the story's nodes to show around them; 0 (the default) shows only the nodes named and the links between them.",
+    }),
+  ),
+  expandNeighbours: Schema.optional(
+    Schema.Array(GraphId).annotate({
+      description: "Nodes whose direct neighbours to add to the graph.",
+    }),
+  ),
+  showContents: Schema.optional(
+    Schema.Array(GraphId).annotate({
+      description:
+        "Folders or files to open in place, showing the files or definitions inside them.",
+    }),
+  ),
+});
+export type CodeGraphStepInput = typeof CodeGraphStepInput.Type;
+
+export const CodeGraphShowInput = Schema.Struct({
+  title: Schema.optional(
+    Schema.NonEmptyString.annotate({ description: "A few words naming the picture or story." }),
+  ),
+  steps: Schema.NonEmptyArray(CodeGraphStepInput).annotate({
+    description:
+      "One step for a single picture; several, in order, for a story the user steps through. Every step draws over the same nodes: all the steps' focus nodes.",
+  }),
+});
+export type CodeGraphShowInput = typeof CodeGraphShowInput.Type;
+
+export const CodeGraphShowResult = Schema.Struct({
+  steps: NonNegativeInt,
+  /** Ids the checkout does not hold; the graph leaves them out. */
+  unknown: Schema.Array(Schema.String),
+});
+export type CodeGraphShowResult = typeof CodeGraphShowResult.Type;
+
 // Agent reads (MCP). Every list is capped and says when it was cut.
 
 export const CodeSymbolEntry = Schema.Struct({
