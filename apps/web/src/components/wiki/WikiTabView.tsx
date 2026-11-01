@@ -5,7 +5,7 @@ import type {
   WikiChangeRequestId,
   WikiId,
 } from "@t3tools/contracts";
-import { FilePenLineIcon, FileTextIcon, SquareDashed } from "lucide-react";
+import { FilePenLineIcon, FileTextIcon, SquareDashed, TableIcon } from "lucide-react";
 import { type ReactNode } from "react";
 
 import { ensureLocalApi } from "~/localApi";
@@ -13,10 +13,11 @@ import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
+import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import { WikiNoteView } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
-import { parseWikiTabKey, wikiTabKey, type WikiTab } from "./wikiTabs";
+import { isBaseTab, parseWikiTabKey, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 /**
  * Where a wiki tab's links lead in the panes holding it: the Wikis area's, or another section's
@@ -72,6 +73,21 @@ function NoteTab({
   const all = useChangeRequests(tab.environmentId, tab.wikiId);
   const openChangeRequests = (all ?? []).filter((changeRequest) => changeRequest.status === "open");
   const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
+  if (isBaseTab(tab)) {
+    const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
+    return (
+      <WikiBasePage
+        environmentId={tab.environmentId}
+        wikiId={tab.wikiId}
+        file={tab.name}
+        changeRequestId={tab.changeRequestId}
+        parent={
+          tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request")
+        }
+        onOpenNote={(name) => nav.replace(tabKey, wikiTabKey({ ...tab, name }))}
+      />
+    );
+  }
   return (
     <WikiNoteView
       environmentId={tab.environmentId}
@@ -146,6 +162,12 @@ export function useWikiTabLabel(tabKey: string): { title: string; icon: ReactNod
   );
   if (!tab) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   if (tab.kind === "note") {
+    if (isBaseTab(tab)) {
+      return {
+        title: tab.name.replace(/\.base$/, ""),
+        icon: <TableIcon className="size-3.5 shrink-0" />,
+      };
+    }
     return {
       title: tab.name,
       icon:

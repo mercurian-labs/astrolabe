@@ -45,6 +45,7 @@ import {
   type QueuedWikiSave,
 } from "./wiki.logic";
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
+import { WikiBase } from "./WikiBaseView";
 import { WikiNoteEditor } from "./WikiNoteEditor";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
@@ -257,6 +258,15 @@ export function WikiNoteView({
               session={snapshot.session}
               readOnly={readOnly}
               onOpenNote={onOpenNote}
+              renderBase={(source) => (
+                <WikiBase
+                  environmentId={environmentId}
+                  wikiId={wikiId}
+                  changeRequestId={changeRequestId}
+                  from={{ source, note: data.name }}
+                  onOpenNote={onOpenNote}
+                />
+              )}
               onWrite={() => {
                 if (buffer.getSnapshot().dirty) setSaving(true);
                 else toastManager.add({ type: "info", title: "No edits to save" });
