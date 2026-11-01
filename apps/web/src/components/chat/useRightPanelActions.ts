@@ -32,7 +32,6 @@ import { openDeviceSetupDialog } from "./ChatOverlayHosts";
 import { previewEnvironment } from "../../state/preview";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
-import { openHiddenTabsMenu } from "../../panes/LinkedTabsToggle";
 interface RightPanelActionsInput {
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeProject: EnvironmentProject | null;
@@ -229,8 +228,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       closePreviewPanel();
       return;
     }
-    // Astrolabe: a chat's hidden linked tabs open their menu, as its toggle's click does.
-    if (openHiddenTabsMenu(activeThreadRef)) return;
     useRightPanelStore.getState().toggleVisibility(activeThreadRef);
     focusActivePanelTerminal(activeThreadRef);
   };

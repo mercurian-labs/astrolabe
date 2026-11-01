@@ -252,6 +252,26 @@ describe("the shared panes", () => {
     expect(workspace.toggleOf(chatA)).toEqual({ kind: "none" });
     stop();
   });
+
+  it("bring hidden linked tabs straight back when the chat's panel shows again", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    const diff = chatSurfaceKey(chatA, "diff");
+    const files = chatSurfaceKey(chatA, "files");
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().activateSurface(refA, "diff");
+    // The right-panel shortcut, twice: hide, then show.
+    useRightPanelStore.getState().toggleVisibility(refA);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    useRightPanelStore.getState().toggleVisibility(refA);
+    expect(panes(workspace)).toEqual([
+      [chatA, chatB],
+      [diff, files],
+    ]);
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(diff);
+    stop();
+  });
 });
 
 describe("a thread's surface on its own", () => {

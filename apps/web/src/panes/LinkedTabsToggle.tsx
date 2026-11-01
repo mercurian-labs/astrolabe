@@ -1,6 +1,5 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
 import { Columns2, SquarePlus } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { Kbd } from "~/components/ui/kbd";
 import {
@@ -14,23 +13,9 @@ import {
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import type { LinkedToggle } from "./linkedTabs";
 import { workspace } from "./workspace";
 import { useTabLabel } from "./workspaceTabs";
-
-/** The open menus of chats whose linked tabs are hidden, by chat tab key. */
-const hiddenTabsMenus = new Map<string, () => void>();
-
-/**
- * Opens the menu of `ref`'s hidden linked tabs, as its toggle's click does, so the right-panel
- * shortcut, Space p r and the command palette do what the button does. False with none hidden.
- */
-export function openHiddenTabsMenu(ref: ScopedThreadRef | null): boolean {
-  const open = ref === null ? undefined : hiddenTabsMenus.get(chatTabKey(ref));
-  open?.();
-  return open !== undefined;
-}
 
 function subscribe(listener: () => void) {
   const stopPanes = workspace.store.subscribe(listener);
@@ -56,7 +41,10 @@ interface LinkedTabsToggleProps {
   readonly owner: string;
   readonly available: boolean;
   readonly shortcutLabel: string | null;
-  /** T3 Code's right-panel toggle, which hides the tabs or opens an empty panel's launcher. */
+  /**
+   * T3 Code's right-panel toggle, which hides the tabs, or shows them: the hidden ones back where
+   * they stood, else an empty panel's launcher. Its shortcut does the same.
+   */
   readonly onToggle: () => void;
 }
 
@@ -64,6 +52,7 @@ interface LinkedTabsToggleProps {
  * Astrolabe: the chat's linked tabs toggle, where T3 Code's right-panel toggle stood, as ChatGPT's
  * is: with none, a new tab; with some hidden, their count and a menu bringing them back; with them
  * showing, hiding them. Hidden tabs are set aside, not closed: each tab's ✕ closes it for good.
+ * The shortcut skips the menu and brings them all back, so pressing it twice hides and restores.
  */
 export function LinkedTabsToggle({
   owner,
@@ -73,19 +62,6 @@ export function LinkedTabsToggle({
 }: LinkedTabsToggleProps) {
   const toggle = useLinkedToggle(owner);
   const [menuOpen, setMenuOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const hidden = toggle.kind === "hidden";
-  // oxlint-disable-next-line t3code/react-effect-budget -- lends the menu to the right-panel shortcut while tabs are hidden
-  useEffect(() => {
-    if (!hidden) return;
-    hiddenTabsMenus.set(owner, () => {
-      trigger.current?.focus();
-      setMenuOpen(true);
-    });
-    return () => {
-      hiddenTabsMenus.delete(owner);
-    };
-  }, [hidden, owner]);
 
   if (toggle.kind === "hidden") {
     const bringBack = (key: string | null) => {
@@ -98,7 +74,6 @@ export function LinkedTabsToggle({
           <TooltipTrigger
             render={
               <MenuTrigger
-                ref={trigger}
                 render={
                   <Toggle
                     className="shrink-0 [-webkit-app-region:no-drag]"
