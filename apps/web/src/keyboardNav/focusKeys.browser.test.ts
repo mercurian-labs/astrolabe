@@ -2,6 +2,7 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveShortcutCommand } from "~/keybindings";
+import { noteFocus } from "./regions";
 import { isEditableFocused } from "~/lib/editableFocus";
 
 /** Empties the page as a test ends. */
@@ -82,5 +83,22 @@ describe("Ctrl+D/U", () => {
     using _cleanup = cleanup();
     expect(commandOn("<p>text</p>", "d", { platform: "Win32" })).toBe("diff.toggle");
     expect(commandOn("<p>text</p>", "u", { platform: "Linux x86_64" })).toBe("usage.open");
+  });
+});
+
+describe("the place keys act from", () => {
+  it("is the pane holding a chat, so the pane's tab in front wears the bar", () => {
+    using _cleanup = cleanup();
+    document.body.innerHTML = `
+      <section data-pane-id="p1" data-focused>
+        <div role="tablist"><div role="tab" data-pane-tab aria-selected="true">Chat</div></div>
+        <div data-chat-column data-chat-column-maximized-away="false">
+          <div contenteditable="true" data-testid="composer-editor"></div>
+        </div>
+      </section>`;
+    noteFocus(document.querySelector("[data-testid='composer-editor']")!);
+    expect(document.querySelector("[data-focused-place]")).toBe(
+      document.querySelector("[data-pane-id]"),
+    );
   });
 });
