@@ -1,7 +1,7 @@
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { chatRouteOf, ChatTabWatch, type ChatRoute } from "~/chatTabs/chatTabLabel";
@@ -244,42 +244,29 @@ function WorkspaceTabContents({
       parseChatSurfaceKey(key) === null &&
       (fronts.has(key) || parseChatTabKey(key) === null),
   );
+  const routeBehind = !fronts.has(routeChatKey ?? "");
   return (
     <>
       {shown.map((key) => {
-        const chat = parseChatTabKey(key);
-        if (chat !== null) {
-          // The route's chat renders below; one brought to the front leads the route to it.
-          if (routeTarget !== null && (key === routeChatKey || key === front)) return null;
-          return createPortal(
-            <ChatOwnerContext value={key}>
-              <PaneChat threadRef={chat} />
-            </ChatOwnerContext>,
-            host.containerFor(key),
-            key,
-          );
-        }
-        const repository = parseRepositoryTabKey(key);
+        const chat = parseChatTabKey(key) !== null;
+        // The route's chat renders below; one brought to the front leads the route to it.
+        if (chat && routeTarget !== null && (key === routeChatKey || key === front)) return null;
+        // Only a pull request listens to the keys of its tab in front: the rest skip a render as
+        // focus moves.
+        const listens = !chat && parseRepositoryTabKey(key) === null && key === focusedFront;
         return createPortal(
-          repository ? (
-            <RepositoryTabView tabKey={key} tab={repository} />
-          ) : (
-            <SectionTabContent tabKey={key} store={workspace.store} active={key === focusedFront} />
-          ),
+          <TabContent tabKey={key} active={listens} />,
           host.containerFor(key),
           key,
         );
       })}
       {routeTarget !== null
         ? createPortal(
-            <BackgroundThreadContext value={background || !fronts.has(routeChatKey ?? "")}>
-              <ChatOwnerContext value={routeChatKey}>
-                <ThreadRouteView
-                  target={routeTarget}
-                  background={background || !fronts.has(routeChatKey ?? "")}
-                />
-              </ChatOwnerContext>
-            </BackgroundThreadContext>,
+            <RouteChat
+              target={routeTarget}
+              chatKey={routeChatKey}
+              background={background || routeBehind}
+            />,
             host.routeNode,
           )
         : null}
@@ -291,6 +278,46 @@ function WorkspaceTabContents({
     </>
   );
 }
+
+/** One open tab's content: a chat, a repository tab, or a document, group or pull request. */
+const TabContent = memo(function TabContent({
+  tabKey,
+  active,
+}: {
+  readonly tabKey: string;
+  readonly active: boolean;
+}) {
+  const chat = parseChatTabKey(tabKey);
+  if (chat !== null) {
+    return (
+      <ChatOwnerContext value={tabKey}>
+        <PaneChat threadRef={chat} />
+      </ChatOwnerContext>
+    );
+  }
+  const repository = parseRepositoryTabKey(tabKey);
+  if (repository !== null) return <RepositoryTabView tabKey={tabKey} tab={repository} />;
+  return <SectionTabContent tabKey={tabKey} store={workspace.store} active={active} />;
+});
+
+/** The route's chat, drawn by T3 Code's route view; inert while behind another tab. */
+const RouteChat = memo(function RouteChat({
+  target,
+  chatKey,
+  background,
+}: {
+  readonly target: ThreadRouteTarget;
+  readonly chatKey: string | null;
+  readonly background: boolean;
+}) {
+  return (
+    <BackgroundThreadContext value={background}>
+      <ChatOwnerContext value={chatKey}>
+        <ThreadRouteView target={target} background={background} />
+      </ChatOwnerContext>
+    </BackgroundThreadContext>
+  );
+});
 
 const closeGoneChat = (chatKey: string) => workspace.close(chatKey);
 

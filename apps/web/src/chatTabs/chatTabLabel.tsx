@@ -3,7 +3,7 @@ import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime
 import type { OrchestrationV2ThreadFamily, ScopedThreadRef } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { MessagesSquare } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 
 import { resolveComposerProviderSelection } from "~/components/ChatView.logic";
 import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
@@ -88,7 +88,7 @@ function useUnlistedThreadFamilyRead(
  * Closes a chat's tab once its chat is gone (deleted, or a draft discarded), as soon as its
  * environment's threads are known. Renders nothing; one per open chat.
  */
-export function ChatTabWatch({
+export const ChatTabWatch = memo(function ChatTabWatch({
   chatKey,
   onGone,
 }: {
@@ -115,7 +115,7 @@ export function ChatTabWatch({
     onGone(chatKey);
   }, [chatKey, gone, onGone, ref]);
   return null;
-}
+});
 
 /**
  * A chat tab's title and icon, as its sidebar row draws them: its harness's icon (a thread's
