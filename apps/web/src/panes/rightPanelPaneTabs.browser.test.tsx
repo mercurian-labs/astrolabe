@@ -295,7 +295,7 @@ describe("a right-panel tab in a pane", () => {
     const onCopyFilePath = vi.fn();
     await using screen = await renderPanes({ onCopyFilePath });
     await rightClick(tab(screen.container, "app.ts"), "Copy path");
-    expect(contextMenu.shown.slice(0, 3)).toEqual(["Open in Repositories", "Copy path", "Close"]);
+    expect(contextMenu.shown.slice(0, 3)).toEqual(["Open in Projects", "Copy path", "Close"]);
     expect(onCopyFilePath).toHaveBeenCalledExactlyOnceWith("src/app.ts");
   });
 

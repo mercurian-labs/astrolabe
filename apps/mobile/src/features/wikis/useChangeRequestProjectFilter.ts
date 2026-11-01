@@ -11,10 +11,10 @@ import { resolveWikiScope } from "./wikisList";
 export const ALL_WIKIS = "wikis";
 
 /**
- * Astrolabe: the Change requests tab's project filter, as every section's is: All projects, then
- * Repositories and each repository, then Wikis and each wiki. A repository is the list's own
- * project control; this keeps the kind and the tab's own wiki. `selected` is the wiki choice in
- * force, or null while the pull requests show.
+ * Astrolabe: the Change requests tab's project filter, as every section's is: All, then Projects
+ * and each project, then Wikis and each wiki. A project is the list's own project control; this
+ * keeps the kind and the tab's own wiki. `selected` is the wiki choice in force, or null while
+ * the pull requests show.
  */
 export function useChangeRequestProjectFilter() {
   const kind = useAtomValue(changeRequestProjectKindAtom);
@@ -44,18 +44,6 @@ export function useChangeRequestProjectFilter() {
           ],
     [overviews],
   );
-  // A wiki's folder is a project too; the filter lists it once, as the wiki.
-  const wikiProjects = useMemo(
-    () =>
-      new Set(
-        overviews.flatMap((overview) =>
-          overview.wiki.projectId === null
-            ? []
-            : [`${overview.environmentId}:${overview.wiki.projectId}`],
-        ),
-      ),
-    [overviews],
-  );
   return {
     kind,
     wikisOnly: kind === "wikis",
@@ -63,9 +51,6 @@ export function useChangeRequestProjectFilter() {
     /** The wiki in force: one wiki's scope key, or `ALL_WIKIS`. */
     scope,
     choices,
-    withoutWikiProjects: <Project extends { id: string; environmentId: string }>(
-      projects: ReadonlyArray<Project>,
-    ) => projects.filter((project) => !wikiProjects.has(`${project.environmentId}:${project.id}`)),
     selected: kind === "wikis" ? (scope ?? ALL_WIKIS) : null,
     /** Every kind (`"all"`), every repository, or a wiki choice (`ALL_WIKIS` or one wiki). */
     select(value: "all" | "repositories" | string) {

@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -11,8 +11,16 @@ it first. This skill adds the map of Astrolabe's own features in
 [features/](features/README.md), which upstream's skill cannot know about.
 
 A feature file's **Mobile** entries walk the phone app through
-[test-t3-mobile](../test-t3-mobile/SKILL.md) (its Device panel and AgentDevice);
-everything else walks in the Browser panel. If the tools a walk needs are absent
+[test-t3-mobile](../test-t3-mobile/SKILL.md) (its Device panel and AgentDevice). Two traps
+there: Metro's default port 8081 may belong to another checkout (check `lsof` and the
+owner's cwd), so start this one's on its own port from `apps/mobile`
+(`APP_VARIANT=development vp exec expo start --dev-client --scheme astrolabe-dev --lan --port <port>`)
+and open `astrolabe-dev://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A<port>`; and
+the simulator's app may still hold an older environment with real threads, so pair this
+run's server and act only on its rows. The iPhone tab bar's labels come from native Swift
+(`modules/t3-native-controls/ios/T3SidebarTabBarView.swift`), so renaming a tab there needs a
+`vp run mobile:install` rebuild before the walk shows it.
+Everything else walks in the Browser panel. If the tools a walk needs are absent
 or report unavailable, report the blocker and stop that walk. Do not switch to
 another automation system.
 
@@ -134,7 +142,8 @@ in that screenshot. Stop it by `$run/desktop.pid`.
 
 Open the full URL from `$run/pairing-url` once with `preview_open` and
 `profileId: "incognito"`. The token is single-use. Once it is consumed, mint
-another with `node apps/server/src/bin.ts pair --base-dir "$run/home"`. Pairing
+another with `node apps/server/src/bin.ts pair --base-dir "$run/home"`. Tokens from `pair`
+expire after 5 minutes; add `--ttl 2h` for one you hand to a person or use later. Pairing
 in incognito means your run neither reads nor leaves the user's default-profile
 state, and the incognito session does not outlive the browser: a later run lands
 on `/pair` again. On a tab already at `/pair`, navigating to `…/pair#token=…`
@@ -147,7 +156,14 @@ when the feature needs a real thread. Then:
 
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
   Tools take Playwright selectors: a bare CSS descendant selector
-  (`[data-x] input`) is rejected; chain with `>>` or use roles.
+  (`[data-x] input`) is rejected; chain with `>>` or use roles. A role's `name` matches a
+  substring: `button "Changes"` also hits the Projects list's Changes rows, and
+  `Filter by project:` exists in both Projects and Changes. Scope to the section
+  (`role=navigation[name='Changes'] >> …`) or match exactly with `[name="Changes" s]`; a
+  click on an ambiguous locator waits out its timeout.
+- After a `preview_resize` to a freeform size, `{mode: "fill"}` can leave the page at the
+  old width; set `freeform` back to the full size (for example 1280×800) instead, and read
+  `innerWidth` before trusting the layout.
 - Page input is one tool, `preview_act`, with an `action` (`click`, `type`, `press`,
   `hover`, `select`, `drag`, `upload`, `scroll`). The feature files write
   `preview_act click` for `preview_act` with `action: "click"`.
@@ -191,7 +207,7 @@ A node in the accessibility tree or the DOM is not proof that it paints. Prove
 rendering with `document.elementFromPoint` at the element's centre (for a
 shadow-DOM widget such as @pierre/trees,
 `document.querySelector('file-tree-container').shadowRoot.elementFromPoint`) or
-a screenshot: the Repositories Tree once had rows in the accessibility tree that
+a screenshot: the Projects Tree once had rows in the accessibility tree that
 painted nothing, and a DOM-only walk passed it.
 
 ## Cleanup

@@ -18,6 +18,7 @@ import {
   WikiMirrorStatus,
 } from "@t3tools/contracts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 export const WikiRecord = Schema.Struct({
@@ -25,7 +26,7 @@ export const WikiRecord = Schema.Struct({
   name: TrimmedNonEmptyString,
   root: TrimmedNonEmptyString,
   mainBranch: TrimmedNonEmptyString,
-  projectId: Schema.NullOr(ProjectId),
+  projectIds: Schema.Array(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   mirror: Schema.NullOr(WikiMirrorStatus),
   createdAt: IsoDateTime,
 });

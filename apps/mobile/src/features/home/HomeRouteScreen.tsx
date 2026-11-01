@@ -29,8 +29,6 @@ import { HomeHeader } from "./HomeHeader";
 import { useHomeListOptions } from "./home-list-options";
 import { useAtomValueWhileVisible, useHomeRouteVisible } from "./home-route-visibility";
 import { buildHomeProjectScopes } from "./homeThreadList";
-import { threadsProjectFilterOptions } from "../projects/threadsProjectFilter";
-import { useWikiCheckouts } from "../wikis/useWikiCheckouts";
 import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
 import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
@@ -155,19 +153,17 @@ export function HomeRouteScreen() {
       setSelectedProjectKey(resolvedProjectKey);
     }
   }, [projectScopeKey, resolvedProjectKey, setSelectedProjectKey]);
-  // Astrolabe: repositories, then wikis, each under a heading that picks them all.
-  const checkouts = useWikiCheckouts();
   const projectFilterOptions = useMemo(
     () =>
-      threadsProjectFilterOptions(
-        buildHomeProjectScopes({
-          projects,
-          environmentId: selectedEnvironmentId,
-          projectGroupingMode: listOptions.projectGroupingMode,
-        }),
-        checkouts,
-      ),
-    [checkouts, listOptions.projectGroupingMode, projects, selectedEnvironmentId],
+      buildHomeProjectScopes({
+        projects,
+        environmentId: selectedEnvironmentId,
+        projectGroupingMode: listOptions.projectGroupingMode,
+      }).map((scope) => ({
+        key: scope.key,
+        label: scope.title,
+      })),
+    [listOptions.projectGroupingMode, projects, selectedEnvironmentId],
   );
   const selectedProjectKey = projectFilterOptions.some(
     (project) => project.key === resolvedProjectKey,

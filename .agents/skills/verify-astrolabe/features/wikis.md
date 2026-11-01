@@ -13,7 +13,7 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   multi-select `role=combobox` named `Filter documents`, or `Filter documents (filtered)` with
   a dot. Its popup (`Search filters`) has a **Status** group, **Has changes** with its count
   (documents an open change request touches), and a **Wikis** group: All wikis, each wiki
-  with a settings gear; then **Add a folder**, **New wiki**. Rows are checkboxes and picking
+  with a settings gear; then **Add a wiki**, which opens the palette's add-wiki flow. Rows are checkboxes and picking
   keeps it open; with no wiki picked every wiki shows ticked, unticking one keeps the rest,
   and ticking every one or unticking the last is All wikis. Kept in
   `astrolabe:wiki-filter:v1` as `{wikis, changed}` (the old `astrolabe:wiki-scope:v1` is
@@ -23,15 +23,14 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   match these filters". A wiki just added shows alone, unless it is the first. Opening a
   document the filter hides (a link, Search, another section) clears the filter; a filter
   changed under the open document, or a reload, keeps it. With no wikis, the sidebar's empty
-  state has its own **Add a folder** and **New wiki**. Change requests moved to Changes
+  state reads "No wikis yet" with its own **Add a wiki**. Change requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
   every wiki) and goes there. Documents (newest first) use the settled threads'
   slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
   card: wiki, machine, links and the open changes holding it. A wiki change request
-  opened here (the finder, a deep link) is a foreign tab offering **Open in Change
-  Requests**.
+  opened here (the finder, a deep link) is a foreign tab offering **Open in Changes**.
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
@@ -79,6 +78,31 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
+- **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinkMenus.tsx`): a wiki is not
+  a project. Adding a wiki or a project in the palette ends on a link step, a group headed
+  "Link <wiki> to the project it plans" or "Link <project> to a wiki, where its research and
+  plans live", with the candidates and **Not now** ("Link it later in its settings"). The
+  step shows only with source-control write access and something on the same server to link
+  to; otherwise the palette closes. Links change from the wiki's settings dialog (named after
+  the wiki; `button "Projects this wiki is linked to"`) and Settings → Projects → a project
+  (`button "Wikis this project is linked to"`, or **Add a wiki…** when its servers have no
+  wikis). Both menus hold `menuitemcheckbox` rows, and the trigger reads the linked names, or
+  "None", "No projects" or "No wikis".
+- **Agent note**: the first prompt of every new native conversation in a linked project,
+  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming the
+  wikis and the `astrolabe_wiki_*` tools (`WikiService.agentNote`,
+  `ProviderTurnStartService.ts`); a prompt that starts with `/` never does. Only the provider
+  sees it, not the user's bubble. Prove it with a real turn that never names the wiki. The
+  host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
+- **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
+  `chat/composerWikiNoteItems.ts`): opens `listbox "Wiki notes"` with this server's notes,
+  linked wikis first, at most 20; `[[ ` (space), no wikis, no match or a pending question
+  keep it shut. Enter or a click inserts a chip, `button "Wiki note, <note> in <wiki>"`
+  (`WikiNoteContextChip.tsx`), without sending. In a project with no linked wiki, an empty
+  query also lists "Link <wiki> to <project>" rows ("So agents here know where its plans
+  live"), which link instead of inserting. A sent chip opens the note in the thread's right
+  panel (outside a thread, `/wikis/<id>?note=`); on the phone it is an inline link named after
+  the note that opens `WikiDocument` (`ThreadFeed.tsx`).
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
@@ -101,7 +125,7 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 The book icon in the icon rail, the keyboard menu's `w w` or `g w`, or a document
 from Search. ("Open wikis" is an action: in the Command Palette, or `>open wikis`
 in Search.) A wiki
-must be registered first (the filter's **Add a folder**).
+must be registered first (the filter's **Add a wiki**, or the palette's **Add wiki**).
 
 ## Driving it with the Browser panel
 
@@ -139,10 +163,12 @@ a screenshot of the section.
 - A fixture wiki needs a git repository at its top level, with a branch checked
   out and at least one commit; only top-level `*.md` files count (never README,
   AGENTS, CLAUDE). Clone one (for example the almagest vault) anywhere the server
-  can read, such as `<home>/wiki-fixtures/`, and register it: **Add a folder** →
-  dialog `Add a folder`, `textbox "Folder"` (absolute path) → **Add wiki**. It also
-  adds a project of the same name. **New wiki** makes a repo with only README, so
-  it lists no documents.
+  can read, such as `<home>/wiki-fixtures/`, and register it: the palette's **Add wiki** (or
+  the filter's **Add a wiki**) → **Local folder** → type the absolute path, Enter. No project
+  is made; the palette then offers the link step (pick a project or **Not now**). **New wiki**
+  makes a repo with only README, so it lists no documents.
+- Wikis registered before wikis stopped being projects load with `projectIds: []`; the
+  `wiki-<id>` projects older builds made stay behind as ordinary projects.
 - The settings gear in the filter is `aria-hidden`; reach it by
   `[title="Settings for <wiki>"]`.
 - `data-wikilink` holds the raw target (with any `#Heading`).
@@ -156,9 +182,14 @@ a screenshot of the section.
 `apps/web/src/components/wiki/`, `routes/_chat.wikis*.tsx`, `components/sidebar/SidebarCard.tsx`,
 `components/sidebar/SidebarTabHistory.tsx` (Back/Forward), `panes/panesHost.ts`,
 `panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
-`NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Repositories and
+`NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Projects and
 Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
-`astrolabe:wiki-filter:v1`; storedChoice is shared with Repositories and the Agents filter),
+`astrolabe:wiki-filter:v1`; storedChoice is shared with Projects and the Agents filter),
 `projects/ThreadsFilterParts.tsx` (the pills, shared with Agents), the Wikis branches in `AppSidebarLayout.tsx` and
 `sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
-`WikiChangesSection.tsx` is pull-requests.md's).
+`WikiChangesSection.tsx` is pull-requests.md's). Linking and the agent note: `wikiLinkStep.tsx`
+and the palette's link step in `CommandPalette.tsx`, the Wikis row in
+`settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
+`orchestration-v2/ProviderTurnStartService.ts`. `[[`: `composer-logic.ts`
+(`detectWikiNoteTrigger`), `chat/composerWikiNoteItems.ts`, `WikiNoteContextChip.tsx`, and
+mobile `features/threads/ThreadFeed.tsx` (the sent chip).

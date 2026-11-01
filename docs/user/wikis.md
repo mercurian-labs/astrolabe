@@ -6,7 +6,13 @@ A wiki is a folder of linked notes that you and your agents keep together: plain
 
 Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a wiki**, which works like adding a project: start a new wiki, choose a git repository you already have, or clone one. **Add wiki** in the command palette does the same. A wiki's settings (its folder, mirror, and removing it) open from the gear on its row in the filter.
 
-Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, and files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them. Adding a wiki also adds its folder as a project, so you can start threads in it.
+Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, and files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them. A wiki is not a project: no thread works in its folder. Agents reach it from threads in your projects, and every change they make goes to a change request.
+
+## Link a wiki to a project
+
+Link a wiki to the projects it plans, so their agents know where research and plans live. After you add a wiki or a project, the command palette offers to link it to one on the same computer; **Not now** skips it. Change links any time with **Projects** in a wiki's settings, or **Wikis** in a project's settings (**Settings → Projects**). A wiki can plan several projects, and a project can have several wikis.
+
+When a conversation starts in a linked project, its agent is told which wikis hold that project's research and plans: to look there first when it researches, plans, or builds a feature, and to write what it learns back to the wiki.
 
 ## Read and edit notes
 
@@ -35,6 +41,8 @@ A skill map warns you when a change breaks a link one of its edges depends on. T
 ## Agents in wikis
 
 Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own change request on the wiki, one per thread, which you review and merge like any other.
+
+To point an agent at a note, type `[[` in a thread's message and pick the note; the agent reads it. Notes from the project's linked wikis come first. While the project has no linked wiki, the list also offers to link one.
 
 When an agent amends a note you have open in that change request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type while the agent's turn is running is saved to the change request when the turn ends.
 

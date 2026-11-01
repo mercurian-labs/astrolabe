@@ -121,9 +121,8 @@ Merging a stack lands it through GitCafe, and updating a branch restacks the lay
 
 ## Start, clone, or publish a project
 
-To start from nothing, choose **New repository** in the command palette (`Cmd/Ctrl+K` twice), or
-**Add project**, then **Repository**, then **New repository** (on your phone, **New project** under
-**Add Project**), and type a name. T3 Code makes a Git
+To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K` twice), or
+**New project** under **Add project** (on your phone too), and type a name. T3 Code makes a Git
 repository in `~/.astrolabe/projects` (the `projects` folder of your T3 data directory) with a README,
 an icon, and a first commit, then opens a new thread in it. Until the project has a thread, new
 threads work in its folder, even when your default is a new worktree. The folder is named after the project,
@@ -131,8 +130,8 @@ like `pinball-stats` for "Pinball Stats". Turn on **Create private repository on
 publish it. If Git has no name or email on that machine, the project is created without the
 first commit.
 
-Use **Add project**, then **Repository**, in the command palette (`Cmd/Ctrl+K` twice), or **Add a
-repository** in Repositories, to clone a repository. Choose a hosting
+Use **Add project** in the command palette (`Cmd/Ctrl+K` twice), or **Add a project** in
+Projects, to clone a repository. Choose a hosting
 provider or paste a Git URL, then choose where to save it. The project opens right away while the
 clone runs in the background: you can write your first prompt, and sending waits until the files
 are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the
@@ -165,8 +164,8 @@ where the host allows it. GitLab calls these merge requests.
 
 The sidebar lists reviews, with search, sort and filters above them, and your wikis' change
 requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The project filter beside the
-search picks every repository's pull requests or one repository's, every wiki's change requests
-or one wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
+search picks every project's pull requests or one project's, every wiki's change requests or one
+wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
 tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side by side, and the
 arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
 back after a restart.

@@ -1,9 +1,7 @@
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { wikiListEntries, wikiScopeKey } from "@t3tools/client-runtime/wikiList";
 import type {
   EnvironmentId,
-  ProjectId,
   WikiChangeRequest,
   WikiChangeRequestId,
   WikiId,
@@ -24,13 +22,8 @@ import {
 const local = "env-local" as EnvironmentId;
 const remote = "env-remote" as EnvironmentId;
 
-const wiki = (id: string, name: string, projectId: string | null = null): WikiSummary =>
-  ({
-    wikiId: id as WikiId,
-    name,
-    root: `/w/${id}`,
-    projectId: projectId as ProjectId | null,
-  }) as WikiSummary;
+const wiki = (id: string, name: string): WikiSummary =>
+  ({ wikiId: id as WikiId, name, root: `/w/${id}`, projectIds: [] }) as unknown as WikiSummary;
 
 const index = (
   notes: Array<{ name: string; editedAt: string; outgoing?: number; incoming?: number }>,
@@ -63,7 +56,7 @@ const changeRequest = (
 const overviews: WikiOverview[] = [
   {
     environmentId: local,
-    wiki: wiki("a", "Almagest", "project-a"),
+    wiki: wiki("a", "Almagest"),
     index: index([
       { name: "Roadmap", editedAt: "2026-10-03T00:00:00Z", outgoing: 1 },
       { name: "Glossary", editedAt: "2026-10-01T00:00:00Z", outgoing: 3, incoming: 2 },
@@ -86,12 +79,9 @@ const overviews: WikiOverview[] = [
   },
 ];
 
-const project = { id: "project-a", title: "Almagest" } as unknown as EnvironmentProject;
-const projects = new Map([[`${local}:project-a`, project]]);
-
 describe("the Wikis list", () => {
   it("lists the documents under a row counting the open changes", () => {
-    const items = buildWikiListItems(wikiListEntries(overviews, null), { projects });
+    const items = buildWikiListItems(wikiListEntries(overviews, null));
     expect(items.map((item) => item.type)).toEqual([
       "changes-link",
       "document",
@@ -105,16 +95,11 @@ describe("the Wikis list", () => {
     ).toEqual([true, true, false]);
   });
 
-  it("leaves out the link when no change is open, and finds each wiki's project", () => {
+  it("leaves out the link when no change is open", () => {
     const scope = wikiScopeKey(remote, "b" as WikiId);
-    const items = buildWikiListItems(wikiListEntries(overviews, scope), { projects });
+    const items = buildWikiListItems(wikiListEntries(overviews, scope));
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ type: "document", project: null });
-    const almagest = buildWikiListItems(
-      wikiListEntries(overviews, wikiScopeKey(local, "a" as WikiId)),
-      { projects },
-    ).find((item) => item.type === "document");
-    expect(almagest?.type === "document" && almagest.project).toBe(project);
+    expect(items[0]).toMatchObject({ type: "document" });
   });
 });
 
@@ -122,7 +107,6 @@ describe("the Changes tab's wiki group", () => {
   it("lists the open changes under a label, then the merged and closed shelf", () => {
     const items = buildWikiChangeItems(wikiListEntries(overviews, null), {
       settledExpanded: false,
-      projects,
     });
     expect(items.map((item) => (item.type === "section" ? item.label : item.type))).toEqual([
       "Wiki changes · 1",
@@ -135,14 +119,12 @@ describe("the Changes tab's wiki group", () => {
   it("opens the shelf onto the merged and closed, and is empty with no changes at all", () => {
     const items = buildWikiChangeItems(wikiListEntries(overviews, null), {
       settledExpanded: true,
-      projects,
     });
     const last = items.at(-1);
     expect(last?.type === "change" && last.entry.changeRequest.title).toBe("Trim the roadmap");
     expect(
       buildWikiChangeItems(wikiListEntries(overviews, wikiScopeKey(remote, "b" as WikiId)), {
         settledExpanded: false,
-        projects,
       }),
     ).toEqual([]);
   });

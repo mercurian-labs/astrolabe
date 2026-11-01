@@ -57,7 +57,7 @@ describe("workspace root navigation", () => {
     expect(workspaceUsesColumns("pullRequests")).toBe(true);
   });
 
-  it("keeps a saved order once Wikis and Repositories make five sections", () => {
+  it("keeps a saved order once Wikis and Projects make five sections", () => {
     expect(resolveWorkspaceTabOrder(undefined)).toEqual([
       "threads",
       "pullRequests",
@@ -118,7 +118,7 @@ describe("workspace root navigation", () => {
     expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.wikis.scrollOffset).toBe(320);
   });
 
-  it("registers Wikis and Repositories on iPhone only, until iPad and Android have a design", () => {
+  it("registers Wikis and Projects on iPhone only, until iPad and Android have a design", () => {
     expect(registeredWorkspaceTabs("iphone")).toEqual([
       "threads",
       "pullRequests",

@@ -270,7 +270,7 @@ const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
 // One per server: it holds each wiki's write lock, the event stream, and index caches.
-const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProjectService));
+const layerWikiServiceProvided = WikiService.layer;
 // Astrolabe: change groups read the same wikis and threads (one wiki service per server).
 const layerChangeGroupServiceProvided = ChangeGroupService.layer.pipe(
   Layer.provide(Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer)),
@@ -371,7 +371,8 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
-  layer.pipe(Layer.provide(layerProjectService)),
+  // Astrolabe: turn start reads the wiki service when it is there, to tell agents their wikis.
+  layer.pipe(Layer.provide(Layer.merge(layerProjectService, layerWikiServiceProvided))),
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,

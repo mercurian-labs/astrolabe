@@ -22,6 +22,8 @@ import type {
   TerminalContextRecord,
   ThreadContextRecord,
   ThreadId,
+  WikiId,
+  WikiNoteContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
@@ -174,6 +176,27 @@ export function threadContextRecord(ref: ScopedThreadRef, title: string): Thread
   };
 }
 
+export function wikiNoteContextReference(record: WikiNoteContextRecord): ComposerContextReference {
+  return { kind: "wiki-note", contextId: record.contextId, label: record.label };
+}
+
+/** One record per note, so referencing it again reuses the chip. */
+export function wikiNoteContextRecord(note: {
+  readonly wikiId: WikiId;
+  readonly wikiName: string;
+  readonly name: string;
+}): WikiNoteContextRecord {
+  return {
+    version: 1,
+    kind: "wiki-note",
+    contextId: toKindScopedComposerContextId("wiki-note", `${note.wikiId}/${note.name}`),
+    label: sanitizeComposerContextLabel(note.name, "wiki-note"),
+    wikiId: note.wikiId,
+    wikiName: note.wikiName,
+    name: note.name,
+  };
+}
+
 export function terminalContextRecord(context: TerminalContextDraft): TerminalContextRecord {
   return {
     version: 1,
@@ -314,6 +337,7 @@ export function buildMessageContext(input: {
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
+  wikiNotes?: ReadonlyArray<WikiNoteContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
@@ -325,6 +349,7 @@ export function buildMessageContext(input: {
     ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...(input.threadContexts ?? []),
+    ...(input.wikiNotes ?? []),
     ...input.previewAnnotations.map((annotation) =>
       previewAnnotationContextRecord(annotation, {
         screenshotContextId: screenshotAttachmentIds.has(annotation.id) ? annotation.id : undefined,

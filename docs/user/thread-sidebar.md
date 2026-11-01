@@ -228,10 +228,9 @@ The linked pull request participates in automatic settlement.
 
 ## Find and reference work
 
-A project is a repository or a wiki. The filter at the top of the thread list picks **All
-projects**, every repository, every wiki, or one of them; a wiki's threads are the ones working
-in its folder. **Changes** and **Wikis** use the same list, and each section remembers
-its own choice.
+The filter at the top of the thread list picks **All projects** or one or several projects.
+**Changes** and **Projects** use the same list, Changes with your wikis after the projects, and
+each section remembers its own choice.
 
 On web and desktop, open the command palette with `Cmd/Ctrl+K` twice to search threads
 across connected environments by title, branch, pull request, or project.

@@ -22,6 +22,7 @@ import type {
   PreviewAnnotationPayload,
   ProviderApprovalDecision,
   ThreadContextRecord,
+  WikiNoteContextRecord,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
@@ -169,10 +170,14 @@ import {
   terminalContextRecord,
   threadContextRecord,
   threadContextReference,
+  wikiNoteContextRecord,
+  wikiNoteContextReference,
 } from "~/lib/composerContextRecords";
 import { rememberCopiedComposerAttachments } from "~/lib/copiedComposerAttachments";
 import { useThreadContextDrop, threadContextDropTargetProps } from "./threadContextDrag";
 import { readThreadShell } from "~/state/entities";
+import { wikiEnvironment } from "~/state/wiki";
+import { useWikiCommand } from "../wiki/wikiEnvironment";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import type { ComposerContextRecord, ThreadPullRequestLink } from "@t3tools/contracts";
 import { threadContextAttachment } from "~/lib/threadContextAttachment";
@@ -336,6 +341,7 @@ export interface ChatComposerHandle {
     previewAnnotations: PreviewAnnotationPayload[];
     reviewComments: ReviewCommentContext[];
     threadContexts: ThreadContextRecord[];
+    wikiNotes: WikiNoteContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelOptionsForDispatch: unknown;
     selectedModelSelection: ModelSelection;
@@ -721,6 +727,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const composerReviewComments = composerDraft.reviewComments;
   const composerThreadContexts = attachmentDraft.threadContexts;
+  const composerWikiNotes = composerDraft.wikiNotes;
   const {
     pendingSnapShotAnimations,
     pendingSnapShotIds,
@@ -772,6 +779,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     reviewComments: composerReviewComments,
     previewAnnotations: composerPreviewAnnotations,
     threadContexts: composerThreadContexts,
+    wikiNotes: composerWikiNotes,
     images: composerImages,
     files: composerFiles,
     uploadsByImageId,
@@ -1039,7 +1047,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return collapseExpandedComposerCursor(value, value.length, isLiteralPendingAnswer);
   });
   const {
-    trigger: composerTrigger,
+    trigger: detectedComposerTrigger,
     setTrigger: setComposerTrigger,
     resolveTrigger: resolveComposerTrigger,
     dismissTrigger: dismissComposerTrigger,
@@ -1156,12 +1164,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     terminalContexts: composerTerminalContexts,
     elementContextCount: composerPreviewAnnotations.length + composerReviewComments.length,
   });
-  const composerTriggerKind = composerTrigger?.kind ?? null;
   const compactSlashCommandAvailable =
-    composerTrigger?.kind === "slash-command" &&
-    prompt.slice(0, composerTrigger.rangeStart).trim() === "" &&
+    detectedComposerTrigger?.kind === "slash-command" &&
+    prompt.slice(0, detectedComposerTrigger.rangeStart).trim() === "" &&
     !compactThreadUnavailable &&
-    prompt.slice(composerTrigger.rangeEnd).trim() === "" &&
+    prompt.slice(detectedComposerTrigger.rangeEnd).trim() === "" &&
     composerImages.length + composerFiles.length === 0 &&
     composerDraft.persistedAttachments.length === 0 &&
     composerTerminalContexts.length === 0 &&
@@ -1171,11 +1178,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     items: composerMenuItems,
     isLoading: isComposerMenuLoading,
     emptyState: composerMenuEmptyState,
+    wikiNotesAvailable,
   } = useComposerMenuItems({
-    composerTrigger,
+    composerTrigger: detectedComposerTrigger,
     environmentId,
     gitCwd,
     activeThreadId,
+    activeProjectId,
     pullRequestProjectId,
     pullRequestRepository,
     threadPullRequests,
@@ -1187,7 +1196,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
   });
 
-  const composerMenuOpen = Boolean(composerTrigger);
+  // `[[` stays text without wikis, and its menu stays shut while no note matches.
+  const composerTrigger =
+    detectedComposerTrigger?.kind === "wiki-note" &&
+    (!wikiNotesAvailable || pendingUserInputs.length > 0)
+      ? null
+      : detectedComposerTrigger;
+  const composerTriggerKind = composerTrigger?.kind ?? null;
+  const composerMenuOpen =
+    composerTrigger !== null &&
+    (composerTrigger.kind !== "wiki-note" || composerMenuItems.length > 0 || isComposerMenuLoading);
   const composerMenuSearchKey = composerTrigger
     ? `${composerSuggestionListId}:${composerTrigger.kind}:${composerTrigger.query.trim().toLowerCase()}`
     : null;
@@ -1336,6 +1354,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const addComposerDraftThreadContexts = useComposerDraftStore((store) => store.addThreadContexts);
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
+  const addComposerDraftWikiNotes = useComposerDraftStore((store) => store.addWikiNotes);
+  const setComposerDraftWikiNotes = useComposerDraftStore((store) => store.setWikiNotes);
+  const setWikiProjectLink = useWikiCommand(
+    wikiEnvironment.setProjectLink,
+    "Couldn't link the wiki",
+  );
   const buildContextClipboardFragment = (contextIds: ReadonlyArray<string>): string | null => {
     const wanted = new Set(contextIds);
     const copiedFiles = new Map<string, File>();
@@ -1352,6 +1376,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         .filter((c) => wanted.has(terminalContextReference(c).contextId))
         .map(terminalContextRecord),
       ...composerThreadContexts.filter((record) => wanted.has(record.contextId)),
+      ...composerWikiNotes.filter((record) => wanted.has(record.contextId)),
       ...composerReviewComments
         .filter((c) => wanted.has(reviewCommentContextId(c.id)))
         .map(reviewCommentContextRecord),
@@ -1725,6 +1750,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerDraftThreadContexts(composerDraftTarget, nextThreads);
     }
 
+    const liveWikiNoteIds = new Set<string>(composerWikiNotes.map((record) => record.contextId));
+    const restoredWikiNotes = [...referenced].flatMap((contextId) => {
+      if (liveWikiNoteIds.has(contextId)) return [];
+      const record = retained.wikiNotes.get(contextId);
+      return record ? [record] : [];
+    });
+    const nextWikiNotes = [
+      ...composerWikiNotes.filter((record) => referenced.has(record.contextId)),
+      ...restoredWikiNotes,
+    ];
+    for (const record of composerWikiNotes) {
+      if (!referenced.has(record.contextId)) retained.wikiNotes.set(record.contextId, record);
+    }
+    if (nextWikiNotes.length !== composerWikiNotes.length || restoredWikiNotes.length > 0) {
+      setComposerDraftWikiNotes(composerDraftTarget, nextWikiNotes);
+    }
+
     for (const comment of composerReviewComments) {
       const contextId = reviewCommentContextId(comment.id);
       if (!referenced.has(contextId)) {
@@ -2023,6 +2065,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
+    if (item.type === "wiki-note") {
+      if (trigger.kind !== "wiki-note") return;
+      const record = wikiNoteContextRecord(item);
+      const replacement = `${formatInlineContextReference(wikiNoteContextReference(record))} `;
+      const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+        snapshot.value,
+        trigger.rangeEnd,
+        replacement,
+      );
+      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+        expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
+      });
+      if (applied) {
+        addComposerDraftWikiNotes(composerDraftTarget, [record]);
+        setComposerHighlightedItemId(null);
+      }
+      return;
+    }
+    if (item.type === "wiki-link") {
+      setComposerHighlightedItemId(null);
+      void setWikiProjectLink({
+        environmentId: item.environmentId,
+        input: { wikiId: item.wikiId, projectId: item.projectId, linked: true },
+      });
+      return;
+    }
   };
   const onSelectComposerItemStable = useStableCallback(onSelectComposerItem);
 
@@ -2278,6 +2346,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerPreviewAnnotations,
     composerReviewComments,
     composerThreadContexts,
+    composerWikiNotes,
     attachmentTargetKey,
     isComposerDraftTargetOpen: (key) => composerDraftTargetKeyRef.current === key,
     composerEditorRef,
@@ -3167,6 +3236,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         previewAnnotations: composerPreviewAnnotations,
         reviewComments: composerReviewComments,
         threadContexts: composerThreadContexts,
+        wikiNotes: composerWikiNotes,
         selectedPromptEffort,
         selectedModelOptionsForDispatch,
         selectedModelSelection,
@@ -3581,7 +3651,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   ? isComposerMenuLoading
                     ? composerTriggerKind === "pull-request"
                       ? "Finding pull request..."
-                      : "Searching workspace files..."
+                      : composerTriggerKind === "wiki-note"
+                        ? "Loading wiki notes..."
+                        : "Searching workspace files..."
                     : composerMenuEmptyState
                   : ""}
               </div>

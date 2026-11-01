@@ -51,29 +51,29 @@ const write = <A>(
   );
 
 export const layer = McpToolAccess.toLayer(WikiToolkit, {
-  t3_wiki_list: McpToolAccess.reads(() => read((wikis) => wikis.list)),
-  t3_wiki_read: McpToolAccess.reads(({ wiki, ...input }) =>
+  astrolabe_wiki_list: McpToolAccess.reads(() => read((wikis) => wikis.list)),
+  astrolabe_wiki_read: McpToolAccess.reads(({ wiki, ...input }) =>
     read((wikis, threadId) => wikis.readNote({ ...input, wikiId: WikiId.make(wiki), threadId })),
   ),
-  t3_wiki_search: McpToolAccess.reads(({ wiki, ...input }) =>
+  astrolabe_wiki_search: McpToolAccess.reads(({ wiki, ...input }) =>
     read((wikis, threadId) => wikis.search({ ...input, wikiId: WikiId.make(wiki), threadId })),
   ),
-  t3_wiki_orient: McpToolAccess.reads(({ wiki, ...input }) =>
+  astrolabe_wiki_orient: McpToolAccess.reads(({ wiki, ...input }) =>
     read((wikis, threadId) => wikis.orient({ ...input, wikiId: WikiId.make(wiki), threadId })),
   ),
-  t3_wiki_links: McpToolAccess.reads(({ wiki, ...input }) =>
+  astrolabe_wiki_links: McpToolAccess.reads(({ wiki, ...input }) =>
     read((wikis, threadId) => wikis.links({ ...input, wikiId: WikiId.make(wiki), threadId })),
   ),
-  t3_wiki_change_request: McpToolAccess.reads(({ wiki, changeRequestId }) =>
+  astrolabe_wiki_change_request: McpToolAccess.reads(({ wiki, changeRequestId }) =>
     read((wikis, threadId) =>
       wikis.changeRequestsGet({ wikiId: WikiId.make(wiki), changeRequestId, threadId }),
     ),
   ),
   // Amendments belong to the calling thread's change request; only a live thread may write.
-  t3_wiki_amend: McpToolAccess.actsAsCaller(({ wiki, ...input }) =>
+  astrolabe_wiki_amend: McpToolAccess.actsAsCaller(({ wiki, ...input }) =>
     write((wikis, author) => wikis.amend({ ...input, wikiId: WikiId.make(wiki) }, author)),
   ),
-  t3_wiki_transform: McpToolAccess.actsAsCaller(({ wiki, ...input }) =>
+  astrolabe_wiki_transform: McpToolAccess.actsAsCaller(({ wiki, ...input }) =>
     write((wikis, author) => wikis.transform({ ...input, wikiId: WikiId.make(wiki) }, author)),
   ),
 });

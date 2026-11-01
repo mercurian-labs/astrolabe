@@ -85,7 +85,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       ? "Uncommitted changes"
       : `Changes against ${source?.baseRef ?? "the base"}`;
 
-  if (!canReadFiles) return <Notice>This connection cannot read this repository's files.</Notice>;
+  if (!canReadFiles) return <Notice>This connection cannot read this project's files.</Notice>;
   if (preview.error !== null && preview.data === null)
     return <Notice>{String(preview.error)}</Notice>;
   if (preview.data === null) return <Notice>Reading changes…</Notice>;
@@ -179,7 +179,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
         />
       )}
       {target === null ? (
-        <Notice>Start a thread in this repository to review its changes line by line.</Notice>
+        <Notice>Start a thread in this project to review its changes line by line.</Notice>
       ) : null}
     </div>
   );
