@@ -9,17 +9,27 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
 
 ## Sub-features
 
-- **Sidebar** (`role=navigation[name='Repos']`): heading **Repos** with
-  **Search files**, **Filter by repository** (combobox; its popup starts with a
-  `Search repositories` field; named `Filter by repository:
-  <name>` once one is picked; kept in `astrolabe:repository-scope:v1`: the
-  **Repos** heading for all, then each repository; a wiki's checkout and the
-  server's scratch workspace (threads with no project) are left out) and **Add a repository** (the add-project palette; once
-  it adds the repository the app leaves `/repositories` for a new draft thread there, so
-  click `button "Repos"` to come back). The filter's foot holds **Manage
-  repositories** and **Add a repository**.
-- **List** (default): with every repository, one group each (collapsible header) with its
-  eight most recently committed files. With one repository: one collapsible section per git
+- **Sidebar**: heading **Repos** with **Search files**, **Filter repositories** and **Add a
+  repository** (the add-project palette; once it adds the repository the app leaves
+  `/repositories` for a new draft thread there, so click `button "Repos"` to come back). A
+  wiki's checkout and the server's scratch workspace (threads with no project) are never listed.
+- **Filter** (`RepositoryFilterMenu.tsx`, `repositoryFilter.ts`, localStorage
+  `astrolabe:repository-filter:v1` `{repositories, hidden, changed}`), as Agents' and Wikis':
+  `button "Filter repositories"` (` (filtered)` appended and a dot while on) opens a multi-select
+  list with a `Search filters` field: **Status** (**Has changes** with its count of worktrees with
+  uncommitted files), **Repositories** (**All repositories**, then each, every one ticked while
+  none is picked), then **Worktrees** (`Worktrees · <repository>` with several) for each kept
+  repository, ticked unless hidden. Picking keeps the list open; its foot holds **Manage
+  repositories** and **Add a repository**. Pills under the title (`[aria-label="Repository
+  filters"]`): **Has changes** one tap (shown while on or above 0), the picked repositories,
+  `Hiding <worktrees>`; × clears a pill, **Clear** shows with two. The focused tab's repository
+  and worktree show whatever the filter says, its header marked **hidden** (tooltip), and drop out
+  when another tab comes to the front; nothing clears the filter for it. A repository left with
+  no worktree drops out once read.
+- **List** (default): with several repositories shown, one collapsible header each (favicon,
+  name), open by default only for the focused tab's repository; every shown repository's worktree
+  list is read (`worktrees.list`) for the counts, but a folded one mounts no rows. With one
+  repository, its worktrees bare: one collapsible section per git
   worktree (`ProjectWorktreeService`, `worktrees.list`), headed by its branch (or short
   commit when detached), the main checkout first and marked **main checkout**, with "N
   changed" and a pin when held (tooltip: the holds). Under each: **Uncommitted · N** with
@@ -33,8 +43,8 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
   in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
-- **Worktrees**: `combobox "Open a branch in a worktree"` (beside the filter, with a
-  repository picked) lists local branches, each noting `main checkout` or `worktree <n>`
+- **Worktrees**: `combobox "Open a branch in a worktree"` (beside the filter, while exactly one
+  repository shows; opening a branch un-hides its worktree) lists local branches, each noting `main checkout` or `worktree <n>`
   when checked out; a pick puts the branch in its worktree, else a free one (no main
   checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder. Its `switch "Open in
   a new worktree"` (`astrolabe:open-in-new-worktree:v1`, shared with Wikis' picker) skips
@@ -71,9 +81,9 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   accessibility tree are no proof they paint (a 0px-tall list had them all), and the
   panel's attribute changes with its props even if its rows do not (a tree once kept the
   first repository's files), so Walk 4 and 5 hit-test a row and compare row paths.
-- **Search**: the header's search finds files by name in the scoped repository's
-  focused-tab worktree, else its main checkout (`projects.searchEntries`); with every
-  repository it asks for one.
+- **Search**: the header's search finds files by name, while one repository shows, in its
+  focused-tab worktree, else its main checkout (`projects.searchEntries`); with several it asks
+  to pick one in the filter.
 - **Main area**: one arrangement on the device (localStorage
   `astrolabe:repository-panes:v1`, removed while it is the starting single empty tab) and
   each tab's Back/Forward history (`astrolabe:repository-tab-history:v1`); a reload keeps
@@ -92,8 +102,9 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
 - **Manage repositories** (the filter's foot) opens Settings → Projects.
 - **Open in Repos**: a thread's right-panel **Files**, a file opened there, and
-  **Diff** offer it in the tab's context menu; it scopes Repositories to the thread's
-  repository and checkout and opens the same file, its uncommitted changes, or the tree.
+  **Diff** offer it in the tab's context menu; it opens the same file or its uncommitted
+  changes (the focused tab brings its worktree into view), or the tree, for which the filter
+  adds the repository to its picks (when some are picked) and un-hides the worktree.
   Repository tabs open in Wikis' and Changes' panes too and offer **Open in
   Repositories** there.
 - **Keyboard and palette**: `menu g r` and the palette's **Open repositories**.
@@ -116,9 +127,9 @@ Setup: a throwaway git repository for edits (never this worktree's own files) wi
 commit, a folder holding a `.ts` file and one uncommitted change, added with **Add a
 repository**. With the **server** project that makes two repositories.
 
-1. Click `button "Repos"`; with no repository picked the list shows one group per
+1. Click `button "Repos"`; with no repository picked the list shows one header per
    repository.
-2. Pick the scratch repository in **Filter by repository**. Expect **Uncommitted · 1**;
+2. Pick only the scratch repository in **Filter repositories** (untick the others). Expect **Uncommitted · 1**;
    **Review uncommitted changes** opens the diff; **Open** opens the file in a new tab
    after the diff.
 3. Type in the file; within a second the file on disk changes (`git status` shows it).
@@ -145,7 +156,7 @@ repository**. With the **server** project that makes two repositories.
    With several worktrees there is one `file-tree-container` per open section; run the
    check on each (`document.querySelectorAll(...)[i]`).
 
-5. Pick the other repository in the filter (**server** on a clean home; the tree stays),
+5. Pick only the other repository in the filter (**server** on a clean home; the tree stays),
    wait for `[data-file-browser-panel$=':<its path>'] >> role=treeitem` and run the check
    again: `paths` are its top-level entries, not step 4's, and `painted` is true. Back on
    the scratch repository, **Open a branch in a worktree** → another branch: a second
@@ -155,7 +166,11 @@ repository**. With the **server** project that makes two repositories.
    branch, then reopen the first: the edits come back.
 6. Search a file name; Enter opens it.
 7. In a thread, add a **Diff** tab to the right panel, right-click it, **Open in
-   Repositories**: the URL is `/repositories`, the filter names the thread's repository.
+   Repositories**: the URL is `/repositories` and the thread's worktree shows.
+8. Hide a worktree in the filter while a tab of it is in front: its header stays, marked
+   **hidden**, and the `Hiding …` pill shows; bring another tab to the front and it drops out.
+   With a file written in one worktree, **Has changes** counts it and, on, leaves only it (and
+   the focused tab's worktree, marked).
 
 ## Source
 
@@ -163,7 +178,7 @@ repository**. With the **server** project that makes two repositories.
 `panes/sectionPanes.ts`, `packages/editor/src/code/`, `review.getRecentFiles` in
 `apps/server/src/review/ReviewService.ts`, `sectionTabs/` (the `repositories` section),
 `panes/rightPanelPaneTabs.tsx` (Open in Repos), the filter on
-`components/projects/projectFilter.ts` and `storedChoice.ts`, T3 Code's
+`components/projects/ThreadsFilterParts.tsx` and `storedChoice.ts`, T3 Code's
 `components/files/FileBrowserPanel.tsx` (the tree). Mobile:
 `apps/mobile/src/features/repositories/`, `apps/mobile/src/state/repositories.ts`, the
 `RepositoryFiles` / `RepositoryFile` routes in `apps/mobile/src/Stack.tsx`.

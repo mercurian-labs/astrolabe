@@ -54,6 +54,22 @@ const target = (repository: WorktreeOwner) => ({
   projectId: repository.id,
 });
 
+/** Marks what shows only because the focused tab is in it, the filter hiding it otherwise. */
+export function OutsideFilterMark() {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="text-3xs text-sidebar-muted-foreground/70" />}>
+        hidden
+      </TooltipTrigger>
+      <TooltipPopup side="right" className="max-w-64">
+        <div className="text-xs">
+          The filter hides this. It shows while a tab of it is in front.
+        </div>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /**
  * A worktree's header: its number and branch (or commit), how many files it has uncommitted, what
  * holds it, whether it shows its changes or its files, and Keep and Delete. Its contents collapse
@@ -68,6 +84,7 @@ export function WorktreeHeader({
   menuItems,
   filesShown = false,
   onToggleFiles,
+  outsideFilter = false,
 }: {
   readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -80,6 +97,8 @@ export function WorktreeHeader({
   /** Whether it shows its file tree in place of its changes, and the switch between them. */
   readonly filesShown?: boolean;
   readonly onToggleFiles?: () => void;
+  /** Whether the filter hides it, so it shows only while the focused tab is in it. */
+  readonly outsideFilter?: boolean;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
   const watch = useWorktreeWatch(repository.environmentId, repository.id, worktree.path);
@@ -103,6 +122,7 @@ export function WorktreeHeader({
           </TooltipPopup>
         </Tooltip>
       ) : null}
+      {outsideFilter ? <OutsideFilterMark /> : null}
       {worktree.isMain ? <span>main checkout</span> : null}
       {worktree.changedFiles > 0 ? (
         <span className="tabular-nums">{`${worktree.changedFiles} changed`}</span>

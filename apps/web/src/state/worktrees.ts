@@ -51,6 +51,37 @@ export function useProjectWorktrees(
   return Option.getOrNull(AsyncResult.value(result));
 }
 
+const manyAtom = Atom.family((key: string) =>
+  Atom.make((get): ReadonlyArray<ProjectWorktreeListResult | null> =>
+    (JSON.parse(key) as WorktreesTarget[]).map((target) =>
+      Option.getOrNull(AsyncResult.value(get(atomOf(target)))),
+    ),
+  ).pipe(Atom.withLabel(`worktrees:many:${key}`)),
+);
+
+/**
+ * Several repositories' worktrees, in `targets`' order, each null until its first answer; read
+ * again, once each, when the window comes back.
+ */
+export function useManyProjectWorktrees(
+  targets: ReadonlyArray<WorktreesTarget>,
+): ReadonlyArray<ProjectWorktreeListResult | null> {
+  const key = JSON.stringify(
+    targets.map(({ environmentId, projectId }) => ({ environmentId, projectId })),
+  );
+  // oxlint-disable-next-line t3code/react-effect-budget -- edits outside the app (an editor, an agent) change what the worktrees hold
+  useEffect(() => {
+    const refresh = () => {
+      for (const target of JSON.parse(key) as WorktreesTarget[]) {
+        appAtomRegistry.refresh(atomOf(target));
+      }
+    };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [key]);
+  return useAtomValue(manyAtom(key));
+}
+
 /** Reads a repository's worktrees again, after anything that changed them. */
 export function refreshProjectWorktrees(environmentId: EnvironmentId, projectId: ProjectId) {
   appAtomRegistry.refresh(listAtom(environmentId, projectId));

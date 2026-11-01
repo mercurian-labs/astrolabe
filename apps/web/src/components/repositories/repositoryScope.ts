@@ -1,16 +1,9 @@
 import { storedChoice, storedName } from "../projects/storedChoice";
 
 /**
- * Astrolabe: the Repos sidebar's choices, kept on the device: the repository it shows
- * (`environmentId:projectId`, or every repository), and the worktrees showing their files.
+ * Astrolabe: the Repos sidebar's choices kept on the device, besides its filter
+ * (`repositoryFilter`): the worktrees showing their files, and where a branch opens.
  */
-export const repositoryScope = storedChoice<string | null>({
-  storageKey: "astrolabe:repository-scope:v1",
-  fallback: null,
-  parse: (stored) => stored,
-  serialize: (scope) => scope ?? "",
-});
-
 const NO_KEYS: ReadonlyArray<string> = [];
 
 /** Worktrees showing their file tree in place of their changes, by `worktreeFilesKey`. */

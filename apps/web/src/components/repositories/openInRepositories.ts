@@ -3,7 +3,8 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import { repositoryPanes } from "./repositoryPanes";
-import { repositoryScope, showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
+import { revealInRepositoryFilter } from "./repositoryFilter";
+import { showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
 import { repositoryTabKey, type RepositoryCheckout } from "./repositoryTabs";
 
 /**
@@ -31,7 +32,6 @@ export function repositoryMoveOfSurface(
         thread.worktreePath !== null && thread.branch !== null
           ? { branch: thread.branch }
           : { cwd };
-      repositoryScope.set(`${environmentId}:${projectId}`);
       if (path !== null) {
         repositoryPanes.show(
           repositoryTabKey({ kind: "file", environmentId, projectId, checkout, path }),
@@ -47,6 +47,11 @@ export function repositoryMoveOfSurface(
           }),
         );
       } else {
+        // The tree has no tab to bring its worktree into view, so the filter makes room for it.
+        revealInRepositoryFilter(
+          `${environmentId}:${projectId}`,
+          worktreeFilesKey(environmentId, cwd),
+        );
         showWorktreeFiles(worktreeFilesKey(environmentId, cwd), true);
       }
       void navigate({ to: "/repositories" });

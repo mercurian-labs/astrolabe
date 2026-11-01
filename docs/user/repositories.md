@@ -5,23 +5,26 @@ leaving the app. A repository is one of the two kinds of project, beside a [wiki
 
 ## Find a file
 
-The sidebar leads with what is moving: a repository's uncommitted changes, its branch against
-its base, and the files its commits changed most recently. Pick one repository in the filter to
-see all of that for it; with every repository, each shows its latest files. It keeps up as files
-change on disk, whoever changes them: an agent, a terminal, or another editor.
+The sidebar leads with what is moving: each worktree's uncommitted changes, its branch against
+its base, and the files its commits changed most recently. It keeps up as files change on disk,
+whoever changes them: an agent, a terminal, or another editor. With several repositories, each
+folds under its name, open when it holds the tab you're on.
 
-- **Search** finds a file by name in the repository you picked, in the worktree of the tab
-  you're on.
+- **The filter** picks which repositories show, hides worktrees you don't need, and with **Has
+  changes** shows only worktrees with uncommitted files. Pills under the title show what's
+  filtered. Whatever the tab in front is in shows anyway, marked "hidden", until you move to
+  another tab.
+- **Search** finds a file by name when one repository shows, in the worktree of the tab you're on.
 - The tree button on a worktree's header swaps its changes for its whole file tree, and back.
 
 ## Worktrees and branches
 
-A repository you picked lists each of its worktrees under the branch checked out there, the
+A repository lists each of its worktrees under the branch checked out there, the
 repository's own checkout first. Every other worktree has a number, which it keeps while it
 exists, so you can tell where each branch is. Tabs follow the branch, not the folder: if a worktree later
 holds another branch, its old tabs offer to open their branch again.
 
-- **Open a branch**, beside the filter, puts a branch in a worktree: the one it is already in, else
+- **Open a branch**, beside the filter while one repository shows, puts a branch in a worktree: the one it is already in, else
   a free one, else a new one. Turn on **In a new worktree** in it to give every branch you open a
   worktree of its own instead. Type a new name to make a branch from the main checkout's branch.
 - A worktree is free unless a thread uses it, a terminal is open in it, it is the repository's
