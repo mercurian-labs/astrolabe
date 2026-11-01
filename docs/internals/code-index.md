@@ -1,8 +1,9 @@
 # Code index
 
 Astrolabe indexes every git repository project with tree-sitter (`apps/server/src/codeIndex/`,
-parsing from `packages/code-graph`). One index serves the Repositories local graph, the
-`t3_code_*` agent tools, and every branch, worktree and checkpoint of the repository.
+parsing from `packages/code-graph`). One index serves the code graph (a thread's Graph tab
+and the Repositories local graph), the `astrolabe_code_*` agent tools, and every branch, worktree
+and checkpoint of the repository.
 
 ## Facts, not edges
 
@@ -20,6 +21,30 @@ Path aliases (tsconfig `paths` through `extends`, package.json `imports`) resolv
 from tsconfigs and manifests read once per blob. An aliased import's stored key names only its
 first segments (`pkg:~` for `~/panes/tree`), so finding who imports a file asks every file using
 an alias the file is reachable through, then resolves each.
+
+## One graph query, levels rolled up at query time
+
+`CodeLocalGraph` is the only graph question: roots (files, folders or `path#Qualified.name`), a
+level, and what the reader expanded. It reaches files through imports as before, then maps each
+file to the unit the level shows: its folder, its module, itself, or its definitions. Modules are
+derived from the file list and manifests (`codeIndex/levels.ts`), never stored, so a new language
+only needs a rule there; a language without one shows files. Links between folders and modules
+roll up file imports; links between definitions come from stored references resolved for this
+question, only where an end is a definition: resolving references is the costly part of a read,
+and a hub's neighbours can number in the thousands.
+
+The client keeps the reader's expansions and sends them whole (`expandedNeighbours`,
+`expandedContents`, `collapsedContents`), so a graph is one call and the server stays stateless.
+An expansion applies only while its node is shown, so closing one drops the expansions only it
+reached. Each expansion folds apart from the roots' rings, under the same 40-per-side limit.
+
+## A view an agent shows is its tool call
+
+`astrolabe_code_graph_show` stores nothing. Its input (roots, levels, expansions, captions) is
+kept in the thread like any tool call, and the client reads it back from the thread's turn items
+(`client-runtime/src/codeGraphViews.ts`) and draws it with the same query. A view therefore lives
+and dies with its thread, works over every connection, and needs no migration; a later change to
+the input schema must keep reading older calls.
 
 ## Keyed by (path, blob)
 

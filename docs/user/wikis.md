@@ -18,7 +18,7 @@ When you change a note, **Save to change request** keeps your edit in a change r
 
 ## Documents beside your work
 
-A document can open beside a conversation, and a conversation beside a document. **Document** in a pane's **+** menu finds or writes one in that pane, and a thread's **Graph** tab opens the notes and change requests it names beside itself, linked to its chat. A change request's **Open thread** shows its thread's conversation after the chat in front. A change request has **Open in Changes** in its right-click menu, which moves it there.
+A document can open beside a conversation, and a conversation beside a document. **Document** in a pane's **+** menu finds or writes one in that pane. A change request's **Open thread** shows its thread's conversation after the chat in front. A change request has **Open in Changes** in its right-click menu, which moves it there.
 
 ## Change requests
 
@@ -37,8 +37,6 @@ A skill map warns you when a change breaks a link one of its edges depends on. T
 Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own change request on the wiki, one per thread, which you review and merge like any other.
 
 When an agent amends a note you have open in that change request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type while the agent's turn is running is saved to the change request when the turn ends.
-
-A thread's **Graph** tab shows the notes the thread has read and changed, and the links between them, turn by turn. When a thread hands work to other threads, the same tab lists them and the change requests they opened.
 
 ## Keep a copy elsewhere
 
