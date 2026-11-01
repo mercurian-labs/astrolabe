@@ -32,7 +32,7 @@ export interface DocumentIndex {
   /** Tables and `$$` blocks, which render as block widgets replacing their lines. */
   tables: readonly IndexedTable[];
   mathBlocks: readonly SyntaxNode[];
-  /** Fenced code blocks outside lists and quotes, which a host may draw itself. */
+  /** Fenced code blocks, which a host may draw itself where they start a line. */
   fencedCode: readonly SyntaxNode[];
   /** Every definition as one string: equal strings mean links resolve the same way. */
   definitionsKey: string;

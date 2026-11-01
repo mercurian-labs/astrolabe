@@ -226,7 +226,7 @@ export class WikiService extends Context.Service<
 >()("t3/wiki/WikiService") {}
 
 /** The most rows a base query returns, for a view and for an agent's context alike. */
-export const QUERY_ROWS = 200;
+const QUERY_ROWS = 200;
 
 // Product commits never run the user's hooks or ask to sign; git never prompts.
 const PRODUCT_GIT_CONFIG = [
