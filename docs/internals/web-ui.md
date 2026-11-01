@@ -54,6 +54,16 @@ acts on the render it started in. A function that a child calls during render, o
 `await`, comes from a module-level factory memoized on its inputs, so its closure keeps only
 those inputs.
 
+## Shared panes
+
+Astrolabe's sections share one arrangement ([`workspace.ts`](../../apps/web/src/panes/workspace.ts)).
+T3 Code's ChatView still renders only its thread's one active right-panel surface, so a thread's
+surface tabs are always linked to its chat ([`linkedTabs.ts`](../../apps/web/src/panes/linkedTabs.ts))
+and park while another chat is in front: only the front chat's ChatView feeds the panes
+([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). Content that must not remount
+(the live surface, the route's ChatView) renders into one DOM node that moves between panes; a
+portal whose container changes remounts its children.
+
 ## React Compiler
 
 The compiler memoizes a component or hook only when it can prove the code follows React's rules.
