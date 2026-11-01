@@ -404,6 +404,9 @@ export function deriveChangeGroups(input: {
 /** Branches too common to say two threads work on the same thing. */
 const SHARED_BRANCHES = new Set(["main", "master", "develop", "trunk"]);
 
+/** Whether work on a branch says nothing about which effort it belongs to. */
+export const isSharedBranch = (branch: string) => SHARED_BRANCHES.has(branch);
+
 /**
  * A group's threads: the one it started from, those that opened its change requests, their
  * forks and coordinator's children, threads on its pull requests' branches and threads naming

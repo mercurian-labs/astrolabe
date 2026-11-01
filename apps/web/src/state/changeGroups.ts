@@ -1,4 +1,5 @@
 import {
+  changeGroupsByBranch,
   environmentChangeGroups,
   environmentChangeRequests,
   type EnvironmentChangeGroup,
@@ -47,11 +48,35 @@ const changeGroupsAtom = Atom.family((key: string) =>
   }).pipe(Atom.withLabel(`change-groups:${key}`)),
 );
 
+const changeGroupsByBranchAtom = Atom.family((key: string) =>
+  Atom.make((get) =>
+    changeGroupsByBranch({
+      groups: get(changeGroupsAtom(key)),
+      threads: get(environmentThreadShells.threadShellsAtom),
+      threadBranches: (environmentId) =>
+        Option.getOrNull(
+          AsyncResult.value(get(changeGroupEnvironment.decisions({ environmentId, input: {} }))),
+        )?.threadBranches ?? {},
+    }),
+  ).pipe(Atom.withLabel(`change-groups-by-branch:${key}`)),
+);
+
+const useEnvironmentsKey = () => {
+  const { environments } = useEnvironments();
+  return JSON.stringify(environments.map((environment) => environment.environmentId));
+};
+
 /** Every change group on the connected servers. */
 export function useChangeGroups(): ReadonlyArray<EnvironmentChangeGroup> {
-  const { environments } = useEnvironments();
-  const key = JSON.stringify(environments.map((environment) => environment.environmentId));
-  return useAtomValue(changeGroupsAtom(key));
+  return useAtomValue(changeGroupsAtom(useEnvironmentsKey()));
+}
+
+/** The change groups each branch's work is in, by `branchGroupKey`. */
+export function useChangeGroupsByBranch(): ReadonlyMap<
+  string,
+  ReadonlyArray<EnvironmentChangeGroup>
+> {
+  return useAtomValue(changeGroupsByBranchAtom(useEnvironmentsKey()));
 }
 
 const NO_DECISIONS: ReadonlyArray<ChangeGroupDecisions> = [];

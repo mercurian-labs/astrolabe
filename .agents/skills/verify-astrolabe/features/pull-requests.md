@@ -61,8 +61,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   **Draft the docs** on Docs missing with drafts on. The server sweeps armed groups each minute
   and merges their open docs once all live code merged. A thread's header shows
   `button "Change group: <title>, <state>"`, which opens the tab here. Tab groups
-  (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs is headed by a
-  marker, `button[data-tab-group]` named `<title>, tab group <n>, <state>` (`, collapsed`
+  (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs (its chats, change
+  requests, and repository file/changes tabs on a branch its threads worked on, main and other
+  shared branches excepted) is headed by a marker, `button[data-tab-group]` named `<title>, tab group <n>, <state>` (`, collapsed`
   appended): a stack icon with the group's number (the same in every pane and section), in
   the primary colour as every group is. Click shows the group's tab, opening it at the head
   of the run when it is not open; right-click (plain buttons on web): Expand the group /

@@ -3,10 +3,12 @@ import {
   type ChangeGroupDecisions,
   type ChangeGroupGroupingSettings,
   type EnvironmentId,
+  type ProjectId,
 } from "@t3tools/contracts";
 import {
   changeGroupCandidates,
   deriveChangeGroups,
+  isSharedBranch,
   type ChangeGroup,
   type ChangeGroupMember,
 } from "@t3tools/shared/changeGroups";
@@ -80,4 +82,43 @@ export function environmentChangeGroups(input: {
     settings: input.settings ?? DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   });
   return groups.map((group) => ({ ...group, environmentId }));
+}
+
+/** A branch of one environment's project, as `changeGroupsByBranch` keys it. */
+export const branchGroupKey = (
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  branch: string,
+) => `${environmentId}\u0000${projectId}\u0000${branch}`;
+
+/**
+ * The change groups each branch's work is in (`branchGroupKey`): those of every thread that worked
+ * on it in that project. A shared branch such as main is in none, as it names no one effort.
+ */
+export function changeGroupsByBranch(input: {
+  readonly groups: ReadonlyArray<EnvironmentChangeGroup>;
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  /** Every branch each thread has worked on, by environment, then thread id. */
+  readonly threadBranches: (
+    environmentId: EnvironmentId,
+  ) => Readonly<Record<string, ReadonlyArray<string>>>;
+}): ReadonlyMap<string, ReadonlyArray<EnvironmentChangeGroup>> {
+  const threads = new Map(
+    input.threads.map((thread) => [`${thread.environmentId}\u0000${thread.id}`, thread]),
+  );
+  const byBranch = new Map<string, EnvironmentChangeGroup[]>();
+  for (const group of input.groups) {
+    const worked = input.threadBranches(group.environmentId);
+    const keys = new Set<string>();
+    for (const threadId of group.threadIds) {
+      const thread = threads.get(`${group.environmentId}\u0000${threadId}`);
+      if (thread === undefined) continue;
+      for (const branch of [thread.branch, ...(worked[threadId] ?? [])]) {
+        if (branch === null || isSharedBranch(branch)) continue;
+        keys.add(branchGroupKey(group.environmentId, thread.projectId, branch));
+      }
+    }
+    for (const key of keys) byBranch.set(key, [...(byBranch.get(key) ?? []), group]);
+  }
+  return byBranch;
 }
