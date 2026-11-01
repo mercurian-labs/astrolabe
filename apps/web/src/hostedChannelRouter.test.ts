@@ -24,6 +24,14 @@ describe("hosted channel router", () => {
     ).toBe("https://nightly.app.astrolabe.sh/assets/index.js");
   });
 
+  it("sends nightly.astrolabe.sh to the nightly switch", async () => {
+    const response = await router.fetch(new Request("https://nightly.astrolabe.sh/anything"));
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "https://app.astrolabe.sh/__t3code/channel?channel=nightly",
+    );
+  });
+
   it("switches channel by cookie and returns home", async () => {
     const nightly = await router.fetch(
       new Request("https://app.astrolabe.sh/__t3code/channel?channel=nightly"),

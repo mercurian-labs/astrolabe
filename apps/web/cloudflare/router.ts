@@ -28,6 +28,10 @@ function selectedChannel(request: Request): "latest" | "nightly" {
 export default {
   fetch(request: Request): Response | Promise<Response> {
     const url = new URL(request.url);
+    // nightly.astrolabe.sh is a shortcut that switches this browser to the nightly channel.
+    if (url.hostname === "nightly.astrolabe.sh") {
+      return Response.redirect("https://app.astrolabe.sh/__t3code/channel?channel=nightly", 302);
+    }
     if (url.pathname === "/__t3code/channel") {
       const channel = url.searchParams.get("channel") === "nightly" ? "nightly" : "latest";
       return new Response(null, {

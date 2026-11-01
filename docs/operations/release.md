@@ -341,7 +341,8 @@ Worker, `astrolabe-app` (`apps/web/cloudflare/router.ts`, the counterpart of ups
 `apps/web/vercel.ts`). It serves each request from `latest.app.astrolabe.sh` (`astrolabe-app-latest`)
 or, with the `t3code_web_channel=nightly` cookie that **Settings → About → Update track** sets
 through `/__t3code/channel`, from `nightly.app.astrolabe.sh` (`astrolabe-app-nightly`). Both channel
-Workers are `apps/web/wrangler.jsonc`, the nightly one as `--env nightly`.
+Workers are `apps/web/wrangler.jsonc`, the nightly one as `--env nightly`. The router also answers
+`nightly.astrolabe.sh`, redirecting it to `/__t3code/channel?channel=nightly`.
 
 `deploy_web` in `.github/workflows/release.yml` runs on stable and nightly releases, after
 `publish_cli`, so a channel's client never runs ahead of the server its npm dist-tag installs. It
