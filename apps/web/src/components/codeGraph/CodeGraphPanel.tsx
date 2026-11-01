@@ -3,29 +3,44 @@ import { ChevronRightIcon, RotateCcwIcon, SearchIcon, XIcon } from "lucide-react
 import { useId, type CSSProperties, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { LENS_COLORS } from "../graph/atlasColors";
+import type { CodeGraphLevel } from "@t3tools/contracts";
+
+import { LENS_COLORS } from "./graphColors";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Switch } from "../ui/switch";
-import type { LocalGraphOptions, LocalGraphPanel as PanelState } from "./localGraphData";
-import { RepositoryTabHeader } from "./RepositoryTabHeader";
+import { RepositoryTabHeader } from "../repositories/RepositoryTabHeader";
+import type { CodeGraphOptions, CodeGraphPanelState as PanelState } from "./codeGraphData";
 
 type Range = { readonly min: number; readonly max: number; readonly step: number };
 
-const DEPTH_RANGE: Range = { min: 1, max: 3, step: 1 };
+const DEPTH_RANGE: Range = { min: 0, max: 3, step: 1 };
+
+/** The levels of detail, coarsest first. */
+const LEVELS: Readonly<Record<CodeGraphLevel, string>> = {
+  directory: "Folders",
+  module: "Modules",
+  file: "Files",
+  symbol: "Definitions",
+  member: "Members",
+};
+
+const isLevel = (value: unknown): value is CodeGraphLevel =>
+  typeof value === "string" && value in LEVELS;
 
 /** A value as Obsidian's panel says it: whole steps whole, the rest to two places. */
 const formatValue = (value: number, range: Range) =>
   range.step >= 1 ? String(Math.round(value)) : value.toFixed(2);
 
 /**
- * Astrolabe: a local graph's settings, floating in its top-right corner as Obsidian's graph
- * controls do: Filters (search, depth, what shows), Groups (a path query and a colour), Display
- * and Forces, each a section that folds. Everything but the search is kept on the device.
+ * Astrolabe: a code graph's settings, floating in its top-right corner as Obsidian's graph
+ * controls do: Filters (search, level, depth, what shows), Groups (a path query and a colour),
+ * Display and Forces, each a section that folds. Everything but the search is kept on the device.
  */
-export function LocalGraphPanel({
+export function CodeGraphPanel({
   options,
   onChange,
   search,
@@ -36,8 +51,8 @@ export function LocalGraphPanel({
   onReset,
   onClose,
 }: {
-  readonly options: LocalGraphOptions;
-  readonly onChange: (next: LocalGraphOptions) => void;
+  readonly options: CodeGraphOptions;
+  readonly onChange: (next: CodeGraphOptions) => void;
   readonly search: string;
   readonly onSearch: (search: string) => void;
   /** "Used by", or how far the index has got while it is first built. */
@@ -49,6 +64,7 @@ export function LocalGraphPanel({
   readonly onClose: () => void;
 }) {
   const { panel, settings } = options;
+  const levelId = useId();
   const section = (key: Exclude<keyof PanelState, "open">) => ({
     open: panel[key],
     onOpenChange: (open: boolean) => onChange({ ...options, panel: { ...panel, [key]: open } }),
@@ -59,7 +75,7 @@ export function LocalGraphPanel({
     onChange: (value: number) => onChange({ ...options, settings: { ...settings, [key]: value } }),
   });
   const groups = options.groups;
-  const setGroups = (next: LocalGraphOptions["groups"]) => onChange({ ...options, groups: next });
+  const setGroups = (next: CodeGraphOptions["groups"]) => onChange({ ...options, groups: next });
 
   return (
     <div className="pointer-events-none absolute inset-2 z-10 flex items-start justify-end">
@@ -87,20 +103,43 @@ export function LocalGraphPanel({
               <SearchIcon aria-hidden />
             </InputGroupAddon>
             <InputGroupInput
-              aria-label="Search files"
-              placeholder="Search files..."
+              aria-label="Search the graph"
+              placeholder="Search..."
               size="sm"
               type="search"
               value={search}
               onChange={(event) => onSearch(event.currentTarget.value)}
             />
           </InputGroup>
+          <div className="flex items-center justify-between gap-2">
+            <span id={`${levelId}-label`}>Level</span>
+            <Select
+              value={options.level}
+              items={LEVELS}
+              onValueChange={(level) => {
+                if (isLevel(level)) onChange({ ...options, level });
+              }}
+            >
+              <SelectTrigger size="xs" className="w-32" aria-labelledby={`${levelId}-label`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup alignItemWithTrigger={false}>
+                {Object.entries(LEVELS).map(([level, label]) => (
+                  <SelectItem key={level} value={level}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
           <SliderRow
             label="Depth"
             value={options.depth}
             range={DEPTH_RANGE}
             onChange={(value) => {
-              if (value === 1 || value === 2 || value === 3) onChange({ ...options, depth: value });
+              if (value === 0 || value === 1 || value === 2 || value === 3) {
+                onChange({ ...options, depth: value });
+              }
             }}
           />
           <SwitchRow

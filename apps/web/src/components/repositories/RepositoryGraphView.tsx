@@ -1,65 +1,39 @@
-import "@mercurian/graph/styles.css";
-import { FileGraph, type FileGraphHandle, type FileGraphHover } from "@mercurian/graph/file";
-import { CodeIndexError, type CodeGraphNode, type CodeLocalGraph } from "@t3tools/contracts";
-import { useAtomValue } from "@effect/atom-react";
-import { useNavigate } from "@tanstack/react-router";
-import * as Schema from "effect/Schema";
 import { FoldVerticalIcon, LocateFixedIcon, ScanIcon, SlidersHorizontalIcon } from "lucide-react";
-import {
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { useTheme } from "~/hooks/useTheme";
 import { activateTab, openBeside, openTab } from "~/panes/arrangement";
+import { followedGraphFiles } from "~/panes/linkMarks";
 import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
-import { codeIndexEnvironment } from "~/state/codeIndex";
-import { codeLocalGraphEnvironment } from "~/state/codeLocalGraph";
-import { useEnvironmentQuery } from "~/state/query";
-import { ATLAS_COLORS } from "../graph/atlasColors";
-import { storedChoice } from "../projects/storedChoice";
-import { Button } from "../ui/button";
-import { importLineHighlight, importLineKey } from "./importLineHighlight";
-import { LocalGraphPanel } from "./LocalGraphPanel";
-import { followedGraphFiles } from "~/panes/linkMarks";
-import { filePaneOf, followedPath, followLocalGraph, pinLocalGraph } from "./localGraph";
-import {
-  DEFAULT_LOCAL_GRAPH_OPTIONS,
-  expandFolder,
-  expandedFor,
-  importOf,
-  localGraphInput,
-  NO_EXPANSION,
-  nodeAction,
-  parseLocalGraphOptions,
-  shownLocalGraph,
-  type LocalGraphOptions,
-} from "./localGraphData";
 import { workspace } from "~/panes/workspace";
+import {
+  DEFAULT_CODE_GRAPH_OPTIONS,
+  expansionFor,
+  NO_EXPANSION,
+  NO_KEYED_EXPANSION,
+  parseCodeGraphOptions,
+  rootsKey,
+  type CodeGraphOptions,
+  type KeyedExpansion,
+} from "../codeGraph/codeGraphData";
+import { CodeGraphView, GraphNotice, type CodeGraphViewHandle } from "../codeGraph/CodeGraphView";
+import { storedChoice } from "../projects/storedChoice";
+import { filePaneOf, followedPath, followLocalGraph, pinLocalGraph } from "./localGraph";
 import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { fileName, repositoryTabKey, type RepositoryGraphTab } from "./repositoryTabs";
 
 /** The filter panel's choices, kept on the device for every local graph. */
-const graphOptions = storedChoice<LocalGraphOptions>({
+const graphOptions = storedChoice<CodeGraphOptions>({
   storageKey: "astrolabe:repository-local-graph:v1",
-  fallback: DEFAULT_LOCAL_GRAPH_OPTIONS,
-  parse: parseLocalGraphOptions,
+  fallback: DEFAULT_CODE_GRAPH_OPTIONS,
+  parse: parseCodeGraphOptions,
   serialize: JSON.stringify,
 });
 
-const isCodeIndexError = Schema.is(CodeIndexError);
-
-type GraphHover = FileGraphHover & { readonly width: number; readonly height: number };
-
 /**
- * Astrolabe: a file's local graph in Repositories (see `FileGraph`). It follows the file in front
- * of the focused pane of its checkout until pinned; a click opens a file in the pane beside it, and
- * a hover names the import that links a file in, lighting that line where the file is open.
+ * Astrolabe: a file's local graph in Repositories (see `CodeGraphView`). It follows the file in
+ * front of the focused pane of its checkout until pinned; a click opens a file in the pane beside
+ * it, and a hover names the import that links a file in, lighting that line where the file is open.
  */
 export default function RepositoryGraphView({
   tabKey,
@@ -91,67 +65,13 @@ export default function RepositoryGraphView({
   }, [followedKey, tabKey]);
 
   const options = graphOptions.useValue();
-  // The search narrows this tab's graph only, and is never kept.
-  const [search, setSearch] = useState("");
-  const [expansion, setExpansion] = useState(NO_EXPANSION);
-  const query = useEnvironmentQuery(
-    path === null
-      ? null
-      : codeLocalGraphEnvironment.localGraph({
-          environmentId: tab.environmentId,
-          input: localGraphInput(tab, path, options, expandedFor(expansion, path)),
-        }),
-  );
-  // The last graph stays up while the next is read, so moving between files never blanks it.
-  const [last, setLast] = useState<CodeLocalGraph | null>(null);
-  if (query.data !== null && query.data !== last) setLast(query.data);
-  const failure = query.failure;
-  const reason = isCodeIndexError(failure) ? failure.reason : null;
-  const graph = path === null || failure !== null ? null : (query.data ?? last);
-  const shown = graph === null ? null : shownLocalGraph(graph, options, search);
-
-  const status = useAtomValue(codeIndexEnvironment.status(tab.environmentId, tab.projectId));
-  // Progress moves the status, not the graph: a graph changes only when the index finishes or updates.
-  const indexVersion = status === null ? null : `${status.state}|${status.updatedAt ?? ""}`;
-  const refresh = query.refresh;
-  const readAtVersion = useRef(indexVersion);
-  // oxlint-disable-next-line t3code/react-effect-budget -- reads the graph again when the index finishes or updates
-  useEffect(() => {
-    const previous = readAtVersion.current;
-    if (previous === indexVersion) return;
-    readAtVersion.current = indexVersion;
-    if (previous !== null) refresh();
-  }, [indexVersion, refresh]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- a closed graph lets go of the line it lit
-  useEffect(() => () => importLineHighlight.set(null), []);
-
-  const [hover, setHover] = useState<GraphHover | null>(null);
-  const frameRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<FileGraphHandle>(null);
-  const { theme, resolvedTheme } = useTheme();
-
-  const pathOf = (id: string) => graph?.nodes.find((node) => node.id === id)?.path ?? null;
-  const onHover = (next: FileGraphHover | null) => {
-    const frame = frameRef.current;
-    setHover(
-      next === null
-        ? null
-        : { ...next, width: frame?.clientWidth ?? 0, height: frame?.clientHeight ?? 0 },
-    );
-    const link = next === null || graph === null ? null : importOf(graph, next.id);
-    const from = link === null ? null : pathOf(link.from);
-    importLineHighlight.set(
-      link === null || link.line === null || from === null
-        ? null
-        : {
-            file: importLineKey({ environmentId: tab.environmentId, cwd: tab.cwd, path: from }),
-            line: link.line,
-          },
-    );
-  };
+  const [expansionState, setExpansionState] = useState<KeyedExpansion>(NO_KEYED_EXPANSION);
+  const key = path === null ? null : rootsKey([path]);
+  const expansion = key === null ? NO_EXPANSION : expansionFor(expansionState, key);
+  const viewRef = useRef<CodeGraphViewHandle>(null);
 
   const openFile = (target: string, newTab: boolean) => {
-    const key = repositoryTabKey({ ...tab, kind: "file", path: target });
+    const fileKey = repositoryTabKey({ ...tab, kind: "file", path: target });
     const now = panes.getSnapshot()?.arrangement;
     if (now === undefined) return;
     const paneId = filePaneOf(now, tabKey, tab, path);
@@ -159,138 +79,43 @@ export default function RepositoryGraphView({
       // The graph stands alone: the file opens to its left.
       const graphPane = leafWithTab(now.root, tabKey)?.id;
       if (graphPane !== undefined) {
-        panes.update((arrangement) =>
-          openBeside(arrangement, key, graphPane, "left", { weight: 0.6 }),
-        );
+        panes.update((next) => openBeside(next, fileKey, graphPane, "left", { weight: 0.6 }));
       }
       return;
     }
     if (panes === workspace.store) {
-      if (newTab) workspace.open(key, "tab", paneId);
-      else workspace.show(key, paneId);
+      if (newTab) workspace.open(fileKey, "tab", paneId);
+      else workspace.show(fileKey, paneId);
       return;
     }
-    panes.update((arrangement) =>
-      leafWithTab(arrangement.root, key)
-        ? activateTab(arrangement, key)
-        : openTab(arrangement, key, paneId),
+    panes.update((next) =>
+      leafWithTab(next.root, fileKey) ? activateTab(next, fileKey) : openTab(next, fileKey, paneId),
     );
-  };
-
-  const onOpen = (id: string, modifier: boolean) => {
-    const node = graph?.nodes.find((each) => each.id === id);
-    const action = node === undefined ? null : nodeAction(node);
-    if (action === null || graph === null) return;
-    if (action.kind === "open") {
-      openFile(action.path, modifier);
-      // The graph moves its root to the file: a following one by following it into its pane, a
-      // pinned one by pinning to it.
-      if (tab.path !== null) {
-        panes.update((arrangement) => pinLocalGraph(arrangement, tabKey, tab, action.path));
-      }
-      return;
-    }
-    const center = pathOf(graph.center) ?? graph.center;
-    setExpansion(expandFolder(expansion, center, action.folder));
   };
 
   const following = tab.path === null;
   const toggleFollowing = () => {
-    if (!following) panes.update((arrangement) => followLocalGraph(arrangement, tabKey, tab));
-    else if (path !== null) {
-      panes.update((arrangement) => pinLocalGraph(arrangement, tabKey, tab, path));
-    }
+    if (!following) panes.update((next) => followLocalGraph(next, tabKey, tab));
+    else if (path !== null) panes.update((next) => pinLocalGraph(next, tabKey, tab, path));
   };
 
-  const navigate = useNavigate();
-  const progress = status ?? graph?.status ?? null;
-  const percent =
-    progress === null || progress.totalFiles === 0
-      ? 0
-      : Math.floor((progress.files / progress.totalFiles) * 100);
-
-  let body: ReactNode;
-  if (path === null) {
-    body = (
-      <GraphNotice>
-        Open a file to see its local graph: the files it imports and the files that import it.
-      </GraphNotice>
-    );
-  } else if (reason === "off") {
-    body = (
-      <GraphNotice
-        action={
-          <Button
-            size="xs"
-            variant="link"
-            onClick={() => void navigate({ to: "/settings/projects" })}
-          >
-            Turn it on in Settings → Projects
-          </Button>
-        }
-      >
-        The code index is off for this repository.
-      </GraphNotice>
-    );
-  } else if (reason === "unsupported") {
-    body = (
-      <GraphNotice>
-        {fileName(path)} has no local graph: its language isn't indexed, or this project has no code
-        index.
-      </GraphNotice>
-    );
-  } else if (reason === "not-found") {
-    body = <GraphNotice>{fileName(path)} isn't in this checkout.</GraphNotice>;
-  } else if (reason === "not-indexed") {
-    body = (
-      <GraphNotice>
-        The code index is still being built. The graph shows once it's ready.
-      </GraphNotice>
-    );
-  } else if (failure !== null) {
-    body = <GraphNotice>{query.error ?? "The graph couldn't be read."}</GraphNotice>;
-  } else if (shown === null || graph === null) {
-    body = <GraphNotice>Reading the graph…</GraphNotice>;
-  } else {
-    body = (
-      <div ref={frameRef} className="relative min-h-0 flex-1">
-        <FileGraph
-          ref={graphRef}
-          graph={shown.data}
-          settings={options.settings}
-          onOpen={onOpen}
-          onHover={onHover}
-          themeKey={`${theme}|${resolvedTheme}`}
-        />
-        {hover === null ? null : <HoverCard graph={graph} hover={hover} />}
-        {graph.usedByPending && options.usedBy ? (
-          <p className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-background/85 px-2 py-1 text-xs text-muted-foreground">
-            Indexing {progress?.files ?? 0} of {progress?.totalFiles ?? 0} files: the files that use
-            this one show once it finishes.
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
   const panel = options.panel;
-  const setPanelOpen = (open: boolean) =>
-    graphOptions.set({ ...options, panel: { ...panel, open } });
-  const folded = path === null || expandedFor(expansion, path).length === 0;
+  const opened =
+    expansion.neighbours.length + expansion.contents.length + expansion.collapsed.length > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" style={ATLAS_COLORS}>
+    <div className="flex min-h-0 flex-1 flex-col">
       <RepositoryTabHeader.Root>
         <RepositoryTabHeader.Path>{path ?? ""}</RepositoryTabHeader.Path>
-        {folded ? null : (
+        {opened ? (
           <RepositoryTabHeader.Action
-            label="Fold folders"
-            tooltip="Fold the folders you opened"
-            onClick={() => setExpansion(NO_EXPANSION)}
+            label="Reset the graph"
+            tooltip="Undo the neighbours and contents you opened"
+            onClick={() => setExpansionState(NO_KEYED_EXPANSION)}
           >
             <FoldVerticalIcon />
           </RepositoryTabHeader.Action>
-        )}
+        ) : null}
         <RepositoryTabHeader.Action
           label="Following"
           tooltip={
@@ -306,8 +131,8 @@ export default function RepositoryGraphView({
         </RepositoryTabHeader.Action>
         <RepositoryTabHeader.Action
           label="Fit the graph"
-          disabled={shown === null}
-          onClick={() => graphRef.current?.fit()}
+          disabled={path === null}
+          onClick={() => viewRef.current?.fit()}
         >
           <ScanIcon />
         </RepositoryTabHeader.Action>
@@ -315,100 +140,35 @@ export default function RepositoryGraphView({
           label="Graph settings"
           tooltip={panel.open ? "Close graph settings" : "Graph settings"}
           pressed={panel.open}
-          onClick={() => setPanelOpen(!panel.open)}
+          onClick={() => graphOptions.set({ ...options, panel: { ...panel, open: !panel.open } })}
         >
           <SlidersHorizontalIcon />
         </RepositoryTabHeader.Action>
       </RepositoryTabHeader.Root>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {body}
-        {panel.open ? (
-          <LocalGraphPanel
-            options={options}
-            onChange={graphOptions.set}
-            search={search}
-            onSearch={setSearch}
-            usedByLabel={graph?.usedByPending ? `Used by · indexing ${percent}%` : "Used by"}
-            dependencies={shown === null ? null : shown.dependencies}
-            onAnimate={() => graphRef.current?.animate()}
-            onReset={() => {
-              setSearch("");
-              graphOptions.set({ ...DEFAULT_LOCAL_GRAPH_OPTIONS, panel });
-            }}
-            onClose={() => setPanelOpen(false)}
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/** `key` in `next`'s place; where `next` is already open, that tab instead, and `key` closed. */
-function GraphNotice({
-  children,
-  action = null,
-}: {
-  readonly children: ReactNode;
-  readonly action?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1 px-4 py-6 text-center text-sm text-muted-foreground">
-      <p role="status">{children}</p>
-      {action}
-    </div>
-  );
-}
-
-/** What a node is, in a few words: its size, how it changed, or what kind of thing it is. */
-function nodeDetails(node: CodeGraphNode): string {
-  const parts: string[] = [];
-  if (node.kind === "package") parts.push("workspace package");
-  if (node.kind === "dependency") parts.push("outside package");
-  if (node.outsideProject === true) parts.push("outside this project");
-  if (node.kind === "folder" && node.files !== null) {
-    parts.push(`${node.files} files, folded: click to open`);
-  }
-  if (node.lines !== null) parts.push(node.lines === 1 ? "1 line" : `${node.lines} lines`);
-  if (node.test) parts.push("test");
-  if (node.changed === "uncommitted") parts.push("uncommitted changes");
-  if (node.changed === "branch") parts.push("changed on this branch");
-  return parts.join(" · ");
-}
-
-/** The hovered node's card, beside it on the side with room. */
-function HoverCard({
-  graph,
-  hover,
-}: {
-  readonly graph: CodeLocalGraph;
-  readonly hover: GraphHover;
-}) {
-  const node = graph.nodes.find((each) => each.id === hover.id);
-  if (node === undefined) return null;
-  const link = importOf(graph, node.id);
-  const from = link === null ? null : graph.nodes.find((each) => each.id === link.from);
-  const left = hover.x < hover.width / 2;
-  const top = hover.y < hover.height / 2;
-  return (
-    <div
-      className="pointer-events-none absolute z-10 max-w-80 rounded-md border border-border bg-popover px-2.5 py-2 text-xs text-popover-foreground shadow-md"
-      style={{
-        ...(left ? { left: hover.x + 14 } : { right: hover.width - hover.x + 14 }),
-        ...(top ? { top: hover.y + 14 } : { bottom: hover.height - hover.y + 14 }),
-      }}
-    >
-      <div className="truncate font-mono">{node.path ?? node.name}</div>
-      <div className="text-muted-foreground">{nodeDetails(node)}</div>
-      {link !== null && link.line !== null ? (
-        <div className="mt-1.5">
-          <div className="text-muted-foreground">
-            {fileName(from?.path ?? link.from)}, line {link.line}
-          </div>
-          {link.text === null ? null : (
-            <code className="block truncate font-mono text-foreground">{link.text}</code>
-          )}
-        </div>
-      ) : null}
+      {path === null || key === null ? (
+        <GraphNotice>
+          Open a file to see its local graph: the files it imports and the files that import it.
+        </GraphNotice>
+      ) : (
+        <CodeGraphView
+          ref={viewRef}
+          environmentId={tab.environmentId}
+          checkout={tab}
+          roots={[path]}
+          options={options}
+          onOptionsChange={graphOptions.set}
+          defaultOptions={DEFAULT_CODE_GRAPH_OPTIONS}
+          expansion={expansion}
+          onExpansionChange={(next) => setExpansionState({ key, expansion: next })}
+          rootsLabel={fileName(path)}
+          onOpen={(target, newTab) => openFile(target.path, newTab)}
+          onReRoot={(root, reason) => {
+            // A following graph follows the file a click opened into its pane.
+            if (reason === "click" && following) return;
+            panes.update((next) => pinLocalGraph(next, tabKey, tab, root));
+          }}
+        />
+      )}
     </div>
   );
 }

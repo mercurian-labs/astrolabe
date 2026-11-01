@@ -35,13 +35,25 @@ const mocks = vi.hoisted(() => ({
   answers: new Map<string, Answer>(),
   /** The repository's index status as its subscription last reported it. */
   status: null as CodeIndexStatus | null,
+  statusListeners: new Set<() => void>(),
+  setStatus(next: CodeIndexStatus | null) {
+    this.status = next;
+    for (const listener of this.statusListeners) listener();
+  },
   refreshes: 0,
 }));
 
-vi.mock("@effect/atom-react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@effect/atom-react")>()),
-  useAtomValue: () => mocks.status,
-}));
+vi.mock("@effect/atom-react", async (importOriginal) => {
+  const { useSyncExternalStore } = await import("react");
+  const subscribe = (listener: () => void) => {
+    mocks.statusListeners.add(listener);
+    return () => mocks.statusListeners.delete(listener);
+  };
+  return {
+    ...(await importOriginal<typeof import("@effect/atom-react")>()),
+    useAtomValue: () => useSyncExternalStore(subscribe, () => mocks.status),
+  };
+});
 vi.mock("~/state/codeIndex", () => ({ codeIndexEnvironment: { status: () => ({}) } }));
 
 vi.mock("~/state/codeLocalGraph", () => ({
@@ -78,13 +90,15 @@ vi.mock("@mercurian/graph/file", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@mercurian/graph/file")>()),
   FileGraph: ({
     graph,
-    onOpen,
+    onClick,
+    onDoubleClick,
     onHover,
   }: {
     readonly graph: {
       readonly nodes: ReadonlyArray<{ readonly id: string; readonly name: string }>;
     };
-    readonly onOpen: (id: string, modifier: boolean) => void;
+    readonly onClick: (id: string, modifier: boolean) => void;
+    readonly onDoubleClick: (id: string) => void;
     readonly onHover: (hover: { id: string; x: number; y: number } | null) => void;
   }) => (
     <div>
@@ -92,11 +106,16 @@ vi.mock("@mercurian/graph/file", async (importOriginal) => ({
         <button
           key={node.id}
           type="button"
-          onClick={(event) => onOpen(node.id, event.metaKey || event.ctrlKey)}
+          onClick={(event) => onClick(node.id, event.metaKey || event.ctrlKey)}
           onMouseEnter={() => onHover({ id: node.id, x: 20, y: 20 })}
           onMouseLeave={() => onHover(null)}
         >
           {`node ${node.name}`}
+        </button>
+      ))}
+      {graph.nodes.map((node) => (
+        <button key={node.id} type="button" onClick={() => onDoubleClick(node.id)}>
+          {`double-click ${node.name}`}
         </button>
       ))}
     </div>
@@ -115,18 +134,22 @@ const node = (id: string, extra: Partial<CodeGraphNode> = {}): CodeGraphNode => 
   name: id.slice(id.lastIndexOf("/") + 1),
   path: id,
   depth: 1,
+  root: false,
   lines: 12,
   test: false,
   changed: null,
   files: null,
+  parent: null,
+  contents: true,
+  symbol: null,
   ...extra,
 });
 
 function graphOf(center: string, extra: Partial<CodeLocalGraph> = {}): CodeLocalGraph {
   return {
-    center,
+    roots: [center],
     nodes: [
-      node(center, { depth: 0 }),
+      node(center, { depth: 0, root: true }),
       node("lib.ts", { changed: "branch", lines: 40 }),
       node("src/ui", { kind: "folder", name: "ui", lines: null, files: 7 }),
     ],
@@ -140,6 +163,8 @@ function graphOf(center: string, extra: Partial<CodeLocalGraph> = {}): CodeLocal
       },
       { from: center, to: "src/ui", line: null, text: null, resolution: "exact" },
     ],
+    clusters: [],
+    unknown: [],
     usedByPending: false,
     status: {
       projectId,
@@ -212,7 +237,7 @@ function setup(answer: (input: CodeLocalGraphInput) => Answer) {
   mocks.requests.length = 0;
   mocks.answers.clear();
   mocks.answer = answer;
-  mocks.status = null;
+  mocks.setStatus(null);
   mocks.refreshes = 0;
   importLineHighlight.set(null);
   return panesWith(filesAndGraph());
@@ -231,18 +256,20 @@ function graphView(host: ReturnType<typeof panesWith>["host"]) {
 const lastRequest = () => mocks.requests.at(-1)?.input;
 
 describe("a following local graph", () => {
-  it("shows the focused file, asks again with a folder opened or folded, and folded on a new file", async () => {
-    const panes = setup((input) => ({ data: graphOf(input.path) }));
+  it("shows the focused file, opens a folder's contents, and starts plain again on a new file", async () => {
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
     await using _screen = await render(graphView(panes.host));
     await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
-    expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: [] });
+    expect(lastRequest()).toMatchObject({ roots: ["a.ts"], expandedContents: [] });
 
     await userEvent.click(page.getByRole("button", { name: "node ui" }));
     await vi.waitFor(() =>
-      expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: ["src/ui"] }),
+      expect(lastRequest()).toMatchObject({ roots: ["a.ts"], expandedContents: ["src/ui"] }),
     );
-    await userEvent.click(page.getByRole("button", { name: "Fold folders" }));
-    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", expanded: [] }));
+    await userEvent.click(page.getByRole("button", { name: "Reset the graph" }));
+    await vi.waitFor(() =>
+      expect(lastRequest()).toMatchObject({ roots: ["a.ts"], expandedContents: [] }),
+    );
     await userEvent.click(page.getByRole("button", { name: "node ui" }));
 
     panes.store.update((arrangement) => ({
@@ -260,23 +287,40 @@ describe("a following local graph", () => {
           : {}),
       },
     }));
-    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "b.ts", expanded: [] }));
+    await vi.waitFor(() =>
+      expect(lastRequest()).toMatchObject({ roots: ["b.ts"], expandedContents: [] }),
+    );
+  });
+
+  it("adds a node's neighbours on a double-click and takes them away on another", async () => {
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
+    await using _screen = await render(graphView(panes.host));
+    await userEvent.click(page.getByRole("button", { name: "double-click lib.ts" }));
+    await vi.waitFor(() =>
+      expect(lastRequest()).toMatchObject({ roots: ["a.ts"], expandedNeighbours: ["lib.ts"] }),
+    );
+    // A double-click opens nothing.
+    expect(leaves(panes.current().root)[0]?.active).toBe(fileKey("a.ts"));
+    await userEvent.click(page.getByRole("button", { name: "double-click lib.ts" }));
+    await vi.waitFor(() =>
+      expect(lastRequest()).toMatchObject({ roots: ["a.ts"], expandedNeighbours: [] }),
+    );
   });
 
   it("reads nothing new while it is behind another tab", async () => {
-    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
     await using _screen = await render(graphView(panes.host));
     await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
     // A file goes in front of the graph in its pane, then focus moves to another file.
     panes.store.update((arrangement) => openTab(arrangement, fileKey("c.ts"), "p2", false));
     panes.store.update((arrangement) => activateTab(arrangement, fileKey("b.ts")));
-    expect(mocks.requests.every((request) => request.input.path === "a.ts")).toBe(true);
+    expect(mocks.requests.every((request) => request.input.roots[0] === "a.ts")).toBe(true);
     panes.store.update((arrangement) => activateTab(arrangement, localGraphKey(checkout), false));
-    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "b.ts" }));
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ roots: ["b.ts"] }));
   });
 
   it("opens a clicked file in the file's pane, which takes the focus", async () => {
-    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
     await using _screen = await render(graphView(panes.host));
     await userEvent.click(page.getByRole("button", { name: "node lib.ts" }));
     const [files] = leaves(panes.current().root);
@@ -285,7 +329,7 @@ describe("a following local graph", () => {
   });
 
   it("names a hovered file's import and lights that line in the file that writes it", async () => {
-    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
     await using _screen = await render(graphView(panes.host));
     await userEvent.hover(page.getByRole("button", { name: "node lib.ts" }));
     await expect.element(page.getByText("a.ts, line 3")).toBeVisible();
@@ -301,17 +345,20 @@ describe("a following local graph", () => {
 
   it("says what uses the file is still being indexed, with its progress", async () => {
     const panes = setup((input) => ({
-      data: graphOf(input.path, {
+      data: graphOf(input.roots[0], {
         usedByPending: true,
-        status: { ...graphOf(input.path).status, state: "indexing", files: 40, totalFiles: 100 },
+        status: {
+          ...graphOf(input.roots[0]).status,
+          state: "indexing",
+          files: 40,
+          totalFiles: 100,
+        },
       }),
     }));
     await using _screen = await render(graphView(panes.host));
     await expect
       .element(
-        page.getByText(
-          "Indexing 40 of 100 files: the files that use this one show once it finishes.",
-        ),
+        page.getByText("Indexing 40 of 100 files: the files that use these show once it finishes."),
       )
       .toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Graph settings" }));
@@ -323,7 +370,7 @@ describe("a following local graph", () => {
   });
 
   it("filters from its settings panel, narrows by a search, and restores the defaults", async () => {
-    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
     await using _screen = await render(graphView(panes.host));
     await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
     await expect
@@ -334,36 +381,38 @@ describe("a following local graph", () => {
     await expect.element(panel).toBeVisible();
 
     await userEvent.click(panel.getByRole("switch", { name: "Used by" }));
-    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", usedBy: false }));
-    await userEvent.fill(panel.getByRole("searchbox", { name: "Search files" }), "lib");
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ roots: ["a.ts"], usedBy: false }));
+    await userEvent.fill(panel.getByRole("searchbox", { name: "Search the graph" }), "lib");
     await expect.element(page.getByRole("button", { name: "node ui" })).not.toBeInTheDocument();
     await expect.element(page.getByRole("button", { name: "node lib.ts" })).toBeVisible();
 
     await userEvent.click(panel.getByRole("button", { name: "Restore default settings" }));
-    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ path: "a.ts", usedBy: true }));
+    await vi.waitFor(() => expect(lastRequest()).toMatchObject({ roots: ["a.ts"], usedBy: true }));
     await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
-    await expect.element(panel.getByRole("searchbox", { name: "Search files" })).toHaveValue("");
+    await expect
+      .element(panel.getByRole("searchbox", { name: "Search the graph" }))
+      .toHaveValue("");
     await userEvent.click(page.getByRole("button", { name: "Graph settings" }));
     await expect.element(panel).not.toBeInTheDocument();
   });
 
   it("reads the graph again when the index finishes, not at each step of its progress", async () => {
-    const panes = setup((input) => ({ data: graphOf(input.path) }));
+    const panes = setup((input) => ({ data: graphOf(input.roots[0]) }));
     const indexing: CodeIndexStatus = {
       ...graphOf("a.ts").status,
       state: "indexing",
       files: 10,
       totalFiles: 100,
     };
-    mocks.status = indexing;
+    mocks.setStatus(indexing);
     await using screen = await render(graphView(panes.host));
     await expect.element(page.getByRole("button", { name: "node ui" })).toBeVisible();
 
-    mocks.status = { ...indexing, files: 60 };
+    mocks.setStatus({ ...indexing, files: 60 });
     await screen.rerender(graphView(panes.host));
     expect(mocks.refreshes).toBe(0);
 
-    mocks.status = { ...indexing, state: "ready", files: 100, updatedAt: "2026-10-30T08:00:00Z" };
+    mocks.setStatus({ ...indexing, state: "ready", files: 100, updatedAt: "2026-10-30T08:00:00Z" });
     await screen.rerender(graphView(panes.host));
     await vi.waitFor(() => expect(mocks.refreshes).toBe(1));
   });
