@@ -198,7 +198,7 @@ function GroupDetails({
   };
 
   return (
-    <div className="scrollbar-gutter-both min-h-0 flex-1 overflow-auto">
+    <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-auto">
       <div className="mx-auto flex max-w-2xl flex-col gap-5 px-6 py-8">
         <header className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
