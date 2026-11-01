@@ -1,10 +1,12 @@
-import { FileCodeIcon, FileDiffIcon, GitBranchIcon } from "lucide-react";
+import { FileDiffIcon, GitBranchIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { reviewEnvironment } from "~/state/review";
+import { useTheme } from "~/hooks/useTheme";
 import type { PaneTabLabel } from "~/panes/panesHost";
 import { useListedProjectWorktrees, useProjectWorktrees } from "~/state/worktrees";
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { getProjectFileQueryAtom } from "../files/projectFilesQueryState";
 import { Button } from "../ui/button";
 
@@ -112,11 +114,22 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const listed = useListedProjectWorktrees(
     tab === null ? null : { environmentId: tab.environmentId, projectId: tab.projectId },
   );
+  const { resolvedTheme } = useTheme();
   if (tab === null) return null;
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;
   const label =
     tab.kind === "file"
-      ? { title: fileName(tab.path), icon: <FileCodeIcon className="size-3.5 shrink-0" /> }
+      ? {
+          title: fileName(tab.path),
+          icon: (
+            <PierreEntryIcon
+              pathValue={tab.path}
+              kind="file"
+              theme={resolvedTheme}
+              className="size-3.5"
+            />
+          ),
+        }
       : {
           title:
             tab.source === "working-tree"

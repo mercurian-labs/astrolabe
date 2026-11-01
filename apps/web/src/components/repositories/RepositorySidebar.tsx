@@ -21,6 +21,7 @@ import {
 
 import { openCommandPalette } from "~/commandPaletteBus";
 import { isElectron } from "~/env";
+import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
@@ -32,6 +33,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useProjectWorktrees } from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "../projects/ProjectFilterIcon";
 import {
@@ -556,6 +558,7 @@ function FileRow({
   readonly onOpened?: () => void;
 }) {
   const key = repositoryTabKey(tab);
+  const { resolvedTheme } = useTheme();
   const focused = useSectionFocusedKey(repositoryPanes);
   const active = focused === key;
   const open = (event: RowClick) => {
@@ -607,7 +610,12 @@ function FileRow({
             />
           }
         >
-          <FileIcon aria-hidden className="size-3.5 shrink-0 opacity-70" />
+          <PierreEntryIcon
+            pathValue={tab.path}
+            kind="file"
+            theme={resolvedTheme}
+            className="size-3.5"
+          />
           <span className="min-w-0 shrink truncate text-sm text-foreground/85">
             {fileName(tab.path)}
           </span>
