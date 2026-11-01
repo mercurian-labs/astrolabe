@@ -112,7 +112,10 @@ function WikiRowFrame(props: {
   );
 }
 
-/** A document: its wiki and when it last changed, its name, and its links or open change. */
+/**
+ * A document: its wiki and when it last changed, its name, and its links or open change. A base
+ * reads `<name>.base`, as on web, over a table icon.
+ */
 export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
   readonly entry: WikiDocumentEntry;
   readonly showTrailingDivider: boolean;
@@ -129,14 +132,14 @@ export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
       working={working}
       title={entry.name}
       accessibilityLabel={`${entry.name}, ${entry.wiki.name}`}
-      accessibilityHint="Opens the document"
+      accessibilityHint={entry.base ? "Opens the base" : "Opens the document"}
       showTrailingDivider={props.showTrailingDivider}
       onPress={() => onSelect(entry)}
       footer={
         <>
-          {footer.inChange ? (
+          {footer.inChange || entry.base ? (
             <SymbolView
-              name="square.and.pencil"
+              name={footer.inChange ? "square.and.pencil" : "tablecells"}
               size={11}
               tintColorClassName={ROW.mutedIconTintClassName}
               type="monochrome"

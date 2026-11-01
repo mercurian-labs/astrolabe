@@ -85,6 +85,16 @@ describe("the wiki editor page", () => {
     ).toEqual({ type: "baseResult", source, result: null, error: "The base sent no view." });
   });
 
+  it("shows a base file alone once told to, and drops a malformed show", () => {
+    const { page: editor } = page();
+    expect(editor.getState().base).toBeNull();
+    const command = parseWikiEditorCommand({ type: "showBase", source: "Projects.base" });
+    expect(command).toEqual({ type: "showBase", source: "Projects.base" });
+    editor.handle(command!);
+    expect(editor.getState().base).toBe("Projects.base");
+    expect(parseWikiEditorCommand({ type: "showBase" })).toBeNull();
+  });
+
   it("switches between reading and editing", () => {
     const { page: editor } = page();
     expect(editor.getState().mode).toBe("read");

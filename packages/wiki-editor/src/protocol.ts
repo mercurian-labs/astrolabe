@@ -54,6 +54,11 @@ export type WikiEditorCommand =
   | { readonly type: "loadChanged" }
   /** Asks for the buffer's text, answered with a `text` event carrying `requestId`. */
   | { readonly type: "requestText"; readonly requestId: number }
+  /**
+   * The page shows one base alone, read only, instead of the note: a `.base` file opened on
+   * its own. It asks for `source` with `queryBase` as it would a block's.
+   */
+  | { readonly type: "showBase"; readonly source: string }
   /** A ```base block's view, sent again whenever it changes; `error` says why it can't show. */
   | {
       readonly type: "baseResult";
@@ -172,6 +177,8 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
       return typeof value.requestId === "number"
         ? { type: "requestText", requestId: value.requestId }
         : null;
+    case "showBase":
+      return typeof value.source === "string" ? { type: "showBase", source: value.source } : null;
     case "baseResult": {
       if (typeof value.source !== "string") return null;
       // The app's own page: the shape is the server's, checked only far enough to draw it.

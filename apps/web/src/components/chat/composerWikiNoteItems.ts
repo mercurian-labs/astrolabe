@@ -57,6 +57,7 @@ export function composerWikiNoteItems(input: {
       : [];
   const noteItems = wikiListEntries(input.overviews, null)
     .documents.flatMap((document) => {
+      if (document.base) return [];
       const key = noteKey(document.name);
       if (!key.includes(needle)) return [];
       const rank = (isLinked(document.wiki) ? 0 : 2) + (key.startsWith(needle) ? 0 : 1);

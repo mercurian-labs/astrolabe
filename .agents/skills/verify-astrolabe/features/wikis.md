@@ -119,7 +119,12 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   in cells open notes: in a base's own tab the note replaces it (Back returns); a view with no name column gets a "Name" column. A base outside the
   supported subset shows "This base can't be shown" naming the unsupported part. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
-  and draws its first view; `.base` files do not list on mobile.
+  and draws its first view. A `.base` file lists on the phone too, `button "<name>.base, <wiki>"`
+  with a table icon and "Base · read only" under it, and opens in `WikiDocument` (the same
+  route; `WikiBaseScreen.tsx`) titled `<name>`, subtitle `<wiki> · Main · Base · read only`. The
+  page draws only the base (`showBase` in `protocol.ts`, the same `BaseBlock`); a `View` header
+  menu (iOS only, as every header button) appears with two or more views and ticks the one shown.
+  A row's name opens its note on top; Back returns to the base.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
   (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
   `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open

@@ -96,4 +96,19 @@ describe("composerWikiNoteItems", () => {
     });
     expect(items.map((item) => item.type)).toEqual(["wiki-note"]);
   });
+
+  it("offers notes only, never a wiki's .base files", () => {
+    const plans = overview("plans", "Plans", ["Tasks"], [projectId]);
+    const withBase = {
+      ...plans,
+      index: { ...plans.index, bases: [{ file: "Tasks.base" }] },
+    } as unknown as WikiOverview;
+    const items = composerWikiNoteItems({
+      overviews: [withBase],
+      project,
+      query: "tasks",
+      canLink: true,
+    });
+    expect(labels(items)).toEqual(["Tasks"]);
+  });
 });

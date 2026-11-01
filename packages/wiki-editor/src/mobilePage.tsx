@@ -22,10 +22,11 @@ declare global {
 
 const post = (event: WikiEditorEvent) =>
   window.ReactNativeWebView?.postMessage(JSON.stringify(event));
+const openNote = (name: string) => post({ type: "openNote", name });
 
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
-  const { mode, theme } = useSyncExternalStore(page.subscribe, page.getState);
+  const { mode, base, theme } = useSyncExternalStore(page.subscribe, page.getState);
   useEffect(() => {
     if (!theme) return;
     const root = document.documentElement;
@@ -35,21 +36,18 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
     root.style.colorScheme = theme.appearance;
     root.dataset.appearance = theme.appearance;
   }, [theme]);
+  if (base !== null) {
+    return <BaseBlock page={page} source={base} onOpenNote={openNote} />;
+  }
   if (!session) return null;
   return (
     <WikiNoteEditor
       key={session.doc.guid}
       session={session}
       readOnly={mode === "read"}
-      onOpenNote={(name) => post({ type: "openNote", name })}
+      onOpenNote={openNote}
       onOpenUrl={(href) => post({ type: "openUrl", href })}
-      renderBase={(source) => (
-        <BaseBlock
-          page={page}
-          source={source}
-          onOpenNote={(name) => post({ type: "openNote", name })}
-        />
-      )}
+      renderBase={(source) => <BaseBlock page={page} source={source} onOpenNote={openNote} />}
     />
   );
 }

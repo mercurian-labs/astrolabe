@@ -123,7 +123,7 @@ export function wikiScopeChoices(
   });
 }
 
-/** A document row's footer: the open change it is in, else its links. */
+/** A document row's footer: the open change it is in, else its links (a base has none). */
 export function wikiDocumentFooter(entry: WikiDocumentEntry): {
   readonly inChange: boolean;
   readonly text: string;
@@ -138,6 +138,7 @@ export function wikiDocumentFooter(entry: WikiDocumentEntry): {
           : `In “${first.title}”`,
     };
   }
+  if (entry.base) return { inChange: false, text: "Base · read only" };
   const links = entry.links === 1 ? "1 link" : `${entry.links} links`;
   return {
     inChange: false,

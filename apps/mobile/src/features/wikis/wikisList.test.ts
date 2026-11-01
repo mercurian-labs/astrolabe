@@ -162,6 +162,10 @@ describe("wiki filters and footers", () => {
       text: "In “Grow the glossary”",
     });
     expect(wikiDocumentFooter(byName("Inbox")).text).toBe("0 links");
+    expect(wikiDocumentFooter({ ...byName("Inbox"), name: "Tasks.base", base: true })).toEqual({
+      inChange: false,
+      text: "Base · read only",
+    });
     expect(wikiDocumentFooter({ ...byName("Inbox"), links: 1, backlinks: 4 }).text).toBe(
       "1 link · linked from 4",
     );

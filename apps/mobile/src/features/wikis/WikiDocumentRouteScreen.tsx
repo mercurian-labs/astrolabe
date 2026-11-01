@@ -19,46 +19,30 @@ import {
 import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Linking, Platform, Pressable, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { AppText as Text } from "../../components/ui/AppText";
 import * as Dialog from "../../components/ui/Dialog";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Toolbar } from "../../components/ui/Toolbar";
-import { mobileHtmlRenderTheme } from "../../lib/htmlRenderTheme";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { wikiEnvironment } from "../../state/wiki";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
   isSkillMapFile,
+  isWikiBaseFile,
   wikiDocumentAuthor,
   wikiDocumentSubtitle,
 } from "./document/wikiDocument.logic";
+import { useEditorTheme } from "./document/useEditorTheme";
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiSaveSheet, type WikiSaveTarget } from "./document/WikiSaveSheet";
+import { WikiBaseScreen } from "./WikiBaseScreen";
 import type { WikiDocumentParams } from "./wikiRoutes";
-
-/** The app's colours for the editor page, as the HTML render view themes agent pages. */
-function useEditorTheme() {
-  const { themeId, themeAppearance, themeVariables, systemColorsActive } =
-    useAppearancePreferences();
-  return useMemo(
-    () =>
-      mobileHtmlRenderTheme({
-        themeId,
-        appearance: themeAppearance,
-        variables: themeVariables,
-        systemColors: systemColorsActive,
-        platform: Platform.OS,
-      }),
-    [themeId, themeAppearance, themeVariables, systemColorsActive],
-  );
-}
 
 /** Whether the change request's thread is mid-turn, and the run it is in. */
 function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId | null | undefined) {
@@ -69,18 +53,27 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
   return { running, runId: running ? (shell?.latestRun?.runId ?? null) : null };
 }
 
+/** A wiki document: a note, or a `.base` file opened by its file name, as on web. */
+export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
+  return isWikiBaseFile(route.params.name) ? (
+    <WikiBaseScreen params={route.params} />
+  ) : (
+    <WikiNoteScreen params={route.params} />
+  );
+}
+
 /**
- * One wiki document, read first; Edit turns the page into the editor and edits stay on the phone
+ * One wiki note, read first; Edit turns the page into the editor and edits stay on the phone
  * until saved to a change request. Inside a change request, an agent's amendments land live beside
  * the person's unsaved edits, and a save while the agent is mid-turn waits for the turn to end.
  * Links open the next document on top, read from the same place.
  */
-export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
+function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   const navigation = useNavigation();
-  const environmentId = route.params.environmentId as EnvironmentId;
-  const wikiId = route.params.wikiId as WikiId;
-  const name = route.params.name;
-  const changeRequestId = route.params.changeRequestId as WikiChangeRequestId | undefined;
+  const environmentId = params.environmentId as EnvironmentId;
+  const wikiId = params.wikiId as WikiId;
+  const name = params.name;
+  const changeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
 
   const note = useEnvironmentQuery(
@@ -192,8 +185,8 @@ export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumen
       case "openNote":
         navigation.dispatch(
           StackActions.push("WikiDocument", {
-            environmentId: route.params.environmentId,
-            wikiId: route.params.wikiId,
+            environmentId: params.environmentId,
+            wikiId: params.wikiId,
             name: event.name,
             ...(changeRequestId === undefined ? {} : { changeRequestId }),
           }),

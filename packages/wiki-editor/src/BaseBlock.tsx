@@ -122,8 +122,9 @@ function Results({
 }
 
 /**
- * A ```base block's view on the phone: the app runs the block and keeps the page's copy
- * current. Its first view only; each row's name opens its note.
+ * A base's view on the phone, a ```base block's or a `.base` file's: the app runs it and keeps
+ * the page's copy current. One view, the one the app picked (a block's first); each row's name
+ * opens its note.
  */
 export function BaseBlock({
   page,
