@@ -78,6 +78,7 @@ const outline: CodeOutline = {
       lines: 120,
       symbols: [
         {
+          id: "src/session.ts#resolveSession",
           name: "resolveSession",
           kind: "function",
           path: "src/session.ts",
@@ -131,6 +132,8 @@ interface Fakes {
   readonly worktreePath?: string | null;
   readonly checkpoints?: ProjectionCheckpointContext;
   readonly failure?: CodeIndexErrorReason;
+  /** The node ids the checkout holds. */
+  readonly known?: ReadonlyArray<string>;
 }
 
 const harness = (fakes: Fakes = {}) => {
@@ -165,6 +168,11 @@ const harness = (fakes: Fakes = {}) => {
           find: answer("find", { definitions: [], uses: [], truncated: false }),
           changes: answer("changes", changes),
           map: answer("map", { files: [], links: [], outside: [], truncated: false }),
+          checkNodes: (input) => {
+            calls.push({ method: "checkNodes", input });
+            const known = new Set(fakes.known ?? []);
+            return Effect.succeed({ unknown: input.ids.filter((id) => !known.has(id)) });
+          },
         }),
         Layer.mock(GitVcsDriver.GitVcsDriver)({
           resolveBranchMergeBase: (cwd) => {
@@ -289,6 +297,48 @@ describe("code toolkit handlers", () => {
           message: expect.stringMatching(message),
         });
       }
+    }),
+  );
+
+  it.effect("shows a view by checking its ids, and says which the checkout lacks", () =>
+    Effect.gen(function* () {
+      const tools = harness({
+        worktreePath: worktree,
+        known: ["src/ws.ts#handle", "src/orchestrator.ts", "src"],
+      });
+      const result = yield* tools.call("astrolabe_code_graph_show", {
+        title: "How a turn starts",
+        steps: [
+          { caption: "The request lands here.", focus: ["src/ws.ts#handle"] },
+          {
+            caption: "It reaches the orchestrator.",
+            focus: ["src/orchestrator.ts", "src/gone.ts"],
+            links: [{ from: "src/ws.ts#handle", to: "src/orchestrator.ts" }],
+            level: "symbol",
+            showContents: ["src"],
+          },
+        ],
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toEqual({ steps: 2, unknown: ["src/gone.ts"] });
+      expect(tools.calls).toEqual([
+        {
+          method: "checkNodes",
+          input: {
+            projectId,
+            cwd: worktree,
+            ids: ["src/ws.ts#handle", "src/orchestrator.ts", "src/gone.ts", "src"],
+          },
+        },
+      ]);
+
+      const nothing = yield* harness({ known: [] }).call("astrolabe_code_graph_show", {
+        steps: [{ caption: "Here.", focus: ["src/missing.ts"] }],
+      });
+      expect(declaredFailure(nothing)).toMatchObject({
+        code: "invalid_request",
+        message: expect.stringContaining("src/missing.ts"),
+      });
     }),
   );
 

@@ -7,13 +7,16 @@
  */
 export {
   FileGraph,
+  type FileGraphContextMenu,
   type FileGraphHandle,
   type FileGraphHover,
   type FileGraphProps,
 } from "./FileGraph.tsx";
 export {
   GROUP_SLOTS,
+  type FileGraphCluster,
   type FileGraphData,
+  type FileGraphFocus,
   type FileGraphLink,
   type FileGraphNode,
   type FileGraphNodeKind,

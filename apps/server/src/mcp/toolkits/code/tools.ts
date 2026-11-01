@@ -1,6 +1,8 @@
 import {
   CodeChanges,
   CodeFindResult,
+  CodeGraphShowInput,
+  CodeGraphShowResult,
   CodeMap,
   CodeOutline,
   OrchestratorMcpFailure,
@@ -90,9 +92,19 @@ const CodeMapTool = Tool.make("astrolabe_code_map", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const CodeGraphShowTool = Tool.make("astrolabe_code_graph_show", {
+  ...shared,
+  description: `Show the user a picture of the code in the thread's Graph tab, or a story they step through: each step lights a few files, folders or definitions and the links between them, with a caption. Use it only when the user asks for an explanation, a diagram or a walkthrough of how code fits together, or when a skill tells you to; never during ordinary coding work. Name nodes by path, or definitions by the \`id\` astrolabe_code_outline and astrolabe_code_find return. The result lists any ids the checkout does not hold; the graph leaves them out. ${SCOPE}`,
+  parameters: CodeGraphShowInput,
+  success: CodeGraphShowResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 export const CodeToolkit = Toolkit.make(
   CodeOutlineTool,
   CodeFindTool,
   CodeChangesTool,
   CodeMapTool,
+  CodeGraphShowTool,
 );

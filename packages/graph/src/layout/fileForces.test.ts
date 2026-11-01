@@ -16,7 +16,7 @@ const node = (id: string): FileGraphNode => ({
 
 /** A centre file with eight neighbours, two of which import each other. */
 const GRAPH: FileGraphData = {
-  center: "c",
+  roots: ["c"],
   nodes: ["c", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"].map(node),
   links: [
     ...["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"].map((id) => ({

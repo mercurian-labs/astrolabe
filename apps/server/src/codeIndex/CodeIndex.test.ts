@@ -5,6 +5,7 @@ import {
   ProjectId,
   type BackgroundPolicySnapshot,
   type CodeIndexState,
+  type CodeLocalGraph,
   type CodeLocalGraphInput,
   type OrchestrationProjectShell,
   type ServerSettings,
@@ -244,12 +245,15 @@ const graphInput = (
 ): CodeLocalGraphInput => ({
   projectId: PROJECT,
   cwd,
-  path,
+  roots: [path],
   depth: 1,
   uses: true,
   usedBy: true,
   dependencies: false,
-  expanded: [],
+  level: "file",
+  expandedContents: [],
+  collapsedContents: [],
+  expandedNeighbours: [],
   ...overrides,
 });
 
@@ -401,7 +405,7 @@ it.effect("answers a project in a subfolder in paths relative to its folder", ()
       const sharedEntry = "../../packages/shared/src/index.ts";
 
       const usedBy = yield* harness.index.localGraph(graphInput(cwd, "src/helper.ts"));
-      assert.strictEqual(usedBy.center, "src/helper.ts");
+      assert.deepStrictEqual(usedBy.roots, ["src/helper.ts"]);
       assert.deepStrictEqual(
         usedBy.nodes.map((node) => [node.id, node.path, node.outsideProject ?? false]),
         [
@@ -651,7 +655,7 @@ it.effect("folds a crowded ring by folder, keeps tests, and opens the folders as
       );
 
       const opened = yield* harness.index.localGraph(
-        graphInput(harness.root, "lib/target.ts", { expanded: ["users"] }),
+        graphInput(harness.root, "lib/target.ts", { expandedContents: ["users"] }),
       );
       assert.strictEqual(opened.nodes.filter((node) => node.id.startsWith("users/")).length, 45);
       assert.isFalse(opened.nodes.some((node) => node.kind === "folder"));
@@ -722,7 +726,7 @@ it.effect("folds a crowded side at the one finest folder level that fits", () =>
 
       // An opened folder past the limit folds again below itself.
       const web = yield* harness.index.localGraph(
-        graphInput(harness.root, "lib/target.ts", { expanded: ["apps/web/src"] }),
+        graphInput(harness.root, "lib/target.ts", { expandedContents: ["apps/web/src"] }),
       );
       const inWeb = web.nodes.filter((node) => node.id.startsWith("apps/web/src/"));
       assert.deepStrictEqual(
@@ -738,7 +742,7 @@ it.effect("folds a crowded side at the one finest folder level that fits", () =>
 
       const components = yield* harness.index.localGraph(
         graphInput(harness.root, "lib/target.ts", {
-          expanded: ["apps/web/src", "apps/web/src/components"],
+          expandedContents: ["apps/web/src", "apps/web/src/components"],
         }),
       );
       const shown = components.nodes.filter((node) =>
@@ -758,6 +762,278 @@ it.effect("folds a crowded side at the one finest folder level that fits", () =>
           .map((node) => [node.id, node.depth, node.files]),
         [["apps/desktop/src", 1, 65]],
       );
+    }),
+  ),
+);
+
+/** Two workspace packages: the app's entry imports two files of its own and the library. */
+const PACKAGES = {
+  "packages/app/package.json": '{ "name": "@fixture/app" }\n',
+  "packages/app/src/main.ts":
+    'import { a } from "./util/a.ts";\nimport { b } from "./util/b.ts";\nimport { lib } from "@fixture/lib";\nexport const main = () => a() + b() + lib();\n',
+  "packages/app/src/util/a.ts": "export function a() {\n  return 1;\n}\n",
+  "packages/app/src/util/b.ts":
+    'import { a } from "./a.ts";\nexport function b() {\n  return a();\n}\n',
+  "packages/lib/package.json": '{ "name": "@fixture/lib", "exports": { ".": "./src/index.ts" } }\n',
+  "packages/lib/src/index.ts": "export function lib() {\n  return 2;\n}\n",
+};
+
+const shape = (graph: CodeLocalGraph) => ({
+  nodes: graph.nodes.map((node) => [node.id, node.kind, node.parent, node.files]),
+  clusters: graph.clusters.map((cluster) => [cluster.id, cluster.kind, cluster.parent]),
+  links: graph.links.map((link) => [link.from, link.to]),
+});
+
+it.effect("rolls imports up to folders and modules, and opens the ones asked for in place", () =>
+  withIndex({ files: PACKAGES }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const root = "packages/app/src/main.ts";
+      const folders = yield* harness.index.localGraph(
+        graphInput(harness.root, root, { level: "directory" }),
+      );
+      assert.deepStrictEqual(shape(folders), {
+        nodes: [
+          ["packages/app/src", "folder", null, 1],
+          ["@fixture/lib", "package", null, null],
+          ["packages/app/src/util", "folder", null, 2],
+        ],
+        clusters: [],
+        links: [
+          ["packages/app/src", "@fixture/lib"],
+          ["packages/app/src", "packages/app/src/util"],
+        ],
+      });
+      assert.deepStrictEqual(folders.roots, ["packages/app/src"]);
+
+      const opened = yield* harness.index.localGraph(
+        graphInput(harness.root, root, {
+          level: "directory",
+          expandedContents: ["packages/app/src/util"],
+        }),
+      );
+      assert.deepStrictEqual(shape(opened), {
+        nodes: [
+          ["packages/app/src", "folder", null, 1],
+          ["@fixture/lib", "package", null, null],
+          ["packages/app/src/util/a.ts", "file", "packages/app/src/util", null],
+          ["packages/app/src/util/b.ts", "file", "packages/app/src/util", null],
+        ],
+        clusters: [["packages/app/src/util", "folder", null]],
+        links: [
+          ["packages/app/src", "@fixture/lib"],
+          ["packages/app/src", "packages/app/src/util/a.ts"],
+          ["packages/app/src", "packages/app/src/util/b.ts"],
+          ["packages/app/src/util/b.ts", "packages/app/src/util/a.ts"],
+        ],
+      });
+
+      // A module is the workspace package: the app's three files are one node.
+      const modules = yield* harness.index.localGraph(
+        graphInput(harness.root, root, { level: "module" }),
+      );
+      assert.deepStrictEqual(shape(modules), {
+        nodes: [
+          ["module:packages/app", "module", null, 3],
+          ["@fixture/lib", "package", null, null],
+        ],
+        clusters: [],
+        links: [["module:packages/app", "@fixture/lib"]],
+      });
+
+      // Closing a folder at the file level folds its files into it.
+      const closed = yield* harness.index.localGraph(
+        graphInput(harness.root, root, { collapsedContents: ["packages/app/src/util"] }),
+      );
+      assert.deepStrictEqual(shape(closed).nodes, [
+        ["packages/app/src/main.ts", "file", null, null],
+        ["@fixture/lib", "package", null, null],
+        ["packages/app/src/util", "folder", null, 2],
+      ]);
+    }),
+  ),
+);
+
+/** A class whose method calls a helper, and a caller of the class. */
+const CLASSES = {
+  ...SOURCES,
+  "src/helper.ts": "export function helper() {\n  return 1;\n}\n",
+  "src/shape.ts":
+    'import { helper } from "./helper.ts";\nexport class Shape {\n  area() {\n    return helper();\n  }\n  name() {\n    return "shape";\n  }\n}\n',
+  "src/use.ts":
+    'import { Shape } from "./shape.ts";\nexport function measure() {\n  return new Shape().area();\n}\n',
+};
+
+it.effect("opens files into their definitions and links them by their uses", () =>
+  withIndex({ files: CLASSES }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const symbols = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { level: "symbol" }),
+      );
+      assert.deepStrictEqual(shape(symbols), {
+        nodes: [
+          ["src/a.ts#alpha", "symbol", "src/a.ts", null],
+          ["src/b.ts#beta", "symbol", "src/b.ts", null],
+          ["src/c.ts#gamma", "symbol", "src/c.ts", null],
+        ],
+        clusters: [
+          ["src/a.ts", "file", null],
+          ["src/b.ts", "file", null],
+          ["src/c.ts", "file", null],
+        ],
+        links: [
+          ["src/a.ts#alpha", "src/b.ts#beta"],
+          ["src/c.ts#gamma", "src/a.ts#alpha"],
+        ],
+      });
+      assert.deepStrictEqual(
+        symbols.nodes.map((node) => [node.id, node.root, node.symbol?.line]),
+        [
+          ["src/a.ts#alpha", true, 2],
+          ["src/b.ts#beta", false, 1],
+          ["src/c.ts#gamma", false, 2],
+        ],
+      );
+
+      // At the file level one file opens; its neighbours' links end at its definitions.
+      const one = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedContents: ["src/a.ts"] }),
+      );
+      assert.deepStrictEqual(shape(one).links, [
+        ["src/a.ts#alpha", "src/b.ts"],
+        ["src/c.ts", "src/a.ts#alpha"],
+      ]);
+      assert.deepStrictEqual(
+        one.links.map((link) => link.line),
+        [null, null],
+      );
+
+      // At the member level a class opens into its methods; a closed file stays one node.
+      const members = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/shape.ts", {
+          level: "member",
+          collapsedContents: ["src/use.ts"],
+        }),
+      );
+      assert.deepStrictEqual(shape(members), {
+        nodes: [
+          ["src/shape.ts#Shape.area", "symbol", "src/shape.ts#Shape", null],
+          ["src/shape.ts#Shape.name", "symbol", "src/shape.ts#Shape", null],
+          ["src/helper.ts#helper", "symbol", "src/helper.ts", null],
+          ["src/use.ts", "file", null, null],
+        ],
+        clusters: [
+          ["src/helper.ts", "file", null],
+          ["src/shape.ts", "file", null],
+          ["src/shape.ts#Shape", "symbol", "src/shape.ts"],
+        ],
+        links: [
+          ["src/shape.ts#Shape.area", "src/helper.ts#helper"],
+          ["src/use.ts", "src/shape.ts#Shape"],
+          ["src/use.ts", "src/shape.ts#Shape.area"],
+        ],
+      });
+    }),
+  ),
+);
+
+it.effect(
+  "grows from several roots, keeps depth 0 to the links between them, and says what it lacks",
+  () =>
+    withIndex({ files: CLASSES }, (harness) =>
+      Effect.gen(function* () {
+        yield* reach(harness.index, "ready");
+        const graph = yield* harness.index.localGraph({
+          ...graphInput(harness.root, "src/a.ts", { depth: 0 }),
+          roots: ["src/a.ts", "src/c.ts", "src/missing.ts", "src/a.ts#nothing"],
+        });
+        assert.deepStrictEqual(shape(graph), {
+          nodes: [
+            ["src/a.ts", "file", null, null],
+            ["src/c.ts", "file", null, null],
+          ],
+          clusters: [],
+          links: [["src/c.ts", "src/a.ts"]],
+        });
+        assert.deepStrictEqual(graph.roots, ["src/a.ts", "src/c.ts"]);
+        assert.deepStrictEqual(graph.unknown, ["src/missing.ts", "src/a.ts#nothing"]);
+
+        // A definition as a root shows alone in its file, with what it links to.
+        const one = yield* harness.index.localGraph({
+          ...graphInput(harness.root, "src/a.ts", { depth: 0, level: "symbol" }),
+          roots: ["src/shape.ts#Shape", "src/helper.ts#helper"],
+        });
+        assert.deepStrictEqual(shape(one).nodes, [
+          ["src/helper.ts#helper", "symbol", "src/helper.ts", null],
+          ["src/shape.ts#Shape", "symbol", "src/shape.ts", null],
+        ]);
+        assert.deepStrictEqual(shape(one).links, [["src/shape.ts#Shape", "src/helper.ts#helper"]]);
+
+        const checked = yield* harness.index.checkNodes({
+          projectId: PROJECT,
+          cwd: harness.root,
+          ids: ["src", "src/a.ts", "src/shape.ts#Shape.area", "src/shape.ts#Circle", "lib"],
+        });
+        assert.deepStrictEqual(checked.unknown, ["src/shape.ts#Circle", "lib"]);
+      }),
+    ),
+);
+
+/** A chain of importers: e → d → c → a → b. */
+const CHAIN = {
+  ...SOURCES,
+  "src/d.ts": 'import { gamma } from "./c.ts";\nexport const delta = gamma;\n',
+  "src/e.ts": 'import { delta } from "./d.ts";\nexport const epsilon = delta;\n',
+};
+
+it.effect("adds a node's neighbours in place, and drops an expansion only its nodes held", () =>
+  withIndex({ files: CHAIN }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const ids = (graph: CodeLocalGraph) => graph.nodes.map((node) => [node.id, node.depth]);
+      const plain = yield* harness.index.localGraph(graphInput(harness.root, "src/a.ts"));
+      assert.deepStrictEqual(ids(plain), [
+        ["src/a.ts", 0],
+        ["src/b.ts", 1],
+        ["src/c.ts", 1],
+      ]);
+
+      const both = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedNeighbours: ["src/c.ts", "src/d.ts"] }),
+      );
+      assert.deepStrictEqual(ids(both), [
+        ["src/a.ts", 0],
+        ["src/b.ts", 1],
+        ["src/c.ts", 1],
+        ["src/d.ts", 2],
+        ["src/e.ts", 3],
+      ]);
+      assert.deepStrictEqual(
+        both.links.map((link) => [link.from, link.to]),
+        [
+          ["src/a.ts", "src/b.ts"],
+          ["src/c.ts", "src/a.ts"],
+          ["src/d.ts", "src/c.ts"],
+          ["src/e.ts", "src/d.ts"],
+        ],
+      );
+
+      // Without c's expansion, d is not shown, so its expansion adds nothing.
+      const orphaned = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedNeighbours: ["src/d.ts"] }),
+      );
+      assert.deepStrictEqual(ids(orphaned), ids(plain));
+
+      // At the directory level, a folder's neighbours are its files' neighbours, rolled up.
+      const folders = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", {
+          depth: 0,
+          level: "directory",
+          expandedNeighbours: ["src"],
+        }),
+      );
+      assert.deepStrictEqual(ids(folders), [["src", 0]]);
     }),
   ),
 );

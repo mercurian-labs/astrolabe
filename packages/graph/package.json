@@ -4,58 +4,31 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
-    },
     "./file": {
       "types": "./src/file.ts",
       "default": "./src/file.ts"
     },
-    "./model": {
-      "types": "./src/model.ts",
-      "default": "./src/model.ts"
-    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
-    "dev": "vp dev",
-    "build:playground": "vp build",
-    "index-vault": "node scripts/index-vault.ts",
     "typecheck": "tsc --noEmit",
     "test": "vp test run",
-    "lint": "vp lint .",
-    "bench": "node bench/run.ts",
-    "bench:quick": "node bench/run.ts --quick"
+    "lint": "vp lint ."
   },
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "^5.3.0",
     "d3-force-3d": "^3.0.6",
     "effect": "catalog:",
-    "pixi.js": "^8.21.0",
-    "three": "0.180.0",
-    "troika-three-text": "^0.52.5"
+    "pixi.js": "^8.21.0"
   },
   "devDependencies": {
-    "@codemirror/language": "^6.12.4",
-    "@codemirror/language-data": "^6.5.2",
-    "@codemirror/state": "^6.7.6",
-    "@codemirror/view": "^6.43.13",
-    "@lezer/highlight": "^1.2.3",
-    "@mercurian/editor": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "~19.2.14",
     "@types/react-dom": "~19.2.3",
-    "@types/three": "0.180.0",
     "happy-dom": "^20.14.5",
-    "playwright-core": "1.60.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "y-codemirror.next": "^0.3.6",
-    "yaml": "catalog:",
-    "yjs": "13.6.33"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "react": "^19"

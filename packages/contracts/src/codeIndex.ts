@@ -112,20 +112,36 @@ export type CodeSymbolKind = typeof CodeSymbolKind.Type;
 export const CodeChangeState = Schema.Literals(["branch", "uncommitted"]);
 export type CodeChangeState = typeof CodeChangeState.Type;
 
-// The local graph: a file in the middle, the files it imports and the files that import it.
+// The local graph: the roots in the middle, the files they import and the files that import
+// them, at one level of detail, with the nodes the reader opened shown as clusters of their parts.
 
 export const CODE_LOCAL_GRAPH_MAX_DEPTH = 3;
 
+/**
+ * How fine a graph's nodes are: folders, the language's modules (a TypeScript package, a Go
+ * package, a Python package, a Rust module; a file where the language has none), files, top-level
+ * definitions, or members (methods and nested definitions).
+ */
+export const CodeGraphLevel = Schema.Literals(["directory", "module", "file", "symbol", "member"]);
+export type CodeGraphLevel = typeof CodeGraphLevel.Type;
+
 export const CodeLocalGraphInput = Schema.Struct({
   ...CodeCheckout.fields,
-  path: TrimmedNonEmptyString,
-  depth: Schema.Literals([1, 2, 3]),
+  /** Files, folders, or definitions as `path#Qualified.name`; the graph grows around them. */
+  roots: Schema.NonEmptyArray(TrimmedNonEmptyString),
+  /** Links from the roots; 0 shows the roots and the links between them alone. */
+  depth: Schema.Literals([0, 1, 2, 3]),
   uses: Schema.Boolean,
   usedBy: Schema.Boolean,
   /** Show packages from outside the repository (npm, crates, modules) as leaves. */
   dependencies: Schema.Boolean,
-  /** Folder groups the reader opened; any other side past the fold limit stays folded. */
-  expanded: Schema.Array(TrimmedNonEmptyString),
+  level: CodeGraphLevel,
+  /** Nodes whose direct neighbours the reader added, each one more ring out from it. */
+  expandedNeighbours: Schema.Array(TrimmedNonEmptyString),
+  /** Nodes the reader opened into clusters of their contents, folded folders among them. */
+  expandedContents: Schema.Array(TrimmedNonEmptyString),
+  /** Nodes the reader closed though the level opens them, or that their contents fold into. */
+  collapsedContents: Schema.Array(TrimmedNonEmptyString),
 });
 export type CodeLocalGraphInput = typeof CodeLocalGraphInput.Type;
 
@@ -135,54 +151,153 @@ export const CodeGraphNodeKind = Schema.Literals([
   "package",
   /** A package from outside the repository. */
   "dependency",
-  /** A folded group of files. */
+  /** A folder: the directory level's node, or files folded together on a crowded side. */
   "folder",
+  /** A language module holding several files. */
+  "module",
+  /** A definition: a top-level one, or a member of one. */
+  "symbol",
 ]);
 export type CodeGraphNodeKind = typeof CodeGraphNodeKind.Type;
 
 export const CodeGraphNode = Schema.Struct({
-  /** A file's or folder's path, a package's name, or `dependency:<name>`. */
+  /**
+   * A file's or folder's path, `module:<folder>`, `<path>#<Qualified.name>` for a definition, a
+   * package's name, or `dependency:<name>`.
+   */
   id: TrimmedNonEmptyString,
   kind: CodeGraphNodeKind,
   name: TrimmedNonEmptyString,
-  /** The file, a package's entry file, or the folder; null for a dependency. */
+  /** The file (a definition's too), a package's entry file, or the folder; null for a dependency. */
   path: Schema.NullOr(TrimmedNonEmptyString),
-  /** Links from the centre: 0 for the centre. */
+  /** Links from the nearest root: 0 for a root and what it holds. */
   depth: NonNegativeInt,
+  /** A root, or a node holding one or held by one. */
+  root: Schema.Boolean,
   lines: Schema.NullOr(NonNegativeInt),
   test: Schema.Boolean,
   changed: Schema.NullOr(CodeChangeState),
-  /** A folder group's file count; null otherwise. */
+  /** How many files a folder or module node stands for; null otherwise. */
   files: Schema.NullOr(PositiveInt),
+  /** The open cluster holding the node; null at the top. */
+  parent: Schema.NullOr(TrimmedNonEmptyString),
+  /** Whether it opens into a cluster of its contents. */
+  contents: Schema.Boolean,
+  /** A definition's kind and first line; null for every other node. */
+  symbol: Schema.NullOr(Schema.Struct({ kind: CodeSymbolKind, line: PositiveInt })),
   /** True when `path` leaves the checkout's `cwd` (`../`), where its file tabs cannot open it. */
   outsideProject: Schema.optional(Schema.Boolean),
 });
 export type CodeGraphNode = typeof CodeGraphNode.Type;
 
-/** `from` imports `to`. */
+/** A node opened in place: drawn around the nodes it holds, not as a node. */
+export const CodeGraphCluster = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  kind: Schema.Literals(["folder", "module", "file", "symbol"]),
+  name: TrimmedNonEmptyString,
+  path: Schema.NullOr(TrimmedNonEmptyString),
+  parent: Schema.NullOr(TrimmedNonEmptyString),
+  root: Schema.Boolean,
+});
+export type CodeGraphCluster = typeof CodeGraphCluster.Type;
+
+/** `from` imports or uses `to`, or holds what does. */
 export const CodeGraphLink = Schema.Struct({
   from: TrimmedNonEmptyString,
   to: TrimmedNonEmptyString,
-  /** The import in `from`; null for a link into or out of a folder group. */
+  /** The import or use in `from`; null for a link standing for several. */
   line: Schema.NullOr(PositiveInt),
   text: Schema.NullOr(Schema.String),
+  /** The surest of the links it stands for. */
   resolution: CodeResolution,
 });
 export type CodeGraphLink = typeof CodeGraphLink.Type;
 
 export const CodeLocalGraph = Schema.Struct({
-  center: TrimmedNonEmptyString,
+  /** The nodes that are or hold a root, as shown. */
+  roots: Schema.Array(TrimmedNonEmptyString),
   nodes: Schema.Array(CodeGraphNode),
+  clusters: Schema.Array(CodeGraphCluster),
   links: Schema.Array(CodeGraphLink),
+  /** Roots the checkout does not hold. */
+  unknown: Schema.Array(TrimmedNonEmptyString),
   /** True while the index is building: uses come from parsing the file, used-by waits. */
   usedByPending: Schema.Boolean,
   status: CodeIndexStatus,
 });
 export type CodeLocalGraph = typeof CodeLocalGraph.Type;
 
+// A view of the code graph an agent shows the user: one step for a picture, several for a story
+// they step through. It is the `astrolabe_code_graph_show` call's input, kept in the thread like
+// any tool call, and the thread's Graph tab draws it from there. Descriptions use the plain
+// NonEmptyString: a trimmed string's annotations never reach the MCP schema.
+
+const GraphId = Schema.NonEmptyString;
+
+export const CodeGraphStepInput = Schema.Struct({
+  caption: Schema.NonEmptyString.annotate({
+    description: "One or two sentences the user reads under the graph for this step.",
+  }),
+  focus: Schema.Array(GraphId).annotate({
+    description:
+      "The nodes this step is about, lit in the graph: file or folder paths, or definitions as `path#Qualified.name` (the `id` that astrolabe_code_outline and astrolabe_code_find return).",
+  }),
+  links: Schema.optional(
+    Schema.Array(Schema.Struct({ from: GraphId, to: GraphId })).annotate({
+      description:
+        "Links to light, from the node that imports or uses to the one it uses. Links between focus nodes light anyway.",
+    }),
+  ),
+  level: Schema.optional(
+    CodeGraphLevel.annotate({
+      description:
+        "How fine the nodes are: directory, module, file (the default), symbol (top-level definitions), or member (methods).",
+    }),
+  ),
+  depth: Schema.optional(
+    Schema.Literals([0, 1, 2, 3]).annotate({
+      description:
+        "Links out from the story's nodes to show around them; 0 (the default) shows only the nodes named and the links between them.",
+    }),
+  ),
+  expandNeighbours: Schema.optional(
+    Schema.Array(GraphId).annotate({
+      description: "Nodes whose direct neighbours to add to the graph.",
+    }),
+  ),
+  showContents: Schema.optional(
+    Schema.Array(GraphId).annotate({
+      description:
+        "Folders or files to open in place, showing the files or definitions inside them.",
+    }),
+  ),
+});
+export type CodeGraphStepInput = typeof CodeGraphStepInput.Type;
+
+export const CodeGraphShowInput = Schema.Struct({
+  title: Schema.optional(
+    Schema.NonEmptyString.annotate({ description: "A few words naming the picture or story." }),
+  ),
+  // A plain array with a minimum: a non-empty tuple advertises every step's schema twice.
+  steps: Schema.Array(CodeGraphStepInput).check(Schema.isMinLength(1)).annotate({
+    description:
+      "One step for a single picture; several, in order, for a story the user steps through. Every step draws over the same nodes: all the steps' focus nodes.",
+  }),
+});
+export type CodeGraphShowInput = typeof CodeGraphShowInput.Type;
+
+export const CodeGraphShowResult = Schema.Struct({
+  steps: NonNegativeInt,
+  /** Ids the checkout does not hold; the graph leaves them out. */
+  unknown: Schema.Array(Schema.String),
+});
+export type CodeGraphShowResult = typeof CodeGraphShowResult.Type;
+
 // Agent reads (MCP). Every list is capped and says when it was cut.
 
 export const CodeSymbolEntry = Schema.Struct({
+  /** `path#Qualified.name`: how the code graph names it. */
+  id: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
   kind: CodeSymbolKind,
   path: TrimmedNonEmptyString,

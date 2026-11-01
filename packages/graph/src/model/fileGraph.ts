@@ -1,10 +1,11 @@
 /**
- * A file graph: one file in the middle and the files it imports and that import it, as the
- * Repositories' local graph draws it (`FileGraph`). Its host caps, folds and filters it; the
- * graph lays it out by forces and draws it as Obsidian draws a vault.
+ * A code graph: its roots in the middle and what they import and what imports them, as files,
+ * folders, modules or definitions, with opened nodes drawn as clusters of their parts
+ * (`FileGraph`). Its host caps, folds and filters it; the graph lays it out by forces and draws it
+ * as Obsidian draws a vault.
  */
 
-export type FileGraphNodeKind = "file" | "package" | "dependency" | "folder";
+export type FileGraphNodeKind = "file" | "package" | "dependency" | "folder" | "module" | "symbol";
 
 export interface FileGraphNode {
   readonly id: string;
@@ -19,6 +20,18 @@ export interface FileGraphNode {
   readonly files: number | null;
   /** The group whose colour tints it (one of `GROUP_SLOTS`), or null. */
   readonly group: number | null;
+  /** The open cluster holding it, drawn around it; none when absent. */
+  readonly cluster?: string | null;
+}
+
+/** A node opened in place: a soft disc around the nodes it holds, its name above. */
+export interface FileGraphCluster {
+  readonly id: string;
+  readonly name: string;
+  /** The cluster holding this one. */
+  readonly parent: string | null;
+  /** Holds a root: its rim takes the accent. */
+  readonly root: boolean;
 }
 
 /** `from` imports `to`. */
@@ -30,9 +43,17 @@ export interface FileGraphLink {
 }
 
 export interface FileGraphData {
-  readonly center: string;
+  /** Drawn in the accent, and named whatever the zoom. */
+  readonly roots: ReadonlyArray<string>;
   readonly nodes: ReadonlyArray<FileGraphNode>;
   readonly links: ReadonlyArray<FileGraphLink>;
+  readonly clusters?: ReadonlyArray<FileGraphCluster>;
+}
+
+/** What a story's step lights: its nodes, its links, and the links between its nodes. */
+export interface FileGraphFocus {
+  readonly nodes: ReadonlyArray<string>;
+  readonly links: ReadonlyArray<{ readonly from: string; readonly to: string }>;
 }
 
 /** How many group colours there are: the theme's `--atlas-lens-1` to `--atlas-lens-6`. */
@@ -41,9 +62,10 @@ export const GROUP_SLOTS = 6;
 /** What a graph lays out, as one string: two graphs with the same lay out the same. */
 export const fileGraphStructure = (graph: FileGraphData): string =>
   JSON.stringify([
-    graph.center,
-    graph.nodes.map((node) => node.id),
+    graph.roots,
+    graph.nodes.map((node) => [node.id, node.cluster ?? null]),
     graph.links.map((link) => [link.from, link.to]),
+    (graph.clusters ?? []).map((cluster) => [cluster.id, cluster.parent]),
   ]);
 
 /** What a graph draws, as one string: two graphs with the same draw the same picture. */
@@ -59,6 +81,7 @@ export const fileGraphSignature = (graph: FileGraphData): string =>
       node.group,
     ]),
     graph.links.map((link) => link.guessed),
+    (graph.clusters ?? []).map((cluster) => [cluster.name, cluster.root]),
   ]);
 
 /** Each node's link count, a link to itself not counted. */
@@ -85,3 +108,18 @@ export function neighbourhood(graph: FileGraphData, id: string): Set<string> {
 /** What a node's label says: its name, a folded folder's with its file count. */
 export const nodeLabel = (node: FileGraphNode): string =>
   node.kind === "folder" && node.files !== null ? `${node.name} · ${node.files}` : node.name;
+
+/** Each cluster's ancestors, innermost first, the cluster itself included. */
+export function clusterChains(graph: FileGraphData): Map<string, ReadonlyArray<string>> {
+  const parents = new Map((graph.clusters ?? []).map((cluster) => [cluster.id, cluster.parent]));
+  const chains = new Map<string, ReadonlyArray<string>>();
+  for (const id of parents.keys()) {
+    const chain: Array<string> = [];
+    for (let at: string | null | undefined = id; at != null && !chain.includes(at);) {
+      chain.push(at);
+      at = parents.get(at);
+    }
+    chains.set(id, chain);
+  }
+  return chains;
+}

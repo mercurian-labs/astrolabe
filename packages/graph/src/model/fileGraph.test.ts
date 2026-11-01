@@ -25,7 +25,7 @@ const link = (from: string, to: string) => ({ from, to, guessed: false });
 
 /** `app.ts` imports `a.ts` (which imports `a1.ts`) and `b.ts`; `main.ts` imports it. */
 const GRAPH: FileGraphData = {
-  center: "app.ts",
+  roots: ["app.ts"],
   nodes: ["app.ts", "a.ts", "a1.ts", "b.ts", "main.ts"].map((id) => node(id)),
   links: [
     link("app.ts", "a.ts"),

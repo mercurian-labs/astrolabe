@@ -142,4 +142,28 @@ export const layer = McpToolAccess.toLayer(CodeToolkit, {
   astrolabe_code_map: McpToolAccess.readsAsCaller((input) =>
     read((index, checkout) => index.map({ ...checkout, ...input })),
   ),
+  // The view is the call itself: the thread keeps it, and its Graph tab draws it from there.
+  astrolabe_code_graph_show: McpToolAccess.readsAsCaller(({ steps }) =>
+    Effect.gen(function* () {
+      const focus = [...new Set(steps.flatMap((step) => step.focus))];
+      const ids = [
+        ...new Set([
+          ...focus,
+          ...steps.flatMap((step) => [
+            ...(step.links ?? []).flatMap((link) => [link.from, link.to]),
+            ...(step.expandNeighbours ?? []),
+            ...(step.showContents ?? []),
+          ]),
+        ]),
+      ];
+      const { unknown } = yield* read((index, checkout) => index.checkNodes({ ...checkout, ids }));
+      if (focus.every((id) => unknown.includes(id))) {
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: `None of the steps' focus nodes are in this checkout: ${focus.join(", ")}. Use paths relative to your working directory, and definition ids from astrolabe_code_outline or astrolabe_code_find.`,
+        });
+      }
+      return { steps: steps.length, unknown: [...unknown] };
+    }),
+  ),
 });

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { FileGraphHandle, FileGraphProps } from "./FileGraph.tsx";
 import type { FileGraphData, FileGraphNode } from "./model/fileGraph.ts";
 import { DEFAULT_FILE_GRAPH_SETTINGS, type FileGraphSettings } from "./model/fileGraphSettings.ts";
-import type { FileGraphFrame } from "./render/file/FileGraphRenderer.ts";
+import { DOUBLE_CLICK_MS, type FileGraphFrame } from "./render/file/FileGraphRenderer.ts";
 
 // The file graph as Repositories drives it, its frames handed to a recording drawer (happy-dom has
 // no WebGL) and run by hand.
@@ -88,20 +88,40 @@ function mounted(graph: FileGraphData, settings: FileGraphSettings = DEFAULT_FIL
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const onOpen = vi.fn<FileGraphProps["onOpen"]>();
+  const onClick = vi.fn<FileGraphProps["onClick"]>();
+  const onDoubleClick = vi.fn<NonNullable<FileGraphProps["onDoubleClick"]>>();
+  const onClusterClick = vi.fn<NonNullable<FileGraphProps["onClusterClick"]>>();
+  const onContextMenu = vi.fn<NonNullable<FileGraphProps["onContextMenu"]>>();
   const onHover = vi.fn<NonNullable<FileGraphProps["onHover"]>>();
   const ref = createRef<FileGraphHandle>();
-  const show = (next: FileGraphData, nextSettings = settings) =>
+  const show = (
+    next: FileGraphData,
+    nextSettings = settings,
+    focus: FileGraphProps["focus"] = null,
+  ) =>
     act(() =>
       root.render(
-        createElement(FileGraph, { graph: next, settings: nextSettings, onOpen, onHover, ref }),
+        createElement(FileGraph, {
+          graph: next,
+          settings: nextSettings,
+          focus,
+          onClick,
+          onDoubleClick,
+          onClusterClick,
+          onContextMenu,
+          onHover,
+          ref,
+        }),
       ),
     );
   show(graph);
   const canvas = () => host.querySelector(".file-graph") as HTMLElement;
   return {
     show,
-    onOpen,
+    onClick,
+    onDoubleClick,
+    onClusterClick,
+    onContextMenu,
     onHover,
     ref,
     /** A pointer event at a point of the frame. */
@@ -153,7 +173,7 @@ const node = (id: string, extra: Partial<FileGraphNode> = {}): FileGraphNode => 
 });
 
 const GRAPH: FileGraphData = {
-  center: "app.ts",
+  roots: ["app.ts"],
   nodes: ["app.ts", "a.ts", "b.ts", "a1.ts", "main.ts"].map((id) => node(id)),
   links: [
     { from: "app.ts", to: "a.ts", guessed: false },
@@ -214,7 +234,7 @@ describe("a file graph", () => {
     using _pane = paneSized(700, 500);
     using graph = mounted(GRAPH);
     harness.run();
-    graph.show({ ...GRAPH, center: "a.ts" });
+    graph.show({ ...GRAPH, roots: ["a.ts"] });
     harness.run();
     expect(harness.idle()).toBe(true);
     const frame = last();
@@ -310,7 +330,7 @@ describe("a file graph", () => {
     using _pane = paneSized(700, 500);
     const leaves = Array.from({ length: 30 }, (_, at) => `feature-${at}/someLongFileName.ts`);
     const crowded: FileGraphData = {
-      center: "hub.ts",
+      roots: ["hub.ts"],
       nodes: [
         node("hub.ts"),
         node("apps/web/src", { kind: "folder", files: 500 }),
@@ -357,7 +377,7 @@ describe("a file graph", () => {
   it("keeps a graph framed as files arrive around the same file, until the reader pans", () => {
     using _pane = paneSized(700, 500);
     const small: FileGraphData = {
-      center: "hub.ts",
+      roots: ["hub.ts"],
       nodes: [node("hub.ts"), node("a.ts")],
       links: [{ from: "a.ts", to: "hub.ts", guessed: false }],
     };
@@ -395,7 +415,7 @@ describe("a file graph", () => {
     using _pane = paneSized(700, 500);
     const leaves = Array.from({ length: 30 }, (_, at) => `feature-${at}/someLongFileName.ts`);
     const crowded: FileGraphData = {
-      center: "hub.ts",
+      roots: ["hub.ts"],
       nodes: [
         node("hub.ts"),
         node("apps/web/src", { kind: "folder", files: 500 }),
@@ -440,29 +460,125 @@ describe("a file graph", () => {
     expect(last()?.nodes.every((each) => each.alpha === 1)).toBe(true);
   });
 
-  it("opens a clicked file, in a new tab with ⌘ held, and never after a drag", () => {
+  it("clicks once after the double-click window, double-clicks apart, and never after a drag", () => {
     using _pane = paneSized(700, 500);
     using graph = mounted(GRAPH);
     harness.run();
-    const at = screenOf("b.ts");
-    graph.pointer("pointerdown", at.x, at.y);
-    graph.pointer("pointerup", at.x, at.y);
-    expect(graph.onOpen).toHaveBeenLastCalledWith("b.ts", false);
-    graph.pointer("pointerdown", at.x, at.y, { metaKey: true });
-    graph.pointer("pointerup", at.x, at.y, { metaKey: true });
-    expect(graph.onOpen).toHaveBeenLastCalledWith("b.ts", true);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const at = screenOf("b.ts");
+      const click = (init: PointerEventInit = {}) => {
+        graph.pointer("pointerdown", at.x, at.y, init);
+        graph.pointer("pointerup", at.x, at.y, init);
+      };
+      click();
+      expect(graph.onClick).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(DOUBLE_CLICK_MS);
+      expect(graph.onClick).toHaveBeenLastCalledWith("b.ts", false);
+      click({ metaKey: true });
+      vi.advanceTimersByTime(DOUBLE_CLICK_MS);
+      expect(graph.onClick).toHaveBeenLastCalledWith("b.ts", true);
 
-    graph.onOpen.mockClear();
-    graph.pointer("pointerdown", at.x, at.y);
-    graph.pointer("pointermove", at.x + 60, at.y + 40);
-    harness.run(5);
-    expect(harness.idle()).toBe(false);
-    graph.pointer("pointerup", at.x + 60, at.y + 40);
+      graph.onClick.mockClear();
+      click();
+      click();
+      vi.advanceTimersByTime(DOUBLE_CLICK_MS);
+      expect(graph.onDoubleClick).toHaveBeenCalledWith("b.ts");
+      expect(graph.onClick).not.toHaveBeenCalled();
+
+      graph.pointer("pointerdown", at.x, at.y);
+      graph.pointer("pointermove", at.x + 60, at.y + 40);
+      harness.run(5);
+      expect(harness.idle()).toBe(false);
+      graph.pointer("pointerup", at.x + 60, at.y + 40);
+      harness.run();
+      vi.advanceTimersByTime(DOUBLE_CLICK_MS);
+      expect(harness.idle()).toBe(true);
+      expect(graph.onClick).not.toHaveBeenCalled();
+      // The dragged file moved towards where it was let go.
+      expect(screenOf("b.ts").x).toBeGreaterThan(at.x + 10);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("draws an open cluster as a disc around what it holds, nested, and closes it on a click", () => {
+    using _pane = paneSized(700, 500);
+    const clustered: FileGraphData = {
+      roots: ["app.ts#App"],
+      nodes: [
+        node("app.ts#App", { kind: "symbol", cluster: "app.ts" }),
+        node("app.ts#App.render", { kind: "symbol", cluster: "app.ts#App2" }),
+        node("app.ts#helper", { kind: "symbol", cluster: "app.ts" }),
+        node("b.ts"),
+      ],
+      links: [
+        { from: "app.ts#App", to: "app.ts#helper", guessed: false },
+        { from: "app.ts#App.render", to: "b.ts", guessed: false },
+      ],
+      clusters: [
+        { id: "app.ts", name: "app.ts", parent: null, root: true },
+        { id: "app.ts#App2", name: "App2", parent: "app.ts", root: false },
+      ],
+    };
+    using graph = mounted(clustered);
     harness.run();
-    expect(harness.idle()).toBe(true);
-    expect(graph.onOpen).not.toHaveBeenCalled();
-    // The dragged file moved towards where it was let go.
-    expect(screenOf("b.ts").x).toBeGreaterThan(at.x + 10);
+    const hulls = last()?.hulls ?? [];
+    expect(hulls.map((hull) => hull.id)).toEqual(["app.ts", "app.ts#App2"]);
+    const [outer, inner] = hulls;
+    for (const id of ["app.ts#App", "app.ts#helper", "app.ts#App.render"]) {
+      const at = drawn(id);
+      expect(
+        Math.hypot((at?.x ?? 0) - (outer?.x ?? 0), (at?.y ?? 0) - (outer?.y ?? 0)),
+      ).toBeLessThan(outer?.radius ?? 0);
+    }
+    // The inner disc sits inside the outer one, and the root's rim takes the accent.
+    expect(
+      Math.hypot((inner?.x ?? 0) - (outer?.x ?? 0), (inner?.y ?? 0) - (outer?.y ?? 0)) +
+        (inner?.radius ?? 0),
+    ).toBeLessThanOrEqual((outer?.radius ?? 0) + 0.001);
+    expect(outer?.rim).toBe(drawn("app.ts#App")?.fill);
+    expect(inner?.rim).not.toBe(outer?.rim);
+    const b = drawn("b.ts");
+    expect(
+      Math.hypot((b?.x ?? 0) - (outer?.x ?? 0), (b?.y ?? 0) - (outer?.y ?? 0)),
+    ).toBeGreaterThan(outer?.radius ?? 0);
+
+    // A click on the disc, off its nodes, closes it; a right-click names what it landed on.
+    const frame = last();
+    if (frame === null || inner === undefined) throw new Error("nothing drawn");
+    const toScreen = (x: number, y: number) => ({
+      x: (x - frame.camera.x) * frame.camera.zoom + frame.width / 2,
+      y: (y - frame.camera.y) * frame.camera.zoom + frame.height / 2,
+    });
+    const rim = toScreen(inner.x, inner.y - inner.radius + 2 / frame.camera.zoom);
+    graph.pointer("pointerdown", rim.x, rim.y);
+    graph.pointer("pointerup", rim.x, rim.y);
+    expect(graph.onClusterClick).toHaveBeenCalledWith("app.ts#App2");
+    const at = screenOf("b.ts");
+    graph.pointer("contextmenu", at.x, at.y);
+    expect(graph.onContextMenu).toHaveBeenLastCalledWith({ target: "node", id: "b.ts", ...at });
+  });
+
+  it("lights a story's step in the accent and quiets the rest until it is let go", () => {
+    using _pane = paneSized(700, 500);
+    using graph = mounted({ ...GRAPH, roots: [] });
+    harness.run();
+    const plain = drawn("a.ts")?.fill;
+    graph.show({ ...GRAPH, roots: [] }, DEFAULT_FILE_GRAPH_SETTINGS, {
+      nodes: ["a.ts", "a1.ts"],
+      links: [],
+    });
+    harness.run();
+    expect(drawn("a.ts")?.fill).not.toBe(plain);
+    expect(drawn("a.ts")?.alpha).toBe(1);
+    expect(drawn("b.ts")?.alpha).toBeLessThan(1);
+    const lit = last()?.links.filter((link) => link.alpha === 1) ?? [];
+    expect(lit).toHaveLength(1);
+    graph.show({ ...GRAPH, roots: [] }, DEFAULT_FILE_GRAPH_SETTINGS, null);
+    harness.run();
+    expect(drawn("a.ts")?.fill).toBe(plain);
+    expect(drawn("b.ts")?.alpha).toBe(1);
   });
 
   it("pans with a drag on the paper and zooms at the pointer with the wheel", () => {
@@ -476,7 +592,7 @@ describe("a file graph", () => {
     harness.run();
     const panned = last()?.camera;
     expect(panned?.x).toBeCloseTo((before?.x ?? 0) - 100 / (before?.zoom ?? 1));
-    expect(graph.onOpen).not.toHaveBeenCalled();
+    expect(graph.onClick).not.toHaveBeenCalled();
 
     const at = screenOf("main.ts");
     const wheel = new WheelEvent("wheel", { deltaY: -200, bubbles: true });

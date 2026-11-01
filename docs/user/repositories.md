@@ -32,18 +32,16 @@ header, or choose **Unlink tab** in its tab menu, to keep it on one file.
 
 Click a file to open it in place of the file the graph shows (⌘-click or Ctrl-click for a new
 tab), and the graph moves to it; a graph kept on one file moves to the file you click. Click a
-folded folder (a lighter dot
-named by the end of its path, such as `web/src · 975`) to unfold it; **Fold folders** in the
-header folds them again. Drag a file to move it, drag the background to pan, and scroll to zoom.
-Where names would overlap, the bigger file's shows and the other waits until you zoom in.
+folded folder (a lighter dot named by the end of its path, such as `web/src · 975`) to open it.
+Double-click a file to add its neighbours, and right-click any dot to show its contents or centre
+the graph on it: see [Code graph](code-graph.md) for levels of detail and growing the graph.
 Hovering a file names it and its neighbours, lights them, shows the import that links it, and
-highlights that line in the open file. Outside packages are the lightest dots. To see which files
-changed on your branch or are not yet committed, turn on **Changed files** in the panel's
-Display.
+highlights that line in the open file. To see which files changed on your branch or are not yet
+committed, turn on **Changed files** in the panel's Display.
 
-**Graph settings** in the header opens a panel to search the files shown, set the depth and whether
-uses, files that use it, tests and outside packages show, and tune the display and the forces that
-lay the graph out. A group colours the files whose path holds every word of its query. **Animate**
+**Graph settings** in the header opens a panel to search the graph, set its level and depth and
+whether uses, files that use it, tests and outside packages show, and tune the display and the
+forces that lay the graph out. A group colours the files whose path holds every word of its query. **Animate**
 lays the graph out again.
 
 The graph reads the repository's code index, set in **Settings → Projects**. While the index is

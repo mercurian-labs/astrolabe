@@ -75,7 +75,7 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   in front). See panes.md, "Chats as tabs".
 - **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
   files that open inside the change request).
-- **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` (the Graph tab's) show
+- **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
