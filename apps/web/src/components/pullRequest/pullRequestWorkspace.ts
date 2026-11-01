@@ -1,4 +1,5 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { projectChangeRequestUrl } from "@t3tools/client-runtime/change-request-links";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { EnvironmentId, ProjectId, type PullRequestAction } from "@t3tools/contracts";
 
@@ -10,6 +11,7 @@ import { workspace, WORKSPACE_LAYOUT_KEY } from "~/panes/workspace";
 import { pullRequestSurfaceId } from "~/rightPanelStore";
 import { readProject } from "~/state/entities";
 import type { RowClickIntent } from "~/tabNavigation.logic";
+import { readPullRequestDetailSnapshot } from "./pullRequestDetail.logic";
 import type { FullPullRequestTarget, PullRequestTarget } from "./pullRequestTabs";
 
 /**
@@ -34,6 +36,33 @@ function projectHost(environmentId: string, projectId: string): string | null {
   return identity
     ? (sourceControlClients.changeRequestHost(identity, identity.provider) ?? null)
     : null;
+}
+
+/** A pull request's address on its host, from its last read, else its repository's. */
+export function pullRequestUrlOf(target: FullPullRequestTarget): string | undefined {
+  const projectId = ProjectId.make(target.projectId);
+  const snapshot = readPullRequestDetailSnapshot(storage(), target.environmentId, {
+    projectId,
+    repository: target.repository,
+    number: target.number,
+    host: target.host,
+  });
+  const identity = readProject(
+    scopeProjectRef(EnvironmentId.make(target.environmentId), projectId),
+  )?.repositoryIdentity;
+  return (
+    snapshot?.url ??
+    projectChangeRequestUrl(identity, target.repository, target.number) ??
+    undefined
+  );
+}
+
+function storage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -1,3 +1,4 @@
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { applyPullRequestDraftFilterChange } from "@t3tools/client-runtime/pull-request-query";
 import { Spinner } from "~/components/ui/spinner";
 import type { PullRequestSpeedActionResult } from "~/components/pullRequest/PullRequestSpeedActions";
@@ -86,6 +87,8 @@ import { Button } from "../ui/button";
 import { useSidebar } from "../ui/sidebar";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { toastManager } from "../ui/toast";
 import { useSidebarProjectGroups } from "~/hooks/useSidebarProjectGroups";
 import {
   pullRequestEnvironment,
@@ -105,6 +108,7 @@ import {
   attachChangesList,
   placePullRequests,
   pullRequestTabKey,
+  pullRequestUrlOf,
   showChangeRequestTab,
   showPullRequest,
 } from "./pullRequestWorkspace";
@@ -1302,6 +1306,33 @@ export function PullRequestsPage() {
     onSearchFocused,
   };
 
+  const copyPullRequestFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    const url = focusedPullRequest === null ? undefined : pullRequestUrlOf(focusedPullRequest);
+    if (!url) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat) return;
+    const { shortLabel, singular } = (
+      sourceControlClients.findByChangeRequestUrl(url) ?? sourceControlClients.get(undefined)
+    ).changeRequest;
+    void writeTextToClipboard(url, `${singular} link`).then(
+      (didCopy) => {
+        if (didCopy)
+          toastManager.add({
+            type: "success",
+            title: `${shortLabel} link copied`,
+            description: url,
+          });
+      },
+      (error) => {
+        toastManager.add({
+          type: "error",
+          title: `Failed to copy ${shortLabel} link`,
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      },
+    );
+  });
   // Astrolabe: closes the focused pane's pull request, as T3 Code's shortcut closed its panel.
   const closeFocusedFromShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (focusedPullRequest === null) return;
@@ -1379,6 +1410,7 @@ export function PullRequestsPage() {
         context: getShortcutContext(),
       });
       if (command === "rightPanel.close") closeFocusedFromShortcut(event);
+      if (command === "thread.copyReference") copyPullRequestFromShortcut(event);
       // A chat shown in these panes takes find for itself first (`ChatView`).
       if (command === "chat.find") focusSearchFromShortcut(event);
     };

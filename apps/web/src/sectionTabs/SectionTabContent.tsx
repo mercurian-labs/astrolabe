@@ -21,18 +21,12 @@ import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
 } from "~/components/pullRequest/pullRequestTabs";
-import {
-  closeAskingFirst,
-  useWikiTabLabel,
-  WikiTabView,
-  type WikiTabNav,
-} from "~/components/wiki/WikiTabView";
+import { useWikiTabLabel, WikiTabView, type WikiTabNav } from "~/components/wiki/WikiTabView";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import {
   activateTab,
-  closeTab,
   focusedPane,
   openBeside,
   openTab,
@@ -84,11 +78,6 @@ function paneTabNav(
         ? workspace.openChatsBesideFront([chatTabKey(ref)])
         : store.update((arrangement) => showKeyIn(arrangement, chatTabKey(ref), "beside")),
   };
-}
-
-/** Closes a tab from a set of panes, asking first when it holds unsaved edits. */
-export function closeSectionTab(store: PaneArrangementStore, key: string) {
-  closeAskingFirst(key, () => store.update((arrangement) => closeTab(arrangement, key)));
 }
 
 /** "Open in <section>" for a tab whose home section has more to show of it. */

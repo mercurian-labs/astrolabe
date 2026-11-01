@@ -3,7 +3,7 @@ import { buildDraftThreadRouteParams, buildThreadRouteParams } from "~/threadRou
 import type { LinkedArrangement } from "./linkedTabs";
 import { focusedChatOf } from "./workspace";
 
-export function chatRouteParams(route: ChatRoute) {
+function chatRouteParams(route: ChatRoute) {
   return route.kind === "draft"
     ? ({ to: "/draft/$draftId", params: buildDraftThreadRouteParams(route.draftId) } as const)
     : ({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(route.ref) } as const);
