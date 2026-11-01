@@ -1,6 +1,14 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { Profiler, startTransition, useEffect, useLayoutEffect, useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -128,6 +136,7 @@ import { chatRouteOf } from "../chatTabs/chatTabLabel";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { Route as ChatLayoutRoute } from "../routes/_chat";
 import { agentsRoute } from "./agentsRoute";
 import { activateTab, focusPane, openTab, splitTab, startingArrangement } from "./arrangement";
 import type { PanelProps } from "./panesController";
@@ -370,6 +379,65 @@ describe("WorkspaceView chat tabs", () => {
       "c6",
       "c7",
     ]);
+  });
+});
+
+describe("WorkspaceView under the chat routes", () => {
+  /** The app's `_chat` layout, with the routes it lays the workspace out for. */
+  function chatRoutes(path: string) {
+    const root = createRootRoute({ component: Outlet });
+    const layout = createRoute({
+      getParentRoute: () => root,
+      id: "_chat",
+      component: ChatLayoutRoute.options.component!,
+    });
+    const blank = () => null;
+    const routeTree = root.addChildren([
+      layout.addChildren([
+        createRoute({ getParentRoute: () => layout, path: "/", component: blank }),
+        createRoute({ getParentRoute: () => layout, path: "wikis", component: blank }),
+        createRoute({
+          getParentRoute: () => layout,
+          path: "$environmentId/$threadId",
+          component: blank,
+        }),
+      ]),
+    ]);
+    return createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
+  }
+
+  it("keeps the panes and every chat mounted as the route enters and leaves a thread", async () => {
+    setup();
+    probe.setRoute = null;
+    const file = repositoryTabKey({
+      kind: "file",
+      environmentId: env,
+      projectId: ProjectId.make("project-1"),
+      cwd: "/repo",
+      path: "README.md",
+    });
+    workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
+    workspace.open(file, "beside");
+    const router = chatRoutes("/");
+    await router.load();
+    // The app's own router, as main.tsx renders it, so the layout reads real matches.
+    await using _screen = await render(<RouterProvider router={router} />, { router: false });
+    const panes = () => [...document.querySelectorAll("[data-pane-id]")];
+    const [panesBefore, nodeA] = [panes(), chatNode("A")];
+    const mounted = totals().instances;
+    expect(nodeA).not.toBeNull();
+
+    const toThread = () =>
+      router.navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: env, threadId: "A" },
+      });
+    for (const go of [toThread, () => router.navigate({ to: "/wikis" }), toThread]) {
+      await act(go);
+      expect(panes().filter((pane, index) => pane !== panesBefore[index])).toEqual([]);
+      expect(chatNode("A")).toBe(nodeA);
+      expect(totals().instances).toEqual(mounted);
+    }
   });
 });
 

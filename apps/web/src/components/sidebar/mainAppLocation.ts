@@ -1,4 +1,4 @@
-import { useLocation, useNavigate, type AnyRouter } from "@tanstack/react-router";
+import { useMatches, useNavigate, type AnyRouter } from "@tanstack/react-router";
 
 import { chatRouteOf } from "~/chatTabs/chatTabLabel";
 import { agentsRoute } from "~/panes/agentsRoute";
@@ -55,9 +55,13 @@ export function startMainAppLocationTracking(router: AnyRouter): () => void {
  * Settings or Usage modal, that is the page the modal opened over, not the modal's own path.
  */
 export function useSectionPathname() {
-  return useLocation({
-    select: (location) =>
-      isAppModalPage(location.pathname) ? appModalReturnPathname : location.pathname,
+  // The matches, not the location: a navigation moves the location before the params, and a
+  // layout reading both would see a thread's path without its thread and drop the workspace.
+  return useMatches({
+    select: (matches) => {
+      const pathname = matches.at(-1)?.pathname ?? "/";
+      return isAppModalPage(pathname) ? appModalReturnPathname : pathname;
+    },
   });
 }
 
