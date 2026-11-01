@@ -22,7 +22,7 @@ import { agentsRoute } from "./agentsRoute";
 import { activateTab, allTabs, focusedPane, isEmptyTab, placeTabs } from "./arrangement";
 import { insertIndex } from "./drag";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
-import { ChatOwnerContext, WorkspaceHostContext } from "./PaneSurfaceHost";
+import { ChatOwnerContext, PaneTabKeyContext, WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
 import { recentChats } from "./recentChats";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
@@ -296,16 +296,20 @@ const TabContent = memo(function TabContent({
   readonly active: boolean;
 }) {
   const chat = parseChatTabKey(tabKey);
-  if (chat !== null) {
-    return (
-      <ChatOwnerContext value={tabKey}>
-        <PaneChat threadRef={chat} />
-      </ChatOwnerContext>
-    );
-  }
   const repository = parseRepositoryTabKey(tabKey);
-  if (repository !== null) return <RepositoryTabView tabKey={tabKey} tab={repository} />;
-  return <SectionTabContent tabKey={tabKey} store={workspace.store} active={active} />;
+  return (
+    <PaneTabKeyContext value={tabKey}>
+      {chat !== null ? (
+        <ChatOwnerContext value={tabKey}>
+          <PaneChat threadRef={chat} />
+        </ChatOwnerContext>
+      ) : repository !== null ? (
+        <RepositoryTabView tabKey={tabKey} tab={repository} />
+      ) : (
+        <SectionTabContent tabKey={tabKey} store={workspace.store} active={active} />
+      )}
+    </PaneTabKeyContext>
+  );
 });
 
 const closeGoneChat = (chatKey: string) => {

@@ -69,8 +69,9 @@ choose **Open in new tab**, or drag it onto a pane's tabs to open it where you d
 selection of threads goes together). Search, `:b`, and new threads also show in place of the chat
 in front.
 
-Each tab remembers what it showed. The arrows at the top of the sidebar, `mod+[`
-and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the focused tab.
+Each tab remembers what it showed. The arrows at the start of a tab's header go back and
+forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do the same in the
+focused tab.
 
 ### Linked tabs
 

@@ -42,8 +42,6 @@ import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
-import { SidebarCollapsedActionsSlot } from "./sidebar/SidebarThreadHeader";
-import { SidebarTabHistory } from "./sidebar/SidebarTabHistory";
 import {
   isAppModalPage,
   isPullRequestsPath,
@@ -173,7 +171,7 @@ function readRoutePanelsOpen(router: AnyRouter) {
   };
 }
 
-// Astrolabe: in a section with tabs (Agents, Wikis), the tab in front's own history.
+// Astrolabe: the focused pane's tab in front walks its own history.
 function goInTabHistory(event: KeyboardEvent, direction: "back" | "forward") {
   const tabHistory = tabHistorySlot.get();
   if (!tabHistory) return false;
@@ -387,22 +385,15 @@ function SidebarControl() {
       node === null ? undefined : registerAppShellCommands(router, node),
   );
 
-  // Astrolabe: beside the icon rail the toggle is the rail's (`AppIconRail`); the title bar keeps
-  // only the section's back and forward while the sidebar is collapsed. It still carries the
-  // shell's commands.
+  // Astrolabe: beside the icon rail the toggle is the rail's (`AppIconRail`), so this draws
+  // nothing; it still carries the shell's commands.
   if (!isMobile) {
     return (
       <div
         ref={appShellCommandsRef}
         className="pointer-events-none fixed top-[var(--workspace-controls-top)] left-[calc(2.75rem+var(--workspace-titlebar-content-left))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
         data-sidebar-control=""
-      >
-        {isSidebarVisible ? null : (
-          <SidebarCollapsedActionsSlot gap>
-            <SidebarTabHistory />
-          </SidebarCollapsedActionsSlot>
-        )}
-      </div>
+      />
     );
   }
 

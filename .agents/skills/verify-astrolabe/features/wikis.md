@@ -50,9 +50,9 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 - **History**: each tab remembers what it showed (localStorage
   `astrolabe:wiki-tab-history:v1`, keyed by the tab key it shows now, last 50 each
   way). Clicks, Search, `:e`, deep links and followed wikilinks push onto it and clear
-  its forward history; saving a note into a change request keeps it. The sidebar
-  title-bar row's **Back**/**Forward**, `mod+[`/`mod+]` and Space `t h`/`t l` walk
-  the focused pane's tab in front (faint at either end); a step to a document open in
+  its forward history; saving a note into a change request keeps it. The note header's
+  **Back**/**Forward** walk that tab, and `mod+[`/`mod+]` and Space `t h`/`t l` walk
+  the focused pane's tab in front (the arrows faint at either end); a step to a document open in
   another tab brings that tab forward, and with unsaved edits it opens in a new tab.
 - **Pane header**: a note's header (Main or the change request, muted / the note's
   name, as a chat's breadcrumb; then quiet status and its buttons) is one line as tall as the tab strip, with no bottom border; the strip's
@@ -179,7 +179,7 @@ a screenshot of the section.
 ## Owns
 
 `apps/web/src/components/wiki/`, `routes/_chat.wikis*.tsx`, `components/sidebar/SidebarCard.tsx`,
-`components/sidebar/SidebarTabHistory.tsx` (Back/Forward), `panes/panesHost.ts`,
+`panes/panesHost.ts`,
 `panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
 `NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Projects and
 Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind

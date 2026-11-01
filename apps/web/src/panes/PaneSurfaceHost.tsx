@@ -27,3 +27,9 @@ export const ChatOwnerContext = createContext<string | null>(null);
 export function useChatOwner(): string | null {
   return useContext(ChatOwnerContext);
 }
+
+/**
+ * The tab, by its key in the shared panes, whose content renders here, so its header's back and
+ * forward walk that tab's own history; null outside the shared panes.
+ */
+export const PaneTabKeyContext = createContext<string | null>(null);

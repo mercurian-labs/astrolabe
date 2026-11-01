@@ -60,9 +60,8 @@ export interface ChatTabsHandle {
 export const chatTabsSlot = createHandleSlot<ChatTabsHandle>();
 
 /**
- * The back and forward of the section's tab in front: the chat tab in front in Agents, the
- * focused pane's tab in Wikis. The sidebar header's arrows and `navigation.back`/`forward` walk
- * it while one is on loan, and the app's route history otherwise.
+ * The back and forward of the focused pane's tab in front. `navigation.back`/`forward` walk it
+ * while one is on loan, and the app's route history otherwise; each tab's header walks its own.
  */
 export interface TabHistoryHandle {
   readonly canGoBack: boolean;

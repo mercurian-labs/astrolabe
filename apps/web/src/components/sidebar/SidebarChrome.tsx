@@ -41,7 +41,6 @@ import {
   useNavigateToAgents,
   useSectionPathname,
 } from "./mainAppLocation";
-import { SidebarTabHistory } from "./SidebarTabHistory";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -96,8 +95,6 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           </div>
         ) : null}
       </div>
-      {/* Astrolabe: back and forward for the section's tab in front. */}
-      <SidebarTabHistory />
     </div>
   );
 });

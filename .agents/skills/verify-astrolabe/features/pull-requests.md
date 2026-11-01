@@ -161,8 +161,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   (or brings it forward) once. The lit row is the focused tab's pull request. With servers too
   old for pull requests the sidebar reads "Pull requests unavailable". Below the md width the sidebar is a sheet, and opening a row closes it.
 - **History**: each tab walks back and forward through what it showed (the shared panes'
-  `astrolabe:workspace-tab-history:v1`) with the title bar's **Back**/**Forward**,
-  `mod+[`/`mod+]` and Space `t h`/`t l`. A pull request picked inside a review (stack
+  `astrolabe:workspace-tab-history:v1`) with `mod+[`/`mod+]` and Space `t h`/`t l`; a
+  review's tab has no header row, so no arrows. A pull request picked inside a review (stack
   menu, a link in its text) replaces that review's tab.
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
   labels, description, checks, comments), **Guide** (only with Settings → Source Control

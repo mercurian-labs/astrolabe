@@ -242,6 +242,36 @@ describe("the shared panes", () => {
     expect(panes(workspace)).toEqual([[chatA, chatB]]);
   });
 
+  it("step the tab named back and forward, not the focused one", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const file = (path: string) =>
+      repositoryTabKey({
+        kind: "file",
+        environmentId: "env-1" as EnvironmentId,
+        projectId: ProjectId.make("project-1"),
+        cwd: "/work/tree",
+        path,
+      });
+    workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
+    workspace.show(file("one.ts"), "p1");
+    workspace.show(file("two.ts"), "p1");
+    workspace.update((arrangement) => focusPane(arrangement, "p0"));
+    expect(panes(workspace)).toEqual([[chatA], [chatB, file("two.ts")]]);
+
+    expect(workspace.canStep("back")).toBe(false);
+    expect(workspace.canStep("back", file("two.ts"))).toBe(true);
+    workspace.step("back");
+    expect(panes(workspace)).toEqual([[chatA], [chatB, file("two.ts")]]);
+
+    workspace.step("back", file("two.ts"));
+    expect(panes(workspace)).toEqual([[chatA], [chatB, file("one.ts")]]);
+    expect(workspace.canStep("back", file("one.ts"))).toBe(false);
+    expect(workspace.canStep("forward", file("one.ts"))).toBe(true);
+    workspace.step("forward", file("one.ts"));
+    expect(panes(workspace)).toEqual([[chatA], [chatB, file("two.ts")]]);
+    expect(workspace.arrangement().focused).toBe("p0");
+  });
+
   it("put a new chat in the New tab in focus, where it stood", () => {
     const workspace = createWorkspace(chatTabsDevice);
     workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));

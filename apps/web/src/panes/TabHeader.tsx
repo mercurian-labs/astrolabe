@@ -1,4 +1,6 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
+import { useContext, type ComponentProps, type ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Toggle } from "~/components/ui/toggle";
@@ -9,15 +11,18 @@ import {
   WorkspaceBreadcrumbSeparator,
   WorkspaceBreadcrumbText,
 } from "~/components/WorkspaceBreadcrumb";
+import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
+import { primaryServerKeybindingsAtom } from "~/state/server";
+import { PaneTabKeyContext } from "./PaneSurfaceHost";
+import { useWorkspaceTabHistory, workspace } from "./workspace";
 
 /**
- * Astrolabe: the row across the top of a pane's tab, drawn as a chat's header is: the strip's
- * height and no border, a breadcrumb, a quiet status and ghost icon actions. Like the chat's
- * timeline, the scroll element below takes `topbar-scroll-fade` with a top inset of
- * `--workspace-titlebar-scroll-fade-height`, so what scrolls up fades out under the header.
+ * Astrolabe: a pane tab's header row, drawn as a chat's: no border, the tab's back and forward,
+ * a breadcrumb, a quiet status and ghost icon actions. The scroll element below takes
+ * `topbar-scroll-fade` with a top inset of `--workspace-titlebar-scroll-fade-height`.
  */
-function Root({ className, ...props }: ComponentProps<"header">) {
+function Root({ className, children, ...props }: ComponentProps<"header">) {
   return (
     <header
       data-tab-header
@@ -26,7 +31,55 @@ function Root({ className, ...props }: ComponentProps<"header">) {
         className,
       )}
       {...props}
-    />
+    >
+      <History />
+      {children}
+    </header>
+  );
+}
+
+/**
+ * Back and forward through what this tab showed, as Obsidian's tab headers start: the tab whose
+ * header they sit in, focused or not, faint with nothing that way. Nothing outside the shared
+ * panes.
+ */
+function History({ className }: { readonly className?: string }) {
+  const tabKey = useContext(PaneTabKeyContext);
+  return tabKey === null ? null : <TabHistory tabKey={tabKey} className={className} />;
+}
+
+function TabHistory({
+  tabKey,
+  className,
+}: {
+  readonly tabKey: string;
+  readonly className?: string | undefined;
+}) {
+  const { canGoBack, canGoForward } = useWorkspaceTabHistory(tabKey);
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const tooltip = (text: string, command: "navigation.back" | "navigation.forward") => {
+    const shortcut = shortcutLabelForCommand(keybindings, command);
+    return shortcut ? `${text} (${shortcut})` : text;
+  };
+  return (
+    <div className={cn("flex shrink-0 items-center", className)} data-tab-history>
+      <Action
+        label="Back"
+        tooltip={tooltip("Back", "navigation.back")}
+        disabled={!canGoBack}
+        onClick={() => workspace.step("back", tabKey)}
+      >
+        <ArrowLeftIcon className="size-4" />
+      </Action>
+      <Action
+        label="Forward"
+        tooltip={tooltip("Forward", "navigation.forward")}
+        disabled={!canGoForward}
+        onClick={() => workspace.step("forward", tabKey)}
+      >
+        <ArrowRightIcon className="size-4" />
+      </Action>
+    </div>
   );
 }
 
@@ -145,4 +198,4 @@ function Action({
   );
 }
 
-export const TabHeader = { Root, Title, Path, Status, Actions, Action };
+export const TabHeader = { Root, History, Title, Path, Status, Actions, Action };

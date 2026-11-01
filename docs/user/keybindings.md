@@ -357,8 +357,8 @@ field gets its own undo back. Terminals always keep their native shortcut.
 
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
 through the pages you have visited, like a browser's back and forward buttons. In
-every section they go back and forward in the focused tab instead, as the arrows at the top of
-the sidebar do.
+every section they go back and forward in the focused tab instead, as the arrows at the start of
+each tab's header do for their own tab.
 
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the

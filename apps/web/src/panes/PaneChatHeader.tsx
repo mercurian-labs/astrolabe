@@ -2,6 +2,7 @@ import { useContext, type ComponentProps } from "react";
 
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { ChatOwnerContext } from "./PaneSurfaceHost";
+import { TabHeader } from "./TabHeader";
 
 /** What makes ChatView's header the window's title bar, which a pane's header is not. */
 const TITLEBAR_CLASSES = new Set([
@@ -11,12 +12,11 @@ const TITLEBAR_CLASSES = new Set([
 ]);
 
 /**
- * ChatView's header bar, T3 Code's own `<header>` as drawn. Inside the panes each thread, the
- * host's or a guest's, keeps it at the top of its own tab, panel controls and all; the tab
- * strip above is the window's title bar, so the header drops what made it one: the drag region,
- * and the insets that clear a collapsed sidebar's toggle and the window's own controls.
+ * ChatView's `<header>`. Inside the panes the tab strip is the window's title bar, so it drops
+ * what made it one (the drag region, the insets for a collapsed sidebar's toggle and the
+ * window's controls) and starts with the tab's back and forward, as every pane tab's header does.
  */
-export function PaneChatHeader({ className, ...props }: ComponentProps<"header">) {
+export function PaneChatHeader({ className, children, ...props }: ComponentProps<"header">) {
   const inPanes = useContext(ChatOwnerContext) !== null;
   return (
     <header
@@ -29,6 +29,9 @@ export function PaneChatHeader({ className, ...props }: ComponentProps<"header">
           : className
       }
       {...props}
-    />
+    >
+      <TabHeader.History className="me-2 sm:me-3" />
+      {children}
+    </header>
   );
 }

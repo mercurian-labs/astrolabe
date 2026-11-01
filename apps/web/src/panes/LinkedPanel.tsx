@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { useRightPanelStore } from "../rightPanelStore";
 import { useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
-import { useChatOwner, useWorkspaceHost } from "./PaneSurfaceHost";
+import { PaneTabKeyContext, useChatOwner, useWorkspaceHost } from "./PaneSurfaceHost";
+import { findLeaf } from "./tree";
 import {
   useWorkspaceFront,
   useWorkspaceHostPaneId,
@@ -64,6 +65,15 @@ export function LinkedPanel(props: PanelProps) {
       }
     };
   }, [hostPaneId, maximized]);
+  // The live surface is the tab in front of the pane showing it, not its chat's tab.
+  const surfaceTab = useSyncExternalStore(workspace.store.subscribe, () =>
+    hostPaneId === null
+      ? null
+      : (findLeaf(workspace.arrangement().root, hostPaneId)?.active ?? null),
+  );
   if (!inFront || host === null) return null;
-  return createPortal(props.children, host.surface);
+  return createPortal(
+    <PaneTabKeyContext value={surfaceTab}>{props.children}</PaneTabKeyContext>,
+    host.surface,
+  );
 }

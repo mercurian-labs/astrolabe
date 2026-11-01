@@ -638,10 +638,15 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     );
   };
 
-  /** Steps the focused pane's tab in front back or forward through what it showed. */
-  const step = (direction: HistoryDirection) => {
+  /**
+   * Steps the tab `key` back or forward through what it showed: by default the focused pane's tab
+   * in front, as the keyboard's history does, and the tab whose header was used otherwise.
+   */
+  const step = (direction: HistoryDirection, key?: string) => {
     const { arrangement } = current();
-    const active = focusedPane(arrangement).active;
+    const active = key ?? focusedPane(arrangement).active;
+    const pane = leafWithTab(arrangement.root, active);
+    if (!pane) return;
     let tabHistories = histories;
     let goTo = historyTarget(tabHistories, active, direction);
     while (goTo !== null && !isWorkspaceKey(goTo)) {
@@ -657,7 +662,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
             ? before
             : leafWithTab(before.root, to)
               ? activateTab(before, to)
-              : openTab(before, to, before.focused),
+              : openTab(before, to, pane.id),
         () => pruned,
       );
       return;
@@ -671,8 +676,9 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     );
   };
 
-  const canStep = (direction: HistoryDirection) =>
-    historyTarget(histories, focusedPane(current().arrangement).active, direction) !== null;
+  /** Whether the tab `key` (the focused pane's tab in front by default) has anything that way. */
+  const canStep = (direction: HistoryDirection, key?: string) =>
+    historyTarget(histories, key ?? focusedPane(current().arrangement).active, direction) !== null;
 
   const close = (key: string) => update((arrangement) => closeTab(arrangement, key));
 
@@ -985,13 +991,16 @@ export function useTabOwner(key: string): string | null {
   );
 }
 
-/** Whether the focused pane's tab in front has anything back (or forward) to show. */
-export function useWorkspaceTabHistory() {
+/**
+ * Whether the tab `key` (the focused pane's tab in front when omitted) has anything back (or
+ * forward) to show.
+ */
+export function useWorkspaceTabHistory(key?: string) {
   const canGoBack = useSyncExternalStore(workspace.store.subscribe, () =>
-    workspace.canStep("back"),
+    workspace.canStep("back", key),
   );
   const canGoForward = useSyncExternalStore(workspace.store.subscribe, () =>
-    workspace.canStep("forward"),
+    workspace.canStep("forward", key),
   );
   return { canGoBack, canGoForward };
 }
