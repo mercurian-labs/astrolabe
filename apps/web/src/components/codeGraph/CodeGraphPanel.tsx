@@ -1,6 +1,6 @@
 import { FILE_GRAPH_RANGES, GROUP_SLOTS, type FileGraphRangeKey } from "@mercurian/graph/file";
 import { ChevronRightIcon, RotateCcwIcon, SearchIcon, XIcon } from "lucide-react";
-import { useId, type CSSProperties, type ReactNode } from "react";
+import { useId, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import type { CodeGraphLevel } from "@t3tools/contracts";
@@ -12,7 +12,7 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Switch } from "../ui/switch";
-import { RepositoryTabHeader } from "../repositories/RepositoryTabHeader";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { CodeGraphOptions, CodeGraphPanelState as PanelState } from "./codeGraphData";
 
 type Range = { readonly min: number; readonly max: number; readonly step: number };
@@ -89,12 +89,12 @@ export function CodeGraphPanel({
           {...section("filters")}
           accessory={
             <>
-              <RepositoryTabHeader.Action label="Restore default settings" onClick={onReset}>
+              <PanelAction label="Restore default settings" onClick={onReset}>
                 <RotateCcwIcon />
-              </RepositoryTabHeader.Action>
-              <RepositoryTabHeader.Action label="Close graph settings" onClick={onClose}>
+              </PanelAction>
+              <PanelAction label="Close graph settings" onClick={onClose}>
                 <XIcon />
-              </RepositoryTabHeader.Action>
+              </PanelAction>
             </>
           }
         >
@@ -183,12 +183,12 @@ export function CodeGraphPanel({
                     )
                   }
                 />
-                <RepositoryTabHeader.Action
+                <PanelAction
                   label={`Remove group ${at + 1}`}
                   onClick={() => setGroups(groups.filter((_, index) => index !== at))}
                 >
                   <XIcon />
-                </RepositoryTabHeader.Action>
+                </PanelAction>
               </div>
               <div role="radiogroup" aria-label={`Group ${at + 1} colour`} className="flex gap-1.5">
                 {LENS_COLORS.map((color, slot) => (
@@ -357,5 +357,22 @@ function SliderRow({
         />
       </div>
     </div>
+  );
+}
+
+/** A small ghost icon button in the panel, named by its tooltip. */
+function PanelAction({
+  label,
+  ...props
+}: Omit<ComponentProps<typeof Button>, "aria-label" | "size" | "variant" | "className"> & {
+  readonly label: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<Button aria-label={label} size="icon-xs" variant="ghost-muted" {...props} />}
+      />
+      <TooltipPopup side="bottom">{label}</TooltipPopup>
+    </Tooltip>
   );
 }

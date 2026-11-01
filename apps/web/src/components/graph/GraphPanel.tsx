@@ -22,11 +22,11 @@ import {
 } from "../codeGraph/codeGraphData";
 import { CodeGraphView, GraphNotice, type CodeGraphViewHandle } from "../codeGraph/CodeGraphView";
 import { storedChoice } from "../projects/storedChoice";
-import { RepositoryTabHeader } from "../repositories/RepositoryTabHeader";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { ownExpansion, threadGraphShown } from "./threadGraph";
 import { INITIAL_THREAD_GRAPH, useThreadGraphStore } from "./threadGraphStore";
+import { TabHeader } from "~/panes/TabHeader";
 
 /** The filter panel's choices, kept on the device for every thread's graph. */
 const graphOptions = storedChoice<CodeGraphOptions>({
@@ -150,11 +150,11 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <RepositoryTabHeader.Root>
+      <TabHeader.Root>
         {views.length === 0 ? (
-          <RepositoryTabHeader.Path>
+          <TabHeader.Title label="Graph">
             {state.roots === null ? "Changes" : state.roots.join(", ")}
-          </RepositoryTabHeader.Path>
+          </TabHeader.Title>
         ) : (
           <Select
             value={view?.id ?? CHANGES}
@@ -167,7 +167,7 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
             }}
           >
             <SelectTrigger
-              size="xs"
+              size="sm"
               variant="ghost"
               className="min-w-0 flex-1"
               aria-label="Graph view"
@@ -184,41 +184,43 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
             </SelectPopup>
           </Select>
         )}
-        {state.roots !== null && view === null ? (
-          <RepositoryTabHeader.Action
-            label="Back to the thread's changes"
-            onClick={() => update(key, (current) => ({ ...current, roots: null }))}
+        <TabHeader.Actions>
+          {state.roots !== null && view === null ? (
+            <TabHeader.Action
+              label="Back to the thread's changes"
+              onClick={() => update(key, (current) => ({ ...current, roots: null }))}
+            >
+              <Undo2Icon />
+            </TabHeader.Action>
+          ) : null}
+          {opened ? (
+            <TabHeader.Action
+              label="Reset the graph"
+              tooltip="Undo the neighbours and contents you opened"
+              onClick={() =>
+                update(key, (current) => ({ ...current, expansion: NO_KEYED_EXPANSION }))
+              }
+            >
+              <FoldVerticalIcon />
+            </TabHeader.Action>
+          ) : null}
+          <TabHeader.Action
+            label="Fit the graph"
+            disabled={roots === null}
+            onClick={() => viewRef.current?.fit()}
           >
-            <Undo2Icon />
-          </RepositoryTabHeader.Action>
-        ) : null}
-        {opened ? (
-          <RepositoryTabHeader.Action
-            label="Reset the graph"
-            tooltip="Undo the neighbours and contents you opened"
-            onClick={() =>
-              update(key, (current) => ({ ...current, expansion: NO_KEYED_EXPANSION }))
-            }
+            <ScanIcon />
+          </TabHeader.Action>
+          <TabHeader.Action
+            label="Graph settings"
+            tooltip={panel.open ? "Close graph settings" : "Graph settings"}
+            pressed={panel.open}
+            onClick={() => graphOptions.set({ ...options, panel: { ...panel, open: !panel.open } })}
           >
-            <FoldVerticalIcon />
-          </RepositoryTabHeader.Action>
-        ) : null}
-        <RepositoryTabHeader.Action
-          label="Fit the graph"
-          disabled={roots === null}
-          onClick={() => viewRef.current?.fit()}
-        >
-          <ScanIcon />
-        </RepositoryTabHeader.Action>
-        <RepositoryTabHeader.Action
-          label="Graph settings"
-          tooltip={panel.open ? "Close graph settings" : "Graph settings"}
-          pressed={panel.open}
-          onClick={() => graphOptions.set({ ...options, panel: { ...panel, open: !panel.open } })}
-        >
-          <SlidersHorizontalIcon />
-        </RepositoryTabHeader.Action>
-      </RepositoryTabHeader.Root>
+            <SlidersHorizontalIcon />
+          </TabHeader.Action>
+        </TabHeader.Actions>
+      </TabHeader.Root>
       {view === null || step === null ? null : (
         <div className="flex shrink-0 items-start gap-1 border-b px-2 py-1.5">
           <p className="min-w-0 flex-1 py-0.5 text-sm text-foreground">{step.caption}</p>

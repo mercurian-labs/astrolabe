@@ -26,7 +26,7 @@ import { registerUnsavedCheck } from "~/panes/unsavedEdits";
 import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
 import { openLocalGraph } from "./localGraph";
 import { workspace } from "~/panes/workspace";
-import { RepositoryTabHeader } from "./RepositoryTabHeader";
+import { TabHeader } from "~/panes/TabHeader";
 import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
@@ -49,7 +49,11 @@ const FILE_EDITOR_THEME = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   "&.cm-code .cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "13px" },
   ".cm-scroller": { lineHeight: "inherit" },
-  "&.cm-editor .cm-content": { padding: "12px 16px 40vh", caretColor: "currentColor" },
+  // Clears the fade under the tab's header at rest.
+  "&.cm-editor .cm-content": {
+    padding: "var(--workspace-titlebar-scroll-fade-height) 16px 40vh",
+    caretColor: "currentColor",
+  },
   // A note reads as a wiki's document does: a measure wide, in the middle of the pane.
   "&.cm-editor:not(.cm-code) .cm-content": {
     maxWidth: "48rem",
@@ -107,16 +111,16 @@ export function RepositoryFileView({
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
 
   const header = (
-    <RepositoryTabHeader.Root>
-      <RepositoryTabHeader.Path>{path}</RepositoryTabHeader.Path>
+    <TabHeader.Root>
+      <TabHeader.Path path={path} />
       {agentWorking ? (
-        <RepositoryTabHeader.Status className="text-info-foreground">
+        <TabHeader.Status className="text-info-foreground">
           <BotIcon className="size-3.5" />
           An agent is working in this checkout
-        </RepositoryTabHeader.Status>
+        </TabHeader.Status>
       ) : null}
       {contents === null ? null : (
-        <RepositoryTabHeader.Status>
+        <TabHeader.Status>
           {readOnly
             ? file.data?.truncated
               ? "Too big to edit here"
@@ -124,15 +128,17 @@ export function RepositoryFileView({
             : pending
               ? "Saving…"
               : "Saved"}
-        </RepositoryTabHeader.Status>
+        </TabHeader.Status>
       )}
-      <RepositoryTabHeader.Action
-        label="Open local graph"
-        onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
-      >
-        <WaypointsIcon />
-      </RepositoryTabHeader.Action>
-    </RepositoryTabHeader.Root>
+      <TabHeader.Actions>
+        <TabHeader.Action
+          label="Open local graph"
+          onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
+        >
+          <WaypointsIcon />
+        </TabHeader.Action>
+      </TabHeader.Actions>
+    </TabHeader.Root>
   );
   if (file.error !== null && contents === null) {
     return (
@@ -294,7 +300,7 @@ function FileEditor({
   return (
     <div
       ref={host}
-      className="h-full min-h-0 overflow-hidden text-sm leading-relaxed text-foreground"
+      className="h-full min-h-0 overflow-hidden text-sm leading-relaxed text-foreground [&_.cm-scroller]:topbar-scroll-fade"
       onKeyDown={(event) => {
         if (event.key === "Escape") event.stopPropagation();
       }}

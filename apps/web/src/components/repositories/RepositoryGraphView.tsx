@@ -5,6 +5,7 @@ import { activateTab, openBeside, openTab } from "~/panes/arrangement";
 import { followedGraphFiles } from "~/panes/linkMarks";
 import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
+import { TabHeader } from "~/panes/TabHeader";
 import { workspace } from "~/panes/workspace";
 import {
   DEFAULT_CODE_GRAPH_OPTIONS,
@@ -19,7 +20,6 @@ import {
 import { CodeGraphView, GraphNotice, type CodeGraphViewHandle } from "../codeGraph/CodeGraphView";
 import { storedChoice } from "../projects/storedChoice";
 import { filePaneOf, followedPath, followLocalGraph, pinLocalGraph } from "./localGraph";
-import { RepositoryTabHeader } from "./RepositoryTabHeader";
 import { fileName, repositoryTabKey, type RepositoryGraphTab } from "./repositoryTabs";
 
 /** The filter panel's choices, kept on the device for every local graph. */
@@ -105,46 +105,52 @@ export default function RepositoryGraphView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <RepositoryTabHeader.Root>
-        <RepositoryTabHeader.Path>{path ?? ""}</RepositoryTabHeader.Path>
-        {opened ? (
-          <RepositoryTabHeader.Action
-            label="Reset the graph"
-            tooltip="Undo the neighbours and contents you opened"
-            onClick={() => setExpansionState(NO_KEYED_EXPANSION)}
+      <TabHeader.Root>
+        {path === null ? (
+          <TabHeader.Title label="Local graph">Local graph</TabHeader.Title>
+        ) : (
+          <TabHeader.Path path={path} />
+        )}
+        <TabHeader.Actions>
+          {opened ? (
+            <TabHeader.Action
+              label="Reset the graph"
+              tooltip="Undo the neighbours and contents you opened"
+              onClick={() => setExpansionState(NO_KEYED_EXPANSION)}
+            >
+              <FoldVerticalIcon />
+            </TabHeader.Action>
+          ) : null}
+          <TabHeader.Action
+            label="Following"
+            tooltip={
+              following
+                ? "Following the file in front: click to keep this file"
+                : "Follow the file in front"
+            }
+            pressed={following}
+            disabled={following && path === null}
+            onClick={toggleFollowing}
           >
-            <FoldVerticalIcon />
-          </RepositoryTabHeader.Action>
-        ) : null}
-        <RepositoryTabHeader.Action
-          label="Following"
-          tooltip={
-            following
-              ? "Following the file in front: click to keep this file"
-              : "Follow the file in front"
-          }
-          pressed={following}
-          disabled={following && path === null}
-          onClick={toggleFollowing}
-        >
-          <LocateFixedIcon />
-        </RepositoryTabHeader.Action>
-        <RepositoryTabHeader.Action
-          label="Fit the graph"
-          disabled={path === null}
-          onClick={() => viewRef.current?.fit()}
-        >
-          <ScanIcon />
-        </RepositoryTabHeader.Action>
-        <RepositoryTabHeader.Action
-          label="Graph settings"
-          tooltip={panel.open ? "Close graph settings" : "Graph settings"}
-          pressed={panel.open}
-          onClick={() => graphOptions.set({ ...options, panel: { ...panel, open: !panel.open } })}
-        >
-          <SlidersHorizontalIcon />
-        </RepositoryTabHeader.Action>
-      </RepositoryTabHeader.Root>
+            <LocateFixedIcon />
+          </TabHeader.Action>
+          <TabHeader.Action
+            label="Fit the graph"
+            disabled={path === null}
+            onClick={() => viewRef.current?.fit()}
+          >
+            <ScanIcon />
+          </TabHeader.Action>
+          <TabHeader.Action
+            label="Graph settings"
+            tooltip={panel.open ? "Close graph settings" : "Graph settings"}
+            pressed={panel.open}
+            onClick={() => graphOptions.set({ ...options, panel: { ...panel, open: !panel.open } })}
+          >
+            <SlidersHorizontalIcon />
+          </TabHeader.Action>
+        </TabHeader.Actions>
+      </TabHeader.Root>
       {path === null || key === null ? (
         <GraphNotice>
           Open a file to see its local graph: the files it imports and the files that import it.

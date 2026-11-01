@@ -23,7 +23,7 @@ import { DiffFileLoadingBoundary } from "../diffs/DiffFileLoadingBoundary";
 import { useReviewFilePatches } from "../diffs/useReviewFilePatches";
 import { Button } from "../ui/button";
 import { workspace } from "~/panes/workspace";
-import { RepositoryTabHeader } from "./RepositoryTabHeader";
+import { TabHeader } from "~/panes/TabHeader";
 import { repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
 
 type DiffTab = Extract<RepositoryTab, { kind: "diff" }>;
@@ -86,11 +86,13 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       ? "Uncommitted changes"
       : `Changes against ${source?.baseRef ?? "the base"}`;
 
+  // No scroll fade below: each file's header sticks to the diff's top edge, where it would fade.
   const header = (
-    <RepositoryTabHeader.Root>
-      <RepositoryTabHeader.Path>{cwd.slice(cwd.lastIndexOf("/") + 1)}</RepositoryTabHeader.Path>
-      <RepositoryTabHeader.Status>{title}</RepositoryTabHeader.Status>
-    </RepositoryTabHeader.Root>
+    <TabHeader.Root>
+      <TabHeader.Title label="Changes" trail={[cwd.slice(cwd.lastIndexOf("/") + 1)]}>
+        {title}
+      </TabHeader.Title>
+    </TabHeader.Root>
   );
   const notice = (text: string) => (
     <div className="flex min-h-0 flex-1 flex-col">
