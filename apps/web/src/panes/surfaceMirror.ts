@@ -4,6 +4,7 @@ import {
   closeTabs,
   focusedPane,
   isEmptyTab,
+  openBeside,
   openTab,
   replaceTab,
   surfaceIdOf,
@@ -25,23 +26,46 @@ export interface PanelRecord {
 }
 
 /**
+ * How a set of panes names a record's surfaces as tabs: `surface:<id>` by default. Astrolabe's
+ * shared panes name each thread's own (`chatSurfaceKey`), count its other linked tabs as part of
+ * its panel (`linked`), and open its first surface in a new pane beside `splitFrom`.
+ */
+export interface SurfaceKeys {
+  readonly key: (surfaceId: string) => string;
+  readonly id: (key: string) => string | null;
+  readonly linked?: (key: string) => boolean;
+  readonly splitFrom?: string | null;
+}
+
+const PANEL_KEYS: SurfaceKeys = { key: surfaceKey, id: surfaceIdOf };
+
+/** A pane split off for a thread's surfaces takes this share of its owner's room. */
+const SPLIT_WEIGHT = 0.45;
+
+/**
  * Where a surface new to the arrangement goes: the pane asked from (`targetPaneId`, as a
  * pane's New tab menu asks), else the pane of the surface that was in front, else any pane
- * holding a surface, as the right panel's strip held them all, else the focused pane.
+ * holding a surface, as the right panel's strip held them all, else the focused pane (null
+ * when `keys` would rather split one off).
  */
 function surfacePane(
   arrangement: Arrangement,
   previous: PanelRecord | null,
   targetPaneId: string | null,
-) {
+  keys: SurfaceKeys,
+): string | null {
   if (targetPaneId !== null && findLeaf(arrangement.root, targetPaneId)) return targetPaneId;
   const front = previous?.activeSurfaceId;
-  const frontPane = front ? leafWithTab(arrangement.root, surfaceKey(front)) : undefined;
+  const frontPane = front ? leafWithTab(arrangement.root, keys.key(front)) : undefined;
   if (frontPane) return frontPane.id;
-  return (
-    leaves(arrangement.root).find((leaf) => leaf.tabs.some((key) => surfaceIdOf(key) !== null))
-      ?.id ?? focusedPane(arrangement).id
+  const holding = leaves(arrangement.root).find((leaf) =>
+    leaf.tabs.some((key) => keys.id(key) !== null || keys.linked?.(key) === true),
   );
+  if (holding) return holding.id;
+  const splitFrom = keys.splitFrom ?? null;
+  return splitFrom !== null && findLeaf(arrangement.root, splitFrom)
+    ? null
+    : focusedPane(arrangement).id;
 }
 
 /**
@@ -55,7 +79,9 @@ export function followRecord(
   previous: PanelRecord | null,
   record: PanelRecord,
   targetPaneId: string | null = null,
+  keys: SurfaceKeys = PANEL_KEYS,
 ): { readonly arrangement: Arrangement; readonly consumedTarget: boolean } {
+  const { key: surfaceKey, id: surfaceIdOf } = keys;
   let arrangement = current;
   const present = new Set(record.surfaceIds);
   const dropGone = (next: Arrangement) =>
@@ -86,9 +112,15 @@ export function followRecord(
   const missing = record.surfaceIds.filter((id) => !leafWithTab(arrangement.root, surfaceKey(id)));
   for (const id of missing) {
     const asking = consumedTarget ? null : targetPaneId;
-    const home = surfacePane(arrangement, previous, asking);
-    const asked = home === targetPaneId;
-    arrangement = openTab(arrangement, surfaceKey(id), home, asked);
+    const home = surfacePane(arrangement, previous, asking, keys);
+    const asked = home !== null && home === targetPaneId;
+    arrangement =
+      home === null
+        ? openBeside(arrangement, surfaceKey(id), keys.splitFrom ?? arrangement.focused, "right", {
+            focus: false,
+            weight: SPLIT_WEIGHT,
+          })
+        : openTab(arrangement, surfaceKey(id), home, asked);
     consumedTarget ||= asked;
   }
 
@@ -110,10 +142,14 @@ export function followRecord(
 }
 
 /** The surfaces shown: the active tabs of their panes, in reading order. */
-function visibleSurfaces(arrangement: Arrangement, record: PanelRecord): string[] {
+function visibleSurfaces(
+  arrangement: Arrangement,
+  record: PanelRecord,
+  keys: SurfaceKeys,
+): string[] {
   const present = new Set(record.surfaceIds);
   return leaves(arrangement.root).flatMap((leaf) => {
-    const id = surfaceIdOf(leaf.active);
+    const id = keys.id(leaf.active);
     return id !== null && present.has(id) ? [id] : [];
   });
 }
@@ -124,9 +160,13 @@ function visibleSurfaces(arrangement: Arrangement, record: PanelRecord): string[
  * surface, so other shown surfaces wait for their pane's focus. Whether the panel shows stays
  * T3 Code's to say.
  */
-export function activeSurfaceFor(arrangement: Arrangement, record: PanelRecord): string | null {
-  const visible = visibleSurfaces(arrangement, record);
-  const focused = surfaceIdOf(focusedPane(arrangement).active);
+export function activeSurfaceFor(
+  arrangement: Arrangement,
+  record: PanelRecord,
+  keys: SurfaceKeys = PANEL_KEYS,
+): string | null {
+  const visible = visibleSurfaces(arrangement, record, keys);
+  const focused = keys.id(focusedPane(arrangement).active);
   if (focused !== null && visible.includes(focused)) return focused;
   const kept = record.activeSurfaceId;
   if (kept !== null && (visible.length === 0 || visible.includes(kept))) return kept;
@@ -134,8 +174,12 @@ export function activeSurfaceFor(arrangement: Arrangement, record: PanelRecord):
 }
 
 /** The pane that shows the record's active surface, where T3 Code's surface content goes. */
-export function hostPaneId(arrangement: Arrangement, record: PanelRecord): string | null {
+export function hostPaneId(
+  arrangement: Arrangement,
+  record: PanelRecord,
+  keys: SurfaceKeys = PANEL_KEYS,
+): string | null {
   if (!record.isOpen || record.activeSurfaceId === null) return null;
-  const key = surfaceKey(record.activeSurfaceId);
+  const key = keys.key(record.activeSurfaceId);
   return leaves(arrangement.root).find((leaf) => leaf.active === key)?.id ?? null;
 }

@@ -42,7 +42,32 @@ export function parseChatTabKey(key: string): ScopedThreadRef | null {
   }
 }
 
-const isPullRequestKey = (key: string) => surfaceIdOf(key)?.startsWith("pull-request:") ?? false;
+const CHAT_SURFACE_PREFIX = "chat-surface:";
+
+/**
+ * Astrolabe: one of a thread's right-panel surfaces as a tab of the shared panes, named with its
+ * thread so every thread's terminal, browser and diff is a tab of its own, linked to its chat.
+ */
+export function chatSurfaceKey(chatKey: string, surfaceId: string): string {
+  return `${CHAT_SURFACE_PREFIX}${chatKey.slice(CHAT_PREFIX.length)}:${surfaceId}`;
+}
+
+/** The chat (by its tab key) and surface a thread's surface tab names; null for any other key. */
+export function parseChatSurfaceKey(
+  key: string,
+): { readonly chatKey: string; readonly surfaceId: string } | null {
+  if (!key.startsWith(CHAT_SURFACE_PREFIX)) return null;
+  const rest = key.slice(CHAT_SURFACE_PREFIX.length);
+  const first = rest.indexOf(":");
+  const second = first === -1 ? -1 : rest.indexOf(":", first + 1);
+  if (second === -1 || second === rest.length - 1) return null;
+  const chatKey = `${CHAT_PREFIX}${rest.slice(0, second)}`;
+  if (parseChatTabKey(chatKey) === null) return null;
+  return { chatKey, surfaceId: rest.slice(second + 1) };
+}
+
+const isPullRequestKey = (key: string) =>
+  (surfaceIdOf(key) ?? parseChatSurfaceKey(key)?.surfaceId)?.startsWith("pull-request:") ?? false;
 
 /**
  * The section a tab belongs to: chats are Agents', documents Wikis', files and diffs
