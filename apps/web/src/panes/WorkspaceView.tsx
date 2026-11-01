@@ -83,7 +83,7 @@ export function WorkspaceView({
   useLayoutEffect(() => {
     routed.current = routeChatKey;
     asked.current = undefined;
-    if (routeChatKey !== null && !background) workspace.arriveChat(routeChatKey);
+    if (routeChatKey !== null && !background) workspace.openChat(routeChatKey);
   }, [background, routeChatKey]);
   // oxlint-disable-next-line t3code/react-effect-budget -- follows T3 Code's right-panel store
   useLayoutEffect(() => workspace.follow(), []);

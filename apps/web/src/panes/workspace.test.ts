@@ -144,9 +144,9 @@ describe("the shared panes", () => {
     useRightPanelStore.getState().open(refA, "diff");
     expect(panes(workspace)).toEqual([[chatA, chatB], [chatSurfaceKey(chatA, "diff")]]);
     useRightPanelStore.getState().open(refB, "files");
-    workspace.arriveChat(chatB);
+    workspace.openChat(chatB);
     expect(panes(workspace)).toEqual([[chatA, chatB], [chatSurfaceKey(chatB, "files")]]);
-    workspace.arriveChat(chatA);
+    workspace.openChat(chatA);
     expect(panes(workspace)).toEqual([[chatA, chatB], [chatSurfaceKey(chatA, "diff")]]);
     // The chat keeps the focus as its surfaces come and go.
     expect(workspace.arrangement().focused).toBe("p0");
@@ -233,13 +233,68 @@ describe("the shared panes", () => {
     stop();
   });
 
-  it("put a chat that the route shows in place of the chat in front", () => {
+  it("open a new chat right after the chat in front, which stays open, its linked tabs set aside", () => {
     const workspace = createWorkspace(chatTabsDevice);
-    const refC = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-C"));
-    workspace.arriveChat(chatTabKey(refC));
-    expect(panes(workspace)).toEqual([[chatTabKey(refC), chatB]]);
-    workspace.step("back");
-    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    const stop = workspace.follow();
+    const diff = chatSurfaceKey(chatA, "diff");
+    useRightPanelStore.getState().open(refA, "diff");
+    const chatC = chatTabKey(scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-C")));
+    workspace.openChat(chatC);
+    expect(panes(workspace)).toEqual([[chatA, chatC, chatB]]);
+    expect(leaves(workspace.arrangement().root)[0]?.active).toBe(chatC);
+    expect(workspace.linked().front).toBe(chatC);
+    expect(workspace.linked().owners[diff]).toBe(chatA);
+    expect(workspace.linked().parked[diff]).toBeDefined();
+    // Nothing was replaced, so the new tab has nowhere to go back to.
+    expect(workspace.canStep("back")).toBe(false);
+    workspace.openChat(chatA);
+    expect(panes(workspace)).toEqual([[chatA, chatC, chatB], [diff]]);
+    stop();
+  });
+
+  it("bring an open chat forward in its own pane rather than open it twice", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
+    workspace.update((arrangement) => focusPane(arrangement, "p0"));
+    const paneB = leaves(workspace.arrangement().root)[1]!.id;
+    workspace.openChat(chatB);
+    expect(panes(workspace)).toEqual([[chatA], [chatB]]);
+    expect(workspace.arrangement().focused).toBe(paneB);
+  });
+
+  it("open a new chat after the focused pane's tab in front when no chat is in front", () => {
+    const file = (path: string) =>
+      repositoryTabKey({
+        kind: "file",
+        environmentId: "env-1" as EnvironmentId,
+        projectId: ProjectId.make("project-1"),
+        cwd: "/work/tree",
+        path,
+      });
+    const device = memoryStorage({
+      [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+        root: {
+          type: "branch",
+          id: "p2",
+          direction: "row",
+          children: [
+            { type: "leaf", id: "p0", tabs: [file("a.ts")], active: file("a.ts") },
+            { type: "leaf", id: "p1", tabs: [file("b.ts"), file("c.ts")], active: file("b.ts") },
+          ],
+          weights: [1, 1],
+        },
+        focused: "p1",
+        seq: 3,
+        owners: {},
+        parked: {},
+        front: null,
+      }),
+    });
+    const workspace = createWorkspace(() => device);
+    workspace.openChat(chatA);
+    expect(panes(workspace)).toEqual([[file("a.ts")], [file("b.ts"), chatA, file("c.ts")]]);
+    expect(workspace.arrangement().focused).toBe("p1");
+    expect(workspace.linked().front).toBe(chatA);
   });
 
   it("step the tab named back and forward, not the focused one", () => {
@@ -303,7 +358,7 @@ describe("the shared panes", () => {
     workspace.update((arrangement) => newTab(arrangement, "p0"));
     const [[, blank]] = panes(workspace) as [[string, string]];
     const refC = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-C"));
-    workspace.arriveChat(chatTabKey(refC));
+    workspace.openChat(chatTabKey(refC));
     expect(panes(workspace)).toEqual([[chatA, chatTabKey(refC)], [chatB]]);
     expect(blank).toMatch(/^empty\//);
     expect(workspace.arrangement().focused).toBe("p0");
@@ -352,7 +407,7 @@ describe("the shared panes", () => {
     const record = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
     expect(record.surfaces.map((surface) => surface.id)).toEqual(["files"]);
     // It stands on its own: another chat in front leaves it where it is.
-    workspace.arriveChat(chatB);
+    workspace.openChat(chatB);
     expect(panes(workspace)).toEqual([[chatA, chatB], [changes]]);
     stop();
   });
@@ -450,7 +505,7 @@ describe("switching to Agents", () => {
       params: { environmentId: "env-1", threadId: "thread-A" },
     });
     // As the thread's route arrives: focus stays on the terminal, nothing moves.
-    workspace.arriveChat(chatA);
+    workspace.openChat(chatA);
     expect(workspace.linked()).toBe(before);
     stop();
   });

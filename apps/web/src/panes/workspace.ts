@@ -725,11 +725,12 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   };
 
   /**
-   * The route shows the chat `key` now, as following a link in a browser tab: where it is open it
-   * comes to the front, else it takes the place of the chat in front, which joins its history.
+   * Shows the chat `key` however it was asked for (a row, a link, the route): where open it comes
+   * to the front; else it fills a focused New tab, as a browser's new tab takes a link, or opens in
+   * a new tab right after the chat in front (the focused pane's tab with none), which stays open.
    * One in focus already, or one of its linked tabs, stays as it is.
    */
-  const arriveChat = (key: string) => {
+  const openChat = (key: string) => {
     const linked = current();
     if (focusedChatOf(linked) === key) return;
     const { arrangement, front } = linked;
@@ -737,28 +738,17 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       update((before) => activateTab(before, key));
       return;
     }
-    // A New tab in focus takes a chat new to the panes, as a browser's new tab takes a link.
     const blank = focusedPane(arrangement).active;
     if (isEmptyTab(blank) && !(blank in linked.owners)) {
       fill(blank, key);
       return;
     }
-    const replacing =
-      front !== null && leaves(arrangement.root).some((leaf) => leaf.active === front)
-        ? front
-        : null;
-    if (replacing !== null) {
-      updateWithHistory(
-        (before) => {
-          const replaced = replaceTab(before, replacing, key);
-          const pane = leafWithTab(replaced.root, key);
-          return pane ? focusPane(replaced, pane.id) : replaced;
-        },
-        (tabHistories) => replaceInHistory(tabHistories, replacing, key),
-      );
-      return;
-    }
-    update((before) => openTab(before, key, chatPaneId(before, front)));
+    update((before) => {
+      const pane = front === null ? undefined : leafWithTab(before.root, front);
+      if (!pane || front === null) return openTab(before, key);
+      const index = pane.tabs.indexOf(front) + 1;
+      return placeTabs(before, [key], pane.id, { side: null, index }, key);
+    });
   };
 
   /** Opens chats as tabs after the chat in front, which stays in front. */
@@ -773,14 +763,6 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       if (fresh.length === 0) return linked;
       const placed = placeTabs(arrangement, fresh, paneId, { side: null, index }, pane.active);
       return { ...linked, arrangement: placed };
-    });
-
-  /** Opens a chat in a new tab after the chat in front; the route shows it next. */
-  const openChatNew = (key: string) =>
-    update((arrangement) => {
-      if (leafWithTab(arrangement.root, key)) return arrangement;
-      const paneId = chatPaneId(arrangement, current().front);
-      return openTab(arrangement, key, paneId, false);
     });
 
   /**
@@ -842,8 +824,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     openOnItsOwn,
     update,
     updateWithHistory,
-    arriveChat,
-    openChatNew,
+    openChat,
     openChatsBesideFront,
     openLinked: openLinkedTab,
     unlink,

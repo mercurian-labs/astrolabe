@@ -228,7 +228,7 @@ export function TabLauncher({ paneId, tabKey }: { paneId: string; tabKey: string
 /**
  * Starts a new chat as the sidebar's New thread does: in the project of the chat in front, or
  * with several projects, from the Command Palette's list of them. The panes put it in the New tab
- * in focus as it arrives (`workspace.arriveChat`).
+ * in focus as it arrives (`workspace.openChat`).
  */
 function useNewChat() {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =

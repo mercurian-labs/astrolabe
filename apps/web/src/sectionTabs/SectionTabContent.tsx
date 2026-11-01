@@ -75,7 +75,7 @@ function paneTabNav(
       ),
     openThread: (ref: ScopedThreadRef) =>
       store === workspace.store
-        ? workspace.openChatsBesideFront([chatTabKey(ref)])
+        ? workspace.openChat(chatTabKey(ref))
         : store.update((arrangement) => showKeyIn(arrangement, chatTabKey(ref), "beside")),
   };
 }
@@ -143,9 +143,9 @@ export function SectionTabContent({
       <ChangeGroupView
         tab={group}
         open={(key) => {
-          // In the shared panes a thread opens after the chat in front, and the rest beside it.
+          // In the shared panes a thread opens as a sidebar row's does, and the rest beside it.
           const thread = shared ? parseChatTabKey(key) : null;
-          if (thread !== null) workspace.openChatsBesideFront([chatTabKey(thread)]);
+          if (thread !== null) workspace.openChat(chatTabKey(thread));
           else store.update((arrangement) => showKeyIn(arrangement, key, "beside"));
         }}
         openAll={
