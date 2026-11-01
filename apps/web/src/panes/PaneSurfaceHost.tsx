@@ -4,12 +4,11 @@ import type { PanesHost } from "./panesHost";
 
 /**
  * Astrolabe: the shared panes' host. Each tab renders once into its own container; the front
- * chat's live surface (`surface`) and the route's chat (`routeNode`) render in one place only and
- * move between containers instead, so neither remounts.
+ * chat's live surface (`surface`) renders in one place only and moves between panes instead, so
+ * it never remounts.
  */
 export interface WorkspaceHost extends PanesHost {
   readonly surface: HTMLDivElement;
-  readonly routeNode: HTMLDivElement;
   readonly containerFor: (key: string) => HTMLDivElement;
   /** Drops the containers of tabs no longer open. */
   readonly prune: (open: ReadonlySet<string>) => void;

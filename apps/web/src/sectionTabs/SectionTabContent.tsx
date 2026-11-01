@@ -263,21 +263,19 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
 
 /**
  * A thread's chat in a pane: its tab is the pane's, and its surfaces are tabs linked to it
- * (`LinkedPanel`). A draft shows as a draft until it is sent.
+ * (`LinkedPanel`). A thread with a draft shows the draft, as the draft's route does, until the
+ * draft becomes the thread; one unkeyed ChatView carries the chat through that change.
  */
 export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const shell = useThreadShell(threadRef);
-  const draftId = useComposerDraftStore((store) =>
-    shell ? null : store.getDraftIdByRef(threadRef),
-  );
+  const draftId = useComposerDraftStore((store) => store.getDraftIdByRef(threadRef));
   return draftId ? (
     <ChatView
-      key={draftId}
       draftId={draftId}
       environmentId={threadRef.environmentId}
       threadId={threadRef.threadId}
       routeKind="draft"
       reserveTitleBarControlInset={false}
+      forceExpandedMobileComposer
     />
   ) : (
     <ChatView

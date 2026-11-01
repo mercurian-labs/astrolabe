@@ -63,9 +63,14 @@ and park while another chat is in front: only the front chat's ChatView feeds th
 ([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). Only those surfaces link to a
 chat; anything that reads on its own (a document, a repository file) stays an unlinked tab, and a
 surface with such a counterpart converts to it in place rather than unlinking, since an unlinked
-surface would have no ChatView to render it. Content that must not remount
-(the live surface, the route's ChatView) renders into one DOM node that moves between panes; a
-portal whose container changes remounts its children. A pane's content has `contain: layout
+surface would have no ChatView to render it. The live surface renders into one DOM node that
+moves between panes; a portal whose container changes remounts its children. Each chat tab has
+its own ChatView in its own container, which never moves: moving a chat's subtree forces layout of
+all of it and resets its scroll. Chats behind other tabs stay mounted under
+`<Activity mode="hidden">`, whose effect cleanup stops their window key and paste listeners, up to
+the most recently shown few ([`recentChats.ts`](../../apps/web/src/panes/recentChats.ts)). The
+panes, not the router, decide which chat shows; the route follows a commit later and renders no
+chat. A pane's content has `contain: layout
 paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
 built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
 (`useChatOwner`).
