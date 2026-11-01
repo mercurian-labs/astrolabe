@@ -23,6 +23,7 @@ import { formatTokens } from "@t3tools/shared/usageFormat";
 import { classifyToolActivity } from "@t3tools/shared/toolActivity";
 import { toolOutputIndicatesFailure } from "@t3tools/shared/toolOutput";
 
+import { codeGraphShowInput, codeGraphStoryLabel } from "@t3tools/client-runtime/codeGraphStory";
 import {
   summarizeT3ToolCalls,
   t3ToolResultIndicatesFailure,
@@ -200,6 +201,10 @@ function resolveT3McpToolPresentation(
   const number = urlTarget?.link.number ?? input?.number;
   const { shortLabel } = (urlTarget?.definition ?? sourceControlClients.get(undefined))
     .changeRequest;
+  const story =
+    definition.summaryAction === "code-graph"
+      ? codeGraphShowInput(payload?.arguments ?? payload?.input ?? payload?.rawInput)
+      : null;
   const target =
     actionKind !== undefined &&
     actionKind !== "list-prs" &&
@@ -207,7 +212,9 @@ function resolveT3McpToolPresentation(
     Number.isSafeInteger(number) &&
     number > 0
       ? `${shortLabel} #${number}`
-      : detail;
+      : story
+        ? codeGraphStoryLabel(story)
+        : detail;
   return {
     displayName: `${verb} ${target}`,
     icon: definition.icon,

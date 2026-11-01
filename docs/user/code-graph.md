@@ -46,3 +46,7 @@ with the agent's caption above the graph; **Previous step** and **Next step** mo
 The menu at the top of the tab lists every picture and story in the thread, and **Changes** goes
 back to the thread's own changes. Agents show these only when you ask, or when a skill you ran
 tells them to.
+
+The phone app doesn't draw the graph. Its work log names what the agent showed and how many
+steps it has; tap the row to read the step captions, then open the thread on a computer to step
+through it.

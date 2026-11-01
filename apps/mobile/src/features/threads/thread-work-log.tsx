@@ -76,6 +76,8 @@ import {
   turnItemOutputText,
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { useTurnItemDetail } from "../../state/queries";
+import { codeGraphShowInput, codeGraphStoryLines } from "@t3tools/client-runtime/codeGraphStory";
+import { resolveT3McpSummaryAction } from "@t3tools/shared/t3McpToolPresentation";
 import {
   resolveThreadWorkGroupInitialScroll,
   shouldFollowThreadWorkGroupAppend,
@@ -963,8 +965,16 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const fetchedItem = fetchedDetail.data?.item ?? null;
   const isRead = toolGroupAction(row.workEntry) === "read";
   const shownItem = fetchedItem ?? row.projectedItem.item;
-  const call =
-    expanded && !isRead && shownItem.type === "command_execution"
+  // The phone names a graph's steps; only a computer (desktop or web) draws the graph.
+  const graphStory =
+    expanded &&
+    shownItem.type === "dynamic_tool" &&
+    resolveT3McpSummaryAction(shownItem.toolName, shownItem.input) === "code-graph"
+      ? codeGraphShowInput(shownItem.input)
+      : null;
+  const call = graphStory
+    ? null
+    : expanded && !isRead && shownItem.type === "command_execution"
       ? toolCallLines({ command: shownItem.input })
       : expanded && !isRead && shownItem.type === "dynamic_tool"
         ? toolCallLines({ args: shownItem.input })
@@ -978,7 +988,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
       ? shownItem.exitCode
       : null;
   const fullDetail =
-    expanded && !reasoning && !call
+    expanded && !reasoning && !call && !graphStory
       ? fetchedItem && !isRead
         ? formatItemFullDetail(row.projectedItem, fetchedItem)
         : row.getFullDetail()
@@ -986,7 +996,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const outputImages = expanded && fetchedItem ? turnItemOutputImages(fetchedItem) : [];
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const fetchedOutput =
-    !expanded || streamsOutput
+    !expanded || streamsOutput || graphStory
       ? null
       : shownItem.type === "file_search" || shownItem.type === "web_search"
         ? turnItemOutputText(shownItem)
@@ -1149,6 +1159,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
 
       {expanded &&
       (reasoning ||
+        graphStory ||
         fullDetail ||
         call ||
         fetchedOutput ||
@@ -1197,7 +1208,18 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
             className="max-h-60"
             contentContainerStyle={{ paddingRight: 8 }}
           >
-            {reasoning ? (
+            {graphStory ? (
+              <View className="gap-0.5">
+                {codeGraphStoryLines(graphStory).map((line) => (
+                  <Text key={line} selectable className="text-xs leading-normal text-foreground">
+                    {line}
+                  </Text>
+                ))}
+                <Text className="mt-1 text-xs leading-normal text-foreground-subtle">
+                  Open this thread on a computer to step through it.
+                </Text>
+              </View>
+            ) : reasoning ? (
               props.renderReasoning(reasoning.text)
             ) : call ? (
               [

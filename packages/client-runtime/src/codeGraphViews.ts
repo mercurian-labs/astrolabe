@@ -1,12 +1,10 @@
-import {
-  CodeGraphShowInput,
-  type CodeGraphLevel,
-  type CodeGraphStepInput,
-  type OrchestrationV2TurnItem,
+import type {
+  CodeGraphLevel,
+  CodeGraphStepInput,
+  OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 
+import { codeGraphShowInput } from "./codeGraphStory.ts";
 import { t3ToolResultIndicatesFailure } from "./t3ToolSummary.ts";
 
 /**
@@ -36,29 +34,6 @@ export interface CodeGraphViewStep {
 
 const TOOL = "astrolabe_code_graph_show";
 
-const decodeInput = Schema.decodeUnknownOption(CodeGraphShowInput);
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
-/** A tool's input as an object: parsed from JSON text, out of Cursor's args envelope, or as given. */
-function argumentsOf(input: unknown): unknown {
-  if (typeof input === "string") {
-    try {
-      return argumentsOf(JSON.parse(input));
-    } catch {
-      return null;
-    }
-  }
-  const record = asRecord(input);
-  if (record !== null && typeof record.toolName === "string" && asRecord(record.args)) {
-    return record.args;
-  }
-  return input;
-}
-
 const stepOf = (step: CodeGraphStepInput): CodeGraphViewStep => ({
   caption: step.caption,
   focus: step.focus,
@@ -82,7 +57,7 @@ export function codeGraphViews(
     const item = each as ToolItem;
     if (item.status !== "completed") continue;
     if (!item.toolName?.endsWith(TOOL) || t3ToolResultIndicatesFailure(item.output)) continue;
-    const input = Option.getOrNull(decodeInput(argumentsOf(item.input)));
+    const input = codeGraphShowInput(item.input);
     if (input === null) continue;
     const steps = input.steps.map(stepOf);
     const [first, ...rest] = [...new Set(steps.flatMap((step) => step.focus))];

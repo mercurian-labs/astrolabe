@@ -32,6 +32,12 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
   tab on it; caption strip under the header, **Previous step** / **Next step** and `n / m` for a
   story. Views come from the thread's own tool calls (no store), so they survive a reload and read
   the same on every client.
+- **Work log row** (web and phone; `client-runtime/src/codeGraphStory.ts`, read by
+  `work-log/presentation.ts` and `t3ToolSummary.ts`): a graph call reads `Showed “<title>” · N
+  steps` (`Showed a picture of the code` with no title; no count for one step; `Showing …` while
+  it runs). Grouped with other calls it is its own clause (`Showed 2 code graphs` for several).
+  On the phone (`thread-work-log.tsx`) the row expands to the step captions, numbered when there
+  are several, then "Open this thread on a computer to step through it."; no graph is drawn there.
 
 ## Walk
 
@@ -50,10 +56,12 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
    **Changes** and the story is still in `combobox "Graph view"`.
 6. Projects: open a file's local graph (`r g`); click, double-click and the menu behave as in
    3–4, and a following graph follows the file the click opened.
+7. Phone (test-t3-mobile): open the thread from step 5; the work log row reads `Showed “<title>” ·
+   N steps`; tap it: the numbered captions and the "Open this thread on a computer" line.
 
 ## Owns
 
 `apps/web/src/components/codeGraph/`, `components/graph/` (GraphPanel, threadGraph,
 threadGraphStore, useCodeGraphViewOpener), `state/codeGraphViews.ts`,
-`client-runtime/src/codeGraphViews.ts`, `packages/graph`, server `codeIndex/queries.ts`
+`client-runtime/src/codeGraphViews.ts` and `codeGraphStory.ts`, `packages/graph`, server `codeIndex/queries.ts`
 (`localGraph`, `checkNodes`) and `codeIndex/levels.ts`, `mcp/toolkits/code/` (`astrolabe_code_graph_show`).
