@@ -949,6 +949,15 @@ export function takesTerminalToggle(owner: string | null): boolean {
   return owner === null || focusedPane(workspace.arrangement()).active === owner;
 }
 
+/**
+ * Whether the chat tab `owner`'s ChatView answers the keys for its right panel and linked tabs:
+ * only as the focused chat (`focusedChatOf`), so two chats on screen never both answer. Null is
+ * a ChatView outside the shared panes, which always does.
+ */
+export function takesPanelShortcut(owner: string | null): boolean {
+  return owner === null || focusedChatOf(workspace.linked()) === owner;
+}
+
 // The hooks read the panes from outside their factory, so the React Compiler never lifts their
 // callbacks away from the panes they read.
 

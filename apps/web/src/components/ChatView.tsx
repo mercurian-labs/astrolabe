@@ -361,6 +361,7 @@ import { setReadingTurn } from "./lineage/readingTurn";
 import { ThreadChangeGroupPill } from "./changeRequests/groups/ThreadChangeGroupPill";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
 import { useChatOwner } from "../panes/PaneSurfaceHost";
+import { takesPanelShortcut } from "../panes/workspace";
 import { keepsListFocus } from "../keyboardNav/placeLists";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem } from "./chat/ThreadActivityBanners";
@@ -1002,7 +1003,8 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelPresent = rightPanelPresence.present;
   // Astrolabe: inside the shared panes the panel is a pane of its own, never beside the header or
   // over it as a sheet, so the header keeps its controls in every state.
-  const inPanes = useChatOwner() !== null;
+  const chatOwner = useChatOwner();
+  const inPanes = chatOwner !== null;
   const rightPanelControlsInPanel =
     !inPanes && shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = !inPanes && rightPanelPresent && !shouldUsePlanSidebarSheet;
@@ -2692,10 +2694,11 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   useEffect(() => {
     return window.desktopBridge?.onMenuAction((action) => {
+      if (!takesPanelShortcut(chatOwner)) return;
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     });
-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  }, [chatOwner, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
   usePasteToFocusComposer(activeThreadId, composerRef);
   const {
