@@ -101,7 +101,8 @@ function Title({
 }) {
   return (
     <WorkspaceBreadcrumb
-      ariaLabel={label}
+      // Named apart from the landmarks its label shares a word with, as the Changes sidebar's.
+      ariaLabel={`${label} breadcrumb`}
       className="flex-1 overflow-clip [overflow-clip-margin:2px]"
     >
       {parent ? (
