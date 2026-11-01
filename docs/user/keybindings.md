@@ -189,7 +189,7 @@ they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
 
 ### The sidebar's list
 
-With a row of the Agents, Wikis, or Pull Requests sidebar focused (move there
+With a row of the Agents, Wikis, or Changes sidebar focused (move there
 with `Ctrl+H`, or click a row), or a button of the icon rail:
 
 | Key                    | Does                                  |
@@ -225,7 +225,7 @@ commands such as `s/old/new/` run in that editor.
 
 ## Copy pull request references
 
-With a PR open in the right panel or on the Pull requests page, use `mod+shift+c`
+With a PR open beside a chat, or focused on Changes, use `mod+shift+c`
 to copy its URL and `mod+shift+k` (outside the composer and notes) to copy its
 number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
@@ -356,9 +356,9 @@ in a text field such as the composer. Once you type or press another key, the
 field gets its own undo back. Terminals always keep their native shortcut.
 
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
-through the pages you have visited, like a browser's back and forward buttons. On
-Agents, Repositories and Wikis they go back and forward in the focused tab instead, as the
-arrows at the top of the sidebar do.
+through the pages you have visited, like a browser's back and forward buttons. In
+every section they go back and forward in the focused tab instead, as the arrows at the top of
+the sidebar do.
 
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the

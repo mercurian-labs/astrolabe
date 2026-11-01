@@ -1,8 +1,9 @@
 # Shared tabs, splits and linked tabs
 
-Agents, Repositories and Wikis share one set of panes (`panes/workspace.ts`,
-`panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread routes, `/repositories` and
-`/wikis`): chats, files, diffs, local graphs, wiki notes and a thread's right-panel surfaces
+Agents, Wikis, Repositories and Changes share one set of panes (`panes/workspace.ts`,
+`panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread and draft routes, `/` unless
+the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
+pull requests, change requests, change groups, files, diffs, local graphs, wiki notes and a thread's right-panel surfaces
 (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
@@ -11,10 +12,21 @@ else links to a chat: chats, documents, wiki change requests, change groups, rep
 diffs stand on their own (a change group's **Open as a tab group** still links to the group, and
 a following local graph to its file). There
 is no right-panel frame: `ChatRightPanel` renders `panes/LinkedPanel.tsx`, which lends the panes
-ChatView's panel props and renders the live surface into the pane showing its tab. Changes keeps
-panes of its own (pull-requests.md).
+ChatView's panel props and renders the live surface into the pane showing its tab.
 
 ## Sub-features
+
+- **Switching sections** (rail, which-key `g`, Command Palette's Open wikis/repositories/pull
+  requests, the narrow window's footer): changes only the sidebar, never the arrangement, focus,
+  the front chat or which ChatViews are mounted. The rail's Agents (`useNavigateToAgents`,
+  `panes/agentsRoute.ts`) goes to the focused tab's thread when focus is on a chat or one of its
+  linked tabs, else to `/`. In Agents the route follows focus the same way: focusing a chat or its
+  linked tab navigates to its thread (the sidebar row lights), focusing a document, file, pull
+  request, change group or empty tab navigates to `/` (no row lit). Only a thread link, a sidebar
+  click, Back/Forward to a thread route or a deep link bring a chat forward (`arriveChat`).
+  `/` with only the starting empty tab still starts a draft, as T3 Code's start page does. Proof:
+  `localStorage['astrolabe:workspace:v1']` and every `[data-pane-id]`'s tabs unchanged across the
+  switch, the ChatView count unchanged, the URL, and the sidebar's lit row.
 
 - **Linked New tab** (the chat header toggle's **New tab** only): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
   Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Linked pull requests `L`, Device `M`,
@@ -57,8 +69,8 @@ panes of its own (pull-requests.md).
   ChatView stays mounted across thread switches; another chat in front of its pane mounts its
   own ChatView. A sidebar click shows the thread in place of the chat in front (history
   kept); Option/middle-click or **Open in new tab** opens it after the chat in front; threads
-  dragged from the sidebar onto a pane open there. On a thread route, focusing another chat's
-  pane navigates to it. A chat deleted or a draft discarded closes its tab.
+  dragged from the sidebar onto a pane open there. In Agents, focusing another chat's pane
+  navigates to it, and focusing a tab that is no chat's navigates to `/`. A chat deleted or a draft discarded closes its tab.
 - **Linked tabs** (`panes/linkedTabs.ts`, `localStorage['astrolabe:workspace:v1']`'s `owners`,
   `parked`, `front`): `front` is the chat focused most recently while in front of some pane. A
   thread's surface is `chat-surface:<env>:<thread>:<surface id>`, owned by `chat:<env>:<thread>`.
@@ -137,8 +149,8 @@ panes of its own (pull-requests.md).
   `rightPanel.toggle`, which hides or brings back the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` closes the focused pane's active tab.
-- **Tab context menu** (right-click): **Open in Changes** for a change request, **Open in
-  Repositories** for a thread's Files, Diff and opened file, **Open as its own tab** for a
+- **Tab context menu** (right-click): **Open in Repositories** for a thread's Files, Diff and
+  opened file, **Open as its own tab** for a
   thread's file, Diff and pull request, then T3 Code's own items for the tab (**Rename** for a
   device, **Copy path** for a workspace file, **Mute tab** / **Unmute tab** for a browser
   tab), a local graph's link item or **Unlink tab** for a tab still linked, Close, Close
