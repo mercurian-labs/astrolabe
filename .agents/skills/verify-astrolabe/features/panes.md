@@ -71,13 +71,12 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   visibility with `getClientRects()`) and showing a 6th chat unmounts the oldest. Every way
   of showing a chat (sidebar click, Option/middle-click, **Open in new tab**, Search, the
   palette, `:b`, a fork, New thread or a draft, a thread link, Lineage, a change group's
-  member row, a deep link, Back/Forward) goes through `workspace.ts` `openChat`: a chat open
+  member row, a deep link, Back/Forward to a thread route) goes through `workspace.ts` `openChat`: a chat open
   anywhere comes forward and its pane takes focus (never a second tab); else a focused
   unowned New tab takes it in place; else it opens in a new tab right after the chat in
   front, in that chat's pane, in front (after the focused pane's tab with no chat in front).
-  No chat replaces another: the one that was in front stays open, its linked tabs parked,
-  and the new chat's Back stays disabled. Threads dragged from the sidebar onto a pane open
-  there. In Agents, focusing another chat's pane
+  No chat replaces another: the one that was in front stays open, its linked tabs parked.
+  Threads dragged from the sidebar onto a pane open there. In Agents, focusing another chat's pane
   navigates to it, and focusing a tab that is no chat's navigates to `/`. A chat deleted or a draft discarded closes its tab.
 - **Linked tabs** (`panes/linkedTabs.ts`, `localStorage['astrolabe:workspace:v1']`'s `owners`,
   `parked`, `front`): `front` is the chat focused most recently while in front of some pane. A
@@ -175,6 +174,10 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   the branch's `weights`, which persist in the stored tree (the `.root` read below). It
   is a pointer-capture drag: `preview_act drag` from the separator to an element in the
   neighbouring pane resizes it; read the new `weights` from `.root`.
+- **Closing a pane** gives its width to the pane it was split from (a leaf's `from`,
+  `panes/tree.ts` `removeLeaf`), else to a pane split from it, else to its neighbour; the
+  other panes keep their widths. Proof: split a pane right, close the new pane, and the
+  stored `weights` match what they were before the split.
 - **Maximize pane** / **Restore pane**: fills the panes, shown only beside other
   panes. T3 Code's `rightPanel.toggleMaximized` (no header control in a pane)
   maximizes the pane showing the front chat's live surface; restoring that pane ends it.
@@ -286,7 +289,7 @@ Every pane should have `w` and `h` above 0 and `tab` and `body` true; with two p
 showing surfaces, exactly one (the unfocused one) is `waiting`.
 
 The stored workspace: `JSON.parse(localStorage['astrolabe:workspace:v1'])` (`root`, `focused`,
-`seq`, `owners`, `parked`, `front`). Writes are debounced (150 ms) and flushed on `pagehide`; the
+`seq`, `owners`, `parked`, `front`; a leaf may carry `from`, the pane it was split from). Writes are debounced (150 ms) and flushed on `pagehide`; the
 starting arrangement (one empty tab, nothing parked) has no key.
 
 **Proof:** the panes read shows the split and the hit-test shows every pane painted; bringing
@@ -331,3 +334,6 @@ and returning shows the first chat's again. After a reload both reads return the
   palette, faint there otherwise) reaches only the chat that is the focused pane's tab in
   front (`takesTerminalToggle`, checked in `useChatShortcuts`): with a file, document, linked
   surface or other tab focused it does nothing, and no other visible or hidden chat answers.
+- Closing a chat's drawer gives focus back to that chat's own composer (per-chat composer
+  refs, `composerHandleContext.ts`); a chat beside it never takes focus, and type-to-focus
+  and paste-to-focus act only for the focused chat tab.

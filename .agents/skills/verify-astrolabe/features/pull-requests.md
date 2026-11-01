@@ -56,8 +56,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   agent suggestions are on; messages the root thread to use `astrolabe_change_group_suggest`),
   **Add a change request**, **Add a thread** and **Open as a tab group**; below it the counts,
   `switch "Merge with the code"`, Suggested rows (✓ / ✕, threads too), Code /
-  Documentation rows and a **Threads** section (each `button "Open <title>"` with its reason and
-  Working / Settled / Idle; opens its chat beside) with ✕ to take out. **Open as a tab group**
+  Documentation rows (each opens beside) and a **Threads** section (each `button "Open <title>"`
+  with its reason and Working / Settled / Idle; `workspace.openChat`: comes forward if open, else
+  fills a focused empty tab, else a new tab after the chat in front) with ✕ to take out. **Open as a tab group**
   opens the group's threads as chats after the front chat (which stays in front); when the
   front chat is in the group, the other tabs (the group's, its members') open linked to the
   group, else they stand on their own, together in one new pane beside it. **Ask to update the docs** shows on Docs behind;
@@ -153,8 +154,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   (`t3code:right-panel-panes:v1:pull-requests`) and history
   (`astrolabe:pull-request-tab-history:v1`) join `astrolabe:workspace:v1` beside what was there
   once, then are removed. A plain click replaces the focused pane's tab in front with the pull
-  request (`workspace.show`: one open in another tab comes forward there; when the tab in front
-  is a chat, a linked tab, empty or has unsaved edits, a new tab opens instead). Option-click, middle-click, Alt+Enter and the row's right-click
+  request (`workspace.show`: one open in another tab comes forward there; an empty tab in front
+  is filled (`arrangement.ts` `openTab`); when the tab in front is a chat, a linked tab or has
+  unsaved edits, a new tab opens instead). Option-click, middle-click, Alt+Enter and the row's right-click
   **Open in new tab** open a new tab. Mod-click and Shift-click select rows
   (`data-selected`) without opening; a selected row's right-click is **Open N in new
   tabs**. Rows drag onto a pane's strip or content, the selection with them
@@ -172,7 +174,7 @@ thread's own Pull request tab. Shown only when a connected server reports
 - **Header** (`PullRequestTabHeading.tsx`, the shared `TabHeader`, panes.md): in the shared
   panes, `nav[aria-label='Pull request breadcrumb']` reads `<owner/repo> / #<n> <title>`, the
   title truncating before the repository; then **Open** or **Draft** as quiet status, **Edit
-  title** (opens the title field below), and T3 Code's actions in the same row (Merge,
+  title** only when the pull request can be edited (opens the title field below), and T3 Code's actions in the same row (Merge,
   Check out, **More pull request actions**; a merged or closed one's state badge). A thread's
   pull request adds **This thread's pull requests**. Below it the author, branches and diff
   stat, then the Summary/Timeline/Code strip with no line above it; the review scrolls under a
@@ -254,7 +256,8 @@ Save a screenshot of the section.
 `pullRequestWorkspace.ts`, `components/changeRequests/` (project filter, kind, Wiki changes,
 and `groups/` with the thread header's pill), `state/changeGroups.ts`,
 `components/projects/` (the project filter, shared with the Agents sidebar),
-`settings/ChangeRequestSettings.tsx` and `routes/settings.change-requests.tsx`, the
+`settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
+`pullRequest/PullRequestTabHeading.tsx` (the header), the
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
 `packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server
 `changeGroups/ChangeGroupService.ts` and `mcp/toolkits/changeGroups/`, the section shell in

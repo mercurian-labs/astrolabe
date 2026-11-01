@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, the code graph, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -205,9 +205,16 @@ when the feature needs a real thread. Then:
 - The `incognito` profile is shared by every incognito tab in this session (a tab the user
   walks in, for one), so its localStorage is too. Before driving, copy every `astrolabe:*` and
   `t3code:*` localStorage key into your tab's sessionStorage, and write them back before
-  closing your tab.
-- App shortcuts (Cmd+J, Cmd+Alt+B, Cmd+K) reach a chat only while focus is inside it. Click
-  the pane's `[data-testid=composer-editor]` first; a press with focus on `BODY` does nothing.
+  closing your tab (desktop Browser panel; the server browser isolates each incognito tab).
+- Panel shortcuts (Cmd+J, Cmd+Alt+B) act on the focused pane's chat only; Cmd+Alt+B also
+  on the chat whose linked tab has focus (`takesTerminalToggle`/`takesPanelShortcut` in
+  `useChatShortcuts.ts`, `workspace.ts`). Click the target pane's `[data-testid=composer-editor]` first so it is the
+  focused pane. Cmd+K opens from anywhere.
+- While a user walks your dev server, land a multi-file edit in one step: a half-landed edit
+  hot-reloads their tab into "X is not defined".
+- A tab another session or the user owns accepts only `preview_status`, `preview_snapshot`
+  and `preview_wait_for`; `preview_evaluate` and actions are refused ("This tab belongs to
+  another agent session…"). Open your own tab and reproduce there.
 
 ## Evidence
 

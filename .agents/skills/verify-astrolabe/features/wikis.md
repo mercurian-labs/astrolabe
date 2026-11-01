@@ -111,10 +111,12 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Bases** (`wiki/WikiBaseView.tsx`; engine `packages/wiki/src/bases.ts`, server
   `WikiService.query` / `wiki.query`, agents `astrolabe_wiki_query`): a `.base` file lists as a
   document named `<name>.base` (no links line in its hover card) and opens as a tab labelled
-  "Base · read only" with its view (table or cards; a `View` select when it has several). A
+  `<name>` (no `.base`) with its view (table or cards; a `View` select when it has several). Its
+  header's breadcrumb, `nav[aria-label='Base breadcrumb']`, reads `Main / <name>` (`<change request
+  title> / <name>` when read from one), with "Base · read only" as its status. A
   ` ```base ` block in a note shows the same view in place (`.cm-md-host-block`, via the
   editor's `codeBlocks` option) and its YAML once the caret is in it. Row names and `[[links]]`
-  in cells open notes; a view with no name column gets a "Name" column. A base outside the
+  in cells open notes: in a base's own tab the note replaces it (Back returns); a view with no name column gets a "Name" column. A base outside the
   supported subset shows "This base can't be shown" naming the unsupported part. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
   and draws its first view; `.base` files do not list on mobile.
@@ -168,7 +170,7 @@ the marker opens) sit behind a `[data-tab-group]` marker; while the group is col
 the marker's right-click menu before counting. Prove it paints: `document.elementFromPoint` at the
 centre of the front note's title returns it: headers have no `h2`, so take
 `nav[aria-label="Document breadcrumb"] [aria-current="page"]` (a change request's is
-`Change request breadcrumb`) in `[data-pane-id][data-focused]` with a non-zero rect (tabs
+`Change request breadcrumb`, a base's `Base breadcrumb`) in `[data-pane-id][data-focused]` with a non-zero rect (tabs
 behind it are `display: none`), and at the lit row's centre
 returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row.
 `location.reload()` keeps the arrangement and the histories
@@ -209,4 +211,7 @@ and the palette's link step in `CommandPalette.tsx`, the Wikis row in
 `settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
 `orchestration-v2/ProviderTurnStartService.ts`. `[[`: `composer-logic.ts`
 (`detectWikiNoteTrigger`), `chat/composerWikiNoteItems.ts`, `WikiNoteContextChip.tsx`, and
-mobile `features/threads/ThreadFeed.tsx` (the sent chip).
+mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseView.tsx`,
+`packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,
+`packages/wiki-editor/src/BaseBlock.tsx` and `baseCells.ts`, server `wiki/wikiViews.ts` and
+`mcp/toolkits/wiki/` (`astrolabe_wiki_query`).

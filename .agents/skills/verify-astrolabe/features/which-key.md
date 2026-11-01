@@ -47,7 +47,8 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   browser tabs, not chats), `h` Back and `l` Forward on the focused pane's tab (upstream's
   `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Projects
   and Changes they walk the tab in front's history and are faint at either
-  end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
+  end; elsewhere the route history). On a chat tab or a thread's surface (`navigatesInPlace`)
+  `h` and `l` are always faint and `mod+[`/`mod+]` do nothing: no route-history fallback. `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
   right panel (parks or restores the front chat's linked tabs); the focus moves are root keys now, not in Panes.
   `s` `s` toggle sidebar. `w` `w` open

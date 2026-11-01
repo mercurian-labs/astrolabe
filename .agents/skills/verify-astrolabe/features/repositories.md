@@ -30,7 +30,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `git log --name-only`, deleted files and files already under Uncommitted left out). File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
-  in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
+  in front (`workspace.show`): one already open comes forward; an empty tab is filled; a
+  chat, a linked tab or unsaved edits make way for a new tab; otherwise it replaces the tab
+  (Back returns). Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
 - **Checkout picker** (`combobox "Checkout"`, only with a thread working tree):
   "Project checkout", then each thread's working tree as `<thread> · <branch>`
@@ -53,7 +55,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
   `[data-workspace-tab="<tab key>"]`. An empty tab shows the New tab launcher (**Open a tab**, panes.md).
 - **File tab** (`[data-workspace-tab^="repo-file:"]`): a header row (Back/Forward, then the
-  path as a breadcrumb: its folder muted and cut from its start, then the file's name; "An
+  path as a breadcrumb, `navigation "File path breadcrumb"`: its folder muted, keeping its last
+  segment whole and cutting the rest from its start, and wrapping away (with its `/`) before
+  the file's name truncates, then the file's name; "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
   Read only / Too big to edit here; then **Open local graph**). Markdown opens with the live preview (a centred
   measure); code in `.cm-editor.cm-code` with line numbers and its language's colours
@@ -73,9 +77,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 - **Local graph** (`repo-graph:…`, settings in `astrolabe:repository-local-graph:v1`):
   opened from the file header's **Open local graph**, a sidebar file row's menu, or `r` `g`.
   It splits to the right, carries the file's chain mark, and follows the file in front while
-  **Following** is pressed (`aria-pressed`). Header actions: Back, Forward, **Following**,
-  **Fit the graph**, **Graph settings** (plus **Reset the graph** once something is
-  expanded). A single click opens the node's file and re-roots there after ~280 ms (the
+  **Following** is pressed (`aria-pressed`). Header actions, in order: Back, Forward,
+  **Reset the graph** (only once something is expanded), **Following**, **Fit the graph**,
+  **Graph settings**. With no file it reads "Local graph", **Fit the graph** is disabled, and
+  the notice reads "Open a file to see its local graph…". A single click opens the node's file and re-roots there after ~280 ms (the
   double-click window); a double-click toggles its neighbours; right-click offers Expand /
   Collapse neighbours, Show / Hide contents, Centre here and Open. Levels and the graph
   itself are in [code-graph.md](code-graph.md).

@@ -40,9 +40,10 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   (CodeMirror's `.cm-selectionLayer`); prove it with a screenshot, since the layer's
   elements are not always there to count.
 - **Ex commands** (through the Command Palette; the app's are aliases, keybinding
-  rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the composer's draft, or opens a note's
-  **Save to change request** ("No edits to save" on a clean note; "Nothing to write
-  here" elsewhere). `q` is the app's close tab: it closes the focused pane's tab in
+  rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the focused chat's draft (or that of
+  the chat whose linked tab is focused; `writeTarget` in `whichKey/commands.ts`), or opens a
+  note's **Save to change request** ("No edits to save" on a clean note); with any other tab
+  focused it offers "Nothing to write here". `q` is the app's close tab: it closes the focused pane's tab in
   front (a chat takes its linked tabs with it). Lines no command claims (`:s/a/b/`, `:%s`, `:12`) show **Run in the
   editor** (first, ahead of any palette matches) when the palette came from a Vim
   editor, and run in that editor's own Vim with focus back in it.
@@ -166,7 +167,8 @@ under the text and a hit-test lands on the text.
 - Opening a thread focuses its composer **in insert mode**, so a Space or letter
   sent "to the page" types into the draft. Press Escape (normal mode, where Space is
   the leader) or open the menu with Cmd+K; a click outside leaves focus on the page,
-  where type-to-focus sends the key into the composer. Clear any stray text.
+  where type-to-focus sends the key into the composer while that chat is the focused pane's
+  tab in front. Clear any stray text.
 - Do not send from the composer on a seeded home unless a provider is configured:
   `:w` and Enter in insert mode start a real turn.
 - Locators for `preview_act type` must be Playwright selectors; a bare CSS descendant
