@@ -649,7 +649,12 @@ section {
 :root:is([data-twilight="astronomical"], [data-twilight="night"]) .mast__night {
   display: inline;
 }
-/* GitHub, a cell like the sky glyph's, on every width. */
+/* The bar's right end: the sky glyph and GitHub as square cells, then Download. */
+.mast__end {
+  grid-column: span 3;
+  display: flex;
+  min-width: 0;
+}
 .mast__gh {
   display: grid;
   place-items: center;
@@ -667,12 +672,12 @@ section {
   fill: currentColor;
 }
 .mast__nav {
-  grid-column: span 6;
+  grid-column: span 5;
   display: grid;
   grid-template-columns: subgrid;
 }
 .mast__cta {
-  grid-column: span 2;
+  flex: 1;
   white-space: nowrap;
 }
 .mast__link,
@@ -702,9 +707,10 @@ section {
     --head: 3.25rem;
   }
   .mast__bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
-  .mast__lead {
+  .mast__lead,
+  .mast__end {
     grid-column: auto;
   }
   .mast__nav,
