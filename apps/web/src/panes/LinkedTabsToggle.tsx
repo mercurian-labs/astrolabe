@@ -169,15 +169,30 @@ function ShortcutTip({ label, shortcut }: { label: string; shortcut: string | nu
   );
 }
 
-/** A rounded square holding how many tabs are hidden, drawn at an icon's size. */
+/** How many tabs are hidden, in lucide's square, so it sits in the header as its other icons. */
 function HiddenCount({ count }: { count: number }) {
   return (
-    <span
+    <svg
       aria-hidden
-      className="flex h-4 min-w-4 items-center justify-center rounded-[4px] border-[1.5px] border-current px-px text-[9px] leading-none font-semibold tabular-nums opacity-80"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className="size-4"
     >
-      {count > 9 ? "9+" : count}
-    </span>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <text
+        x="12"
+        y="16.5"
+        textAnchor="middle"
+        fontSize="12.5"
+        fontWeight="600"
+        fill="currentColor"
+        stroke="none"
+      >
+        {count > 9 ? "9+" : count}
+      </text>
+    </svg>
   );
 }
 
