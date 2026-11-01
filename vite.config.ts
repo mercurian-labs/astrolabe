@@ -23,7 +23,8 @@ const TEST_CONFIG_PACKAGES = [
   "apps/server",
   "apps/web",
   "packages/client-runtime",
-  // Astrolabe: the graph's tests need its happy-dom environment.
+  // Astrolabe: the editor's and the graph's tests need their happy-dom environment.
+  "packages/editor",
   "packages/graph",
 ];
 
