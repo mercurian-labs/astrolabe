@@ -71,9 +71,13 @@ A thread's terminals, browsers, diff and other right-panel tabs are linked to it
 only while that chat is in front: bring another chat to the front and the pane beside it shows
 that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
 the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
-and browsers for the next time you open it. The right panel's toggle (`mod+b`) shows or hides
-the linked tabs of the chat in front, and its maximize control fills the window with the pane
-showing them.
+and browsers for the next time you open it.
+
+The tabs button at the end of the chat's header (`mod+alt+b`, or Space `p` `r`) hides or shows
+them. Hiding sets them aside rather than closing them: they come back where they stood. While
+some are hidden the button shows how many; pick one from its menu to bring them all back with it
+in front, or choose **New tab**. With none, it opens a new linked tab to start one from. A linked
+tab's ✕ closes it for good: a terminal closed this way ends, and the tab does not come back.
 
 A linked tab and its owner carry the same chain mark; hover it to see what it belongs to. To
 link another tab, a document or a file, to the chat in front, right-click it and choose **Link to

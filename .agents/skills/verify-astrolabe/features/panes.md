@@ -52,12 +52,25 @@ panes of its own (pull-requests.md).
   Switching chats parks the old chat's owned tabs and brings the new chat's back where they
   stood, else into the pane the old ones vacated, else a new pane right of the chat (0.45 of
   its room). Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
-  come back next time). `rightPanel.toggle` parks or restores the front chat's linked tabs; an
-  open panel with no surfaces shows an owned empty tab with T3 Code's launcher, and closing the
-  front chat's last linked tab closes its panel. Any other tab links to the chat in front from
+  come back next time). Hiding (the chat's panel closing) parks its linked tabs, except an empty
+  one, which closes; closing a tab (its ✕, `:q`, the tab menu, Close pane, `t` `c`,
+  `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An
+  open panel with no linked tabs shows an owned empty tab with T3 Code's launcher; closing the
+  front chat's last linked tab closes its panel, and closing its last surface keeps the panel
+  open while other linked tabs remain. Any other tab links to the chat in front from
   its menu (**Link to the chat in front**) or `t` `k` (`tab.toggleLink`), and **Unlink tab**
   lets it stay whoever is in front; a thread's own surfaces cannot unlink. A following local
   graph is linked to the file it follows; unlinking pins it (repositories.md).
+- **Linked tabs toggle** (`panes/LinkedTabsToggle.tsx`, `[data-right-panel-toggle]`): in a
+  pane's chat header, after the thread details and terminal drawer toggles, in place of
+  T3 Code's right-panel toggle. With the panel open, a split-pane icon, **Hide tabs** (pressed).
+  With linked tabs parked for that chat (its own and its change group's, plus record surfaces
+  no pane held yet), a rounded square holding their count (label `Open tabs (N hidden)`)
+  opening an **Open tabs** menu: each tab with its icon, then **New tab**; picking one brings
+  them all back with it in front. With none, a plus-in-a-square, **New tab**, which opens the
+  panel's launcher. `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette do what
+  the button does: with tabs parked they open its menu. The header has no maximize of its own;
+  the pane strip's does that.
 - **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
   (`[data-link-mark=<ink>]`) before the ✕ on every linked tab on screen and on its owner, with
   the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
@@ -101,7 +114,7 @@ panes of its own (pull-requests.md).
   actions are commands (`pane.splitRight`, `pane.splitDown`, `pane.close`,
   `pane.toggleMaximized`, `pane.toggleFullScreen`): the keyboard menu's `p` group
   (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `r` for upstream's
-  `rightPanel.toggle`, which parks or restores the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
+  `rightPanel.toggle`, which does what the linked tabs toggle does), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` closes the focused pane's active tab.
 - **Tab context menu** (right-click): **Open in Changes** for a change request, **Open in
@@ -112,7 +125,8 @@ panes of its own (pull-requests.md).
   Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
   **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
   Escape clears a selection. A middle-click (`preview_act click button="middle"`) closes a
-  tab, except a lone empty one.
+  tab. Every tab has a ✕ (a linked one beside its chain mark) except a lone pane's lone empty
+  tab.
 - **Dividers**: between panes, a 1px line with a 3px `role=separator` handle
   (`aria-orientation` vertical for a side-by-side split, horizontal for a stacked one)
   that turns the primary colour on hover or drag (`data-active`). Dragging it rewrites
@@ -120,7 +134,7 @@ panes of its own (pull-requests.md).
   is a pointer-capture drag: `preview_act drag` from the separator to an element in the
   neighbouring pane resizes it; read the new `weights` from `.root`.
 - **Maximize pane** / **Restore pane**: fills the panes, shown only beside other
-  panes. T3 Code's **Maximize panel** (the chat's header control, `rightPanel.toggleMaximized`)
+  panes. T3 Code's `rightPanel.toggleMaximized` (no header control in a pane)
   maximizes the pane showing the front chat's live surface; restoring that pane ends it.
 - **Full screen** (`p f`, `pane.toggleFullScreen`, label "Full screen pane" /
   "Exit full screen"): maximizes the focused pane, faint for a lone pane.
@@ -157,8 +171,9 @@ panes of its own (pull-requests.md).
 
 ## How to get to it (user POV)
 
-Open a chat and press **Toggle right panel** (in the chat's header, or Cmd+Alt+B): its linked
-tabs open in a pane to the chat's right.
+Open a chat and press **New tab** at the end of its header (or Cmd+Alt+B): a linked pane opens
+to the chat's right with the surface launcher. **Hide tabs** sets them aside; the button then
+counts them, and its menu brings them back.
 
 ## Driving it with the Browser panel
 
@@ -167,7 +182,7 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 `Pane actions`.
 
 ```
-preview_act click  role=button[name='Toggle right panel']
+preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # New tab / Hide tabs / Open tabs (N hidden)
 preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
 preview_act click  [data-pane-id] >> role=button[name='New tab']
 preview_act click  role=menuitem[name=/^Files/]

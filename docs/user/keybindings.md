@@ -361,8 +361,9 @@ Agents, Repositories and Wikis they go back and forward in the focused tab inste
 arrows at the top of the sidebar do.
 
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
-again to restore it. Space `p` `r` shows or hides the
-[linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, and Space
+again to restore it. Space `p` `r` hides the
+[linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, or brings them back as
+its tabs button does, and Space
 `t` `k` links the focused tab to the chat in front, or unlinks it.
 
 `chat.new` may ask you to choose a project when there is more than one.

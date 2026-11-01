@@ -62,7 +62,10 @@ surface tabs are always linked to its chat ([`linkedTabs.ts`](../../apps/web/src
 and park while another chat is in front: only the front chat's ChatView feeds the panes
 ([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). Content that must not remount
 (the live surface, the route's ChatView) renders into one DOM node that moves between panes; a
-portal whose container changes remounts its children.
+portal whose container changes remounts its children. A pane's content has `contain: layout
+paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
+built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
+(`useChatOwner`).
 
 ## React Compiler
 
