@@ -56,6 +56,11 @@ export interface PaneTabs {
   readonly Label: ComponentType<PaneTabLabelProps>;
   /** Astrolabe: drawn at a tab's end before its close button, as a linked tab's marker. */
   readonly Marker?: ComponentType<{ readonly tabKey: string }>;
+  /**
+   * Astrolabe: linking a tab to the owner in front, or unlinking it, as its menu and the keyboard
+   * menu offer; null for a tab that cannot change its link.
+   */
+  readonly link?: (tabKey: string) => PaneTabMenuItem | null;
   /** What a tab's menu offers of its own, ahead of closing and splitting it, as a file's Copy path. */
   readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */

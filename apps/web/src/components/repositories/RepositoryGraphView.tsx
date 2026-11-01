@@ -34,7 +34,8 @@ import { storedChoice } from "../projects/storedChoice";
 import { Button } from "../ui/button";
 import { importLineHighlight, importLineKey } from "./importLineHighlight";
 import { LocalGraphPanel } from "./LocalGraphPanel";
-import { filePaneOf, followedPath, localGraphKey } from "./localGraph";
+import { followedGraphFiles } from "~/panes/linkMarks";
+import { filePaneOf, followedPath, followLocalGraph, pinLocalGraph } from "./localGraph";
 import {
   DEFAULT_LOCAL_GRAPH_OPTIONS,
   expandFolder,
@@ -88,6 +89,14 @@ export default function RepositoryGraphView({
     tab.path ??
     (arrangement === null || !inFront ? followed : followedPath(arrangement, tab, followed));
   if (tab.path === null && path !== followed) setFollowed(path);
+  // The link marker ties a following graph to the file it shows (`linkMarks`).
+  const followedKey =
+    tab.path === null && path !== null ? repositoryTabKey({ ...tab, kind: "file", path }) : null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- reports the followed file to the panes' link marks
+  useEffect(() => {
+    followedGraphFiles.set(tabKey, followedKey);
+    return () => followedGraphFiles.set(tabKey, null);
+  }, [followedKey, tabKey]);
 
   const options = graphOptions.useValue();
   // The search narrows this tab's graph only, and is never kept.
@@ -182,6 +191,11 @@ export default function RepositoryGraphView({
     if (action === null || graph === null) return;
     if (action.kind === "open") {
       openFile(action.path, modifier);
+      // The graph moves its root to the file: a following one by following it into its pane, a
+      // pinned one by pinning to it.
+      if (tab.path !== null) {
+        panes.update((arrangement) => pinLocalGraph(arrangement, tabKey, tab, action.path));
+      }
       return;
     }
     const center = pathOf(graph.center) ?? graph.center;
@@ -190,17 +204,10 @@ export default function RepositoryGraphView({
 
   const following = tab.path === null;
   const toggleFollowing = () => {
-    if (following) {
-      if (path !== null)
-        panes.update((arrangement) => swapTab(arrangement, tabKey, localGraphKey(tab, path)));
-      return;
+    if (!following) panes.update((arrangement) => followLocalGraph(arrangement, tabKey, tab));
+    else if (path !== null) {
+      panes.update((arrangement) => pinLocalGraph(arrangement, tabKey, tab, path));
     }
-    const pinnedFile = repositoryTabKey({ ...tab, kind: "file", path: tab.path ?? "" });
-    panes.update((arrangement) => {
-      const swapped = swapTab(arrangement, tabKey, localGraphKey(tab));
-      // Following picks up from the file it was pinned to, where that is open.
-      return leafWithTab(swapped.root, pinnedFile) ? activateTab(swapped, pinnedFile) : swapped;
-    });
   };
 
   const navigate = useNavigate();
@@ -345,12 +352,6 @@ export default function RepositoryGraphView({
 }
 
 /** `key` in `next`'s place; where `next` is already open, that tab instead, and `key` closed. */
-function swapTab(arrangement: Arrangement, key: string, next: string): Arrangement {
-  return allTabs(arrangement).includes(next)
-    ? activateTab(closeTab(arrangement, key), next)
-    : replaceTab(arrangement, key, next);
-}
-
 function GraphNotice({
   children,
   action = null,

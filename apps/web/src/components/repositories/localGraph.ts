@@ -1,6 +1,7 @@
 import {
   activateTab,
   allTabs,
+  closeTab,
   focusedPane,
   openBeside,
   replaceTab,
@@ -125,4 +126,40 @@ export function localGraphOpener(panes: PaneArrangementStore | null): (() => voi
   const tab = parseRepositoryTabKey(focusedPane(arrangement).active);
   if (tab?.kind !== "file") return null;
   return () => panes.update((next) => openLocalGraph(next, tab));
+}
+
+/** `next` in `key`'s place, or in front where it is open already, `key` closing. */
+function swapTab(arrangement: Arrangement, key: string, next: string): Arrangement {
+  return allTabs(arrangement).includes(next)
+    ? activateTab(closeTab(arrangement, key), next)
+    : replaceTab(arrangement, key, next);
+}
+
+/**
+ * Pins a graph to `path`, as unlinking it from the file it follows does, and as clicking a file
+ * in a pinned graph re-pins it there.
+ */
+export function pinLocalGraph(
+  arrangement: Arrangement,
+  graphKey: string,
+  graph: Checkout,
+  path: string,
+): Arrangement {
+  const pinned = localGraphKey(graph, path);
+  return pinned === graphKey ? arrangement : swapTab(arrangement, graphKey, pinned);
+}
+
+/**
+ * Lets a pinned graph follow the file in front again, as linking it does, picking up from the file
+ * it was pinned to where that is open.
+ */
+export function followLocalGraph(
+  arrangement: Arrangement,
+  graphKey: string,
+  graph: RepositoryGraphTab,
+): Arrangement {
+  const swapped = swapTab(arrangement, graphKey, localGraphKey(graph));
+  if (graph.path === null) return swapped;
+  const pinnedFile = repositoryTabKey({ ...graph, kind: "file", path: graph.path });
+  return leafWithTab(swapped.root, pinnedFile) ? activateTab(swapped, pinnedFile) : swapped;
 }

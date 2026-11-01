@@ -35,7 +35,9 @@ import {
   tabAudioState,
   tabMuteMenuItem,
 } from "~/components/RightPanelTabs";
+import { followLocalGraph, pinLocalGraph } from "~/components/repositories/localGraph";
 import { RepositoryTabHeader } from "~/components/repositories/RepositoryTabHeader";
+import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { Button } from "~/components/ui/button";
 import {
   Empty,
@@ -120,6 +122,7 @@ export function createWorkspaceHost(): WorkspaceHost {
     Label: TabLabel,
     Marker: LinkMarker,
     menuItems: tabMenuItems,
+    link: linkAction,
     close: closeWorkspaceTab,
     NewTab: NewTabMenu,
     place: (slot, leaf, hosting) => {
@@ -194,18 +197,44 @@ function useSurface(tabKey: string): RightPanelSurface | null {
  * thread's surfaces stay linked to their thread, which renders them.
  */
 function tabMenuItems(tabKey: string): PaneTabMenuItem[] {
-  return [...surfaceMenuItems(tabKey), ...linkMenuItems(tabKey)];
+  const link = linkAction(tabKey);
+  return [...surfaceMenuItems(tabKey), ...(link ? [link] : [])];
 }
 
-function linkMenuItems(tabKey: string): PaneTabMenuItem[] {
-  if (parseChatSurfaceKey(tabKey) !== null || parseChatTabKey(tabKey) !== null) return [];
-  if (isEmptyTab(tabKey)) return [];
+/**
+ * Unlinks a linked tab, or links one to the chat in front. A following local graph unlinks by
+ * pinning to the file it shows, and links again by following.
+ */
+function linkAction(tabKey: string): PaneTabMenuItem | null {
+  if (parseChatSurfaceKey(tabKey) !== null || parseChatTabKey(tabKey) !== null) return null;
+  if (isEmptyTab(tabKey)) return null;
+  const graph = graphLinkAction(tabKey);
+  if (graph !== undefined) return graph;
   const linked = workspace.linked();
   if (linked.owners[tabKey] !== undefined) {
-    return [{ label: "Unlink tab", run: () => workspace.unlink(tabKey) }];
+    return { label: "Unlink tab", run: () => workspace.unlink(tabKey) };
   }
-  if (linked.front === null) return [];
-  return [{ label: "Link to the chat in front", run: () => workspace.link(tabKey) }];
+  if (linked.front === null) return null;
+  return { label: "Link to the chat in front", run: () => workspace.link(tabKey) };
+}
+
+/** A local graph's link: following is linked, pinned is not. Undefined for any other tab. */
+function graphLinkAction(tabKey: string): PaneTabMenuItem | null | undefined {
+  const graph = parseRepositoryTabKey(tabKey);
+  if (graph?.kind !== "graph") return undefined;
+  if (graph.path !== null) {
+    return {
+      label: "Link to the file in front",
+      run: () => workspace.update((arrangement) => followLocalGraph(arrangement, tabKey, graph)),
+    };
+  }
+  const followed = parseRepositoryTabKey(followedGraphFiles.fileOf(tabKey) ?? "");
+  if (followed?.kind !== "file") return null;
+  return {
+    label: "Unlink tab",
+    run: () =>
+      workspace.update((arrangement) => pinLocalGraph(arrangement, tabKey, graph, followed.path)),
+  };
 }
 
 function surfaceMenuItems(tabKey: string): PaneTabMenuItem[] {

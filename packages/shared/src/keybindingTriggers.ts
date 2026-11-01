@@ -54,6 +54,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu t [", command: "chatTab.previous" },
   { key: "menu t c", command: "chatTab.close" },
   { key: "menu t r", command: "view.reopenClosed" },
+  { key: "menu t k", command: "tab.toggleLink" },
   // The tab in front's history, as h/l step left and right ([ and ] step between tabs).
   { key: "menu t h", command: "navigation.back" },
   { key: "menu t l", command: "navigation.forward" },

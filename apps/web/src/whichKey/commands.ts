@@ -331,6 +331,10 @@ function astrolabeCommand(
       );
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "tab.toggleLink": {
+      const link = focused ? (panes?.tabs.link?.(focused.leaf.active) ?? null) : null;
+      return entry(link?.label ?? "Link tab", link?.run ?? null);
+    }
   }
 }
 

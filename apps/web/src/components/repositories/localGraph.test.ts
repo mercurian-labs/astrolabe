@@ -7,9 +7,11 @@ import type { PaneArrangementStore } from "~/panes/panesHost";
 import {
   filePaneOf,
   followedPath,
+  followLocalGraph,
   localGraphKey,
   localGraphOpener,
   openLocalGraph,
+  pinLocalGraph,
 } from "./localGraph";
 import { repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
 
@@ -123,6 +125,28 @@ describe("opening a local graph", () => {
     const after = openLocalGraph(before, file("a.ts", "/worktree"));
     expect(leaves(after.root)).toHaveLength(3);
     expect(leafWithTab(after.root, localGraphKey({ ...checkout, cwd: "/worktree" }))).toBeDefined();
+  });
+});
+
+describe("linking a local graph to the file in front", () => {
+  it("unlinks by pinning to the file it shows, and a pinned one re-pins to a file clicked", () => {
+    const before = arranged(row(leaf("p1", [key("a.ts")]), leaf("p2", [FOLLOWING])), "p1");
+    const pinned = pinLocalGraph(before, FOLLOWING, checkout, "a.ts");
+    expect(leaves(pinned.root)[1]?.tabs).toEqual([localGraphKey(checkout, "a.ts")]);
+    const clicked = pinLocalGraph(pinned, localGraphKey(checkout, "a.ts"), checkout, "b.ts");
+    expect(leaves(clicked.root)[1]?.tabs).toEqual([localGraphKey(checkout, "b.ts")]);
+  });
+
+  it("links again by following, from the file it was pinned to", () => {
+    const pinnedKey = localGraphKey(checkout, "a.ts");
+    const before = arranged(
+      row(leaf("p1", [key("a.ts"), key("b.ts")], key("b.ts")), leaf("p2", [pinnedKey])),
+      "p2",
+    );
+    const graph = { kind: "graph" as const, ...checkout, path: "a.ts" };
+    const after = followLocalGraph(before, pinnedKey, graph);
+    expect(leaves(after.root)[1]?.tabs).toEqual([FOLLOWING]);
+    expect(followedPath(after, checkout, null)).toBe("a.ts");
   });
 });
 
