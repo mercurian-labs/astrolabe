@@ -16,11 +16,8 @@ import { codeGraphViewsAtom, codeGraphViewsKey } from "~/state/codeGraphViews";
 import { useProject, useThreadCheckpointSummaries, useThreadShell } from "~/state/entities";
 import {
   DEFAULT_CODE_GRAPH_OPTIONS,
-  expansionFor,
   NO_KEYED_EXPANSION,
   parseCodeGraphOptions,
-  rootsKey,
-  type CodeGraphExpansion,
   type CodeGraphOptions,
 } from "../codeGraph/codeGraphData";
 import { CodeGraphView, GraphNotice, type CodeGraphViewHandle } from "../codeGraph/CodeGraphView";
@@ -28,6 +25,7 @@ import { storedChoice } from "../projects/storedChoice";
 import { RepositoryTabHeader } from "../repositories/RepositoryTabHeader";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { ownExpansion, threadGraphShown } from "./threadGraph";
 import { INITIAL_THREAD_GRAPH, useThreadGraphStore } from "./threadGraphStore";
 
 /** The filter panel's choices, kept on the device for every thread's graph. */
@@ -39,10 +37,6 @@ const graphOptions = storedChoice<CodeGraphOptions>({
 });
 
 const CHANGES = "changes";
-
-const union = (left: readonly string[], right: readonly string[]) => [
-  ...new Set([...left, ...right]),
-];
 
 /** The files a thread's turns changed, from its checkpoints, in a stable order. */
 function changedFiles(
@@ -77,35 +71,16 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
   const options = graphOptions.useValue();
   const viewRef = useRef<CodeGraphViewHandle>(null);
 
-  const viewIndex =
-    state.view === null ? -1 : views.findIndex((each) => each.id === state.view?.id);
-  const view = views[viewIndex] ?? null;
-  const stepIndex = view === null || state.view === null ? 0 : clampStep(view, state.view.step);
-  const step = view?.steps[stepIndex] ?? null;
-
-  const [firstChanged, ...restChanged] = changed;
-  const roots: readonly [string, ...string[]] | null =
-    view?.roots ??
-    state.roots ??
-    (firstChanged === undefined ? null : [firstChanged, ...restChanged]);
-  // A story's step sets the level, depth and what it opened; the reader's own changes go on top.
-  const expansionKey =
-    view === null || roots === null
-      ? roots === null
-        ? ""
-        : rootsKey(roots)
-      : `${view.id}:${stepIndex}`;
-  const own = expansionFor(state.expansion, expansionKey);
-  const expansion: CodeGraphExpansion =
-    step === null
-      ? own
-      : {
-          neighbours: union(step.expandNeighbours, own.neighbours),
-          contents: union(step.showContents, own.contents),
-          collapsed: own.collapsed,
-        };
-  const shownOptions =
-    step === null ? options : { ...options, level: step.level, depth: step.depth };
+  const {
+    view,
+    stepIndex,
+    step,
+    roots,
+    expansionKey,
+    own,
+    expansion,
+    options: shownOptions,
+  } = threadGraphShown({ state, views, changed, options });
 
   const setStep = (next: number) =>
     update(key, (current) =>
@@ -152,16 +127,7 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
             ...current,
             expansion: {
               key: expansionKey,
-              expansion:
-                step === null
-                  ? next
-                  : {
-                      neighbours: next.neighbours.filter(
-                        (id) => !step.expandNeighbours.includes(id),
-                      ),
-                      contents: next.contents.filter((id) => !step.showContents.includes(id)),
-                      collapsed: next.collapsed,
-                    },
+              expansion: ownExpansion(step, next),
             },
           }))
         }
