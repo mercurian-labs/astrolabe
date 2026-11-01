@@ -266,13 +266,16 @@ describe("Mod+T in the shared panes", () => {
     expect(document.querySelector('[role="menu"]:not([data-closed])')).toBeNull();
   });
 
-  it("opens the menu while the chat's panel is closed too, adding the surface beside the chat", async () => {
+  it("opens the menu with no chat's panel on screen, offering a document or an empty tab", async () => {
     using _panel = emptyPanel();
-    const onAddDiff = vi.fn();
-    await using _screen = await renderPanes({ open: false, onAddDiff });
+    await using _screen = await renderPanes();
+    // A chat whose panel is closed renders none, so it lends the panes no panel props.
+    await act(() => workspace.clearPanel(workspace.getPanel()!));
     expect((await press("t", { metaKey: true })).defaultPrevented).toBe(true);
-    await press("d");
-    expect(onAddDiff).toHaveBeenCalledOnce();
+    const items = [
+      ...document.querySelectorAll('[role="menu"]:not([data-closed]) [role="menuitem"]'),
+    ];
+    expect(items.map((item) => item.textContent)).toEqual(["DocumentO", "Empty tabN"]);
   });
 });
 
