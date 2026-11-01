@@ -4,7 +4,7 @@ The code graph shows how code connects, drawn the way Obsidian draws its graph: 
 folders or definitions, lines for the imports and uses between them. It appears in two places: a
 thread's **Graph** tab, around the files the thread changed, and a file's
 [local graph](projects.md#local-graph) in Projects, around that file. Both read the
-repository's code index, set in **Settings → Projects**.
+project's code index, set in **Settings → Projects**.
 
 ## A thread's Graph tab
 

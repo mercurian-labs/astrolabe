@@ -82,19 +82,19 @@ export function TabLauncher({ paneId, tabKey }: { paneId: string; tabKey: string
       run: () => setFinding("document"),
     },
     {
-      label: "Repository file",
+      label: "Project file",
       icon: FileCode2,
       shortcut: "R",
       available: repositories.length > 0,
-      disabledReason: "Add a repository first.",
+      disabledReason: "Add a project first.",
       run: () => setFinding("file"),
     },
     {
-      label: "Repository diff",
+      label: "Project diff",
       icon: FileDiff,
       shortcut: "C",
       available: repositories.length > 0,
-      disabledReason: "Add a repository first.",
+      disabledReason: "Add a project first.",
       run: () => setFinding("diff"),
     },
     {

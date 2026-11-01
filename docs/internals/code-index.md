@@ -2,7 +2,7 @@
 
 Astrolabe indexes every git repository project with tree-sitter (`apps/server/src/codeIndex/`,
 parsing from `packages/code-graph`). One index serves the code graph (a thread's Graph tab
-and the Repositories local graph), the `astrolabe_code_*` agent tools, and every branch, worktree
+and the Projects local graph), the `astrolabe_code_*` agent tools, and every branch, worktree
 and checkpoint of the repository.
 
 ## Facts, not edges

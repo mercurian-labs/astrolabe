@@ -1,6 +1,6 @@
 # Shared tabs, splits and linked tabs
 
-Agents, Wikis, Repositories and Changes share one set of panes (`panes/workspace.ts`,
+Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`,
 `panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread and draft routes, `/` unless
 the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
 pull requests, change requests, change groups, files, diffs, local graphs, wiki notes and a thread's right-panel surfaces
@@ -8,7 +8,7 @@ pull requests, change requests, change groups, files, diffs, local graphs, wiki 
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
-else links to a chat: chats, documents, wiki change requests, change groups, repository files and
+else links to a chat: chats, documents, wiki change requests, change groups, project files and
 diffs stand on their own (a change group's **Open as a tab group** still links to the group, and
 a following local graph to its file). There
 is no right-panel frame: `ChatRightPanel` renders `panes/LinkedPanel.tsx`, which lends the panes
@@ -38,8 +38,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   pane's tabs, in front, at once (no menu). It shows `panes/TabLauncher.tsx`
   (`[aria-label="Open a tab"]`): **New chat** `N` (the sidebar's New thread: the front
   chat's project, or the palette's project list with several), **Document** `O` (wiki
-  finder), **Repository file** `R` (repository list, then its files; one repository skips
-  the list), **Repository diff** `C` (each repository's Uncommitted changes and Branch
+  finder), **Project file** `R` (project list, then its files; one project skips
+  the list), **Project diff** `C` (each project's Uncommitted changes and Branch
   changes), **Change group** `K`. Rows with nothing to offer are faint with a reason on
   hover. Letters act only while that pane is focused, and differ from the surface
   launcher's. The pick takes the New tab's place (`putInPlace`); a new chat arriving while a
@@ -149,7 +149,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `rightPanel.toggle`, which hides or brings back the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` closes the focused pane's active tab.
-- **Tab context menu** (right-click): **Open in Repositories** for a thread's Files, Diff and
+- **Tab context menu** (right-click): **Open in Projects** for a thread's Files, Diff and
   opened file, **Open as its own tab** for a
   thread's file, Diff and pull request, then T3 Code's own items for the tab (**Rename** for a
   device, **Copy path** for a workspace file, **Mute tab** / **Unmute tab** for a browser
@@ -210,7 +210,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   pane's shown tab reads "Click to show" until its pane takes focus.
 - **Persistence**: the one arrangement, its links and parked tabs survive a reload, per
   device (`astrolabe:workspace:v1`, history `astrolabe:workspace-tab-history:v1`). The first
-  load brings in the old chat tabs and the Repositories and Wikis layouts side by side and
+  load brings in the old chat tabs and the Projects and Wikis layouts side by side and
   drops `t3code:right-panel-panes:v1:*`. Maximize pane is in memory only.
 - **Narrow windows**: the panes stay panes (no sheet); they scroll sideways below their
   minimum widths.
@@ -232,7 +232,7 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # New tab / Hide tabs / Open tabs (N hidden)
 preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
 preview_act click  [data-pane-id] >> role=button[name='New tab']          # + : a New tab, no menu
-preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Repository file/]
+preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Project file/]
 preview_act click  [data-pane-id] >> role=button[name='Pane actions']
 preview_act click  role=menuitem[name='Split right']
 preview_act click  role=tab[name='<other chat>']                         # its linked tabs take the pane

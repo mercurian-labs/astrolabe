@@ -50,7 +50,7 @@ its pull request and **Draft** for an unsent message. Hover a row for its full c
 
 ## Tabs and splits
 
-Agents, Wikis, Repositories and Changes share one set of tabs on this device: chats, files,
+Agents, Wikis, Projects and Changes share one set of tabs on this device: chats, files,
 changes, documents, pull requests and a thread's terminals and browsers can stand side by side,
 and every tab splits. Switching sections from the icon rail, the keyboard menu or the Command
 Palette changes what the sidebar lists, not the tabs or which one has focus. In Agents, the thread
@@ -59,7 +59,7 @@ document, a file or a pull request in focus, none is. Drag a tab to a pane's edg
 onto another pane's tabs to move it there.
 
 The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
-browser does. It offers a new chat, a document, a repository's file or changes, and a change
+browser does. It offers a new chat, a document, a project's file or changes, and a change
 group, each with a letter key; what you pick takes the New tab's place.
 
 Clicking a thread in the sidebar shows it in place of the chat in front, as a link does in a
@@ -95,9 +95,9 @@ tab does not come back. A New tab opened with a pane's **+** stands on its own, 
 linked tabs, and stays where it is when another chat comes to the front.
 
 A linked tab and its owner carry the same chain mark; hover it to see what it belongs to.
-Everything else (chats, documents, repository files and changes, change groups) stands on its
+Everything else (chats, documents, project files and changes, change groups) stands on its
 own. To keep a thread's file, diff or pull request whichever chat is in front, right-click its
-tab and choose **Open as its own tab**: a file becomes the repository's file, the diff the
+tab and choose **Open as its own tab**: a file becomes the project's file, the diff the
 checkout's uncommitted changes, and the pull request its own tab, in the same place.
 
 A change group's **Open as a tab group** links its change requests to the group, so they show

@@ -213,10 +213,10 @@ working. Current logs, message attachments, and browser profiles are kept.
 ## Code index
 
 Every git repository project is indexed: each file's definitions and imports, so agents and the
-Repositories local graph can find code. One index serves all of a repository's branches,
+Projects local graph can find code. One index serves all of a repository's branches,
 worktrees and checkpoints, so switching branches only reads the files that changed.
 
-Select a repository and open **Settings → Projects** to turn **Index this repository** off or on,
+Select a project and open **Settings → Projects** to turn **Index this project** off or on,
 see its progress, or rebuild it. Ignored files, `node_modules`, vendored and generated code, and
 files over 512 KB are never indexed; add other paths under **Skipped paths**, one gitignore-style
 pattern per line. Wikis are not indexed.
@@ -227,7 +227,7 @@ under battery saver. The first index of a large repository can take a minute; la
 restarts take seconds. Code index
 storage in **Settings → Maintenance** shows its size; **Clean up** removes file versions no
 branch, worktree or checkpoint uses (hourly cleanup does this too), and **Clear all** deletes
-every index so repositories index again. The single-file server build cannot index.
+every index so projects index again. The single-file server build cannot index.
 
 ## Project icons
 

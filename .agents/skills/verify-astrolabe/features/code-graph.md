@@ -1,8 +1,8 @@
 # Code graph
 
-The code graph over a repository's code index, drawn the way Obsidian draws its graph (Pixi,
+The code graph over a project's code index, drawn the way Obsidian draws its graph (Pixi,
 `packages/graph`): a thread's **Graph** tab (a right-panel surface and linked tab, around the
-files the thread changed) and the Repositories local graph (around one file, see
+files the thread changed) and the Projects local graph (around one file, see
 repositories.md). Both render `CodeGraphView`. Agents show pictures and stories in the Graph tab
 with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 
@@ -16,9 +16,9 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
   thread hasn't changed any files yet."
 - **Levels**: Graph settings › Filters › **Level** (`Folders`, `Modules`, `Files`, `Definitions`,
   `Members`) and **Depth** 0–3. Kept per device: `astrolabe:thread-code-graph:v1` (thread tab),
-  `astrolabe:repository-local-graph:v1` (Repositories).
+  `astrolabe:repository-local-graph:v1` (Projects).
 - **Gestures**: click a file opens it (thread tab: beside the chat via the right panel's Files;
-  Repositories: the file pane) and re-roots; click a folder or module shows its contents;
+  Projects: the file pane) and re-roots; click a folder or module shows its contents;
   double-click a dot toggles its neighbours (the single click waits ~280 ms for it);
   right-click opens the app context menu (**Expand/Collapse neighbours**, **Show contents**,
   **Centre here**, **Open**; on a cluster's disc **Hide contents**, **Centre here**, **Open**);
@@ -44,7 +44,7 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
    **Back to the thread's changes** returns.
 5. Ask the agent: "Walk me through how X reaches Y, as a diagram I can step through." The tab
    opens on the story; step it; the view menu lists it; reload and it is still there.
-6. Repositories: open a file's local graph (`r g`); click, double-click and the menu behave as in
+6. Projects: open a file's local graph (`r g`); click, double-click and the menu behave as in
    3–4, and a following graph follows the file the click opened.
 
 ## Owns

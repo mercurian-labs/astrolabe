@@ -34,7 +34,7 @@ export function RepositoryFinder({
   readonly onClose: () => void;
   readonly onPick: (key: string) => void;
 }) {
-  const label = mode === "file" ? "Open a repository file" : "Open a repository diff";
+  const label = mode === "file" ? "Open a project file" : "Open a project diff";
   const pick = (key: string) => {
     onClose();
     onPick(key);
@@ -122,9 +122,9 @@ function DiffFinder({ onPick }: { readonly onPick: (key: string) => void }) {
   );
   return (
     <CommandPaletteContent
-      aria-label="Open a repository diff"
+      aria-label="Open a project diff"
       footerActionLabel="Open"
-      inputProps={{ placeholder: "Find a repository's changes…" }}
+      inputProps={{ placeholder: "Find a project's changes…" }}
       testId="repository-diff-finder"
       {...list.contentProps}
     >
@@ -136,9 +136,7 @@ function DiffFinder({ onPick }: { readonly onPick: (key: string) => void }) {
         onExecuteItem={(item) => {
           if (item.kind === "action") void item.run();
         }}
-        emptyStateMessage={
-          repositories.length === 0 ? "No repositories yet." : "No matching repositories."
-        }
+        emptyStateMessage={repositories.length === 0 ? "No projects yet." : "No matching projects."}
       />
     </CommandPaletteContent>
   );
@@ -181,23 +179,21 @@ function RepositoryList({
     }));
   return (
     <CommandPaletteContent
-      aria-label="Open a repository file"
+      aria-label="Open a project file"
       footerActionLabel="Choose"
-      inputProps={{ placeholder: "Find a repository…" }}
+      inputProps={{ placeholder: "Find a project…" }}
       testId="repository-file-finder"
       {...list.contentProps}
     >
       <CommandPaletteResults
-        groups={items.length > 0 ? [{ value: "repositories", label: "Repositories", items }] : []}
+        groups={items.length > 0 ? [{ value: "repositories", label: "Projects", items }] : []}
         highlightedItemValue={list.highlighted}
         isActionsOnly={false}
         keybindings={list.keybindings}
         onExecuteItem={(item) => {
           if (item.kind === "action") void item.run();
         }}
-        emptyStateMessage={
-          repositories.length === 0 ? "No repositories yet." : "No matching repositories."
-        }
+        emptyStateMessage={repositories.length === 0 ? "No projects yet." : "No matching projects."}
       />
     </CommandPaletteContent>
   );
@@ -244,7 +240,7 @@ function RepositoryFiles({
   const searching = list.query.trim().length > 0;
   return (
     <CommandPaletteContent
-      aria-label="Open a repository file"
+      aria-label="Open a project file"
       escapeLabel="Close"
       footerActionLabel="Open file"
       inputProps={{

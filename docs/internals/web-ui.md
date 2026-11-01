@@ -61,7 +61,7 @@ T3 Code's ChatView still renders only its thread's one active right-panel surfac
 surface tabs are always linked to its chat ([`linkedTabs.ts`](../../apps/web/src/panes/linkedTabs.ts))
 and park while another chat is in front: only the front chat's ChatView feeds the panes
 ([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). Only those surfaces link to a
-chat; anything that reads on its own (a document, a repository file) stays an unlinked tab, and a
+chat; anything that reads on its own (a document, a project file) stays an unlinked tab, and a
 surface with such a counterpart converts to it in place rather than unlinking, since an unlinked
 surface would have no ChatView to render it. The live surface renders into one DOM node that
 moves between panes; a portal whose container changes remounts its children. Each chat tab has

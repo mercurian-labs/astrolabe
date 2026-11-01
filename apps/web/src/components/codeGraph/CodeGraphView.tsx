@@ -243,7 +243,7 @@ export function CodeGraphView({
           </Button>
         }
       >
-        The code index is off for this repository.
+        The code index is off for this project.
       </GraphNotice>
     );
   } else if (reason === "unsupported") {

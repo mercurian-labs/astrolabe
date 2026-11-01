@@ -103,7 +103,7 @@ export function CodeIndexProjectSettings({
         serverScoped
         settingKeys={["codeIndex"]}
         mixed={mixed}
-        title="Index this repository"
+        title="Index this project"
         description={
           <span>
             <span className="block">
@@ -135,7 +135,7 @@ export function CodeIndexProjectSettings({
             </Button>
             <ScopedSwitch
               settingKeys={["codeIndex"]}
-              aria-label="Index this repository"
+              aria-label="Index this project"
               checked={codeIndex.enabled}
               onCheckedChange={(enabled) =>
                 updateSettings({ codeIndex: { ...codeIndex, enabled } })
@@ -260,7 +260,7 @@ export function CodeIndexStorageSection() {
             ))}
             <span className="mt-1 block">
               Clean up removes file versions no branch, worktree or checkpoint uses. Clear all
-              deletes every index; repositories that index build again.
+              deletes every index; projects that index build again.
             </span>
           </span>
         }

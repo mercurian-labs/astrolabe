@@ -393,7 +393,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "focus.right": "Focus Right",
   "scroll.down": "Scroll Down",
   "scroll.up": "Scroll Up",
-  "repository.localGraph": "Repositories: Open Local Graph",
+  "repository.localGraph": "Projects: Open Local Graph",
   "tab.toggleLink": "Tabs: Link or Unlink Tab",
 };
 

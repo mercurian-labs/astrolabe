@@ -320,8 +320,8 @@ describe("a pane's New tab", () => {
     expect(launcherRows(linkedPane, "Open a tab")).toEqual([
       "New chatN",
       "DocumentO",
-      "Repository fileR",
-      "Repository diffC",
+      "Project fileR",
+      "Project diffC",
       "Change groupK",
     ]);
     // It stays put while the chat's linked tabs are set aside.
