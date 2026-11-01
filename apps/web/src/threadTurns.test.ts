@@ -1,7 +1,6 @@
-import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { askedLine, askedLines, replyLine } from "./threadTurns";
+import { askedLine, replyLine } from "./threadTurns";
 
 describe("askedLine", () => {
   it("takes the first line with real text, past lines that only link an attachment", () => {
@@ -44,20 +43,5 @@ describe("replyLine", () => {
       "Fixed the ledger in main",
     );
     expect(replyLine("  \n")).toBeNull();
-  });
-});
-
-describe("askedLines", () => {
-  it("labels each run by its first user message", () => {
-    const message = (runId: string | null, role: "user" | "assistant", text: string) =>
-      ({ role, runId, text }) as OrchestrationV2ConversationMessage;
-    const lines = askedLines([
-      message("r1", "user", "[a.png](t3-attachment://a)\nShip it"),
-      message("r1", "user", "A later steer"),
-      message("r2", "assistant", "An answer"),
-      message(null, "user", "No run"),
-    ]);
-
-    expect([...lines]).toEqual([["r1", "Ship it"]]);
   });
 });

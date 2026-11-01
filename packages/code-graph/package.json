@@ -2,9 +2,6 @@
   "name": "@mercurian/code-graph",
   "private": true,
   "license": "MIT",
-  "bin": {
-    "code-graph": "./src/cli.ts"
-  },
   "type": "module",
   "exports": {
     ".": {
@@ -29,8 +26,6 @@
     }
   },
   "scripts": {
-    "index": "node src/cli.ts index",
-    "story": "node src/cli.ts story",
     "typecheck": "tsc --noEmit",
     "test": "vp test run",
     "lint": "vp lint ."

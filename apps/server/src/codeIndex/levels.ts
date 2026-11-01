@@ -9,7 +9,7 @@ import type { StoredSymbol } from "./facts.ts";
 import type { Packages } from "./resolve.ts";
 
 export const dirname = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
-export const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** A module holding several files: its folder (repository path) and its name. */
 export interface ModuleUnit {

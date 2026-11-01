@@ -1,29 +1,7 @@
 /**
- * Colors come from CSS custom properties on the container, so the host's theme owns the palette:
- * --atlas-paper (ground, what receded things fade to), --atlas-ink (notes, lines, labels),
- * --atlas-accent (worked notes, new and broken marks), --atlas-warning (failure flow, crossed
- * boundaries), --atlas-lens-1 to --atlas-lens-6 (one per skill map, by position).
+ * Colors come from CSS custom properties on the container, so the host's theme owns the palette
+ * (`--atlas-paper`, `--atlas-ink`, `--atlas-accent`, …), read as `#rrggbb` by painting them.
  */
-import { Color } from "three";
-
-export const LENS_SLOTS = 6;
-
-export interface GraphTheme {
-  readonly paper: Color;
-  readonly ink: Color;
-  readonly accent: Color;
-  readonly warning: Color;
-  readonly lenses: ReadonlyArray<Color>;
-}
-
-const FALLBACK = {
-  paper: "#f7f6f2",
-  ink: "#23211d",
-  accent: "#b4532a",
-  warning: "#b08a2e",
-  lenses: ["#2f6b73", "#8a6d1f", "#5b4a86", "#3f7a45", "#8c3f5d", "#4b6584"],
-};
-
 /** A 2D context that can paint, used to turn any CSS color into sRGB bytes; null where none. */
 let painter: CanvasRenderingContext2D | null | undefined;
 function paintContext(): CanvasRenderingContext2D | null {
@@ -41,7 +19,7 @@ function paintContext(): CanvasRenderingContext2D | null {
 
 /**
  * `value` as `#rrggbb`, by painting it: a host's tokens may be `oklch()`, `color-mix()`, or
- * `lab()` (Tailwind v4 is), which three's `Color.setStyle` does not read and would leave white.
+ * `lab()` (Tailwind v4 is), which a plain hex parser does not read.
  * Null when the context cannot paint it or there is no context (a test, a server).
  */
 export function cssToHex(
@@ -64,30 +42,4 @@ export function cssHex(style: CSSStyleDeclaration, name: string, fallback: strin
   const value = style.getPropertyValue(name).trim();
   const context = paintContext();
   return (value.length > 0 && context !== null ? cssToHex(value, context) : null) ?? fallback;
-}
-
-function read(style: CSSStyleDeclaration, name: string, fallback: string): Color {
-  const value = style.getPropertyValue(name).trim();
-  const color = new Color();
-  const context = paintContext();
-  const painted = value.length > 0 && context !== null ? cssToHex(value, context) : null;
-  try {
-    color.setStyle(painted ?? (value.length > 0 ? value : fallback));
-  } catch {
-    color.setStyle(fallback);
-  }
-  return color;
-}
-
-export function readTheme(element: Element): GraphTheme {
-  const style = getComputedStyle(element);
-  return {
-    paper: read(style, "--atlas-paper", FALLBACK.paper),
-    ink: read(style, "--atlas-ink", FALLBACK.ink),
-    accent: read(style, "--atlas-accent", FALLBACK.accent),
-    warning: read(style, "--atlas-warning", FALLBACK.warning),
-    lenses: FALLBACK.lenses.map((fallback, slot) =>
-      read(style, `--atlas-lens-${slot + 1}`, fallback),
-    ),
-  };
 }

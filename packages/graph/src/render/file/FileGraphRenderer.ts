@@ -4,8 +4,7 @@
  * more important keeps its place (`labelPlacement.ts`). Forces run only while something moves;
  * frames are drawn only on a change, by a drawer that only paints (`FileGraphDrawer`).
  */
-import { CLUSTER_PAD, FileForces, type Point } from "../../layout/fileForces.ts";
-import { seededPoint } from "../../layout/forceLayout.ts";
+import { CLUSTER_PAD, FileForces, seededPoint, type Point } from "../../layout/fileForces.ts";
 import {
   clusterChains,
   fileGraphDegrees,

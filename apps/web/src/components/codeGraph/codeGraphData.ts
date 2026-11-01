@@ -173,7 +173,7 @@ export const expansionFor = (state: KeyedExpansion, key: string): CodeGraphExpan
 const toggled = (list: readonly string[], id: string, on: boolean) =>
   on ? [...new Set([...list, id])].toSorted() : list.filter((each) => each !== id);
 
-export const hasNeighbours = (expansion: CodeGraphExpansion, id: string) =>
+const hasNeighbours = (expansion: CodeGraphExpansion, id: string) =>
   expansion.neighbours.includes(id);
 
 export const toggleNeighbours = (

@@ -14,7 +14,24 @@ import {
 
 import { clusterChains, type FileGraphData } from "../model/fileGraph.ts";
 import type { FileGraphForces } from "../model/fileGraphSettings.ts";
-import { seededPoint } from "./forceLayout.ts";
+
+/** A starting point in a square of side `spread`, drawn from the id alone. */
+export function seededPoint(id: string, spread: number): [number, number] {
+  let state = 2166136261;
+  for (let i = 0; i < id.length; i += 1) {
+    state ^= id.charCodeAt(i);
+    state = Math.imul(state, 16777619) >>> 0;
+  }
+  const next = () => {
+    // xorshift32: a few deterministic draws from the id's hash.
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state / 4294967296 - 0.5;
+  };
+  return [next() * spread, next() * spread];
+}
 
 /** Below this the simulation has cooled: it stops. */
 export const ALPHA_MIN = 0.001;
