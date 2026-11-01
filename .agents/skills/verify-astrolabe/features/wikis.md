@@ -3,8 +3,8 @@
 Astrolabe's second section, beside the threads: folders of linked markdown notes
 kept in git, edited through change requests. Its rail item swaps the sidebar for
 the Wikis sidebar, built from the thread list's parts, and fills the main area
-with Obsidian-style tabs and splits over documents (the same panes as the right
-panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
+with Obsidian-style tabs and splits over documents (the one shared workspace, see
+[panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 
 ## Sub-features
 
@@ -99,8 +99,8 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   keep it shut. Enter or a click inserts a chip, `button "Wiki note, <note> in <wiki>"`
   (`WikiNoteContextChip.tsx`), without sending. In a project with no linked wiki, an empty
   query also lists "Link <wiki> to <project>" rows ("So agents here know where its plans
-  live"), which link instead of inserting. A sent chip opens the note in the thread's right
-  panel (outside a thread, `/wikis/<id>?note=`); on the phone it is an inline link named after
+  live"), which link instead of inserting. A sent chip opens the note as its own tab beside
+  the focused pane, or brings an open one forward (outside the panes, `/wikis/<id>?note=`); on the phone it is an inline link named after
   the note that opens `WikiDocument` (`ThreadFeed.tsx`).
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
@@ -124,7 +124,9 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
 The book icon in the icon rail, the keyboard menu's `w w` or `g w`, or a document
 from Search. ("Open wikis" is an action: in the Command Palette, or `>open wikis`
 in Search.) A wiki
-must be registered first (the filter's **Add a wiki**, or the palette's **Add wiki**).
+must be registered first (the filter's **Add a wiki**, or the palette's **Add wiki**). A
+clean or seeded home may have none: before walking, add one with the palette's **Add wiki** →
+**Local folder** and the path to a git repository with top-level `*.md` files (Gotchas).
 
 ## Driving it with the Browser panel
 
@@ -150,11 +152,13 @@ change requests, its threads' chats, its pull requests, and the `change-group:` 
 the marker opens) sit behind a `[data-tab-group]` marker; while the group is collapsed (its
 `aria-label` ends `, collapsed`) only its front tab has a `[data-pane-tab]`, so expand it from
 the marker's right-click menu before counting. Prove it paints: `document.elementFromPoint` at the
-centre of the front note's title (the `h2` in `[data-pane-id][data-focused]` with a non-zero
-rect; tabs behind it are `display: none`) returns that `h2`, and at the lit row's centre
+centre of the front note's title returns it: the note header has no `h2`, so take
+`nav[aria-label="Document"] [aria-current="page"]` in `[data-pane-id][data-focused]` with a
+non-zero rect (tabs behind it are `display: none`; only the change request view keeps an
+`h2`), and at the lit row's centre
 returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row.
 `location.reload()` keeps the arrangement and the histories
-(`JSON.parse(localStorage['astrolabe:wiki-tab-history:v1'])`) and expands every group. Save
+(`JSON.parse(localStorage['astrolabe:workspace-tab-history:v1'])`) and expands every group. Save
 a screenshot of the section.
 
 ## Gotchas
@@ -180,7 +184,7 @@ a screenshot of the section.
 
 `apps/web/src/components/wiki/`, `routes/_chat.wikis*.tsx`, `components/sidebar/SidebarCard.tsx`,
 `panes/panesHost.ts`,
-`panes/rightPanelPaneTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
+`panes/workspaceTabs.tsx`, `apps/web/src/tabNavigation.logic.ts` (`rowClickIntent`,
 `NEW_TAB_CLICK`, the tab-history ops; shared with Agents, chat tabs, Projects and
 Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
 `astrolabe:wiki-filter:v1`; storedChoice is shared with Projects and the Agents filter),

@@ -49,9 +49,11 @@ Then wait for `pairingUrl:` in the log, as `start-dev.sh` does, and stop it with
 `VITE_HTTP_URL` or `VITE_WS_URL`.
 
 A clean home is not empty: the server adds the directory it runs in
-(`apps/server`, shown as the **server** project) and opens a draft thread.
-Chat tabs need at least two threads; seed them with `vp run migrate-dev-db`
-(server stopped) into the worktree's `.t3`, as AGENTS.md describes.
+(`apps/server`, shown as the **server** project) and opens a real "New thread"
+in it. Chat tabs need at least two threads. `start-dev.sh` runs on `$run/home`,
+so seed that home with the server stopped:
+`vp run migrate-dev-db --base-dir "$run/home"` (or seed the worktree's `.t3`, as
+AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above).
 
 ## Checks before driving
 
@@ -149,8 +151,10 @@ state, and the incognito session does not outlive the browser: a later run lands
 on `/pair` again. On a tab already at `/pair`, navigating to `…/pair#token=…`
 only changes the hash and pairs nothing; type the token into
 `role=textbox[name='Pairing token']` and click **Continue** instead. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
-`role=tablist[name='Open chats']` before acting. It lands on a draft in the
-**server** project; click a sidebar row (`role=button[name=/^<title>, /]`; the name is
+`[data-pane-tabs]` (the workspace tab strips) before acting. A fresh profile may first
+land on `/welcome` (the first-run gate): finish or skip it. A clean home then lands on a
+"New thread" in the **server** project, and seeded data goes straight to the app; click a
+sidebar row (`role=button[name=/^<title>, /]`; the name is
 `<title>, [<status>, ]<project>`, or `[data-testid=sidebar-row-card] >> nth=N`)
 when the feature needs a real thread. Then:
 
@@ -196,7 +200,14 @@ when the feature needs a real thread. Then:
   Read rendered output (DOM text, a screenshot) or query the state's own atom.
 - The shared panes live in localStorage under `astrolabe:workspace:v1` (the tree, plus
   `owners`, `parked` and `front` for linked tabs). Reading that key proves a layout change
-  without a screenshot, and surviving `location.reload()` proves persistence.
+  without a screenshot, and surviving `location.reload()` proves persistence. Tab histories
+  live in `astrolabe:workspace-tab-history:v1`.
+- The `incognito` profile is shared by every incognito tab in this session (a tab the user
+  walks in, for one), so its localStorage is too. Before driving, copy every `astrolabe:*` and
+  `t3code:*` localStorage key into your tab's sessionStorage, and write them back before
+  closing your tab.
+- App shortcuts (Cmd+J, Cmd+Alt+B, Cmd+K) reach a chat only while focus is inside it. Click
+  the pane's `[data-testid=composer-editor]` first; a press with focus on `BODY` does nothing.
 
 ## Evidence
 

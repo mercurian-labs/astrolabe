@@ -42,8 +42,8 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
 - **Ex commands** (through the Command Palette; the app's are aliases, keybinding
   rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the composer's draft, or opens a note's
   **Save to change request** ("No edits to save" on a clean note; "Nothing to write
-  here" elsewhere). `q` is the app's close tab: from the composer it closes the chat
-  tab in front. Lines no command claims (`:s/a/b/`, `:%s`, `:12`) show **Run in the
+  here" elsewhere). `q` is the app's close tab: it closes the focused pane's tab in
+  front (a chat takes its linked tabs with it). Lines no command claims (`:s/a/b/`, `:%s`, `:12`) show **Run in the
   editor** (first, ahead of any palette matches) when the palette came from a Vim
   editor, and run in that editor's own Vim with focus back in it.
 - **Vim configuration**: Settings › Keybindings › **Vim**, the server's vimrc file
@@ -96,11 +96,12 @@ preview_wait_for  text=Run in the editor                     # the row settles a
 preview_act press     Enter                                      # runs in the editor
 ```
 
-Read the composer's state:
+Read the composer's state, scoped to the focused pane: hidden chats stay mounted under
+`Activity`, so a bare `document.querySelector('[data-testid=composer-editor]')` can hit one.
 
 ```js
 (() => {
-  const ed = document.querySelector("[data-testid=composer-editor]");
+  const ed = document.querySelector("[data-pane-id][data-focused] [data-testid=composer-editor]");
   return {
     mode: ed.closest("[data-vim-mode]")?.dataset.vimMode,
     text: ed.innerText,
@@ -110,8 +111,9 @@ Read the composer's state:
 })();
 ```
 
-A note's mode: `document.querySelector('[data-pane-id] [data-vim-mode]').dataset.vimMode`
-and its font `getComputedStyle(document.querySelector('[data-pane-id] .cm-content')).fontFamily`.
+A note's mode: `document.querySelector('[data-pane-id][data-focused] [data-vim-mode]').dataset.vimMode`
+(with a chat in that pane, `[data-vim-mode]` can match its composer instead) and its font
+`getComputedStyle(document.querySelector('[data-pane-id][data-focused] .cm-content')).fontFamily`.
 A Projects file tab reads the same way.
 
 ## Flows

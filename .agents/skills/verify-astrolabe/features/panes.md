@@ -36,8 +36,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 - **New tab** (`+` at the end of every strip, `button[name='New tab']`; `mod+t`,
   `rightPanel.new`, in the focused pane): opens an unowned empty tab at the end of that
   pane's tabs, in front, at once (no menu). It shows `panes/TabLauncher.tsx`
-  (`[aria-label="Open a tab"]`): **New chat** `N` (the sidebar's New thread: the front
-  chat's project, or the palette's project list with several), **Document** `O` (wiki
+  (`[aria-label="Open a tab"]`): **New chat** `N` (the front chat's project with one
+  project; with several, always the palette's project list), **Document** `O` (wiki
   finder), **Project file** `R` (project list, then its files; one project skips
   the list), **Project diff** `C` (each project's Uncommitted changes and Branch
   changes), **Change group** `K`. Rows with nothing to offer are faint with a reason on
@@ -64,11 +64,14 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   by setting `.messages-timeline-scroll`'s `scrollTop`. Thread details' Lineage section has **Show lineage** (only when the
   thread has a fork, parent or merge-back), which opens or focuses the tab.
 - **Chats as tabs**: a chat is `chat:<env>:<thread>` in any pane, labelled with its harness's
-  icon and title (`chatTabs/chatTabLabel.tsx`). The route's chat is drawn by T3 Code's
-  `ThreadRouteView` into one node (`[data-route-chat]`) that moves into that chat's tab, so one
-  ChatView stays mounted across thread switches; another chat in front of its pane mounts its
-  own ChatView. A sidebar click shows the thread in place of the chat in front (history
-  kept); Option/middle-click or **Open in new tab** opens it after the chat in front; threads
+  icon and title (`chatTabs/chatTabLabel.tsx`). Every chat tab renders its own ChatView
+  (`PaneChat`, rendered by `panes/WorkspaceView.tsx`); chats not in front stay mounted under
+  React's `<Activity mode="hidden">`, at most the 5 most recently shown (`KEPT_CHATS` in
+  `panes/recentChats.ts`), so a `[data-chat-header]` count includes hidden ones (check
+  visibility with `getClientRects()`) and showing a 6th chat unmounts the oldest. A sidebar
+  click on a chat new to the panes fills a focused unowned New tab first
+  (`workspace.ts` `arriveChat`), otherwise it replaces the chat in front (history kept);
+  Option/middle-click or **Open in new tab** opens it after the chat in front; threads
   dragged from the sidebar onto a pane open there. In Agents, focusing another chat's pane
   navigates to it, and focusing a tab that is no chat's navigates to `/`. A chat deleted or a draft discarded closes its tab.
 - **Linked tabs** (`panes/linkedTabs.ts`, `localStorage['astrolabe:workspace:v1']`'s `owners`,
@@ -194,7 +197,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 - **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
   `TabHeader.History`; the chat's through `PaneChatHeader`), as Obsidian's tab headers do. They
   step that tab's own history (`workspace.step(direction, tabKey)`), focused or not, and are
-  disabled with nothing that way; a linked surface (the thread's Graph tab) never has any. Tabs
+  disabled with nothing that way; on a linked surface (the thread's Graph tab) they render but
+  are always disabled, since linked tabs build no history. Tabs
   with no header row have none: a wiki change request, a change group, a pull request, the New
   tab launcher and the thread's other surfaces (terminal, preview, diff, files, pull requests,
   device, lineage).
@@ -210,8 +214,9 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   pane's shown tab reads "Click to show" until its pane takes focus.
 - **Persistence**: the one arrangement, its links and parked tabs survive a reload, per
   device (`astrolabe:workspace:v1`, history `astrolabe:workspace-tab-history:v1`). The first
-  load brings in the old chat tabs and the Projects and Wikis layouts side by side and
-  drops `t3code:right-panel-panes:v1:*`. Maximize pane is in memory only.
+  load brings in the old chat tabs and the Projects, Wikis and Changes layouts (and their
+  tab histories) side by side and drops `t3code:right-panel-panes:v1:*` and
+  `astrolabe:group-panel-runs:v1`. Maximize pane is in memory only.
 - **Narrow windows**: the panes stay panes (no sheet); they scroll sideways below their
   minimum widths.
 
@@ -274,7 +279,7 @@ Every pane should have `w` and `h` above 0 and `tab` and `body` true; with two p
 showing surfaces, exactly one (the unfocused one) is `waiting`.
 
 The stored workspace: `JSON.parse(localStorage['astrolabe:workspace:v1'])` (`root`, `focused`,
-`owners`, `parked`, `front`). Writes are debounced (150 ms) and flushed on `pagehide`; the
+`seq`, `owners`, `parked`, `front`). Writes are debounced (150 ms) and flushed on `pagehide`; the
 starting arrangement (one empty tab, nothing parked) has no key.
 
 **Proof:** the panes read shows the split and the hit-test shows every pane painted; bringing

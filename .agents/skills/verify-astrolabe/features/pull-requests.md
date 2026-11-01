@@ -56,7 +56,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   **Add a change request**, **Add a thread**, Suggested rows (✓ / ✕, threads too), Code /
   Documentation rows and a **Threads** section (each `button "Open <title>"` with its reason and
   Working / Settled / Idle; opens its chat beside) with ✕ to take out. **Open as a tab group**
-  opens the group's tab, every member's tab and every group thread's chat. **Ask to update the docs** shows on Docs behind;
+  opens the group's threads as chats after the front chat (which stays in front); when the
+  front chat is in the group, the other tabs (the group's, its members') open linked to the
+  group, else they stand on their own, together in one new pane beside it. **Ask to update the docs** shows on Docs behind;
   **Draft the docs** on Docs missing with drafts on. The server sweeps armed groups each minute
   and merges their open docs once all live code merged. A thread's header shows
   `button "Change group: <title>, <state>"`, which opens the group's tab beside the chat (in
@@ -148,9 +150,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   renders only the sidebar list (`PullRequestsPage.tsx`). The section's old arrangement
   (`t3code:right-panel-panes:v1:pull-requests`) and history
   (`astrolabe:pull-request-tab-history:v1`) join `astrolabe:workspace:v1` beside what was there
-  once, then are removed. A plain click shows the pull request in the focused pane's tab in front
-  (`workspace.show`: one open in another tab comes forward there; an empty tab fills; a chat or a
-  tab with unsaved edits makes way for a new tab). Option-click, middle-click, Alt+Enter and the row's right-click
+  once, then are removed. A plain click replaces the focused pane's tab in front with the pull
+  request (`workspace.show`: one open in another tab comes forward there; when the tab in front
+  is a chat, a linked tab, empty or has unsaved edits, a new tab opens instead). Option-click, middle-click, Alt+Enter and the row's right-click
   **Open in new tab** open a new tab. Mod-click and Shift-click select rows
   (`data-selected`) without opening; a selected row's right-click is **Open N in new
   tabs**. Rows drag onto a pane's strip or content, the selection with them
@@ -158,7 +160,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   `surface:pull-request:<env>:<project>:<host>:<repo>:<n>`; an empty tab shows the shared New
   tab launcher. The URL follows the focused pane's pull request (`repository`, `number`,
   `selectedHost`, `selectedProjectId`, `selectedEnvironmentId`), and a URL naming one opens it
-  (or brings it forward) once. The lit row is the focused tab's pull request. With servers too
+  (or brings it forward) once. The lit row (`aria-current="page"`) is the focused tab's pull
+  request. With servers too
   old for pull requests the sidebar reads "Pull requests unavailable". Below the md width the sidebar is a sheet, and opening a row closes it.
 - **History**: each tab walks back and forward through what it showed (the shared panes'
   `astrolabe:workspace-tab-history:v1`) with `mod+[`/`mod+]` and Space `t h`/`t l`; a
@@ -192,7 +195,7 @@ preview_act click     [data-pull-request-key] > button >> nth=1    # replaces th
 preview_act click     [data-pull-request-key] > button >> nth=2   button="right"
 preview_act click     role=button[name='Open in new tab']          # a second tab
 preview_evaluate  dispatch a click with metaKey / altKey on a row button
-preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
+preview_act press     [  modifiers=["Meta"]                        # Back: PR and group tabs have no TabHeader, so no [data-tab-history]
 preview_evaluate  set the searchbox's value with the native setter, then dispatch input
 preview_navigate  /pull-requests?involvement=authored&state=open   # Filters shows 1
 ```

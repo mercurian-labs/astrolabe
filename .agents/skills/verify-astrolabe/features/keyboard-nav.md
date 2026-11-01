@@ -4,8 +4,7 @@ Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
 leftmost), the sidebar on screen (Agents, Wikis, Projects or Changes), the chat
-column, and each pane (the right panel's, the Wikis area's, the Projects area's,
-the Changes area's). Never anything inside one (no stop for a tab strip, the
+column (inside its pane), and each pane of the one shared set (panes.md). Never anything inside one (no stop for a tab strip, the
 timeline or the composer).
 
 ## Sub-features
@@ -50,7 +49,7 @@ timeline or the composer).
   `pressRepeat` in `whichKey/menu.ts`.
 - **Focus mark**: the place keys act from (last focused or pressed in) wears
   `[data-focused-place]`; on a pane or the chat column its tab in front
-  (`[data-pane-tab]` / `[data-chat-tab]` with `aria-selected=true`) gets a 2px bar in
+  (`[data-pane-tab]` with `aria-selected=true`, a chat's included) gets a 2px bar in
   `--focus-bar` (the theme's `focusBar` role; rust in Mercurian, the focus color in themes
   without one) along the tab's top edge (a background-image). It follows mouse focus too. The sidebar
   and the rail have no mark of their own beyond the attribute: their focused row or
@@ -135,7 +134,7 @@ Read where focus is, by place and element:
             ? "chat"
             : (el?.getAttribute("data-slot") ?? null);
   const marked = document.querySelector("[data-focused-place]");
-  const bar = marked?.querySelector(":is([data-pane-tab], [data-chat-tab])[aria-selected=true]");
+  const bar = marked?.querySelector("[data-pane-tab][aria-selected=true]");
   // What paints at an element's horizontal centre, `dy` px below its top (else its centre).
   const at = (el, dy) => {
     const r = el.getBoundingClientRect();
@@ -146,7 +145,7 @@ Read where focus is, by place and element:
     element: a?.getAttribute("aria-label") ?? a?.getAttribute("data-testid") ?? a?.tagName,
     marked: name(marked),
     bar: bar ? getComputedStyle(bar).backgroundImage : null,
-    barHit: bar ? at(bar, 1)?.closest(":is([data-pane-tab], [data-chat-tab])") === bar : null,
+    barHit: bar ? at(bar, 1)?.closest("[data-pane-tab]") === bar : null,
     ringed: !!a?.matches(":focus-visible") && getComputedStyle(a).boxShadow !== "none",
     hit: a ? a.contains(at(a)) : false,
   };
@@ -251,8 +250,8 @@ dark: only one pill carries the bar.
 
 - `preview_act press` sends `modifiers:["Control"]` for Ctrl+H; on a Mac host Meta is
   Cmd, which is not these keys.
-- For the leader, put focus on a row (Cmd+K `h`): a focused row, or a focused pane or chat
-  tab pill (`[data-pane-tab]`, `[data-chat-tab]`, where a focus move lands), takes Space as
+- For the leader, put focus on a row (Cmd+K `h`): a focused row, or a focused tab pill
+  (`[data-pane-tab]`, a chat's in its pane included, where a focus move lands), takes Space as
   the leader, a focused button elsewhere presses it, and focus on the bare page sends Space
   into the composer through type-to-focus.
 - In the repeat window `h`/`l` are still focus moves: after Space `h` into the
@@ -280,8 +279,8 @@ dark: only one pill carries the bar.
 `apps/web/src/keyboardNav/` (places in `regions.ts`, lists in `placeLists.ts`,
 scrolling in `scroll.ts`), the `focus.*` and `scroll.*` entries in
 `whichKey/commands.ts` and their `repeatable` flag, the rail's `focusRing="light"`
-(`components/ui/sidebar.tsx`, `AppIconRail.tsx`), `keepsListFocus` in `ChatView.tsx`'s composer focus, the launcher guard in
-`RightPanelTabs.tsx`, the repeat window in `whichKey/menu.ts` (`pressRepeat`,
+(`components/ui/sidebar.tsx`, `AppIconRail.tsx`), `keepsListFocus` in `ChatView.tsx`'s composer focus, the launcher guards in
+`RightPanelTabs.tsx` and `panes/TabLauncher.tsx`, the repeat window in `whichKey/menu.ts` (`pressRepeat`,
 `createWhichKeyMenu`'s arming) and `WhichKey.tsx`, `menuRepeatWindowMs` in
 `packages/contracts/src/settings.ts` and its row in `KeybindingsDeviceSettings.tsx`, the
 window keys in `whichKey/doors.ts` (`appVimKeys`) and `packages/editor/src/vim.ts`

@@ -72,8 +72,12 @@ actions at its right end.
   the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
   hidden, but `mod+b` still toggles the sidebar behind the modal. While one is open, two rail
   buttons carry `aria-current="page"`: the section underneath and Usage (or Settings). The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Agents returns to the last chat. Projects and Changes are
-  sections like Wikis, each with its own sidebar and panes ([repositories.md](repositories.md),
+  (`useAppSections`). Agents goes to the focused chat's (or focused linked tab's) thread,
+  else `/`; nothing comes forward (`panes/agentsRoute.ts`, `useNavigateToAgents` in
+  `sidebar/mainAppLocation.ts`). In Agents a row is lit only while that thread's chat or one
+  of its linked tabs has focus; a focused document, file, empty tab or pull request lights
+  none (`focusedChatOf` in `panes/workspace.ts`). Every section shares one set of panes;
+  only the sidebar differs ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
@@ -158,6 +162,8 @@ and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-
 - The order of the title row's actions is a design decision still open (search,
   filter, new today). Assert presence, not order, unless the change is about order.
 - Scope locators: `navigation "Agents"` (the sidebar), the rail's `button "Agents"`
-  and `heading "Agents"` share the name.
+  and `heading "Agents"` share the name, and so do Projects', Wikis' and Changes'. A diff
+  tab's header breadcrumb also renders `nav[aria-label="Changes"]`. Scope to
+  `nav[aria-label="Sections"]` for the rail and to the sidebar for a section's lists.
 - Upstream reworks `Sidebar.tsx` often. After a sync, check that all three
   actions still exist with these names.
