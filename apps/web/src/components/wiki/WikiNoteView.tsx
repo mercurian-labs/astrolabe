@@ -15,8 +15,8 @@ import { ensureLocalApi } from "~/localApi";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
+import { TabHeader } from "~/panes/TabHeader";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -30,7 +30,6 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
@@ -199,38 +198,36 @@ export function WikiNoteView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* The view's header, as Obsidian's: one line as tall as the pane's tab strip above it,
-          whose bottom border is the only line between them and the note. */}
-      <div className="flex h-(--workspace-topbar-height) shrink-0 items-center gap-2 overflow-hidden px-6">
-        <h2 className="min-w-0 truncate text-base font-semibold">{data.name}</h2>
-        {readOnly ? <Badge variant="secondary">Skill map · read only</Badge> : null}
-        {data.exists ? null : <Badge variant="warning">Not written yet</Badge>}
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {changeRequestId === undefined
-            ? "Main"
-            : viewingChange
-              ? `In “${viewingChange.title}”${viewingTurn.running ? " · agent working" : ""}`
-              : "In a change request"}
-        </span>
-        <div className="min-w-0 flex-1" />
+      <TabHeader.Root>
+        <TabHeader.Title
+          label="Document"
+          trail={[
+            changeRequestId === undefined ? "Main" : (viewingChange?.title ?? "A change request"),
+          ]}
+        >
+          {data.name}
+        </TabHeader.Title>
+        {readOnly ? <TabHeader.Status>Skill map · read only</TabHeader.Status> : null}
+        {data.exists ? null : <TabHeader.Status>Not written yet</TabHeader.Status>}
+        {viewingTurn.running ? <TabHeader.Status>Agent working</TabHeader.Status> : null}
         {queued !== null ? (
-          <>
-            <span className="text-xs text-muted-foreground">Saves when the turn ends</span>
+          <TabHeader.Actions>
+            <TabHeader.Status>Saves when the turn ends</TabHeader.Status>
             <Button variant="ghost" size="sm" onClick={() => setQueued(null)}>
               Cancel save
             </Button>
-          </>
+          </TabHeader.Actions>
         ) : snapshot.dirty ? (
-          <>
+          <TabHeader.Actions>
             <Button variant="ghost" size="sm" onClick={() => buffer.discard()}>
               Discard edits
             </Button>
             <Button size="sm" onClick={() => setSaving(true)}>
               Save to change request
             </Button>
-          </>
+          </TabHeader.Actions>
         ) : null}
-      </div>
+      </TabHeader.Root>
       {snapshot.changedUnderneath ? (
         <div className="shrink-0 px-6 pt-3">
           <Alert variant="warning">
@@ -247,7 +244,7 @@ export function WikiNoteView({
           </Alert>
         </div>
       ) : null}
-      <ScrollArea className="min-h-0 flex-1">
+      <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 pt-6 pb-12">
           {data.exists ? null : (
             <WikiPart.Muted>
@@ -292,7 +289,7 @@ export function WikiNoteView({
             </WikiPart.Section>
           </div>
         </div>
-      </ScrollArea>
+      </div>
       {saving ? (
         <SaveToChangeRequestDialog
           environmentId={environmentId}
