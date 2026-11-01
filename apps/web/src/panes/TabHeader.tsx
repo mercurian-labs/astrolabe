@@ -92,6 +92,7 @@ function Title({
   label,
   parent,
   keepParentEnd = false,
+  keepParent = false,
   children,
 }: {
   readonly label: string;
@@ -101,6 +102,11 @@ function Title({
    * down to an ellipsis.
    */
   readonly keepParentEnd?: boolean;
+  /**
+   * The page is a long title under a short parent: the page truncates first, and the parent only
+   * past half the width.
+   */
+  readonly keepParent?: boolean;
   readonly children: ReactNode;
 }) {
   const cut = keepParentEnd && parent ? parent.lastIndexOf("/") : -1;
@@ -109,7 +115,10 @@ function Title({
       // Named apart from the landmarks its label shares a word with, as the Changes sidebar's.
       ariaLabel={`${label} breadcrumb`}
       className="flex-1 overflow-clip [overflow-clip-margin:2px]"
-      listClassName="h-6 flex-row-reverse flex-wrap justify-end gap-0 overflow-y-clip sm:gap-0 *:h-6"
+      listClassName={cn(
+        "h-6 flex-row-reverse justify-end gap-0 overflow-y-clip sm:gap-0 *:h-6",
+        !keepParent && "flex-wrap",
+      )}
     >
       {cut > 0 ? (
         <WorkspaceBreadcrumbItem className="order-1 max-w-max shrink grow basis-6">
@@ -119,7 +128,11 @@ function Title({
         </WorkspaceBreadcrumbItem>
       ) : null}
       {parent ? (
-        <WorkspaceBreadcrumbItem className={keepParentEnd ? "" : "max-w-max shrink grow basis-16"}>
+        <WorkspaceBreadcrumbItem
+          className={
+            keepParent ? "max-w-1/2" : keepParentEnd ? "" : "max-w-max shrink grow basis-16"
+          }
+        >
           <WorkspaceBreadcrumbText>
             {cut > 0 ? parent.slice(cut + 1) : parent}
           </WorkspaceBreadcrumbText>
