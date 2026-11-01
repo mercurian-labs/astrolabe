@@ -9,10 +9,18 @@ import {
   useRightPanelStore,
 } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
-import { activateTab, newTab, splitTab, surfaceKey } from "./arrangement";
+import type { ChatRoute } from "../chatTabs/chatTabLabel";
+import { agentsRoute } from "./agentsRoute";
+import { activateTab, focusPane, newTab, splitTab, surfaceKey } from "./arrangement";
 import type { StorageLike } from "./persistence";
 import { leaves } from "./tree";
-import { createWorkspace, standaloneKeyOf, WORKSPACE_STORAGE_KEY } from "./workspace";
+import { linkTab } from "./linkedTabs";
+import {
+  createWorkspace,
+  focusedChatOf,
+  standaloneKeyOf,
+  WORKSPACE_STORAGE_KEY,
+} from "./workspace";
 
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
@@ -76,6 +84,58 @@ describe("the shared panes", () => {
     expect(device.items.has("astrolabe:repository-panes:v1")).toBe(false);
     workspace.store.flush();
     expect(device.items.has(WORKSPACE_STORAGE_KEY)).toBe(true);
+  });
+
+  it("bring Changes' panes in once, beside the shared ones, with their tabs' history", () => {
+    const pr = (number: number) =>
+      surfaceKey(
+        pullRequestSurface({
+          environmentId: "env-1",
+          projectId: "project-1",
+          host: "github.com",
+          repository: "acme/app",
+          number,
+        }).id,
+      );
+    const device = memoryStorage({
+      [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+        root: { type: "leaf", id: "p0", tabs: [chatA], active: chatA },
+        focused: "p0",
+        seq: 1,
+        owners: {},
+        parked: {},
+        front: chatA,
+      }),
+      "t3code:right-panel-panes:v1:pull-requests": JSON.stringify({
+        root: {
+          type: "branch",
+          id: "p2",
+          direction: "row",
+          children: [
+            { type: "leaf", id: "p0", tabs: [pr(1), chatA], active: pr(1) },
+            { type: "leaf", id: "p1", tabs: ["empty/0"], active: "empty/0" },
+          ],
+          weights: [1, 1],
+        },
+        focused: "p0",
+        seq: 3,
+      }),
+      "astrolabe:pull-request-tab-history:v1": JSON.stringify({
+        histories: { [pr(1)]: { back: [pr(2)], forward: [] } },
+        surfaces: {},
+      }),
+    });
+    const workspace = createWorkspace(() => device);
+    // A chat open in both stays where the shared panes had it; an empty pane does not come.
+    expect(panes(workspace)).toEqual([[chatA], [pr(1)]]);
+    expect(workspace.arrangement().focused).toBe("p0");
+    expect(workspace.linked().front).toBe(chatA);
+    workspace.update((arrangement) => activateTab(arrangement, pr(1)));
+    expect(workspace.canStep("back")).toBe(true);
+    expect(device.items.has("t3code:right-panel-panes:v1:pull-requests")).toBe(false);
+    expect(device.items.has("astrolabe:pull-request-tab-history:v1")).toBe(false);
+    workspace.store.flush();
+    expect(createWorkspace(() => device).arrangement()).toEqual(workspace.arrangement());
   });
 
   it("show the chat in front's surfaces beside it, and the next chat's in their place", () => {
@@ -270,6 +330,80 @@ describe("the shared panes", () => {
       [diff, files],
     ]);
     expect(leaves(workspace.arrangement().root)[1]?.active).toBe(diff);
+    stop();
+  });
+});
+
+describe("switching to Agents", () => {
+  const file = repositoryTabKey({
+    kind: "file",
+    environmentId: "env-1" as EnvironmentId,
+    projectId: ProjectId.make("project-1"),
+    cwd: "/repo",
+    path: "README.md",
+  });
+  const terminal = chatSurfaceKey(chatA, "terminal:t1");
+  const routeOf = (chatKey: string): ChatRoute | null =>
+    chatKey === chatA ? { kind: "thread", ref: refA } : null;
+
+  /** Chats A and B in one pane, A's terminal beside them, and a repository file focused. */
+  function threePanes() {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().openTerminal(refA, "t1");
+    workspace.open(file, "beside");
+    return { workspace, stop };
+  }
+  const paneOf = (workspace: ReturnType<typeof createWorkspace>, key: string) =>
+    leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))?.id ?? "";
+
+  it("selects the focused chat's thread, or the thread a focused linked tab belongs to", () => {
+    const { workspace, stop } = threePanes();
+    expect(panes(workspace)).toEqual([[chatA, chatB], [file], [terminal]]);
+    expect(focusedChatOf(workspace.linked())).toBeNull();
+    workspace.update((arrangement) => focusPane(arrangement, paneOf(workspace, chatA)));
+    expect(focusedChatOf(workspace.linked())).toBe(chatA);
+    workspace.update((arrangement) => focusPane(arrangement, paneOf(workspace, terminal)));
+    expect(focusedChatOf(workspace.linked())).toBe(chatA);
+    workspace.update((arrangement) => newTab(arrangement));
+    expect(focusedChatOf(workspace.linked())).toBeNull();
+    stop();
+  });
+
+  it("selects no thread for a tab linked to a change group", () => {
+    const { workspace, stop } = threePanes();
+    const linked = linkTab(workspace.linked(), file, "change-group:env-1:thread-A");
+    expect(focusedChatOf(linked)).toBeNull();
+    stop();
+  });
+
+  it("leads to the start page with a file in focus, leaving the panes as they stand", () => {
+    const { workspace, stop } = threePanes();
+    const before = workspace.linked();
+    expect(agentsRoute(before, routeOf)).toEqual({ to: "/" });
+    expect(workspace.linked()).toBe(before);
+    stop();
+  });
+
+  it("leads to the thread of a focused linked tab, whose route leaves it in front", () => {
+    const { workspace, stop } = threePanes();
+    workspace.update((arrangement) => focusPane(arrangement, paneOf(workspace, terminal)));
+    const before = workspace.linked();
+    expect(before.front).toBe(chatA);
+    expect(agentsRoute(before, routeOf)).toEqual({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: "env-1", threadId: "thread-A" },
+    });
+    // As the thread's route arrives: focus stays on the terminal, nothing moves.
+    workspace.arriveChat(chatA);
+    expect(workspace.linked()).toBe(before);
+    stop();
+  });
+
+  it("leads to the start page for a chat gone", () => {
+    const { workspace, stop } = threePanes();
+    workspace.update((arrangement) => activateTab(arrangement, chatB));
+    expect(agentsRoute(workspace.linked(), routeOf)).toEqual({ to: "/" });
     stop();
   });
 });

@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { Profiler, startTransition, useEffect, useLayoutEffect, useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -12,7 +12,9 @@ const probe = vi.hoisted(() => ({
   instances: new Map<string, Set<string>>(),
   heard: [] as string[],
   surfaces: [] as string[],
+  navigations: [] as (string | null)[],
   setRoute: null as null | ((threadId: string | null) => void),
+  leaveAgents: null as null | (() => void),
 }));
 
 /** Fresh stubs, panes with no tabs and no thread's panel open. */
@@ -23,6 +25,7 @@ function setup() {
   probe.instances.clear();
   probe.heard = [];
   probe.surfaces = [];
+  probe.navigations = [];
 }
 
 vi.mock(import("~/hooks/useTheme"), async (original) => ({
@@ -33,10 +36,12 @@ vi.mock(import("~/hooks/useTheme"), async (original) => ({
 // As the router does: the route arrives later, in a transition.
 vi.mock(import("@tanstack/react-router"), async (original) => ({
   ...(await original()),
-  useNavigate: (() => (options: { params?: { threadId?: string } }) =>
-    Promise.resolve().then(() =>
+  useNavigate: (() => (options: { params?: { threadId?: string } }) => {
+    probe.navigations.push(options.params?.threadId ?? null);
+    return Promise.resolve().then(() =>
       startTransition(() => probe.setRoute?.(options.params?.threadId ?? null)),
-    )) as never,
+    );
+  }) as never,
 }));
 
 vi.mock(import("~/chatTabs/chatTabLabel"), async (original) => ({
@@ -93,8 +98,11 @@ vi.mock(import("~/components/ChatView"), async () => {
   return { default: FakeChatView as never };
 });
 
+import { chatRouteOf } from "../chatTabs/chatTabLabel";
+import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { useRightPanelStore } from "../rightPanelStore";
-import { chatTabKey } from "../sectionTabs/sectionTabs";
+import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { agentsRoute } from "./agentsRoute";
 import { activateTab, focusPane, openTab, splitTab, startingArrangement } from "./arrangement";
 import type { PanelProps } from "./panesController";
 import { KEPT_CHATS } from "./recentChats";
@@ -106,17 +114,30 @@ const env = "env-1" as EnvironmentId;
 const refOf = (thread: string) => scopeThreadRef(env, ThreadId.make(thread));
 const chatOf = (thread: string) => chatTabKey(refOf(thread));
 
-/** The workspace on a thread's route, which follows the chat the panes bring to the front. */
-function Harness({ initial, onCommit }: { initial: string; onCommit: () => void }) {
+/**
+ * The workspace on a thread's route, which follows the chat the panes bring to the front; with
+ * `initial` null, in Repositories until a route arrives, which is Agents'.
+ */
+function Harness({ initial, onCommit }: { initial: string | null; onCommit: () => void }) {
   const [threadId, setThreadId] = useState<string | null>(initial);
+  const [agents, setAgents] = useState(initial !== null);
   useLayoutEffect(() => {
-    probe.setRoute = setThreadId;
+    probe.setRoute = (next) => {
+      setThreadId(next);
+      setAgents(true);
+    };
+    probe.leaveAgents = () => {
+      setThreadId(null);
+      setAgents(false);
+    };
   }, []);
   return (
     <Profiler id="workspace" onRender={onCommit}>
       <WorkspaceView
         routeTarget={threadId === null ? null : { kind: "server", threadRef: refOf(threadId) }}
+        agents={agents}
       />
+      <output data-route-thread>{threadId ?? ""}</output>
     </Profiler>
   );
 }
@@ -125,7 +146,7 @@ const chatNode = (thread: string) =>
   document.querySelector<HTMLElement>(`[data-fake-chat="${thread}"]`);
 const shows = (thread: string) => chatNode(thread)?.checkVisibility() === true;
 
-async function mount(initial: string, onCommit: () => void = () => {}) {
+async function mount(initial: string | null, onCommit: () => void = () => {}) {
   const screen = await render(<Harness initial={initial} onCommit={onCommit} />);
   await act(() => Promise.resolve());
   return screen;
@@ -282,5 +303,86 @@ describe("WorkspaceView chat tabs", () => {
       "c6",
       "c7",
     ]);
+  });
+});
+
+describe("WorkspaceView switching to Agents", () => {
+  const file = repositoryTabKey({
+    kind: "file",
+    environmentId: env,
+    projectId: ProjectId.make("project-1"),
+    cwd: "/repo",
+    path: "README.md",
+  });
+  const terminal = chatSurfaceKey(chatOf("A"), "terminal:t1");
+  const routeThread = () =>
+    document.querySelector<HTMLElement>("[data-route-thread]")?.textContent || null;
+  /** As the rail's Agents does (`useNavigateToAgents`). */
+  const switchToAgents = () => {
+    const route = agentsRoute(workspace.linked(), chatRouteOf);
+    probe.setRoute?.(
+      "params" in route && "threadId" in route.params ? route.params.threadId : null,
+    );
+  };
+
+  /** Chats B and A (in front) in one pane, A's terminal beside them, and a file focused. */
+  function chatTerminalAndFile() {
+    setup();
+    useRightPanelStore.getState().openTerminal(refOf("A"), "t1");
+    workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
+    workspace.open(file, "beside");
+    expect(leaves(workspace.arrangement().root).map((leaf) => leaf.tabs)).toEqual([
+      [chatOf("B"), chatOf("A")],
+      [file],
+      [terminal],
+    ]);
+  }
+  const paneOf = (key: string) =>
+    leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))!.id;
+
+  it("leaves the panes as they stand, mounts no chat and selects no thread with a file in focus", async () => {
+    chatTerminalAndFile();
+    await using _screen = await mount(null);
+    const before = workspace.linked();
+    const mounted = totals();
+
+    await change(switchToAgents);
+
+    expect(workspace.linked()).toBe(before);
+    expect(totals()).toEqual(mounted);
+    expect(routeThread()).toBeNull();
+    expect(probe.navigations).toEqual([]);
+
+    // Focusing the chat's terminal, then the chat, selects its thread; the file, none again.
+    await change(() => workspace.update((a) => focusPane(a, paneOf(terminal))));
+    expect(routeThread()).toBe("A");
+    await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A")))));
+    expect(routeThread()).toBe("A");
+    await change(() => workspace.update((a) => focusPane(a, paneOf(file))));
+    expect(routeThread()).toBeNull();
+    expect(probe.navigations).toEqual(["A", null]);
+    expect(totals().instances).toEqual(mounted.instances);
+    expect(workspace.linked().front).toBe(chatOf("A"));
+  });
+
+  it("goes to the thread of a chat's linked tab in focus, leaving it in front", async () => {
+    chatTerminalAndFile();
+    workspace.update((a) => focusPane(a, paneOf(terminal)));
+    await using _screen = await mount(null);
+    const before = workspace.linked();
+    const mounted = totals();
+
+    await change(switchToAgents);
+
+    expect(routeThread()).toBe("A");
+    expect(workspace.linked()).toBe(before);
+    expect(totals()).toEqual(mounted);
+    expect(probe.navigations).toEqual([]);
+
+    // Leaving for another section and coming back moves nothing either.
+    await change(() => probe.leaveAgents?.());
+    await change(switchToAgents);
+    expect(workspace.linked()).toBe(before);
+    expect(totals()).toEqual(mounted);
   });
 });

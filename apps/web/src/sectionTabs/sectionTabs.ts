@@ -4,26 +4,16 @@ import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contract
 import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
-import { surfaceIdOf } from "~/panes/arrangement";
 
 /**
- * Astrolabe: every tab belongs to one of the app's sections, and can open in another's panes:
- * a chat in Wikis or Change Requests, a document beside a thread, a pull request beside a
- * document. A tab outside its section offers to open in it (`Open in <section>`). The tab's key
- * says what it shows on its own, so any section's panes can show it and keep it across a reload.
+ * Astrolabe: every tab belongs to one of the app's sections, and all of them share one set of
+ * panes: a chat beside a document, a pull request beside a repository file. The tab's key says
+ * what it shows on its own, so the panes can show it anywhere and keep it across a reload.
  */
-export type SectionId = "threads" | "wikis" | "repositories" | "change-requests";
-
-export const SECTION_LABELS: Readonly<Record<SectionId, string>> = {
-  threads: "Agents",
-  wikis: "Wikis",
-  repositories: "Repositories",
-  "change-requests": "Changes",
-};
 
 const CHAT_PREFIX = "chat:";
 
-/** A chat's tab key, for a thread shown in a pane outside Agents. */
+/** A chat's tab key. */
 export function chatTabKey(ref: ScopedThreadRef): string {
   return `${CHAT_PREFIX}${encodeURIComponent(ref.environmentId)}:${encodeURIComponent(ref.threadId)}`;
 }
@@ -64,35 +54,6 @@ export function parseChatSurfaceKey(
   const chatKey = `${CHAT_PREFIX}${rest.slice(0, second)}`;
   if (parseChatTabKey(chatKey) === null) return null;
   return { chatKey, surfaceId: rest.slice(second + 1) };
-}
-
-const isPullRequestKey = (key: string) =>
-  (surfaceIdOf(key) ?? parseChatSurfaceKey(key)?.surfaceId)?.startsWith("pull-request:") ?? false;
-
-/**
- * The section a tab belongs to: chats are Agents', documents Wikis', files and diffs
- * Repositories', and change requests (a pull request or a wiki's) Change Requests'. Null for an
- * empty tab, and for the right panel's other surfaces, which never leave their thread.
- */
-export function tabSection(key: string): SectionId | null {
-  if (parseChatTabKey(key) !== null) return "threads";
-  if (parseRepositoryTabKey(key) !== null) return "repositories";
-  if (parseChangeGroupTabKey(key) !== null) return "change-requests";
-  const wiki = parseWikiTabKey(key);
-  if (wiki !== null) return wiki.kind === "note" ? "wikis" : "change-requests";
-  if (isPullRequestKey(key)) return "change-requests";
-  return null;
-}
-
-/**
- * The section a set of panes is in, by the key it keeps its arrangement under: the Wikis
- * area's, the Change Requests area's, or a thread's right panel.
- */
-export function layoutSection(layoutKey: string | null): SectionId {
-  if (layoutKey === "wikis") return "wikis";
-  if (layoutKey === "repositories") return "repositories";
-  if (layoutKey === "pull-requests") return "change-requests";
-  return "threads";
 }
 
 /** Whether a key names a chat, wiki or repository tab, which any section's panes can hold. */

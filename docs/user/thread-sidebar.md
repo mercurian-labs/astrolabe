@@ -50,10 +50,13 @@ its pull request and **Draft** for an unsent message. Hover a row for its full c
 
 ## Tabs and splits
 
-Agents, Repositories and Wikis share one set of tabs on this device: chats, files, changes,
-documents and a thread's terminals and browsers can stand side by side, and every tab splits.
-Switching sections changes what the sidebar lists, not the tabs. Drag a tab to a pane's edge to
-split it, or onto another pane's tabs to move it there.
+Agents, Wikis, Repositories and Changes share one set of tabs on this device: chats, files,
+changes, documents, pull requests and a thread's terminals and browsers can stand side by side,
+and every tab splits. Switching sections from the icon rail, the keyboard menu or the Command
+Palette changes what the sidebar lists, not the tabs or which one has focus. In Agents, the thread
+selected in the sidebar is the one whose chat (or one of its linked tabs) has focus; with a
+document, a file or a pull request in focus, none is. Drag a tab to a pane's edge to split it, or
+onto another pane's tabs to move it there.
 
 The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
 browser does. It offers a new chat, a document, a repository's file or changes, and a change

@@ -33,13 +33,8 @@ import {
   type RightPanelSurface,
 } from "~/rightPanelStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { sectionTabMove, useSectionTabLabel } from "~/sectionTabs/SectionTabContent";
-import {
-  parseChatSurfaceKey,
-  parseChatTabKey,
-  tabSection,
-  chatSurfaceKey,
-} from "~/sectionTabs/sectionTabs";
+import { useSectionTabLabel } from "~/sectionTabs/SectionTabContent";
+import { parseChatSurfaceKey, parseChatTabKey, chatSurfaceKey } from "~/sectionTabs/sectionTabs";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { followedGraphFiles, linkMarkKeyOf, linkMarkOf } from "./linkMarks";
 import { closeTab, focusedPane, isEmptyTab, newTab } from "./arrangement";
@@ -103,15 +98,12 @@ export function createWorkspaceHost(): WorkspaceHost {
     },
     Overlay: SurfaceOverlay,
     reservesTopRight: false,
+    // Every section's tabs are here already; a thread's Files and Diffs have more in Repositories.
     openElsewhere: (tabKey) => {
       const parsed = parseChatSurfaceKey(tabKey);
-      if (parsed !== null) {
-        return repositoryMoveOfSurface(parseChatTabKey(parsed.chatKey), parsed.surfaceId);
-      }
-      // Changes keeps panes of its own; everything else is here already.
-      return tabSection(tabKey) === "change-requests"
-        ? sectionTabMove(tabKey, "threads", closeWorkspaceTab)
-        : null;
+      return parsed === null
+        ? null
+        : repositoryMoveOfSurface(parseChatTabKey(parsed.chatKey), parsed.surfaceId);
     },
   };
   return {

@@ -57,7 +57,9 @@ import {
 import type { PanelProps } from "./panesController";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
 import {
+  arrangementStorageKey,
   isStarting,
+  joinBeside,
   joinLayouts,
   parseArrangement,
   parseLinkedArrangement,
@@ -93,6 +95,11 @@ const OLD_SECTIONS = [
   { panes: "astrolabe:wiki-panes:v1", history: "astrolabe:wiki-tab-history:v1" },
 ] as const;
 const OLD_PREFIXES = ["t3code:right-panel-panes:v1:"];
+/** Changes' panes and their tab history, which joined the shared panes later. */
+const OLD_CHANGES = {
+  panes: arrangementStorageKey("pull-requests"),
+  history: "astrolabe:pull-request-tab-history:v1",
+} as const;
 const OLD_KEYS = ["astrolabe:group-panel-runs:v1"];
 
 export interface WorkspaceSnapshot extends PaneArrangementSnapshot {
@@ -119,19 +126,57 @@ function readJson(storage: StorageLike | null, key: string): unknown {
   }
 }
 
+interface LoadedWorkspace {
+  readonly linked: LinkedArrangement;
+  readonly histories: TabHistories;
+  /** Brought in from what the sections kept before, which storage no longer holds. */
+  readonly migrated: boolean;
+}
+
+/**
+ * The shared panes as the device last left them, Changes' own panes joined beside them once
+ * (`joinBeside`), with what each of their tabs showed before.
+ */
+function loadWorkspace(storage: StorageLike | null): LoadedWorkspace {
+  const changes = parseArrangement(readJson(storage, OLD_CHANGES.panes), isWorkspaceKey);
+  const changesHistory = readJson(storage, OLD_CHANGES.history);
+  const loaded = loadShared(storage);
+  if (changes === null && changesHistory === null) return loaded;
+  try {
+    storage?.removeItem(OLD_CHANGES.panes);
+    storage?.removeItem(OLD_CHANGES.history);
+  } catch {
+    // Blocked storage keeps the old keys; the panes take them in again next time.
+  }
+  const base = loaded.linked.arrangement;
+  const arrangement = changes === null ? base : joinBeside(base, changes, isWorkspaceKey);
+  const stored = isRecordObject(changesHistory) ? changesHistory.histories : null;
+  return {
+    linked: { ...loaded.linked, arrangement },
+    histories: keepHistories(
+      { ...parseHistories(stored), ...loaded.histories },
+      allTabs(arrangement),
+    ),
+    migrated: true,
+  };
+}
+
 /**
  * The shared panes as the device last left them; on first opening, the chat tabs and each
  * section's panes as they were left, joined (`joinLayouts`). Thread right panels start fresh.
  */
-function loadWorkspace(storage: StorageLike | null): {
-  readonly linked: LinkedArrangement;
-  readonly histories: TabHistories;
-} {
+function loadShared(storage: StorageLike | null): LoadedWorkspace {
   const stored = readJson(storage, WORKSPACE_STORAGE_KEY);
   if (stored !== null) {
     const linked = parseLinkedArrangement(stored, isWorkspaceKey);
     const histories = parseHistories(readJson(storage, HISTORY_STORAGE_KEY));
-    if (linked) return { linked, histories: keepHistories(histories, allTabs(linked.arrangement)) };
+    if (linked) {
+      return {
+        linked,
+        histories: keepHistories(histories, allTabs(linked.arrangement)),
+        migrated: false,
+      };
+    }
   }
   const chatState = readJson(storage, OLD_CHAT_TABS_KEY);
   const chat = isRecordObject(chatState) && isRecordObject(chatState.state) ? chatState.state : {};
@@ -163,6 +208,7 @@ function loadWorkspace(storage: StorageLike | null): {
   return {
     linked: linkedArrangement(arrangement),
     histories: keepHistories(histories, allTabs(arrangement)),
+    migrated: joined !== null,
   };
 }
 
@@ -315,6 +361,8 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       record = null;
       recordOwner = null;
       state = mirror(state, false);
+      // What came in from the old keys, gone now, is kept even if nothing changes before leaving.
+      if (loaded.migrated) pending ??= setTimeout(flush, PERSIST_DELAY_MS);
     }
     return state;
   };
@@ -669,9 +717,11 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   /**
    * The route shows the chat `key` now, as following a link in a browser tab: where it is open it
    * comes to the front, else it takes the place of the chat in front, which joins its history.
+   * One in focus already, or one of its linked tabs, stays as it is.
    */
   const arriveChat = (key: string) => {
     const linked = current();
+    if (focusedChatOf(linked) === key) return;
     const { arrangement, front } = linked;
     if (leafWithTab(arrangement.root, key)) {
       update((before) => activateTab(before, key));
@@ -871,6 +921,17 @@ function samePanelDrawing(before: PanelProps, next: PanelProps) {
 
 export type Workspace = ReturnType<typeof createWorkspace>;
 
+/**
+ * The chat whose thread the Agents sidebar selects: the focused tab when it is a chat, or the
+ * chat it is linked to (one of that thread's surfaces); null for anything else in focus.
+ */
+export function focusedChatOf(linked: LinkedArrangement): string | null {
+  const key = focusedPane(linked.arrangement).active;
+  if (parseChatTabKey(key) !== null) return key;
+  const owner = linked.owners[key];
+  return owner !== undefined && parseChatTabKey(owner) !== null ? owner : null;
+}
+
 /** The device's shared panes. */
 export const workspace = createWorkspace();
 
@@ -904,6 +965,11 @@ export function useWorkspaceFocusedKey(): string {
     workspace.store.subscribe,
     () => focusedPane(workspace.arrangement()).active,
   );
+}
+
+/** Whether the panes hold nothing yet: one pane with one empty tab. */
+export function useWorkspaceStarting(): boolean {
+  return useSyncExternalStore(workspace.store.subscribe, () => isStarting(workspace.arrangement()));
 }
 
 /** The chat in front, whose linked tabs show. */

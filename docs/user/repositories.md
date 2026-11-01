@@ -16,7 +16,7 @@ see all of that for it; with every repository, each shows its latest files.
 
 ## Edit
 
-Files open in the tabs Agents and Wikis share (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Markdown files open with the live preview;
+Files open in the tabs every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Markdown files open with the live preview;
 code opens with line numbers and its language's colours, with Vim if you turned it on in
 Settings. Your edits save on their own a moment after you stop typing. A file shows when an agent
 is working in the same copy, and an edit never overwrites newer changes saved there.

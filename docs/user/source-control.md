@@ -167,9 +167,9 @@ The sidebar lists reviews, with search, sort and filters above them, and your wi
 requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The project filter beside the
 search picks every repository's pull requests or one repository's, every wiki's change requests
 or one wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
-tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side by side, and the
-arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
-back after a restart.
+tab among the ones every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)),
+so a review can sit beside another, a chat or a file, and the arrows at the top of the sidebar go
+back and forward through what a tab showed. Open tabs come back after a restart.
 
 On mobile, **Changes** lists reviews across your connected environments, with your
 wikis' change requests in a **Wiki changes** group above them. Open a review

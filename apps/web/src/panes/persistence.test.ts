@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { openBeside, openTab, startingArrangement, surfaceKey } from "./arrangement";
 import {
   arrangementStorageKey,
+  joinBeside,
   joinLayouts,
   loadArrangement,
   parseArrangement,
@@ -145,6 +146,24 @@ describe("the shared panes on the device", () => {
     ]);
     expect(joined && leaves(joined.root)[0]?.active).toBe("chat:e:2");
     expect(joinLayouts([], null, [startingArrangement()], isKey)).toBeNull();
+  });
+
+  it("take a section's panes in beside them, renumbered, keeping their own ids", () => {
+    const shared = openBeside(openTab(startingArrangement(), "chat:e:1"), "file:a", "p0", "right");
+    const section = openBeside(openTab(startingArrangement(), "file:a"), "file:b", "p0", "right");
+    const joined = joinBeside(shared, section, isKey);
+    const ids = leaves(joined.root).map((leaf) => leaf.id);
+    expect(leaves(joined.root).map((leaf) => leaf.tabs)).toEqual([
+      ["chat:e:1"],
+      ["file:a"],
+      ["file:b"],
+    ]);
+    expect(ids.slice(0, 2)).toEqual(leaves(shared.root).map((leaf) => leaf.id));
+    expect(new Set(ids).size).toBe(3);
+    expect(joined.focused).toBe(shared.focused);
+    // Nothing new to show leaves the shared panes as they are; empty ones give way to it.
+    expect(joinBeside(shared, openTab(startingArrangement(), "file:a"), isKey)).toBe(shared);
+    expect(leaves(joinBeside(startingArrangement(), section, isKey).root)).toHaveLength(2);
   });
 
   it("keep the links of tabs open or set aside, and nothing set aside without an owner", () => {
