@@ -337,19 +337,16 @@ const desktop = [
       <a href={RELEASES_URL} data-release-link target="_blank" rel="noopener noreferrer">releases page</a>.
     </p>
 
-    {/* Stable opens a door to the QA channel only while the page is in night (data-twilight, from the visitor's sun). */}
     {
       nightly ? (
-        <p class="dl__all">
-          For everyday work, use the <a href="/download">stable release</a>.
+        <p class="dl__aside">
+          In a browser, open <a href="https://app.astrolabe.sh">app.astrolabe.sh</a> and choose Nightly under Settings,
+          About, Update track. For everyday work, use the <a href="/download">stable release</a>.
         </p>
       ) : (
-        <p class="dl__night">
-          <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M8.79 4.46A6 6 0 1 0 15.48 11.58A5 5 0 0 1 8.79 4.46Z" /></svg>
-          <span>
-            After dark, the <a href="/download/nightly">nightly builds</a>: made from main every night for testing, and
-            sometimes broken.
-          </span>
+        <p class="dl__aside">
+          Testing what's next? The <a href="/download/nightly">nightly builds</a> are made from main every night, and
+          sometimes break.
         </p>
       )
     }
