@@ -27,7 +27,7 @@ To run a second copy beside yours, give it its own stage and port: `CLOUD_POSTGR
 
 [`src/Api.ts`](src/Api.ts) is Alchemy-hosted: Alchemy bundles it with its own startup code, serves its `fetch`, and wires its bindings and their IAM. Alchemy's ECS startup code exists only for Bun, so the image is `oven/bun`. Tests stay on Node, which keeps the code to Node APIs; once Alchemy ships Node startup code for ECS, switching is a change to the service's props.
 
-The API serves Astrolabe sign-in at `/api/auth/*` from [`apps/cloud`](../../apps/cloud), using `@alchemy.run/better-auth`: Alchemy provisions Better Auth's secret, and mail goes out through the SES binding. Its load balancer is declared ahead of the service so the service knows its own public address (`AUTH_URL`); Better Auth needs a fixed origin, and the emulator's load balancer rewrites `Host`.
+The API serves Astrolabe sign-in at `/api/auth/*` from [`apps/cloud`](../../apps/cloud), which builds Better Auth once per process: the stack provisions its secret as an `Alchemy.Random` bound to `BETTER_AUTH_SECRET`, and mail goes out through the SES binding. Its load balancer is declared ahead of the service so the service knows its own public address (`AUTH_URL`); Better Auth needs a fixed origin, and the emulator's load balancer rewrites `Host`.
 
 ## Integration tests
 

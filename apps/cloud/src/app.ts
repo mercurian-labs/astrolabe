@@ -2,11 +2,11 @@
 /**
  * The cloud API's request handling. infra/cloud/src/Api.ts hosts it as an
  * Alchemy ECS service, which supplies the runtime, the SES binding behind
- * `sendMail`, and Better Auth's managed secret.
+ * `sendMail`, and Better Auth's signing secret (`BETTER_AUTH_SECRET`).
  */
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
-import { BetterAuth, Database } from "@alchemy.run/better-auth";
 import { ALCHEMY_PHASE } from "alchemy/Phase";
+import { betterAuth } from "better-auth";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -84,6 +84,8 @@ const authConfig = Config.all({
 // so a misconfigured deploy fails its health check instead of a sign-in.
 const requiredAtRuntime = Config.all({
   databaseUrl: Config.Redacted("DATABASE_URL"),
+  // Encrypts TOTP secrets and the JWKS private keys, so it must never change.
+  betterAuthSecret: Config.Redacted("BETTER_AUTH_SECRET"),
   authUrl: Config.String("AUTH_URL"),
   // Without it every relay token would be issued for localhost.
   relayUrl: Config.String("RELAY_URL"),
@@ -109,31 +111,41 @@ export const makeCloudApp = Effect.fn("CloudApp.make")(function* (deps: {
   // context, never a request's, so no request state is shared.
   const runPromise = Effect.runPromiseWith(yield* Effect.context<never>());
 
-  const auth = yield* BetterAuth(
-    authOptions(config, {
-      sendMail: (mail) => runPromise(deps.sendMail(mail)),
-      removeRelayData: (userId, token) =>
-        runPromise(
-          Effect.gen(function* () {
-            yield* removeRelayData({ relayUrl: config.relayUrl, userId, token });
-            yield* deletePushRegistrations(yield* pool, userId);
-          }).pipe(Effect.provide(FetchHttpClient.layer)),
-        ),
-    }),
-  ).pipe(
-    // Our own database rather than the package's Drizzle layer, which drops
-    // `transaction`: sign-up writes the user and their account together.
-    Effect.provideService(Database, {
-      provider: "postgres",
-      runtime: pool.pipe(
-        Effect.map((client) =>
-          drizzleAdapter(drizzle({ client, relations: schema.authRelations }), {
-            provider: "pg",
-            schema,
-            transaction: true,
-          }),
-        ),
+  const options = authOptions(config, {
+    sendMail: (mail) => runPromise(deps.sendMail(mail)),
+    removeRelayData: (userId, token) =>
+      runPromise(
+        Effect.gen(function* () {
+          yield* removeRelayData({ relayUrl: config.relayUrl, userId, token });
+          yield* deletePushRegistrations(yield* pool, userId);
+        }).pipe(Effect.provide(FetchHttpClient.layer)),
       ),
+  });
+  // One Better Auth for the process, built on first use like the pool.
+  const auth = yield* Effect.cached(
+    Effect.gen(function* () {
+      const client = yield* pool;
+      const secret = yield* Config.Redacted("BETTER_AUTH_SECRET").pipe(Effect.orDie);
+      return betterAuth({
+        ...options,
+        // Our own Drizzle adapter, with `transaction`: sign-up writes the user and their account together.
+        database: drizzleAdapter(drizzle({ client, relations: schema.authRelations }), {
+          provider: "pg",
+          schema,
+          transaction: true,
+        }),
+        secret: Redacted.value(secret),
+        advanced: {
+          ...options.advanced,
+          // The process outlives the request, so deferred work (mail, cleanup) runs detached.
+          backgroundTasks: {
+            handler: (task) =>
+              void task.catch((error: unknown) =>
+                runPromise(Effect.logError("Better Auth background task failed", error)),
+              ),
+          },
+        },
+      });
     }),
   );
 
@@ -144,7 +156,7 @@ export const makeCloudApp = Effect.fn("CloudApp.make")(function* (deps: {
   const workspaces = Effect.fn("CloudApp.workspaces")(function* (pathname: string) {
     const request = yield* HttpServerRequest;
     const web = yield* ServerRequest.toWeb(request).pipe(Effect.orDie);
-    const instance = yield* auth.auth;
+    const instance = yield* auth;
     if (pathname === WORKSPACE_PATHS.write && request.method === "POST") {
       const write = makeWorkspaceWriter({
         db: drizzle({ client: yield* pool, relations: schema.authRelations }),
@@ -207,6 +219,13 @@ export const makeCloudApp = Effect.fn("CloudApp.make")(function* (deps: {
         ),
   );
 
+  const authRoute = Effect.gen(function* () {
+    const web = yield* ServerRequest.toWeb(yield* HttpServerRequest).pipe(Effect.orDie);
+    const instance = yield* auth;
+    // `handler` answers API errors as error responses rather than rejecting.
+    return HttpServerResponse.fromWeb(yield* Effect.promise(() => instance.handler(web)));
+  });
+
   return {
     /** Serves `/api/auth/*`, `/api/workspaces/*` and, given the built pages, every other page path. */
     fetch: Effect.gen(function* () {
@@ -232,7 +251,7 @@ export const makeCloudApp = Effect.fn("CloudApp.make")(function* (deps: {
         corsOrigins,
       );
       if (cors.preflight) return HttpServerResponse.empty({ status: 204, headers: cors.headers });
-      const response = workspaceRoute ? yield* workspaces(pathname) : yield* auth.fetch;
+      const response = workspaceRoute ? yield* workspaces(pathname) : yield* authRoute;
       return HttpServerResponse.setHeaders(response, cors.headers);
     }),
   };

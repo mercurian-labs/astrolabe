@@ -16,10 +16,12 @@ import * as Effect from "effect/Effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { HttpServerRequest } from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import * as Redacted from "effect/Redacted";
 
 import {
   ApiIngress,
   ARM64,
+  BetterAuthSecret,
   Cluster,
   DatabaseUrl,
   Electric,
@@ -47,6 +49,8 @@ export default Api.make(
       },
       env: {
         DATABASE_URL: yield* DatabaseUrl,
+        // Unwrapped: env values are written as JSON, where a Redacted reads "<redacted>".
+        BETTER_AUTH_SECRET: Output.map((yield* BetterAuthSecret).text, Redacted.value),
         ELECTRIC_URL: electric.url,
         MAIL_FROM: Output.map(mail.emailIdentity, (address) => `Astrolabe <${address}>`),
         AUTH_URL: ingress.url,
