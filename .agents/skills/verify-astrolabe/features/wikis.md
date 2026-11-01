@@ -70,8 +70,8 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   anywhere in a Documents group; a pick shows it in the focused pane's tab in front,
   as a click does (or brings an open copy forward), and goes to `/wikis`.
 - **Chats and pull requests beside documents**: a change request's **Open thread** opens
-  its thread's chat after the chat in front (`chat:<env>:<thread>` tab; it mounts only while
-  in front). See panes.md, "Chats as tabs".
+  its thread's chat in a new tab after the chat in front and brings it forward
+  (`chat:<env>:<thread>` tab), as a sidebar click does. See panes.md, "Chats as tabs".
 - **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
   files that open inside the change request).
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show

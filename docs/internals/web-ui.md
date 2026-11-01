@@ -73,8 +73,9 @@ panes, not the router, decide which chat shows; the route follows a commit later
 chat. In Agents the route names the focused tab's chat (or the chat a focused linked tab belongs
 to), else the start page, so the sidebar selects what has focus. A section switch goes to that
 same route ([`agentsRoute.ts`](../../apps/web/src/panes/agentsRoute.ts)), whose arrival changes
-nothing; only a thread link or a sidebar click brings a chat forward (`arriveChat`), which parks
-another chat's linked tabs. A pane's content has `contain: layout
+nothing; only a thread link or a sidebar click brings a chat forward (`openChat`), which parks
+another chat's linked tabs. A chat never takes another chat's place: one not open yet opens in
+a new tab after the chat in front, since replacing a chat would close it and its linked tabs. A pane's content has `contain: layout
 paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
 built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
 (`useChatOwner`).

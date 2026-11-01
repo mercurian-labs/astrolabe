@@ -23,7 +23,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   linked tabs, else to `/`. In Agents the route follows focus the same way: focusing a chat or its
   linked tab navigates to its thread (the sidebar row lights), focusing a document, file, pull
   request, change group or empty tab navigates to `/` (no row lit). Only a thread link, a sidebar
-  click, Back/Forward to a thread route or a deep link bring a chat forward (`arriveChat`).
+  click, Back/Forward to a thread route or a deep link bring a chat forward (`openChat`).
   `/` with only the starting empty tab still starts a draft, as T3 Code's start page does. Proof:
   `localStorage['astrolabe:workspace:v1']` and every `[data-pane-id]`'s tabs unchanged across the
   switch, the ChatView count unchanged, the URL, and the sidebar's lit row.
@@ -53,7 +53,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `Show the turn "<asked>" in the chat`, which scroll the chat to that turn; hovering one
   shows a card (ask, reply's first line, files and lines, model, when). Another
   thread's title, line or checkpoint is `Open <title> in a new tab`, which opens it as
-  a chat tab after the chat in front; a fork's label reads `<agent> · <running|waiting on you|idle · 3h ago|merged
+  a chat tab after the chat in front, in front; a fork's label reads `<agent> · <running|waiting on you|idle · 3h ago|merged
   back|not started> · <n> behind`. Quiet stretches fold into buttons named
   `Show <n> folded turns` (text `<n> turns`) that unfold on click; a bar under the drawing
   holds **Show every turn** / **Fold quiet turns** and, when the drawing overflows the panel,
@@ -68,11 +68,16 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   (`PaneChat`, rendered by `panes/WorkspaceView.tsx`); chats not in front stay mounted under
   React's `<Activity mode="hidden">`, at most the 5 most recently shown (`KEPT_CHATS` in
   `panes/recentChats.ts`), so a `[data-chat-header]` count includes hidden ones (check
-  visibility with `getClientRects()`) and showing a 6th chat unmounts the oldest. A sidebar
-  click on a chat new to the panes fills a focused unowned New tab first
-  (`workspace.ts` `arriveChat`), otherwise it replaces the chat in front (history kept);
-  Option/middle-click or **Open in new tab** opens it after the chat in front; threads
-  dragged from the sidebar onto a pane open there. In Agents, focusing another chat's pane
+  visibility with `getClientRects()`) and showing a 6th chat unmounts the oldest. Every way
+  of showing a chat (sidebar click, Option/middle-click, **Open in new tab**, Search, the
+  palette, `:b`, a fork, New thread or a draft, a thread link, Lineage, a change group's
+  member row, a deep link, Back/Forward) goes through `workspace.ts` `openChat`: a chat open
+  anywhere comes forward and its pane takes focus (never a second tab); else a focused
+  unowned New tab takes it in place; else it opens in a new tab right after the chat in
+  front, in that chat's pane, in front (after the focused pane's tab with no chat in front).
+  No chat replaces another: the one that was in front stays open, its linked tabs parked,
+  and the new chat's Back stays disabled. Threads dragged from the sidebar onto a pane open
+  there. In Agents, focusing another chat's pane
   navigates to it, and focusing a tab that is no chat's navigates to `/`. A chat deleted or a draft discarded closes its tab.
 - **Linked tabs** (`panes/linkedTabs.ts`, `localStorage['astrolabe:workspace:v1']`'s `owners`,
   `parked`, `front`): `front` is the chat focused most recently while in front of some pane. A

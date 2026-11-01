@@ -62,15 +62,15 @@ The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a N
 browser does. It offers a new chat, a document, a project's file or changes, and a change
 group, each with a letter key; what you pick takes the New tab's place.
 
-Clicking a thread in the sidebar shows it in place of the chat in front, as a link does in a
-browser; a thread already open in another tab comes to the front there instead. To open one in a
-new tab, Option-click it (Alt-click on Windows and Linux), middle-click it, or right-click it and
-choose **Open in new tab**, or drag it onto a pane's tabs to open it where you drop it (a
-selection of threads goes together). Search, `:b`, and new threads also show in place of the chat
-in front.
+Clicking a thread in the sidebar opens it in a new tab right after the chat in front, and the
+chat you were in stays open behind it. A thread already open in a tab comes to the front there
+instead, so a thread is never open twice. A focused New tab takes the thread in its place, as a
+browser's new tab takes a link. Search, `:b`, new threads, forks and links to a thread open the
+same way. Drag a thread onto a pane's tabs to open it where you drop it (a selection of threads
+goes together).
 
-Each tab remembers what it showed. The arrows at the start of a tab's header go back and
-forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do the same in the
+A file or document tab remembers what it showed. The arrows at the start of its header go back
+and forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do the same in the
 focused tab.
 
 `mod+j` opens and closes the terminal drawer of the chat in the focused tab. With a file, a
