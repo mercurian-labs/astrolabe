@@ -1,4 +1,4 @@
-import { Columns2, SquarePlus } from "lucide-react";
+import { SquareMinus, SquarePlus } from "lucide-react";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { Kbd } from "~/components/ui/kbd";
@@ -125,7 +125,7 @@ export function LinkedTabsToggle({
           size="sm"
           disabled={!available}
         >
-          {showing ? <Columns2 className="size-4" /> : <SquarePlus className="size-4" />}
+          {showing ? <SquareMinus className="size-4" /> : <SquarePlus className="size-4" />}
         </Toggle>
       </TooltipTrigger>
       <TooltipPopup side="bottom">

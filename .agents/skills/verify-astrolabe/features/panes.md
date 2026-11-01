@@ -82,7 +82,7 @@ panes of its own (pull-requests.md).
   is faint otherwise.
 - **Linked tabs toggle** (`panes/LinkedTabsToggle.tsx`, `[data-right-panel-toggle]`): in a
   pane's chat header, after the thread details and terminal drawer toggles, in place of
-  T3 Code's right-panel toggle. With the panel open, a split-pane icon, **Hide tabs** (pressed).
+  T3 Code's right-panel toggle. With the panel open, a square-minus icon, **Hide tabs** (pressed).
   With linked tabs parked for that chat (its own and its change group's, plus record surfaces
   no pane held yet), a rounded square holding their count (label `Open tabs (N hidden)`)
   opening an **Open tabs** menu: each tab with its icon, then **New tab**; picking one brings
