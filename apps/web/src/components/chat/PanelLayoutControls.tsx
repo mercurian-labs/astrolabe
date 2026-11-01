@@ -4,6 +4,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { memo, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { LinkedTabsToggle } from "~/panes/LinkedTabsToggle";
 import { useChatOwner } from "~/panes/PaneSurfaceHost";
 
 import type { ThreadPanelPresentation } from "../../rightPanelLayout";
@@ -50,6 +51,8 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   onToggleThreadPanel,
   onToggleRightPanel,
 }: PanelLayoutControlsProps) {
+  // Astrolabe: inside the shared panes the right panel is the chat's linked tabs.
+  const chatOwner = useChatOwner();
   const threadPanelToggle = (
     <Toggle
       className="relative shrink-0 [-webkit-app-region:no-drag]"
@@ -108,7 +111,14 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
           </TooltipPopup>
         </Tooltip>
       ) : null}
-      {showRightPanelControl ? (
+      {showRightPanelControl && chatOwner !== null ? (
+        <LinkedTabsToggle
+          owner={chatOwner}
+          available={rightPanelAvailable}
+          shortcutLabel={rightPanelShortcutLabel}
+          onToggle={onToggleRightPanel}
+        />
+      ) : showRightPanelControl ? (
         <Tooltip>
           <TooltipTrigger render={<span className="flex shrink-0" />}>
             <Toggle
