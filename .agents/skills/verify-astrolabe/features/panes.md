@@ -174,8 +174,11 @@ panes of its own (pull-requests.md).
   the arrangement's focused pane (`[data-focused]`): with focus in the sidebar or rail no
   tab has the bar. Check
   `[data-pane-id][data-focused-place] [data-pane-tab][aria-selected=true]`. The view
-  header below (a wiki note's, a chat's) has no bottom border and the strip's height, so
-  tab and header read as one surface.
+  header below has no bottom border and the strip's height, so tab and header read as one
+  surface: a chat's, and every Astrolabe tab's (`[data-tab-header]`, `panes/TabHeader.tsx`: a
+  file, a checkout's changes, a local graph, the thread's Graph tab, a wiki note), each a
+  breadcrumb in the chat's type (muted place, then the page) with quiet status and ghost icon
+  actions. What scrolls beneath a header fades out under it (`topbar-scroll-fade`, static).
 - **Drag a tab** to another strip or a pane edge. Cmd/Ctrl-click and
   Shift-click select several tabs, which drag together. The page draws the drag's
   preview, a pill under the pointer (`body > [aria-hidden=true].fixed`, with a count

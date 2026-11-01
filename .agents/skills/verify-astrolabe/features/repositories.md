@@ -50,7 +50,8 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
 - **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`, history
   `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
   `[data-workspace-tab="<tab key>"]`. An empty tab shows the New tab launcher (**Open a tab**, panes.md).
-- **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (path, "An
+- **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (the path as a breadcrumb: its
+  folder muted and cut from its start, then the file's name; "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
   Read only / Too big to edit here). Markdown opens with the live preview (a centred
   measure); code in `.cm-editor.cm-code` with line numbers and its language's colours

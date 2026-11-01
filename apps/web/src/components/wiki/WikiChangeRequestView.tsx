@@ -35,7 +35,6 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
-import { ScrollArea } from "../ui/scroll-area";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -125,7 +124,7 @@ export function WikiChangeRequestView({
   };
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 pt-6 pb-12">
         <header className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -268,7 +267,7 @@ export function WikiChangeRequestView({
           )}
         </WikiPart.Section>
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 
