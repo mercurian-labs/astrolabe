@@ -2617,7 +2617,7 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   --secondary-label: var(--app-theme-secondary-label);
 }
 
-/* Astrolabe: a strip's tabs (a pane's, the chat tabs') are drawn as Chrome's, with the tab in
+/* Astrolabe: a pane strip's tabs are drawn as Chrome's, with the tab in
    front outlined as Obsidian's. That tab is the content's background (`--tab-join`, set by its
    strip) with rounded top corners and no bottom edge, over a break in the strip's bottom border,
    and where its sides meet that border they curve outward into it, at the top corners' radius
@@ -2642,7 +2642,7 @@ html[data-theme-id="mercurian"][data-redesign] [data-app-sidebar] {
   --link-ink-4: color-mix(in oklab, var(--primary) 35%, oklch(0.66 0.14 330));
 }
 
-/* A tab group's run (`panes/tabGroups.tsx`), in a pane's strip or the chat tabs, is underlined in
+/* A tab group's run (`panes/tabGroups.tsx`), in a pane's strip, is underlined in
    the theme's primary colour (`--tab-group`, the same for every group) as Chrome's are, a 2px
    line along the strip's foot. Its tab in front is outlined in that line, so the line rises
    around the tab and its feet carry it on. */
