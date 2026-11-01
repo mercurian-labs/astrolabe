@@ -57,9 +57,10 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   another tab brings that tab forward, and with unsaved edits it opens in a new tab.
 - **Pane header**: a note's header (title · Main or the change request, its
   buttons) is one line as tall as the tab strip, with no bottom border; the strip's
-  joined tab in front (panes.md) reads continuous with it. A pane's `+` opens an empty tab
-  with one button, **Find or create a document** (only once a wiki exists; the
-  finder lists documents and open changes, and offers Write "…" for a new name).
+  joined tab in front (panes.md) reads continuous with it. A pane's `+` opens a New tab
+  (panes.md) whose **Document** (`O`, faint until a wiki exists) opens the finder; it
+  lists documents and open changes, offers Write "…" for a new name, and the pick takes
+  the New tab's place.
   Mod-click on a wikilink follows it in the same tab, unless the target is open in
   another tab (that one comes forward) or the note has unsaved edits (it opens in a
   new tab). Clicking inside a pane focuses it.
@@ -113,7 +114,7 @@ preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
 preview_act click     role=combobox[name=/^Filter documents/]   # rows: role=option; click a
                                                                 # wiki row by its measured x,y,
                                                                 # its name carries the icon text
-preview_act click     role=button[name='Find or create a document']  # in an empty tab
+preview_act click     [aria-label='Open a tab'] >> role=button[name=/^Document/]  # in a New tab
 ```
 
 **Proof:** read the arrangement from the DOM

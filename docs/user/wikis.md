@@ -18,7 +18,7 @@ When you change a note, **Save to change request** keeps your edit in a change r
 
 ## Documents beside your work
 
-A document can open beside a conversation, and a conversation beside a document. **Document** in a pane's **+** menu finds or writes one in that pane, and a thread's **Graph** tab opens the notes and change requests it names beside itself, linked to its chat. A change request's **Open thread** shows its thread's conversation after the chat in front. A change request has **Open in Changes** in its right-click menu, which moves it there.
+A document can open beside a conversation, and a conversation beside a document. **Document** in a pane's New tab (its **+**) finds or writes one in that tab's place, and a thread's **Graph** tab opens the notes and change requests it names beside itself. A change request's **Open thread** shows its thread's conversation after the chat in front. A change request has **Open in Changes** in its right-click menu, which moves it there.
 
 ## Change requests
 

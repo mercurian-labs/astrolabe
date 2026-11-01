@@ -6,20 +6,33 @@ Agents, Repositories and Wikis share one set of panes (`panes/workspace.ts`,
 (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
-chat is the one in front, and park, remembering where they stood, while another chat is. There
+chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
+else links to a chat: chats, documents, wiki change requests, change groups, repository files and
+diffs stand on their own (a change group's **Open as a tab group** still links to the group, and
+a following local graph to its file). There
 is no right-panel frame: `ChatRightPanel` renders `panes/LinkedPanel.tsx`, which lends the panes
 ChatView's panel props and renders the live surface into the pane showing its tab. Changes keeps
 panes of its own (pull-requests.md).
 
 ## Sub-features
 
-- **Empty panel**: one "New tab" showing T3 Code's launcher ("Open a surface").
-  Picking a surface replaces it.
-- **New tab menu** (`+` in every strip): the same surfaces. Items without a
-  source are disabled, and hovering one shows why ("Browser previews are only
-  available in the Astrolabe desktop app."). `mod+t` (`rightPanel.new`) opens the
-  focused pane's menu, with the panel open. Astrolabe adds **Document** (`O`), which
-  opens the wiki finder and puts the pick in that pane as a document tab.
+- **Linked New tab** (the chat header toggle's **New tab** only): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
+  Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Linked pull requests `L`, Device `M`,
+  Graph `G`, Lineage `I`). Rows without a source are disabled `div`s whose hover says why.
+  The surface picked takes the New tab's place (same pane and index), linked
+  (`workspace.targetPane(pane, blank)`, placed by `arriveAtTarget` as the record gains it).
+- **New tab** (`+` at the end of every strip, `button[name='New tab']`; `mod+t`,
+  `rightPanel.new`, in the focused pane): opens an unowned empty tab at the end of that
+  pane's tabs, in front, at once (no menu). It shows `panes/TabLauncher.tsx`
+  (`[aria-label="Open a tab"]`): **New chat** `N` (the sidebar's New thread: the front
+  chat's project, or the palette's project list with several), **Document** `O` (wiki
+  finder), **Repository file** `R` (repository list, then its files; one repository skips
+  the list), **Repository diff** `C` (each repository's Uncommitted changes and Branch
+  changes), **Change group** `K`. Rows with nothing to offer are faint with a reason on
+  hover. Letters act only while that pane is focused, and differ from the surface
+  launcher's. The pick takes the New tab's place (`putInPlace`); a new chat arriving while a
+  New tab is focused lands in it. A lone empty pane shows the same launcher, in every
+  section. A New tab opened beside linked tabs stays when the chat changes.
 - **Lineage** (`I`, `components/lineage/`): the thread's fork family drawn left to
   right in `section[aria-label="Thread lineage"]`. The viewed thread runs along the
   centre lane, with one column per checkpoint across the family. Forks curve off the
@@ -57,10 +70,16 @@ panes of its own (pull-requests.md).
   `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An
   open panel with no linked tabs shows an owned empty tab with T3 Code's launcher; closing the
   front chat's last linked tab closes its panel, and closing its last surface keeps the panel
-  open while other linked tabs remain. Any other tab links to the chat in front from
-  its menu (**Link to the chat in front**) or `t` `k` (`tab.toggleLink`), and **Unlink tab**
-  lets it stay whoever is in front; a thread's own surfaces cannot unlink. A following local
-  graph is linked to the file it follows; unlinking pins it (repositories.md).
+  open while other linked tabs remain. Linked tabs are added only from the toggle; there is no
+  linking a standalone tab to a chat. **Open as its own tab** (tab menu) puts a thread's
+  surface's standalone counterpart in its place, unlinked, and closes the surface in the
+  thread's record: a file (from chat or Files) becomes `repo-file:` on the thread's checkout,
+  Diff becomes `repo-diff:…:working-tree`, the thread's pull request a full-key pull request
+  tab (only when its host is known). Terminal, browser, device, Files, Graph, Lineage and
+  Linked pull requests have no counterpart and do not offer it. **Unlink tab** remains for a
+  tab still linked (a change group's, or one linked before). `t` `k` (`tab.toggleLink`) does
+  the focused tab's link item: a local graph's follow/pin (repositories.md) or Unlink tab, and
+  is faint otherwise.
 - **Linked tabs toggle** (`panes/LinkedTabsToggle.tsx`, `[data-right-panel-toggle]`): in a
   pane's chat header, after the thread details and terminal drawer toggles, in place of
   T3 Code's right-panel toggle. With the panel open, a split-pane icon, **Hide tabs** (pressed).
@@ -68,9 +87,10 @@ panes of its own (pull-requests.md).
   no pane held yet), a rounded square holding their count (label `Open tabs (N hidden)`)
   opening an **Open tabs** menu: each tab with its icon, then **New tab**; picking one brings
   them all back with it in front. With none, a plus-in-a-square, **New tab**, which opens the
-  panel's launcher. `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette do what
-  the button does: with tabs parked they open its menu. The header has no maximize of its own;
-  the pane strip's does that.
+  linked New tab. `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette hide the
+  tabs, and with tabs parked bring them all straight back where they stood (no menu), so two
+  presses hide and restore; with none they open the linked New tab. Only the button's click
+  opens the menu. The header has no maximize of its own; the pane strip's does that.
 - **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
   (`[data-link-mark=<ink>]`) before the ✕ on every linked tab on screen and on its owner, with
   the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
@@ -79,7 +99,7 @@ panes of its own (pull-requests.md).
   in front and links the rest (the group's tab, its change requests, its pull requests named
   in full) to the group (`owners[key] = change-group:<env>:<id>`), shown while the front chat
   is one of the group's threads and parked otherwise. Beside a chat outside the group they
-  link to that chat. The groups' threads reach the panes through `GroupsSync`.
+  stand on their own, together in one new pane beside it. The groups' threads reach the panes through `GroupsSync`.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
   strip, a change
   group's run of tabs (its chats, wiki change requests and own tab, and pull requests
@@ -114,13 +134,14 @@ panes of its own (pull-requests.md).
   actions are commands (`pane.splitRight`, `pane.splitDown`, `pane.close`,
   `pane.toggleMaximized`, `pane.toggleFullScreen`): the keyboard menu's `p` group
   (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `r` for upstream's
-  `rightPanel.toggle`, which does what the linked tabs toggle does), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
+  `rightPanel.toggle`, which hides or brings back the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
   `:q` closes the focused pane's active tab.
 - **Tab context menu** (right-click): **Open in Changes** for a change request, **Open in
-  Repositories** for a thread's Files, Diff and opened file, then T3 Code's own items for the
-  tab (**Rename** for a device, **Copy path** for a workspace file, **Mute tab** / **Unmute
-  tab** for a browser tab), **Link to the chat in front** / **Unlink tab**, Close, Close
+  Repositories** for a thread's Files, Diff and opened file, **Open as its own tab** for a
+  thread's file, Diff and pull request, then T3 Code's own items for the tab (**Rename** for a
+  device, **Copy path** for a workspace file, **Mute tab** / **Unmute tab** for a browser
+  tab), a local graph's link item or **Unlink tab** for a tab still linked, Close, Close
   others, Close tabs to the right, Split right, Split down. A lone tab cannot split.
   Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
   **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
@@ -171,8 +192,9 @@ panes of its own (pull-requests.md).
 
 ## How to get to it (user POV)
 
-Open a chat and press **New tab** at the end of its header (or Cmd+Alt+B): a linked pane opens
-to the chat's right with the surface launcher. **Hide tabs** sets them aside; the button then
+Press **+** at the end of any pane's tabs (or Cmd+T): a New tab opens there with **Open a tab**;
+pick one and it takes the New tab's place. Open a chat and press **New tab** at the end of its
+header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher. **Hide tabs** sets them aside; the button then
 counts them, and its menu brings them back.
 
 ## Driving it with the Browser panel
@@ -184,8 +206,8 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 ```
 preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # New tab / Hide tabs / Open tabs (N hidden)
 preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
-preview_act click  [data-pane-id] >> role=button[name='New tab']
-preview_act click  role=menuitem[name=/^Files/]
+preview_act click  [data-pane-id] >> role=button[name='New tab']          # + : a New tab, no menu
+preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Repository file/]
 preview_act click  [data-pane-id] >> role=button[name='Pane actions']
 preview_act click  role=menuitem[name='Split right']
 preview_act click  role=tab[name='<other chat>']                         # its linked tabs take the pane

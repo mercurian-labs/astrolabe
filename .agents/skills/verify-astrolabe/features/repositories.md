@@ -49,7 +49,7 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   (`projects.searchEntries`); with every repository it asks for one.
 - **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`, history
   `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
-  `[data-workspace-tab="<tab key>"]`. An empty tab in Repositories reads **Nothing open**.
+  `[data-workspace-tab="<tab key>"]`. An empty tab shows the New tab launcher (**Open a tab**, panes.md).
 - **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (path, "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
   Read only / Too big to edit here). Markdown opens with the live preview (a centred

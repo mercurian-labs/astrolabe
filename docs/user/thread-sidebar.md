@@ -55,6 +55,10 @@ documents and a thread's terminals and browsers can stand side by side, and ever
 Switching sections changes what the sidebar lists, not the tabs. Drag a tab to a pane's edge to
 split it, or onto another pane's tabs to move it there.
 
+The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
+browser does. It offers a new chat, a document, a repository's file or changes, and a change
+group, each with a letter key; what you pick takes the New tab's place.
+
 Clicking a thread in the sidebar shows it in place of the chat in front, as a link does in a
 browser; a thread already open in another tab comes to the front there instead. To open one in a
 new tab, Option-click it (Alt-click on Windows and Linux), middle-click it, or right-click it and
@@ -67,22 +71,27 @@ and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the focused tab
 
 ### Linked tabs
 
-A thread's terminals, browsers, diff and other right-panel tabs are linked to its chat, and show
-only while that chat is in front: bring another chat to the front and the pane beside it shows
+A thread's terminals, browsers, diff, files, pull request, Graph and Lineage are linked to its
+chat, and show only while that chat is in front: bring another chat to the front and the pane beside it shows
 that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
 the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
 and browsers for the next time you open it.
 
-The tabs button at the end of the chat's header (`mod+alt+b`, or Space `p` `r`) hides or shows
-them. Hiding sets them aside rather than closing them: they come back where they stood. While
-some are hidden the button shows how many; pick one from its menu to bring them all back with it
-in front, or choose **New tab**. With none, it opens a new linked tab to start one from. A linked
-tab's ✕ closes it for good: a terminal closed this way ends, and the tab does not come back.
+Linked tabs are added only from the tabs button at the end of the chat's header. With none, it
+opens a linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull
+request and the rest); the one you pick takes its place. The same button hides or shows them.
+Hiding sets them aside rather than closing them: they come back where they stood. While some are
+hidden the button shows how many; pick one from its menu to bring them all back with it in
+front, or choose **New tab**. `mod+alt+b`, or Space `p` `r`, hides them and brings them all back
+without the menu. A linked tab's ✕ closes it for good: a terminal closed this way ends, and the
+tab does not come back. A New tab opened with a pane's **+** stands on its own, even beside
+linked tabs, and stays where it is when another chat comes to the front.
 
-A linked tab and its owner carry the same chain mark; hover it to see what it belongs to. To
-link another tab, a document or a file, to the chat in front, right-click it and choose **Link to
-the chat in front**; **Unlink tab** lets it stay put whichever chat is in front. Space `t` `k`
-does either for the focused tab. A thread's own surfaces stay linked to their thread.
+A linked tab and its owner carry the same chain mark; hover it to see what it belongs to.
+Everything else (chats, documents, repository files and changes, change groups) stands on its
+own. To keep a thread's file, diff or pull request whichever chat is in front, right-click its
+tab and choose **Open as its own tab**: a file becomes the repository's file, the diff the
+checkout's uncommitted changes, and the pull request its own tab, in the same place.
 
 A change group's **Open as a tab group** links its change requests to the group, so they show
 beside every thread in the group and no other.
