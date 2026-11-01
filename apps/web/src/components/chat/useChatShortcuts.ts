@@ -12,7 +12,7 @@ import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
 import { surfaceLauncherClaimsKey } from "../RightPanelTabs";
 import { useChatOwner } from "../../panes/PaneSurfaceHost";
-import { takesTerminalToggle } from "../../panes/workspace";
+import { takesPanelShortcut, takesTerminalToggle } from "../../panes/workspace";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 import { composerShortcutCommands } from "./composerShortcuts";
 
@@ -21,6 +21,16 @@ export type ChatShortcutHandler = (context: {
   readonly event: KeyboardEvent;
   readonly terminalFocusOwner: TerminalFocusOwner | null;
 }) => boolean | void;
+
+// Astrolabe: commands for a chat's right panel, which several chats on screen would otherwise
+// race for (`takesPanelShortcut`).
+const PANEL_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
+  "rightPanel.toggle",
+  "rightPanel.toggleMaximized",
+  "rightPanel.close",
+  "threadPanel.toggle",
+  "diff.toggle",
+]);
 
 export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcutHandler>>;
 
@@ -83,6 +93,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     if (!command) return;
     // Astrolabe: in the shared panes only the focused chat tab toggles its drawer.
     if (command === "terminal.toggle" && !takesTerminalToggle(owner)) return;
+    if (PANEL_COMMANDS.has(command) && !takesPanelShortcut(owner)) return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??

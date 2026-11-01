@@ -8,7 +8,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
-  WorkspaceBreadcrumbSeparator,
   WorkspaceBreadcrumbText,
 } from "~/components/WorkspaceBreadcrumb";
 import { shortcutLabelForCommand } from "~/keybindings";
@@ -85,7 +84,9 @@ function TabHistory({
 
 /**
  * The chat header's breadcrumb: where the tab's page lives, muted, then the page in the
- * foreground. The muted part gives way first, so the page keeps its name.
+ * foreground. The page comes first in flex order and the parent wraps onto a clipped second line
+ * once even its shortest form no longer fits beside it, so the page never gives way first and no
+ * stray separator is left behind.
  */
 function Title({
   label,
@@ -95,32 +96,37 @@ function Title({
 }: {
   readonly label: string;
   readonly parent?: string | null;
-  /** Cuts the parent from its start, so its nearest part stays, as a folder path's does. */
+  /**
+   * The parent is a folder path: it keeps its last folder whole and cuts the rest from its start,
+   * down to an ellipsis.
+   */
   readonly keepParentEnd?: boolean;
   readonly children: ReactNode;
 }) {
+  const cut = keepParentEnd && parent ? parent.lastIndexOf("/") : -1;
   return (
     <WorkspaceBreadcrumb
-      ariaLabel={label}
+      // Named apart from the landmarks its label shares a word with, as the Changes sidebar's.
+      ariaLabel={`${label} breadcrumb`}
       className="flex-1 overflow-clip [overflow-clip-margin:2px]"
+      listClassName="h-6 flex-row-reverse flex-wrap justify-end gap-0 overflow-y-clip sm:gap-0 *:h-6"
     >
-      {parent ? (
-        <>
-          <WorkspaceBreadcrumbItem className="shrink">
-            {keepParentEnd ? (
-              <WorkspaceBreadcrumbText className="[direction:rtl]">
-                <bdi>{parent}</bdi>
-              </WorkspaceBreadcrumbText>
-            ) : (
-              <WorkspaceBreadcrumbText>{parent}</WorkspaceBreadcrumbText>
-            )}
-          </WorkspaceBreadcrumbItem>
-          <WorkspaceBreadcrumbSeparator>
-            <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
-          </WorkspaceBreadcrumbSeparator>
-        </>
+      {cut > 0 ? (
+        <WorkspaceBreadcrumbItem className="order-1 max-w-max shrink grow basis-6">
+          <WorkspaceBreadcrumbText className="[direction:rtl]">
+            <bdi>{parent!.slice(0, cut + 1)}</bdi>
+          </WorkspaceBreadcrumbText>
+        </WorkspaceBreadcrumbItem>
       ) : null}
-      <WorkspaceBreadcrumbItem current className="max-w-full shrink-0">
+      {parent ? (
+        <WorkspaceBreadcrumbItem className={keepParentEnd ? "" : "max-w-max shrink grow basis-16"}>
+          <WorkspaceBreadcrumbText>
+            {cut > 0 ? parent.slice(cut + 1) : parent}
+          </WorkspaceBreadcrumbText>
+          <Separator />
+        </WorkspaceBreadcrumbItem>
+      ) : null}
+      <WorkspaceBreadcrumbItem current className="-order-1">
         {typeof children === "string" ? (
           <WorkspaceBreadcrumbText>{children}</WorkspaceBreadcrumbText>
         ) : (
@@ -128,6 +134,15 @@ function Title({
         )}
       </WorkspaceBreadcrumbItem>
     </WorkspaceBreadcrumb>
+  );
+}
+
+/** The separator after a parent, inside its item so the two wrap away together. */
+function Separator() {
+  return (
+    <span aria-hidden="true" className="mx-2 shrink-0 text-icon-muted sm:mx-3">
+      /
+    </span>
   );
 }
 

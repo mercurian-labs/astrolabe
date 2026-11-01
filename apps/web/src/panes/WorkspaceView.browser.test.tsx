@@ -1,6 +1,14 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { Profiler, startTransition, useEffect, useLayoutEffect, useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -16,6 +24,7 @@ const probe = vi.hoisted(() => ({
   /** Whether the stubbed chats run ChatView's real shortcut handler, and the drawers it toggled. */
   shortcuts: false,
   terminalToggles: [] as string[],
+  panelToggles: [] as string[],
   setRoute: null as null | ((threadId: string | null) => void),
   leaveAgents: null as null | (() => void),
 }));
@@ -31,6 +40,7 @@ function setup() {
   probe.navigations = [];
   probe.shortcuts = false;
   probe.terminalToggles = [];
+  probe.panelToggles = [];
 }
 
 vi.mock(import("~/hooks/useTheme"), async (original) => ({
@@ -85,7 +95,17 @@ vi.mock(import("~/components/ChatView"), async () => {
       composerRef: { current: null },
       branchToolbarRef: { current: null },
       closeThreadFind: () => {},
-      commands: { "terminal.toggle": () => void probe.terminalToggles.push(threadId) },
+      commands: {
+        "terminal.toggle": () => void probe.terminalToggles.push(threadId),
+        // As T3 Code's toggle does: closes the thread's panel, or opens it as it stood.
+        "rightPanel.toggle": () => {
+          probe.panelToggles.push(threadId);
+          const ref = scopeThreadRef(env, ThreadId.make(threadId));
+          const store = useRightPanelStore.getState();
+          if (store.byThreadKey[scopedThreadKey(ref)]?.isOpen) store.close(ref);
+          else store.toggleVisibility(ref);
+        },
+      },
       fallback: () => undefined,
     });
     // As ChatView's shortcuts and paste-to-composer do.
@@ -128,6 +148,7 @@ import { chatRouteOf } from "../chatTabs/chatTabLabel";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { Route as ChatLayoutRoute } from "../routes/_chat";
 import { agentsRoute } from "./agentsRoute";
 import { activateTab, focusPane, openTab, splitTab, startingArrangement } from "./arrangement";
 import type { PanelProps } from "./panesController";
@@ -337,6 +358,52 @@ describe("WorkspaceView chat tabs", () => {
     expect(probe.terminalToggles).toEqual(["A", "A"]);
   });
 
+  it("hides and brings back the focused chat's linked tabs from mod+alt+b, and no other chat's", async () => {
+    setup();
+    useRightPanelStore.getState().openTerminal(refOf("A"), "t1");
+    useRightPanelStore.getState().openTerminal(refOf("B"), "t1");
+    workspace.update(() => {
+      const two = openTab(openTab(startingArrangement(), chatOf("A")), chatOf("B"));
+      return activateTab(splitTab(two, chatOf("A"), "right"), chatOf("B"));
+    });
+    probe.shortcuts = true;
+    // B mounts first, so its listener hears the key before A's.
+    await using _screen = await mount("B");
+    const paneOf = (key: string) =>
+      leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))?.id;
+    await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A"))!)));
+    await change(() => useRightPanelStore.getState().close(refOf("A")));
+    const terminalA = chatSurfaceKey(chatOf("A"), "terminal:t1");
+    expect(workspace.toggleOf(chatOf("A"))).toEqual({ kind: "hidden", tabs: [terminalA] });
+    expect(shows("B")).toBe(true);
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const pressModAltB = () =>
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "b",
+            code: "KeyB",
+            metaKey: mac,
+            ctrlKey: !mac,
+            altKey: true,
+            cancelable: true,
+          }),
+        );
+      });
+
+    await pressModAltB();
+    expect(probe.panelToggles).toEqual(["A"]);
+    expect(workspace.toggleOf(chatOf("A")).kind).toBe("showing");
+    expect(paneOf(terminalA)).toBeDefined();
+
+    await pressModAltB();
+    expect(probe.panelToggles).toEqual(["A", "A"]);
+    expect(workspace.toggleOf(chatOf("A")).kind).toBe("hidden");
+    expect(useRightPanelStore.getState().byThreadKey[scopedThreadKey(refOf("B"))]?.isOpen).toBe(
+      true,
+    );
+  });
+
   it(`keeps the ${KEPT_CHATS} chats shown most recently mounted and lets go of the rest`, async () => {
     setup();
     const threads = ["c1", "c2", "c3", "c4", "c5", "c6", "c7"];
@@ -370,6 +437,65 @@ describe("WorkspaceView chat tabs", () => {
       "c6",
       "c7",
     ]);
+  });
+});
+
+describe("WorkspaceView under the chat routes", () => {
+  /** The app's `_chat` layout, with the routes it lays the workspace out for. */
+  function chatRoutes(path: string) {
+    const root = createRootRoute({ component: Outlet });
+    const layout = createRoute({
+      getParentRoute: () => root,
+      id: "_chat",
+      component: ChatLayoutRoute.options.component!,
+    });
+    const blank = () => null;
+    const routeTree = root.addChildren([
+      layout.addChildren([
+        createRoute({ getParentRoute: () => layout, path: "/", component: blank }),
+        createRoute({ getParentRoute: () => layout, path: "wikis", component: blank }),
+        createRoute({
+          getParentRoute: () => layout,
+          path: "$environmentId/$threadId",
+          component: blank,
+        }),
+      ]),
+    ]);
+    return createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
+  }
+
+  it("keeps the panes and every chat mounted as the route enters and leaves a thread", async () => {
+    setup();
+    probe.setRoute = null;
+    const file = repositoryTabKey({
+      kind: "file",
+      environmentId: env,
+      projectId: ProjectId.make("project-1"),
+      cwd: "/repo",
+      path: "README.md",
+    });
+    workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
+    workspace.open(file, "beside");
+    const router = chatRoutes("/");
+    await router.load();
+    // The app's own router, as main.tsx renders it, so the layout reads real matches.
+    await using _screen = await render(<RouterProvider router={router} />, { router: false });
+    const panes = () => [...document.querySelectorAll("[data-pane-id]")];
+    const [panesBefore, nodeA] = [panes(), chatNode("A")];
+    const mounted = totals().instances;
+    expect(nodeA).not.toBeNull();
+
+    const toThread = () =>
+      router.navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: env, threadId: "A" },
+      });
+    for (const go of [toThread, () => router.navigate({ to: "/wikis" }), toThread]) {
+      await act(go);
+      expect(panes().filter((pane, index) => pane !== panesBefore[index])).toEqual([]);
+      expect(chatNode("A")).toBe(nodeA);
+      expect(totals().instances).toEqual(mounted);
+    }
   });
 });
 

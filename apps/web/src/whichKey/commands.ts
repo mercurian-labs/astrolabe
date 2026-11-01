@@ -8,6 +8,7 @@ import { runVimEx } from "@mercurian/editor/vim";
 
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { isEmptyTab } from "~/panes/arrangement";
+import { focusedChatOf, workspace } from "~/panes/workspace";
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import {
   canClosePane,
@@ -134,10 +135,20 @@ function closeTarget(context: AppCommandContext): (() => void) | null {
   return chatTabs && active ? () => chatTabs.close(active) : null;
 }
 
-/** `:w` where it came from, else the thread's composer on screen, which sends its draft. */
+const COMPOSER = '[data-testid="composer-editor"]';
+
+/**
+ * `:w` where it came from, else the focused chat's composer, which sends its draft. In the shared
+ * panes that is the chat in focus (or whose linked tab is): chats kept out of sight stay in the
+ * page, so the first composer there may be one no one sees.
+ */
 function writeTarget(origin: KeyOrigin | null): EditorWrite | null {
   if (origin?.view) return origin.write;
-  const form = document.querySelector('[data-testid="composer-editor"]')?.closest("form");
+  const chat = focusedChatOf(workspace.linked());
+  const tabs = [...document.querySelectorAll<HTMLElement>("[data-workspace-tab]")];
+  const scope =
+    tabs.length === 0 ? document : tabs.find((tab) => tab.dataset.workspaceTab === chat);
+  const form = scope?.querySelector(COMPOSER)?.closest("form");
   return form ? { label: "Send the draft", run: () => form.requestSubmit() } : null;
 }
 
