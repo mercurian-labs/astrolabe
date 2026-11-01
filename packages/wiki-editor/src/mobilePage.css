@@ -29,8 +29,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The app's web view adds no insets: the page clears a header or home indicator over it. */
 #root {
-  padding: 12px 20px 0;
+  padding: calc(12px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+    env(safe-area-inset-bottom) calc(20px + env(safe-area-inset-left));
 }
 
 .text-foreground {
