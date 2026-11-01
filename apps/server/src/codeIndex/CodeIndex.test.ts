@@ -251,8 +251,9 @@ const graphInput = (
   usedBy: true,
   dependencies: false,
   level: "file",
-  expanded: [],
-  collapsed: [],
+  expandedContents: [],
+  collapsedContents: [],
+  expandedNeighbours: [],
   ...overrides,
 });
 
@@ -654,7 +655,7 @@ it.effect("folds a crowded ring by folder, keeps tests, and opens the folders as
       );
 
       const opened = yield* harness.index.localGraph(
-        graphInput(harness.root, "lib/target.ts", { expanded: ["users"] }),
+        graphInput(harness.root, "lib/target.ts", { expandedContents: ["users"] }),
       );
       assert.strictEqual(opened.nodes.filter((node) => node.id.startsWith("users/")).length, 45);
       assert.isFalse(opened.nodes.some((node) => node.kind === "folder"));
@@ -725,7 +726,7 @@ it.effect("folds a crowded side at the one finest folder level that fits", () =>
 
       // An opened folder past the limit folds again below itself.
       const web = yield* harness.index.localGraph(
-        graphInput(harness.root, "lib/target.ts", { expanded: ["apps/web/src"] }),
+        graphInput(harness.root, "lib/target.ts", { expandedContents: ["apps/web/src"] }),
       );
       const inWeb = web.nodes.filter((node) => node.id.startsWith("apps/web/src/"));
       assert.deepStrictEqual(
@@ -741,7 +742,7 @@ it.effect("folds a crowded side at the one finest folder level that fits", () =>
 
       const components = yield* harness.index.localGraph(
         graphInput(harness.root, "lib/target.ts", {
-          expanded: ["apps/web/src", "apps/web/src/components"],
+          expandedContents: ["apps/web/src", "apps/web/src/components"],
         }),
       );
       const shown = components.nodes.filter((node) =>
@@ -806,7 +807,10 @@ it.effect("rolls imports up to folders and modules, and opens the ones asked for
       assert.deepStrictEqual(folders.roots, ["packages/app/src"]);
 
       const opened = yield* harness.index.localGraph(
-        graphInput(harness.root, root, { level: "directory", expanded: ["packages/app/src/util"] }),
+        graphInput(harness.root, root, {
+          level: "directory",
+          expandedContents: ["packages/app/src/util"],
+        }),
       );
       assert.deepStrictEqual(shape(opened), {
         nodes: [
@@ -839,7 +843,7 @@ it.effect("rolls imports up to folders and modules, and opens the ones asked for
 
       // Closing a folder at the file level folds its files into it.
       const closed = yield* harness.index.localGraph(
-        graphInput(harness.root, root, { collapsed: ["packages/app/src/util"] }),
+        graphInput(harness.root, root, { collapsedContents: ["packages/app/src/util"] }),
       );
       assert.deepStrictEqual(shape(closed).nodes, [
         ["packages/app/src/main.ts", "file", null, null],
@@ -894,7 +898,7 @@ it.effect("opens files into their definitions and links them by their uses", () 
 
       // At the file level one file opens; its neighbours' links end at its definitions.
       const one = yield* harness.index.localGraph(
-        graphInput(harness.root, "src/a.ts", { expanded: ["src/a.ts"] }),
+        graphInput(harness.root, "src/a.ts", { expandedContents: ["src/a.ts"] }),
       );
       assert.deepStrictEqual(shape(one).links, [
         ["src/a.ts#alpha", "src/b.ts"],
@@ -907,7 +911,10 @@ it.effect("opens files into their definitions and links them by their uses", () 
 
       // At the member level a class opens into its methods; a closed file stays one node.
       const members = yield* harness.index.localGraph(
-        graphInput(harness.root, "src/shape.ts", { level: "member", collapsed: ["src/use.ts"] }),
+        graphInput(harness.root, "src/shape.ts", {
+          level: "member",
+          collapsedContents: ["src/use.ts"],
+        }),
       );
       assert.deepStrictEqual(shape(members), {
         nodes: [
@@ -971,6 +978,64 @@ it.effect(
         assert.deepStrictEqual(checked.unknown, ["src/shape.ts#Circle", "lib"]);
       }),
     ),
+);
+
+/** A chain of importers: e → d → c → a → b. */
+const CHAIN = {
+  ...SOURCES,
+  "src/d.ts": 'import { gamma } from "./c.ts";\nexport const delta = gamma;\n',
+  "src/e.ts": 'import { delta } from "./d.ts";\nexport const epsilon = delta;\n',
+};
+
+it.effect("adds a node's neighbours in place, and drops an expansion only its nodes held", () =>
+  withIndex({ files: CHAIN }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const ids = (graph: CodeLocalGraph) => graph.nodes.map((node) => [node.id, node.depth]);
+      const plain = yield* harness.index.localGraph(graphInput(harness.root, "src/a.ts"));
+      assert.deepStrictEqual(ids(plain), [
+        ["src/a.ts", 0],
+        ["src/b.ts", 1],
+        ["src/c.ts", 1],
+      ]);
+
+      const both = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedNeighbours: ["src/c.ts", "src/d.ts"] }),
+      );
+      assert.deepStrictEqual(ids(both), [
+        ["src/a.ts", 0],
+        ["src/b.ts", 1],
+        ["src/c.ts", 1],
+        ["src/d.ts", 2],
+        ["src/e.ts", 3],
+      ]);
+      assert.deepStrictEqual(
+        both.links.map((link) => [link.from, link.to]),
+        [
+          ["src/a.ts", "src/b.ts"],
+          ["src/c.ts", "src/a.ts"],
+          ["src/d.ts", "src/c.ts"],
+          ["src/e.ts", "src/d.ts"],
+        ],
+      );
+
+      // Without c's expansion, d is not shown, so its expansion adds nothing.
+      const orphaned = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedNeighbours: ["src/d.ts"] }),
+      );
+      assert.deepStrictEqual(ids(orphaned), ids(plain));
+
+      // At the directory level, a folder's neighbours are its files' neighbours, rolled up.
+      const folders = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", {
+          depth: 0,
+          level: "directory",
+          expandedNeighbours: ["src"],
+        }),
+      );
+      assert.deepStrictEqual(ids(folders), [["src", 0]]);
+    }),
+  ),
 );
 
 it.effect("cleanup keeps what a branch, worktree or checkpoint reaches and removes the rest", () =>

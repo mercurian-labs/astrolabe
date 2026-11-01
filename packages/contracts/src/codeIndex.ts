@@ -136,10 +136,12 @@ export const CodeLocalGraphInput = Schema.Struct({
   /** Show packages from outside the repository (npm, crates, modules) as leaves. */
   dependencies: Schema.Boolean,
   level: CodeGraphLevel,
-  /** Nodes the reader opened into clusters of their parts, folded folders among them. */
-  expanded: Schema.Array(TrimmedNonEmptyString),
-  /** Nodes the reader closed though the level opens them, or that their parts fold into. */
-  collapsed: Schema.Array(TrimmedNonEmptyString),
+  /** Nodes whose direct neighbours the reader added, each one more ring out from it. */
+  expandedNeighbours: Schema.Array(TrimmedNonEmptyString),
+  /** Nodes the reader opened into clusters of their contents, folded folders among them. */
+  expandedContents: Schema.Array(TrimmedNonEmptyString),
+  /** Nodes the reader closed though the level opens them, or that their contents fold into. */
+  collapsedContents: Schema.Array(TrimmedNonEmptyString),
 });
 export type CodeLocalGraphInput = typeof CodeLocalGraphInput.Type;
 
@@ -179,8 +181,8 @@ export const CodeGraphNode = Schema.Struct({
   files: Schema.NullOr(PositiveInt),
   /** The open cluster holding the node; null at the top. */
   parent: Schema.NullOr(TrimmedNonEmptyString),
-  /** Whether it opens into a cluster of its parts. */
-  expandable: Schema.Boolean,
+  /** Whether it opens into a cluster of its contents. */
+  contents: Schema.Boolean,
   /** A definition's kind and first line; null for every other node. */
   symbol: Schema.NullOr(Schema.Struct({ kind: CodeSymbolKind, line: PositiveInt })),
   /** True when `path` leaves the checkout's `cwd` (`../`), where its file tabs cannot open it. */

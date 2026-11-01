@@ -200,6 +200,8 @@ interface DraftNode {
   readonly path: string | null;
   depth: number;
   readonly side: "uses" | "usedBy" | "center";
+  /** The expansion that added it, which folds apart from the rings; absent for the roots' rings. */
+  readonly expansion?: string;
 }
 
 interface DraftLink {
@@ -230,6 +232,7 @@ interface Unit {
   readonly files: Array<string>;
   depth: number;
   side: DraftNode["side"];
+  readonly expansion: string | undefined;
 }
 
 export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
@@ -336,92 +339,156 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     addNode({ id: file, kind: "file", name: basename(file), path: file, depth: 0, side: "center" });
   }
 
+  /** One step out through imports from `frontier`: what it imports. Returns the new files. */
+  const usesStep = Effect.fn("CodeIndex.localGraph.usesStep")(function* (
+    frontier: ReadonlyArray<string>,
+    depth: number,
+    expansion?: string,
+  ) {
+    const imports = yield* snapshot.imports(frontier);
+    const next: Array<string> = [];
+    const side = "uses" as const;
+    for (const from of frontier) {
+      const language = languageOf(from);
+      if (language === null) continue;
+      for (const binding of imports.get(from) ?? []) {
+        const target = snapshot.modules.resolveImport(language, from, binding);
+        const at = { line: binding.line, text: binding.text };
+        if (target.kind === "files") {
+          for (const path of target.paths) {
+            const node = {
+              id: path,
+              kind: "file" as const,
+              name: basename(path),
+              path,
+              depth,
+              side,
+            };
+            const added = addNode(expansion === undefined ? node : { ...node, expansion });
+            if (added && nodes.size < REACH_LIMIT) next.push(path);
+            addLink({ from, to: path, ...at, resolution: resolutionOf(target.paths.length) });
+          }
+        } else if (target.kind === "package") {
+          const found = snapshot.modules.packages.get(target.name);
+          addNode({
+            id: target.name,
+            kind: "package",
+            name: target.name,
+            path: target.entry ?? target.file ?? found?.manifest ?? null,
+            depth,
+            side,
+          });
+          addLink({ from, to: target.name, ...at, resolution: "exact" });
+        } else if (target.kind === "dependency" && input.dependencies) {
+          const id = `dependency:${target.name}`;
+          addNode({ id, kind: "dependency", name: target.name, path: null, depth, side });
+          addLink({ from, to: id, ...at, resolution: "exact" });
+        }
+      }
+    }
+    return next;
+  });
+
+  let usedByReached = 0;
+  /** One step out through imports into `frontier`: what imports it. Returns the new files. */
+  const usedByStep = Effect.fn("CodeIndex.localGraph.usedByStep")(function* (
+    frontier: ReadonlyArray<string>,
+    depth: number,
+    expansion?: string,
+  ) {
+    const targets = new Set(frontier);
+    const keys = [...new Set(frontier.flatMap((path) => snapshot.modules.keysFor(path)))];
+    const candidates = (yield* snapshot.askers(keys)).filter(
+      (path) => !targets.has(path) && !rootFiles.has(path),
+    );
+    const imports = yield* snapshot.imports(candidates);
+    const next: Array<string> = [];
+    for (const from of candidates) {
+      const language = languageOf(from);
+      if (language === null) continue;
+      for (const binding of imports.get(from) ?? []) {
+        const reaches = snapshot.modules.importedFiles(language, from, binding);
+        for (const to of reaches) {
+          if (!targets.has(to)) continue;
+          const node = {
+            id: from,
+            kind: "file" as const,
+            name: basename(from),
+            path: from,
+            depth,
+            side: "usedBy" as const,
+          };
+          if (addNode(expansion === undefined ? node : { ...node, expansion })) {
+            usedByReached += 1;
+            if (usedByReached < REACH_LIMIT) next.push(from);
+          }
+          const resolution = resolutionOf(reaches.length);
+          addLink({ from, to, line: binding.line, text: binding.text, resolution });
+        }
+      }
+    }
+    return next;
+  });
+
   if (input.uses || input.depth === 0) {
     let frontier = [...rootFiles];
     for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth += 1) {
-      const imports = yield* snapshot.imports(frontier);
-      const next: Array<string> = [];
-      for (const from of frontier) {
-        const language = languageOf(from);
-        if (language === null) continue;
-        for (const binding of imports.get(from) ?? []) {
-          const target = snapshot.modules.resolveImport(language, from, binding);
-          const at = { line: binding.line, text: binding.text };
-          if (target.kind === "files") {
-            for (const path of target.paths) {
-              const added = addNode({
-                id: path,
-                kind: "file",
-                name: basename(path),
-                path,
-                depth,
-                side: "uses",
-              });
-              if (added && nodes.size < REACH_LIMIT) next.push(path);
-              addLink({ from, to: path, ...at, resolution: resolutionOf(target.paths.length) });
-            }
-          } else if (target.kind === "package") {
-            const found = snapshot.modules.packages.get(target.name);
-            addNode({
-              id: target.name,
-              kind: "package",
-              name: target.name,
-              path: target.entry ?? target.file ?? found?.manifest ?? null,
-              depth,
-              side: "uses",
-            });
-            addLink({ from, to: target.name, ...at, resolution: "exact" });
-          } else if (target.kind === "dependency" && input.dependencies) {
-            const id = `dependency:${target.name}`;
-            addNode({ id, kind: "dependency", name: target.name, path: null, depth, side: "uses" });
-            addLink({ from, to: id, ...at, resolution: "exact" });
-          }
-        }
-      }
-      frontier = next;
+      frontier = yield* usesStep(frontier, depth);
+    }
+  }
+  if (input.usedBy && input.depth > 0 && !usedByPending) {
+    let frontier = [...rootFiles];
+    for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth += 1) {
+      frontier = yield* usedByStep(frontier, depth);
     }
   }
 
-  if (input.usedBy && input.depth > 0 && !usedByPending) {
-    let frontier = [...rootFiles];
-    let reached = 0;
-    for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth += 1) {
-      const targets = new Set(frontier);
-      const keys = [...new Set(frontier.flatMap((path) => snapshot.modules.keysFor(path)))];
-      const candidates = (yield* snapshot.askers(keys)).filter((path) => !rootFiles.has(path));
-      const imports = yield* snapshot.imports(candidates);
-      const next: Array<string> = [];
-      for (const from of candidates) {
-        const language = languageOf(from);
-        if (language === null) continue;
-        for (const binding of imports.get(from) ?? []) {
-          const reaches = snapshot.modules.importedFiles(language, from, binding);
-          for (const to of reaches) {
-            if (!targets.has(to)) continue;
-            const added = addNode({
-              id: from,
-              kind: "file",
-              name: basename(from),
-              path: from,
-              depth,
-              side: "usedBy",
-            });
-            if (added) {
-              reached += 1;
-              if (reached < REACH_LIMIT) next.push(from);
-            }
-            const resolution = resolutionOf(reaches.length);
-            addLink({ from, to, line: binding.line, text: binding.text, resolution });
-          }
-        }
-      }
-      frontier = next;
+  // Depth 0 keeps the roots and the links between them.
+  if (input.depth === 0) {
+    for (const id of nodes.keys()) if (!rootFiles.has(id)) nodes.delete(id);
+    for (const [key, link] of links) {
+      if (!nodes.has(link.from) || !nodes.has(link.to)) links.delete(key);
+    }
+  }
+
+  // A node whose neighbours the reader expanded adds them one ring past it, once it is reached, so
+  // closing one expansion drops the expansions only its nodes held.
+  const modules = new Modules(view.files, snapshot.modules.packages);
+  const moduleOfFile = (file: string) => {
+    const language = languageOf(file);
+    return language === null ? null : modules.of(file, language);
+  };
+  /** The reached files a node stands for: a file (a definition's), a folder's, or a module's. */
+  const filesOf = (id: string): ReadonlyArray<string> => {
+    const ref = parseNodeId(id);
+    const reached = [...nodes.values()].filter((node) => node.kind === "file");
+    if (ref.kind === "module") {
+      return reached.filter((node) => moduleOfFile(node.id)?.id === id).map((node) => node.id);
+    }
+    if (nodes.get(ref.path)?.kind === "file") return [ref.path];
+    return ref.kind === "path"
+      ? reached.filter((node) => under(node.id, ref.path)).map((node) => node.id)
+      : [];
+  };
+  const pending = new Set(input.expandedNeighbours.flatMap((id) => fromAsker(id) ?? []));
+  let expandedAny = false;
+  for (let progress = true; progress && pending.size > 0;) {
+    progress = false;
+    for (const id of pending) {
+      const from = filesOf(id);
+      if (from.length === 0) continue;
+      pending.delete(id);
+      progress = true;
+      expandedAny = true;
+      const depth = Math.min(...from.map((file) => nodes.get(file)?.depth ?? 0)) + 1;
+      if (input.uses) yield* usesStep(from, depth, id);
+      if (input.usedBy && !usedByPending) yield* usedByStep(from, depth, id);
     }
   }
 
   // Links between the files reached, as Obsidian draws every link among what it shows.
   const reachedFiles = [...nodes.values()].filter((node) => node.kind === "file");
-  if (input.depth > 0 && reachedFiles.length <= SIBLING_LINK_FILES) {
+  if ((input.depth > 0 || expandedAny) && reachedFiles.length <= SIBLING_LINK_FILES) {
     const imports = yield* snapshot.imports(reachedFiles.map((node) => node.id));
     for (const { id: from } of reachedFiles) {
       const language = languageOf(from);
@@ -437,23 +504,10 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
     }
   }
 
-  // Depth 0 keeps the roots and the links between them.
-  if (input.depth === 0) {
-    for (const id of nodes.keys()) if (!rootFiles.has(id)) nodes.delete(id);
-    for (const [key, link] of links) {
-      if (!nodes.has(link.from) || !nodes.has(link.to)) links.delete(key);
-    }
-  }
-
   // Each file's unit at the level: a closed folder or module above it, else what the level says.
   const level = input.level;
-  const expanded = new Set(input.expanded.flatMap((id) => fromAsker(id) ?? []));
-  const collapsed = new Set(input.collapsed.flatMap((id) => fromAsker(id) ?? []));
-  const modules = new Modules(view.files, snapshot.modules.packages);
-  const moduleOfFile = (file: string) => {
-    const language = languageOf(file);
-    return language === null ? null : modules.of(file, language);
-  };
+  const expanded = new Set(input.expandedContents.flatMap((id) => fromAsker(id) ?? []));
+  const collapsed = new Set(input.collapsedContents.flatMap((id) => fromAsker(id) ?? []));
   const files = [...nodes.values()].filter((node) => node.kind === "file");
   const units = new Map<string, Unit>();
   const unitOfFile = new Map<string, string>();
@@ -466,6 +520,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
       files: [],
       depth: file.depth,
       side: file.side,
+      expansion: file.expansion,
     };
     unit.files.push(file.id);
     unit.depth = Math.min(unit.depth, file.depth);
@@ -494,7 +549,10 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
   const rings = new Map<string, Array<string>>();
   for (const unit of units.values()) {
     if (unit.kind === "module" || unit.side === "center") continue;
-    const ring = `${unit.side}:${unit.depth}`;
+    const ring =
+      unit.expansion === undefined
+        ? `${unit.side}:${unit.depth}`
+        : `expansion:${unit.expansion}:${unit.side}`;
     rings.set(ring, [...(rings.get(ring) ?? []), unit.key]);
   }
   for (const ring of rings.values()) foldSide(ring, 0, expanded, folded, opened);
@@ -516,6 +574,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
       files: [],
       depth: unit.depth,
       side: unit.side,
+      expansion: unit.expansion,
     };
     group.files.push(...unit.files);
     group.depth = Math.min(group.depth, unit.depth);
@@ -750,7 +809,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
         changed: null,
         files: null,
         parent: owner,
-        expandable: (tree?.members.get(symbol.qualified)?.length ?? 0) > 0,
+        contents: (tree?.members.get(symbol.qualified)?.length ?? 0) > 0,
         symbol: { kind: symbol.kind, line: Math.max(1, symbol.line) },
       });
       for (const qualified of shownTop.get(file) ?? []) {
@@ -772,7 +831,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
         });
         for (const member of (tree?.members.get(qualified) ?? []).slice(0, SYMBOL_LIMIT)) {
           const memberRoot = root || (rootSymbols.get(file)?.has(member.qualified) ?? false);
-          put({ ...symbolNode(member, symbolShown, memberRoot), expandable: false });
+          put({ ...symbolNode(member, symbolShown, memberRoot), contents: false });
         }
       }
       continue;
@@ -790,7 +849,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
       changed: isFile ? changedOf(unit.key) : changedAmong(unit.files),
       files: isFile ? null : unit.files.length,
       parent: parentId,
-      expandable: true,
+      contents: true,
       symbol: null,
     });
   }
@@ -808,7 +867,7 @@ export const localGraph = Effect.fn("CodeIndex.localGraph.build")(function* (
       changed: null,
       files: null,
       parent: null,
-      expandable: false,
+      contents: false,
       symbol: null,
     });
   }
