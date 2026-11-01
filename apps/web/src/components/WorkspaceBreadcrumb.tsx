@@ -6,12 +6,23 @@ interface WorkspaceBreadcrumbProps {
   readonly ariaLabel: string;
   readonly children: ReactNode;
   readonly className?: string;
+  readonly listClassName?: string;
 }
 
-export function WorkspaceBreadcrumb({ ariaLabel, children, className }: WorkspaceBreadcrumbProps) {
+export function WorkspaceBreadcrumb({
+  ariaLabel,
+  children,
+  className,
+  listClassName,
+}: WorkspaceBreadcrumbProps) {
   return (
     <nav aria-label={ariaLabel} className={cn("min-w-0", className)}>
-      <ol className="m-0 flex min-w-0 list-none items-center gap-2 p-0 text-sm sm:gap-3">
+      <ol
+        className={cn(
+          "m-0 flex min-w-0 list-none items-center gap-2 p-0 text-sm sm:gap-3",
+          listClassName,
+        )}
+      >
         {children}
       </ol>
     </nav>
