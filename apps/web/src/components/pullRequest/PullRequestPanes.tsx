@@ -19,6 +19,7 @@ import { createPanesController, type PanesController } from "~/panes/panesContro
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
+  type PaneTabLabel,
   type PaneTabLabelProps,
   type PaneTabs,
   type PanesHost,
@@ -295,7 +296,7 @@ function PullRequestTabLabel({ tabKey, children }: PaneTabLabelProps) {
   return children(usePullRequestTabLabel(tabKey));
 }
 
-function usePullRequestTabLabel(tabKey: string): { title: string; icon: ReactNode } {
+function usePullRequestTabLabel(tabKey: string): PaneTabLabel {
   const { titleOf, statusSeeds, environmentId } = usePullRequestPanesProps();
   const surface = usePullRequestSurface(surfaceIdOf(tabKey));
   const other = useSectionTabLabel(tabKey);

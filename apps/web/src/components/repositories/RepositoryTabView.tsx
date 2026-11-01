@@ -3,19 +3,23 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { reviewEnvironment } from "~/state/review";
-import { useProjectWorktrees } from "~/state/worktrees";
+import type { PaneTabLabel } from "~/panes/panesHost";
+import { useListedProjectWorktrees, useProjectWorktrees } from "~/state/worktrees";
 import { getProjectFileQueryAtom } from "../files/projectFilesQueryState";
 import { Button } from "../ui/button";
 
 import { diffPreviewInput, RepositoryDiffView } from "./RepositoryDiffView";
 import { RepositoryFileView } from "./RepositoryFileView";
 import {
+  checkoutName,
   fileName,
+  holderOf,
   parseRepositoryTabKey,
   type CheckedOutRepositoryTab,
   type RepositoryTab,
 } from "./repositoryTabs";
 import { useOpenBranch } from "./worktreeActions";
+import { WorktreeNumber } from "./WorktreeNumber";
 
 /** A file, or a checkout's changes. */
 export function RepositoryTabView({
@@ -56,10 +60,7 @@ function CheckedOut({
   const openBranch = useOpenBranch();
   const [opening, setOpening] = useState(false);
   const { checkout } = tab;
-  const holder =
-    worktrees?.worktrees.find((worktree) =>
-      "branch" in checkout ? worktree.branch === checkout.branch : worktree.path === checkout.cwd,
-    ) ?? null;
+  const holder = worktrees ? holderOf(worktrees.worktrees, checkout) : null;
   const cwd = "cwd" in checkout ? checkout.cwd : (holder?.path ?? null);
   const revision = holder?.head ?? null;
   const seen = useRef({ cwd, revision });
@@ -78,8 +79,8 @@ function CheckedOut({
         }),
       );
     }
-  }, [cwd, revision, tab]);
-  if (cwd !== null) return children({ ...tab, cwd });
+  }, [cwd, revision, seen, tab]);
+  if (cwd !== null) return children({ ...tab, cwd, checkoutName: checkoutName(checkout, holder) });
   if (worktrees === null || "cwd" in checkout) return null;
   const named = checkout.branch;
   return (
@@ -102,22 +103,49 @@ function CheckedOut({
   );
 }
 
-/** A repository tab's title and icon: a file's name, or a checkout's changes. */
-export function repositoryTabLabel(tabKey: string): { title: string; icon: ReactNode } | null {
+/**
+ * A repository tab's title and icon, a file's name or a checkout's changes, with the number of the
+ * worktree holding it now; hovering it names the checkout.
+ */
+export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const tab = parseRepositoryTabKey(tabKey);
+  const listed = useListedProjectWorktrees(
+    tab === null ? null : { environmentId: tab.environmentId, projectId: tab.projectId },
+  );
   if (tab === null) return null;
-  switch (tab.kind) {
-    case "file":
-      return { title: fileName(tab.path), icon: <FileCodeIcon className="size-3.5 shrink-0" /> };
-    case "diff":
-      return {
-        title:
-          tab.source === "working-tree"
-            ? "Uncommitted changes"
-            : tab.base === undefined
-              ? "Branch changes"
-              : `Against ${tab.base}`,
-        icon: <FileDiffIcon className="size-3.5 shrink-0" />,
-      };
-  }
+  const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;
+  const label =
+    tab.kind === "file"
+      ? { title: fileName(tab.path), icon: <FileCodeIcon className="size-3.5 shrink-0" /> }
+      : {
+          title:
+            tab.source === "working-tree"
+              ? "Uncommitted changes"
+              : tab.base === undefined
+                ? "Branch changes"
+                : `Against ${tab.base}`,
+          icon: <FileDiffIcon className="size-3.5 shrink-0" />,
+        };
+  const place =
+    holder === null
+      ? listed === null
+        ? null
+        : "not in a worktree"
+      : holder.number === null
+        ? "main checkout"
+        : `worktree ${holder.number}`;
+  return {
+    ...label,
+    ...(holder?.number ? { accessory: <WorktreeNumber number={holder.number} /> } : {}),
+    tooltip: (
+      <div className="flex flex-col">
+        <span className={tab.kind === "file" ? "font-mono" : undefined}>
+          {tab.kind === "file" ? tab.path : label.title}
+        </span>
+        <span className="text-muted-foreground">
+          {[checkoutName(tab.checkout, holder), place].filter(Boolean).join(" · ")}
+        </span>
+      </div>
+    ),
+  };
 }

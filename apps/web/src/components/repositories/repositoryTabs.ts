@@ -29,10 +29,31 @@ export type RepositoryTab =
       readonly base?: string;
     };
 
-/** A file or changes tab with the folder its checkout is in now. */
+/** A file or changes tab with the folder its checkout is in now, and what that checkout is called. */
 export type CheckedOutRepositoryTab = RepositoryTab & {
   readonly cwd: string;
+  readonly checkoutName: string;
 };
+
+/** The worktree holding a checkout now: the one on its branch, or the one in its folder. */
+export const holderOf = <
+  Worktree extends { readonly path: string; readonly branch: string | null },
+>(
+  worktrees: ReadonlyArray<Worktree>,
+  checkout: RepositoryCheckout,
+): Worktree | null =>
+  worktrees.find((worktree) =>
+    "branch" in checkout ? worktree.branch === checkout.branch : worktree.path === checkout.cwd,
+  ) ?? null;
+
+/** A checkout's name: its branch, or a folder's branch, or the folder's own name when detached. */
+export const checkoutName = (
+  checkout: RepositoryCheckout,
+  holder: { readonly branch: string | null } | null,
+) =>
+  "branch" in checkout
+    ? checkout.branch
+    : (holder?.branch ?? checkout.cwd.slice(checkout.cwd.lastIndexOf("/") + 1));
 
 /**
  * A worktree's checkout: a linked worktree's branch, as it can be reused for another; the main

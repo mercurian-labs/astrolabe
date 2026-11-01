@@ -71,7 +71,7 @@ export function RepositoryFileView({
   readonly tabKey: string;
   readonly tab: FileTab;
 }) {
-  const { environmentId, cwd, path } = tab;
+  const { environmentId, cwd, path, checkoutName } = tab;
   const file = useProjectFileQuery(environmentId, cwd, path);
   const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const [pending, setPending] = useState(false);
@@ -108,7 +108,7 @@ export function RepositoryFileView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
+        <span className="min-w-0 flex-1 truncate font-mono">{`${checkoutName} › ${path}`}</span>
         {agentWorking ? (
           <span className="flex shrink-0 items-center gap-1 text-info-foreground">
             <BotIcon className="size-3.5" />

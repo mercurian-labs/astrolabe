@@ -117,9 +117,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        <span className="shrink-0 font-mono">
-          {"branch" in tab.checkout ? tab.checkout.branch : cwd.slice(cwd.lastIndexOf("/") + 1)}
-        </span>
+        <span className="shrink-0 font-mono">{tab.checkoutName}</span>
       </div>
       {target === null ? null : (
         <AnnotatableCodeView

@@ -21,11 +21,26 @@ const NONE = Atom.make(AsyncResult.initial<ProjectWorktreeListResult, never>()).
 const listAtom = (environmentId: EnvironmentId, projectId: ProjectId) =>
   worktreeEnvironment.list({ environmentId, input: { projectId } });
 
+type WorktreesTarget = { readonly environmentId: EnvironmentId; readonly projectId: ProjectId };
+
+const atomOf = (target: WorktreesTarget | null) =>
+  target === null ? NONE : listAtom(target.environmentId, target.projectId);
+
+/**
+ * A repository's worktrees as last read, for what only labels by them (a tab per file), so the
+ * window coming back reads them once, not once per label.
+ */
+export function useListedProjectWorktrees(
+  target: WorktreesTarget | null,
+): ProjectWorktreeListResult | null {
+  return Option.getOrNull(AsyncResult.value(useAtomValue(atomOf(target))));
+}
+
 /** A repository's worktrees, read again when the window comes back; null until the first answer. */
 export function useProjectWorktrees(
-  target: { readonly environmentId: EnvironmentId; readonly projectId: ProjectId } | null,
+  target: WorktreesTarget | null,
 ): ProjectWorktreeListResult | null {
-  const atom = target === null ? NONE : listAtom(target.environmentId, target.projectId);
+  const atom = atomOf(target);
   const result = useAtomValue(atom);
   const refresh = useAtomRefresh(atom);
   // oxlint-disable-next-line t3code/react-effect-budget -- edits outside the app (an editor, an agent) change what the worktrees hold

@@ -49,7 +49,10 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   set aside). Tabs of a linked worktree are keyed by branch
   (`repo-file:<env>:<project>:branch:<branch>:<path>`); main-checkout and detached tabs
   by folder. A branch tab with no worktree reads "<branch> is not checked out in any
-  worktree." with **Open <branch>**.
+  worktree." with **Open <branch>**. A repository tab shows the number of the worktree
+  holding it now (`[aria-label="Worktree N"]`) between its icon and title, none for the main
+  checkout; hovering its title gives the path (or the changes' title) over
+  `<branch> · worktree N` / `main checkout` / `not in a worktree`.
 - **Tree**: a worktree header's `button "Show its files"` / `"Show its changes"` swaps its
   rows for T3 Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree, per
   worktree (`astrolabe:repository-worktree-files:v1`); the focused tab's worktree opens on
@@ -76,7 +79,7 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   each tab's Back/Forward history (`astrolabe:repository-tab-history:v1`); a reload keeps
   both. Each open tab renders into `[data-repository-tab="<tab key>"]`. An empty tab
   reads **No file open**.
-- **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (path, "An
+- **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (`<branch> › <path>`, "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
   Read only / Too big to edit here). Markdown opens with the live preview (a centred
   measure); code in `.cm-editor.cm-code` with line numbers and its language's colours

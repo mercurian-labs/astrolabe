@@ -44,6 +44,7 @@ import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openInNewWorktree } from "./repositoryScope";
 import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
+import { WorktreeNumber } from "./WorktreeNumber";
 
 /** What the worktree controls need of a project: a repository's or a wiki's. */
 type WorktreeOwner = Pick<EnvironmentProject, "environmentId" | "id">;
@@ -134,12 +135,7 @@ export function WorktreeHeader({
           {worktree.number === null ? (
             <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
           ) : (
-            <span
-              aria-label={`Worktree ${worktree.number}`}
-              className="flex size-3.5 shrink-0 items-center justify-center rounded-sm bg-primary text-3xs leading-none font-semibold text-primary-foreground tabular-nums"
-            >
-              {worktree.number}
-            </span>
+            <WorktreeNumber number={worktree.number} />
           )}
           {label}
         </span>

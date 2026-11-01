@@ -1,11 +1,12 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { focusedPane, isEmptyTab, newTab } from "~/panes/arrangement";
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
+  type PaneTabLabel,
   type PaneTabLabelProps,
   type PaneTabs,
   type PanesHost,
@@ -32,7 +33,7 @@ import {
 } from "~/panes/sectionPanes";
 import { repositoryPanes } from "./repositoryPanes";
 import { parseRepositoryTabKey } from "./repositoryTabs";
-import { RepositoryTabView, repositoryTabLabel } from "./RepositoryTabView";
+import { RepositoryTabView } from "./RepositoryTabView";
 
 const LAYOUT_KEY = "repositories";
 
@@ -163,10 +164,8 @@ function RepositoryAreaTabLabel({ tabKey, children }: PaneTabLabelProps) {
   return children(useRepositoryAreaTabLabel(tabKey));
 }
 
-function useRepositoryAreaTabLabel(tabKey: string): { title: string; icon: ReactNode } {
-  const repository = repositoryTabLabel(tabKey);
-  const other = useSectionTabLabel(tabKey);
-  return repository ?? other ?? { title: "New tab", icon: null };
+function useRepositoryAreaTabLabel(tabKey: string): PaneTabLabel {
+  return useSectionTabLabel(tabKey) ?? { title: "New tab", icon: null };
 }
 
 function closeRepositoryTab(tabKey: string) {

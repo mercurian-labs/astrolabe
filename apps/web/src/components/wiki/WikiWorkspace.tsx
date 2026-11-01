@@ -1,6 +1,6 @@
 import type { WikiId } from "@t3tools/contracts";
 import { Plus, SearchIcon } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { closeTab, focusedPane, isEmptyTab, newTab, surfaceKey } from "~/panes/arrangement";
@@ -8,6 +8,7 @@ import { pullRequestSurface } from "~/rightPanelStore";
 import {
   PanesHostContext,
   PanesLayoutKeyContext,
+  type PaneTabLabel,
   type PaneTabLabelProps,
   type PaneTabs,
   type PanesHost,
@@ -211,7 +212,7 @@ function WikiAreaTabLabel({ tabKey, children }: PaneTabLabelProps) {
 }
 
 /** A tab's title and icon: a document's or change request's, or a chat's or pull request's. */
-function useWikiAreaTabLabel(tabKey: string): { title: string; icon: ReactNode } {
+function useWikiAreaTabLabel(tabKey: string): PaneTabLabel {
   const wiki = useWikiTabLabel(tabKey);
   const other = useSectionTabLabel(tabKey);
   return parseWikiTabKey(tabKey) === null && other !== null ? other : wiki;
