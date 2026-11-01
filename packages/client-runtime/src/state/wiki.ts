@@ -110,6 +110,12 @@ export function createWikiEnvironmentAtoms<R, E>(
       tag: WS_METHODS.wikiReadNote,
       refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
     }),
+    /** One view of a base, run on the server over the notes the read sees. */
+    query: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:query",
+      tag: WS_METHODS.wikiQuery,
+      refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
+    }),
     changeRequests,
     changeRequest: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:wiki:change-request",

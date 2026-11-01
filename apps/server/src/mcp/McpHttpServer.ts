@@ -1038,7 +1038,7 @@ export const layerPullRequestsToolkit = toolkitRegistration(
   PullRequestsHandlers.layer,
 );
 
-const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
+export const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
 const layerChangeGroupToolkit = toolkitRegistration(ChangeGroupToolkit, ChangeGroupHandlers.layer);
 export const layerCodeToolkit = toolkitRegistration(CodeToolkit, CodeHandlers.layer);
 

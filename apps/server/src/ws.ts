@@ -1269,6 +1269,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiRemove]: (input) => wikis.remove(input).pipe(Effect.as({})),
       [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
       [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
+      [WS_METHODS.wikiQuery]: (input) => wikis.query(input),
       [WS_METHODS.wikiChangeRequestsList]: (input) => wikis.changeRequestsList(input),
       [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
       [WS_METHODS.wikiChangeRequestsOpen]: (input) =>

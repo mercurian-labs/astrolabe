@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
@@ -112,6 +113,12 @@ export const WikiUnresolved = Schema.Struct({
   sources: Schema.Array(Schema.String),
 });
 
+/** A `.base` file: a saved question over the wiki's notes, in Obsidian's format. */
+export const WikiBaseSummary = Schema.Struct({
+  file: Schema.String,
+  editedAt: Schema.optional(IsoDateTime),
+});
+
 /** Reads come from a change request's head when one is named, else from the main line. */
 export const WikiReadScope = Schema.Struct({
   wikiId: WikiId,
@@ -129,6 +136,7 @@ export const WikiIndexResult = Schema.Struct({
   /** Every note-to-note link, by note name, so a client can draw the wiki's graph. */
   links: Schema.Array(WikiLinkEdge),
   maps: Schema.Array(WikiMapSummary),
+  bases: Schema.Array(WikiBaseSummary).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   unresolved: Schema.Array(WikiUnresolved),
   errors: Schema.Array(WikiIndexError),
 });
@@ -153,6 +161,49 @@ export const WikiNoteResult = Schema.Struct({
   incoming: Schema.Array(Schema.String),
 });
 export type WikiNoteResult = typeof WikiNoteResult.Type;
+
+/**
+ * Runs one view of a base: a `.base` file or a note's first ```base block, named by `base`,
+ * or `source` YAML as a block in `note` holds it.
+ */
+export const WikiQueryInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  base: Schema.optional(TrimmedNonEmptyString),
+  source: Schema.optional(Schema.String),
+  note: Schema.optional(TrimmedNonEmptyString),
+  /** The view's name; the base's first view when omitted. */
+  view: Schema.optional(TrimmedNonEmptyString),
+});
+export type WikiQueryInput = typeof WikiQueryInput.Type;
+
+const WikiBaseScalar = Schema.Union([Schema.Null, Schema.Boolean, Schema.Number, Schema.String]);
+/** A property's value in a row: links read `[[Name]]`, dates ISO text, lists flat. */
+export const WikiBaseCell = Schema.Union([WikiBaseScalar, Schema.Array(WikiBaseScalar)]);
+export type WikiBaseCell = typeof WikiBaseCell.Type;
+
+const WikiBaseProperty = Schema.Struct({ id: Schema.String, label: Schema.String });
+
+export const WikiQueryResult = Schema.Struct({
+  commit: Schema.String,
+  view: Schema.Struct({ name: Schema.String, type: Schema.Literals(["table", "cards"]) }),
+  views: Schema.Array(Schema.String),
+  columns: Schema.Array(WikiBaseProperty),
+  groupBy: Schema.NullOr(WikiBaseProperty),
+  rows: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      file: Schema.String,
+      /** Keyed by column id. */
+      values: Schema.Record(Schema.String, WikiBaseCell),
+      group: Schema.optional(WikiBaseCell),
+    }),
+  ),
+  /** How many notes the view shows; `rows` stops short of it when `truncated`. */
+  total: NonNegativeInt,
+  truncated: Schema.Boolean,
+});
+export type WikiQueryResult = typeof WikiQueryResult.Type;
 
 export const WikiChangeRequestStatus = Schema.Literals(["open", "merged", "closed"]);
 export type WikiChangeRequestStatus = typeof WikiChangeRequestStatus.Type;

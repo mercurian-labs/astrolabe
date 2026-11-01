@@ -3,6 +3,7 @@ import "./mobilePage.css";
 import { useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
+import { BaseBlock } from "./BaseBlock";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiNoteEditor } from "./NoteEditor";
 import { parseWikiEditorCommand, WIKI_EDITOR_RECEIVE, type WikiEditorEvent } from "./protocol";
@@ -42,6 +43,13 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
       readOnly={mode === "read"}
       onOpenNote={(name) => post({ type: "openNote", name })}
       onOpenUrl={(href) => post({ type: "openUrl", href })}
+      renderBase={(source) => (
+        <BaseBlock
+          page={page}
+          source={source}
+          onOpenNote={(name) => post({ type: "openNote", name })}
+        />
+      )}
     />
   );
 }

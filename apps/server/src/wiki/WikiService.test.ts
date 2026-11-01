@@ -265,6 +265,70 @@ it.effect("dates each note by the last commit that changed it, on the line read"
   ),
 );
 
+it.effect("runs a base by file, by a note's block, or by source, on the line read", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "Alpha.md": "---\nstatus: open\n---\n# Alpha\n\nAlpha builds on [[Beta]].\n",
+        "Beta.md": "---\nstatus: done\n---\n# Beta\n\nBeta stands alone.\n",
+        "Open.base":
+          "filters: 'status == \"open\"'\nviews:\n  - type: cards\n    name: Open\n    order: [file.basename, status]\n",
+        "Index.md":
+          "# Index\n\nStart at [[Alpha]].\n\n```base\nfilters: '!this.file.links.contains(file) && file.name != this.file.name'\n```\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Statuses and bases"]);
+      const names = (result: { readonly rows: ReadonlyArray<{ readonly name: string }> }) =>
+        result.rows.map((row) => row.name);
+
+      assert.deepEqual(
+        (yield* wikis.index({ wikiId })).bases.map((base) => base.file),
+        ["Open.base"],
+      );
+      const byFile = yield* wikis.query({ wikiId, base: "Open" });
+      assert.deepEqual(byFile.view, { name: "Open", type: "cards" });
+      assert.deepEqual(byFile.rows, [
+        { name: "Alpha", file: "Alpha.md", values: { "file.basename": "Alpha", status: "open" } },
+      ]);
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Index" })), ["Beta"]);
+      // A block as the editor holds it, unsaved: `this` is the note it sits in.
+      assert.deepEqual(
+        names(yield* wikis.query({ wikiId, source: "filters: file.hasLink(this)", note: "Beta" })),
+        ["Alpha"],
+      );
+
+      // Inside a change request, the base sees the change request's notes.
+      const amended = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Reopen Beta",
+          changes: { "Beta.md": "---\nstatus: open\n---\n# Beta\n" },
+        },
+        agent("thread-bases"),
+      );
+      const changeRequestId = amended.changeRequest.changeRequestId;
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open.base", changeRequestId })), [
+        "Alpha",
+        "Beta",
+      ]);
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open.base" })), ["Alpha"]);
+
+      const missing = yield* failure(wikis.query({ wikiId, base: "Nowhere" }));
+      assert.equal(missing.reason, "not-found");
+      assert.equal((yield* failure(wikis.query({ wikiId, base: "Alpha" }))).reason, "invalid");
+      const outside = yield* failure(
+        wikis.query({ wikiId, source: "views:\n  - type: table\n    order: [formula.ppu]\n" }),
+      );
+      assert.equal(outside.reason, "invalid");
+      assert.equal(
+        outside.message,
+        "Not supported: formula.ppu (formulas) in view “Table”'s order.",
+      );
+    }),
+  ),
+);
+
 it.effect("lands an agent's amendments on its thread's one change request", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

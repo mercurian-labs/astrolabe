@@ -108,6 +108,16 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   the note that opens `WikiDocument` (`ThreadFeed.tsx`).
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
+- **Bases** (`wiki/WikiBaseView.tsx`; engine `packages/wiki/src/bases.ts`, server
+  `WikiService.query` / `wiki.query`, agents `astrolabe_wiki_query`): a `.base` file lists as a
+  document named `<name>.base` (no links line in its hover card) and opens as a tab labelled
+  "Base · read only" with its view (table or cards; a `View` select when it has several). A
+  ` ```base ` block in a note shows the same view in place (`.cm-md-host-block`, via the
+  editor's `codeBlocks` option) and its YAML once the caret is in it. Row names and `[[links]]`
+  in cells open notes; a view with no name column gets a "Name" column. A base outside the
+  supported subset shows "This base can't be shown" naming the unsupported part. On the phone,
+  the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
+  and draws its first view; `.base` files do not list on mobile.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
   (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
   `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open

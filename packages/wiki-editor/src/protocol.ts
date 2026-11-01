@@ -4,6 +4,23 @@
  * page edits it and says what the person did. Plain data both ways, as JSON.
  */
 
+import type { BaseCellValue } from "./baseCells";
+
+/** One view of a ```base block, run by the app on the server (`wiki.query`). */
+export interface WikiEditorBaseResult {
+  readonly view: { readonly name: string; readonly type: "table" | "cards" };
+  readonly columns: ReadonlyArray<{ readonly id: string; readonly label: string }>;
+  readonly groupBy: { readonly id: string; readonly label: string } | null;
+  readonly rows: ReadonlyArray<{
+    readonly name: string;
+    readonly file: string;
+    readonly values: Readonly<Record<string, BaseCellValue>>;
+    readonly group?: BaseCellValue;
+  }>;
+  readonly total: number;
+  readonly truncated: boolean;
+}
+
 /** Who wrote a version that lands live, in which turn; the page marks it in their colour. */
 export interface WikiEditorAuthor {
   readonly name: string;
@@ -36,7 +53,14 @@ export type WikiEditorCommand =
   /** Drops the edits for the version that changed underneath them. */
   | { readonly type: "loadChanged" }
   /** Asks for the buffer's text, answered with a `text` event carrying `requestId`. */
-  | { readonly type: "requestText"; readonly requestId: number };
+  | { readonly type: "requestText"; readonly requestId: number }
+  /** A ```base block's view, sent again whenever it changes; `error` says why it can't show. */
+  | {
+      readonly type: "baseResult";
+      readonly source: string;
+      readonly result: WikiEditorBaseResult | null;
+      readonly error: string | null;
+    };
 
 /** What the page tells the app. */
 export type WikiEditorEvent =
@@ -52,6 +76,8 @@ export type WikiEditorEvent =
   | { readonly type: "openNote"; readonly name: string }
   | { readonly type: "openUrl"; readonly href: string }
   | { readonly type: "text"; readonly requestId: number; readonly text: string }
+  /** A ```base block is on screen: the app runs it and keeps its view current. */
+  | { readonly type: "queryBase"; readonly source: string }
   /** The page failed (see `WIKI_EDITOR_ERROR_HOOK`); it may show nothing. */
   | { readonly type: "error"; readonly message: string };
 
@@ -98,6 +124,8 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
       return typeof value.requestId === "number" && typeof value.text === "string"
         ? { type: "text", requestId: value.requestId, text: value.text }
         : null;
+    case "queryBase":
+      return typeof value.source === "string" ? { type: "queryBase", source: value.source } : null;
     case "error":
       return typeof value.message === "string" ? { type: "error", message: value.message } : null;
     default:
@@ -144,6 +172,27 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
       return typeof value.requestId === "number"
         ? { type: "requestText", requestId: value.requestId }
         : null;
+    case "baseResult": {
+      if (typeof value.source !== "string") return null;
+      // The app's own page: the shape is the server's, checked only far enough to draw it.
+      const result = value.result;
+      const drawable =
+        isRecord(result) &&
+        isRecord(result.view) &&
+        Array.isArray(result.columns) &&
+        Array.isArray(result.rows);
+      return {
+        type: "baseResult",
+        source: value.source,
+        result: drawable ? (result as unknown as WikiEditorBaseResult) : null,
+        error:
+          typeof value.error === "string"
+            ? value.error
+            : drawable
+              ? null
+              : "The base sent no view.",
+      };
+    }
     default:
       return null;
   }
