@@ -11,11 +11,8 @@ import {
   useRowSelectionStore,
 } from "~/sidebarRowSelection";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
-import {
-  placeChangeRequestTabs,
-  showChangeRequestTab,
-  useFocusedChangeRequestTabKey,
-} from "../pullRequest/pullRequestTabs";
+import { useWorkspaceFocusedKey } from "~/panes/workspace";
+import { placeChangeRequestTabs, showChangeRequestTab } from "../pullRequest/pullRequestWorkspace";
 import { Button } from "../ui/button";
 import { CountedSectionHeader } from "./CountedSectionHeader";
 import { TooltipProvider } from "../ui/tooltip";
@@ -52,7 +49,7 @@ export function WikiChangesGroup({
 }) {
   const { overviews } = useWikiOverviews();
   const [scope, setScope] = changeRequestWikiScope.useScope(overviews);
-  const focusedKey = useFocusedChangeRequestTabKey();
+  const focusedKey = useWorkspaceFocusedKey();
   const [openExpanded, setOpenExpanded] = useState(true);
   const [settledExpanded, setSettledExpanded] = useState(false);
   const lists = wikiSidebarItems(overviews, scope);

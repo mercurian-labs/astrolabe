@@ -1,4 +1,3 @@
-import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { applyPullRequestDraftFilterChange } from "@t3tools/client-runtime/pull-request-query";
 import { Spinner } from "~/components/ui/spinner";
 import type { PullRequestSpeedActionResult } from "~/components/pullRequest/PullRequestSpeedActions";
@@ -57,7 +56,6 @@ import {
   writePullRequestListPreferences,
 } from "./pullRequestListPreferences";
 import { environmentMachineIcon } from "../EnvironmentMachineIcon";
-import { PullRequestDetailPanel } from "./PullRequestDetailPanel";
 import {
   PullRequestFiltersMenu,
   PullRequestSearchInput,
@@ -85,20 +83,9 @@ import { resolveShortcutCommand } from "~/keybindings";
 import { registerCommands } from "~/shortcuts/dispatcher";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import { Button } from "../ui/button";
-import { SidebarInset, useSidebar } from "../ui/sidebar";
+import { useSidebar } from "../ui/sidebar";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { useStableCallback } from "~/hooks/useStableCallback";
-import { useOpenPanelPullRequestUrl } from "~/hooks/useOpenPanelPullRequestUrl";
-import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
-import { toastManager } from "../ui/toast";
-import {
-  PULL_REQUESTS_PANEL_REF,
-  selectActiveRightPanelSurface,
-  selectSelectedRightPanelSurface,
-  selectThreadRightPanelState,
-  useRightPanelStore,
-  type PullRequestSurface,
-} from "~/rightPanelStore";
 import { useSidebarProjectGroups } from "~/hooks/useSidebarProjectGroups";
 import {
   pullRequestEnvironment,
@@ -113,8 +100,16 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { isMacPlatform } from "~/lib/utils";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
-import { PullRequestPanes } from "./PullRequestPanes";
-import { maximizeForGuide, placePullRequests, showPullRequest } from "./pullRequestTabs";
+import { pullRequestTargetOfKey, type FullPullRequestTarget } from "./pullRequestTabs";
+import {
+  attachChangesList,
+  placePullRequests,
+  pullRequestTabKey,
+  showChangeRequestTab,
+  showPullRequest,
+} from "./pullRequestWorkspace";
+import { useWorkspaceFocusedKey } from "~/panes/workspace";
+import { closeWorkspaceTab } from "~/panes/workspaceTabs";
 import { startDrag } from "../../panes/drag";
 import { readLocalApi } from "../../localApi";
 import {
@@ -182,29 +177,20 @@ export function PullRequestsPage() {
     expectedHosts,
     projectsKnown,
   } = usePullRequestScope(search);
-  const rightPanelRef = capableEnvironments.length === 0 ? null : PULL_REQUESTS_PANEL_REF;
-  const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(rightPanelRef);
-  const rightPanelState = useRightPanelStore((state) =>
-    selectThreadRightPanelState(state.byThreadKey, rightPanelRef),
-  );
-  const selectedRightPanelSurface = useRightPanelStore((state) =>
-    selectSelectedRightPanelSurface(state.byThreadKey, rightPanelRef),
-  );
-  const selectedPullRequestSurface =
-    selectedRightPanelSurface?.kind === "pull-request" ? selectedRightPanelSurface : null;
-  const activePullRequestSurface = rightPanelState.isOpen ? selectedPullRequestSurface : null;
+  // Astrolabe: the pull requests open as tabs of the shared panes; the list lights the focused one.
+  const capable = capableEnvironments.length > 0;
+  const focusedKey = useWorkspaceFocusedKey();
+  const focusedPullRequest = pullRequestTargetOfKey(focusedKey);
+  const focusedPullRequestKey = focusedPullRequest === null ? null : focusedKey;
   const panelEnvironmentId =
-    (selectedPullRequestSurface?.environmentId as EnvironmentId | undefined) ??
+    (focusedPullRequest?.environmentId as EnvironmentId | undefined) ??
     selectedProject?.environmentId ??
     null;
   const panelSummary = useSharedPullRequestSummary(
     panelEnvironmentId,
-    selectedPullRequestSurface === null
+    focusedPullRequest === null
       ? null
-      : {
-          ...selectedPullRequestSurface,
-          projectId: selectedPullRequestSurface.projectId as ProjectId,
-        },
+      : { ...focusedPullRequest, projectId: focusedPullRequest.projectId as ProjectId },
   );
   const updateSearch = (patch: {
     [Key in keyof PullRequestsSearch]?: PullRequestsSearch[Key] | undefined;
@@ -237,13 +223,6 @@ export function PullRequestsPage() {
       replace: true,
     });
 
-  const clearedSelection = {
-    repository: undefined,
-    number: undefined,
-    selectedProjectId: undefined,
-    selectedEnvironmentId: undefined,
-    selectedHost: undefined,
-  };
   const updateListScope = (patch: PullRequestListPreferencePatch) => {
     const currentPreferences = pullRequestListPreferences({
       ...search,
@@ -406,7 +385,6 @@ export function PullRequestsPage() {
   const authoredQuery = usePullRequestList(partitionTargets.authored);
   const reviewingQuery = usePullRequestList(partitionTargets.reviewing);
   const invalidate = useAtomCommand(pullRequestEnvironment.invalidate, { reportFailure: false });
-  const [detailRefreshToken, setDetailRefreshToken] = useState(0);
   const [invalidating, setInvalidating] = useState(false);
   const refreshing = invalidating || listQuery.isPending;
 
@@ -679,13 +657,7 @@ export function PullRequestsPage() {
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const {
-    entries,
-    listedPullRequestTabStatuses,
-    groups,
-    entriesByStatsKey,
-    heldPullRequestsBySurface,
-  } = pullRequestGroups({
+  const { entries, groups, entriesByStatsKey, heldPullRequestsBySurface } = pullRequestGroups({
     known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
@@ -887,29 +859,22 @@ export function PullRequestsPage() {
     );
     setInvalidating(false);
     refreshListAndStats(requestedStatsScope);
-    setDetailRefreshToken((token) => token + 1);
   };
-  const {
-    hosts,
-    displayGroups,
-    shownCount,
-    hostActionsOf,
-    closeSweepRows,
-    listedPullRequestsBySurface,
-  } = usePullRequestDisplayGroups({
-    answered,
-    host: search.host,
-    groups,
-    statsByRow,
-    overrides,
-    state: search.state,
-    localFilters,
-    hasLocalFilters,
-    viewers,
-    sort,
-    text: typedParsed.text,
-    involvement: search.involvement,
-  });
+  const { hosts, displayGroups, shownCount, hostActionsOf, closeSweepRows } =
+    usePullRequestDisplayGroups({
+      answered,
+      host: search.host,
+      groups,
+      statsByRow,
+      overrides,
+      state: search.state,
+      localFilters,
+      hasLocalFilters,
+      viewers,
+      sort,
+      text: typedParsed.text,
+      involvement: search.involvement,
+    });
   const showProvider = hosts.length > 1;
   const [closeSweepKeys, setCloseSweepKeys] = useState<ReadonlySet<string>>(() => new Set());
   const closeSensorRef = useRef<SidebarPointerSensor | null>(null);
@@ -1008,43 +973,44 @@ export function PullRequestsPage() {
       closeSensorRef.current = sensor;
     },
   );
+  // Astrolabe: a pull request the URL names (a link, a notification) opens as a tab, or comes to
+  // the front where it is open. Keyed by its tab, so a re-render never pulls it forward again.
+  const linkedKey = linkedSelection === null ? null : pullRequestTabKey(linkedSelection);
   useEffect(() => {
-    if (!pullRequestsSupported || rightPanelRef === null || linkedSelection === null) return;
-    useRightPanelStore.getState().openPullRequest(rightPanelRef, linkedSelection);
-  }, [linkedSelection, pullRequestsSupported, rightPanelRef]);
+    if (!pullRequestsSupported || linkedKey === null) return;
+    showChangeRequestTab(linkedKey, "new-tab");
+  }, [linkedKey, pullRequestsSupported]);
 
   const selected =
-    rightPanelState.isOpen && activePullRequestSurface !== null
-      ? {
-          environmentId: activePullRequestSurface.environmentId,
-          repository: activePullRequestSurface.repository,
-          number: activePullRequestSurface.number,
-          projectId: activePullRequestSurface.projectId as ProjectId,
-          host:
-            activePullRequestSurface.host ??
-            (selectedProject?.repositoryIdentity
-              ? sourceControlClients.changeRequestHost(
-                  selectedProject.repositoryIdentity,
-                  selectedProject.repositoryIdentity.provider,
-                )
-              : undefined),
-        }
-      : null;
+    focusedPullRequest === null
+      ? null
+      : { ...focusedPullRequest, projectId: focusedPullRequest.projectId as ProjectId };
 
-  const selectSurfaceInUrl = (surface: PullRequestSurface | null) =>
-    updateSearch(
-      surface === null
-        ? clearedSelection
-        : {
-            repository: surface.repository,
-            number: surface.number,
-            selectedProjectId: surface.projectId as ProjectId,
-            selectedHost: surface.host,
-            ...(surface.environmentId === undefined
-              ? {}
-              : { selectedEnvironmentId: surface.environmentId as EnvironmentId }),
-          },
-    );
+  // Astrolabe: the URL follows the focused pane's pull request, and keeps the last one while
+  // another kind of tab has focus.
+  const selectFocusedInUrl = useEffectEvent(() => {
+    if (focusedPullRequest === null) return;
+    const { repository, number, projectId, host, environmentId } = focusedPullRequest;
+    if (
+      search.repository === repository &&
+      search.number === number &&
+      search.selectedProjectId === projectId &&
+      search.selectedHost === host &&
+      search.selectedEnvironmentId === environmentId
+    ) {
+      return;
+    }
+    updateSearch({
+      repository,
+      number,
+      selectedProjectId: projectId as ProjectId,
+      selectedHost: host,
+      selectedEnvironmentId: environmentId as EnvironmentId,
+    });
+  });
+  useEffect(() => {
+    if (focusedPullRequestKey !== null) selectFocusedInUrl();
+  }, [focusedPullRequestKey]);
 
   const unavailableProjects = new Map(
     listErrors.map(
@@ -1106,7 +1072,7 @@ export function PullRequestsPage() {
   );
 
   const selectEntry = useStableCallback((entry: PullRequestRowTarget, click?: RowClick) => {
-    if (rightPanelRef === null) return;
+    if (!capable) return;
     const intent = click ? rowClickIntent(click, isMacPlatform(navigator.platform)) : "replace";
     const key = pullRequestEntryKey(entry);
     const { change } = useRowSelectionStore.getState();
@@ -1124,13 +1090,6 @@ export function PullRequestsPage() {
     // sheet steps aside for it, as it does for a thread or a document.
     showPullRequest(entry, intent);
     if (isMobile) setOpenMobile(false);
-    updateSearch({
-      repository: entry.repository,
-      number: entry.number,
-      selectedProjectId: entry.projectId,
-      selectedEnvironmentId: entry.environmentId,
-      selectedHost: entry.host,
-    });
   });
 
   const searchInput = (
@@ -1343,48 +1302,12 @@ export function PullRequestsPage() {
     onSearchFocused,
   };
 
-  const closeSurface = (surface: PullRequestSurface) => {
-    if (rightPanelRef === null) return;
-    useRightPanelStore.getState().closeSurface(rightPanelRef, surface.id);
-    const next = selectActiveRightPanelSurface(
-      useRightPanelStore.getState().byThreadKey,
-      rightPanelRef,
-    );
-    selectSurfaceInUrl(next?.kind === "pull-request" ? next : null);
-  };
-
-  const copyPullRequestFromShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (!openPanelPullRequestUrl) return;
+  // Astrolabe: closes the focused pane's pull request, as T3 Code's shortcut closed its panel.
+  const closeFocusedFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (focusedPullRequest === null) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.repeat) return;
-    const url = openPanelPullRequestUrl;
-    const { shortLabel, singular } = (
-      sourceControlClients.findByChangeRequestUrl(url) ?? sourceControlClients.get(undefined)
-    ).changeRequest;
-    void writeTextToClipboard(url, `${singular} link`).then(
-      (didCopy) => {
-        if (didCopy)
-          toastManager.add({
-            type: "success",
-            title: `${shortLabel} link copied`,
-            description: url,
-          });
-      },
-      (error) => {
-        toastManager.add({
-          type: "error",
-          title: `Failed to copy ${shortLabel} link`,
-          description: error instanceof Error ? error.message : "An error occurred.",
-        });
-      },
-    );
-  });
-  const closeActiveSurfaceFromShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (activePullRequestSurface === null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!event.repeat) closeSurface(activePullRequestSurface);
+    if (!event.repeat) closeWorkspaceTab(focusedKey);
   });
   // Astrolabe: a review's Guide folds the sidebar's list away (`maximizeForGuide`), as T3 Code
   // hid its list for the tour. The sidebar is every section's, so leaving Changes opens it again
@@ -1401,7 +1324,47 @@ export function PullRequestsPage() {
   const reopenSidebarFoldedForGuide = useEffectEvent(() => {
     if (sidebarFoldedForGuide.current) void setSidebarOpen(true);
   });
-  useEffect(() => () => reopenSidebarFoldedForGuide(), []);
+  // Astrolabe: the pull requests' tabs, in the shared panes, reach the list while it shows.
+  const actedInTab = useStableCallback(
+    (
+      target: FullPullRequestTarget,
+      action: PullRequestAction | undefined,
+      phase: "sent" | "done" | "failed",
+    ) => {
+      const environmentId = target.environmentId as EnvironmentId;
+      // From every row held, not the ones on screen: a pull request closed from an open
+      // list has left the screen, and reopening it has to find it anyway.
+      const acted = heldPullRequestsBySurface.get(pullRequestListEntryId(target));
+      const stateOnly =
+        action !== undefined &&
+        acted !== undefined &&
+        pullRequestOverrideAfterAction(acted, action, new Date(), 0) !== null;
+      if (stateOnly) {
+        const key = pullRequestEntryKey(acted);
+        if (phase === "sent" && action !== "merge") {
+          detailOverrideTokens.current.set(key, overrideEntry(acted, action));
+        }
+        if (phase === "failed" && action !== "merge") {
+          revertOverride(key, detailOverrideTokens.current.get(key) ?? null);
+        }
+        if (phase !== "sent") detailOverrideTokens.current.delete(key);
+        if (phase === "done" && action === "merge") {
+          overrideEntry(acted, action);
+          refreshListAndStats(undefined, environmentId);
+        }
+        return;
+      }
+      if (phase === "done") refreshListAndStats(undefined, environmentId);
+    },
+  );
+  const foldForGuide = useStableCallback(foldSidebarForGuide);
+  useEffect(() => {
+    const detach = attachChangesList({ acted: actedInTab, foldForGuide });
+    return () => {
+      detach();
+      reopenSidebarFoldedForGuide();
+    };
+  }, [actedInTab, foldForGuide]);
   const focusSearchFromShortcut = useEffectEvent((event: KeyboardEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1415,8 +1378,7 @@ export function PullRequestsPage() {
       const command = resolveShortcutCommand(event, keybindings, {
         context: getShortcutContext(),
       });
-      if (command === "rightPanel.close") closeActiveSurfaceFromShortcut(event);
-      if (command === "thread.copyReference") copyPullRequestFromShortcut(event);
+      if (command === "rightPanel.close") closeFocusedFromShortcut(event);
       // A chat shown in these panes takes find for itself first (`ChatView`).
       if (command === "chat.find") focusSearchFromShortcut(event);
     };
@@ -1424,114 +1386,20 @@ export function PullRequestsPage() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [keybindings]);
 
-  // Astrolabe: the URL follows the focused pane's pull request. Stable, since the panes call it
-  // from an effect keyed on it.
-  const onPanesFocus = useStableCallback((surface: PullRequestSurface | null) =>
-    selectSurfaceInUrl(surface),
-  );
-
-  // Astrolabe: each open pull request's detail, as a tab in the panes beside the sidebar.
-  const renderPullRequestDetail = (surface: PullRequestSurface, active: boolean) => {
-    const environmentId =
-      (surface.environmentId as EnvironmentId | undefined) ??
-      selectedProject?.environmentId ??
-      null;
-    if (environmentId === null) return null;
-    return (
-      <PullRequestDetailPanel
-        getShortcutContext={getShortcutContext}
-        shortcutsEnabled={active}
-        environmentId={environmentId}
-        onSelectPullRequest={(reference) => {
-          if (rightPanelRef === null) return;
-          // Astrolabe: a pull request picked from within a review replaces that review's tab.
-          showPullRequest(
-            {
-              projectId: reference.projectId,
-              repository: reference.repository,
-              number: reference.number,
-              ...(reference.host ? { host: reference.host } : {}),
-              environmentId,
-            },
-            "replace",
-          );
-          updateSearch({
-            repository: reference.repository,
-            number: reference.number,
-            selectedHost: reference.host,
-            selectedProjectId: reference.projectId,
-            selectedEnvironmentId: environmentId,
-          });
-        }}
-        reference={{
-          projectId: surface.projectId as ProjectId,
-          repository: surface.repository,
-          number: surface.number,
-          ...(surface.host ? { host: surface.host } : {}),
-        }}
-        listEntry={listedPullRequestsBySurface.get(pullRequestListEntryId(surface)) ?? null}
-        refreshToken={detailRefreshToken}
-        tabOnPage
-        // Astrolabe: the Guide's tour gets the window, as T3 Code maximized the review for it.
-        onGuideShown={() => maximizeForGuide(surface.id, foldSidebarForGuide)}
-        onActed={(action, phase = "done") => {
-          // From every row held, not the ones on screen: a pull request closed from an open
-          // list has left the screen, and reopening it has to find it anyway.
-          const acted = heldPullRequestsBySurface.get(pullRequestListEntryId(surface));
-          const stateOnly =
-            action !== undefined &&
-            acted !== undefined &&
-            pullRequestOverrideAfterAction(acted, action, new Date(), 0) !== null;
-          if (stateOnly) {
-            const key = pullRequestEntryKey(acted);
-            if (phase === "sent" && action !== "merge") {
-              detailOverrideTokens.current.set(key, overrideEntry(acted, action));
-            }
-            if (phase === "failed" && action !== "merge") {
-              revertOverride(key, detailOverrideTokens.current.get(key) ?? null);
-            }
-            if (phase !== "sent") detailOverrideTokens.current.delete(key);
-            if (phase === "done" && action === "merge") {
-              overrideEntry(acted, action);
-              refreshListAndStats(undefined, environmentId);
-            }
-            return;
-          }
-          if (phase === "done") refreshListAndStats(undefined, environmentId);
-        }}
-      />
-    );
-  };
-
+  // Astrolabe: the list and its controls live in the section's sidebar; its pull requests open
+  // in the shared panes, which `_chat` renders.
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-      {/* Astrolabe: the list and its controls live in the section's sidebar. */}
-      <PullRequestsSidebarPortal
-        actions={
-          <PullRequestRefreshControl
-            compact
-            refreshing={refreshing}
-            onRefresh={() => void refreshFromHost()}
-          />
-        }
-      >
-        <PullRequestsSidebarList {...columnProps} />
-      </PullRequestsSidebarPortal>
-      {pullRequestsSupported ? (
-        <PullRequestPanes
-          renderDetail={renderPullRequestDetail}
-          titleOf={(surface) =>
-            listedPullRequestsBySurface.get(pullRequestListEntryId(surface))?.title ?? null
-          }
-          statusSeeds={listedPullRequestTabStatuses}
-          environmentId={panelEnvironmentId}
-          onClose={closeSurface}
-          onFocus={onPanesFocus}
+    <PullRequestsSidebarPortal
+      actions={
+        <PullRequestRefreshControl
+          compact
+          refreshing={refreshing}
+          onRefresh={() => void refreshFromHost()}
         />
-      ) : capabilityKnown ? (
-        unsupportedState
-      ) : null}
-    </SidebarInset>
+      }
+    >
+      <PullRequestsSidebarList {...columnProps} />
+    </PullRequestsSidebarPortal>
   );
 }
 

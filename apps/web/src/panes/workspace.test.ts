@@ -86,6 +86,58 @@ describe("the shared panes", () => {
     expect(device.items.has(WORKSPACE_STORAGE_KEY)).toBe(true);
   });
 
+  it("bring Changes' panes in once, beside the shared ones, with their tabs' history", () => {
+    const pr = (number: number) =>
+      surfaceKey(
+        pullRequestSurface({
+          environmentId: "env-1",
+          projectId: "project-1",
+          host: "github.com",
+          repository: "acme/app",
+          number,
+        }).id,
+      );
+    const device = memoryStorage({
+      [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+        root: { type: "leaf", id: "p0", tabs: [chatA], active: chatA },
+        focused: "p0",
+        seq: 1,
+        owners: {},
+        parked: {},
+        front: chatA,
+      }),
+      "t3code:right-panel-panes:v1:pull-requests": JSON.stringify({
+        root: {
+          type: "branch",
+          id: "p2",
+          direction: "row",
+          children: [
+            { type: "leaf", id: "p0", tabs: [pr(1), chatA], active: pr(1) },
+            { type: "leaf", id: "p1", tabs: ["empty/0"], active: "empty/0" },
+          ],
+          weights: [1, 1],
+        },
+        focused: "p0",
+        seq: 3,
+      }),
+      "astrolabe:pull-request-tab-history:v1": JSON.stringify({
+        histories: { [pr(1)]: { back: [pr(2)], forward: [] } },
+        surfaces: {},
+      }),
+    });
+    const workspace = createWorkspace(() => device);
+    // A chat open in both stays where the shared panes had it; an empty pane does not come.
+    expect(panes(workspace)).toEqual([[chatA], [pr(1)]]);
+    expect(workspace.arrangement().focused).toBe("p0");
+    expect(workspace.linked().front).toBe(chatA);
+    workspace.update((arrangement) => activateTab(arrangement, pr(1)));
+    expect(workspace.canStep("back")).toBe(true);
+    expect(device.items.has("t3code:right-panel-panes:v1:pull-requests")).toBe(false);
+    expect(device.items.has("astrolabe:pull-request-tab-history:v1")).toBe(false);
+    workspace.store.flush();
+    expect(createWorkspace(() => device).arrangement()).toEqual(workspace.arrangement());
+  });
+
   it("show the chat in front's surfaces beside it, and the next chat's in their place", () => {
     const workspace = createWorkspace(chatTabsDevice);
     const stop = workspace.follow();

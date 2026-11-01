@@ -16,10 +16,10 @@ import type { ReactNode } from "react";
 import ChatView from "~/components/ChatView";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { guideShown, pullRequestActed } from "~/components/pullRequest/pullRequestWorkspace";
 import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
-  type PullRequestTarget,
 } from "~/components/pullRequest/pullRequestTabs";
 import {
   closeAskingFirst,
@@ -27,11 +27,9 @@ import {
   WikiTabView,
   type WikiTabNav,
 } from "~/components/wiki/WikiTabView";
-import { hasUnsavedEdits } from "~/panes/unsavedEdits";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
-import { ensureLocalApi } from "~/localApi";
 import {
   activateTab,
   closeTab,
@@ -49,14 +47,7 @@ import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useThreadShell } from "~/state/entities";
-import { openInSection } from "./openInSection";
-import {
-  chatTabKey,
-  parseChatTabKey,
-  SECTION_LABELS,
-  tabSection,
-  type SectionId,
-} from "./sectionTabs";
+import { chatTabKey, parseChatTabKey } from "./sectionTabs";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
 export function showKeyIn(
@@ -100,47 +91,10 @@ export function closeSectionTab(store: PaneArrangementStore, key: string) {
   closeAskingFirst(key, () => store.update((arrangement) => closeTab(arrangement, key)));
 }
 
-/** "Open in <section>" for a tab outside its own section. */
+/** "Open in <section>" for a tab whose home section has more to show of it. */
 export interface SectionTabMove {
   readonly label: string;
   readonly run: (navigate: NavigateFn) => void;
-}
-
-/**
- * Moving a tab to its own section: it closes here (asking first over unsaved edits) and opens
- * there. Null for a tab already in its section, or one that never leaves its panes.
- */
-export function sectionTabMove(
-  key: string,
-  here: SectionId,
-  close: (key: string) => void,
-  pullRequest?: PullRequestTarget | null,
-): SectionTabMove | null {
-  const home = tabSection(key);
-  if (home === null || home === here) return null;
-  return {
-    label: `Open in ${SECTION_LABELS[home]}`,
-    run(navigate) {
-      const move = () => {
-        close(key);
-        openInSection(key, navigate, pullRequest ?? undefined);
-      };
-      if (!hasUnsavedEdits(key)) {
-        move();
-        return;
-      }
-      void ensureLocalApi()
-        .dialogs.confirm(
-          `Open this in ${SECTION_LABELS[home]}? Your unsaved edits here will be lost.`,
-          {
-            variant: "destructive",
-          },
-        )
-        .then((confirmed) => {
-          if (confirmed) move();
-        });
-    },
-  };
 }
 
 /** The title and icon of a chat, document or pull request tab; null for any other key. */
@@ -299,7 +253,10 @@ function shortcutContext() {
   };
 }
 
-/** A pull request in a pane outside Change Requests; one picked inside it replaces it. */
+/**
+ * A pull request in a pane; one picked inside it replaces it. Its Guide's tour takes the window
+ * (`guideShown`), and what it does to the pull request reaches the Changes list.
+ */
 function PanePullRequest({
   tabKey,
   target,
@@ -316,6 +273,9 @@ function PanePullRequest({
       environmentId={target.environmentId as ScopedThreadRef["environmentId"]}
       shortcutsEnabled={active}
       getShortcutContext={shortcutContext}
+      tabOnPage
+      onGuideShown={() => guideShown(tabKey)}
+      onActed={(action, phase = "done") => pullRequestActed(target, action, phase)}
       reference={{
         projectId: target.projectId as ProjectId,
         repository: target.repository,

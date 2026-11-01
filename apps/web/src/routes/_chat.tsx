@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   isAppModalPage,
+  isPullRequestsPath,
   isRepositoriesPath,
   isWikisPath,
   useSectionPathname,
@@ -34,7 +35,7 @@ function ChatRouteLayout() {
     setBackgroundTarget(threadTarget);
   }
   const shownTarget = modalOpen ? backgroundTarget : threadTarget;
-  // Astrolabe: Agents, Repositories and Wikis share one set of panes; their routes only say which
+  // Astrolabe: Agents, Wikis, Repositories and Changes share one set of panes; their routes only say which
   // sidebar shows and, in Agents, which thread it selects. The start page is Agents with no
   // thread selected; only with nothing in the panes does it start a draft, as T3 Code's does.
   const sectionPathname = useSectionPathname();
@@ -45,7 +46,8 @@ function ChatRouteLayout() {
     shownTarget !== null ||
     (onStartPage && !starting) ||
     isRepositoriesPath(sectionPathname) ||
-    isWikisPath(sectionPathname);
+    isWikisPath(sectionPathname) ||
+    isPullRequestsPath(sectionPathname);
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (

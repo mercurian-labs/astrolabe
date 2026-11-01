@@ -12,7 +12,7 @@ import { useOpenLink } from "../browser/useOpenLink";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
-import { showPullRequest } from "../components/pullRequest/pullRequestTabs";
+import { showPullRequest } from "../components/pullRequest/pullRequestWorkspace";
 
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { readProjects, useProjects } from "../state/entities";
@@ -91,8 +91,8 @@ export function useOpenChangeRequestLink(
         url: targetUrl,
         number,
       };
-      // Astrolabe: on the Pull Requests page a link replaces the tab it is followed in, as a
-      // wikilink does in Wikis (see `showPullRequest`).
+      // Astrolabe: off a thread a link shows its pull request in the shared panes' tab in front,
+      // as a wikilink does (see `showPullRequest`).
       const onPage =
         resolvedPanelRef.environmentId === PULL_REQUESTS_PANEL_REF.environmentId &&
         resolvedPanelRef.threadId === PULL_REQUESTS_PANEL_REF.threadId;

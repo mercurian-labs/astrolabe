@@ -237,3 +237,40 @@ export function joinLayouts(
   const focused = leaves(trimmed)[0]?.id ?? joined.focused;
   return { ...joined, root: trimmed, focused };
 }
+
+/**
+ * Astrolabe: `extra`'s panes joined to the right of `base`'s, as a section's own panes join the
+ * shared ones. Its pane ids and empty tabs are renumbered past `base`'s, tabs `base` holds stay
+ * where `base` has them, and its panes left with only empty tabs go. `base` keeps its ids, so
+ * what refers to its panes still does; a `base` holding nothing yet gives way to `extra`.
+ */
+export function joinBeside(
+  base: Arrangement,
+  extra: Arrangement,
+  isKey: (key: string) => boolean,
+): Arrangement {
+  const offset = Math.max(base.seq, seqAfter(base.root)) + 1;
+  const held = new Set(allTabs(base));
+  const moved = renumber(extra.root, offset);
+  const parsed = parseArrangement(
+    { root: moved, focused: leaves(moved)[0]?.id, seq: 0 },
+    (key) => isKey(key) && !held.has(key),
+  );
+  let side: SplitNode | null = parsed?.root ?? null;
+  for (const leaf of parsed ? leaves(parsed.root) : []) {
+    if (side !== null && leaf.tabs.every(isEmptyTab)) side = removeLeaf(side, leaf.id);
+  }
+  if (side === null) return base;
+  if (isStarting(base)) {
+    return { root: side, focused: leaves(side)[0]?.id ?? base.focused, seq: seqAfter(side) };
+  }
+  const id = `p${seqAfter(side)}`;
+  const root: SplitNode = {
+    type: "branch",
+    id,
+    direction: "row",
+    children: [base.root, side],
+    weights: [1, 1],
+  };
+  return { root, focused: base.focused, seq: Math.max(base.seq, seqAfter(root)) };
+}
