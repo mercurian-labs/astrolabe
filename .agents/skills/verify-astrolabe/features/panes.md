@@ -28,7 +28,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `localStorage['astrolabe:workspace:v1']` and every `[data-pane-id]`'s tabs unchanged across the
   switch, the ChatView count unchanged, the URL, and the sidebar's lit row.
 
-- **Linked New tab** (the chat header toggle's **New tab** only): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
+- **Linked New tab** (the chat header's **New linked tab** `[data-new-linked-tab]`, `t` `n` `tab.newLinked`, or `rightPanel.toggle` with no linked tabs): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
   Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Linked pull requests `L`, Device `M`,
   Graph `G`, Lineage `I`). Rows without a source are disabled `div`s whose hover says why.
   The surface picked takes the New tab's place (same pane and index), linked
@@ -90,7 +90,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An
   open panel with no linked tabs shows an owned empty tab with T3 Code's launcher; closing the
   front chat's last linked tab closes its panel, and closing its last surface keeps the panel
-  open while other linked tabs remain. Linked tabs are added only from the toggle; there is no
+  open while other linked tabs remain. Linked tabs are added only as a linked New tab; there is no
   linking a standalone tab to a chat. **Open as its own tab** (tab menu) puts a thread's
   surface's standalone counterpart in its place, unlinked, and closes the surface in the
   thread's record: a file (from chat or Files) becomes `repo-file:` on the thread's checkout,
@@ -100,17 +100,18 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   tab still linked (a change group's, or one linked before). `t` `k` (`tab.toggleLink`) does
   the focused tab's link item: a local graph's follow/pin (repositories.md) or Unlink tab, and
   is faint otherwise.
-- **Linked tabs toggle** (`panes/LinkedTabsToggle.tsx`, `[data-right-panel-toggle]`): in a
-  pane's chat header, after the thread details and terminal drawer toggles, in place of
-  T3 Code's right-panel toggle. With the panel open, a square-minus icon, **Hide tabs** (pressed).
-  With linked tabs parked for that chat (its own and its change group's, plus record surfaces
-  no pane held yet), a rounded square holding their count (label `Open tabs (N hidden)`)
-  opening an **Open tabs** menu: each tab with its icon, then **New tab**; picking one brings
-  them all back with it in front. With none, a plus-in-a-square, **New tab**, which opens the
-  linked New tab. `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette hide the
-  tabs, and with tabs parked bring them all straight back where they stood (no menu), so two
-  presses hide and restore; with none they open the linked New tab. Only the button's click
-  opens the menu. The header has no maximize of its own; the pane strip's does that.
+- **Linked tabs buttons** (`panes/LinkedTabsToggle.tsx`): in a pane's chat header, after the
+  thread details and terminal drawer toggles, in place of T3 Code's right-panel toggle.
+  **New linked tab** (`[data-new-linked-tab]`, square-plus, always there) opens a linked New tab
+  in front: showing, in the linked tabs' pane after them; hidden, after bringing them back where
+  they stood; with none, in a new pane right of the chat. The toggle (`[data-right-panel-toggle]`)
+  shows only with linked tabs: with the panel open, a square-minus, **Hide tabs** (pressed); with
+  tabs parked for that chat (its own and its change group's, plus record surfaces no pane held
+  yet), a rounded square holding their count (label `Show tabs (N hidden)`) that brings them all
+  straight back where they stood, the one in front still in front, with no menu.
+  `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette do the same as the toggle, so
+  two presses hide and restore; with none they open the linked New tab. The header has no
+  maximize of its own; the pane strip's does that.
 - **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
   (`[data-link-mark=<ink>]`) in the ✕'s place on every linked tab on screen and on its owner (hovering the tab swaps it for the ✕; on a device without hover both show), with
   the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
@@ -227,9 +228,10 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 ## How to get to it (user POV)
 
 Press **+** at the end of any pane's tabs (or Cmd+T): a New tab opens there with **Open a tab**;
-pick one and it takes the New tab's place. Open a chat and press **New tab** at the end of its
-header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher. **Hide tabs** sets them aside; the button then
-counts them, and its menu brings them back.
+pick one and it takes the New tab's place. Open a chat and press **New linked tab** at the end of
+its header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher;
+pressed again, another joins it in front. **Hide tabs** sets them aside; the button then counts
+them, and clicking it brings them back.
 
 ## Driving it with the Browser panel
 
@@ -238,7 +240,8 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 `Pane actions`.
 
 ```
-preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # New tab / Hide tabs / Open tabs (N hidden)
+preview_act click  [data-chat-header] >> [data-new-linked-tab]                # New linked tab
+preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # Hide tabs / Show tabs (N hidden); absent with none
 preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
 preview_act click  [data-pane-id] >> role=button[name='New tab']          # + : a New tab, no menu
 preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Project file/]

@@ -85,13 +85,13 @@ that thread's tabs instead. With two chats in front in different panes, the link
 the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
 and browsers for the next time you open it.
 
-Linked tabs are added only from the tabs button at the end of the chat's header. With none, it
-opens a linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull
-request and the rest); the one you pick takes its place. The same button hides or shows them.
-Hiding sets them aside rather than closing them: they come back where they stood. While some are
-hidden the button shows how many; pick one from its menu to bring them all back with it in
-front, or choose **New tab**. `mod+alt+b`, or Space `p` `r`, hides them and brings them all back
-without the menu. A linked tab's ✕ closes it for good: a terminal closed this way ends, and the
+Linked tabs are added from **New linked tab** at the end of the chat's header, or Space `t` `n`.
+It opens a linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull
+request and the rest), in front beside the chat's other linked tabs, bringing back any that were
+hidden first; the one you pick takes its place. Once a chat has linked tabs, the button next to
+it hides them. Hiding sets them aside rather than closing them: while they are hidden the button
+shows how many, and clicking it brings them all back where they stood. `mod+alt+b`, or Space
+`p` `r`, does the same. A linked tab's ✕ closes it for good: a terminal closed this way ends, and the
 tab does not come back. A New tab opened with a pane's **+** stands on its own, even beside
 linked tabs, and stays where it is when another chat comes to the front.
 

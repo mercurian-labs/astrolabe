@@ -42,7 +42,8 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
 - **Groups** (defaults): `g` t Agents, w Wikis, r Projects, p Changes,
   u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
   tab), `k` the focused tab's link item (panes.md, Linked tabs): "Unlink tab", "Link to the file
-  in front" for a pinned local graph, or a faint "Unlink tab" with nothing to link, `r` reopen closed (panel and
+  in front" for a pinned local graph, or a faint "Unlink tab" with nothing to link, `n` New linked tab for the focused chat (or the chat a
+  focused linked tab belongs to; faint otherwise), `r` reopen closed (panel and
   browser tabs, not chats), `h` Back and `l` Forward on the focused pane's tab (upstream's
   `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Projects
   and Changes they walk the tab in front's history and are faint at either
