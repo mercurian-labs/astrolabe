@@ -6,6 +6,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { act, fakeTimers, render, stubGlobal } from "../../test/render";
@@ -44,10 +45,12 @@ vi.mock(import("~/localApi"), async (original) => ({
 import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
 import { openTab, splitTab, startingArrangement } from "./arrangement";
+import { LinkedTabsToggle, openHiddenTabsMenu } from "./LinkedTabsToggle";
 import type { PanelProps } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
+import { leaves } from "./tree";
 import { useWorkspaceSnapshot, workspace, WORKSPACE_LAYOUT_KEY } from "./workspace";
 import { createWorkspaceHost } from "./workspaceTabs";
 
@@ -145,7 +148,7 @@ async function settle() {
  * The shared panes holding the thread's chat alone, its surfaces linked beside it as the record
  * stands, with the panel props its ChatView hands them.
  */
-async function renderPanes(overrides: Partial<PanelProps> = {}) {
+async function renderPanes(overrides: Partial<PanelProps> = {}, beside: ReactNode = null) {
   await using stack = new AsyncDisposableStack();
   stack.use(fakeTimers());
   stack.use(
@@ -176,6 +179,7 @@ async function renderPanes(overrides: Partial<PanelProps> = {}) {
         <PanesHostContext.Provider value={host}>
           <PanesLayoutKeyContext.Provider value={WORKSPACE_LAYOUT_KEY}>
             <Panes />
+            {beside}
           </PanesLayoutKeyContext.Provider>
         </PanesHostContext.Provider>
       </WorkspaceHostContext.Provider>,
@@ -366,5 +370,80 @@ describe("a thread's surface as a tab of the shared panes", () => {
     });
     const preview = tab(screen.container, "Local site");
     expect(button(preview, "Mute Local site")).toBeUndefined();
+  });
+});
+
+describe("a chat's linked tabs toggle", () => {
+  // ChatView's right-panel toggle, as the toggle's click and shortcut reach it.
+  const toggle = (
+    <LinkedTabsToggle
+      owner={chat}
+      available
+      shortcutLabel={null}
+      onToggle={() => useRightPanelStore.getState().toggleVisibility(ref)}
+    />
+  );
+  const toggleButton = (root: ParentNode) =>
+    root.querySelector<HTMLButtonElement>("[data-right-panel-toggle]")!;
+  const linkedPanes = () =>
+    leaves(workspace.arrangement().root)
+      .slice(1)
+      .map((leaf) => leaf.tabs);
+  const menuItems = () =>
+    [...document.querySelectorAll('[role="menu"]:not([data-closed]) [role="menuitem"]')].map(
+      (item) => item.textContent,
+    );
+
+  it("hides the tabs, then brings them back from its menu with the one picked in front", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    useRightPanelStore.getState().open(ref, "files");
+    await using screen = await renderPanes({}, toggle);
+    const diff = chatSurfaceKey(chat, "diff");
+    const files = chatSurfaceKey(chat, "files");
+    expect(linkedPanes()).toEqual([[diff, files]]);
+
+    expect(toggleButton(screen.container).ariaLabel).toBe("Hide tabs");
+    await act(() => toggleButton(screen.container).click());
+    expect(linkedPanes()).toEqual([]);
+    const hidden = toggleButton(screen.container);
+    expect(hidden.ariaLabel).toBe("Open tabs (2 hidden)");
+    expect(hidden.textContent).toBe("2");
+
+    await act(() => hidden.click());
+    await settle();
+    expect(menuItems()).toEqual(["Diff", "Files", "New tab"]);
+    const pick = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === "Diff",
+    )!;
+    await act(() => pick.click());
+    await settle();
+    expect(linkedPanes()).toEqual([[diff, files]]);
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(diff);
+    expect(toggleButton(screen.container).ariaLabel).toBe("Hide tabs");
+  });
+
+  it("opens the same menu from the right-panel shortcut while tabs are hidden", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    useRightPanelStore.getState().close(ref);
+    await using _screen = await renderPanes({}, toggle);
+    expect(await act(() => openHiddenTabsMenu(ref))).toBe(true);
+    await settle();
+    expect(menuItems()).toEqual(["Diff", "New tab"]);
+  });
+
+  it("closes a linked New tab for good from its ✕, leaving nothing to bring back", async () => {
+    using _panel = emptyPanel();
+    await using screen = await renderPanes({}, toggle);
+    expect(toggleButton(screen.container).ariaLabel).toBe("New tab");
+    await act(() => toggleButton(screen.container).click());
+    const [linked] = linkedPanes();
+    expect(linked).toHaveLength(1);
+
+    await act(() => button(tab(screen.container, "New tab"), "Close New tab")!.click());
+    expect(linkedPanes()).toEqual([]);
+    expect(toggleButton(screen.container).ariaLabel).toBe("New tab");
+    expect(openHiddenTabsMenu(ref)).toBe(false);
   });
 });
