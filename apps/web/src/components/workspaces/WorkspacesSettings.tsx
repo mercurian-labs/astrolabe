@@ -14,7 +14,12 @@ import { useState, type ReactNode } from "react";
 
 import { startCloudSignIn, useCloudAccountState } from "../../cloud/account";
 import { useWorkspaceSync } from "../../cloud/workspaces";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "../settings/settingsLayout";
+import {
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSearchTarget,
+  SettingsSection,
+} from "../settings/settingsLayout";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -155,7 +160,7 @@ function SignedInWorkspaces({
         </SettingsSection>
       )}
       {canStartWorkspace && !ownsWorkspace ? (
-        <div className="px-3 sm:px-4">
+        <SettingsSearchTarget id="workspace-new" className="px-3 sm:px-4">
           <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
             <PlusIcon />
             New workspace
@@ -166,7 +171,7 @@ function SignedInWorkspaces({
             onOpenChange={setCreating}
             onCreated={selectSlug}
           />
-        </div>
+        </SettingsSearchTarget>
       ) : null}
     </>
   );

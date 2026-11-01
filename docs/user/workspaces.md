@@ -22,6 +22,13 @@ pending invitation holds a seat until it is accepted, declined or revoked.
 Each workspace has an address, `/w/` followed by its short name, that opens it
 in Settings.
 
+## Switch workspaces
+
+On web and desktop, the tile at the top of the icon rail shows the workspace
+you've chosen and opens a menu to switch, invite people, open its settings or
+start a workspace. Choose **No workspace** to go back to the Astrolabe mark.
+Search offers **Switch workspace** too. Your choice is kept on this device.
+
 ## Roles
 
 - **Owner**: one per workspace. Governs everything, including deleting it.

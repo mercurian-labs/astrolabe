@@ -15,6 +15,13 @@ account; signed out it offers **Sign in**. A build without cloud addresses hides
 it: the settings nav and search leave Workspaces out, and `/settings/workspaces` (and so
 `/w/<short name>`) redirects to `/settings/general`.
 
+The rail's head (`[data-app-rail-switcher]`, named `Workspace: <name>` or `Workspaces`) is the
+switcher: its menu lists your workspaces as radio items plus **No workspace**, then **Invite
+people** (only where your role may invite), **Workspace settings** and **Create workspace** (on
+New workspace's terms), each opening Settings › Workspaces. Signed out it offers **Sign in**.
+The choice is client state in local storage, `astrolabe:selected-workspace:<user id>`, never
+Better Auth's active organization. Search's **Switch workspace** submenu does the same.
+
 ## Setup
 
 It needs a cloud: run the stack with `vp run dev` in `infra/cloud` (it builds
@@ -122,11 +129,13 @@ disappears on sign-out.
 
 ## Owns
 
-`apps/web/src/components/workspaces/`, `apps/web/src/cloud/workspaces.ts`,
+`apps/web/src/components/workspaces/`, `apps/web/src/components/sidebar/WorkspaceSwitcher.tsx`,
+`apps/web/src/components/CommandPaletteWorkspaceItems.tsx`, `apps/web/src/cloud/workspaces.ts`,
 `apps/web/src/routes/_chat.settings.workspaces.tsx`, `apps/web/src/routes/w.$slug.tsx`,
 `packages/client-runtime/src/workspaces/`, `apps/cloud/src/workspaces/`,
 `apps/cloud/src/auth/workspaces.ts`, `apps/cloud/src/auth/access.ts` (who may create one), `apps/mobile/src/features/workspaces/`.
 
 Tests: `apps/cloud/src/workspaces/*.test.ts` and
 `apps/cloud/src/auth/workspaces.test.ts` (rules and the write path on PGlite),
-`packages/client-runtime/src/workspaces/*.test.ts` (views, `stopped`, `close`).
+`packages/client-runtime/src/workspaces/*.test.ts` (views, selection, `stopped`, `close`),
+`apps/web/src/components/sidebar/WorkspaceSwitcher.browser.test.tsx`.

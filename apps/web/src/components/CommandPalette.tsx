@@ -250,6 +250,10 @@ import {
 import { useCommandPaletteThreadItems } from "./CommandPaletteThreadItems";
 import { useCommandPaletteThemeItems } from "./CommandPaletteThemeItems";
 import {
+  SWITCH_WORKSPACE_GROUP,
+  useCommandPaletteWorkspaceItem,
+} from "./CommandPaletteWorkspaceItems";
+import {
   CommandPaletteVirtualizedResults,
   scrollCommandPaletteRowIntoView,
 } from "./CommandPaletteResults";
@@ -585,6 +589,7 @@ function OpenCommandPaletteDialog(props: {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
+  const switchWorkspaceItem = useCommandPaletteWorkspaceItem();
   const currentView = viewStack.at(-1)?.view ?? null;
   const focusedWikiTab = useFocusedWikiTab();
   const focusedWikiChanges = useEnvironmentQuery(
@@ -1847,6 +1852,8 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push(themeEditorItem);
 
+  if (switchWorkspaceItem) actionItems.push(switchWorkspaceItem);
+
   if (environments.some((environment) => environment.serverConfig !== null)) {
     actionItems.push({
       kind: "action",
@@ -2090,7 +2097,9 @@ function OpenCommandPaletteDialog(props: {
               ? changeThemeItem.groups
               : currentView?.groups[0]?.value === "appearance"
                 ? changeAppearanceItem.groups
-                : (currentView?.groups ?? searchRootGroups);
+                : currentView?.groups[0]?.value === SWITCH_WORKSPACE_GROUP
+                  ? (switchWorkspaceItem?.groups ?? [])
+                  : (currentView?.groups ?? searchRootGroups);
 
   // Astrolabe: Search finds every wiki's documents too.
   const documentSearchItems = useDocumentSearchRows(currentView === null);
