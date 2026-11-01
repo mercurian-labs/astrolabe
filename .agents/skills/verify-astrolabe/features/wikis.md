@@ -73,8 +73,11 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Chats and pull requests beside documents**: a change request's **Open thread** opens
   its thread's chat in a new tab after the chat in front and brings it forward
   (`chat:<env>:<thread>` tab), as a sidebar click does. See panes.md, "Chats as tabs".
-- **Change requests** open as tabs (Merge, Close/Reopen, amendments with Revert,
-  files that open inside the change request).
+- **Change requests** open as tabs with the shared tab header
+  (`nav[aria-label='Change request breadcrumb']`: the wiki, muted / the title; the state as
+  quiet status; **Open thread**, **Close change request** / **Reopen change request** and
+  **Merge**), then who opened it, amendments with Revert, and files that open inside the
+  change request.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
@@ -153,10 +156,10 @@ change requests, its threads' chats, its pull requests, and the `change-group:` 
 the marker opens) sit behind a `[data-tab-group]` marker; while the group is collapsed (its
 `aria-label` ends `, collapsed`) only its front tab has a `[data-pane-tab]`, so expand it from
 the marker's right-click menu before counting. Prove it paints: `document.elementFromPoint` at the
-centre of the front note's title returns it: the note header has no `h2`, so take
-`nav[aria-label="Document"] [aria-current="page"]` in `[data-pane-id][data-focused]` with a
-non-zero rect (tabs behind it are `display: none`; only the change request view keeps an
-`h2`), and at the lit row's centre
+centre of the front note's title returns it: headers have no `h2`, so take
+`nav[aria-label="Document breadcrumb"] [aria-current="page"]` (a change request's is
+`Change request breadcrumb`) in `[data-pane-id][data-focused]` with a non-zero rect (tabs
+behind it are `display: none`), and at the lit row's centre
 returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row.
 `location.reload()` keeps the arrangement and the histories
 (`JSON.parse(localStorage['astrolabe:workspace-tab-history:v1'])`) and expands every group. Save

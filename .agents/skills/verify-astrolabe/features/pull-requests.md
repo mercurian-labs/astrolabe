@@ -50,10 +50,12 @@ thread's own Pull request tab. Shown only when a connected server reports
   member pull request's head branch (Same branch; never main/master/develop/trunk or the base),
   threads whose title or branch names its issue key (References), and threads added or accepted
   from suggestions (decisions keyed `thread:<threadId>`); a thread can be in several groups. The
-  tab (`change-group:<env>:<id>`) shows
-  `switch "Merge with the code"`, **Open as a tab group**, **Ask for suggestions** (when
+  tab (`change-group:<env>:<id>`) has the shared tab header (`nav[aria-label='Change group
+  breadcrumb']` reading `Changes / <title>`, the state as quiet status) whose icon buttons are
+  **Ask to update the docs** / **Draft the docs**, **Ask for suggestions** (when
   agent suggestions are on; messages the root thread to use `astrolabe_change_group_suggest`),
-  **Add a change request**, **Add a thread**, Suggested rows (✓ / ✕, threads too), Code /
+  **Add a change request**, **Add a thread** and **Open as a tab group**; below it the counts,
+  `switch "Merge with the code"`, Suggested rows (✓ / ✕, threads too), Code /
   Documentation rows and a **Threads** section (each `button "Open <title>"` with its reason and
   Working / Settled / Idle; opens its chat beside) with ✕ to take out. **Open as a tab group**
   opens the group's threads as chats after the front chat (which stays in front); when the
@@ -164,9 +166,18 @@ thread's own Pull request tab. Shown only when a connected server reports
   request. With servers too
   old for pull requests the sidebar reads "Pull requests unavailable". Below the md width the sidebar is a sheet, and opening a row closes it.
 - **History**: each tab walks back and forward through what it showed (the shared panes'
-  `astrolabe:workspace-tab-history:v1`) with `mod+[`/`mod+]` and Space `t h`/`t l`; a
-  review's tab has no header row, so no arrows. A pull request picked inside a review (stack
-  menu, a link in its text) replaces that review's tab.
+  `astrolabe:workspace-tab-history:v1`) with `mod+[`/`mod+]` and Space `t h`/`t l`, and the
+  arrows in its header. A pull request picked inside a review (stack menu, a link in its
+  text) or a Changes row click replaces that review's tab, which pushes onto its history.
+- **Header** (`PullRequestTabHeading.tsx`, the shared `TabHeader`, panes.md): in the shared
+  panes, `nav[aria-label='Pull request breadcrumb']` reads `<owner/repo> / #<n> <title>`, the
+  title truncating before the repository; then **Open** or **Draft** as quiet status, **Edit
+  title** (opens the title field below), and T3 Code's actions in the same row (Merge,
+  Check out, **More pull request actions**; a merged or closed one's state badge). A thread's
+  pull request adds **This thread's pull requests**. Below it the author, branches and diff
+  stat, then the Summary/Timeline/Code strip with no line above it; the review scrolls under a
+  line, not a fade (Summary's section headings and Code's file headers are sticky). Outside
+  the shared panes the panel keeps T3 Code's crumbs.
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
   labels, description, checks, comments), **Guide** (only with Settings → Source Control
   → review guides on), **Timeline** and **Code** (the diff, with scope, split/stacked,
@@ -195,7 +206,7 @@ preview_act click     [data-pull-request-key] > button >> nth=1    # replaces th
 preview_act click     [data-pull-request-key] > button >> nth=2   button="right"
 preview_act click     role=button[name='Open in new tab']          # a second tab
 preview_evaluate  dispatch a click with metaKey / altKey on a row button
-preview_act press     [  modifiers=["Meta"]                        # Back: PR and group tabs have no TabHeader, so no [data-tab-history]
+preview_act click     [data-pane-id][data-focused] [data-tab-history] >> role=button[name='Back']   # or mod+[
 preview_evaluate  set the searchbox's value with the native setter, then dispatch input
 preview_navigate  /pull-requests?involvement=authored&state=open   # Filters shows 1
 ```

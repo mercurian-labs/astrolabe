@@ -196,17 +196,16 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `[data-pane-id][data-focused-place] [data-pane-tab][aria-selected=true]`. The view
   header below has no bottom border and the strip's height, so tab and header read as one
   surface: a chat's, and every Astrolabe tab's (`[data-tab-header]`, `panes/TabHeader.tsx`: a
-  file, a checkout's changes, a local graph, the thread's Graph tab, a wiki note), each a
-  breadcrumb in the chat's type (muted place, then the page) with quiet status and ghost icon
-  actions.
+  file, a checkout's changes, a local graph, the thread's Graph tab, a wiki note, a wiki change
+  request, a change group, a pull request), each a breadcrumb in the chat's type (muted place,
+  then the page) with quiet status and ghost icon actions.
 - **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
   `TabHeader.History`; the chat's through `PaneChatHeader`), as Obsidian's tab headers do. They
   step that tab's own history (`workspace.step(direction, tabKey)`), focused or not, and are
-  disabled with nothing that way; on a linked surface (the thread's Graph tab) they render but
-  are always disabled, since linked tabs build no history. Tabs
-  with no header row have none: a wiki change request, a change group, a pull request, the New
-  tab launcher and the thread's other surfaces (terminal, preview, diff, files, pull requests,
-  device, lineage).
+  disabled with nothing that way; on a linked surface (the thread's Graph tab, a thread's pull
+  request) they render but are always disabled, since linked tabs build no history. Tabs
+  with no header row have none: the New tab launcher and the thread's other surfaces
+  (terminal, preview, diff, files, pull requests, device, lineage).
   `mod+[`/`mod+]`, Space `t h`/`t l` and the palette's Back/Forward still act on the focused
   pane's tab in front. Proof: two panes, click Back in the unfocused one's header; only its tab
   changes. What scrolls beneath a header fades out under it (`topbar-scroll-fade`, static).
