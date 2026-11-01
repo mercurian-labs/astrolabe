@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   closeTab,
   moveTabs,
+  newTab,
   openBeside,
   openTab,
   placeTabs,
+  putInPlace,
   showTabBefore,
   splitTab,
   splitTabs,
@@ -54,6 +56,24 @@ describe("opening tabs", () => {
     const split = splitTab(openTab(startingArrangement(), diff, "p0"), diff, "right");
     expect(panes(split)).toEqual([["empty/1"], [diff]]);
     expect(panes(openTab(split, browser, "p0"))).toEqual([[browser], [diff]]);
+  });
+});
+
+describe("picking what a New tab shows", () => {
+  it("puts it in the New tab's place: same pane, same index, in front and focused", () => {
+    const withNew = newTab(openTab(sideBySide(), browser, "p0"), "p0");
+    const blank = leaves(withNew.root)[0]!.tabs[2]!;
+    const unfocused = { ...withNew, focused: leaves(withNew.root)[1]!.id };
+    const picked = putInPlace(unfocused, blank, "doc");
+    expect(panes(picked)).toEqual([[diff, browser, "doc"], [files]]);
+    expect(leaves(picked.root)[0]?.active).toBe("doc");
+    expect(picked.focused).toBe("p0");
+  });
+
+  it("moves a pick open in another pane into the New tab's place, closing a pane it empties", () => {
+    const withNew = newTab(sideBySide(), "p0");
+    const blank = leaves(withNew.root)[0]!.tabs[1]!;
+    expect(panes(putInPlace(withNew, blank, files))).toEqual([[diff, files]]);
   });
 });
 

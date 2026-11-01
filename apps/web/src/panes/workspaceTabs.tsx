@@ -1,66 +1,27 @@
 import { repositoryMoveOfSurface } from "~/components/repositories/openInRepositories";
-import {
-  Files,
-  FileDiff,
-  FileText,
-  GitFork,
-  Globe2,
-  Link2,
-  Plus,
-  Smartphone,
-  SquareDashed,
-  SquarePlus,
-  TerminalSquare,
-  Waypoints,
-  type LucideIcon,
-} from "lucide-react";
+import { Link2, Plus, SquareDashed } from "lucide-react";
 import { Volume2, VolumeOff } from "lucide";
-import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { MorphIcon } from "~/components/MorphIcon";
 import { previewBridge } from "~/components/preview/previewBridge";
 import {
   DeviceTabTooltip,
   LAUNCHER_SHORTCUT_BLOCKING_LAYERS,
   RightPanelEmptyState,
-  SURFACE_DISABLED_REASONS,
-  SurfaceMenuItem,
   previewFaviconOf,
   previewTabIdOf,
   SurfaceIcon,
-  surfaceShortcutActionForKey,
   surfaceTitle,
   tabAudioState,
   tabMuteMenuItem,
 } from "~/components/RightPanelTabs";
 import { followLocalGraph, pinLocalGraph } from "~/components/repositories/localGraph";
-import { RepositoryTabHeader } from "~/components/repositories/RepositoryTabHeader";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { Button } from "~/components/ui/button";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "~/components/ui/empty";
-import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuShortcut,
-  MenuSub,
-  MenuSubPopup,
-  MenuSubTrigger,
-  MenuTrigger,
-} from "~/components/ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
-import { WikiFinder } from "~/components/wiki/WikiFinder";
 import { closeAskingFirst } from "~/components/wiki/WikiTabView";
-import { wikiTabKey } from "~/components/wiki/wikiTabs";
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
 import { resolveShortcutCommand } from "~/keybindings";
@@ -80,19 +41,15 @@ import {
   chatSurfaceKey,
 } from "~/sectionTabs/sectionTabs";
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import {
-  isRepositoriesPath,
-  isWikisPath,
-  useSectionPathname,
-} from "~/components/sidebar/mainAppLocation";
 import { followedGraphFiles, linkMarkKeyOf, linkMarkOf } from "./linkMarks";
-import { closeTab, focusedPane, isEmptyTab, newTab, openTab } from "./arrangement";
+import { closeTab, focusedPane, isEmptyTab, newTab } from "./arrangement";
 import type { PanelProps } from "./panesController";
 import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import type { WorkspaceHost } from "./PaneSurfaceHost";
 import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
 import { useChatTabLabel } from "~/chatTabs/chatTabLabel";
+import { TabLauncher } from "./TabLauncher";
 import { surfaceOfKey, useTabOwner, useWorkspaceFront, workspace } from "./workspace";
 
 /**
@@ -124,7 +81,7 @@ export function createWorkspaceHost(): WorkspaceHost {
     menuItems: tabMenuItems,
     link: linkAction,
     close: closeWorkspaceTab,
-    NewTab: NewTabMenu,
+    NewTab: NewTabButton,
     place: (slot, leaf, hosting) => {
       if (hosting) {
         if (surface.parentNode !== slot) slot.appendChild(surface);
@@ -456,11 +413,7 @@ function TabAudioButton({
 
 interface AddAction {
   readonly label: string;
-  readonly icon: LucideIcon;
-  readonly shortcut: string;
   readonly available: boolean;
-  /** Why it is unavailable, shown on hovering it then. */
-  readonly disabledReason: string;
   /** The surface this opens when the record already holds it, which then moves here instead. */
   readonly singleton: RightPanelSurface["id"] | null;
   /** Adds the surface through ChatView, given its current panel props. */
@@ -473,82 +426,55 @@ function addActions(panel: PanelProps | null): AddAction[] {
   return [
     {
       label: "Browser",
-      icon: Globe2,
-      shortcut: "B",
       available: panel.browserAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.browser,
       singleton: null,
       invoke: (current) => current.onAddBrowser(),
     },
     {
       label: "Terminal",
-      icon: TerminalSquare,
-      shortcut: "T",
       available: panel.terminalAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.terminal,
       singleton: null,
       invoke: (current) => current.onAddTerminal(),
     },
     {
       label: "Files",
-      icon: Files,
-      shortcut: "F",
       available: panel.filesAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.files,
       singleton: "files",
       invoke: (current) => current.onAddFiles(),
     },
     {
       label: "Diff",
-      icon: FileDiff,
-      shortcut: "D",
       available: panel.diffAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.diff,
       singleton: "diff",
       invoke: (current) => current.onAddDiff(),
     },
     {
       label: "Pull request",
-      icon: PullRequestGlyph.pullRequest,
-      shortcut: "P",
       available: panel.pullRequestAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
       singleton: null,
       invoke: (current) => current.onAddPullRequest(),
     },
     {
       label: "Linked pull requests",
-      icon: PullRequestGlyph.link,
-      shortcut: "L",
       available: panel.pullRequestsAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.pullRequests,
       singleton: "pull-requests",
       invoke: (current) => current.onAddPullRequests(),
     },
     {
       label: "Device",
-      icon: Smartphone,
-      shortcut: "M",
       available: panel.deviceAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.device,
       singleton: null,
       invoke: (current) => current.onAddDevice(),
     },
     {
       label: "Graph",
-      icon: Waypoints,
-      shortcut: "G",
       available: panel.graphAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.graph,
       singleton: "graph",
       invoke: (current) => current.onAddGraph(),
     },
     {
       label: "Lineage",
-      icon: GitFork,
-      shortcut: "I",
       available: panel.lineageAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.lineage,
       singleton: "lineage",
       invoke: (current) => current.onAddLineage(),
     },
@@ -556,11 +482,11 @@ function addActions(panel: PanelProps | null): AddAction[] {
 }
 
 /**
- * Opens one of the front chat's surfaces in a pane. One its record already holds moves here, as
- * a tab open in another pane does; anything else is added through ChatView, and lands here when
- * it arrives. Opening it opens the chat's panel.
+ * Opens one of the front chat's surfaces in place of the linked New tab `blank`. One its record
+ * already holds moves here, as a tab open in another pane does; anything else is added through
+ * ChatView, and takes the New tab's place when it arrives.
  */
-function runAddAction(paneId: string, action: AddAction) {
+function runAddAction(paneId: string, blank: string, action: AddAction) {
   const linked = workspace.linked();
   const front = linked.front;
   const ref = workspace.frontRef();
@@ -571,13 +497,12 @@ function runAddAction(paneId: string, action: AddAction) {
       (surface) => surface.id === action.singleton,
     );
   if (held && action.singleton !== null) {
-    const key = chatSurfaceKey(front, action.singleton);
-    workspace.update((arrangement) => openTab(arrangement, key, paneId));
+    workspace.fill(blank, chatSurfaceKey(front, action.singleton));
     return;
   }
   const panel = workspace.getPanel();
   if (!panel) return;
-  workspace.targetPane(paneId);
+  workspace.targetPane(paneId, blank);
   action.invoke(panel);
 }
 
@@ -594,20 +519,11 @@ function shortcutContext() {
 }
 
 /**
- * A pane's New tab menu: the chat in front's surfaces, as T3 Code's panel offers them, a
- * document, or an empty tab. Mod+T (`rightPanel.new`) opens the focused pane's menu.
+ * The + after a pane's tabs: a New tab there, standing on its own, as a browser's + opens one.
+ * Mod+T (`rightPanel.new`) does the same in the focused pane.
  */
-function NewTabMenu({ paneId }: { paneId: string }) {
-  const panel = usePanel();
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [finding, setFinding] = useState(false);
-  const profiles = useBrowserDefaults().profiles;
-  const actions = addActions(panel);
-  const run = (action: AddAction) => {
-    setOpen(false);
-    runAddAction(paneId, action);
-  };
+function NewTabButton({ paneId }: { paneId: string }) {
+  const open = () => workspace.update((arrangement) => newTab(arrangement, paneId));
   const onNewTabShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
     if (focusedPane(workspace.arrangement()).id !== paneId) return;
@@ -620,145 +536,26 @@ function NewTabMenu({ paneId }: { paneId: string }) {
       }) !== "rightPanel.new"
     )
       return;
-    if (!open && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+    if (document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.repeat) return;
-    trigger.current?.focus();
-    setOpen(true);
+    if (!event.repeat) open();
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- Mod+T is a window shortcut each pane's menu answers while focused
+  // oxlint-disable-next-line t3code/react-effect-budget -- Mod+T is a window shortcut each pane's + answers while focused
   useEffect(() => {
     document.addEventListener("keydown", onNewTabShortcut, true);
     return () => document.removeEventListener("keydown", onNewTabShortcut, true);
   }, []);
   return (
-    <Menu open={open} onOpenChange={setOpen}>
-      <MenuTrigger
-        ref={trigger}
-        render={
-          <Button aria-label="New tab" className="shrink-0" size="icon-sm" variant="ghost-muted" />
-        }
-      >
-        <Plus className="size-4" />
-      </MenuTrigger>
-      <MenuPopup
-        align="start"
-        side="bottom"
-        sideOffset={6}
-        onKeyDownCapture={(event) => {
-          const key = event.key.toLowerCase();
-          if ((key === "o" || key === "n") && !event.metaKey && !event.ctrlKey && !event.altKey) {
-            event.preventDefault();
-            event.stopPropagation();
-            setOpen(false);
-            if (key === "o") setFinding(true);
-            else workspace.update((arrangement) => newTab(arrangement, paneId));
-            return;
-          }
-          const action = surfaceShortcutActionForKey(actions, event.nativeEvent);
-          if (!action) return;
-          event.preventDefault();
-          event.stopPropagation();
-          run(action);
-        }}
-      >
-        {actions.map((action) => {
-          const Icon = action.icon;
-          if (action.label === "Browser" && action.available && profiles.length > 1) {
-            return (
-              <MenuSub key={action.label}>
-                <MenuSubTrigger className="[&>svg:last-child]:ms-0" onClick={() => run(action)}>
-                  <Icon />
-                  {action.label}
-                  <MenuShortcut>{action.shortcut}</MenuShortcut>
-                </MenuSubTrigger>
-                <MenuSubPopup className="max-w-56">
-                  {profiles.map((profile) => (
-                    <MenuItem
-                      key={profile.id}
-                      onClick={() => {
-                        setOpen(false);
-                        const current = workspace.getPanel();
-                        if (!current) return;
-                        workspace.targetPane(paneId);
-                        current.onAddBrowserInProfile(profile.id);
-                      }}
-                    >
-                      <span className="min-w-0 truncate">{profile.name}</span>
-                    </MenuItem>
-                  ))}
-                </MenuSubPopup>
-              </MenuSub>
-            );
-          }
-          return (
-            <SurfaceMenuItem
-              key={action.label}
-              available={action.available}
-              disabledReason={action.disabledReason}
-              shortcut={action.shortcut}
-              onClick={() => run(action)}
-            >
-              <Icon />
-              {action.label}
-            </SurfaceMenuItem>
-          );
-        })}
-        <MenuItem
-          onClick={() => {
-            setOpen(false);
-            setFinding(true);
-          }}
-        >
-          <FileText />
-          Document
-          <MenuShortcut>O</MenuShortcut>
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setOpen(false);
-            workspace.update((arrangement) => newTab(arrangement, paneId));
-          }}
-        >
-          <SquarePlus />
-          Empty tab
-          <MenuShortcut>N</MenuShortcut>
-        </MenuItem>
-      </MenuPopup>
-      {finding ? (
-        <PaneDocumentFinder
-          onClose={() => setFinding(false)}
-          onPick={(key) => workspace.update((arrangement) => openTab(arrangement, key, paneId))}
-        />
-      ) : null}
-    </Menu>
-  );
-}
-
-/** A wiki's document, opened in the pane asked from, as the Wikis finder finds or writes one. */
-function PaneDocumentFinder({
-  onClose,
-  onPick,
-}: {
-  readonly onClose: () => void;
-  readonly onPick: (key: string) => void;
-}) {
-  const { overviews } = useWikiOverviews();
-  return (
-    <WikiFinder
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-      overviews={overviews}
-      scope={null}
-      mode="find"
-      onPick={(tab) => {
-        onClose();
-        onPick(wikiTabKey(tab));
-      }}
-    />
+    <Button
+      aria-label="New tab"
+      className="shrink-0"
+      size="icon-sm"
+      variant="ghost-muted"
+      onClick={open}
+    >
+      <Plus className="size-4" />
+    </Button>
   );
 }
 
@@ -775,44 +572,35 @@ function SurfaceOverlay({ leaf, hosting }: { leaf: Leaf; hosting: boolean }) {
 }
 
 /**
- * An empty tab: beside a chat (linked to it, or in Agents), T3 Code's own launcher for the
- * surfaces it can open; in Wikis, a way to find or write a document; in Repositories, a reminder
- * that files open from the sidebar.
+ * A New tab: linked to the chat in front, T3 Code's own launcher for the surfaces it can open;
+ * standing on its own, the launcher of things that stand on their own (`TabLauncher`).
  */
 function EmptyTab({ paneId, tabKey }: { paneId: string; tabKey: string }) {
   const owner = useTabOwner(tabKey);
-  const pathname = useSectionPathname();
   const panel = usePanel();
-  if (isWikisPath(pathname) && owner === null) return <EmptyDocumentTab paneId={paneId} />;
-  if ((isRepositoriesPath(pathname) && owner === null) || panel === null) {
-    return (
-      <>
-        <RepositoryTabHeader.Root>
-          <RepositoryTabHeader.Path />
-        </RepositoryTabHeader.Root>
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>Nothing open</EmptyTitle>
-            <EmptyDescription>
-              Open a thread, file or document from the sidebar, or add one with the + above.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </>
-    );
+  if (owner !== null && panel !== null) {
+    return <EmptyLauncher paneId={paneId} tabKey={tabKey} panel={panel} />;
   }
-  return <EmptyLauncher paneId={paneId} panel={panel} />;
+  return <TabLauncher paneId={paneId} tabKey={tabKey} />;
 }
 
-function EmptyLauncher({ paneId, panel }: { paneId: string; panel: PanelProps }) {
+function EmptyLauncher({
+  paneId,
+  tabKey,
+  panel,
+}: {
+  paneId: string;
+  tabKey: string;
+  panel: PanelProps;
+}) {
   const profiles = useBrowserDefaults().profiles;
   const actions = addActions(panel);
   const available = (label: string) =>
     actions.find((action) => action.label === label)?.available ?? false;
-  // Each opens in this pane, as the New tab menu's do; one already open elsewhere moves here.
+  // Each takes this New tab's place; one already open elsewhere moves here.
   const run = (label: string) => () => {
     const action = actions.find((candidate) => candidate.label === label);
-    if (action) runAddAction(paneId, action);
+    if (action) runAddAction(paneId, tabKey, action);
   };
   return (
     <RightPanelEmptyState
@@ -820,7 +608,7 @@ function EmptyLauncher({ paneId, panel }: { paneId: string; panel: PanelProps })
       onAddBrowserInProfile={(profileId) => {
         const current = workspace.getPanel();
         if (!current) return;
-        workspace.targetPane(paneId);
+        workspace.targetPane(paneId, tabKey);
         current.onAddBrowserInProfile(profileId);
       }}
       browserProfiles={profiles}
@@ -842,42 +630,6 @@ function EmptyLauncher({ paneId, panel }: { paneId: string; panel: PanelProps })
       graphAvailable={available("Graph")}
       lineageAvailable={available("Lineage")}
     />
-  );
-}
-
-/** An empty tab in Wikis: one way to put a document in it, found or written. */
-function EmptyDocumentTab({ paneId }: { readonly paneId: string }) {
-  const { overviews, loading } = useWikiOverviews();
-  const [finding, setFinding] = useState(false);
-  return (
-    <Empty>
-      <EmptyHeader>
-        <EmptyTitle>
-          {overviews.length === 0 && !loading ? "No wikis yet" : "No document open"}
-        </EmptyTitle>
-        <EmptyDescription>
-          {overviews.length === 0 && !loading
-            ? "Add a wiki from the wiki filter in the sidebar: a folder of notes you already keep in git, or a new one."
-            : "Open a document from the sidebar, or find or write one here."}
-        </EmptyDescription>
-      </EmptyHeader>
-      {overviews.length > 0 ? (
-        <EmptyContent>
-          <Button variant="outline" size="sm" onClick={() => setFinding(true)}>
-            <FileText />
-            Find or create a document
-          </Button>
-        </EmptyContent>
-      ) : null}
-      <WikiFinder
-        open={finding}
-        onOpenChange={setFinding}
-        overviews={overviews}
-        scope={null}
-        mode="find"
-        paneId={paneId}
-      />
-    </Empty>
   );
 }
 

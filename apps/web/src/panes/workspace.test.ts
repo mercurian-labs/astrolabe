@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { activateTab, newTab, splitTab } from "./arrangement";
 import type { StorageLike } from "./persistence";
 import { leaves } from "./tree";
 import { createWorkspace, WORKSPACE_STORAGE_KEY } from "./workspace";
@@ -174,5 +175,37 @@ describe("the shared panes", () => {
     expect(panes(workspace)).toEqual([[chatTabKey(refC), chatB]]);
     workspace.step("back");
     expect(panes(workspace)).toEqual([[chatA, chatB]]);
+  });
+
+  it("put a new chat in the New tab in focus, where it stood", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
+    workspace.update((arrangement) => newTab(arrangement, "p0"));
+    const [[, blank]] = panes(workspace) as [[string, string]];
+    const refC = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-C"));
+    workspace.arriveChat(chatTabKey(refC));
+    expect(panes(workspace)).toEqual([[chatA, chatTabKey(refC)], [chatB]]);
+    expect(blank).toMatch(/^empty\//);
+    expect(workspace.arrangement().focused).toBe("p0");
+  });
+
+  it("put the surface picked in a linked New tab in its place, linked", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "files");
+    workspace.showLinked(chatA, null);
+    const linkedPane = leaves(workspace.arrangement().root)[1]!;
+    const [files, blank] = linkedPane.tabs as [string, string];
+    workspace.targetPane(linkedPane.id, blank);
+    // The user looks at Files again before the diff they asked for arrives.
+    workspace.update((arrangement) => activateTab(arrangement, files));
+    useRightPanelStore.getState().open(refA, "diff");
+    const diff = chatSurfaceKey(chatA, "diff");
+    expect(panes(workspace)).toEqual([
+      [chatA, chatB],
+      [files, diff],
+    ]);
+    expect(workspace.linked().owners[diff]).toBe(chatA);
+    stop();
   });
 });

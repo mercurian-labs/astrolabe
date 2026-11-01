@@ -267,6 +267,17 @@ export function replaceTab(arrangement: Arrangement, key: string, next: string):
 }
 
 /**
+ * Astrolabe: puts `next` where `key` stands, in its pane at its index, in front and focused, as a
+ * New tab gives way to what is picked in it; `key` is gone. One open elsewhere moves here.
+ */
+export function putInPlace(arrangement: Arrangement, key: string, next: string): Arrangement {
+  const leaf = leafWithTab(arrangement.root, key);
+  if (!leaf || key === next) return arrangement;
+  const from = detachTab(arrangement, next, leaf.id);
+  return activateTab(replaceTab(from, key, next), next);
+}
+
+/**
  * Closes a tab. Closing a pane's last tab closes the pane and its neighbours take its room; the
  * last pane stays and gets an empty tab.
  */

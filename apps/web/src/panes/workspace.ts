@@ -35,6 +35,7 @@ import {
   openBeside,
   openTab,
   placeTabs,
+  putInPlace,
   replaceTab,
   startingArrangement,
   type Arrangement,
@@ -245,7 +246,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   let record: PanelRecord | null = null;
   let recordOwner: string | null = null;
   let writing = false;
-  let target: { paneId: string; until: number } | null = null;
+  let target: { paneId: string; until: number; replacing: string | null } | null = null;
   let groups: ReadonlyMap<string, ReadonlySet<string>> = new Map();
   let panel: PanelProps | null = null;
   let panelSnapshot: PanelProps | null = null;
@@ -444,7 +445,31 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       useRightPanelStore.getState().show(ref);
       return;
     }
-    apply((linked) => linked);
+    apply(arriveAtTarget);
+  };
+
+  /**
+   * The surface a pane's launcher asked for, arriving in the front chat's record: in place of the
+   * New tab it was picked in, else in that pane. Placed before the links settle, which would put
+   * it after the chat's other linked tabs.
+   */
+  const arriveAtTarget = (linked: LinkedArrangement): LinkedArrangement => {
+    const { front, arrangement } = linked;
+    const ref = refOf(front);
+    if (!target || target.until <= Date.now() || front === null || ref === null) return linked;
+    const key = recordOf(ref)
+      .surfaceIds.map((id) => chatSurfaceKey(front, id))
+      .find((each) => !leafWithTab(arrangement.root, each) && !(each in linked.parked));
+    if (key === undefined) return linked;
+    const { paneId, replacing } = target;
+    target = null;
+    const placed =
+      replacing !== null && leafWithTab(arrangement.root, replacing)?.id === paneId
+        ? putInPlace(arrangement, replacing, key)
+        : findLeaf(arrangement.root, paneId)
+          ? openTab(arrangement, key, paneId)
+          : null;
+    return placed === null ? linked : linkTab({ ...linked, arrangement: placed }, key, front);
   };
 
   const holdsOtherLinkedTabs = (linked: LinkedArrangement, front: string | null) =>
@@ -563,6 +588,10 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
 
   const close = (key: string) => update((arrangement) => closeTab(arrangement, key));
 
+  /** Puts `key` in the New tab `blank`'s place, where it shows instead (`putInPlace`). */
+  const fill = (blank: string, key: string) =>
+    update((arrangement) => putInPlace(arrangement, blank, key));
+
   /** The pane chats open in: the front chat's, else the focused pane. */
   const chatPaneId = (arrangement: Arrangement, front: string | null) => {
     const fronts = leaves(arrangement.root);
@@ -585,6 +614,12 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const { arrangement, front } = linked;
     if (leafWithTab(arrangement.root, key)) {
       update((before) => activateTab(before, key));
+      return;
+    }
+    // A New tab in focus takes a chat new to the panes, as a browser's new tab takes a link.
+    const blank = focusedPane(arrangement).active;
+    if (isEmptyTab(blank) && !(blank in linked.owners)) {
+      fill(blank, key);
       return;
     }
     const replacing =
@@ -692,6 +727,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     step,
     canStep,
     close,
+    fill,
     update,
     updateWithHistory,
     arriveChat,
@@ -705,9 +741,12 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     toggleOf: (owner: string): LinkedToggle => linkedToggle(current(), owner, context),
     /** The thread of the chat in front, whose surfaces the panes show. */
     frontRef: () => refOf(current().front),
-    /** The next surface the front chat's record gains within a few seconds opens in this pane. */
-    targetPane(paneId: string) {
-      target = { paneId, until: Date.now() + TARGET_WINDOW_MS };
+    /**
+     * The next surface the front chat's record gains within a few seconds opens in this pane, in
+     * place of the New tab `replacing` when it was picked there.
+     */
+    targetPane(paneId: string, replacing: string | null = null) {
+      target = { paneId, until: Date.now() + TARGET_WINDOW_MS, replacing };
     },
     /** The change groups' threads, by group tab key, whose linked tabs show beside them. */
     setGroups(next: ReadonlyMap<string, ReadonlySet<string>>) {
