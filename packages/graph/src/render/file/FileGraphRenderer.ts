@@ -612,29 +612,38 @@ export class FileGraphRenderer {
     this.#scheduler.invalidate();
   }
 
-  /** Frame the whole graph. */
+  /** Frame the whole graph, its cluster discs and their names included. */
   fit(): void {
     const graph = this.#graph;
     const forces = this.#forces;
     if (graph === null || forces === null) return;
     const positions = forces.positions();
-    this.#camera = fitCamera(
-      graph.nodes.map((node, index) => {
-        const radius = this.#radiusOf(node.id);
-        const half = Math.max(radius, (nodeLabel(node).length * LABEL_CHAR) / 2);
-        const at = positions[index] ?? { x: 0, y: 0 };
-        return {
-          x: at.x,
-          y: at.y,
-          left: half,
-          right: half,
-          above: radius,
-          below: radius + LABEL_GAP + LABEL_LINE,
-        };
-      }),
-      this.#width,
-      this.#height,
-    );
+    const placed = new Map<string, Circle>();
+    const boxes = graph.nodes.map((node, index) => {
+      const radius = this.#radiusOf(node.id);
+      const half = Math.max(radius, (nodeLabel(node).length * LABEL_CHAR) / 2);
+      const at = positions[index] ?? { x: 0, y: 0 };
+      placed.set(node.id, { x: at.x, y: at.y, radius });
+      return {
+        x: at.x,
+        y: at.y,
+        left: half,
+        right: half,
+        above: radius,
+        below: radius + LABEL_GAP + LABEL_LINE,
+      };
+    });
+    for (const circle of this.#hullCircles(graph, placed).values()) {
+      boxes.push({
+        x: circle.x,
+        y: circle.y,
+        left: circle.radius,
+        right: circle.radius,
+        above: circle.radius + LABEL_GAP + LABEL_LINE,
+        below: circle.radius,
+      });
+    }
+    this.#camera = fitCamera(boxes, this.#width, this.#height);
     this.#framed = true;
     this.#scheduler.invalidate();
   }

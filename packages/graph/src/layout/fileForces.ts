@@ -48,8 +48,10 @@ const CENTER_UNIT = 0.12;
 /** The most ticks a picture shown whole settles in. */
 const SETTLE_TICKS = 600;
 /** How hard a cluster draws its nodes to its middle (halved per level out) and pushes others out. */
-const CLUSTER_PULL = 0.2;
-const CLUSTER_PUSH = 0.5;
+const CLUSTER_PULL = 0.5;
+const CLUSTER_PUSH = 1;
+/** A link between two nodes of one cluster is this share of the link distance. */
+const INSIDE_LINK = 0.45;
 /** Room around a cluster's nodes inside its rim, in world pixels. */
 export const CLUSTER_PAD = 14;
 
@@ -73,6 +75,8 @@ export class FileForces {
   readonly #byId: Map<string, ForceNode>;
   /** Each link's least end degree, by the link's index. */
   readonly #leastDegree: ReadonlyArray<number>;
+  /** Whether each link joins two nodes of one cluster, by the link's index. */
+  readonly #inside: ReadonlyArray<boolean>;
   readonly #simulation;
   readonly #link;
   readonly #charge;
@@ -103,6 +107,11 @@ export class FileForces {
       neighbours.set(link.from, [...(neighbours.get(link.from) ?? []), link.to]);
       neighbours.set(link.to, [...(neighbours.get(link.to) ?? []), link.from]);
     }
+    const clusterOf = graph.nodes.map((node) => node.cluster ?? null);
+    this.#inside = links.map((link) => {
+      const cluster = clusterOf[link.source as number];
+      return cluster != null && cluster === clusterOf[link.target as number];
+    });
     this.#leastDegree = links.map((link) =>
       Math.max(1, Math.min(degree[link.source as number] ?? 1, degree[link.target as number] ?? 1)),
     );
@@ -223,7 +232,7 @@ export class FileForces {
   #apply(forces: FileGraphForces): void {
     // d3's own link strength, scaled: a link between two hubs pulls less than one to a leaf.
     this.#link
-      .distance(forces.linkDistance)
+      .distance((_, index) => forces.linkDistance * (this.#inside[index] ? INSIDE_LINK : 1))
       .strength((_, index) => forces.linkForce / (this.#leastDegree[index] ?? 1));
     // A loose Barnes–Hut approximation: a few hundred files settle in a few dozen milliseconds.
     this.#charge.strength(-forces.repelForce * REPEL_UNIT).theta(1.2);
@@ -267,7 +276,9 @@ function clusterForce(graph: FileGraphData, nodes: ReadonlyArray<ForceNode>) {
           radius = Math.max(radius, Math.hypot((node.x ?? 0) - x, (node.y ?? 0) - y));
         }
       }
-      middles.set(id, { x, y, radius: radius + CLUSTER_PAD });
+      // The drawn disc also holds its nodes' dots and the padding of the discs inside it.
+      const nested = clusters.filter((other) => chains.get(other)?.[1] === id).length > 0;
+      middles.set(id, { x, y, radius: radius + CLUSTER_PAD * (nested ? 2 : 1) + 12 });
     }
     for (const [index, node] of nodes.entries()) {
       const chain = memberships[index] ?? [];
@@ -284,7 +295,8 @@ function clusterForce(graph: FileGraphData, nodes: ReadonlyArray<ForceNode>) {
         const dy = (node.y ?? 0) - middle.y;
         const distance = Math.hypot(dx, dy);
         if (distance >= middle.radius || distance === 0) continue;
-        const push = ((middle.radius - distance) / distance) * CLUSTER_PUSH * alpha;
+        // A floor under the cooling, so a node left inside a disc still leaves it as the graph rests.
+        const push = ((middle.radius - distance) / distance) * CLUSTER_PUSH * Math.max(alpha, 0.1);
         node.vx = (node.vx ?? 0) + dx * push;
         node.vy = (node.vy ?? 0) + dy * push;
       }
