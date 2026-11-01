@@ -669,9 +669,11 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   /**
    * The route shows the chat `key` now, as following a link in a browser tab: where it is open it
    * comes to the front, else it takes the place of the chat in front, which joins its history.
+   * One in focus already, or one of its linked tabs, stays as it is.
    */
   const arriveChat = (key: string) => {
     const linked = current();
+    if (focusedChatOf(linked) === key) return;
     const { arrangement, front } = linked;
     if (leafWithTab(arrangement.root, key)) {
       update((before) => activateTab(before, key));
@@ -871,6 +873,17 @@ function samePanelDrawing(before: PanelProps, next: PanelProps) {
 
 export type Workspace = ReturnType<typeof createWorkspace>;
 
+/**
+ * The chat whose thread the Agents sidebar selects: the focused tab when it is a chat, or the
+ * chat it is linked to (one of that thread's surfaces); null for anything else in focus.
+ */
+export function focusedChatOf(linked: LinkedArrangement): string | null {
+  const key = focusedPane(linked.arrangement).active;
+  if (parseChatTabKey(key) !== null) return key;
+  const owner = linked.owners[key];
+  return owner !== undefined && parseChatTabKey(owner) !== null ? owner : null;
+}
+
 /** The device's shared panes. */
 export const workspace = createWorkspace();
 
@@ -904,6 +917,11 @@ export function useWorkspaceFocusedKey(): string {
     workspace.store.subscribe,
     () => focusedPane(workspace.arrangement()).active,
   );
+}
+
+/** Whether the panes hold nothing yet: one pane with one empty tab. */
+export function useWorkspaceStarting(): boolean {
+  return useSyncExternalStore(workspace.store.subscribe, () => isStarting(workspace.arrangement()));
 }
 
 /** The chat in front, whose linked tabs show. */

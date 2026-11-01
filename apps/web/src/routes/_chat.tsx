@@ -8,6 +8,7 @@ import {
   isWikisPath,
   useSectionPathname,
 } from "../components/sidebar/mainAppLocation";
+import { useWorkspaceStarting } from "../panes/workspace";
 import { WorkspaceView } from "../panes/WorkspaceView";
 import { SidebarInset } from "../components/ui/sidebar";
 import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../threadRoutes";
@@ -33,22 +34,29 @@ function ChatRouteLayout() {
     setBackgroundTarget(threadTarget);
   }
   const shownTarget = modalOpen ? backgroundTarget : threadTarget;
-  // Astrolabe: threads, Repositories and Wikis share one set of panes; their routes only say
-  // which sidebar shows and which chat is in front.
+  // Astrolabe: Agents, Repositories and Wikis share one set of panes; their routes only say which
+  // sidebar shows and, in Agents, which thread it selects. The start page is Agents with no
+  // thread selected; only with nothing in the panes does it start a draft, as T3 Code's does.
   const sectionPathname = useSectionPathname();
+  const starting = useWorkspaceStarting();
+  const onStartPage = sectionPathname === "/";
+  const agents = shownTarget !== null || onStartPage;
   const inWorkspace =
-    shownTarget !== null || isRepositoriesPath(sectionPathname) || isWikisPath(sectionPathname);
+    shownTarget !== null ||
+    (onStartPage && !starting) ||
+    isRepositoriesPath(sectionPathname) ||
+    isWikisPath(sectionPathname);
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (
         <ThreadLinkPrompt threadRef={shownTarget.threadRef} />
       ) : null}
       {inWorkspace ? (
-        <WorkspaceView routeTarget={shownTarget} background={modalOpen} />
+        <WorkspaceView routeTarget={shownTarget} agents={agents} background={modalOpen} />
       ) : modalOpen ? (
         <SidebarInset className="h-dvh" />
       ) : null}
-      {modalOpen || !inWorkspace || shownTarget === null ? <Outlet /> : null}
+      {modalOpen || !inWorkspace || (shownTarget === null && !onStartPage) ? <Outlet /> : null}
     </>
   );
 }

@@ -4,7 +4,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
 import { Activity, memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { chatRouteOf, ChatTabWatch, type ChatRoute } from "~/chatTabs/chatTabLabel";
+import { chatRouteOf, ChatTabWatch } from "~/chatTabs/chatTabLabel";
 import { registerThreadTabDrop } from "~/chatTabs/threadTabDrop";
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
@@ -16,12 +16,9 @@ import { PaneChat, SectionTabContent } from "~/sectionTabs/SectionTabContent";
 import { useSidebarPendingFileDropStore } from "~/sidebarPendingFileDropStore";
 import { chatTabKey, parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { useChangeGroups } from "~/state/changeGroups";
-import {
-  buildDraftThreadRouteParams,
-  buildThreadRouteParams,
-  type ThreadRouteTarget,
-} from "~/threadRoutes";
+import { buildThreadRouteParams, type ThreadRouteTarget } from "~/threadRoutes";
 import { chatTabsSlot, tabHistorySlot } from "~/whichKey/handles";
+import { agentsRoute } from "./agentsRoute";
 import { activateTab, allTabs, focusedPane, isEmptyTab, placeTabs } from "./arrangement";
 import { insertIndex } from "./drag";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
@@ -31,6 +28,7 @@ import { recentChats } from "./recentChats";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
 import { findLeaf, leaves } from "./tree";
 import {
+  focusedChatOf,
   useWorkspaceArrangement,
   useWorkspaceSnapshot,
   useWorkspaceTabHistory,
@@ -56,22 +54,19 @@ function useRouteThreadRef(target: ThreadRouteTarget | null): ScopedThreadRef | 
   return draft ? scopeThreadRef(draft.environmentId, draft.threadId) : promoted;
 }
 
-function routeParams(route: ChatRoute) {
-  return route.kind === "draft"
-    ? ({ to: "/draft/$draftId", params: buildDraftThreadRouteParams(route.draftId) } as const)
-    : ({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(route.ref) } as const);
-}
-
 /**
  * Astrolabe: the main area, the same in every section: the shared panes (`workspace.ts`). A
- * thread's route brings its chat to the front, and follows the chat the panes bring there; the
- * panes alone decide which chat shows. `background`: under Settings or Usage, mounted and inert.
+ * thread's route brings its chat to the front; the panes alone decide which chat shows. In
+ * Agents (`agents`) the route follows the focused tab's chat (`agentsRoute`), so the sidebar
+ * selects its thread, or none. `background`: under Settings or Usage, mounted and inert.
  */
 export function WorkspaceView({
   routeTarget,
+  agents = routeTarget !== null,
   background = false,
 }: {
   readonly routeTarget: ThreadRouteTarget | null;
+  readonly agents?: boolean;
   readonly background?: boolean;
 }) {
   const [host] = useState(createWorkspaceHost);
@@ -82,32 +77,38 @@ export function WorkspaceView({
 
   // The route's chat comes to the front as the route arrives, as a link followed in a tab.
   const routed = useRef(routeChatKey);
+  // The chat (or null, the start page) the route was last asked to follow, until it arrives.
+  const asked = useRef<string | null | undefined>(undefined);
   // oxlint-disable-next-line t3code/react-effect-budget -- the route is outside the panes' store
   useLayoutEffect(() => {
     routed.current = routeChatKey;
+    asked.current = undefined;
     if (routeChatKey !== null && !background) workspace.arriveChat(routeChatKey);
   }, [background, routeChatKey]);
   // oxlint-disable-next-line t3code/react-effect-budget -- follows T3 Code's right-panel store
   useLayoutEffect(() => workspace.follow(), []);
 
-  // On a thread's route, the route follows a chat brought to the front in the panes, and leaves
-  // for the start page once its chat closes.
-  const onThreadRoute = routeTarget !== null;
+  // In Agents, the route follows the focused tab's chat, or leaves for the start page when focus
+  // is on anything else; the panes stay as they are.
+  const onStartPage = routeTarget === null;
   // oxlint-disable-next-line t3code/react-effect-budget -- the router follows the panes' store
   useEffect(() => {
-    if (!onThreadRoute || background) return;
+    if (!agents || background) return;
     const follow = () => {
-      const { front, arrangement } = workspace.linked();
-      const shown = routed.current;
-      if (front !== null && front !== shown) {
-        const route = chatRouteOf(front);
-        if (route) void navigate(routeParams(route));
+      const linked = workspace.linked();
+      const chat = focusedChatOf(linked);
+      // A chat gone leads nowhere; its tab is closing (`ChatTabWatch`).
+      if (chat === routed.current) {
+        asked.current = undefined;
         return;
       }
-      if (shown !== null && !allTabs(arrangement).includes(shown)) void navigate({ to: "/" });
+      if (chat === asked.current || (chat !== null && chatRouteOf(chat) === null)) return;
+      asked.current = chat;
+      void navigate(agentsRoute(linked, chatRouteOf));
     };
+    if (onStartPage) follow();
     return workspace.store.subscribe(follow);
-  }, [background, navigate, onThreadRoute]);
+  }, [agents, background, navigate, onStartPage]);
 
   // The keyboard menu's history and tab commands act on the focused pane's tabs.
   const { canGoBack, canGoForward } = useWorkspaceTabHistory();

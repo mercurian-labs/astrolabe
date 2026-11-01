@@ -1,5 +1,8 @@
 import { useLocation, useNavigate, type AnyRouter } from "@tanstack/react-router";
 
+import { chatRouteOf } from "~/chatTabs/chatTabLabel";
+import { agentsRoute } from "~/panes/agentsRoute";
+import { workspace } from "~/panes/workspace";
 import { GUEST_PAGE_PATH } from "../../guestPage";
 
 /** Settings and Usage open as modals over the last main-app view. */
@@ -27,30 +30,21 @@ export function isWikisPath(pathname: string) {
   return pathname === "/wikis" || pathname.startsWith("/wikis/");
 }
 
-function isSectionPath(pathname: string) {
-  return isWikisPath(pathname) || isRepositoriesPath(pathname) || isPullRequestsPath(pathname);
-}
-
 // Pages the root route always renders without the app shell, so they are never
 // a page to return to. Other paths seen before auth or on a prompt-link landing
 // are still recorded; they are real app URLs, so returning to one is harmless.
 const SHELL_LESS_PATHS = new Set(["/pair", "/connect", "/connect-agent", GUEST_PAGE_PATH]);
 
-let mainAppHref: string | null = null;
 let appModalReturnHref: string | null = null;
 let appModalReturnPathname = "/";
 
-/**
- * Remembers where Settings, Usage, and the utility pages lead back to. Astrolabe: the sections
- * are pages to return to from Settings, but not the threads URL the rail's Agents returns to.
- */
+/** Remembers where Settings and Usage lead back to. */
 export function startMainAppLocationTracking(router: AnyRouter): () => void {
   const record = () => {
     const { pathname, href } = router.state.location;
     if (isAppModalPage(pathname) || SHELL_LESS_PATHS.has(pathname)) return;
     appModalReturnHref = href;
     appModalReturnPathname = pathname;
-    if (!isSidebarUtilityPage(pathname) && !isSectionPath(pathname)) mainAppHref = href;
   };
   record();
   return router.subscribe("onResolved", record);
@@ -67,13 +61,17 @@ export function useSectionPathname() {
   });
 }
 
-export function useNavigateToMainApp() {
+/**
+ * Astrolabe: goes to Agents as the panes stand (`agentsRoute`): the focused chat's thread, else
+ * the start page. Only the sidebar changes; no chat comes forward.
+ */
+export function useNavigateToAgents() {
   const navigate = useNavigate();
-  return () => navigate({ href: mainAppHref ?? "/" });
+  return () => navigate(agentsRoute(workspace.linked(), chatRouteOf));
 }
 
 /** Leaves Settings or Usage for the page that opened it. */
 export function useCloseAppModal() {
   const navigate = useNavigate();
-  return () => navigate({ href: appModalReturnHref ?? mainAppHref ?? "/" });
+  return () => navigate({ href: appModalReturnHref ?? "/" });
 }
