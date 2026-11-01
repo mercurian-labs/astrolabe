@@ -60,11 +60,9 @@ function routeParams(route: ChatRoute) {
 }
 
 /**
- * Astrolabe: the main area beside the sidebar, the same in every section: one set of panes
- * holding chats, files, documents and threads' surfaces (`workspace.ts`). On a thread's route
- * (`routeTarget`), that chat is in front, rendered by T3 Code's own route view so one ChatView
- * stays mounted across thread switches; a chat brought to the front in the panes leads the route
- * there. `background`: under Settings or Usage, mounted and inert.
+ * Astrolabe: the main area, the same in every section: the shared panes (`workspace.ts`). A
+ * thread's route puts its chat in front, drawn by T3 Code's route view so one ChatView stays
+ * mounted across thread switches. `background`: under Settings or Usage, mounted and inert.
  */
 export function WorkspaceView({
   routeTarget,
@@ -79,18 +77,20 @@ export function WorkspaceView({
   const routeChatKey = routeRef ? chatTabKey(routeRef) : null;
   const navigate = useNavigate();
 
-  useLayoutEffect(() => {
-    if (routeChatKey !== null && !background) workspace.arriveChat(routeChatKey);
-  }, [background, routeChatKey]);
-  useLayoutEffect(() => workspace.follow(), []);
-
-  // On a thread's route, the route follows the chat brought to the front in the panes, and
-  // leaves a chat closed for the start page.
+  // The route's chat comes to the front as the route arrives, as a link followed in a tab.
   const routed = useRef(routeChatKey);
+  // oxlint-disable-next-line t3code/react-effect-budget -- the route is outside the panes' store
   useLayoutEffect(() => {
     routed.current = routeChatKey;
-  });
+    if (routeChatKey !== null && !background) workspace.arriveChat(routeChatKey);
+  }, [background, routeChatKey]);
+  // oxlint-disable-next-line t3code/react-effect-budget -- follows T3 Code's right-panel store
+  useLayoutEffect(() => workspace.follow(), []);
+
+  // On a thread's route, the route follows a chat brought to the front in the panes, and leaves
+  // for the start page once its chat closes.
   const onThreadRoute = routeTarget !== null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- the router follows the panes' store
   useEffect(() => {
     if (!onThreadRoute || background) return;
     const follow = () => {
@@ -106,26 +106,30 @@ export function WorkspaceView({
     return workspace.store.subscribe(follow);
   }, [background, navigate, onThreadRoute]);
 
+  // The keyboard menu's history and tab commands act on the focused pane's tabs.
   const { canGoBack, canGoForward } = useWorkspaceTabHistory();
-  useEffect(() => {
-    if (background) return;
-    return tabHistorySlot.register({ canGoBack, canGoForward, go: workspace.step });
-  }, [background, canGoBack, canGoForward]);
-
-  // The keyboard menu's tab commands act on the focused pane's tabs.
   const arrangement = useWorkspaceArrangement();
   const focused = focusedPane(arrangement);
+  // oxlint-disable-next-line t3code/react-effect-budget -- lends handles to the keyboard menu while mounted
   useEffect(() => {
     if (background) return;
-    return chatTabsSlot.register({
+    const stopHistory = tabHistorySlot.register({ canGoBack, canGoForward, go: workspace.step });
+    const stopTabs = chatTabsSlot.register({
       keys: focused.tabs,
       activeKey: focused.active,
       select: (key) => workspace.update((next) => activateTab(next, key)),
       close: closeWorkspaceTab,
     });
-  }, [background, focused.active, focused.tabs]);
+    return () => {
+      stopTabs();
+      stopHistory();
+    };
+  }, [background, canGoBack, canGoForward, focused.active, focused.tabs]);
 
-  // Escape clears a selection of tabs.
+  // Escape clears a selection of tabs, leaving the page saves the panes, and threads dragged
+  // from the sidebar open as tabs in the pane they are dropped on.
+  const root = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- window and sidebar-drag listeners
   useEffect(() => {
     useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
     const clear = (event: KeyboardEvent) => {
@@ -133,28 +137,18 @@ export function WorkspaceView({
       if (useTabSelectionStore.getState().selection.keys.length === 0) return;
       useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
     };
-    window.addEventListener("keydown", clear);
-    return () => window.removeEventListener("keydown", clear);
-  }, []);
-
-  useEffect(() => {
     const save = () => workspace.store.flush();
+    window.addEventListener("keydown", clear);
     window.addEventListener("pagehide", save);
+    const stopDrop = root.current
+      ? registerThreadTabDrop(root.current, { over: () => {}, drop: dropThreads })
+      : () => {};
     return () => {
+      window.removeEventListener("keydown", clear);
       window.removeEventListener("pagehide", save);
+      stopDrop();
       save();
     };
-  }, []);
-
-  // Threads dragged from the sidebar open as tabs in the pane they are dropped on.
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const element = root.current;
-    if (!element) return;
-    return registerThreadTabDrop(element, {
-      over: () => {},
-      drop: (keys, x, front) => dropThreads(keys, x, front),
-    });
   }, []);
 
   return (
@@ -238,16 +232,15 @@ function WorkspaceTabContents({
   const keys = allTabs(arrangement);
   const fronts = new Set(leaves(arrangement.root).map((leaf) => leaf.active));
   const focusedFront = focusedPane(arrangement).active;
-  useEffect(() => {
-    host.prune(new Set(keys));
-  }, [host, keys]);
-  // The route's chat renders into one node, which moves into its tab's container.
-  const routeOpen = routeChatKey !== null && keys.includes(routeChatKey);
+  // Containers of closed tabs go; the route's chat renders into one node, which moves into its
+  // tab's container.
+  // oxlint-disable-next-line t3code/react-effect-budget -- moves DOM nodes the panes render into
   useLayoutEffect(() => {
-    if (!routeOpen || routeChatKey === null) return;
+    host.prune(new Set(keys));
+    if (routeChatKey === null || !keys.includes(routeChatKey)) return;
     const container = host.containerFor(routeChatKey);
     if (host.routeNode.parentNode !== container) container.appendChild(host.routeNode);
-  }, [host, routeChatKey, routeOpen]);
+  }, [host, keys, routeChatKey]);
   const shown = keys.filter(
     (key) =>
       !isEmptyTab(key) &&
@@ -312,21 +305,14 @@ function useHost() {
 
 /**
  * The change groups' threads, handed to the panes so tabs linked to a group show beside each of
- * its threads. Renders nothing; it stands apart so the groups, which change with every thread,
- * re-render only it.
+ * its threads. Renders nothing, so the groups, which change with every thread, re-render only it.
  */
 function GroupsSync() {
   const groups = useChangeGroups();
-  const signature = groups
-    .map((group) => `${changeGroupTabKey(group)}=${group.threadIds.join(",")}`)
-    .join(";");
-  const latest = useRef(groups);
-  useLayoutEffect(() => {
-    latest.current = groups;
-  });
+  // oxlint-disable-next-line t3code/react-effect-budget -- hands the groups to the panes' store
   useEffect(() => {
     const members = new Map<string, ReadonlySet<string>>();
-    for (const group of latest.current) {
+    for (const group of groups) {
       members.set(
         changeGroupTabKey(group),
         new Set(
@@ -337,6 +323,6 @@ function GroupsSync() {
       );
     }
     workspace.setGroups(members);
-  }, [signature]);
+  }, [groups]);
   return null;
 }

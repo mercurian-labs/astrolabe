@@ -3,11 +3,9 @@ import { createContext, useContext } from "react";
 import type { PanesHost } from "./panesHost";
 
 /**
- * Astrolabe: the shared panes' host, as what renders inside them shares it. Each open tab renders
- * once into its own container (`containerFor`), which the pane showing the tab takes in. Two
- * things render in one place only and move between containers instead, so they never remount:
- * the front chat's live surface (`surface`, which T3 Code's ChatView renders), and the chat the
- * route shows (`routeNode`, one ChatView kept across thread switches as in T3 Code).
+ * Astrolabe: the shared panes' host. Each tab renders once into its own container; the front
+ * chat's live surface (`surface`) and the route's chat (`routeNode`) render in one place only and
+ * move between containers instead, so neither remounts.
  */
 export interface WorkspaceHost extends PanesHost {
   readonly surface: HTMLDivElement;

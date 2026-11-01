@@ -2,11 +2,9 @@ import { allTabs, focusedPane, openBeside, paneLeaf, type Arrangement } from "./
 import { findLeaf, leafWithTab, leaves, mapLeaf, removeLeaf } from "./tree";
 
 /**
- * Astrolabe: linked tabs. Every section shares one arrangement, and a tab can belong to an owner
- * tab (`owners`): a thread's terminal, browser and diff belong to its chat. An owned tab shows only
- * while its owner is in front (`front`, the chat focused most recently); otherwise it is set aside
- * (`parked`) with where it stood, and comes back there when its owner does. So a thread's right
- * panel is the pane its linked tabs stand in, derived rather than kept apart per thread.
+ * Astrolabe: linked tabs. A tab can belong to an owner tab (`owners`), as a thread's terminal
+ * belongs to its chat. It shows only while its owner is in front (`front`); otherwise it is set
+ * aside (`parked`) with where it stood, so a thread's right panel is derived, not kept apart.
  */
 export interface LinkedArrangement {
   readonly arrangement: Arrangement;
@@ -140,12 +138,10 @@ export function openLinked(
 }
 
 /**
- * Brings the arrangement in line with its links, after any change to it: owned tabs of a chat no
- * longer open close (its thread keeps its own record of its surfaces), links of tabs gone drop,
- * the front owner is worked out again, tabs whose owner does not show are set aside, and those
- * whose owner does come back where they stood. A tab whose pane is gone comes back in the pane
- * the last owner's tabs left, else in a pane beside the owner. Panes left empty close; focus
- * stays where it was while that pane stands. The same object when nothing changed.
+ * Brings the arrangement in line with its links after any change: a closed chat's tabs close, the
+ * front owner is worked out again, tabs whose owner does not show are set aside, and returning
+ * ones go back where they stood, else where the last owner's stood, else beside the owner. Panes
+ * left empty close. The same object when nothing changed.
  */
 export function settleLinks(state: LinkedArrangement, context: LinkContext): LinkedArrangement {
   let { arrangement } = state;

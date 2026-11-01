@@ -1,4 +1,3 @@
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";

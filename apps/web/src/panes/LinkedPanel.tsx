@@ -13,11 +13,9 @@ import {
 } from "./workspace";
 
 /**
- * Astrolabe: ChatView's right panel inside the shared panes. There is no panel frame: the
- * thread's surfaces are tabs linked to its chat, standing wherever they were put. While its chat
- * is the one in front, this hands the panes ChatView's panel props (labels, adding and closing
- * surfaces) and renders the live surface into the pane showing its tab. Maximizing the panel
- * maximizes that pane.
+ * Astrolabe: ChatView's right panel inside the shared panes, with no frame: the thread's surfaces
+ * are tabs linked to its chat. While its chat is in front this lends the panes ChatView's panel
+ * props and renders the live surface into the pane showing it; maximizing maximizes that pane.
  */
 export function LinkedPanel(props: PanelProps) {
   const host = useWorkspaceHost();
@@ -25,11 +23,13 @@ export function LinkedPanel(props: PanelProps) {
   const front = useWorkspaceFront();
   const inFront = owner !== null && owner === front;
   const given = useRef<PanelProps | null>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- lends ChatView's latest props to the panes' store
   useLayoutEffect(() => {
     if (!inFront) return;
     given.current = props;
     workspace.setPanel(props);
   });
+  // oxlint-disable-next-line t3code/react-effect-budget -- takes them back as ChatView goes
   useLayoutEffect(
     () => () => {
       if (given.current) workspace.clearPanel(given.current);
@@ -39,6 +39,7 @@ export function LinkedPanel(props: PanelProps) {
   const hostPaneId = useWorkspaceHostPaneId();
   // T3 Code's maximize fills the window with the panel; here the pane showing it fills the panes.
   const maximized = inFront && props.maximized === true;
+  // oxlint-disable-next-line t3code/react-effect-budget -- keeps T3 Code's maximize and the pane's in step
   useLayoutEffect(() => {
     if (!maximized || hostPaneId === null) return;
     const store = useMaximizedPaneStore.getState();

@@ -662,8 +662,14 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     },
     /** The change groups' threads, by group tab key, whose linked tabs show beside them. */
     setGroups(next: ReadonlyMap<string, ReadonlySet<string>>) {
+      const same =
+        next.size === groups.size &&
+        [...next].every(([key, members]) => {
+          const before = groups.get(key);
+          return before?.size === members.size && [...members].every((m) => before.has(m));
+        });
       groups = next;
-      if (state !== null) apply((linked) => linked);
+      if (!same && state !== null) apply((linked) => linked);
     },
     /**
      * Follows T3 Code's changes to the front chat's record until the returned function is called,

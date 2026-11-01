@@ -70,6 +70,7 @@ function useUnlistedThreadFamilyRead(
   if (unlisted && !needed && ref !== null) setNeeded(true);
   const environmentId = needed ? (ref?.environmentId ?? null) : null;
   const threadId = needed ? (ref?.threadId ?? null) : null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- mounts the thread's family in the atom registry
   useEffect(() => {
     if (environmentId === null || threadId === null) return;
     return threadFamilies.mount(appAtomRegistry, environmentId, threadId);
@@ -105,6 +106,7 @@ export function ChatTabWatch({
   const familyRead = useUnlistedThreadFamilyRead(ref, shell === null && !hasDraft);
   const gone = ref === null ? live : isChatTabGone({ live, shell, hasDraft, familyRead });
   // Read again at close: a family read already cached can settle before its rows mount.
+  // oxlint-disable-next-line t3code/react-effect-budget -- closes the tab once the server says the chat is gone
   useEffect(() => {
     if (!gone || ref === null) return;
     const now = readThreadShell(ref);

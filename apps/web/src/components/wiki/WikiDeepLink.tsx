@@ -16,6 +16,7 @@ export function WikiDeepLink({
 }) {
   const { environmentId } = useWikiEnvironment(deepLink.environmentId);
   const { wikiId, note, changeRequest } = deepLink;
+  // oxlint-disable-next-line t3code/react-effect-budget -- opens the tab a link names, once per link
   useEffect(() => {
     if (environmentId === null) return;
     if (note !== undefined) {
