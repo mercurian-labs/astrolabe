@@ -70,21 +70,13 @@ export function showKeyIn(
     : openTab(arrangement, key, arrangement.focused);
 }
 
-/**
- * Where a wiki tab's links lead from `fromKey`'s tab: into the same panes. In the shared panes a
- * tab linked to an owner opens what it links to linked to that owner too, so a document beside a
- * thread leads to more beside that thread.
- */
+/** Where a wiki tab's links lead: into the same panes, each tab standing on its own. */
 function paneTabNav(
   store: PaneArrangementStore,
-  fromKey: string,
   openPullRequest?: (target: FullPullRequestTarget) => void,
 ): WikiTabNav {
-  const open = (key: string, placement: "tab" | "beside" = "tab") => {
-    const owner = store === workspace.store ? workspace.linked().owners[fromKey] : undefined;
-    if (owner !== undefined && placement === "beside") workspace.openLinked(key, owner);
-    else store.update((arrangement) => showKeyIn(arrangement, key, placement));
-  };
+  const open = (key: string, placement: "tab" | "beside" = "tab") =>
+    store.update((arrangement) => showKeyIn(arrangement, key, placement));
   return {
     // A pull request opens beside, named in full so its tab reads on its own.
     openPullRequest:
@@ -231,9 +223,7 @@ export function SectionTabContent({
   }
   const wiki = parseWikiTabKey(tabKey);
   if (wiki !== null) {
-    return (
-      <WikiTabView tabKey={tabKey} tab={wiki} nav={paneTabNav(store, tabKey, openPullRequest)} />
-    );
+    return <WikiTabView tabKey={tabKey} tab={wiki} nav={paneTabNav(store, openPullRequest)} />;
   }
   const pullRequest = pullRequestTargetOfKey(tabKey);
   if (pullRequest !== null) {
@@ -246,7 +236,7 @@ export function SectionTabContent({
  * A change group's **Open as a tab group** in the shared panes. Its threads open as chats after
  * the chat in front, which stays in front; the rest open linked to the group beside it, so they
  * show beside every thread of the group and none other. Beside a chat outside the group they
- * link to that chat instead.
+ * stand on their own, together in one pane beside it.
  */
 function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) {
   const chats = keys.flatMap((key) => {
@@ -262,9 +252,12 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
       (threadId) =>
         chatTabKey(scopeThreadRef(group.environmentId, ThreadId.make(threadId))) === front,
     );
+  let beside = true;
   for (const key of keys) {
     if (parseChatTabKey(key) !== null) continue;
-    workspace.openLinked(key, inGroup ? groupKey : undefined);
+    if (inGroup) workspace.openLinked(key, groupKey);
+    else workspace.open(key, beside ? "beside" : "tab");
+    beside = false;
   }
 }
 

@@ -49,8 +49,15 @@ import type { WorkspaceHost } from "./PaneSurfaceHost";
 import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
 import { useChatTabLabel } from "~/chatTabs/chatTabLabel";
+import { readProject, readThreadShell } from "~/state/entities";
 import { TabLauncher } from "./TabLauncher";
-import { surfaceOfKey, useTabOwner, useWorkspaceFront, workspace } from "./workspace";
+import {
+  standaloneKeyOf,
+  surfaceOfKey,
+  useTabOwner,
+  useWorkspaceFront,
+  workspace,
+} from "./workspace";
 
 /**
  * Astrolabe: the shared panes' tabs. Chats, files, documents and pull requests each render once
@@ -149,30 +156,46 @@ function useSurface(tabKey: string): RightPanelSurface | null {
 }
 
 /**
- * What a tab's menu offers of its own: a workspace file's Copy path and a browser tab's Mute or
- * Unmute, as T3 Code's panel tabs do; then linking it to the chat in front, or unlinking it. A
- * thread's surfaces stay linked to their thread, which renders them.
+ * What a tab's menu offers of its own: a thread's surface opened as its own tab, then a workspace
+ * file's Copy path and a browser tab's Mute or Unmute, as T3 Code's panel tabs do; then a local
+ * graph's link, or unlinking a tab still linked.
  */
 function tabMenuItems(tabKey: string): PaneTabMenuItem[] {
+  const next = standaloneKeyOfTab(tabKey);
   const link = linkAction(tabKey);
-  return [...surfaceMenuItems(tabKey), ...(link ? [link] : [])];
+  return [
+    ...(next === null
+      ? []
+      : [{ label: "Open as its own tab", run: () => workspace.openOnItsOwn(tabKey, next) }]),
+    ...surfaceMenuItems(tabKey),
+    ...(link ? [link] : []),
+  ];
+}
+
+/** The tab a thread's surface becomes on its own, on its thread's checkout as it stands now. */
+function standaloneKeyOfTab(tabKey: string): string | null {
+  const parsed = parseChatSurfaceKey(tabKey);
+  const ref = parsed ? parseChatTabKey(parsed.chatKey) : null;
+  const surface = surfaceOfKey(tabKey);
+  const thread = ref ? readThreadShell(ref) : null;
+  if (!surface || !thread) return null;
+  const { environmentId, projectId } = thread;
+  const cwd = thread.worktreePath ?? readProject({ environmentId, projectId })?.workspaceRoot;
+  return cwd ? standaloneKeyOf(surface, { environmentId, projectId, cwd }) : null;
 }
 
 /**
- * Unlinks a linked tab, or links one to the chat in front. A following local graph unlinks by
- * pinning to the file it shows, and links again by following.
+ * A local graph's link: it follows the file in front, or is pinned. Any other tab only stands on
+ * its own, except one still linked (to a change group, or from before), which can let go.
  */
 function linkAction(tabKey: string): PaneTabMenuItem | null {
   if (parseChatSurfaceKey(tabKey) !== null || parseChatTabKey(tabKey) !== null) return null;
   if (isEmptyTab(tabKey)) return null;
   const graph = graphLinkAction(tabKey);
   if (graph !== undefined) return graph;
-  const linked = workspace.linked();
-  if (linked.owners[tabKey] !== undefined) {
-    return { label: "Unlink tab", run: () => workspace.unlink(tabKey) };
-  }
-  if (linked.front === null) return null;
-  return { label: "Link to the chat in front", run: () => workspace.link(tabKey) };
+  return workspace.linked().owners[tabKey] === undefined
+    ? null
+    : { label: "Unlink tab", run: () => workspace.unlink(tabKey) };
 }
 
 /** A local graph's link: following is linked, pinned is not. Undefined for any other tab. */

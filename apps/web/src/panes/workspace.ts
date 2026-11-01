@@ -1,9 +1,11 @@
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 
 import { pullRequestTargetOfKey } from "~/components/pullRequest/pullRequestTabs";
+import { repositoryTabKey } from "~/components/repositories/repositoryTabs";
 import {
+  pullRequestSurfaceId,
   selectThreadRightPanelState,
   useRightPanelStore,
   type RightPanelSurface,
@@ -38,6 +40,7 @@ import {
   putInPlace,
   replaceTab,
   startingArrangement,
+  surfaceKey,
   type Arrangement,
 } from "./arrangement";
 import {
@@ -214,6 +217,43 @@ export function surfaceOfKey(key: string): RightPanelSurface | null {
       (surface) => surface.id === parsed.surfaceId,
     ) ?? null
   );
+}
+
+/** The checkout a thread's surfaces read: its working tree, or its repository's own. */
+export interface ThreadCheckout {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly cwd: string;
+}
+
+/**
+ * The tab a thread's surface becomes on its own: a file of its checkout, the checkout's
+ * uncommitted changes for its diff, or its pull request named in full. Null for a surface that
+ * means nothing without its thread (a terminal, a browser, the Graph).
+ */
+export function standaloneKeyOf(surface: RightPanelSurface, checkout: ThreadCheckout) {
+  switch (surface.kind) {
+    case "file":
+      return surface.attachment === undefined
+        ? repositoryTabKey({ kind: "file", ...checkout, path: surface.relativePath })
+        : null;
+    case "diff":
+      return repositoryTabKey({ kind: "diff", ...checkout, source: "working-tree" });
+    case "pull-request":
+      return surface.host === undefined
+        ? null
+        : surfaceKey(
+            pullRequestSurfaceId({
+              environmentId: checkout.environmentId,
+              projectId: surface.projectId,
+              host: surface.host,
+              repository: surface.repository,
+              number: surface.number,
+            }),
+          );
+    default:
+      return null;
+  }
 }
 
 /** How the chat `front`'s record's surfaces are named among the shared panes' tabs. */
@@ -592,6 +632,27 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   const fill = (blank: string, key: string) =>
     update((arrangement) => putInPlace(arrangement, blank, key));
 
+  /**
+   * Opens a thread's surface as its own tab: `next`, its standalone counterpart, takes its place
+   * unlinked, and the thread's record lets the surface go, so it never comes back beside the chat.
+   */
+  const openOnItsOwn = (key: string, next: string) => {
+    const parsed = parseChatSurfaceKey(key);
+    const ref = refOf(parsed?.chatKey ?? null);
+    if (!parsed || !ref || !leafWithTab(current().arrangement.root, key)) return;
+    const keepOpen = holdsOtherLinkedTabs(current(), parsed.chatKey);
+    writing = true;
+    try {
+      const panels = useRightPanelStore.getState();
+      panels.closeSurface(ref, parsed.surfaceId);
+      // T3 Code closes a panel with its last surface; one still holding linked tabs stays open.
+      if (keepOpen && !recordOf(ref).isOpen) panels.show(ref);
+    } finally {
+      writing = false;
+    }
+    apply((linked) => ({ ...linked, arrangement: putInPlace(linked.arrangement, key, next) }));
+  };
+
   /** The pane chats open in: the front chat's, else the focused pane. */
   const chatPaneId = (arrangement: Arrangement, front: string | null) => {
     const fronts = leaves(arrangement.root);
@@ -683,16 +744,6 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     });
   };
 
-  /** Links an open tab to `owner` (the chat in front by default). */
-  const link = (key: string, owner?: string) => {
-    const linked = current();
-    const by = owner ?? linked.front;
-    if (by === null) return;
-    const ref = refOf(by);
-    if (ref && !recordOf(ref).isOpen) useRightPanelStore.getState().show(ref);
-    apply((before) => linkTab(before, key, by));
-  };
-
   const unlink = (key: string) => apply((before) => unlinkTab(before, key));
 
   /**
@@ -728,13 +779,13 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     canStep,
     close,
     fill,
+    openOnItsOwn,
     update,
     updateWithHistory,
     arriveChat,
     openChatNew,
     openChatsBesideFront,
     openLinked: openLinkedTab,
-    link,
     unlink,
     showLinked,
     /** What the chat `owner`'s linked-tabs toggle offers now. */

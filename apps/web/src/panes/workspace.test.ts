@@ -1,13 +1,18 @@
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
+import { repositoryTabKey } from "../components/repositories/repositoryTabs";
+import {
+  pullRequestSurface,
+  selectThreadRightPanelState,
+  useRightPanelStore,
+} from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
-import { activateTab, newTab, splitTab } from "./arrangement";
+import { activateTab, newTab, splitTab, surfaceKey } from "./arrangement";
 import type { StorageLike } from "./persistence";
 import { leaves } from "./tree";
-import { createWorkspace, WORKSPACE_STORAGE_KEY } from "./workspace";
+import { createWorkspace, standaloneKeyOf, WORKSPACE_STORAGE_KEY } from "./workspace";
 
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
@@ -207,5 +212,86 @@ describe("the shared panes", () => {
     ]);
     expect(workspace.linked().owners[diff]).toBe(chatA);
     stop();
+  });
+
+  it("open a thread's surface as its own tab in its place, letting the thread's record go", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().open(refA, "diff");
+    const diff = chatSurfaceKey(chatA, "diff");
+    const files = chatSurfaceKey(chatA, "files");
+    const changes = repositoryTabKey({
+      kind: "diff",
+      environmentId: refA.environmentId,
+      projectId: ProjectId.make("project-1"),
+      cwd: "/repo",
+      source: "working-tree",
+    });
+    workspace.openOnItsOwn(diff, changes);
+    expect(panes(workspace)).toEqual([
+      [chatA, chatB],
+      [files, changes],
+    ]);
+    expect(workspace.linked().owners[changes]).toBeUndefined();
+    const record = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(record.surfaces.map((surface) => surface.id)).toEqual(["files"]);
+    // It stands on its own: another chat in front leaves it where it is.
+    workspace.arriveChat(chatB);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [changes]]);
+    stop();
+  });
+
+  it("keep a lone surface opened as its own tab, closing the chat's panel behind it", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "diff");
+    const changes = "repo-diff:changes";
+    workspace.openOnItsOwn(chatSurfaceKey(chatA, "diff"), changes);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [changes]]);
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "none" });
+    stop();
+  });
+});
+
+describe("a thread's surface on its own", () => {
+  const checkout = {
+    environmentId: "env-1" as EnvironmentId,
+    projectId: ProjectId.make("project-1"),
+    cwd: "/work/tree",
+  };
+
+  it("is a file of the thread's checkout for a file, and its uncommitted changes for the diff", () => {
+    useRightPanelStore.getState().openFile(refA, "src/app.ts");
+    const [file] = selectThreadRightPanelState(
+      useRightPanelStore.getState().byThreadKey,
+      refA,
+    ).surfaces;
+    expect(standaloneKeyOf(file!, checkout)).toBe(
+      repositoryTabKey({ kind: "file", ...checkout, path: "src/app.ts" }),
+    );
+    expect(standaloneKeyOf({ id: "diff", kind: "diff" }, checkout)).toBe(
+      repositoryTabKey({ kind: "diff", ...checkout, source: "working-tree" }),
+    );
+  });
+
+  it("is the pull request named in full, which reads on its own", () => {
+    const surface = pullRequestSurface({
+      projectId: "project-1",
+      host: "github.com",
+      repository: "acme/app",
+      number: 7,
+    });
+    expect(standaloneKeyOf(surface, checkout)).toBe(
+      surfaceKey(pullRequestSurface({ ...surface, environmentId: "env-1", host: "github.com" }).id),
+    );
+    // Without its host the key would not read on its own.
+    const { host: _host, ...hostless } = surface;
+    expect(standaloneKeyOf(hostless, checkout)).toBeNull();
+  });
+
+  it("is nothing for a surface that means nothing without its thread", () => {
+    expect(standaloneKeyOf({ id: "graph", kind: "graph" }, checkout)).toBeNull();
+    expect(standaloneKeyOf({ id: "files", kind: "files" }, checkout)).toBeNull();
   });
 });

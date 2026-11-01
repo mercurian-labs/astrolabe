@@ -27,7 +27,6 @@ import { useContext, useEffect, useRef, useState } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { PanesHostContext } from "~/panes/panesHost";
-import { workspace } from "~/panes/workspace";
 import { showKeyIn } from "~/sectionTabs/SectionTabContent";
 import { useThreadProjection, useThreadShell, useThreadShells } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
@@ -159,9 +158,7 @@ export default function GraphPanel({ threadRef }: { readonly threadRef: ScopedTh
           : null;
     if (panes !== null && tab !== null) {
       const key = wikiTabKey(tab);
-      // Astrolabe: in the shared panes, beside the thread, linked to its chat.
-      if (panes.controller === workspace.store) workspace.openLinked(key);
-      else panes.controller.update((arrangement) => showKeyIn(arrangement, key, "beside"));
+      panes.controller.update((arrangement) => showKeyIn(arrangement, key, "beside"));
       return;
     }
     void navigate({
