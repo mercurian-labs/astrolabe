@@ -201,9 +201,9 @@ export function WikiNoteView({
       <TabHeader.Root>
         <TabHeader.Title
           label="Document"
-          trail={[
-            changeRequestId === undefined ? "Main" : (viewingChange?.title ?? "A change request"),
-          ]}
+          parent={
+            changeRequestId === undefined ? "Main" : (viewingChange?.title ?? "A change request")
+          }
         >
           {data.name}
         </TabHeader.Title>

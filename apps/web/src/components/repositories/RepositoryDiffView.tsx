@@ -89,7 +89,7 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
   // No scroll fade below: each file's header sticks to the diff's top edge, where it would fade.
   const header = (
     <TabHeader.Root>
-      <TabHeader.Title label="Changes" trail={[cwd.slice(cwd.lastIndexOf("/") + 1)]}>
+      <TabHeader.Title label="Changes" parent={cwd.slice(cwd.lastIndexOf("/") + 1)}>
         {title}
       </TabHeader.Title>
     </TabHeader.Root>

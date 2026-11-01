@@ -1,4 +1,4 @@
-import { Fragment, type ComponentProps, type ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Toggle } from "~/components/ui/toggle";
@@ -30,14 +30,20 @@ function Root({ className, ...props }: ComponentProps<"header">) {
   );
 }
 
-/** The chat header's breadcrumb: `trail` muted, then what the tab shows in the foreground. */
+/**
+ * The chat header's breadcrumb: where the tab's page lives, muted, then the page in the
+ * foreground. The muted part gives way first, so the page keeps its name.
+ */
 function Title({
   label,
-  trail = [],
+  parent,
+  keepParentEnd = false,
   children,
 }: {
   readonly label: string;
-  readonly trail?: ReadonlyArray<string>;
+  readonly parent?: string | null;
+  /** Cuts the parent from its start, so its nearest part stays, as a folder path's does. */
+  readonly keepParentEnd?: boolean;
   readonly children: ReactNode;
 }) {
   return (
@@ -45,17 +51,22 @@ function Title({
       ariaLabel={label}
       className="flex-1 overflow-clip [overflow-clip-margin:2px]"
     >
-      {trail.map((part, index) => (
-        <Fragment key={trail.slice(0, index + 1).join("/")}>
+      {parent ? (
+        <>
           <WorkspaceBreadcrumbItem className="shrink">
-            <WorkspaceBreadcrumbText>{part}</WorkspaceBreadcrumbText>
+            {keepParentEnd ? (
+              <WorkspaceBreadcrumbText className="[direction:rtl]">
+                <bdi>{parent}</bdi>
+              </WorkspaceBreadcrumbText>
+            ) : (
+              <WorkspaceBreadcrumbText>{parent}</WorkspaceBreadcrumbText>
+            )}
           </WorkspaceBreadcrumbItem>
           <WorkspaceBreadcrumbSeparator>
             <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
           </WorkspaceBreadcrumbSeparator>
-        </Fragment>
-      ))}
-      {/* Folders give way first, so the last part keeps its name. */}
+        </>
+      ) : null}
       <WorkspaceBreadcrumbItem current className="max-w-full shrink-0">
         {typeof children === "string" ? (
           <WorkspaceBreadcrumbText>{children}</WorkspaceBreadcrumbText>
@@ -67,12 +78,12 @@ function Title({
   );
 }
 
-/** A repository-relative path as a breadcrumb: its folders muted, the file's name after them. */
+/** A repository-relative path: its folder muted, the file's name in the foreground. */
 function Path({ path }: { readonly path: string }) {
-  const parts = path.split("/").filter((part) => part.length > 0);
+  const cut = path.lastIndexOf("/");
   return (
-    <Title label="File path" trail={parts.slice(0, -1)}>
-      {parts.at(-1) ?? path}
+    <Title label="File path" parent={cut > 0 ? path.slice(0, cut) : null} keepParentEnd>
+      {path.slice(cut + 1)}
     </Title>
   );
 }
