@@ -64,6 +64,7 @@ import {
   type View,
 } from "./checkout.ts";
 import { decodeJson, type StoredFacts, type StoredImport } from "./facts.ts";
+import { parseNodeId } from "./levels.ts";
 import * as Queries from "./queries.ts";
 import {
   CheckoutModules,
@@ -111,6 +112,10 @@ export class CodeIndex extends Context.Service<
     readonly find: (input: CodeFindInput) => Effect.Effect<CodeFindResult, CodeIndexError>;
     readonly changes: (input: CodeChangesInput) => Effect.Effect<CodeChanges, CodeIndexError>;
     readonly map: (input: CodeMapInput) => Effect.Effect<CodeMap, CodeIndexError>;
+    /** Which of `ids` (files, folders, `module:` folders, `path#Qualified.name`) the checkout lacks. */
+    readonly checkNodes: (
+      input: CodeCheckout & { readonly ids: ReadonlyArray<string> },
+    ) => Effect.Effect<{ readonly unknown: ReadonlyArray<string> }, CodeIndexError>;
   }
 >()("t3/codeIndex/CodeIndex") {}
 
@@ -136,6 +141,7 @@ export const layerPlaceholder = Layer.succeed(
     find: notBuilt,
     changes: notBuilt,
     map: notBuilt,
+    checkNodes: notBuilt,
   }),
 );
 
@@ -1282,12 +1288,17 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       const view = yield* viewOfCheckout(repo, root);
       const pending = !repo.ready;
       if (pending) {
-        // Before the first build, only the file itself is parsed: what it imports, not who imports it.
-        const center = Queries.repositoryPath(prefix, input.path);
+        // Before the first build, only the roots are parsed: what they import, not who imports them.
+        const roots = new Set(
+          input.roots.flatMap((id) => {
+            const ref = parseNodeId(id);
+            return ref.kind === "module" ? [] : (Queries.repositoryPath(prefix, ref.path) ?? []);
+          }),
+        );
         yield* parse(
           repo,
           root,
-          missingOf(repo, view).filter((file) => file.path === center),
+          missingOf(repo, view).filter((file) => roots.has(file.path)),
           null,
         );
       } else {
@@ -1297,7 +1308,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       const fileChanges = yield* changesOf(repo, view);
       const graph = yield* Queries.localGraph(
         snapshot,
-        pending ? { ...input, depth: 1 } : input,
+        pending ? { ...input, depth: Math.min(input.depth, 1) as 0 | 1 } : input,
         fileChanges,
         pending,
       );
@@ -1333,6 +1344,13 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const repo = yield* ready(input);
     return yield* Queries.map(yield* checkoutSnapshot(repo, input.cwd), input.paths);
   });
+
+  const checkNodes: CodeIndex["Service"]["checkNodes"] = Effect.fn("CodeIndex.checkNodes")(
+    function* (input) {
+      const repo = yield* ready(input);
+      return yield* Queries.checkNodes(yield* checkoutSnapshot(repo, input.cwd), input.ids);
+    },
+  );
 
   // Maintenance.
 
@@ -1536,6 +1554,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     find,
     changes: changesBetween,
     map,
+    checkNodes,
   });
 });
 

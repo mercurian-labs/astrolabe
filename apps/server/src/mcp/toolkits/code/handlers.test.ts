@@ -78,6 +78,7 @@ const outline: CodeOutline = {
       lines: 120,
       symbols: [
         {
+          id: "src/session.ts#resolveSession",
           name: "resolveSession",
           kind: "function",
           path: "src/session.ts",

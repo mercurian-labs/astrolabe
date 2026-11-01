@@ -112,20 +112,34 @@ export type CodeSymbolKind = typeof CodeSymbolKind.Type;
 export const CodeChangeState = Schema.Literals(["branch", "uncommitted"]);
 export type CodeChangeState = typeof CodeChangeState.Type;
 
-// The local graph: a file in the middle, the files it imports and the files that import it.
+// The local graph: the roots in the middle, the files they import and the files that import
+// them, at one level of detail, with the nodes the reader opened shown as clusters of their parts.
 
 export const CODE_LOCAL_GRAPH_MAX_DEPTH = 3;
 
+/**
+ * How fine a graph's nodes are: folders, the language's modules (a TypeScript package, a Go
+ * package, a Python package, a Rust module; a file where the language has none), files, top-level
+ * definitions, or members (methods and nested definitions).
+ */
+export const CodeGraphLevel = Schema.Literals(["directory", "module", "file", "symbol", "member"]);
+export type CodeGraphLevel = typeof CodeGraphLevel.Type;
+
 export const CodeLocalGraphInput = Schema.Struct({
   ...CodeCheckout.fields,
-  path: TrimmedNonEmptyString,
-  depth: Schema.Literals([1, 2, 3]),
+  /** Files, folders, or definitions as `path#Qualified.name`; the graph grows around them. */
+  roots: Schema.NonEmptyArray(TrimmedNonEmptyString),
+  /** Links from the roots; 0 shows the roots and the links between them alone. */
+  depth: Schema.Literals([0, 1, 2, 3]),
   uses: Schema.Boolean,
   usedBy: Schema.Boolean,
   /** Show packages from outside the repository (npm, crates, modules) as leaves. */
   dependencies: Schema.Boolean,
-  /** Folder groups the reader opened; any other side past the fold limit stays folded. */
+  level: CodeGraphLevel,
+  /** Nodes the reader opened into clusters of their parts, folded folders among them. */
   expanded: Schema.Array(TrimmedNonEmptyString),
+  /** Nodes the reader closed though the level opens them, or that their parts fold into. */
+  collapsed: Schema.Array(TrimmedNonEmptyString),
 });
 export type CodeLocalGraphInput = typeof CodeLocalGraphInput.Type;
 
@@ -135,45 +149,76 @@ export const CodeGraphNodeKind = Schema.Literals([
   "package",
   /** A package from outside the repository. */
   "dependency",
-  /** A folded group of files. */
+  /** A folder: the directory level's node, or files folded together on a crowded side. */
   "folder",
+  /** A language module holding several files. */
+  "module",
+  /** A definition: a top-level one, or a member of one. */
+  "symbol",
 ]);
 export type CodeGraphNodeKind = typeof CodeGraphNodeKind.Type;
 
 export const CodeGraphNode = Schema.Struct({
-  /** A file's or folder's path, a package's name, or `dependency:<name>`. */
+  /**
+   * A file's or folder's path, `module:<folder>`, `<path>#<Qualified.name>` for a definition, a
+   * package's name, or `dependency:<name>`.
+   */
   id: TrimmedNonEmptyString,
   kind: CodeGraphNodeKind,
   name: TrimmedNonEmptyString,
-  /** The file, a package's entry file, or the folder; null for a dependency. */
+  /** The file (a definition's too), a package's entry file, or the folder; null for a dependency. */
   path: Schema.NullOr(TrimmedNonEmptyString),
-  /** Links from the centre: 0 for the centre. */
+  /** Links from the nearest root: 0 for a root and what it holds. */
   depth: NonNegativeInt,
+  /** A root, or a node holding one or held by one. */
+  root: Schema.Boolean,
   lines: Schema.NullOr(NonNegativeInt),
   test: Schema.Boolean,
   changed: Schema.NullOr(CodeChangeState),
-  /** A folder group's file count; null otherwise. */
+  /** How many files a folder or module node stands for; null otherwise. */
   files: Schema.NullOr(PositiveInt),
+  /** The open cluster holding the node; null at the top. */
+  parent: Schema.NullOr(TrimmedNonEmptyString),
+  /** Whether it opens into a cluster of its parts. */
+  expandable: Schema.Boolean,
+  /** A definition's kind and first line; null for every other node. */
+  symbol: Schema.NullOr(Schema.Struct({ kind: CodeSymbolKind, line: PositiveInt })),
   /** True when `path` leaves the checkout's `cwd` (`../`), where its file tabs cannot open it. */
   outsideProject: Schema.optional(Schema.Boolean),
 });
 export type CodeGraphNode = typeof CodeGraphNode.Type;
 
-/** `from` imports `to`. */
+/** A node opened in place: drawn around the nodes it holds, not as a node. */
+export const CodeGraphCluster = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  kind: Schema.Literals(["folder", "module", "file", "symbol"]),
+  name: TrimmedNonEmptyString,
+  path: Schema.NullOr(TrimmedNonEmptyString),
+  parent: Schema.NullOr(TrimmedNonEmptyString),
+  root: Schema.Boolean,
+});
+export type CodeGraphCluster = typeof CodeGraphCluster.Type;
+
+/** `from` imports or uses `to`, or holds what does. */
 export const CodeGraphLink = Schema.Struct({
   from: TrimmedNonEmptyString,
   to: TrimmedNonEmptyString,
-  /** The import in `from`; null for a link into or out of a folder group. */
+  /** The import or use in `from`; null for a link standing for several. */
   line: Schema.NullOr(PositiveInt),
   text: Schema.NullOr(Schema.String),
+  /** The surest of the links it stands for. */
   resolution: CodeResolution,
 });
 export type CodeGraphLink = typeof CodeGraphLink.Type;
 
 export const CodeLocalGraph = Schema.Struct({
-  center: TrimmedNonEmptyString,
+  /** The nodes that are or hold a root, as shown. */
+  roots: Schema.Array(TrimmedNonEmptyString),
   nodes: Schema.Array(CodeGraphNode),
+  clusters: Schema.Array(CodeGraphCluster),
   links: Schema.Array(CodeGraphLink),
+  /** Roots the checkout does not hold. */
+  unknown: Schema.Array(TrimmedNonEmptyString),
   /** True while the index is building: uses come from parsing the file, used-by waits. */
   usedByPending: Schema.Boolean,
   status: CodeIndexStatus,
@@ -183,6 +228,8 @@ export type CodeLocalGraph = typeof CodeLocalGraph.Type;
 // Agent reads (MCP). Every list is capped and says when it was cut.
 
 export const CodeSymbolEntry = Schema.Struct({
+  /** `path#Qualified.name`: how the code graph names it. */
+  id: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
   kind: CodeSymbolKind,
   path: TrimmedNonEmptyString,
