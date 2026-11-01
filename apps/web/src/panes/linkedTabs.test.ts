@@ -96,6 +96,16 @@ describe("a chat's linked tabs", () => {
     expect(panes(state)).toEqual([[chatA, file], [diffA]]);
   });
 
+  it("stay in front in their chat's own pane, the chat still counting as in front", () => {
+    const solo = settle(
+      openLinked(settle(linkedArrangement(openTab(startingArrangement(), chatA))), diffA),
+    );
+    const state = change(solo, (arrangement) => focusPane(openTab(arrangement, diffA, "p0"), "p0"));
+    expect(panes(state)).toEqual([[chatA, diffA]]);
+    expect(state.front).toBe(chatA);
+    expect(state.parked).toEqual({});
+  });
+
   it("follow the chat focused most recently when two chats are in front", () => {
     let state = withPanel();
     // B beside A, its own pane focused.

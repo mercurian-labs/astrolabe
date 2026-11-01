@@ -62,9 +62,17 @@ function frontOwner(
 ): string | null {
   const focused = focusedPane(arrangement).active;
   if (isOwner(focused)) return focused;
-  const fronts = leaves(arrangement.root).map((leaf) => leaf.active);
+  // A linked tab in front in its owner's own pane keeps that owner in front.
+  const fronts = leaves(arrangement.root).map((leaf) => {
+    const owner = owners[leaf.active];
+    return owner !== undefined && leaf.tabs.includes(owner) ? owner : leaf.active;
+  });
   const ownerOfFocused = owners[focused];
-  if (ownerOfFocused !== undefined && isOwner(ownerOfFocused) && fronts.includes(ownerOfFocused)) {
+  if (
+    ownerOfFocused !== undefined &&
+    isOwner(ownerOfFocused) &&
+    allTabs(arrangement).includes(ownerOfFocused)
+  ) {
     return ownerOfFocused;
   }
   if (previous !== null && fronts.includes(previous)) return previous;
