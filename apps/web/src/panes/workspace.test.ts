@@ -100,6 +100,73 @@ describe("the shared panes", () => {
     stop();
   });
 
+  it("hide a chat's linked tabs with its panel, and bring them back with the one picked in front", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    const diff = chatSurfaceKey(chatA, "diff");
+    const files = chatSurfaceKey(chatA, "files");
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "files");
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "showing" });
+    useRightPanelStore.getState().close(refA);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "hidden", tabs: [diff, files] });
+    // Another chat's toggle counts only its own.
+    expect(workspace.toggleOf(chatB)).toEqual({ kind: "none" });
+
+    workspace.showLinked(chatA, diff);
+    expect(panes(workspace)).toEqual([
+      [chatA, chatB],
+      [diff, files],
+    ]);
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(diff);
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "showing" });
+    stop();
+  });
+
+  it("bring hidden tabs back with a new empty one in front", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().close(refA);
+    workspace.showLinked(chatA, null);
+    const [, linked] = panes(workspace);
+    expect(linked).toEqual([chatSurfaceKey(chatA, "diff"), expect.stringMatching(/^empty\//)]);
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(linked?.[1]);
+    stop();
+  });
+
+  it("forget a surface closed for good: the toggle neither counts nor brings it back", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().closeSurface(refA, "diff");
+    useRightPanelStore.getState().close(refA);
+    const files = chatSurfaceKey(chatA, "files");
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "hidden", tabs: [files] });
+    useRightPanelStore.getState().show(refA);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [files]]);
+    stop();
+  });
+
+  it("keep a chat's other linked tabs showing when its last surface closes", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    const doc = "wiki:doc";
+    useRightPanelStore.getState().open(refA, "diff");
+    workspace.openLinked(doc);
+    useRightPanelStore.getState().closeSurface(refA, "diff");
+    expect(panes(workspace)).toEqual([[chatA, chatB], [doc]]);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).isOpen,
+    ).toBe(true);
+    // The last surface alone closes the panel, as T3 Code's does: nothing is left set aside.
+    workspace.close(doc);
+    expect(workspace.toggleOf(chatA)).toEqual({ kind: "none" });
+    stop();
+  });
+
   it("put a chat that the route shows in place of the chat in front", () => {
     const workspace = createWorkspace(chatTabsDevice);
     const refC = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-C"));

@@ -41,12 +41,14 @@ import {
 } from "./arrangement";
 import {
   linkedArrangement,
+  linkedToggle,
   linkTab,
   openLinked,
   settleLinks,
   unlinkTab,
   type LinkContext,
   type LinkedArrangement,
+  type LinkedToggle,
 } from "./linkedTabs";
 import type { PanelProps } from "./panesController";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
@@ -430,8 +432,31 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       record = now;
       return;
     }
+    // T3 Code closes a panel whose last surface closes; one still holding other linked tabs
+    // (a document, an empty tab) stays open for them, so closing one tab never hides the rest.
+    const lastSurfaceClosed =
+      recordOwner === front &&
+      record?.isOpen === true &&
+      record.surfaceIds.length > 0 &&
+      !now.isOpen &&
+      now.surfaceIds.length === 0;
+    if (lastSurfaceClosed && holdsOtherLinkedTabs(current(), front)) {
+      useRightPanelStore.getState().show(ref);
+      return;
+    }
     apply((linked) => linked);
   };
+
+  const holdsOtherLinkedTabs = (linked: LinkedArrangement, front: string | null) =>
+    front !== null &&
+    allTabs(linked.arrangement).some((key) => {
+      const owner = linked.owners[key];
+      return (
+        owner !== undefined &&
+        context.shows(owner, front) &&
+        parseChatSurfaceKey(key)?.chatKey !== front
+      );
+    });
 
   const store: PaneArrangementStore & {
     flush(): void;
@@ -635,6 +660,27 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
 
   const unlink = (key: string) => apply((before) => unlinkTab(before, key));
 
+  /**
+   * Brings back the chat `owner`'s linked tabs set aside with its panel, its chat coming to the
+   * front: `key` in front among them, or with `key` null, a new empty one.
+   */
+  const showLinked = (owner: string, key: string | null) => {
+    const ref = refOf(owner);
+    if (ref === null) return;
+    update((arrangement) => activateTab(arrangement, owner));
+    if (!recordOf(ref).isOpen) useRightPanelStore.getState().show(ref);
+    apply((linked) => {
+      if (key !== null)
+        return { ...linked, arrangement: activateTab(linked.arrangement, key, false) };
+      const { arrangement } = linked;
+      const empty = `empty/${arrangement.seq}`;
+      return openLinked(
+        { ...linked, arrangement: { ...arrangement, seq: arrangement.seq + 1 } },
+        empty,
+      );
+    });
+  };
+
   return {
     store,
     /** The arrangement as it stands. */
@@ -654,6 +700,9 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     openLinked: openLinkedTab,
     link,
     unlink,
+    showLinked,
+    /** What the chat `owner`'s linked-tabs toggle offers now. */
+    toggleOf: (owner: string): LinkedToggle => linkedToggle(current(), owner, context),
     /** The thread of the chat in front, whose surfaces the panes show. */
     frontRef: () => refOf(current().front),
     /** The next surface the front chat's record gains within a few seconds opens in this pane. */
