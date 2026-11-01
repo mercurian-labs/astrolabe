@@ -284,7 +284,7 @@ export function closeWikiTabs(match: (tab: WikiTab) => boolean) {
 }
 
 /** The focused pane's front tab, read outside React. */
-export const focusedWikiTabKey = () => focusedPane(current().arrangement).active;
+const focusedWikiTabKey = () => focusedPane(current().arrangement).active;
 
 /** The document in the focused pane's front tab; null for an empty tab. */
 export function useFocusedWikiTab(): WikiTab | null {

@@ -47,8 +47,9 @@ actions at its right end.
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
   or `N projects` past two) and one the other statuses. A pill's body opens the popup, its ×
   (`Remove filter: <label>`) clears that dimension, and **Clear** (with two or more pills)
-  clears all. Opening a thread the filter hides (search, the palette, a link, a reload onto
-  it) clears the whole filter. A thread row's menu offers `Filter by <project>` (that project
+  clears all. The open thread stays listed while the filter hides it (search, the palette, a
+  link, a reload onto it), its row marked **hidden** (`listFilteredThreads`); the filter never
+  clears for it, and the row drops out once another thread or page is open. A thread row's menu offers `Filter by <project>` (that project
   alone) or `Show all projects`. Search is upstream's integrated search: the
   button gives way to upstream's field, `combobox "Search threads"` (and a **Clear
   thread search** button while it holds a query). Typing replaces the list with
@@ -137,7 +138,7 @@ the boxes from the drawn checkbox: `[...document.querySelectorAll('[role=option]
 [o.textContent, o.querySelector('svg.lucide-check') ? 'x' : o.querySelector('svg.lucide-minus')
 ? '-' : ' '])`. The sidebar's own search looks only inside the filter ("No threads found"
 for a hidden thread), so prove the reveal from the Search palette instead: Cmd+K `/`, type
-the hidden thread's title, Enter; the stored filter is gone and its row shows.
+the hidden thread's title, Enter; its row shows marked **hidden** and the stored filter is unchanged.
 
 **Proof:** each action's result (the field focused and
 `[role=listbox][aria-label="Thread search results"] [role=option]` rows as you

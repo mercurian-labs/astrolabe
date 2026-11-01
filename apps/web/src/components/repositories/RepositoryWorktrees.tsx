@@ -44,6 +44,7 @@ import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openInNewWorktree } from "./repositoryScope";
 import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
+import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import { WorktreeNumber } from "./WorktreeNumber";
 
 /** What the worktree controls need of a project: a repository's or a wiki's. */
@@ -53,22 +54,6 @@ const target = (repository: WorktreeOwner) => ({
   environmentId: repository.environmentId,
   projectId: repository.id,
 });
-
-/** Marks what shows only because the focused tab is in it, the filter hiding it otherwise. */
-export function OutsideFilterMark() {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="text-3xs text-sidebar-muted-foreground/70" />}>
-        hidden
-      </TooltipTrigger>
-      <TooltipPopup side="right" className="max-w-64">
-        <div className="text-xs">
-          The filter hides this. It shows while a tab of it is in front.
-        </div>
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
 
 /**
  * A worktree's header: its number and branch (or commit), how many files it has uncommitted, what

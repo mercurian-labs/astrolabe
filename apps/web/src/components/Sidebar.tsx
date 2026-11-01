@@ -68,7 +68,6 @@ import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 import { ChevronDownIcon, ListFilterIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -163,7 +162,6 @@ import {
 } from "./threadActionMenu.logic";
 import {
   applySidebarThreadDrop,
-  filterSidebarV2VisibleThreads,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
@@ -209,7 +207,7 @@ import { createSidebarListMotion } from "./Sidebar.motion";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFilterIcon } from "./projects/ProjectFilterIcon";
 import { searchProjectFilterOptions } from "./projects/projectFilter";
-import { threadMatchesStatuses, type ThreadStatusFilter } from "./projects/threadsFilter";
+import { listFilteredThreads, type ThreadStatusFilter } from "./projects/threadsFilter";
 import {
   ThreadsFilterCheckbox,
   ThreadsFilterPills,
@@ -218,11 +216,7 @@ import {
 import { useThreadsFilter } from "./projects/useThreadsFilter";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
-import {
-  resolveSidebarRouteReveal,
-  type SidebarRouteReveal,
-  useActiveRowReveal,
-} from "./sidebar/routeReveal";
+import { type SidebarRouteReveal, useActiveRowReveal } from "./sidebar/routeReveal";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button } from "./ui/button";
 import {
@@ -347,13 +341,13 @@ interface SidebarThreadPartitionInput {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
+  /** Astrolabe: the open thread's row, listed whatever the filter says. */
+  readonly openThreadKey: string | null;
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
   readonly clockKey: string;
 }
-
-const NO_STATUS_FILTERS: ReadonlyArray<ThreadStatusFilter> = [];
 
 function threadShellKey(thread: Pick<SidebarThreadSummary, "environmentId" | "id">): string {
   return scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
@@ -462,6 +456,7 @@ function useSidebarThreads(input: {
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
+    openThreadKey: routeRowThreadKey,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -553,6 +548,7 @@ function useSidebarThreads(input: {
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    outsideFilterKey: partition.outsideFilterKey,
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
     settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
@@ -577,11 +573,16 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
+    openThreadKey,
   } = input;
   const preciseNow = new Date().toISOString();
-  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter((thread) =>
-    threadMatchesStatuses(thread, statuses),
-  );
+  // Astrolabe: the open thread stays listed while the filter hides it, marked outside it.
+  const { listed: visible, outsideKey: outsideFilterKey } = listFilteredThreads(threads, {
+    scopedProjectKeys,
+    statuses,
+    openKey: openThreadKey,
+    keyOf: threadShellKey,
+  });
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
@@ -669,6 +670,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     ),
     settledThreads: sortSettledThreads(settled),
     visibleThreads: visible,
+    outsideFilterKey,
     snoozeNow: preciseNow,
   };
 }
@@ -1018,28 +1020,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         );
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
 
-  // History, the palette and links can open a thread the scope hides or the list
-  // scrolled away; a remount starts at the top, so each mount scrolls to the open
-  // thread once. Render decides the widening, so the first frame of the new route
-  // already lists the row; the active row's ref callback scrolls to it.
-  const { widensScope: revealWidensScope } = resolveSidebarRouteReveal({
-    reveal: routeReveal,
-    routeKey: routeRowThreadKey,
-    isSearching: isSearchingThreads,
-    scopedProjectKeys: projectFilter.scopedProjectKeys,
-    statuses: projectFilter.statuses,
-    findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
-  });
-  // Astrolabe: widening clears the whole filter, statuses included.
-  const widenProjectFilter = useEffectEvent(() => projectFilter.clear());
-  // The widened scope outlives the reveal, so it is written back to the persisted
-  // scope. Route changes arrive from history, links and the palette, and only this
-  // component holds the project groups that decide a widening, so no single
-  // navigation handler can make the write.
-  useEffect(() => {
-    if (!revealWidensScope) return;
-    widenProjectFilter();
-  }, [revealWidensScope]);
+  // History, the palette and links can open a thread the list scrolled away; a remount starts at
+  // the top, so each mount scrolls to the open thread once. Astrolabe: a thread the filter hides
+  // is listed while open (`partitionSidebarThreads`) rather than clearing the filter.
   const revealActiveRow = useActiveRowReveal(routeReveal, routeRowThreadKey);
   const showProjectEnvironments = projectGroupsSpanEnvironments(projectGroups);
   const scratchMachineLabelFor = (
@@ -1064,8 +1047,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     projectScopeMenuState.query,
     (item, query) => projectScopeFilter.contains(item, query, (candidate) => candidate.label),
   );
-  const scopedProjectKeys = revealWidensScope ? null : projectFilter.scopedProjectKeys;
-  const filterStatuses = revealWidensScope ? NO_STATUS_FILTERS : projectFilter.statuses;
+  const scopedProjectKeys = projectFilter.scopedProjectKeys;
+  const filterStatuses = projectFilter.statuses;
   const filterGroups = [
     { label: "Status", items: filteredFilterItems.filter((item) => item.kind === "status") },
     { label: "Projects", items: filteredFilterItems.filter((item) => item.kind !== "status") },
@@ -1163,6 +1146,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    outsideFilterKey,
     orderedThreadKeys,
     threadByKey,
     settledThreadKeys,
@@ -1174,7 +1158,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     activeKeysById,
   } = useSidebarThreads({
     // Astrolabe: the settled tail restarts when the filter's kind changes too.
-    projectScopeKey: revealWidensScope ? "all" : projectFilter.resetKey,
+    projectScopeKey: projectFilter.resetKey,
     scopedProjectKeys,
     statuses: filterStatuses,
     serverConfigs,
@@ -3138,6 +3122,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             }
                             wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                             isActive={routeRowThreadKey === threadKey}
+                            outsideFilter={outsideFilterKey === threadKey}
                             revealRef={
                               routeRowThreadKey === threadKey ? revealActiveRow : undefined
                             }
@@ -3378,7 +3363,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     Add project
                   </button>
                 </>
-              ) : projectFilter.isActive && !revealWidensScope ? (
+              ) : projectFilter.isActive ? (
                 "No threads match these filters"
               ) : (
                 "No threads yet"

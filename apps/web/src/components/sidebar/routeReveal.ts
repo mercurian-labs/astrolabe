@@ -1,10 +1,7 @@
 import { useRef } from "react";
 
-import { filterSidebarV2VisibleThreads } from "../Sidebar.logic";
-import { threadMatchesStatuses, type ThreadStatusFilter } from "../projects/threadsFilter";
-
-// AppSidebarLayout owns this so drawer and Settings remounts preserve the chosen project scope.
-// Only route changes may widen that scope; scroll position is lost on remount.
+// AppSidebarLayout owns this so drawer and Settings remounts keep the reveal; scroll position is
+// lost on remount.
 // Leaving Settings commits the router's location before its matches, briefly hiding thread params.
 // Ignore null keys so the same thread does not look new during that gap.
 export interface SidebarRouteReveal {
@@ -41,31 +38,4 @@ export function useActiveRowReveal(reveal: SidebarRouteReveal, routeKey: string 
     mountRevealOwed.current = false;
     row.scrollIntoView({ block: "nearest" });
   };
-}
-
-type RevealableThread = Parameters<typeof filterSidebarV2VisibleThreads>[0][number] &
-  Parameters<typeof threadMatchesStatuses>[0];
-
-// Render records the route before deciding, so the first render of a new route
-// already widens the scope. Only a route reveal widens: the once-per-mount
-// scroll never changes a scope the user chose.
-export function resolveSidebarRouteReveal<T extends RevealableThread>(input: {
-  readonly reveal: SidebarRouteReveal;
-  readonly routeKey: string | null;
-  readonly isSearching: boolean;
-  readonly scopedProjectKeys: ReadonlySet<string> | null;
-  /** Astrolabe: the filter's statuses, which hide threads as its projects do. */
-  readonly statuses: ReadonlyArray<ThreadStatusFilter>;
-  readonly findThread: (key: string) => T | undefined;
-}): { readonly pendingKey: string | null; readonly widensScope: boolean } {
-  const { reveal, routeKey, isSearching, scopedProjectKeys, statuses, findThread } = input;
-  const pendingKey = pendingSidebarRouteReveal(reveal, routeKey);
-  // Search results replace the thread list; the reveal waits for it to return.
-  const thread = pendingKey === null || isSearching ? undefined : findThread(pendingKey);
-  const widensScope =
-    thread !== undefined &&
-    (filterSidebarV2VisibleThreads([thread], scopedProjectKeys).length === 0 ||
-      !threadMatchesStatuses(thread, statuses)) &&
-    filterSidebarV2VisibleThreads([thread], null).length === 1;
-  return { pendingKey, widensScope };
 }

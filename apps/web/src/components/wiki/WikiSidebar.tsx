@@ -19,7 +19,6 @@ import {
 import {
   memo,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -81,6 +80,7 @@ import {
   FilterPills,
   namesOrCount,
   OneTapFilterPill,
+  OutsideFilterMark,
   PillIcons,
   ThreadsFilterCheckbox,
 } from "../projects/ThreadsFilterParts";
@@ -103,13 +103,7 @@ import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
 import { WikiWorktreePicker, WikiWorktreeTrees, wikiView } from "./WikiWorktrees";
-import {
-  focusedWikiTabKey,
-  openWikiTab,
-  placeWikiTabs,
-  showWikiTab,
-  useFocusedWikiTab,
-} from "./wikiPanes";
+import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
 import { WikiSettingsDialog } from "./WikiSettingsDialog";
 import {
   EMPTY_WIKI_FILTER,
@@ -122,7 +116,6 @@ import {
 } from "./wikiFilter";
 import { changeRequestWikiScope } from "./wikiScope";
 import {
-  parseWikiTabKey,
   searchWikiSidebarItems,
   tabShowsDocument,
   wikiScopeKey,
@@ -140,11 +133,6 @@ const SELECTION_SECTION = "wikis";
 const NO_KEYS: readonly string[] = [];
 
 const entryKey = (entry: WikiSidebarEntry) => wikiTabKey(wikiSidebarEntryTab(entry));
-
-const keyOfTab = (tab: WikiTab | null) => (tab === null ? null : wikiTabKey(tab));
-// The document focused as the page loaded counts as seen, so a reload keeps the filter; one
-// opened after, from a link, the palette or another section, is new.
-let seenFocusedKey = keyOfTab(parseWikiTabKey(focusedWikiTabKey()));
 
 /** What a row's drag and menu do, for the rows to share. */
 export interface WikiRowActions {
@@ -213,19 +201,7 @@ export function WikiSidebar() {
   const changedCount = allLists.documents.filter(
     (document) => inKeptWikiOf(document) && document.changes.length > 0,
   ).length;
-  const lists = {
-    ...allLists,
-    documents: allLists.documents.filter(keeps),
-    changes: [],
-    settled: [],
-  };
-  const { documents } = lists;
-  const setFilter = (next: WikiFilter) => storeWikiFilter(next);
-  // A wiki just added is shown alone, unless it is the first, when alone is every wiki and the
-  // pick would narrow the list once a second arrives.
-  // Astrolabe: a document opened from a link, the palette or another section clears a filter that
-  // hides it. Undecided until the wikis load; a filter changed under the open document stays.
-  const focusedKey = keyOfTab(focused);
+  // Astrolabe: the document in front stays listed while the filter hides it, marked outside it.
   const focusedDocument =
     focused?.kind === "note"
       ? allLists.documents.find((document) =>
@@ -236,19 +212,17 @@ export function WikiSidebar() {
           }),
         )
       : undefined;
-  const hidesFocused =
-    focused === null
-      ? false
-      : loading
-        ? null
-        : !inKeptWiki(focused) || (focusedDocument !== undefined && !keeps(focusedDocument));
-  const clearForOpened = useEffectEvent(() => storeWikiFilter(EMPTY_WIKI_FILTER));
-  // oxlint-disable-next-line t3code/react-effect-budget -- documents open from links, the palette and other sections, outside any handler here; widening is written back to the stored filter
-  useEffect(() => {
-    if (hidesFocused === null || focusedKey === seenFocusedKey) return;
-    seenFocusedKey = focusedKey;
-    if (hidesFocused) clearForOpened();
-  }, [focusedKey, hidesFocused]);
+  const outsideFilter = focusedDocument !== undefined && !keeps(focusedDocument);
+  const lists = {
+    ...allLists,
+    documents: allLists.documents.filter(
+      (document) => keeps(document) || document === focusedDocument,
+    ),
+    changes: [],
+    settled: [],
+  };
+  const { documents } = lists;
+  const setFilter = (next: WikiFilter) => storeWikiFilter(next);
 
   // Astrolabe: the rows as they show, for Shift-click's ranges and what a selected row carries.
   const shown = useRef<{ keys: readonly string[]; tabs: ReadonlyMap<string, WikiTab> }>({
@@ -531,6 +505,7 @@ export function WikiSidebar() {
                   <WikiDocumentRow
                     key={document.key}
                     item={document}
+                    outsideFilter={outsideFilter && document === focusedDocument}
                     active={isActive({ kind: "document", item: document })}
                     selected={selectedKeys.includes(entryKey({ kind: "document", item: document }))}
                     actions={rowActions}
@@ -1112,6 +1087,7 @@ const titleClassName = "min-w-0 flex-1 truncate text-sm font-medium text-foregro
 /** A document, slim: its name, whether an open change holds it, and when it last changed. */
 const WikiDocumentRow = memo(function WikiDocumentRow({
   item,
+  outsideFilter = false,
   active,
   selected,
   actions,
@@ -1119,6 +1095,8 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
   onOpen,
 }: {
   readonly item: WikiDocumentItem;
+  /** Listed only because it is in front, the filter hiding it otherwise. */
+  readonly outsideFilter?: boolean;
   readonly active: boolean;
   readonly selected: boolean;
   readonly actions: WikiRowActions;
@@ -1157,6 +1135,7 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
     >
       <SlimIcon item={item} active={active} />
       <SlimTitle active={active}>{item.name}</SlimTitle>
+      {outsideFilter ? <OutsideFilterMark /> : null}
       {change ? (
         <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
       ) : null}

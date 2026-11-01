@@ -37,9 +37,9 @@ import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/to
 import { useSectionFocusedKey } from "~/panes/sectionPanes";
 import { repositoryPanes } from "./repositoryPanes";
 import { BranchCompareRow } from "./BranchCompareRow";
+import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import {
   OpenBranchPicker,
-  OutsideFilterMark,
   SetAsideRows,
   WorktreeFiles,
   WorktreeHeader,

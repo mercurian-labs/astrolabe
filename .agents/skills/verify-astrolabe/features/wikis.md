@@ -20,9 +20,9 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   not read). Pills (`[aria-label='Document filters']`): **Has changes** one tap
   (`aria-pressed`) while on or any document has changes, one for the picked wikis (× is
   `Remove filter: <names>`), and **Clear** with both. An empty list reads "No documents
-  match these filters". A wiki just added shows alone, unless it is the first. Opening a
-  document the filter hides (a link, Search, another section) clears the filter; a filter
-  changed under the open document, or a reload, keeps it. With no wikis, the sidebar's empty
+  match these filters". A wiki just added shows alone, unless it is the first. The document in
+  front stays listed while the filter hides it (opened from a link, Search or another section,
+  or the filter changed under it), its row marked **hidden**; the filter never clears for it. With no wikis, the sidebar's empty
   state has its own **Add a folder** and **New wiki**. Change requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
