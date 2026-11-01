@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
 
 import {
   IsoDateTime,
@@ -44,7 +45,7 @@ export const WikiMirrorStatus = Schema.Struct({
 });
 export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
-export const WikiSummary = Schema.Struct({
+const WikiSummaryFields = {
   wikiId: WikiId,
   name: TrimmedNonEmptyString,
   /** Absolute path of the checkout of the main line. */
@@ -55,7 +56,22 @@ export const WikiSummary = Schema.Struct({
   mirror: Schema.NullOr(WikiMirrorStatus),
   openChangeRequests: NonNegativeInt,
   createdAt: IsoDateTime,
-});
+};
+
+/** Older servers send one nullable `projectId` instead of `projectIds`; it reads as the list. */
+export const WikiSummary = Schema.Struct({
+  ...WikiSummaryFields,
+  projectIds: Schema.optionalKey(WikiSummaryFields.projectIds),
+  projectId: Schema.optionalKey(Schema.NullOr(ProjectId)),
+}).pipe(
+  Schema.decodeTo(Schema.toType(Schema.Struct(WikiSummaryFields)), {
+    decode: SchemaGetter.transform(({ projectId, projectIds, ...summary }) => ({
+      ...summary,
+      projectIds: projectIds ?? (projectId ? [projectId] : []),
+    })),
+    encode: SchemaGetter.transform((summary) => summary),
+  }),
+);
 export type WikiSummary = typeof WikiSummary.Type;
 
 export const WikiListResult = Schema.Struct({ wikis: Schema.Array(WikiSummary) });
