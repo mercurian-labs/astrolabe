@@ -163,6 +163,9 @@ If that port is already in use, choose another with
 to your server; a hosted pairing link does not make an unreachable backend
 reachable or convert HTTP to HTTPS.
 
+To pair it with a nightly server, switch the hosted app to Nightly under
+**Settings → About → Update track** first.
+
 For a plain HTTP LAN endpoint, use the direct pairing URL in a browser that can
 open it, or pair from the desktop app. On mobile, an IP address entered without a
 scheme uses HTTP, so include `https://` when your server uses HTTPS.

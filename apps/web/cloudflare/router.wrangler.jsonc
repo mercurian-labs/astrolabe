@@ -1,0 +1,10 @@
+// app.astrolabe.sh: the channel router (router.ts), deployed by the release workflow's deploy_web job
+// after the channel Worker it serves.
+{
+  "name": "astrolabe-app",
+  "main": "./router.ts",
+  "compatibility_date": "2026-10-20",
+  "routes": [{ "pattern": "app.astrolabe.sh", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+}
