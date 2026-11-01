@@ -55,8 +55,8 @@ panel, see [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
   title-bar row's **Back**/**Forward**, `mod+[`/`mod+]` and Space `t h`/`t l` walk
   the focused pane's tab in front (faint at either end); a step to a document open in
   another tab brings that tab forward, and with unsaved edits it opens in a new tab.
-- **Pane header**: a note's header (title · Main or the change request, its
-  buttons) is one line as tall as the tab strip, with no bottom border; the strip's
+- **Pane header**: a note's header (Main or the change request, muted / the note's
+  name, as a chat's breadcrumb; then quiet status and its buttons) is one line as tall as the tab strip, with no bottom border; the strip's
   joined tab in front (panes.md) reads continuous with it. A pane's `+` opens a New tab
   (panes.md) whose **Document** (`O`, faint until a wiki exists) opens the finder; it
   lists documents and open changes, offers Write "…" for a new name, and the pick takes
