@@ -3,6 +3,7 @@ import {
   type ContextMenuItem,
   type EnvironmentId,
   type PreviewSessionSnapshot,
+  ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -29,6 +30,53 @@ vi.mock(import("~/browser/browserDefaults"), async (original) => ({
 vi.mock(import("~/components/preview/previewBridge"), () => ({
   previewBridge: { setAudioMuted } as never,
 }));
+// One repository, whose finder picks its README at once.
+vi.mock(import("~/components/repositories/useRepositories"), () => ({
+  useRepositories: () =>
+    [
+      {
+        environmentId: "env-1",
+        id: "project-1",
+        title: "app",
+        workspaceRoot: "/repo",
+      },
+    ] as never,
+}));
+vi.mock(import("~/components/repositories/RepositoryFinder"), async () => {
+  const { repositoryTabKey } = await import("~/components/repositories/repositoryTabs");
+  return {
+    RepositoryFinder: ({ mode, onPick }: { mode: string; onPick: (key: string) => void }) => (
+      <button
+        type="button"
+        onClick={() =>
+          onPick(
+            mode === "file"
+              ? repositoryTabKey({
+                  kind: "file",
+                  environmentId: "env-1" as EnvironmentId,
+                  projectId: ProjectId.make("project-1"),
+                  cwd: "/repo",
+                  path: "README.md",
+                })
+              : "repo-diff:x",
+          )
+        }
+      >
+        Pick README.md
+      </button>
+    ),
+  };
+});
+vi.mock(import("~/components/wiki/wikiEnvironment"), async (original) => ({
+  ...(await original()),
+  useWikiOverviews: () => ({ overviews: [], loading: false }),
+}));
+// The thread's checkout, which a surface opened as its own tab reads.
+vi.mock(import("~/state/entities"), async (original) => ({
+  ...(await original()),
+  readThreadShell: () =>
+    ({ environmentId: "env-1", projectId: "project-1", worktreePath: "/work/tree" }) as never,
+}));
 vi.mock(import("~/localApi"), async (original) => ({
   ...(await original()),
   readLocalApi: () =>
@@ -44,8 +92,9 @@ vi.mock(import("~/localApi"), async (original) => ({
 
 import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { openTab, splitTab, startingArrangement } from "./arrangement";
-import { LinkedTabsToggle, openHiddenTabsMenu } from "./LinkedTabsToggle";
+import { LinkedTabsToggle } from "./LinkedTabsToggle";
 import type { PanelProps } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { WorkspaceHostContext } from "./PaneSurfaceHost";
@@ -240,46 +289,91 @@ function emptyPanel(): Disposable {
   return { [Symbol.dispose]: reset };
 }
 
-describe("Mod+T in the shared panes", () => {
-  it("opens the focused pane's New tab menu and adds the surface picked", async () => {
+const readme = repositoryTabKey({
+  kind: "file",
+  environmentId: "env-1" as EnvironmentId,
+  projectId: ProjectId.make("project-1"),
+  cwd: "/repo",
+  path: "README.md",
+});
+
+const launcherRows = (root: ParentNode, name: string) =>
+  [
+    ...root.querySelectorAll<HTMLElement>(
+      `[aria-label="${name}"] button, [aria-label="${name}"] [aria-disabled]`,
+    ),
+  ].map((row) => row.textContent);
+
+describe("a pane's New tab", () => {
+  it("opens from the + at the end of the strip, standing on its own, with the tab launcher", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    await using screen = await renderPanes();
+    const linkedPane = screen.container.querySelectorAll<HTMLElement>("[data-pane-id]")[1]!;
+    await act(() => button(linkedPane, "New tab")!.click());
+    await settle();
+    const [, linked] = leaves(workspace.arrangement().root);
+    const blank = linked!.tabs[1]!;
+    expect(linked!.tabs).toEqual([chatSurfaceKey(chat, "diff"), blank]);
+    expect(linked!.active).toBe(blank);
+    expect(workspace.linked().owners[blank]).toBeUndefined();
+    expect(launcherRows(linkedPane, "Open a tab")).toEqual([
+      "New chatN",
+      "DocumentO",
+      "Repository fileR",
+      "Repository diffC",
+      "Change groupK",
+    ]);
+    // It stays put while the chat's linked tabs are set aside.
+    await act(() => useRightPanelStore.getState().close(ref));
+    expect(leaves(workspace.arrangement().root).map((leaf) => leaf.tabs)).toEqual([
+      [chat],
+      [blank],
+    ]);
+  });
+
+  it("puts what is picked in its place: same pane, same index", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    await using screen = await renderPanes();
+    const linkedPane = () => screen.container.querySelectorAll<HTMLElement>("[data-pane-id]")[1]!;
+    await act(() => button(linkedPane(), "New tab")!.click());
+    await settle();
+    await press("r");
+    const pick = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (element) => element.textContent === "Pick README.md",
+    )!;
+    await act(() => pick.click());
+    await settle();
+    const [, linked] = leaves(workspace.arrangement().root);
+    expect(linked!.tabs).toEqual([chatSurfaceKey(chat, "diff"), readme]);
+    expect(linked!.active).toBe(readme);
+    expect(workspace.arrangement().focused).toBe(linked!.id);
+  });
+
+  it("opens in the focused pane from Mod+T, and only there", async () => {
     using _panel = emptyPanel();
     const store = useRightPanelStore.getState();
     store.open(ref, "diff");
     store.open(ref, "files");
-    const onAddTerminal = vi.fn();
-    await using screen = await renderPanes({ onAddTerminal });
+    await using _screen = await renderPanes();
     await act(() =>
       workspace.update((arrangement) =>
         splitTab(arrangement, chatSurfaceKey(chat, "files"), "right"),
       ),
     );
-    const panes = [...screen.container.querySelectorAll<HTMLElement>("[data-pane-id]")];
-    // The chat, then its Diff and Files split apart.
-    expect(panes).toHaveLength(3);
-    const focused = panes.find((pane) => pane.dataset.focused !== undefined)!;
-    const other = panes.find((pane) => pane !== focused)!;
+    const before = leaves(workspace.arrangement().root).map((leaf) => leaf.tabs);
+    const focused = workspace.arrangement().focused;
 
     const event = await press("t", { metaKey: true });
     expect(event.defaultPrevented).toBe(true);
-    expect(button(focused, "New tab")?.hasAttribute("data-popup-open")).toBe(true);
-    expect(button(other, "New tab")?.hasAttribute("data-popup-open")).toBe(false);
-    expect(document.activeElement?.closest('[role="menu"]')).not.toBeNull();
-
-    await press("t");
-    expect(onAddTerminal).toHaveBeenCalledOnce();
+    const after = leaves(workspace.arrangement().root);
+    expect(after.map((leaf) => leaf.tabs.length)).toEqual(
+      before.map((tabs, index) => tabs.length + (after[index]!.id === focused ? 1 : 0)),
+    );
+    const pane = after.find((leaf) => leaf.id === focused)!;
+    expect(pane.active).toMatch(/^empty\//);
     expect(document.querySelector('[role="menu"]:not([data-closed])')).toBeNull();
-  });
-
-  it("opens the menu with no chat's panel on screen, offering a document or an empty tab", async () => {
-    using _panel = emptyPanel();
-    await using _screen = await renderPanes();
-    // A chat whose panel is closed renders none, so it lends the panes no panel props.
-    await act(() => workspace.clearPanel(workspace.getPanel()!));
-    expect((await press("t", { metaKey: true })).defaultPrevented).toBe(true);
-    const items = [
-      ...document.querySelectorAll('[role="menu"]:not([data-closed]) [role="menuitem"]'),
-    ];
-    expect(items.map((item) => item.textContent)).toEqual(["DocumentO", "Empty tabN"]);
   });
 });
 
@@ -307,7 +401,12 @@ describe("a thread's surface as a tab of the shared panes", () => {
     const onCopyFilePath = vi.fn();
     await using screen = await renderPanes({ onCopyFilePath });
     await rightClick(tab(screen.container, "app.ts"), "Copy path");
-    expect(contextMenu.shown.slice(0, 3)).toEqual(["Open in Repositories", "Copy path", "Close"]);
+    expect(contextMenu.shown.slice(0, 4)).toEqual([
+      "Open in Repositories",
+      "Open as its own tab",
+      "Copy path",
+      "Close",
+    ]);
     expect(onCopyFilePath).toHaveBeenCalledExactlyOnceWith("src/app.ts");
   });
 
@@ -360,6 +459,36 @@ describe("a thread's surface as a tab of the shared panes", () => {
       expect(setAudioMuted).toHaveBeenCalledExactlyOnceWith("runtime:tab-1", nextMuted);
     },
   );
+
+  it("opens the diff as its own tab in its place: the checkout's uncommitted changes", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "files");
+    useRightPanelStore.getState().open(ref, "diff");
+    await using screen = await renderPanes();
+    await rightClick(tab(screen.container, "Diff"), "Open as its own tab");
+    const changes = repositoryTabKey({
+      kind: "diff",
+      environmentId: "env-1" as EnvironmentId,
+      projectId: ProjectId.make("project-1"),
+      cwd: "/work/tree",
+      source: "working-tree",
+    });
+    const [, linked] = leaves(workspace.arrangement().root);
+    expect(linked!.tabs).toEqual([chatSurfaceKey(chat, "files"), changes]);
+    expect(workspace.linked().owners[changes]).toBeUndefined();
+    expect(useRightPanelStore.getState().byThreadKey[threadKey]?.surfaces.map((s) => s.id)).toEqual(
+      ["files"],
+    );
+  });
+
+  it("offers no tab of its own for a surface that means nothing without its thread", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().openDevice(ref, device);
+    await using screen = await renderPanes();
+    await rightClick(tab(screen.container, "Pixel 9"));
+    expect(contextMenu.shown).not.toContain("Open as its own tab");
+    expect(contextMenu.shown).not.toContain("Link to the chat in front");
+  });
 
   it("shows no speaker for a silent browser tab", async () => {
     using _panel = emptyPanel();
@@ -423,14 +552,23 @@ describe("a chat's linked tabs toggle", () => {
     expect(toggleButton(screen.container).ariaLabel).toBe("Hide tabs");
   });
 
-  it("opens the same menu from the right-panel shortcut while tabs are hidden", async () => {
+  it("puts the surface picked in its linked New tab in that tab's place, linked", async () => {
     using _panel = emptyPanel();
-    useRightPanelStore.getState().open(ref, "diff");
-    useRightPanelStore.getState().close(ref);
-    await using _screen = await renderPanes({}, toggle);
-    expect(await act(() => openHiddenTabsMenu(ref))).toBe(true);
+    const onAddDiff = () => useRightPanelStore.getState().open(ref, "diff");
+    await using screen = await renderPanes({ onAddDiff }, toggle);
+    await act(() => toggleButton(screen.container).click());
     await settle();
-    expect(menuItems()).toEqual(["Diff", "New tab"]);
+    const [linked] = linkedPanes();
+    expect(linked).toEqual([expect.stringMatching(/^empty\//)]);
+    const launcher = screen.container.querySelector('[aria-label="Open a surface"]')!;
+    const diffRow = [...launcher.querySelectorAll<HTMLButtonElement>("button")].find((row) =>
+      row.textContent?.startsWith("Diff"),
+    )!;
+    await act(() => diffRow.click());
+    await settle();
+    const diff = chatSurfaceKey(chat, "diff");
+    expect(linkedPanes()).toEqual([[diff]]);
+    expect(workspace.linked().owners[diff]).toBe(chat);
   });
 
   it("closes a linked New tab for good from its ✕, leaving nothing to bring back", async () => {
@@ -444,6 +582,5 @@ describe("a chat's linked tabs toggle", () => {
     await act(() => button(tab(screen.container, "New tab"), "Close New tab")!.click());
     expect(linkedPanes()).toEqual([]);
     expect(toggleButton(screen.container).ariaLabel).toBe("New tab");
-    expect(openHiddenTabsMenu(ref)).toBe(false);
   });
 });
