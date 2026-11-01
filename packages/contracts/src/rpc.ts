@@ -393,6 +393,8 @@ import {
   WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
+  WikiQueryInput,
+  WikiQueryResult,
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
@@ -581,6 +583,7 @@ export const WS_METHODS = {
   wikiRemove: "wiki.remove",
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
+  wikiQuery: "wiki.query",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
@@ -1982,6 +1985,12 @@ const WsWikiReadNoteRpc = Rpc.make(WS_METHODS.wikiReadNote, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
+  payload: WikiQueryInput,
+  success: WikiQueryResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
   payload: WikiChangeRequestListInput,
   success: WikiChangeRequestListResult,
@@ -2414,6 +2423,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiRemoveRpc,
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
+  WsWikiQueryRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
   WsWikiChangeRequestsOpenRpc,

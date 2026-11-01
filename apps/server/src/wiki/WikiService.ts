@@ -8,6 +8,7 @@
 import {
   AmendmentError,
   amendmentMessage,
+  BaseError,
   indexFiles,
   isWikiDocument,
   keepWarningHistory,
@@ -21,6 +22,8 @@ import {
   type WikiFiles,
   type WikiIndex,
   mergeMarkdown,
+  parseBase,
+  queryBase,
 } from "@mercurian/wiki";
 import {
   type ProjectId,
@@ -43,6 +46,8 @@ import {
   type WikiMergePreview,
   type WikiMergeResult,
   type WikiNoteResult,
+  type WikiQueryInput,
+  type WikiQueryResult,
   type WikiRegisterInput,
   type WikiRevertInput,
   type WikiSetChangeRequestStatusInput,
@@ -54,6 +59,7 @@ import {
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { newProjectFolderName } from "@t3tools/shared/path";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -94,6 +100,7 @@ import {
 import {
   indexResult,
   linksResult,
+  locateBase,
   noteResult,
   orientResult,
   searchNotes,
@@ -178,6 +185,10 @@ export class WikiService extends Context.Service<
     readonly links: (
       input: WikiReadTarget & { readonly name: string },
     ) => Effect.Effect<WikiLinksResult & { readonly commit: string }, WikiError>;
+    /** Runs one view of a base over the notes read, with at most `QUERY_ROWS` rows. */
+    readonly query: (
+      input: WikiReadTarget & Omit<WikiQueryInput, "wikiId" | "changeRequestId">,
+    ) => Effect.Effect<WikiQueryResult, WikiError>;
     readonly changeRequestsList: (
       input: WikiChangeRequestListInput,
     ) => Effect.Effect<WikiChangeRequestListResult, WikiError>;
@@ -213,6 +224,9 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
   }
 >()("t3/wiki/WikiService") {}
+
+/** The most rows a base query returns, for a view and for an agent's context alike. */
+export const QUERY_ROWS = 200;
 
 // Product commits never run the user's hooks or ask to sign; git never prompts.
 const PRODUCT_GIT_CONFIG = [
@@ -1484,6 +1498,41 @@ const make = Effect.gen(function* () {
       ...linksResult(snapshot.index, input.name),
     }));
 
+  const query: WikiService["Service"]["query"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const commit = yield* readCommit(wiki, input);
+          const snapshot = yield* snapshotAt(wiki, commit);
+          const located = locateBase(snapshot.index, input);
+          if ("problem" in located) {
+            return yield* new WikiError({ reason: located.problem, message: located.message });
+          }
+          const editTimes = yield* editTimesAt(wiki, commit);
+          const now = yield* Clock.currentTimeMillis;
+          const result = yield* Effect.try({
+            try: () =>
+              queryBase(snapshot.index, parseBase(located.source), {
+                view: input.view,
+                self: located.self,
+                editTimes,
+                now,
+                cap: QUERY_ROWS,
+              }),
+            // A base's own errors name what to fix; anything else is ours.
+            catch: (cause) =>
+              new WikiError({
+                reason: "invalid",
+                message: cause instanceof BaseError ? cause.message : "The base could not run.",
+                cause,
+              }),
+          });
+          return { commit, ...result };
+        }),
+      input.changeRequestId,
+    );
+
   const orient: WikiService["Service"]["orient"] = (input) =>
     readAt(input, (_wiki, commit, snapshot) => {
       const oriented = orientResult(snapshot.index, input.map);
@@ -1907,6 +1956,7 @@ const make = Effect.gen(function* () {
     index,
     readNote,
     search,
+    query,
     orient,
     links,
     changeRequestsList,

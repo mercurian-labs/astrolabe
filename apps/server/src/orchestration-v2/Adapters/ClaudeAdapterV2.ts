@@ -1601,6 +1601,7 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__astrolabe_wiki_search",
   "mcp__t3-code__astrolabe_wiki_orient",
   "mcp__t3-code__astrolabe_wiki_links",
+  "mcp__t3-code__astrolabe_wiki_query",
   "mcp__t3-code__astrolabe_wiki_change_request",
   "mcp__t3-code__astrolabe_code_outline",
   "mcp__t3-code__astrolabe_code_find",

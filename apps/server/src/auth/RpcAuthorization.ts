@@ -127,6 +127,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.wikiSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.wikiIndex]: AuthFilesystemReadScope,
   [WS_METHODS.wikiReadNote]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiQuery]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,
   [WS_METHODS.cloudGetRelayClientStatus]: AuthRelayReadScope,
