@@ -10,7 +10,9 @@ import {
   type Arrangement,
 } from "./arrangement";
 import {
+  hiddenLinkedTabs,
   linkedArrangement,
+  linkedToggle,
   linkTab,
   openLinked,
   settleLinks,
@@ -149,6 +151,82 @@ describe("a chat's linked tabs", () => {
       [chatB, chatA],
       [terminalA, diffA, changeRequest],
     ]);
+  });
+});
+
+/** Runs `body` with these chats' panels closed. */
+function withClosed<T>(chats: readonly string[], body: () => T): T {
+  for (const chat of chats) closedPanels.add(chat);
+  try {
+    return body();
+  } finally {
+    for (const chat of chats) closedPanels.delete(chat);
+  }
+}
+
+describe("hiding a chat's linked tabs", () => {
+  it("closes an empty tab rather than set it aside, so nothing comes back for it", () => {
+    const empty = "empty/7";
+    const solo = settle(
+      openLinked(settle(linkedArrangement(openTab(startingArrangement(), chatA))), empty),
+    );
+    expect(panes(solo)).toEqual([[chatA], [empty]]);
+    const hidden = withClosed([chatA], () => settle(solo));
+    expect(panes(hidden)).toEqual([[chatA]]);
+    expect(hidden.parked).toEqual({});
+    expect(hidden.owners).toEqual({});
+    expect(withClosed([chatA], () => linkedToggle(hidden, chatA, context))).toEqual({
+      kind: "none",
+    });
+  });
+
+  it("sets aside an empty tab whose chat only went behind another, as any other", () => {
+    const empty = "empty/7";
+    let state = settle(openLinked(withPanel(), empty));
+    state = change(state, (arrangement) => activateTab(arrangement, chatB));
+    expect(Object.keys(state.parked)).toContain(empty);
+  });
+});
+
+describe("a chat's linked-tabs toggle", () => {
+  it("hides while the chat's panel is open, whether its tabs are on screen or not", () => {
+    const state = withPanel();
+    expect(linkedToggle(state, chatA, context)).toEqual({ kind: "showing" });
+    expect(linkedToggle(state, chatB, context)).toEqual({ kind: "showing" });
+  });
+
+  it("lists the tabs set aside with the chat's panel, in the order they stood", () => {
+    const state = withClosed([chatA], () => settle(withPanel()));
+    expect(withClosed([chatA], () => linkedToggle(state, chatA, context))).toEqual({
+      kind: "hidden",
+      tabs: [terminalA, diffA],
+    });
+  });
+
+  it("counts only the chat's own hidden tabs and its group's, not another chat's", () => {
+    const changeRequest = "wiki-change:e:w:cr1";
+    let state = change(withPanel(), (arrangement) => openTab(arrangement, changeRequest, "p1"));
+    state = settle(linkTab(state, changeRequest, group));
+    state = withClosed([chatA, chatB], () => settle(state));
+    withClosed([chatA, chatB], () => {
+      expect(hiddenLinkedTabs(state, chatA, context)).toEqual([terminalA, diffA, changeRequest]);
+      // B's Files surface is in its thread's record, though no pane has held it yet.
+      expect(hiddenLinkedTabs(state, chatB, context)).toEqual([filesB]);
+    });
+  });
+
+  it("offers a new tab with nothing set aside", () => {
+    const state = settle(linkedArrangement(openTab(startingArrangement(), chatA)));
+    expect(withClosed([chatA], () => linkedToggle(state, chatA, context))).toEqual({
+      kind: "none",
+    });
+  });
+
+  it("no longer lists a tab closed for good, nor brings it back", () => {
+    let state = change(withPanel(), (arrangement) => closeTab(arrangement, diffA));
+    state = withClosed([chatA], () => settle(state));
+    expect(withClosed([chatA], () => hiddenLinkedTabs(state, chatA, context))).toEqual([terminalA]);
+    expect(panes(settle(state))).toEqual([[chatB, chatA], [terminalA]]);
   });
 });
 
