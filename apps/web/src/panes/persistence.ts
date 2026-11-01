@@ -9,7 +9,7 @@ import {
 } from "./arrangement";
 import type { LinkedArrangement, ParkedTab } from "./linkedTabs";
 import { isSectionTabKey } from "~/sectionTabs/sectionTabs";
-import { leaves, removeLeaf, type SplitNode } from "./tree";
+import { leaves, removeLeaf, withOrigin, type SplitNode } from "./tree";
 
 /** The keys a right panel or the Change Requests panes keep: their surfaces, and chats and documents. */
 const isPaneKey = (key: string) => isTabKey(key) || isSectionTabKey(key);
@@ -58,7 +58,8 @@ function readNode(
     if (tabs.length === 0) return null;
     const active =
       typeof value.active === "string" && tabs.includes(value.active) ? value.active : tabs[0];
-    return { ...paneLeaf(value.id, tabs), active: active ?? "" };
+    const leaf = { ...paneLeaf(value.id, tabs), active: active ?? "" };
+    return typeof value.from === "string" ? { ...leaf, from: value.from } : leaf;
   }
   if (value.type !== "branch" || (value.direction !== "row" && value.direction !== "column")) {
     return null;
@@ -81,6 +82,22 @@ function readNode(
 }
 
 /**
+ * Forgets an origin naming no other pane of the tree (one dropped as unreadable), so it cannot
+ * point at a later pane given the same id.
+ */
+function dropStaleOrigins(root: SplitNode): SplitNode {
+  const ids = new Set(leaves(root).map((leaf) => leaf.id));
+  const visit = (node: SplitNode): SplitNode => {
+    if (node.type === "branch") return { ...node, children: node.children.map(visit) };
+    const { from } = node;
+    return from === undefined || (from !== node.id && ids.has(from))
+      ? node
+      : withOrigin(node, undefined);
+  };
+  return visit(root);
+}
+
+/**
  * A stored arrangement as the panes can use it; null for one that holds nothing usable. `isKey`
  * says which tab keys the panes can show (the right panel's by default).
  */
@@ -89,8 +106,9 @@ export function parseArrangement(
   isKey: (key: string) => boolean = isPaneKey,
 ): Arrangement | null {
   if (!isRecord(value)) return null;
-  const root = readNode(value.root, new Set(), new Set(), isKey);
-  if (!root) return null;
+  const read = readNode(value.root, new Set(), new Set(), isKey);
+  if (!read) return null;
+  const root = dropStaleOrigins(read);
   const panes = leaves(root);
   const focused =
     typeof value.focused === "string" && panes.some((pane) => pane.id === value.focused)
@@ -186,7 +204,8 @@ function renumber(node: SplitNode, offset: number): SplitNode {
     const number = /^empty\/(\d+)$/.exec(key)?.[1];
     return number === undefined ? key : `empty/${Number(number) + offset}`;
   };
-  return { ...node, id: id(node.id), tabs: node.tabs.map(tab), active: tab(node.active) };
+  const moved = { ...node, id: id(node.id), tabs: node.tabs.map(tab), active: tab(node.active) };
+  return node.from === undefined ? moved : { ...moved, from: id(node.from) };
 }
 
 /**

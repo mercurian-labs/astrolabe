@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { openBeside, openTab, startingArrangement, surfaceKey } from "./arrangement";
+import { closeTab, openBeside, openTab, startingArrangement, surfaceKey } from "./arrangement";
 import {
   arrangementStorageKey,
   joinBeside,
@@ -11,7 +11,7 @@ import {
   writeArrangement,
   type StorageLike,
 } from "./persistence";
-import { leaves } from "./tree";
+import { leaves, type Branch } from "./tree";
 
 function memoryStorage(): StorageLike & { readonly items: Map<string, string> } {
   const items = new Map<string, string>();
@@ -116,6 +116,55 @@ describe("reading a stored arrangement", () => {
       tabs: ["surface:diff"],
       active: "surface:diff",
     });
+  });
+
+  it("reads a layout saved before panes kept their origin, a closed pane's room going to its neighbour", () => {
+    const pane = (id: string, tab: string) => ({ type: "leaf", id, tabs: [tab], active: tab });
+    const parsed = parseArrangement({
+      root: {
+        type: "branch",
+        id: "p3",
+        direction: "row",
+        children: [
+          pane("p0", surfaceKey("diff")),
+          pane("p1", surfaceKey("files")),
+          pane("p2", surfaceKey("browser:a")),
+        ],
+        weights: [1, 2, 1],
+      },
+      focused: "p1",
+      seq: 4,
+    });
+    expect(parsed).not.toBeNull();
+    const closed = closeTab(parsed!, surfaceKey("files"));
+    expect((closed.root as Branch).weights).toEqual([3, 1]);
+  });
+
+  it("keeps the pane each was split from, dropping an origin that names no pane", () => {
+    const pane = (id: string, tab: string, from: string) => ({
+      type: "leaf",
+      id,
+      tabs: [tab],
+      active: tab,
+      from,
+    });
+    const parsed = parseArrangement({
+      root: {
+        type: "branch",
+        id: "p3",
+        direction: "row",
+        children: [
+          pane("p0", surfaceKey("diff"), "p0"),
+          pane("p1", surfaceKey("files"), "p9"),
+          pane("p2", surfaceKey("browser:a"), "p1"),
+        ],
+        weights: [1, 2, 1],
+      },
+      focused: "p1",
+      seq: 4,
+    });
+    expect(leaves(parsed!.root).map((leaf) => leaf.from)).toEqual([undefined, undefined, "p1"]);
+    expect((closeTab(parsed!, surfaceKey("browser:a")).root as Branch).weights).toEqual([1, 3]);
   });
 
   it("refuses what holds nothing usable", () => {

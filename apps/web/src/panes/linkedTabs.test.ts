@@ -6,6 +6,7 @@ import {
   focusPane,
   openBeside,
   openTab,
+  resizePanes,
   startingArrangement,
   type Arrangement,
 } from "./arrangement";
@@ -21,7 +22,7 @@ import {
   type LinkedArrangement,
 } from "./linkedTabs";
 import { followRecord, type PanelRecord } from "./surfaceMirror";
-import { leaves } from "./tree";
+import { leaves, type Branch } from "./tree";
 
 const chatA = "chat:e:a";
 const chatB = "chat:e:b";
@@ -195,6 +196,33 @@ describe("hiding a chat's linked tabs", () => {
     let state = settle(openLinked(withPanel(), empty));
     state = change(state, (arrangement) => activateTab(arrangement, chatB));
     expect(Object.keys(state.parked)).toContain(empty);
+  });
+});
+
+describe("showing and hiding a chat's linked tabs", () => {
+  it("gives the room their pane took back to the chat, every other pane as it was", () => {
+    const other = "repository:other";
+    let arrangement = openTab(startingArrangement(), chatA);
+    arrangement = openBeside(arrangement, file, "p0", "left");
+    arrangement = openBeside(arrangement, other, "p0", "right");
+    arrangement = focusPane(resizePanes(arrangement, arrangement.root.id, [1, 3, 2]), "p0");
+    const shown = settle(openLinked(settle(linkedArrangement(arrangement)), diffA));
+    expect(panes(shown)).toEqual([[file], [chatA], [diffA], [other]]);
+    const shownWeights = (shown.arrangement.root as Branch).weights;
+    expect(shownWeights[2]).toBeCloseTo(3 * 0.45);
+
+    const hidden = withClosed([chatA], () => settle(shown));
+    expect(panes(hidden)).toEqual([[file], [chatA], [other]]);
+    const [fileWeight, chatWeight, otherWeight] = (hidden.arrangement.root as Branch).weights;
+    expect(fileWeight).toBe(1);
+    expect(otherWeight).toBe(2);
+    expect(chatWeight).toBeCloseTo(3);
+
+    // Shown again, the pane opens beside the chat at the same share.
+    const again = settle(hidden);
+    expect(panes(again)).toEqual([[file], [chatA], [diffA], [other]]);
+    const againWeights = (again.arrangement.root as Branch).weights;
+    shownWeights.forEach((weight, index) => expect(againWeights[index]).toBeCloseTo(weight));
   });
 });
 

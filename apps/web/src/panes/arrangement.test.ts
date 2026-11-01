@@ -121,6 +121,52 @@ describe("closing tabs", () => {
   });
 });
 
+/** Diff, Files split right from it, and Browser split right from Files. */
+function threeInARow(): Arrangement {
+  const two = openBeside(openTab(startingArrangement(), diff), files, "p0", "right");
+  return openBeside(two, browser, "p1", "right");
+}
+
+function weights(arrangement: Arrangement) {
+  return (arrangement.root as Branch).weights;
+}
+
+describe("giving a closed pane's room back", () => {
+  it("returns it to the pane it was split from, whichever way the pane closes", () => {
+    const three = threeInARow();
+    expect(weights(three)).toEqual([1, 0.5, 0.5]);
+    const closed = closeTab(three, browser);
+    expect(panes(closed)).toEqual([[diff], [files]]);
+    expect(weights(closed)).toEqual([1, 1]);
+    const moved = moveTabs(three, [browser], "p0");
+    expect(panes(moved)).toEqual([[diff, browser], [files]]);
+    expect(weights(moved)).toEqual([1, 1]);
+    const reopened = openTab(three, browser, "p0");
+    expect(weights(reopened)).toEqual([1, 1]);
+  });
+
+  it("gives a closed origin's room to the pane split from it", () => {
+    const closed = closeTab(threeInARow(), diff);
+    expect(panes(closed)).toEqual([[files], [browser]]);
+    expect(weights(closed)).toEqual([1.5, 0.5]);
+  });
+
+  it("prefers the pane it was split from to one split from it", () => {
+    const closed = closeTab(threeInARow(), files);
+    expect(panes(closed)).toEqual([[diff], [browser]]);
+    expect(weights(closed)).toEqual([1.5, 0.5]);
+    // Browser, split from Files, now counts as split from Diff, which took Files' room.
+    expect(leaves(closed.root)[1]?.from).toBe("p0");
+  });
+
+  it("returns a pane split off by a drop to the pane it was dropped on", () => {
+    const three = openTab(threeInARow(), surfaceKey("notes"), "p0");
+    const dropped = splitWithTabs(three, [surfaceKey("notes")], "p0", "left");
+    expect(weights(dropped)).toEqual([0.5, 0.5, 0.5, 0.5]);
+    expect(weights(closeTab(dropped, surfaceKey("notes")))).toEqual([1, 0.5, 0.5]);
+  });
+});
+
 describe("moving a selection of tabs together", () => {
   it("moves them in order to the insertion line, closing the pane they empty", () => {
     const three = openTab(sideBySide(), browser, "p1", false);

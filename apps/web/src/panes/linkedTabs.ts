@@ -342,8 +342,9 @@ function removeTabs(
 }
 
 /**
- * Closes panes left with no tabs, their neighbours taking their room; the last pane left gets an
- * empty tab. Focus left on a closed pane goes to the front owner's pane, else the first.
+ * Closes panes left with no tabs, each one's room going as `removeLeaf` gives it (back to the
+ * pane it was split from, so hiding a chat's linked pane gives the chat its room back); the last
+ * pane left gets an empty tab. Focus left on a closed pane goes to the front owner's pane, else the first.
  */
 function closeEmptyPanes(arrangement: Arrangement, front: string | null): Arrangement {
   const empty = leaves(arrangement.root).filter((leaf) => leaf.tabs.length === 0);
