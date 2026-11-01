@@ -16,6 +16,7 @@ import {
   BookOpenIcon,
   CheckIcon,
   LayersIcon,
+  MessageSquarePlusIcon,
   MessagesSquareIcon,
   PlusIcon,
   SparklesIcon,
@@ -26,6 +27,7 @@ import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { useState, type ReactNode } from "react";
 
 import { useEnvironmentSettings } from "~/hooks/useSettings";
+import { TabHeader } from "~/panes/TabHeader";
 import { useThreadShells } from "~/state/entities";
 import {
   useChangeGroupDecisions,
@@ -33,7 +35,6 @@ import {
   useEnvironmentChangeRequests,
 } from "~/state/changeGroups";
 import { PullRequestGlyph } from "../../pullRequest/pullRequestIcons";
-import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
   Combobox,
@@ -46,10 +47,10 @@ import {
   useComboboxFilter,
 } from "../../ui/combobox";
 import { Switch } from "../../ui/switch";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
   CHANGE_GROUP_MEMBER_STATE_LABELS,
   changeGroupReasonLabel,
-  changeGroupStateVariant,
 } from "./changeGroupPresentation";
 import { changeGroupTabKey, type ChangeGroupTab } from "./changeGroupTabs";
 import {
@@ -82,12 +83,32 @@ export function ChangeGroupView({
   );
   if (!group) {
     return (
-      <p role="status" className="px-4 py-6 text-center text-sm text-muted-foreground">
-        This group has fewer than two change requests now.
-      </p>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <GroupHeader title="Change group" />
+        <p role="status" className="px-4 py-6 text-center text-sm text-muted-foreground">
+          This group has fewer than two change requests now.
+        </p>
+      </div>
     );
   }
   return <GroupDetails group={group} groups={groups} open={open} openAll={openAll} />;
+}
+
+function GroupHeader({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <TabHeader.Root>
+      <TabHeader.Title label="Change group" parent="Changes">
+        {title}
+      </TabHeader.Title>
+      {children}
+    </TabHeader.Root>
+  );
 }
 
 function GroupDetails({
@@ -198,81 +219,24 @@ function GroupDetails({
   };
 
   return (
-    <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-auto">
-      <div className="mx-auto flex max-w-2xl flex-col gap-5 px-6 py-8">
-        <header className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">{group.title}</h1>
-            <Badge variant={changeGroupStateVariant(group.state)}>
-              {CHANGE_GROUP_STATE_LABELS[group.state]}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {`${group.members.length} change requests, reviewed and merged each in its own place.${
-              group.threads.length === 0
-                ? ""
-                : ` ${group.threads.length} ${group.threads.length === 1 ? "thread works" : "threads work"} on it.`
-            }`}
-          </p>
-        </header>
-
-        <label className="flex items-start gap-3 rounded-lg border border-border px-3 py-2.5">
-          <Switch
-            checked={group.armed}
-            onCheckedChange={(armed) => void update(group, { type: "arm", armed })}
-            aria-label="Merge with the code"
-          />
-          <span className="flex min-w-0 flex-col">
-            <span className="text-sm font-medium">Merge with the code</span>
-            <span className="text-xs text-muted-foreground">
-              The documentation merges the moment the code has. A merge the wiki refuses stays open
-              for you to finish.
-            </span>
-          </span>
-        </label>
-
-        <div className="flex flex-wrap gap-2">
-          {openAll ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                openAll(
-                  [
-                    changeGroupTabKey(group),
-                    ...group.threadIds.map((threadId) =>
-                      chatTabKey(scopeThreadRef(environmentId, ThreadId.make(threadId))),
-                    ),
-                    ...group.members.flatMap((member) => {
-                      const key = changeGroupMemberTabKey(environmentId, member);
-                      return key === null ? [] : [key];
-                    }),
-                  ],
-                  group,
-                )
-              }
-            >
-              <LayersIcon />
-              Open as a tab group
-            </Button>
-          ) : null}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <GroupHeader title={group.title}>
+        <TabHeader.Status>{CHANGE_GROUP_STATE_LABELS[group.state]}</TabHeader.Status>
+        <TabHeader.Actions>
           {group.state === "docs-behind" ? (
-            <Button size="sm" variant="outline" onClick={askToUpdateDocs}>
-              <BookOpenIcon />
-              Ask to update the docs
-            </Button>
+            <TabHeader.Action label="Ask to update the docs" onClick={askToUpdateDocs}>
+              <BookOpenIcon className="size-4" />
+            </TabHeader.Action>
           ) : null}
           {group.state === "docs-missing" && settings.offerDocDrafts ? (
-            <Button size="sm" variant="outline" onClick={askToDraftDocs}>
-              <BookOpenIcon />
-              Draft the docs
-            </Button>
+            <TabHeader.Action label="Draft the docs" onClick={askToDraftDocs}>
+              <BookOpenIcon className="size-4" />
+            </TabHeader.Action>
           ) : null}
           {settings.agentSuggestions ? (
-            <Button size="sm" variant="outline" onClick={askForSuggestions}>
-              <SparklesIcon />
-              Ask for suggestions
-            </Button>
+            <TabHeader.Action label="Ask for suggestions" onClick={askForSuggestions}>
+              <SparklesIcon className="size-4" />
+            </TabHeader.Action>
           ) : null}
           <AddMember
             candidates={addable}
@@ -291,68 +255,75 @@ function GroupDetails({
               })
             }
           />
-        </div>
+          {openAll ? (
+            <TabHeader.Action
+              label="Open as a tab group"
+              onClick={() =>
+                openAll(
+                  [
+                    changeGroupTabKey(group),
+                    ...group.threadIds.map((threadId) =>
+                      chatTabKey(scopeThreadRef(environmentId, ThreadId.make(threadId))),
+                    ),
+                    ...group.members.flatMap((member) => {
+                      const key = changeGroupMemberTabKey(environmentId, member);
+                      return key === null ? [] : [key];
+                    }),
+                  ],
+                  group,
+                )
+              }
+            >
+              <LayersIcon className="size-4" />
+            </TabHeader.Action>
+          ) : null}
+        </TabHeader.Actions>
+      </GroupHeader>
+      <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto flex max-w-2xl flex-col gap-5 px-6 pt-6 pb-8">
+          <p className="text-sm text-muted-foreground">
+            {`${group.members.length} change requests, reviewed and merged each in its own place.${
+              group.threads.length === 0
+                ? ""
+                : ` ${group.threads.length} ${group.threads.length === 1 ? "thread works" : "threads work"} on it.`
+            }`}
+          </p>
 
-        {pending.length > 0 || pendingThreads.length > 0 ? (
-          <section className="flex flex-col gap-1">
-            <h2 className="text-xs font-medium text-muted-foreground">Suggested</h2>
-            {pending.map(({ entry, member }) => (
-              <MemberRow
-                key={member.key}
-                member={{ ...member, reason: "suggested", note: entry.note }}
-                onOpen={() => openMember(member)}
-                actions={
-                  <>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      aria-label={`Add ${member.title}`}
-                      onClick={() =>
-                        void update(group, {
-                          type: "add",
-                          member: entry.member,
-                          reason: "suggested",
-                          note: entry.note,
-                        })
-                      }
-                    >
-                      <CheckIcon />
-                    </Button>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      aria-label={`Dismiss ${member.title}`}
-                      onClick={() => void update(group, { type: "dismiss", memberKey: member.key })}
-                    >
-                      <XIcon />
-                    </Button>
-                  </>
-                }
-              />
-            ))}
-            {pendingThreads.map(({ note, threadId }) => {
-              const shell = threadsHere.get(threadId) ?? null;
-              const title = shell?.title ?? threadId;
-              return (
-                <ThreadRow
-                  key={threadId}
-                  title={title}
-                  reason="suggested"
-                  note={note}
-                  shell={shell}
-                  onOpen={() => openThread(threadId)}
+          <label className="flex items-start gap-3 rounded-lg border border-border px-3 py-2.5">
+            <Switch
+              checked={group.armed}
+              onCheckedChange={(armed) => void update(group, { type: "arm", armed })}
+              aria-label="Merge with the code"
+            />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-medium">Merge with the code</span>
+              <span className="text-xs text-muted-foreground">
+                The documentation merges the moment the code has. A merge the wiki refuses stays
+                open for you to finish.
+              </span>
+            </span>
+          </label>
+
+          {pending.length > 0 || pendingThreads.length > 0 ? (
+            <section className="flex flex-col gap-1">
+              <h2 className="text-xs font-medium text-muted-foreground">Suggested</h2>
+              {pending.map(({ entry, member }) => (
+                <MemberRow
+                  key={member.key}
+                  member={{ ...member, reason: "suggested", note: entry.note }}
+                  onOpen={() => openMember(member)}
                   actions={
                     <>
                       <Button
                         size="icon-xs"
                         variant="ghost-muted"
-                        aria-label={`Add ${title}`}
+                        aria-label={`Add ${member.title}`}
                         onClick={() =>
                           void update(group, {
                             type: "add",
-                            member: { kind: "thread", threadId },
+                            member: entry.member,
                             reason: "suggested",
-                            note,
+                            note: entry.note,
                           })
                         }
                       >
@@ -361,9 +332,9 @@ function GroupDetails({
                       <Button
                         size="icon-xs"
                         variant="ghost-muted"
-                        aria-label={`Dismiss ${title}`}
+                        aria-label={`Dismiss ${member.title}`}
                         onClick={() =>
-                          void update(group, { type: "dismiss", memberKey: threadKey(threadId) })
+                          void update(group, { type: "dismiss", memberKey: member.key })
                         }
                       >
                         <XIcon />
@@ -371,29 +342,102 @@ function GroupDetails({
                     </>
                   }
                 />
-              );
-            })}
-          </section>
-        ) : null}
+              ))}
+              {pendingThreads.map(({ note, threadId }) => {
+                const shell = threadsHere.get(threadId) ?? null;
+                const title = shell?.title ?? threadId;
+                return (
+                  <ThreadRow
+                    key={threadId}
+                    title={title}
+                    reason="suggested"
+                    note={note}
+                    shell={shell}
+                    onOpen={() => openThread(threadId)}
+                    actions={
+                      <>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost-muted"
+                          aria-label={`Add ${title}`}
+                          onClick={() =>
+                            void update(group, {
+                              type: "add",
+                              member: { kind: "thread", threadId },
+                              reason: "suggested",
+                              note,
+                            })
+                          }
+                        >
+                          <CheckIcon />
+                        </Button>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost-muted"
+                          aria-label={`Dismiss ${title}`}
+                          onClick={() =>
+                            void update(group, { type: "dismiss", memberKey: threadKey(threadId) })
+                          }
+                        >
+                          <XIcon />
+                        </Button>
+                      </>
+                    }
+                  />
+                );
+              })}
+            </section>
+          ) : null}
 
-        {[
-          { label: "Code", members: code },
-          { label: "Documentation", members: docs },
-        ].map((section) =>
-          section.members.length === 0 ? null : (
-            <section key={section.label} className="flex flex-col gap-1">
-              <h2 className="text-xs font-medium text-muted-foreground">{section.label}</h2>
-              {section.members.map((member) => (
-                <MemberRow
-                  key={member.key}
-                  member={member}
-                  onOpen={() => openMember(member)}
+          {[
+            { label: "Code", members: code },
+            { label: "Documentation", members: docs },
+          ].map((section) =>
+            section.members.length === 0 ? null : (
+              <section key={section.label} className="flex flex-col gap-1">
+                <h2 className="text-xs font-medium text-muted-foreground">{section.label}</h2>
+                {section.members.map((member) => (
+                  <MemberRow
+                    key={member.key}
+                    member={member}
+                    onOpen={() => openMember(member)}
+                    actions={
+                      <Button
+                        size="icon-xs"
+                        variant="ghost-muted"
+                        aria-label={`Take ${member.title} out of the group`}
+                        onClick={() =>
+                          void update(group, { type: "remove", memberKey: member.key })
+                        }
+                      >
+                        <XIcon />
+                      </Button>
+                    }
+                  />
+                ))}
+              </section>
+            ),
+          )}
+
+          {group.threads.length > 0 ? (
+            <section className="flex flex-col gap-1">
+              <h2 className="text-xs font-medium text-muted-foreground">Threads</h2>
+              {group.threads.map((entry) => (
+                <ThreadRow
+                  key={entry.threadId}
+                  title={entry.title}
+                  reason={entry.reason}
+                  note={entry.note}
+                  shell={threadsHere.get(entry.threadId) ?? null}
+                  onOpen={() => openThread(entry.threadId)}
                   actions={
                     <Button
                       size="icon-xs"
                       variant="ghost-muted"
-                      aria-label={`Take ${member.title} out of the group`}
-                      onClick={() => void update(group, { type: "remove", memberKey: member.key })}
+                      aria-label={`Take ${entry.title} out of the group`}
+                      onClick={() =>
+                        void update(group, { type: "remove", memberKey: threadKey(entry.threadId) })
+                      }
                     >
                       <XIcon />
                     </Button>
@@ -401,36 +445,8 @@ function GroupDetails({
                 />
               ))}
             </section>
-          ),
-        )}
-
-        {group.threads.length > 0 ? (
-          <section className="flex flex-col gap-1">
-            <h2 className="text-xs font-medium text-muted-foreground">Threads</h2>
-            {group.threads.map((entry) => (
-              <ThreadRow
-                key={entry.threadId}
-                title={entry.title}
-                reason={entry.reason}
-                note={entry.note}
-                shell={threadsHere.get(entry.threadId) ?? null}
-                onOpen={() => openThread(entry.threadId)}
-                actions={
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label={`Take ${entry.title} out of the group`}
-                    onClick={() =>
-                      void update(group, { type: "remove", memberKey: threadKey(entry.threadId) })
-                    }
-                  >
-                    <XIcon />
-                  </Button>
-                }
-              />
-            ))}
-          </section>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -515,6 +531,28 @@ function ThreadRow({
   );
 }
 
+/** A picker's trigger as a header action: a ghost icon button named by its tooltip. */
+function HeaderComboboxTrigger({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ComboboxTrigger render={<Button aria-label={label} size="icon-sm" variant="ghost" />} />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** Adds a thread to the group by hand: any thread on its environment not in it yet. */
 function AddThread({
   candidates,
@@ -545,11 +583,10 @@ function AddThread({
         if (!open) setQuery("");
       }}
     >
-      <ComboboxTrigger render={<Button size="sm" variant="outline" />}>
-        <PlusIcon />
-        Add a thread
-      </ComboboxTrigger>
-      <ComboboxPopup align="start" className="min-w-72 max-w-[min(24rem,var(--available-width))]">
+      <HeaderComboboxTrigger label="Add a thread">
+        <MessageSquarePlusIcon className="size-4" />
+      </HeaderComboboxTrigger>
+      <ComboboxPopup align="end" className="min-w-72 max-w-[min(24rem,var(--available-width))]">
         <ComboboxSearchInput
           aria-label="Search threads"
           placeholder="Search threads..."
@@ -604,11 +641,10 @@ function AddMember({
         if (!open) setQuery("");
       }}
     >
-      <ComboboxTrigger render={<Button size="sm" variant="outline" />}>
-        <PlusIcon />
-        Add a change request
-      </ComboboxTrigger>
-      <ComboboxPopup align="start" className="min-w-72 max-w-[min(24rem,var(--available-width))]">
+      <HeaderComboboxTrigger label="Add a change request">
+        <PlusIcon className="size-4" />
+      </HeaderComboboxTrigger>
+      <ComboboxPopup align="end" className="min-w-72 max-w-[min(24rem,var(--available-width))]">
         <ComboboxSearchInput
           aria-label="Search change requests"
           placeholder="Search change requests..."
