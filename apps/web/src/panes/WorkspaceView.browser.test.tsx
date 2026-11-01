@@ -13,6 +13,9 @@ const probe = vi.hoisted(() => ({
   heard: [] as string[],
   surfaces: [] as string[],
   navigations: [] as (string | null)[],
+  /** Whether the stubbed chats run ChatView's real shortcut handler, and the drawers it toggled. */
+  shortcuts: false,
+  terminalToggles: [] as string[],
   setRoute: null as null | ((threadId: string | null) => void),
   leaveAgents: null as null | (() => void),
 }));
@@ -26,6 +29,8 @@ function setup() {
   probe.heard = [];
   probe.surfaces = [];
   probe.navigations = [];
+  probe.shortcuts = false;
+  probe.terminalToggles = [];
 }
 
 vi.mock(import("~/hooks/useTheme"), async (original) => ({
@@ -51,6 +56,7 @@ vi.mock(import("~/chatTabs/chatTabLabel"), async (original) => ({
 
 vi.mock(import("~/components/ChatView"), async () => {
   const { LinkedPanel } = await import("./LinkedPanel");
+  const { useChatShortcuts } = await import("~/components/chat/useChatShortcuts");
   function Surface({ thread }: { thread: string }) {
     const [id] = useState(() => Math.random().toString(36).slice(2));
     useState(() => probe.surfaces.push(`${thread}#${id}`));
@@ -62,6 +68,26 @@ vi.mock(import("~/components/ChatView"), async () => {
     const instances = probe.instances.get(threadId) ?? new Set<string>();
     instances.add(id);
     probe.instances.set(threadId, instances);
+    useChatShortcuts({
+      enabled: probe.shortcuts,
+      keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
+      scriptKeybindings: [],
+      getShortcutContext: () => ({
+        terminalFocus: false,
+        terminalOpen: false,
+        previewFocus: false,
+        previewOpen: false,
+        modelPickerOpen: false,
+        isWeb: true,
+        isDesktop: false,
+      }),
+      threadFindActive: false,
+      composerRef: { current: null },
+      branchToolbarRef: { current: null },
+      closeThreadFind: () => {},
+      commands: { "terminal.toggle": () => void probe.terminalToggles.push(threadId) },
+      fallback: () => undefined,
+    });
     // As ChatView's shortcuts and paste-to-composer do.
     useEffect(() => {
       const hear = (event: KeyboardEvent) => probe.heard.push(`${threadId}:${event.key}`);
@@ -109,6 +135,11 @@ import { KEPT_CHATS } from "./recentChats";
 import { leaves } from "./tree";
 import { workspace } from "./workspace";
 import { WorkspaceView } from "./WorkspaceView";
+
+const focusedKey = () => {
+  const arrangement = workspace.arrangement();
+  return leaves(arrangement.root).find((leaf) => leaf.id === arrangement.focused)?.active;
+};
 
 const env = "env-1" as EnvironmentId;
 const refOf = (thread: string) => scopeThreadRef(env, ThreadId.make(thread));
@@ -268,6 +299,42 @@ describe("WorkspaceView chat tabs", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
 
     expect(probe.heard).toEqual(["B:x"]);
+  });
+
+  it("toggles a chat's terminal drawer from mod+j only while that chat's tab has focus", async () => {
+    setup();
+    const file = repositoryTabKey({
+      kind: "file",
+      environmentId: env,
+      projectId: ProjectId.make("project-1"),
+      cwd: "/repo",
+      path: "README.md",
+    });
+    workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
+    workspace.open(file, "beside");
+    probe.shortcuts = true;
+    await using _screen = await mount("A");
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const pressModJ = () =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", metaKey: mac, ctrlKey: !mac, cancelable: true }),
+      );
+    const paneOf = (key: string) =>
+      leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))!.id;
+
+    pressModJ();
+    expect(probe.terminalToggles).toEqual(["A"]);
+
+    // The file in focus: chat A still shows beside it, and neither it nor hidden B answers.
+    await change(() => workspace.update((a) => focusPane(a, paneOf(file))));
+    expect(focusedKey()).toBe(file);
+    expect(shows("A")).toBe(true);
+    pressModJ();
+    expect(probe.terminalToggles).toEqual(["A"]);
+
+    await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A")))));
+    pressModJ();
+    expect(probe.terminalToggles).toEqual(["A", "A"]);
   });
 
   it(`keeps the ${KEPT_CHATS} chats shown most recently mounted and lets go of the rest`, async () => {

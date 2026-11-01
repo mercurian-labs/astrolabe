@@ -8,6 +8,7 @@ import { runVimEx } from "@mercurian/editor/vim";
 
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { isEmptyTab } from "~/panes/arrangement";
+import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import {
   canClosePane,
   canSplitPane,
@@ -368,6 +369,11 @@ export function fullScreenState(pane: {
 function upstreamCommand(command: KeybindingCommand, context: AppCommandContext): AppCommand {
   // The right panel is a thread's: with no chat on screen there is none to toggle.
   if (command === "rightPanel.toggle" && context.chatTabs === null) {
+    return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
+  }
+  // The terminal drawer is the focused chat tab's: with anything else in focus there is none.
+  const focusedTab = context.chatTabs?.activeKey ?? null;
+  if (command === "terminal.toggle" && (focusedTab === null || !parseChatTabKey(focusedTab))) {
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
   const label = UPSTREAM_LABELS[command] ?? commandLabel(command);

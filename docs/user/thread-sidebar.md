@@ -73,6 +73,9 @@ Each tab remembers what it showed. The arrows at the start of a tab's header go 
 forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do the same in the
 focused tab.
 
+`mod+j` opens and closes the terminal drawer of the chat in the focused tab. With a file, a
+document or any other tab in focus it does nothing, even with a chat showing in another pane.
+
 ### Linked tabs
 
 A thread's terminals, browsers, diff, files, pull request, Graph and Lineage are linked to its

@@ -941,6 +941,14 @@ export function focusedChatOf(linked: LinkedArrangement): string | null {
 /** The device's shared panes. */
 export const workspace = createWorkspace();
 
+/**
+ * Whether the chat tab `owner`'s ChatView answers the terminal drawer's toggle: only as the
+ * focused pane's tab in front. Null is a ChatView outside the shared panes, which always does.
+ */
+export function takesTerminalToggle(owner: string | null): boolean {
+  return owner === null || focusedPane(workspace.arrangement()).active === owner;
+}
+
 // The hooks read the panes from outside their factory, so the React Compiler never lifts their
 // callbacks away from the panes they read.
 

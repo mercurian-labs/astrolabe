@@ -315,4 +315,7 @@ and returning shows the first chat's again. After a reload both reads return the
   live data had a merge-back (`orchestration_v2_projection_context_transfers` type
   `merge_back`), so only the layout tests cover dotted curves.
 - The bottom terminal drawer is T3 Code's own (Toggle terminal drawer, Cmd+J),
-  under the chat column, not a pane.
+  under the chat column, not a pane. Cmd+J (and `terminal.toggle` from which-key or the
+  palette, faint there otherwise) reaches only the chat that is the focused pane's tab in
+  front (`takesTerminalToggle`, checked in `useChatShortcuts`): with a file, document, linked
+  surface or other tab focused it does nothing, and no other visible or hidden chat answers.
