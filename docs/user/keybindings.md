@@ -372,7 +372,7 @@ Go to definition puts the cursor on the definition, opening its file in a tab be
 when it is elsewhere in the checkout. When there are several, places close together are all
 selected, and otherwise you pick one from a list; type to narrow it. On a definition itself, it
 finds the references instead. Find References opens every use, the declaration included, as
-[one editor of excerpts](repositories.md#results-in-one-editor) in a tab beside the file; so does
+[one editor of excerpts](projects.md#results-in-one-editor) in a tab beside the file; so does
 Go to Implementation when there are several. Uses outside the checkout are left out of it. With
 `mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
 
@@ -392,7 +392,7 @@ applies it to every file it touches, and the notice's **Undo** (or Undo Rename) 
 
 ## Search results and problems in one editor
 
-In a tab of [search results or problems](repositories.md#results-in-one-editor), `f7` and
+In a tab of [search results or problems](projects.md#results-in-one-editor), `f7` and
 `shift+f7` jump to the next and previous file, `shift+enter` shows more lines around an excerpt,
 and `alt+enter` opens the excerpt's file at the cursor. In the keyboard menu they are `e` `}`,
 `e` `{`, `e` `x` and `e` `k`, and `e` `v` opens the problems of the checkout in front. In the
