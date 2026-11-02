@@ -221,12 +221,12 @@ function run(tour, app) {
     app.toggleAttribute("inert", on);
     app.dataset.state = on ? "playing" : "exploring";
     tour.dataset.state = on ? "playing" : "ready";
-    for (const segment of segments) segment.disabled = on;
+    // The sections and prompts stay live while it plays: either one restarts playback from there.
+    for (const segment of segments) segment.disabled = false;
     if (!tries) return;
     // The prompts appear once the main scenario has played, and stay.
     if (!on) tries.hidden = false;
     tries.dataset.state = on ? "playing" : "ready";
-    for (const chip of chips) chip.disabled = on;
   }
 
   // Scenario s finished, on phase i, at once.
@@ -250,16 +250,23 @@ function run(tour, app) {
 
   const start = (s, i) => (reduced.matches ? jump(s, i) : play(s, i));
 
+  // Mid-run a section skips to its phase in the running scenario, else to the main scenario's.
   segments.forEach((segment, i) =>
     segment.addEventListener("click", () => {
-      if (state !== "exploring") return;
-      start(0, i);
+      if (state === "poster") return;
+      const own = state === "exploring" ? -1 : phasesOf(scenario).findIndex((p) => p.segment === i);
+      if (own >= 0) start(scenario, own);
+      else
+        start(
+          0,
+          phasesOf(0).findIndex((p) => p.segment === i),
+        );
     }),
   );
-  // An example "sends" its prompt: the window plays its scenario from the composer.
+  // An example "sends" its prompt: the window plays its scenario from the composer, mid-run too.
   chips.forEach((chip, n) =>
     chip.addEventListener("click", () => {
-      if (state === "exploring") start(n, 0);
+      if (state !== "poster") start(n, 0);
     }),
   );
   // "See it run" lands on the tour; once it has played, it plays the main scenario again.
