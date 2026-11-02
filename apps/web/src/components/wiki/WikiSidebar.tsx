@@ -1283,9 +1283,17 @@ function SlimTitle({ active, children }: { readonly active: boolean; readonly ch
   );
 }
 
-function SlimTime({ children }: { readonly children: ReactNode }) {
+/** When a row last changed, right-aligned, with any marks (a base, an open change) beside it. */
+function SlimTime({
+  marks,
+  children,
+}: {
+  readonly marks?: ReactNode;
+  readonly children: ReactNode;
+}) {
   return (
-    <span className="ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end text-xs tabular-nums text-secondary-label">
+    <span className="ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1.5 text-xs tabular-nums text-secondary-label">
+      {marks}
       {children}
     </span>
   );
@@ -1359,13 +1367,20 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       <SlimIcon item={item} active={active} />
       <SlimTitle active={active}>{item.title}</SlimTitle>
       {outsideFilter ? <OutsideFilterMark /> : null}
-      {item.base ? (
-        <TableIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
-      ) : null}
-      {change ? (
-        <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
-      ) : null}
-      <SlimTime>{working ? <WorkingStatus /> : compactTimeLabel(item.editedAt)}</SlimTime>
+      <SlimTime
+        marks={
+          <>
+            {item.base ? (
+              <TableIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+            ) : null}
+            {change ? (
+              <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+            ) : null}
+          </>
+        }
+      >
+        {working ? <WorkingStatus /> : compactTimeLabel(item.editedAt)}
+      </SlimTime>
     </CardRow>
   );
 });
