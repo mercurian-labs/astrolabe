@@ -16,6 +16,10 @@
       "types": "./src/incoming.ts",
       "default": "./src/incoming.ts"
     },
+    "./base-cells": {
+      "types": "./src/baseCells.ts",
+      "default": "./src/baseCells.ts"
+    },
     "./protocol": {
       "types": "./src/protocol.ts",
       "default": "./src/protocol.ts"

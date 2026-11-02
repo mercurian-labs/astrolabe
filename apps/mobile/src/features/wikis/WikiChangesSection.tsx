@@ -1,5 +1,4 @@
 import { useNavigation } from "@react-navigation/native";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   searchWikiListEntries,
   wikiListEntries,
@@ -10,8 +9,6 @@ import { useCallback, useMemo, useState } from "react";
 import { Keyboard, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
-import { scopedProjectKey } from "../../lib/scopedEntities";
-import { useProjects } from "../../state/entities";
 import { useWorkspaceState } from "../../state/workspace";
 import {
   ThreadListV2DisclosureDivider,
@@ -40,7 +37,6 @@ export function WikiChangesSection({
 }) {
   const navigation = useNavigation();
   const { environments } = useWorkspaceState();
-  const projects = useProjects();
   const [settledExpanded, setSettledExpanded] = useState(false);
   const environmentIds = useMemo(
     () =>
@@ -50,21 +46,14 @@ export function WikiChangesSection({
     [environments],
   );
   const { overviews } = useWikiOverviews(environmentIds);
-  const projectByKey = useMemo(
-    () =>
-      new Map<string, EnvironmentProject>(
-        projects.map((project) => [scopedProjectKey(project.environmentId, project.id), project]),
-      ),
-    [projects],
-  );
   const searching = query.length > 0;
   const items = useMemo(() => {
     const entries = searchWikiListEntries(wikiListEntries(overviews, scope), query);
     return buildWikiChangeItems(
       { ...entries, documents: [] },
-      { settledExpanded: settledExpanded || searching, projects: projectByKey },
+      { settledExpanded: settledExpanded || searching },
     );
-  }, [overviews, scope, query, searching, settledExpanded, projectByKey]);
+  }, [overviews, scope, query, searching, settledExpanded]);
   const openChangeRequest = useCallback(
     (entry: WikiChangeEntry) => {
       Keyboard.dismiss();
@@ -113,7 +102,6 @@ export function WikiChangesSection({
               <WikiChangeRow
                 key={item.key}
                 entry={item.entry}
-                project={item.project}
                 showTrailingDivider={item.showTrailingDivider}
                 onSelect={openChangeRequest}
               />

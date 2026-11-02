@@ -1,16 +1,25 @@
-// app.astrolabe.sh: a Worker serving the hosted static build in dist/, deployed by the release
-// workflow's deploy_web job, which also copies cloudflare/_headers into dist/. Files are served
+// The hosted app's channel Workers, each serving one release's static build in dist/. app.astrolabe.sh
+// is the router in cloudflare/router.wrangler.jsonc (router.ts), which picks one by cookie as upstream's
+// vercel.ts does. deploy_web builds and deploys the latest channel on stable releases and
+// `--env nightly` on nightlies, copying cloudflare/_headers into dist/ first. Files are served
 // straight from assets; the script only answers requests that match none (cloudflare/worker.js).
 {
-  "name": "astrolabe-app",
+  "name": "astrolabe-app-latest",
   "main": "./cloudflare/worker.js",
   "compatibility_date": "2026-10-20",
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
   },
-  "routes": [{ "pattern": "app.astrolabe.sh", "custom_domain": true }],
-  // The custom domain is the app's only address.
+  "routes": [{ "pattern": "latest.app.astrolabe.sh", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false,
+  "env": {
+    "nightly": {
+      "name": "astrolabe-app-nightly",
+      "routes": [{ "pattern": "nightly.app.astrolabe.sh", "custom_domain": true }],
+      "workers_dev": false,
+      "preview_urls": false,
+    },
+  },
 }

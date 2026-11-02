@@ -91,6 +91,7 @@ export function PullRequestDetailGhost({
   onBack,
   onClose,
   onCheckoutError,
+  heading,
 }: {
   seed?: PullRequestListEntry | null;
   summary?: PullRequestSummary | null;
@@ -102,6 +103,8 @@ export function PullRequestDetailGhost({
   onBack?: (() => void) | undefined;
   onClose?: (() => void) | undefined;
   onCheckoutError?: ((error: Error) => void) | undefined;
+  /** Astrolabe: the shared panes' header row, in place of the crumbs (`PullRequestTabHeading`). */
+  heading?: ReactNode;
 }) {
   const seed = summary
     ? {
@@ -136,8 +139,16 @@ export function PullRequestDetailGhost({
         !seed && "motion-safe:animate-skeleton",
       )}
     >
-      <div className="@container/pr-header grid min-w-0 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border-b border-border/60">
-        <div className="pl-4 grid h-7 min-w-0 items-center overflow-hidden">
+      <div
+        className={cn(
+          "@container/pr-header grid min-w-0 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 border-b border-border/60",
+          heading && "[&>nav]:border-t-0",
+        )}
+      >
+        {heading}
+        <div
+          className={cn("pl-4 grid h-7 min-w-0 items-center overflow-hidden", heading && "hidden")}
+        >
           <div className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground sm:text-xs">
             {onBack ? (
               <Button
@@ -169,7 +180,12 @@ export function PullRequestDetailGhost({
             )}
           </div>
         </div>
-        <div className="mr-4 flex h-7 shrink-0 items-center justify-end gap-1">
+        <div
+          className={cn(
+            "mr-4 flex h-7 shrink-0 items-center justify-end gap-1",
+            heading && "mr-(--workspace-gutter-end) h-(--workspace-topbar-height)",
+          )}
+        >
           {actions ?? <GhostBar className="h-6 w-16 rounded-md" />}
           <Button
             size="icon-xs"
@@ -195,13 +211,17 @@ export function PullRequestDetailGhost({
           <div className="min-h-0 overflow-hidden">
             <PullRequestDetailHeaderBody
               title={
-                <PullRequestDetailTitleRow>
-                  {seed ? (
-                    <h1 className="truncate text-base font-semibold leading-snug">{seed.title}</h1>
-                  ) : (
-                    <GhostBar className="h-5 w-4/5 max-w-md" />
-                  )}
-                </PullRequestDetailTitleRow>
+                heading ? null : (
+                  <PullRequestDetailTitleRow>
+                    {seed ? (
+                      <h1 className="truncate text-base font-semibold leading-snug">
+                        {seed.title}
+                      </h1>
+                    ) : (
+                      <GhostBar className="h-5 w-4/5 max-w-md" />
+                    )}
+                  </PullRequestDetailTitleRow>
+                )
               }
               author={
                 seed ? (

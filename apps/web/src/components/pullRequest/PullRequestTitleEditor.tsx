@@ -25,6 +25,7 @@ export function PullRequestTitleEditor({
   detail,
   canWriteSourceControl,
   onSaved,
+  editRequest,
 }: {
   environmentId: EnvironmentId;
   reference: PullRequestRef;
@@ -32,6 +33,8 @@ export function PullRequestTitleEditor({
   detail: PullRequestDetail;
   canWriteSourceControl: boolean;
   onSaved: () => void;
+  /** Astrolabe: the title shows in the tab's header; each new request opens the editor here. */
+  editRequest?: number | undefined;
 }) {
   const update = useAtomCommand(pullRequestEnvironment.update, { reportFailure: false });
   const [titleScope, setTitleScope] = useState<{
@@ -40,6 +43,11 @@ export function PullRequestTitleEditor({
   } | null>(null);
   const titleDraft = titleScope?.pullRequestKey === pullRequestKey ? titleScope.text : null;
   const [titleSaving, setTitleSaving] = useState(false);
+  const [seenEditRequest, setSeenEditRequest] = useState(editRequest);
+  if (editRequest !== seenEditRequest) {
+    setSeenEditRequest(editRequest);
+    setTitleScope({ pullRequestKey, text: detail.title });
+  }
 
   const saveTitle = async (next: string) => {
     const title = next.trim();
@@ -67,6 +75,7 @@ export function PullRequestTitleEditor({
   };
 
   if (titleDraft === null) {
+    if (editRequest !== undefined) return null;
     return (
       <PullRequestDetailTitleRow className="group gap-1">
         <Tooltip>

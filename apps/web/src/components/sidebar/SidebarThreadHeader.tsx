@@ -17,7 +17,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { observeResize } from "~/lib/observeResize";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -259,45 +258,6 @@ export function SidebarPickerAction({
       <Icon className="size-4 shrink-0 text-muted-foreground" />
       {children}
     </button>
-  );
-}
-
-/**
- * Astrolabe: what the title bar holds after the window's own controls while the sidebar is
- * collapsed (the section's back and forward, see `SidebarTabHistory`). It publishes its width as
- * `--workspace-collapsed-sidebar-actions`, so titlebars that inset for the window's controls clear
- * it too; `gap` includes the room after it.
- */
-export function SidebarCollapsedActionsSlot({
-  gap = false,
-  children,
-}: {
-  gap?: boolean;
-  children: ReactNode;
-}) {
-  const [element, setElement] = useState<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!element) return;
-    const root = document.documentElement;
-    const publish = () =>
-      root.style.setProperty("--workspace-collapsed-sidebar-actions", `${element.offsetWidth}px`);
-    publish();
-    const stop = observeResize(element, publish);
-    return () => {
-      stop();
-      root.style.removeProperty("--workspace-collapsed-sidebar-actions");
-    };
-  }, [element]);
-  return (
-    <div
-      ref={setElement}
-      className={cn(
-        "pointer-events-auto flex items-center empty:hidden [-webkit-app-region:no-drag]",
-        gap && "pe-(--workspace-titlebar-control-gap)",
-      )}
-    >
-      {children}
-    </div>
   );
 }
 

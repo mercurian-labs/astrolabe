@@ -371,3 +371,32 @@ it.effect("denies manual cleanup before the handler without settings permission"
     expect(handled).toBe(false);
   }).pipe(Effect.scoped),
 );
+
+it.effect("denies clearing a code index before the handler without maintenance permission", () =>
+  Effect.gen(function* () {
+    const group = WsRpcGroup.omit(
+      ...[...WsRpcGroup.requests.keys()].filter(
+        (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, typeof WS_METHODS.codeIndexClear> =>
+          tag !== WS_METHODS.codeIndexClear,
+      ),
+    );
+    let handled = false;
+    const client = yield* RpcTest.makeClient(group).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          group.toLayerHandler(WS_METHODS.codeIndexClear, () =>
+            Effect.sync(() => {
+              handled = true;
+              return {};
+            }),
+          ),
+          RpcAuthorization.layer([AuthOrchestrationReadScope]),
+        ),
+      ),
+    );
+    expect(yield* client[WS_METHODS.codeIndexClear]({}).pipe(Effect.flip)).toMatchObject({
+      requiredPermission: AuthEnvironmentMaintainScope,
+    });
+    expect(handled).toBe(false);
+  }).pipe(Effect.scoped),
+);

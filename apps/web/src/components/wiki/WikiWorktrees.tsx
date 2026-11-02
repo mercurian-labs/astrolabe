@@ -4,6 +4,7 @@ import { GitBranchPlusIcon, SaveIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { openTab } from "~/panes/arrangement";
+import { useProjects } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment } from "~/state/wiki";
 import { refreshProjectWorktrees, useProjectWorktrees } from "~/state/worktrees";
@@ -47,11 +48,18 @@ const changeRequestOf = (branch: string | null) =>
     ? null
     : ((CHANGE_REQUEST_BRANCH.exec(branch)?.[1] as WikiChangeRequestId | undefined) ?? null);
 
-/** A wiki's project, as the worktree controls take it; null for a wiki without one. */
-const ownerOf = (overview: WikiOverview) =>
-  overview.wiki.projectId === null
-    ? null
-    : { environmentId: overview.environmentId, id: overview.wiki.projectId };
+/**
+ * The project standing in a wiki's folder, as the worktree controls take it. Wikis no longer make
+ * one, so only a wiki whose folder was added as a project (as older wikis were) has worktrees.
+ */
+function useWikiOwner(overview: WikiOverview) {
+  const project = useProjects().find(
+    (candidate) =>
+      candidate.environmentId === overview.environmentId &&
+      candidate.workspaceRoot === overview.wiki.root,
+  );
+  return project ? { environmentId: project.environmentId, id: project.id } : null;
+}
 
 /**
  * A wiki's worktrees, each under its change request's title (its main line under the main
@@ -65,7 +73,7 @@ export function WikiWorktreeTrees({
   readonly overview: WikiOverview;
   readonly focused: WikiTab | null;
 }) {
-  const owner = ownerOf(overview);
+  const owner = useWikiOwner(overview);
   const listed = useProjectWorktrees(
     owner ? { environmentId: owner.environmentId, projectId: owner.id } : null,
   );
@@ -208,7 +216,7 @@ export function WikiWorktreeTrees({
  * so several can be worked on side by side.
  */
 export function WikiWorktreePicker({ overview }: { readonly overview: WikiOverview }) {
-  const owner = ownerOf(overview);
+  const owner = useWikiOwner(overview);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const openBranch = useOpenBranch();

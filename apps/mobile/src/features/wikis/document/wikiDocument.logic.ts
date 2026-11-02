@@ -42,3 +42,9 @@ export function wikiDocumentAuthor(input: {
 
 /** A skill map arranges notes; it is read, never typed into. */
 export const isSkillMapFile = (file: string) => file.endsWith(".skillmap.md");
+
+/** A `.base` file, named by its file name: it opens as its view, read only, never as a note. */
+export const isWikiBaseFile = (name: string) => name.endsWith(".base");
+
+/** A base's title, its file name without `.base`, as web's tab reads. */
+export const wikiBaseTitle = (file: string) => file.replace(/\.base$/, "");

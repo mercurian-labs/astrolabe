@@ -29,10 +29,86 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The app's web view adds no insets: the page clears a header or home indicator over it. */
 #root {
-  padding: 12px 20px 0;
+  padding: calc(12px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+    env(safe-area-inset-bottom) calc(20px + env(safe-area-inset-left));
 }
 
 .text-foreground {
   color: var(--foreground);
+}
+
+/* A ```base block's view (see `BaseBlock.tsx`). */
+.base-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.base-scroll {
+  overflow-x: auto;
+}
+
+.base-table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.base-table th,
+.base-table td {
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.base-table th {
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.base-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.base-fact {
+  margin: 0;
+}
+
+.base-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  text-align: left;
+}
+
+.base-name {
+  font-weight: 500;
+}
+
+.base-group {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.base-muted {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+
+.base-error {
+  margin: 0;
+  color: #b42318;
 }

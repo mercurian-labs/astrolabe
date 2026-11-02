@@ -7,7 +7,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { waitForProject } from "~/state/entities";
@@ -69,7 +69,7 @@ export function useNewProject() {
     readonly environmentId: EnvironmentId;
     readonly name: string;
     readonly publishTo: NewProjectPublishTarget | null;
-  }): Promise<boolean> => {
+  }): Promise<ProjectId | null> => {
     const result = await createNew({
       environmentId: input.environmentId,
       input: { name: input.name },
@@ -84,7 +84,7 @@ export function useNewProject() {
           }),
         );
       }
-      return false;
+      return null;
     }
 
     const { projectId, workspaceRoot, commitError } = result.value;
@@ -119,7 +119,7 @@ export function useNewProject() {
       );
       return null;
     });
-    if (project === null) return true;
+    if (project === null) return projectId;
     await handleNewThread(projectRef).catch((error: unknown) => {
       toastManager.add(
         stackedThreadToast({
@@ -129,6 +129,6 @@ export function useNewProject() {
         }),
       );
     });
-    return true;
+    return projectId;
   };
 }

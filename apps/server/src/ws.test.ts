@@ -96,6 +96,7 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
+import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as Vimrc from "./vimrc.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -464,6 +465,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ChangeGroupService.ChangeGroupService)({}),
   Layer.mock(ProjectWorktreeService.ProjectWorktreeService)({}),
   Layer.mock(WikiService.WikiService)({}),
+  Layer.mock(CodeIndex.CodeIndex)({}),
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),

@@ -2,19 +2,30 @@
   "name": "@mercurian/code-graph",
   "private": true,
   "license": "MIT",
-  "bin": {
-    "code-graph": "./src/cli.ts"
-  },
   "type": "module",
   "exports": {
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./languages": {
+      "types": "./src/parse/languages.ts",
+      "default": "./src/parse/languages.ts"
+    },
+    "./git": {
+      "types": "./src/git.ts",
+      "default": "./src/git.ts"
+    },
+    "./modules": {
+      "types": "./src/index/modules.ts",
+      "default": "./src/index/modules.ts"
+    },
+    "./builtins": {
+      "types": "./src/index/builtins.ts",
+      "default": "./src/index/builtins.ts"
     }
   },
   "scripts": {
-    "index": "node src/cli.ts index",
-    "story": "node src/cli.ts story",
     "typecheck": "tsc --noEmit",
     "test": "vp test run",
     "lint": "vp lint ."

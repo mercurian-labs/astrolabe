@@ -50,6 +50,15 @@ describe("Repositories tab keys", () => {
         source: "branch-range",
         base: "release/2.0",
       },
+      { kind: "graph", environmentId, projectId, checkout: { cwd: "/tmp/wt" }, path: null },
+      {
+        kind: "graph",
+        environmentId,
+        projectId,
+        checkout: { branch: "feature/a" },
+        path: "src/a b:c.ts",
+      },
+      { kind: "graph", environmentId, projectId, checkout: { branch: "feature/a" }, path: null },
     ];
     for (const tab of tabs) expect(parseRepositoryTabKey(repositoryTabKey(tab))).toEqual(tab);
   });
@@ -60,6 +69,27 @@ describe("Repositories tab keys", () => {
     expect(parseRepositoryTabKey("repo-file:a:b")).toBeNull();
     expect(parseRepositoryTabKey("repo-file:a:b:folder:main:c.ts")).toBeNull();
     expect(parseRepositoryTabKey("repo-diff:a:b:c:working-tree~main")).toBeNull();
+    expect(parseRepositoryTabKey("repo-graph:a:b")).toBeNull();
+    expect(parseRepositoryTabKey("repo-graph:a:b:c:d:e")).toBeNull();
+  });
+
+  it("keep a following graph and a pinned one apart", () => {
+    const following = repositoryTabKey({
+      kind: "graph",
+      environmentId,
+      projectId,
+      checkout: { branch: "main" },
+      path: null,
+    });
+    const pinned = repositoryTabKey({
+      kind: "graph",
+      environmentId,
+      projectId,
+      checkout: { branch: "main" },
+      path: "a.ts",
+    });
+    expect(following).not.toBe(pinned);
+    expect(parseRepositoryTabKey(following)).toMatchObject({ kind: "graph", path: null });
   });
 
   it("name a file's folder", () => {

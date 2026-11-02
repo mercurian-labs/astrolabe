@@ -257,7 +257,7 @@ export function PullRequestsScreen(
     authors: knownFacets.environmentId === environmentId ? knownFacets.authors : facets.authors,
     labels: knownFacets.environmentId === environmentId ? knownFacets.labels : facets.labels,
     labelColors,
-    projects: wikiSource.withoutWikiProjects(projects),
+    projects,
     wikis: wikiSource.choices,
     wikiValue: wikiSource.selected,
     repositoriesOnly: wikiSource.repositoriesOnly,

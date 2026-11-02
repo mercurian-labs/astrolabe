@@ -1,4 +1,6 @@
+import { useAtomValue } from "@effect/atom-react";
 import { matchComposerThreadItems } from "@t3tools/client-runtime/composerThreadItems";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { useState } from "react";
 import type {
   EnvironmentId,
@@ -22,7 +24,7 @@ import {
   getProviderSlashCommandsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
-import { useThreadShells } from "~/state/entities";
+import { useProject, useThreadShells } from "~/state/entities";
 import {
   pullRequestEnvironment,
   usePullRequestList,
@@ -30,6 +32,7 @@ import {
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
 import { useComposerPathSearch, useDebouncedValue, useThreadSearch } from "~/state/queries";
+import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
 import {
   matchesPullRequestQuery,
   rankPullRequestMatches,
@@ -39,18 +42,20 @@ import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
 } from "./composerSlashCommandSearch";
+import { composerWikiNoteItems } from "./composerWikiNoteItems";
 
 const COMPOSER_PULL_REQUEST_LIST_LIMIT = 99;
 const COMPOSER_PULL_REQUEST_RESULT_LIMIT = 12;
 const EMPTY_PULL_REQUEST_LIST_TARGETS: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput>> =
   [];
 
-/** Builds the @, /, $ and # suggestion lists, running the searches each trigger needs. */
+/** Builds the @, /, $, # and [[ suggestion lists, running the searches each trigger needs. */
 export function useComposerMenuItems({
   composerTrigger,
   environmentId,
   gitCwd,
   activeThreadId,
+  activeProjectId,
   pullRequestProjectId,
   pullRequestRepository,
   threadPullRequests,
@@ -65,6 +70,7 @@ export function useComposerMenuItems({
   readonly environmentId: EnvironmentId;
   readonly gitCwd: string | null;
   readonly activeThreadId: ThreadId | null;
+  readonly activeProjectId: ProjectId | null;
   readonly pullRequestProjectId: ProjectId | null;
   readonly pullRequestRepository: string | null;
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
@@ -99,6 +105,20 @@ export function useComposerMenuItems({
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
+
+  // The list alone decides whether `[[` is a trigger; indexes load only while it is one.
+  const wikiList = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const wikiNotesAvailable = (wikiList.data?.wikis.length ?? 0) > 0;
+  const isWikiNoteTrigger = composerTriggerKind === "wiki-note" && wikiNotesAvailable;
+  const [wikiOverviews] = useAtomValue(
+    wikiOverviewsAtom(JSON.stringify(isWikiNoteTrigger ? [environmentId] : [])),
+  );
+  const canLinkWikis = useAtomValue(wikiEnvironment.setProjectLink.permissionAtom(environmentId));
+  const activeProject = useProject(
+    isWikiNoteTrigger && activeProjectId !== null
+      ? scopeProjectRef(environmentId, activeProjectId)
+      : null,
+  );
 
   const pullRequestListTargets =
     composerTriggerKind !== "pull-request" ||
@@ -257,6 +277,18 @@ export function useComposerMenuItems({
           (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
       }));
     }
+    if (composerTrigger.kind === "wiki-note") {
+      if (!isWikiNoteTrigger) return [];
+      return composerWikiNoteItems({
+        overviews: wikiOverviews ?? [],
+        project:
+          activeProject === null || activeProject.isScratch
+            ? null
+            : { id: activeProject.id, title: activeProject.title },
+        query: composerTrigger.query,
+        canLink: canLinkWikis,
+      });
+    }
     if (
       composerTrigger.kind === "pull-request" &&
       pullRequestProjectId !== null &&
@@ -315,6 +347,10 @@ export function useComposerMenuItems({
     return [];
   })();
   const isLoading =
+    (isWikiNoteTrigger &&
+      (wikiOverviews === null ||
+        wikiOverviews === undefined ||
+        wikiOverviews.some((overview) => overview.index === null))) ||
     (composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending) ||
     (composerTriggerKind === "pull-request" &&
       pullRequestProjectId !== null &&
@@ -346,5 +382,5 @@ export function useComposerMenuItems({
       : "No matching command.";
   })();
 
-  return { items, isLoading, emptyState };
+  return { items, isLoading, emptyState, wikiNotesAvailable };
 }

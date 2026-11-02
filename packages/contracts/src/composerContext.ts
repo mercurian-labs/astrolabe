@@ -11,6 +11,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
+import { WikiId } from "./wiki.ts";
 
 /** Image and file records reference `ChatAttachment` ids, never bytes. */
 
@@ -24,6 +25,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "mention",
   "skill",
   "thread",
+  "wiki-note",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -211,6 +213,16 @@ export const ThreadContextRecord = Schema.Struct({
 });
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
+/** Astrolabe: a wiki note, which the agent reads with its wiki tools. */
+export const WikiNoteContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("wiki-note"),
+  wikiId: WikiId.check(Schema.isMaxLength(255)),
+  wikiName: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+});
+export type WikiNoteContextRecord = typeof WikiNoteContextRecord.Type;
+
 const isJson = Schema.is(Schema.Json);
 
 /** Excludes known discriminators so malformed known records fail their own schema. */
@@ -241,6 +253,7 @@ export const KnownComposerContextRecord = Schema.Union([
   MentionContextRecord,
   SkillContextRecord,
   ThreadContextRecord,
+  WikiNoteContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

@@ -23,7 +23,7 @@ import {
   useWorktreeWatch,
   worktreeEnvironment,
 } from "~/state/worktrees";
-import FileBrowserPanel from "../files/FileBrowserPanel";
+import FileBrowserPanel, { type FileMenuAction } from "../files/FileBrowserPanel";
 import {
   SidebarHeaderIconButton,
   SidebarPickerAction,
@@ -202,12 +202,14 @@ export function WorktreeFiles({
   projectName,
   selectedPath,
   onOpenFile,
+  fileMenuActions,
 }: {
   readonly owner: WorktreeOwner;
   readonly worktree: ProjectWorktree;
   readonly projectName: string;
   readonly selectedPath: string | null;
   readonly onOpenFile: (path: string) => void;
+  readonly fileMenuActions?: ReadonlyArray<FileMenuAction>;
 }) {
   const watch = useWorktreeWatch(owner.environmentId, owner.id, worktree.path);
   return (
@@ -219,6 +221,7 @@ export function WorktreeFiles({
         selectedPath={selectedPath}
         selectedPathRevealId={0}
         onOpenFile={onOpenFile}
+        {...(fileMenuActions ? { fileMenuActions } : {})}
         workspaceMutationId={
           watch?.unwatched
             ? `${worktree.head}:${worktree.changedFiles}`

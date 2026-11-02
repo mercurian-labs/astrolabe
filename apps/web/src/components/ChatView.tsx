@@ -345,7 +345,7 @@ import {
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
-import { useComposerHandleContext } from "../composerHandleContext";
+import { ComposerHandleContext, useChatComposerRef } from "../composerHandleContext";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { assetEnvironment } from "../state/assets";
@@ -358,9 +358,10 @@ import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { setReadingTurn } from "./lineage/readingTurn";
-import { useChatTabStrip } from "../chatTabs/ChatTabStrip";
 import { ThreadChangeGroupPill } from "./changeRequests/groups/ThreadChangeGroupPill";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
+import { useChatOwner } from "../panes/PaneSurfaceHost";
+import { isFocusedChatTab, takesPanelShortcut } from "../panes/workspace";
 import { keepsListFocus } from "../keyboardNav/placeLists";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem } from "./chat/ThreadActivityBanners";
@@ -504,8 +505,7 @@ export default function ChatView(props: ChatViewProps) {
           lastVisitedAt: fallbackLastVisitedAt,
         });
   const promptRef = useRef("");
-  const localComposerRef = useRef<ChatComposerHandle | null>(null);
-  const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const composerRef = useChatComposerRef();
   const queuedRunEdit = useQueuedRunEdit({
     environmentId,
     routeThreadRef,
@@ -999,12 +999,14 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     panelAnimationDurationMs,
   );
-  // Astrolabe: the open chats' tabs, across the top of the chat column.
-  const chatTabStrip = useChatTabStrip();
   const rightPanelPresent = rightPanelPresence.present;
+  // Astrolabe: inside the shared panes the panel is a pane of its own, never beside the header or
+  // over it as a sheet, so the header keeps its controls in every state.
+  const chatOwner = useChatOwner();
+  const inPanes = chatOwner !== null;
   const rightPanelControlsInPanel =
-    shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
-  const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
+    !inPanes && shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
+  const rightPanelControlsAtRoot = !inPanes && rightPanelPresent && !shouldUsePlanSidebarSheet;
   const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
   const renderedRightPanelSurfaces = rightPanelPresence.value?.surfaces ?? [];
   const previewMiniPlayerVisible = shouldRenderPreviewMiniPlayer(
@@ -1013,7 +1015,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const canMaximizeRightPanel = rightPanelOpen && !shouldUsePlanSidebarSheet;
   const rightPanelMaximized = canMaximizeRightPanel && rightPanelState.maximized === true;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
+  const inlineRightPanelOwnsTitleBar = !inPanes && rightPanelOpen && !shouldUsePlanSidebarSheet;
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
   const [chatCanvasStore] = useState(createChatCanvasStore);
 
@@ -1768,7 +1770,13 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const onInterruptStable = useStableCallback(onInterrupt);
-  useEffect(() => subscribeSnapShotComposerFocus(focusComposerStable), [focusComposerStable]);
+  useEffect(
+    () =>
+      subscribeSnapShotComposerFocus(() => {
+        if (isFocusedChatTab(chatOwner)) focusComposerStable();
+      }),
+    [chatOwner, focusComposerStable],
+  );
   const scheduleComposerFocus = () => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -2091,14 +2099,15 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
     const frame = window.requestAnimationFrame(() => {
-      // Astrolabe: a thread opened by Enter in the sidebar's list leaves focus in the list.
-      if (keepsListFocus()) return;
+      // Astrolabe: a thread opened by Enter in the sidebar's list leaves focus in the list, and
+      // a chat beside the focused one never takes focus.
+      if (keepsListFocus() || !isFocusedChatTab(chatOwner)) return;
       focusComposerStable();
     });
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposerStable, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, chatOwner, focusComposerStable, terminalUiState.terminalOpen]);
 
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
@@ -2110,6 +2119,7 @@ export default function ChatView(props: ChatViewProps) {
         frame = window.requestAnimationFrame(() => {
           frame = null;
           if (document.querySelector("[data-mcp-app-fullscreen]") !== null) return;
+          if (!isFocusedChatTab(chatOwner)) return;
           if (shouldRefocusComposerOnWindowFocus(document.activeElement)) focusComposerStable();
         });
       });
@@ -2119,7 +2129,13 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, focusComposerStable, isMobileViewport, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    chatOwner,
+    focusComposerStable,
+    isMobileViewport,
+    terminalUiState.terminalOpen,
+  ]);
 
   // Promotion drops draftId while a send may still be dispatching, so key by thread.
   const [localDispatchThreadId, setLocalDispatchThreadId] = useState(threadId);
@@ -2691,10 +2707,11 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   useEffect(() => {
     return window.desktopBridge?.onMenuAction((action) => {
+      if (!takesPanelShortcut(chatOwner)) return;
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     });
-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  }, [chatOwner, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
   usePasteToFocusComposer(activeThreadId, composerRef);
   const {
@@ -3165,8 +3182,7 @@ export default function ChatView(props: ChatViewProps) {
   const panelToggleControls = (
     <PanelLayoutControls
       {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar && !chatTabStrip}
-      showTerminalControl={!chatTabStrip}
+      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
     />
   );
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -3206,17 +3222,6 @@ export default function ChatView(props: ChatViewProps) {
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
       >
-        {chatTabStrip?.({
-          atWindowEdge: !rightPanelControlsAtRoot,
-          // The chat's own controls end its strip; the right panel's toggle joins them while
-          // the panel is closed, and otherwise sits over the panel with its maximize control.
-          trailing: (
-            <PanelLayoutControls
-              {...panelToggleControlProps}
-              showRightPanelControl={!rightPanelControlsAtRoot}
-            />
-          ),
-        })}
         <PaneChatHeader
           ref={threadPanelPopoverAnchorRef}
           data-chat-header
@@ -3239,10 +3244,8 @@ export default function ChatView(props: ChatViewProps) {
               className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
             />
           ) : null}
-          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && !chatTabStrip
-            ? panelLayoutControls
-            : null}
-          {inlineRightPanelOwnsTitleBar && !chatTabStrip ? threadPanelHeaderControl : null}
+          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
+          {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}
@@ -3961,7 +3964,7 @@ export default function ChatView(props: ChatViewProps) {
       cwd={activeWorkspaceRoot}
       checkpoints={serverProjection?.checkpoints}
     >
-      {content}
+      <ComposerHandleContext value={composerRef}>{content}</ComposerHandleContext>
     </FileMetadataThreadProvider>
   );
 }

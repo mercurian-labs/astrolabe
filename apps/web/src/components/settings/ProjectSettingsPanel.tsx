@@ -44,7 +44,9 @@ import {
   canPickExternalProjectFavicon,
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
+import { CodeIndexProjectSettings } from "./CodeIndexSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
+import { RepositoryWikisMenu } from "../wiki/WikiLinkMenus";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
 import { useSettingsProjectGroups } from "./useSettingsProjectGroups";
@@ -559,8 +561,14 @@ function ProjectDetail({
               </div>
             }
           />
+          <SettingsRow
+            title="Wikis"
+            description="Where this project's research and plans live. Its threads are told to read and write them there."
+            control={<RepositoryWikisMenu checkouts={group.memberProjects} />}
+          />
         </SettingsSection>
         <ProjectDefaultsSettings category="project" />
+        <CodeIndexProjectSettings members={group.memberProjects} />
         <ProjectActionsSettings />
         {hasMultipleCheckouts ? checkoutChoices : null}
         <SettingsSection title="Danger">

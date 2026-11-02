@@ -28,6 +28,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   RunId,
   ThreadId,
+  WikiId,
   type OrchestrationV2ThreadShell,
   type OrchestrationV2ShellSnapshot,
   type ModelSelection,
@@ -94,8 +95,16 @@ import {
   DraftId,
 } from "./composerDraftStore";
 import { waitForDraftHeroTransition } from "./components/chat/draftHeroTransition";
-import { insertInlineContextReference } from "./lib/composerContextReferences";
-import { terminalContextReference, threadContextRecord } from "./lib/composerContextRecords";
+import {
+  formatInlineContextReference,
+  insertInlineContextReference,
+} from "./lib/composerContextReferences";
+import {
+  terminalContextReference,
+  threadContextRecord,
+  wikiNoteContextRecord,
+  wikiNoteContextReference,
+} from "./lib/composerContextRecords";
 import {
   copiedComposerAttachmentFile,
   rememberCopiedComposerAttachments,
@@ -752,6 +761,41 @@ describe("composerDraftStore thread contexts", () => {
       attached,
     ]);
     expect(hydrated.draftsByThreadKey[scopedThreadKey(threadRef)]?.prompt).toBe(draft?.prompt);
+  });
+});
+
+describe("composerDraftStore wiki notes", () => {
+  const threadId = ThreadId.make("thread-with-wiki-note");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+  const note = wikiNoteContextRecord({
+    wikiId: WikiId.make("plans"),
+    wikiName: "Plans",
+    name: "Login flow",
+  });
+
+  beforeEach(resetComposerDraftStore);
+
+  it("keeps a draft holding only a note chip through persistence, and drops its chip with it", () => {
+    const store = useComposerDraftStore.getState();
+    const prompt = formatInlineContextReference(wikiNoteContextReference(note));
+    store.setPrompt(threadRef, prompt);
+    store.addWikiNotes(threadRef, [note]);
+    store.addWikiNotes(threadRef, [{ ...note, wikiName: "Renamed" }]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.wikiNotes).toEqual([note]);
+
+    const merge = useComposerDraftStore.persist.getOptions().merge!;
+    const hydrated = merge(
+      JSON.parse(
+        JSON.stringify(partializeComposerDraftStoreState(useComposerDraftStore.getState())),
+      ),
+      useComposerDraftStore.getInitialState(),
+    );
+    const hydratedDraft = hydrated.draftsByThreadKey[scopedThreadKey(threadRef)];
+    expect(hydratedDraft?.wikiNotes).toEqual([note]);
+    expect(hydratedDraft?.prompt).toBe(prompt);
+
+    store.setWikiNotes(threadRef, []);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
   });
 });
 

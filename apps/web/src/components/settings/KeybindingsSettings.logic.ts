@@ -381,6 +381,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "commandLine.open": "Command Palette",
   "section.new": "New Thread or Document",
   "section.threads": "Section: Agents",
+  "section.repositories": "Section: Projects",
   "section.pullRequests": "Section: Changes",
   "tab.close": "Close Tab or Pane Tab",
   "draft.write": "Send Draft or Save Note",
@@ -392,6 +393,9 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "focus.right": "Focus Right",
   "scroll.down": "Scroll Down",
   "scroll.up": "Scroll Up",
+  "repository.localGraph": "Projects: Open Local Graph",
+  "tab.toggleLink": "Tabs: Link or Unlink Tab",
+  "tab.newLinked": "Tabs: New Linked Tab",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

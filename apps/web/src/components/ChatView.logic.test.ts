@@ -1016,6 +1016,7 @@ describe("snapshotComposerSend", () => {
       previewAnnotations: [],
       reviewComments: [],
       threadContexts: [],
+      wikiNotes: [],
     });
 
     expect(snapshot.terminalContexts).toEqual([live]);

@@ -50,6 +50,8 @@ interface FileBrowserPanelProps {
   /** Astrolabe: the bare tree for a sidebar section, in its colours, as tall as its rows up to
    * `maxRows`. */
   sidebar?: { readonly maxRows: number };
+  /** Astrolabe: more entries for a file's context menu, after the built-in ones. */
+  fileMenuActions?: ReadonlyArray<FileMenuAction>;
 }
 
 // Rows line up with the sidebar's own: its colours, its text size, and its inset.
@@ -63,6 +65,14 @@ const SIDEBAR_TREE_STYLE: CSSProperties = {
   ["--trees-item-margin-x-override" as string]: "0px",
   ["--trees-item-padding-x-override" as string]: "10px",
 };
+
+export interface FileMenuAction {
+  readonly id: string;
+  readonly label: string;
+  readonly run: (relativePath: string) => void;
+}
+
+const NO_FILE_MENU_ACTIONS: ReadonlyArray<FileMenuAction> = [];
 
 function treePath(entry: ProjectEntry): string {
   return entry.kind === "directory" ? `${entry.path}/` : entry.path;
@@ -158,6 +168,7 @@ export default function FileBrowserPanel({
   workspaceMutationId,
   hostFolder = false,
   sidebar,
+  fileMenuActions = NO_FILE_MENU_ACTIONS,
 }: FileBrowserPanelProps) {
   const panelPath = (relativePath: string) =>
     hostFolder ? joinHostPath(cwd, relativePath) : relativePath;
@@ -205,6 +216,7 @@ export default function FileBrowserPanel({
         return;
       }
       const relativePath = item.path.replace(/\/$/, "");
+      const extraActions = item.path.endsWith("/") ? [] : fileMenuActions;
       const mention = serializeComposerFileLink(panelPath(relativePath));
       const pointer = contextMenuPointerRef.current;
       const pointerIsFresh = pointer !== null && performance.now() - pointer.at < 1000;
@@ -220,10 +232,16 @@ export default function FileBrowserPanel({
             ...fileMenuItems,
             { id: "copy-mention", label: "Copy mention" },
             { id: "add-to-chat", label: "Add to chat" },
+            ...extraActions.map((action) => ({ id: action.id, label: action.label })),
           ],
           position,
         );
         if (clicked === null) return;
+        const extra = extraActions.find((action) => action.id === clicked);
+        if (extra !== undefined) {
+          extra.run(relativePath);
+          return;
+        }
         // Open-with submenu ids are absent from the top-level item list.
         const isFileMenuAction =
           fileMenuItems.some((entry) => entry.id === clicked) || clicked.startsWith("editor:");

@@ -408,16 +408,28 @@ import {
   WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
+  WikiQueryInput,
+  WikiQueryResult,
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
   WikiSaveWorktreeInput,
   WikiSetChangeRequestStatusInput,
   WikiSetMirrorInput,
+  WikiSetProjectLinkInput,
   WikiSummary,
   WikiTarget,
   WikiTransformInput,
 } from "./wiki.ts";
+import {
+  CodeIndexError,
+  CodeIndexProjectInput,
+  CodeIndexPruneResult,
+  CodeIndexStatus,
+  CodeIndexStorage,
+  CodeLocalGraph,
+  CodeLocalGraphInput,
+} from "./codeIndex.ts";
 import {
   ProjectCloneActionInput,
   ProjectCloneActionResult,
@@ -594,6 +606,7 @@ export const WS_METHODS = {
   wikiRemove: "wiki.remove",
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
+  wikiQuery: "wiki.query",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
@@ -604,7 +617,16 @@ export const WS_METHODS = {
   wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
+  wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
+
+  // Astrolabe: each repository's code index.
+  codeIndexSubscribe: "codeIndex.subscribe",
+  codeIndexLocalGraph: "codeIndex.localGraph",
+  codeIndexRebuild: "codeIndex.rebuild",
+  codeIndexStorage: "codeIndex.storage",
+  codeIndexPrune: "codeIndex.prune",
+  codeIndexClear: "codeIndex.clear",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2025,6 +2047,12 @@ const WsWikiReadNoteRpc = Rpc.make(WS_METHODS.wikiReadNote, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
+  payload: WikiQueryInput,
+  success: WikiQueryResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
   payload: WikiChangeRequestListInput,
   success: WikiChangeRequestListResult,
@@ -2085,10 +2113,55 @@ const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiSetProjectLinkRpc = Rpc.make(WS_METHODS.wikiSetProjectLink, {
+  payload: WikiSetProjectLinkInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   payload: WikiTarget,
   success: WikiSummary,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+/** Every repository's index status now, then each change. */
+const WsCodeIndexSubscribeRpc = Rpc.make(WS_METHODS.codeIndexSubscribe, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStatus,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsCodeIndexLocalGraphRpc = Rpc.make(WS_METHODS.codeIndexLocalGraph, {
+  payload: CodeLocalGraphInput,
+  success: CodeLocalGraph,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexRebuildRpc = Rpc.make(WS_METHODS.codeIndexRebuild, {
+  payload: CodeIndexProjectInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexStorageRpc = Rpc.make(WS_METHODS.codeIndexStorage, {
+  payload: Schema.Struct({}),
+  success: CodeIndexStorage,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+/** Remove file versions no branch, worktree or checkpoint uses. */
+const WsCodeIndexPruneRpc = Rpc.make(WS_METHODS.codeIndexPrune, {
+  payload: Schema.Struct({}),
+  success: CodeIndexPruneResult,
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
+});
+
+const WsCodeIndexClearRpc = Rpc.make(WS_METHODS.codeIndexClear, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({}),
+  error: Schema.Union([CodeIndexError, EnvironmentAuthorizationError]),
 });
 
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
@@ -2425,6 +2498,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiRemoveRpc,
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
+  WsWikiQueryRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
   WsWikiChangeRequestsOpenRpc,
@@ -2435,7 +2509,14 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,
+  WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
+  WsCodeIndexSubscribeRpc,
+  WsCodeIndexLocalGraphRpc,
+  WsCodeIndexRebuildRpc,
+  WsCodeIndexStorageRpc,
+  WsCodeIndexPruneRpc,
+  WsCodeIndexClearRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

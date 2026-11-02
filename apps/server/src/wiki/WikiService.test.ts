@@ -1,9 +1,10 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
+import { ProjectId, ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import type * as Scope from "effect/Scope";
 
@@ -13,6 +14,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -56,7 +58,14 @@ interface Harness {
 const withWikis = <A, E>(
   body: (
     harness: Harness,
-  ) => Effect.Effect<A, E, WikiService.WikiService | NodeServices.NodeServices | Scope.Scope>,
+  ) => Effect.Effect<
+    A,
+    E,
+    | WikiService.WikiService
+    | ProjectService.ProjectService
+    | NodeServices.NodeServices
+    | Scope.Scope
+  >,
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -153,7 +162,7 @@ const agent = (thread: string): WikiService.WikiAuthor => ({
 
 const failure = <A, R>(effect: Effect.Effect<A, WikiError, R>) => Effect.flip(effect);
 
-it.effect("registers only a repository's top-level folder, and links a project", () =>
+it.effect("registers only a repository's top-level folder, and makes no project of it", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const wikis = yield* WikiService.WikiService;
@@ -163,7 +172,9 @@ it.effect("registers only a repository's top-level folder, and links a project",
       const { root, summary } = yield* registeredWiki(harness);
       assert.equal(summary.root, root);
       assert.equal(summary.mainBranch, "main");
-      assert.isNotNull(summary.projectId);
+      assert.deepEqual(summary.projectIds, []);
+      const projects = yield* ProjectService.ProjectService;
+      assert.isTrue(Option.isNone(yield* projects.getByWorkspaceRoot(root)));
       assert.equal(summary.openChangeRequests, 0);
 
       const path = yield* Path.Path;
@@ -175,6 +186,33 @@ it.effect("registers only a repository's top-level folder, and links a project",
         (yield* wikis.list).wikis.map((wiki) => wiki.wikiId),
         [summary.wikiId],
       );
+    }),
+  ),
+);
+
+it.effect("links repositories, and tells their threads which wikis hold their plans", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, summary, wikis } = yield* registeredWiki(harness);
+      const repository = ProjectId.make("project-app");
+      const other = ProjectId.make("project-other");
+      assert.isNull(yield* wikis.agentNote(repository));
+
+      const linked = yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      assert.deepEqual(linked.projectIds, [repository]);
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, [repository]);
+      assert.include(yield* wikis.agentNote(repository), `wiki "${summary.name}"`);
+      assert.isNull(yield* wikis.agentNote(other));
+
+      const second = yield* wikis.create({ name: "Research" });
+      yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: true });
+      assert.include(yield* wikis.agentNote(repository), `wikis "${summary.name}" and "Research"`);
+
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
+      yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: false });
+      assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, []);
+      assert.isNull(yield* wikis.agentNote(repository));
     }),
   ),
 );
@@ -223,6 +261,70 @@ it.effect("dates each note by the last commit that changed it, on the line read"
         Alpha: first,
         Beta: head,
       });
+    }),
+  ),
+);
+
+it.effect("runs a base by file, by a note's block, or by source, on the line read", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "Alpha.md": "---\nstatus: open\n---\n# Alpha\n\nAlpha builds on [[Beta]].\n",
+        "Beta.md": "---\nstatus: done\n---\n# Beta\n\nBeta stands alone.\n",
+        "Open.base":
+          "filters: 'status == \"open\"'\nviews:\n  - type: cards\n    name: Open\n    order: [file.basename, status]\n",
+        "Index.md":
+          "# Index\n\nStart at [[Alpha]].\n\n```base\nfilters: '!this.file.links.contains(file) && file.name != this.file.name'\n```\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Statuses and bases"]);
+      const names = (result: { readonly rows: ReadonlyArray<{ readonly name: string }> }) =>
+        result.rows.map((row) => row.name);
+
+      assert.deepEqual(
+        (yield* wikis.index({ wikiId })).bases.map((base) => base.file),
+        ["Open.base"],
+      );
+      const byFile = yield* wikis.query({ wikiId, base: "Open" });
+      assert.deepEqual(byFile.view, { name: "Open", type: "cards" });
+      assert.deepEqual(byFile.rows, [
+        { name: "Alpha", file: "Alpha.md", values: { "file.basename": "Alpha", status: "open" } },
+      ]);
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Index" })), ["Beta"]);
+      // A block as the editor holds it, unsaved: `this` is the note it sits in.
+      assert.deepEqual(
+        names(yield* wikis.query({ wikiId, source: "filters: file.hasLink(this)", note: "Beta" })),
+        ["Alpha"],
+      );
+
+      // Inside a change request, the base sees the change request's notes.
+      const amended = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Reopen Beta",
+          changes: { "Beta.md": "---\nstatus: open\n---\n# Beta\n" },
+        },
+        agent("thread-bases"),
+      );
+      const changeRequestId = amended.changeRequest.changeRequestId;
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open.base", changeRequestId })), [
+        "Alpha",
+        "Beta",
+      ]);
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open.base" })), ["Alpha"]);
+
+      const missing = yield* failure(wikis.query({ wikiId, base: "Nowhere" }));
+      assert.equal(missing.reason, "not-found");
+      assert.equal((yield* failure(wikis.query({ wikiId, base: "Alpha" }))).reason, "invalid");
+      const outside = yield* failure(
+        wikis.query({ wikiId, source: "views:\n  - type: table\n    order: [formula.ppu]\n" }),
+      );
+      assert.equal(outside.reason, "invalid");
+      assert.equal(
+        outside.message,
+        "Not supported: formula.ppu (formulas) in view “Table”'s order.",
+      );
     }),
   ),
 );

@@ -17,7 +17,6 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
-import { useChatTabsStore } from "~/chatTabs/chatTabsStore";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { observeResize } from "~/lib/observeResize";
@@ -248,7 +247,6 @@ export default function LineagePanel({
   };
   const openThread = (threadId: string) => {
     const ref = scopeThreadRef(threadRef.environmentId, ThreadId.make(threadId));
-    useChatTabsStore.getState().openNew(scopedThreadKey(ref));
     void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(ref) });
   };
 

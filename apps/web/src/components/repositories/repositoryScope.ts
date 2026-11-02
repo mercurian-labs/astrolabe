@@ -1,7 +1,7 @@
 import { storedChoice, storedName } from "../projects/storedChoice";
 
 /**
- * Astrolabe: the Repos sidebar's choices kept on the device, besides its filter
+ * Astrolabe: the Projects sidebar's choices kept on the device, besides its filter
  * (`repositoryFilter`): the worktrees showing their files, and where a branch opens.
  */
 const NO_KEYS: ReadonlyArray<string> = [];

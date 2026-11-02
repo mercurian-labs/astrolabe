@@ -19,6 +19,7 @@ import {
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ServerConfig from "./config.ts";
+import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -273,6 +274,7 @@ const cleanupFixture = (
     let events: Stream.Stream<OrchestrationV2DomainEvent> = Stream.empty;
     const activated = yield* Deferred.make<void>();
     const context = yield* Layer.build(StorageCleanup.layer).pipe(
+      Effect.provide(CodeIndex.layerPlaceholder),
       Effect.provideService(GitVcsDriver.GitVcsDriver, {
         ...git,
         execute: (input) =>

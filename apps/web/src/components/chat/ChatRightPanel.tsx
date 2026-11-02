@@ -1,8 +1,8 @@
 import { usePreviewPanelInlineSize } from "../../hooks/usePreviewPanelInlineSize";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { RightPanelTabs, type RightPanelTabsProps } from "../RightPanelTabs";
-import { usePaneSurfaceHost } from "../../panes/PaneSurfaceHost";
-import { RightPanelPanes } from "../../panes/RightPanelPanes";
+import { LinkedPanel } from "../../panes/LinkedPanel";
+import { useWorkspaceHost } from "../../panes/PaneSurfaceHost";
 
 type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "maximized"> & {
   readonly sheet: boolean;
@@ -33,11 +33,11 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     container: workspaceLayoutElement,
     widthStorageKey,
   });
-  // Astrolabe: inside the chat tabs, the inline panel draws its surfaces as panes.
-  const paneSurfaceHost = usePaneSurfaceHost();
+  // Astrolabe: inside the shared panes, the thread's surfaces are tabs linked to its chat.
+  const linked = useWorkspaceHost() !== null;
+  if (linked) return <LinkedPanel {...tabs} mode="inline" maximized={maximized} />;
   if (!sheet) {
-    const InlinePanel = paneSurfaceHost ? RightPanelPanes : RightPanelTabs;
-    return <InlinePanel {...tabs} mode="inline" maximized={maximized} inlineSize={inlineSize} />;
+    return <RightPanelTabs {...tabs} mode="inline" maximized={maximized} inlineSize={inlineSize} />;
   }
   return (
     <RightPanelSheet

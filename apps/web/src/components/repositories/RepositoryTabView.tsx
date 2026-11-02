@@ -1,5 +1,5 @@
-import { FileDiffIcon, GitBranchIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { FileDiffIcon, GitBranchIcon, WaypointsIcon } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { reviewEnvironment } from "~/state/review";
@@ -23,7 +23,10 @@ import {
 import { useOpenBranch } from "./worktreeActions";
 import { WorktreeNumber } from "./WorktreeNumber";
 
-/** A file, or a checkout's changes. */
+// The local graph's renderer loads with its first tab, never with Repositories itself.
+const RepositoryGraphView = lazy(() => import("./RepositoryGraphView"));
+
+/** A file, a checkout's changes, or a file's local graph. */
 export function RepositoryTabView({
   tabKey,
   tab,
@@ -36,8 +39,12 @@ export function RepositoryTabView({
       {(checkedOut) =>
         checkedOut.kind === "file" ? (
           <RepositoryFileView tabKey={tabKey} tab={checkedOut} />
-        ) : (
+        ) : checkedOut.kind === "diff" ? (
           <RepositoryDiffView tab={checkedOut} />
+        ) : (
+          <Suspense fallback={null}>
+            <RepositoryGraphView tabKey={tabKey} tab={checkedOut} />
+          </Suspense>
         )
       }
     </CheckedOut>
@@ -73,7 +80,7 @@ function CheckedOut({
     if (cwd === null || before.cwd !== cwd || before.revision === revision) return;
     if (tab.kind === "file") {
       appAtomRegistry.refresh(getProjectFileQueryAtom(tab.environmentId, cwd, tab.path));
-    } else {
+    } else if (tab.kind === "diff") {
       appAtomRegistry.refresh(
         reviewEnvironment.diffPreview({
           environmentId: tab.environmentId,
@@ -106,8 +113,8 @@ function CheckedOut({
 }
 
 /**
- * A repository tab's title and icon, a file's name or a checkout's changes, with the number of the
- * worktree holding it now; hovering it names the checkout.
+ * A repository tab's title and icon, a file's name, a checkout's changes or a local graph, with the
+ * number of the worktree holding it now; hovering it names the checkout.
  */
 export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const tab = parseRepositoryTabKey(tabKey);
@@ -118,27 +125,32 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   if (tab === null) return null;
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;
   const label =
-    tab.kind === "file"
+    tab.kind === "graph"
       ? {
-          title: fileName(tab.path),
-          icon: (
-            <PierreEntryIcon
-              pathValue={tab.path}
-              kind="file"
-              theme={resolvedTheme}
-              className="size-3.5"
-            />
-          ),
+          title: tab.path === null ? "Local graph" : `Local graph · ${fileName(tab.path)}`,
+          icon: <WaypointsIcon className="size-3.5 shrink-0" />,
         }
-      : {
-          title:
-            tab.source === "working-tree"
-              ? "Uncommitted changes"
-              : tab.base === undefined
-                ? "Branch changes"
-                : `Against ${tab.base}`,
-          icon: <FileDiffIcon className="size-3.5 shrink-0" />,
-        };
+      : tab.kind === "file"
+        ? {
+            title: fileName(tab.path),
+            icon: (
+              <PierreEntryIcon
+                pathValue={tab.path}
+                kind="file"
+                theme={resolvedTheme}
+                className="size-3.5"
+              />
+            ),
+          }
+        : {
+            title:
+              tab.source === "working-tree"
+                ? "Uncommitted changes"
+                : tab.base === undefined
+                  ? "Branch changes"
+                  : `Against ${tab.base}`,
+            icon: <FileDiffIcon className="size-3.5 shrink-0" />,
+          };
   const place =
     holder === null
       ? listed === null

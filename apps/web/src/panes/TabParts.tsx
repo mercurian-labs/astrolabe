@@ -103,7 +103,7 @@ export function TabCloseButton({
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <TabIconButton label={label} onClick={onClick}>
+    <TabIconButton data-tab-close label={label} onClick={onClick}>
       <X className="size-3" />
     </TabIconButton>
   );

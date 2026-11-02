@@ -1,7 +1,7 @@
 import { storedChoice } from "../projects/storedChoice";
 
 /**
- * Astrolabe: the Repos sidebar's filter. The repositories widen (any of them, none picked is every
+ * Astrolabe: the Projects sidebar's filter. The repositories widen (any of them, none picked is every
  * repository), hidden worktrees drop out, and "has changes" narrows to worktrees with uncommitted
  * files. What the focused tab is in shows whatever the filter says.
  */

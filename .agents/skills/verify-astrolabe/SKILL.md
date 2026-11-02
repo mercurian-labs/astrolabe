@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Repositories, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, the code graph, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -11,8 +11,16 @@ it first. This skill adds the map of Astrolabe's own features in
 [features/](features/README.md), which upstream's skill cannot know about.
 
 A feature file's **Mobile** entries walk the phone app through
-[test-t3-mobile](../test-t3-mobile/SKILL.md) (its Device panel and AgentDevice);
-everything else walks in the Browser panel. If the tools a walk needs are absent
+[test-t3-mobile](../test-t3-mobile/SKILL.md) (its Device panel and AgentDevice). Two traps
+there: Metro's default port 8081 may belong to another checkout (check `lsof` and the
+owner's cwd), so start this one's on its own port from `apps/mobile`
+(`APP_VARIANT=development vp exec expo start --dev-client --scheme astrolabe-dev --lan --port <port>`)
+and open `astrolabe-dev://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A<port>`; and
+the simulator's app may still hold an older environment with real threads, so pair this
+run's server and act only on its rows. The iPhone tab bar's labels come from native Swift
+(`modules/t3-native-controls/ios/T3SidebarTabBarView.swift`), so renaming a tab there needs a
+`vp run mobile:install` rebuild before the walk shows it.
+Everything else walks in the Browser panel. If the tools a walk needs are absent
 or report unavailable, report the blocker and stop that walk. Do not switch to
 another automation system.
 
@@ -41,9 +49,11 @@ Then wait for `pairingUrl:` in the log, as `start-dev.sh` does, and stop it with
 `VITE_HTTP_URL` or `VITE_WS_URL`.
 
 A clean home is not empty: the server adds the directory it runs in
-(`apps/server`, shown as the **server** project) and opens a draft thread.
-Chat tabs need at least two threads; seed them with `vp run migrate-dev-db`
-(server stopped) into the worktree's `.t3`, as AGENTS.md describes.
+(`apps/server`, shown as the **server** project) and opens a real "New thread"
+in it. Chat tabs need at least two threads. `start-dev.sh` runs on `$run/home`,
+so seed that home with the server stopped:
+`vp run migrate-dev-db --base-dir "$run/home"` (or seed the worktree's `.t3`, as
+AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above).
 
 ## Checks before driving
 
@@ -134,20 +144,30 @@ in that screenshot. Stop it by `$run/desktop.pid`.
 
 Open the full URL from `$run/pairing-url` once with `preview_open` and
 `profileId: "incognito"`. The token is single-use. Once it is consumed, mint
-another with `node apps/server/src/bin.ts pair --base-dir "$run/home"`. Pairing
+another with `node apps/server/src/bin.ts pair --base-dir "$run/home"`. Tokens from `pair`
+expire after 5 minutes; add `--ttl 2h` for one you hand to a person or use later. Pairing
 in incognito means your run neither reads nor leaves the user's default-profile
 state, and the incognito session does not outlive the browser: a later run lands
 on `/pair` again. On a tab already at `/pair`, navigating to `…/pair#token=…`
 only changes the hash and pairs nothing; type the token into
 `role=textbox[name='Pairing token']` and click **Continue** instead. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
-`role=tablist[name='Open chats']` before acting. It lands on a draft in the
-**server** project; click a sidebar row (`role=button[name=/^<title>, /]`; the name is
+`[data-pane-tabs]` (the workspace tab strips) before acting. A fresh profile may first
+land on `/welcome` (the first-run gate): finish or skip it. A clean home then lands on a
+"New thread" in the **server** project, and seeded data goes straight to the app; click a
+sidebar row (`role=button[name=/^<title>, /]`; the name is
 `<title>, [<status>, ]<project>`, or `[data-testid=sidebar-row-card] >> nth=N`)
 when the feature needs a real thread. Then:
 
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
   Tools take Playwright selectors: a bare CSS descendant selector
-  (`[data-x] input`) is rejected; chain with `>>` or use roles.
+  (`[data-x] input`) is rejected; chain with `>>` or use roles. A role's `name` matches a
+  substring: `button "Changes"` also hits the Projects list's Changes rows, and
+  `Filter by project:` exists in both Projects and Changes. Scope to the section
+  (`role=navigation[name='Changes'] >> …`) or match exactly with `[name="Changes" s]`; a
+  click on an ambiguous locator waits out its timeout.
+- After a `preview_resize` to a freeform size, `{mode: "fill"}` can leave the page at the
+  old width; set `freeform` back to the full size (for example 1280×800) instead, and read
+  `innerWidth` before trusting the layout.
 - Page input is one tool, `preview_act`, with an `action` (`click`, `type`, `press`,
   `hover`, `select`, `drag`, `upload`, `scroll`). The feature files write
   `preview_act click` for `preview_act` with `action: "click"`.
@@ -174,10 +194,27 @@ when the feature needs a real thread. Then:
   that times out too, close the tab and open a fresh one. Check a snapshot on a
   second page before blaming the page under test: a stuck snapshot can be the
   browser panel's, not the app's.
-- Right-panel arrangements live in localStorage under
-  `t3code:right-panel-panes:v1:<environmentId>:<threadId>`. Reading that key proves a
-  layout change without a screenshot, and surviving `location.reload()` proves
-  persistence.
+- Don't read React state through a DOM node's `__reactFiber$` key. React sets it when the
+  node is created and never updates it, so walking up from it can read the previous
+  render: a walk once reported a local graph that never redrew when the page was fine.
+  Read rendered output (DOM text, a screenshot) or query the state's own atom.
+- The shared panes live in localStorage under `astrolabe:workspace:v1` (the tree, plus
+  `owners`, `parked` and `front` for linked tabs). Reading that key proves a layout change
+  without a screenshot, and surviving `location.reload()` proves persistence. Tab histories
+  live in `astrolabe:workspace-tab-history:v1`.
+- The `incognito` profile is shared by every incognito tab in this session (a tab the user
+  walks in, for one), so its localStorage is too. Before driving, copy every `astrolabe:*` and
+  `t3code:*` localStorage key into your tab's sessionStorage, and write them back before
+  closing your tab (desktop Browser panel; the server browser isolates each incognito tab).
+- Panel shortcuts (Cmd+J, Cmd+Alt+B) act on the focused pane's chat only; Cmd+Alt+B also
+  on the chat whose linked tab has focus (`takesTerminalToggle`/`takesPanelShortcut` in
+  `useChatShortcuts.ts`, `workspace.ts`). Click the target pane's `[data-testid=composer-editor]` first so it is the
+  focused pane. Cmd+K opens from anywhere.
+- While a user walks your dev server, land a multi-file edit in one step: a half-landed edit
+  hot-reloads their tab into "X is not defined".
+- A tab another session or the user owns accepts only `preview_status`, `preview_snapshot`
+  and `preview_wait_for`; `preview_evaluate` and actions are refused ("This tab belongs to
+  another agent session…"). Open your own tab and reproduce there.
 
 ## Evidence
 
@@ -191,7 +228,7 @@ A node in the accessibility tree or the DOM is not proof that it paints. Prove
 rendering with `document.elementFromPoint` at the element's centre (for a
 shadow-DOM widget such as @pierre/trees,
 `document.querySelector('file-tree-container').shadowRoot.elementFromPoint`) or
-a screenshot: the Repositories Tree once had rows in the accessibility tree that
+a screenshot: the Projects Tree once had rows in the accessibility tree that
 painted nothing, and a DOM-only walk passed it.
 
 ## Cleanup

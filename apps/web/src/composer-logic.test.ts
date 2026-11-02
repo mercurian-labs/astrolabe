@@ -259,6 +259,28 @@ describe("detectComposerTrigger", () => {
     (text) => expect(detectComposerTrigger(text, text.length)).toBeNull(),
   );
 
+  it.each([
+    ["[[", ""],
+    ["See [[Login fl", "Login fl"],
+    ["notes:[[Plan", "Plan"],
+  ])("opens a wiki note trigger for %j", (text, query) => {
+    expect(detectComposerTrigger(text, text.length)).toEqual({
+      kind: "wiki-note",
+      query,
+      rangeStart: text.lastIndexOf("[["),
+      rangeEnd: text.length,
+    });
+  });
+
+  it.each(["if [[ ", "if [[ -f x ]]", "[[1, 2], [3", "[[Login]] then", "[[Plan\nnext", "["])(
+    "does not open a wiki note trigger for %j",
+    (text) => expect(detectComposerTrigger(text, text.length)).toBeNull(),
+  );
+
+  it("lets an @ mention inside a wiki note query win", () => {
+    expect(detectComposerTrigger("[[Plan @src", "[[Plan @src".length)?.kind).toBe("path");
+  });
+
   it("does not keep a subcommand trigger active after /model arguments", () => {
     const text = "/model spark";
     const trigger = detectComposerTrigger(text, text.length);

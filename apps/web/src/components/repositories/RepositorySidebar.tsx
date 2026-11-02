@@ -9,9 +9,11 @@ import {
   useState,
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
 } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
+import { readLocalApi } from "~/localApi";
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -34,8 +36,8 @@ import { SidebarThreadHeader } from "../sidebar/SidebarThreadHeader";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { SidebarContent, SidebarGroup } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { useSectionFocusedKey } from "~/panes/sectionPanes";
-import { repositoryPanes } from "./repositoryPanes";
+import { useWorkspaceFocusedKey, workspace } from "~/panes/workspace";
+import { showLocalGraph } from "./repositoryPanes";
 import { BranchCompareRow } from "./BranchCompareRow";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import {
@@ -70,7 +72,7 @@ const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">
   `${project.environmentId}:${project.id}`;
 
 /**
- * The Repos sidebar: title row (search, open a branch, the filter, Add), then the repositories the
+ * The Projects sidebar: title row (search, open a branch, the filter, Add), then the repositories the
  * filter keeps, each with its worktrees, main checkout first, each with what is moving there or
  * its file tree. One repository shows its worktrees bare; several each sit under a header, open
  * when it holds the focused tab. What the focused tab is in shows whatever the filter says.
@@ -79,7 +81,7 @@ export function RepositorySidebar() {
   const repositories = useRepositories();
   const filter = useStoredRepositoryFilter();
   const filesShown = repositoryWorktreeFiles.useValue();
-  const focusedKey = useSectionFocusedKey(repositoryPanes);
+  const focusedKey = useWorkspaceFocusedKey();
   const focusedTab = focusedKey === null ? null : parseRepositoryTabKey(focusedKey);
   const focusedRepository = focusedTab
     ? repositoryKey({ environmentId: focusedTab.environmentId, id: focusedTab.projectId })
@@ -184,7 +186,7 @@ export function RepositorySidebar() {
   };
   const openResult = (path: string) => {
     if (!searched || !searchedIn) return;
-    repositoryPanes.show(fileKey(searched, checkoutOf(searchedIn), path));
+    workspace.show(fileKey(searched, checkoutOf(searchedIn), path));
     clearSearch();
   };
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -225,7 +227,7 @@ export function RepositorySidebar() {
         fixedHeader={
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
-              title="Repos"
+              title="Projects"
               searchNoun="file"
               hasProjects
               projectScope={
@@ -253,12 +255,12 @@ export function RepositorySidebar() {
                   />
                 </>
               }
-              onNewThread={() => openCommandPalette({ open: "add-repository" })}
+              onNewThread={() => openCommandPalette({ open: "add-project" })}
               newThreadDisabled={false}
               newThreadShortcutLabel={null}
               newThreadInProjectShortcutLabel={null}
               showNewThreadInProjectHint={false}
-              newItemLabel="Add a repository"
+              newItemLabel="Add a project"
               searchInputRef={searchInputRef}
               searchQuery={searchQuery}
               onSearchQueryChange={(value) => {
@@ -305,7 +307,7 @@ export function RepositorySidebar() {
                   ) : null}
                 </ul>
               ) : (
-                <SidebarNote>Pick one repository in the filter to find its files.</SidebarNote>
+                <SidebarNote>Pick one project in the filter to find its files.</SidebarNote>
               )
             ) : views.length === 0 ? (
               <SidebarNote>Nothing here matches the filter.</SidebarNote>
@@ -415,8 +417,15 @@ function WorktreeSections({
                 projectName={`${repository.title} · ${worktree.alias}`}
                 selectedPath={selectedPath(worktree)}
                 onOpenFile={(path) =>
-                  repositoryPanes.show(fileKey(repository, checkoutOf(worktree), path))
+                  workspace.show(fileKey(repository, checkoutOf(worktree), path))
                 }
+                fileMenuActions={[
+                  {
+                    id: "local-graph",
+                    label: "Open local graph",
+                    run: (path) => showLocalGraph(fileTab(repository, checkoutOf(worktree), path)),
+                  },
+                ]}
               />
             ) : null}
           </Fragment>
@@ -462,14 +471,14 @@ function SidebarNote({ children }: { readonly children: string }) {
 function EmptyRepositories() {
   return (
     <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-      <span>No repositories yet</span>
+      <span>No projects yet</span>
       <button
         type="button"
-        onClick={() => openCommandPalette({ open: "add-repository" })}
+        onClick={() => openCommandPalette({ open: "add-project" })}
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
       >
         <FolderPlusIcon className="-mx-0.5 size-3" />
-        Add a repository
+        Add a project
       </button>
     </div>
   );
@@ -537,7 +546,7 @@ function RepositoryList({
           <LinkRow
             icon={FileDiffIcon}
             label="Review uncommitted changes"
-            onClick={() => repositoryPanes.show(diffKey("working-tree"))}
+            onClick={() => workspace.show(diffKey("working-tree"))}
           />
           {uncommitted.map((file) => (
             <FileRow
@@ -554,7 +563,7 @@ function RepositoryList({
           environmentId={repository.environmentId}
           cwd={cwd}
           defaultBase={branch?.baseRef ?? null}
-          onOpen={(base) => repositoryPanes.show(diffKey("branch-range", base))}
+          onOpen={(base) => workspace.show(diffKey("branch-range", base))}
         />
       ) : null}
       {recentFiles.length > 0 ? (
@@ -638,18 +647,31 @@ function FileRow({
 }) {
   const key = repositoryTabKey(tab);
   const { resolvedTheme } = useTheme();
-  const focused = useSectionFocusedKey(repositoryPanes);
+  const focused = useWorkspaceFocusedKey();
   const active = focused === key;
   const open = (event: RowClick) => {
     const intent = rowClickIntent(event, isMacPlatform(navigator.platform));
-    if (intent === "new-tab" || intent === "mod") repositoryPanes.open(key, "tab");
-    else repositoryPanes.show(key);
+    if (intent === "new-tab" || intent === "mod") workspace.open(key, "tab");
+    else workspace.show(key);
     onOpened?.();
+  };
+  const showMenu = (event: MouseEvent<HTMLElement>) => {
+    const api = readLocalApi();
+    if (!api) return;
+    event.preventDefault();
+    void api.contextMenu
+      .show([{ id: "local-graph", label: "Open local graph" }], {
+        x: event.clientX,
+        y: event.clientY,
+      })
+      .then((clicked) => {
+        if (clicked === "local-graph") showLocalGraph(tab);
+      });
   };
   const drag = (event: DragEvent<HTMLElement>) =>
     startDrag(
       event,
-      { key, keys: [], place: (paneId, drop) => repositoryPanes.place([key], key, paneId, drop) },
+      { key, keys: [], place: (paneId, drop) => workspace.place([key], key, paneId, drop) },
       fileName(tab.path),
       0,
     );
@@ -674,6 +696,7 @@ function FileRow({
                   : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
               )}
               onClick={open}
+              onContextMenu={showMenu}
               onAuxClick={(event) => {
                 if (event.button === 1) open(event);
               }}

@@ -216,8 +216,8 @@ function reweighPair(root: SplitNode, targetId: string, newId: string, weight: n
 
 /**
  * Takes a tab out of its pane; the neighbouring tab (the one after it, else before it) takes
- * over. A pane left with no tabs closes and its neighbours take its room, focus moving to the
- * pane before it (or after it); the last pane, or `keepPaneId`'s, stays. The last pane gets an
+ * over. A pane left with no tabs closes, its room going as `removeLeaf` gives it, focus moving
+ * to the pane before it (or after it); the last pane, or `keepPaneId`'s, stays. The last pane gets an
  * empty tab; `keepPaneId`'s is left for the caller to fill.
  */
 function detachTab(arrangement: Arrangement, key: string, keepPaneId?: string): Arrangement {
@@ -267,8 +267,19 @@ export function replaceTab(arrangement: Arrangement, key: string, next: string):
 }
 
 /**
- * Closes a tab. Closing a pane's last tab closes the pane and its neighbours take its room; the
- * last pane stays and gets an empty tab.
+ * Astrolabe: puts `next` where `key` stands, in its pane at its index, in front and focused, as a
+ * New tab gives way to what is picked in it; `key` is gone. One open elsewhere moves here.
+ */
+export function putInPlace(arrangement: Arrangement, key: string, next: string): Arrangement {
+  const leaf = leafWithTab(arrangement.root, key);
+  if (!leaf || key === next) return arrangement;
+  const from = detachTab(arrangement, next, leaf.id);
+  return activateTab(replaceTab(from, key, next), next);
+}
+
+/**
+ * Closes a tab. Closing a pane's last tab closes the pane, its room going back to the pane it was
+ * split from where it can (see `removeLeaf`); the last pane stays and gets an empty tab.
  */
 export function closeTab(arrangement: Arrangement, key: string): Arrangement {
   const leaf = leafWithTab(arrangement.root, key);

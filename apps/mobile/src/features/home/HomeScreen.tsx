@@ -80,11 +80,6 @@ import {
   findHomeProjectScope,
   type HomeProjectSortOrder,
 } from "./homeThreadList";
-import {
-  findThreadsProjectScope,
-  threadsProjectFilterOptions,
-} from "../projects/threadsProjectFilter";
-import { useWikiCheckouts } from "../wikis/useWikiCheckouts";
 import { createSwipeRowActivation } from "./swipe-row-activation";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-swipe-actions";
 import { useFabScroll } from "./FabScrollContext";
@@ -379,14 +374,7 @@ export function HomeScreen(props: HomeScreenProps) {
   })();
 
   const v2ProjectScopeKey = props.selectedProjectKey;
-  // Astrolabe: a kind's choice (every repository, every wiki) narrows as one scope.
-  const checkouts = useWikiCheckouts();
-  const v2ScopedProjectGroup = findThreadsProjectScope(
-    projectScopes,
-    v2ProjectScopeKey,
-    checkouts,
-    findHomeProjectScope,
-  );
+  const v2ScopedProjectGroup = findHomeProjectScope(projectScopes, v2ProjectScopeKey);
   const threadSearch = useThreadSearch(
     searchEnvironmentIds,
     props.searchQuery,
@@ -739,7 +727,7 @@ export function HomeScreen(props: HomeScreenProps) {
         <ThreadListFilters
           gutter={primaryColumn ? 8 : 0}
           environments={props.environments}
-          projects={threadsProjectFilterOptions(projectScopes, checkouts)}
+          projects={projectScopes.map((scope) => ({ key: scope.key, label: scope.title }))}
           selectedEnvironmentId={props.selectedEnvironmentId}
           selectedProjectKey={props.selectedProjectKey}
           onEnvironmentChange={props.onEnvironmentChange}

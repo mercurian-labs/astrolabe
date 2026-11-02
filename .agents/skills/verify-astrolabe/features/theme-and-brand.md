@@ -31,8 +31,11 @@ spelling live in
   (`components/chat/V2LifecycleRow.tsx`) and as the `t3-code` work-log icon for thread-create
   tools and system notifications (`WorkEntryIcon` in `components/chat/TimelineToolActivityIcon.tsx`).
 - **Visible names**: client, server and provider text says Astrolabe, and the
-  relay service is Remote access. The allowed exceptions are the "T3 Code"
-  theme card and links to upstream's own app-store builds.
+  relay service is Remote access. The allowed exceptions (the "T3 Code" theme card and a few
+  more) are listed in `docs/operations/astrolabe-identity.md`; judge grep hits against that
+  list, not this one. Upstream's app-store links are hidden, not kept (`branding.ts` sets
+  them to null). What users add and run threads in is a **project** everywhere; "repository"
+  means the git repository only.
 
 ## How to get to it (user POV)
 
@@ -112,7 +115,22 @@ sync" in the identity doc; don't copy it here, so there is one place to update.
   `node scripts/sync-brand-marks.ts <branding-repo>` copies them into
   `apps/web/src/assets/brand`, the boot screen's `apps/web/public/brand`, the
   mobile layers and the Icon Composer layers under `assets/`; re-run it rather
-  than editing the SVGs by hand. Any mark 48px tall or less uses the small
-  drawing (`AstrolabeMarkSmall`, `AstrolabeWordmark small`).
+  than editing the SVGs by hand, then run `vp fmt` on `astrolabeMarkLayers.ts` and
+  `vp run icons:export` (and `icons:export:android`). Any mark 48px tall or less uses the small
+  drawing (`AstrolabeMarkSmall`, `AstrolabeWordmark small`). The script writes only the marks:
+  the production icon's dark and tinted ink is set by hand in
+  `assets/prod/*.icon/icon.json` and survives a re-sync.
+- While the theme editor is open, `data-theme-id` is `__preview`, and a duplicated copy has
+  its own id; either way the `:root[data-theme-id="mercurian"]` rust pivot stops matching
+  and the composer dot falls back to `currentColor`. Read the dot only after closing the
+  editor, with Mercurian itself selected.
 - The theme also feeds mobile's generated palettes. A change to
   `packages/shared/src/mercurianTheme.ts` needs a mobile pass via test-t3-mobile.
+
+## Mobile
+
+Walk with `test-t3-mobile`. The app defaults to Mercurian (`lib/mobileTheme.ts`); Settings →
+Appearance lists Mercurian, T3 Code, Material You, then the rest (an order that differs from
+web), with no Iris. The composer's Send dot is rust (mobile `ComposerControlIcons.tsx`). The
+home-screen icon's dark mode needs a production-variant build; the dev client uses the dev
+artwork (`app.config.ts`).

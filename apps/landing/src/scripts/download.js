@@ -1,12 +1,13 @@
 // Astrolabe · drafting · the download page
 //
-// Points `[data-asset]` links at the latest release. data-release is pending, ready, none (no
+// Points `[data-asset]` links at the channel's latest release. data-release is pending, ready, none (no
 // release yet) or unavailable (GitHub unreachable, so links stay on the releases page). The inline
 // script picks the platform before first paint; this adds the architecture Chromium gives on Linux.
 
-import { NoRelease, RELEASES_URL, assetFor, fetchRelease } from "./releases.js";
+import { NoRelease, RELEASES_URL, REPO_URL, assetFor, fetchRelease } from "./releases.js";
 
 const page = document.querySelector("[data-download]");
+const channel = page.dataset.channel === "nightly" ? "nightly" : "stable";
 const links = [...page.querySelectorAll("a[data-asset]")];
 const dateFormat = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -46,11 +47,16 @@ if (page.dataset.platform === "linux") {
 
 async function load() {
   try {
-    const release = await fetchRelease("stable");
+    const release = await fetchRelease(channel);
     for (const link of links) link.href = assetFor(release, link.dataset.asset)?.url ?? release.url;
     for (const link of page.querySelectorAll("[data-release-link]")) link.href = release.url;
     set("version", release.tag);
     set("published", release.published ? dateFormat.format(new Date(release.published)) : "–");
+    for (const link of page.querySelectorAll("[data-release-commit]")) {
+      if (!/^[0-9a-f]{40}$/.test(release.commit ?? "")) continue;
+      link.textContent = release.commit.slice(0, 7);
+      link.href = `${REPO_URL}/commit/${release.commit}`;
+    }
     page.dataset.release = "ready";
   } catch (error) {
     if (error instanceof NoRelease) {

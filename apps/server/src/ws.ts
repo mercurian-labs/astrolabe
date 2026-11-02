@@ -246,6 +246,7 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
+import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
@@ -1249,6 +1250,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
     const worktrees = yield* ProjectWorktreeService.ProjectWorktreeService;
+    const codeIndex = yield* CodeIndex.CodeIndex;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.worktreesList]: (input) => worktrees.list(input),
       [WS_METHODS.worktreesOpen]: (input) => worktrees.open(input),
@@ -1257,6 +1259,12 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.worktreesSetKept]: (input) => worktrees.setKept(input),
       [WS_METHODS.worktreesDiscardSetAside]: (input) => worktrees.discardSetAside(input),
       [WS_METHODS.worktreesSubscribeChanges]: (input) => worktrees.changes(input),
+      [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
+      [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
+      [WS_METHODS.codeIndexRebuild]: (input) => codeIndex.rebuild(input).pipe(Effect.as({})),
+      [WS_METHODS.codeIndexStorage]: (_input) => codeIndex.storage,
+      [WS_METHODS.codeIndexPrune]: (_input) => codeIndex.prune,
+      [WS_METHODS.codeIndexClear]: (_input) => codeIndex.clear.pipe(Effect.as({})),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
@@ -1270,6 +1278,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiRemove]: (input) => wikis.remove(input).pipe(Effect.as({})),
       [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
       [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
+      [WS_METHODS.wikiQuery]: (input) => wikis.query(input),
       [WS_METHODS.wikiChangeRequestsList]: (input) => wikis.changeRequestsList(input),
       [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
       [WS_METHODS.wikiChangeRequestsOpen]: (input) =>
@@ -1281,6 +1290,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
+      [WS_METHODS.wikiSetProjectLink]: (input) => wikis.setProjectLink(input),
       [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
     });
   }),

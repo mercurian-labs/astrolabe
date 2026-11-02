@@ -1,8 +1,16 @@
 import { WikiNoteBuffer } from "./noteBuffer";
-import type { WikiEditorCommand, WikiEditorEvent } from "./protocol";
+import type { WikiEditorBaseResult, WikiEditorCommand, WikiEditorEvent } from "./protocol";
+
+/** A ```base block's view as the page holds it: nothing yet, a view, or why it can't show. */
+export interface WikiEditorBase {
+  readonly result: WikiEditorBaseResult | null;
+  readonly error: string | null;
+}
 
 export interface WikiEditorPageState {
   readonly mode: "read" | "edit";
+  /** The base the page shows alone, by source, in place of the note; null shows the note. */
+  readonly base: string | null;
   readonly theme: Extract<WikiEditorCommand, { type: "theme" }>["theme"] | null;
 }
 
@@ -13,7 +21,7 @@ export interface WikiEditorPageState {
  */
 export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
   const buffer = new WikiNoteBuffer();
-  let state: WikiEditorPageState = { mode: "read", theme: null };
+  let state: WikiEditorPageState = { mode: "read", base: null, theme: null };
   const listeners = new Set<() => void>();
   const setState = (next: Partial<WikiEditorPageState>) => {
     state = { ...state, ...next };
@@ -34,6 +42,20 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
   const stopReporting = buffer.subscribe(() => {
     if (!applying) report();
   });
+
+  // The ```base blocks on screen, by source: asked for once each, then kept current by the app.
+  const bases = new Map<string, WikiEditorBase>();
+  const baseListeners = new Set<() => void>();
+  const watchBase = (source: string, listener: () => void) => {
+    if (!bases.has(source)) {
+      bases.set(source, { result: null, error: null });
+      post({ type: "queryBase", source });
+    }
+    baseListeners.add(listener);
+    return () => {
+      baseListeners.delete(listener);
+    };
+  };
 
   const handle = (command: WikiEditorCommand) => {
     applying = true;
@@ -70,6 +92,13 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
       case "requestText":
         post({ type: "text", requestId: command.requestId, text: buffer.current() });
         return;
+      case "showBase":
+        setState({ base: command.source });
+        return;
+      case "baseResult":
+        bases.set(command.source, { result: command.result, error: command.error });
+        for (const listener of baseListeners) listener();
+        return;
     }
   };
 
@@ -77,6 +106,8 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     buffer,
     handle,
     getState: () => state,
+    watchBase,
+    getBase: (source: string): WikiEditorBase | undefined => bases.get(source),
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {

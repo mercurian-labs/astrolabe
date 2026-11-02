@@ -7,6 +7,7 @@ import {
   WikiIndexError,
   WikiListResult,
   WikiNoteResult,
+  WikiQueryResult,
   WikiTransform,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -30,7 +31,7 @@ const RULES =
   "A wiki is a git repository of flat markdown notes (Name.md, no folders) linked with [[Name]]; skill maps (*.skillmap.md) arrange notes and teach how to read them.";
 
 const wiki = TrimmedNonEmptyString.annotate({
-  description: "The wiki's id or name, as t3_wiki_list shows it.",
+  description: "The wiki's id or name, as astrolabe_wiki_list shows it.",
 });
 const readFrom = Schema.optional(
   WikiChangeRequestId.annotate({
@@ -39,7 +40,7 @@ const readFrom = Schema.optional(
   }),
 );
 
-const WikiListTool = Tool.make("t3_wiki_list", {
+const WikiListTool = Tool.make("astrolabe_wiki_list", {
   ...shared,
   description: `List this environment's wikis with their ids, folders, and open change request counts. ${RULES}`,
   success: WikiListResult,
@@ -47,7 +48,7 @@ const WikiListTool = Tool.make("t3_wiki_list", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const WikiReadTool = Tool.make("t3_wiki_read", {
+const WikiReadTool = Tool.make("astrolabe_wiki_read", {
   ...shared,
   description:
     "Read one note's full markdown and its outgoing and incoming links. A name that is linked to but not written yet returns exists:false. Your own unmerged amendments are visible here.",
@@ -61,7 +62,7 @@ const WikiReadTool = Tool.make("t3_wiki_read", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const WikiSearchTool = Tool.make("t3_wiki_search", {
+const WikiSearchTool = Tool.make("astrolabe_wiki_search", {
   ...shared,
   description:
     "Find notes whose name or text contains a phrase (case-insensitive). Returns note names with a few matching lines each; read a note for its full text.",
@@ -82,7 +83,7 @@ const WikiSearchTool = Tool.make("t3_wiki_search", {
 
 const ProseLocation = Schema.Struct({ note: Schema.String, line: Schema.Number });
 
-const WikiOrientTool = Tool.make("t3_wiki_orient", {
+const WikiOrientTool = Tool.make("astrolabe_wiki_orient", {
   ...shared,
   description:
     "Orient yourself with a skill map before working in its area: its purpose, its teaching, the walk of its notes, and the prose that holds up each edge. Read the notes you need from there rather than the whole wiki.",
@@ -124,7 +125,7 @@ const WikiOrientTool = Tool.make("t3_wiki_orient", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
-const WikiLinksTool = Tool.make("t3_wiki_links", {
+const WikiLinksTool = Tool.make("astrolabe_wiki_links", {
   ...shared,
   description:
     "A note's outgoing links (marking red links to notes not written yet), its backlinks, and the wiki's whole frontier of red links.",
@@ -139,6 +140,35 @@ const WikiLinksTool = Tool.make("t3_wiki_links", {
       Schema.Struct({ name: Schema.String, sources: Schema.Array(Schema.String) }),
     ),
   }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+// Plain strings: a description on a trimming schema never reaches the agent.
+const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
+  ...shared,
+  description:
+    "Run a base, a saved question over a wiki's notes in Obsidian's Bases format: one view's matching notes as rows of that view's properties (frontmatter values; links read [[Name]]). Name a .base file, or a note to run its first ```base block.",
+  parameters: Schema.Struct({
+    wiki: Schema.NonEmptyString.annotate({
+      description: "The wiki's id or name, as astrolabe_wiki_list shows it.",
+    }),
+    base: Schema.NonEmptyString.annotate({
+      description: "A .base file's name, or a note's name to run its first ```base block.",
+    }),
+    view: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description: "The view to run, by name. Omit for the base's first view.",
+      }),
+    ),
+    changeRequestId: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description:
+          "Read a change request's head. Omit to read your thread's own open change request on this wiki, or main when it has none.",
+      }),
+    ),
+  }),
+  success: WikiQueryResult,
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
@@ -166,7 +196,7 @@ const writeTarget = {
 const MERGE_RULE =
   "Changes land on your thread's change request, never on main: merging is a person's act in the app, so do not ask for it and do not edit the wiki's files directly.";
 
-const WikiAmendTool = Tool.make("t3_wiki_amend", {
+const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
   ...shared,
   description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed note is its complete new markdown; null deletes it. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the change request, the commit, and the index errors standing after the amendment.`,
   parameters: Schema.Struct({
@@ -178,14 +208,14 @@ const WikiAmendTool = Tool.make("t3_wiki_amend", {
   success: WikiAmendResult,
 }).annotate(Tool.Destructive, false);
 
-const WikiTransformTool = Tool.make("t3_wiki_transform", {
+const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
   ...shared,
   description: `Apply a mechanical wiki change as one amendment: rename a note (rewriting every link to it), add or remove a skill-map edge, fill a red link with a new note placed on a map, or resolve a map warning. ${MERGE_RULE}`,
   parameters: Schema.Struct({ ...writeTarget, transform: WikiTransform }),
   success: WikiAmendResult,
 }).annotate(Tool.Destructive, false);
 
-const WikiChangeRequestTool = Tool.make("t3_wiki_change_request", {
+const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
   ...shared,
   description:
     "Review your thread's change request on a wiki (or a named one): its amendments, every changed note before and after, whether it merges cleanly into main, and the index errors it leaves.",
@@ -208,6 +238,7 @@ export const WikiToolkit = Toolkit.make(
   WikiSearchTool,
   WikiOrientTool,
   WikiLinksTool,
+  WikiQueryTool,
   WikiAmendTool,
   WikiTransformTool,
   WikiChangeRequestTool,

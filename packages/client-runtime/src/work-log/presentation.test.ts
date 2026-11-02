@@ -145,6 +145,30 @@ describe("resolveWorkEntryToolPresentation", () => {
     ).toEqual({ displayName: "Taking a snapshot of the preview page", icon: "browser" });
   });
 
+  it("names a code graph's story and its steps, or a picture of the code", () => {
+    const steps = [
+      { caption: "The request lands here.", focus: ["src/ws.ts"] },
+      { caption: "It reaches the orchestrator.", focus: ["src/orchestrator.ts"] },
+      { caption: "The adapter starts the turn.", focus: ["src/adapter.ts"] },
+    ];
+    const entry = (input: unknown, toolLifecycleStatus: "inProgress" | "completed") => ({
+      label: "mcp__t3-code__astrolabe_code_graph_show",
+      itemType: "dynamic_tool" as const,
+      toolLifecycleStatus,
+      toolData: { input },
+    });
+    expect(
+      resolveWorkEntryToolPresentation(entry({ title: "How a turn starts", steps }, "completed"))
+        ?.displayName,
+    ).toBe("Showed “How a turn starts” · 3 steps");
+    expect(
+      resolveWorkEntryToolPresentation(entry(JSON.stringify({ steps }), "inProgress"))?.displayName,
+    ).toBe("Showing a picture of the code · 3 steps");
+    expect(resolveWorkEntryToolPresentation(entry({}, "completed"))?.displayName).toBe(
+      "Showed a code graph",
+    );
+  });
+
   it("uses the summary's state only when the provider omitted a lifecycle status", () => {
     const entry = { label: "T3-code.preview_click" };
     expect(resolveWorkEntryToolPresentation(entry, "inProgress")?.displayName).toBe(

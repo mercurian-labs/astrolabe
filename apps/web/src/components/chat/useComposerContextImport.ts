@@ -115,6 +115,7 @@ export function useComposerContextImport(input: {
     (store) => store.addPreviewAnnotation,
   );
   const addComposerDraftThreadContexts = useComposerDraftStore((store) => store.addThreadContexts);
+  const addComposerDraftWikiNotes = useComposerDraftStore((store) => store.addWikiNotes);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, { reportFailure: false });
   const loadThreadTranscript = useAtomCommand(orchestrationEnvironment.threadTranscript, {
     reportFailure: false,
@@ -374,6 +375,13 @@ export function useComposerContextImport(input: {
           addComposerDraftThreadContexts(threadDraftTarget, [record], {
             appendReference: false,
           });
+          rewritten.set(record.contextId, record.contextId);
+          break;
+        }
+        case "wiki-note": {
+          // Its wiki lives on the server it was copied from.
+          if (sourceEnvironmentId !== null && sourceEnvironmentId !== environmentId) break;
+          addComposerDraftWikiNotes(composerDraftTarget, [record]);
           rewritten.set(record.contextId, record.contextId);
           break;
         }

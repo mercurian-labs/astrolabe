@@ -1,11 +1,15 @@
+import { isBaseFile } from "./bases.ts";
 import { key, links, noteName, type WikiLink } from "./links.ts";
 import { isMapFile, parseMap, type MapEdgeRef, type SkillMap } from "./skillMap.ts";
 
 /** Operational files beside the notes; never knowledge. */
 const RESERVED = new Set(["agents.md", "claude.md", "readme.md"]);
 
+/** A note, a skill map, or a base: a flat file at the wiki's top level. */
 export const isWikiDocument = (file: string): boolean =>
-  file.endsWith(".md") && !file.includes("/") && !RESERVED.has(key(file));
+  (file.endsWith(".md") || file.endsWith(".base")) &&
+  !file.includes("/") &&
+  !RESERVED.has(key(file));
 
 export interface WikiNote {
   readonly name: string;
@@ -27,6 +31,8 @@ export interface WikiIndexError {
 export interface WikiIndex {
   readonly notes: ReadonlyMap<string, WikiNote>;
   readonly maps: ReadonlyMap<string, SkillMap>;
+  /** Each `.base` file's source, by file; a base is checked when it is queried. */
+  readonly bases: ReadonlyMap<string, string>;
   readonly errors: ReadonlyArray<WikiIndexError>;
 }
 
@@ -39,9 +45,14 @@ export class WikiCollisionError extends Error {
 export function indexFiles(files: WikiFiles): WikiIndex {
   const notes = new Map<string, WikiNote>();
   const maps = new Map<string, SkillMap>();
+  const bases = new Map<string, string>();
   const errors: WikiIndexError[] = [];
   for (const [file, source] of Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) {
     if (!isWikiDocument(file)) continue;
+    if (isBaseFile(file)) {
+      bases.set(file, source);
+      continue;
+    }
     if (isMapFile(file)) {
       try {
         maps.set(file, parseMap(source));
@@ -63,7 +74,7 @@ export function indexFiles(files: WikiFiles): WikiIndex {
       }
     }
   }
-  return { notes, maps, errors };
+  return { notes, maps, bases, errors };
 }
 
 export interface ProseSupport {

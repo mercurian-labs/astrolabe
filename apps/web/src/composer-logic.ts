@@ -17,7 +17,7 @@ import {
 
 import { resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
 
-export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
+export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill" | "wiki-note";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
 
@@ -311,7 +311,7 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     };
   }
   if (!token.startsWith("@")) {
-    return null;
+    return detectWikiNoteTrigger(text, cursor);
   }
 
   return {
@@ -320,6 +320,18 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
     rangeStart: tokenStart,
     rangeEnd: cursor,
   };
+}
+
+const WIKI_NOTE_QUERY_MAX_CHARS = 80;
+
+/** `[[Note` on the caret's line asks for a wiki note; `[[ ` (a bash test, an array) never does. */
+function detectWikiNoteTrigger(text: string, cursor: number): ComposerTrigger | null {
+  if (cursor < 2) return null;
+  const open = text.lastIndexOf("[[", cursor - 2);
+  if (open < 0) return null;
+  const query = text.slice(open + 2, cursor);
+  if (query.length > WIKI_NOTE_QUERY_MAX_CHARS || /^\s|[[\]\n]/.test(query)) return null;
+  return { kind: "wiki-note", query, rangeStart: open, rangeEnd: cursor };
 }
 
 export function pastedPathQueryLength(

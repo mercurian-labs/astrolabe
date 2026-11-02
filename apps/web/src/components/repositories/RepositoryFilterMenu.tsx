@@ -89,9 +89,9 @@ const hiddenWorktrees = (
   );
 
 /**
- * Astrolabe: the Repos filter, as the thread list's and the Wikis': worktrees with changes, every
+ * Astrolabe: the Projects filter, as the thread list's and the Wikis': worktrees with changes, every
  * repository or several, then the worktrees of those kept, each shown or hidden. Picking keeps the
- * list open; Manage and Add a repository sit at its foot.
+ * list open; Manage and Add a project sit at its foot.
  */
 export function RepositoryFilterMenu({
   repositories,
@@ -126,7 +126,7 @@ export function RepositoryFilterMenu({
   );
   const labelOf = (value: string) => {
     if (value === CHANGED_VALUE) return CHANGED_LABEL;
-    if (value === ALL_VALUE) return "All repositories";
+    if (value === ALL_VALUE) return "All projects";
     const repository = repositoryByValue.get(value);
     if (repository) return repository.title;
     const worktree = worktreeByValue.get(value);
@@ -134,7 +134,7 @@ export function RepositoryFilterMenu({
   };
   const groups = [
     { label: "Status", values: [CHANGED_VALUE] },
-    { label: "Repositories", values: [ALL_VALUE, ...repositoryKeys.map(repositoryValue)] },
+    { label: "Projects", values: [ALL_VALUE, ...repositoryKeys.map(repositoryValue)] },
     ...worktreeGroups.map((group) => ({
       label: worktreeGroups.length === 1 ? "Worktrees" : `Worktrees · ${group.repository.title}`,
       values: group.all.map((worktree) => worktreeValue(group.worktreeKey(worktree))),
@@ -197,7 +197,7 @@ export function RepositoryFilterMenu({
       <ComboboxTrigger
         render={
           <SidebarHeaderIconButton
-            label={active ? "Filter repositories (filtered)" : "Filter repositories"}
+            label={active ? "Filter projects (filtered)" : "Filter projects"}
           />
         }
       >
@@ -232,7 +232,7 @@ export function RepositoryFilterMenu({
                   const worktree = worktreeByValue.get(value);
                   return (
                     <ComboboxItem key={value} hideIndicator value={value}>
-                      <ThreadsFilterCheckbox check={checked(value) ? "checked" : "unchecked"} />
+                      <ThreadsFilterCheckbox checked={checked(value)} />
                       {value === CHANGED_VALUE ? (
                         <ChangedIcon />
                       ) : repository ? (
@@ -275,13 +275,13 @@ export function RepositoryFilterMenu({
               })
             }
           >
-            Manage repositories
+            Manage projects
           </SidebarPickerAction>
           <SidebarPickerAction
             icon={FolderPlusIcon}
-            onClick={() => closeAnd(() => openCommandPalette({ open: "add-repository" }))}
+            onClick={() => closeAnd(() => openCommandPalette({ open: "add-project" }))}
           >
-            Add a repository
+            Add a project
           </SidebarPickerAction>
         </SidebarPickerFooter>
       </ComboboxPopup>
@@ -289,7 +289,7 @@ export function RepositoryFilterMenu({
   );
 }
 
-/** The Repos filter in force: Has changes as one tap, then the repositories picked and the worktrees hidden. */
+/** The Projects filter in force: Has changes as one tap, then the repositories picked and the worktrees hidden. */
 export function RepositoryFilterPills({
   repositories,
   filter,
@@ -318,7 +318,7 @@ export function RepositoryFilterPills({
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills
-      label="Repository filters"
+      label="Project filters"
       count={count}
       onClear={() => storeRepositoryFilter(EMPTY_REPOSITORY_FILTER)}
     >
@@ -335,7 +335,7 @@ export function RepositoryFilterPills({
         <FilterPill
           label={namesOrCount(
             picked.map((repository) => repository.title),
-            "repositories",
+            "projects",
           )}
           onOpen={onOpen}
           onRemove={() => storeRepositoryFilter({ ...filter, repositories: [] })}

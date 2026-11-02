@@ -1,4 +1,3 @@
-import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -18,7 +17,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { useChatTabsStore } from "~/chatTabs/chatTabsStore";
+import { useWorkspaceOpenKeys } from "~/panes/workspace";
+import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import {
   filterCommandPaletteGroups,
   type CommandPaletteActionItem,
@@ -278,7 +278,7 @@ export function useExLine(
   const line = exLineOf(query);
   const editing = line !== null && parseExCommand(line, triggers)?.command === "document.open";
   const { overviews } = useWikiOverviews(editing);
-  const chatTabKeys = useChatTabsStore((store) => store.keys);
+  const openKeys = useWorkspaceOpenKeys();
   const navigate = useNavigate();
   const onWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
 
@@ -291,7 +291,7 @@ export function useExLine(
     leaderLabel: host?.leaderLabel ?? "Space",
     actionItems,
     threadItems,
-    chatTabThreadIds: chatTabKeys.flatMap((key) => parseScopedThreadKey(key)?.threadId ?? []),
+    chatTabThreadIds: openKeys.flatMap((key) => parseChatTabKey(key)?.threadId ?? []),
     overviews,
     showWikis: () => {
       if (!onWikis) void navigate({ to: "/wikis" });

@@ -2671,7 +2671,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       background: `dmg/dmg-background-${updateChannel}.png`,
       window: {
         width: 640,
-        // DMG bounds include Finder's 32px title bar; keep that artwork strip clear.
+        // The height includes Finder's title bar, so the artwork's bottom 32px is cut off.
         height: 432,
       },
       contents: [

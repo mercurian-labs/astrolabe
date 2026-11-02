@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { runScopeHandlers, type EditorView } from "@codemirror/view";
-import { previewExclusions } from "./config.ts";
-import { destroyViews, line, mount, sourceText } from "./testSupport.ts";
+import { previewExclusions, type CodeBlockRenderer } from "./config.ts";
+import { destroyViews, line, mount, select, sourceText } from "./testSupport.ts";
 
 afterEach(destroyViews);
 
@@ -54,6 +54,37 @@ describe("host-drawn ranges", () => {
     const view = mount(doc, { extensions: previewExclusions.of([{ from, to: from + 6 }]) });
     expect(view.contentDOM.querySelector(".cm-md-table-widget")).toBeNull();
     expect(sourceText(line(view, 3))).toContain("[x](y)");
+  });
+});
+
+describe("host-drawn code blocks", () => {
+  const recorder = () => {
+    const removed: string[] = [];
+    const render: CodeBlockRenderer = (source, element) => {
+      element.textContent = `rows for ${source}`;
+      return () => removed.push(source);
+    };
+    return { codeBlocks: { base: render }, removed };
+  };
+
+  it("draws a block of the host's language in its place, and its source while being edited", () => {
+    const { codeBlocks, removed } = recorder();
+    const doc = "intro\n```base\nviews: []\n```\n```js\nlet x;\n```";
+    const view = mount(doc, { focused: true, options: { codeBlocks } });
+    const drawn = view.contentDOM.querySelectorAll(".cm-md-host-block");
+    expect([...drawn].map((element) => element.textContent)).toEqual(["rows for views: []"]);
+    expect(view.contentDOM.textContent).toContain("let x;");
+
+    select(view, doc.indexOf("views"));
+    expect(view.contentDOM.querySelector(".cm-md-host-block")).toBeNull();
+    expect(sourceText(line(view, 3))).toBe("views: []");
+    expect(removed).toEqual(["views: []"]);
+  });
+
+  it("leaves an unclosed block as source", () => {
+    const { codeBlocks } = recorder();
+    const view = mount("```base\nviews: []", { options: { codeBlocks } });
+    expect(view.contentDOM.querySelector(".cm-md-host-block")).toBeNull();
   });
 });
 

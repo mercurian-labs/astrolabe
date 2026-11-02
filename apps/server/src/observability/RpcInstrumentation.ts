@@ -228,6 +228,12 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeServerLifecycle]: "server",
   [WS_METHODS.subscribeAuthAccess]: "auth",
   [WS_METHODS.subscribeBackgroundPolicy]: "server",
+  [WS_METHODS.codeIndexSubscribe]: "codeIndex",
+  [WS_METHODS.codeIndexLocalGraph]: "codeIndex",
+  [WS_METHODS.codeIndexRebuild]: "codeIndex",
+  [WS_METHODS.codeIndexStorage]: "codeIndex",
+  [WS_METHODS.codeIndexPrune]: "codeIndex",
+  [WS_METHODS.codeIndexClear]: "codeIndex",
   [WS_METHODS.wikiList]: "wiki",
   [WS_METHODS.wikiSubscribe]: "wiki",
   [WS_METHODS.wikiRegister]: "wiki",
@@ -235,6 +241,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiRemove]: "wiki",
   [WS_METHODS.wikiIndex]: "wiki",
   [WS_METHODS.wikiReadNote]: "wiki",
+  [WS_METHODS.wikiQuery]: "wiki",
   [WS_METHODS.wikiChangeRequestsList]: "wiki",
   [WS_METHODS.wikiChangeRequestsGet]: "wiki",
   [WS_METHODS.wikiChangeRequestsOpen]: "wiki",
@@ -245,6 +252,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiMerge]: "wiki",
   [WS_METHODS.wikiSetChangeRequestStatus]: "wiki",
   [WS_METHODS.wikiSetMirror]: "wiki",
+  [WS_METHODS.wikiSetProjectLink]: "wiki",
   [WS_METHODS.wikiPushMirror]: "wiki",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 

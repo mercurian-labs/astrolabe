@@ -54,6 +54,32 @@ acts on the render it started in. A function that a child calls during render, o
 `await`, comes from a module-level factory memoized on its inputs, so its closure keeps only
 those inputs.
 
+## Shared panes
+
+Astrolabe's sections share one arrangement ([`workspace.ts`](../../apps/web/src/panes/workspace.ts)).
+T3 Code's ChatView still renders only its thread's one active right-panel surface, so a thread's
+surface tabs are always linked to its chat ([`linkedTabs.ts`](../../apps/web/src/panes/linkedTabs.ts))
+and park while another chat is in front: only the front chat's ChatView feeds the panes
+([`LinkedPanel.tsx`](../../apps/web/src/panes/LinkedPanel.tsx)). Only those surfaces link to a
+chat; anything that reads on its own (a document, a project file) stays an unlinked tab, and a
+surface with such a counterpart converts to it in place rather than unlinking, since an unlinked
+surface would have no ChatView to render it. The live surface renders into one DOM node that
+moves between panes; a portal whose container changes remounts its children. Each chat tab has
+its own ChatView in its own container, which never moves: moving a chat's subtree forces layout of
+all of it and resets its scroll. Chats behind other tabs stay mounted under
+`<Activity mode="hidden">`, whose effect cleanup stops their window key and paste listeners, up to
+the most recently shown few ([`recentChats.ts`](../../apps/web/src/panes/recentChats.ts)). The
+panes, not the router, decide which chat shows; the route follows a commit later and renders no
+chat. In Agents the route names the focused tab's chat (or the chat a focused linked tab belongs
+to), else the start page, so the sidebar selects what has focus. A section switch goes to that
+same route ([`agentsRoute.ts`](../../apps/web/src/panes/agentsRoute.ts)), whose arrival changes
+nothing; only a thread link or a sidebar click brings a chat forward (`openChat`), which parks
+another chat's linked tabs. A chat never takes another chat's place: one not open yet opens in
+a new tab after the chat in front, since replacing a chat would close it and its linked tabs. A pane's content has `contain: layout
+paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
+built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
+(`useChatOwner`).
+
 ## React Compiler
 
 The compiler memoizes a component or hook only when it can prove the code follows React's rules.

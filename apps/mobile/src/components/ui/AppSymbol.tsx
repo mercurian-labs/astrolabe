@@ -117,6 +117,7 @@ import IconStarFilled from "@tabler/icons-react-native/IconStarFilled";
 import IconStethoscope from "@tabler/icons-react-native/IconStethoscope";
 import IconSun from "@tabler/icons-react-native/IconSun";
 import IconShieldQuestion from "@tabler/icons-react-native/IconShieldQuestion";
+import IconTable from "@tabler/icons-react-native/IconTable";
 import IconTarget from "@tabler/icons-react-native/IconTarget";
 import IconTerminal2 from "@tabler/icons-react-native/IconTerminal2";
 import IconTextDecrease from "@tabler/icons-react-native/IconTextDecrease";
@@ -265,6 +266,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "star.fill": IconStarFilled,
   "sun.max": IconSun,
   "stop.fill": IconPlayerStopFilled,
+  tablecells: IconTable,
   target: IconTarget,
   terminal: IconTerminal2,
   "text.alignleft": IconAlignLeft,

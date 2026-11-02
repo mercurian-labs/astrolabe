@@ -15,7 +15,7 @@ installed, the setup screen says so and reuses it.
 
 Choose a running device to watch it, or choose **Start** next to a stopped
 device to boot it. The panel shows when you or an agent starts a device.
-Each device opens in its own tab. Use **+ → Device** to open another, and
+Each device opens in its own tab. Use **New linked tab → Device** from the chat header to open another, and
 double-click a tab name or choose **Rename** from its context menu to rename it.
 Only the visible tab streams video; switching tabs keeps both devices running.
 Choose **Float device over chat** in the toolbar to keep watching and tapping the
@@ -45,7 +45,7 @@ The screen is interactive: click and drag to touch, type while the screen is
 focused, and use the toolbar for Home, Back, and Recents on Android, rotate on
 iOS, and power off. Close the tab to stop watching; the device keeps running
 unless you power it off. Closed tabs stay closed after a reload. To watch the
-device again, choose it from **+ → Device**.
+device again, choose it from the chat header's **New linked tab → Device**.
 
 Choose **3D view** to inspect supported devices while the live screen stays
 interactive. On iPhone Duo, use the fold and stance controls to change its

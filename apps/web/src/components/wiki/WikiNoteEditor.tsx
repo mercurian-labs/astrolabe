@@ -8,7 +8,8 @@ import type { LivePreviewOptions } from "@mercurian/editor/markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ClientSettings } from "@t3tools/contracts";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { useMarkdownEditorKeys } from "~/editorKeybindings";
 import { useVimScreenLines } from "~/vimScreenLines";
@@ -55,6 +56,21 @@ const WIKI_EDITOR_THEME = EditorView.theme({
 });
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
+
+const previewOptions = (
+  keys: LivePreviewOptions["keys"],
+  openNote: (name: string) => void,
+  codeBlocks: NonNullable<LivePreviewOptions["codeBlocks"]>,
+): LivePreviewOptions => ({
+  openWikilink: (target) => {
+    const name = wikilinkNoteName(target);
+    if (name !== null) openNote(name);
+  },
+  // Embeds name wiki files, which the page cannot serve as images yet.
+  resolveEmbed: () => null,
+  ...(keys === undefined ? {} : { keys }),
+  codeBlocks,
+});
 const NOTE_EDITOR = { composer: false };
 
 // Editable notes get the agent change bar to review live amendments; a skill map is read only.
@@ -68,6 +84,12 @@ const READ_ONLY_EXTENSIONS = [
   appVimKeys(() => null),
 ];
 
+interface BaseBlock {
+  readonly id: number;
+  readonly source: string;
+  readonly element: HTMLElement;
+}
+
 /**
  * A note in the Atlas editor. Mod-click on a wikilink opens that note. Escape stays with the
  * editor instead of leaving the page. Amendments that land live are marked in their author's
@@ -79,14 +101,17 @@ export function WikiNoteEditor({
   readOnly = false,
   onOpenNote,
   onWrite,
+  renderBase,
 }: {
   readonly session: WikiNoteSession;
   readonly readOnly?: boolean;
   readonly onOpenNote: (name: string) => void;
+  /** A ```base block's view, from its YAML; it shows until the block is edited. */
+  readonly renderBase: (source: string) => ReactNode;
   /** Vim's `:w`: saves the note, as Save to change request does. */
   readonly onWrite?: () => void;
 }) {
-  // Read through a ref, so the preview options stay one object and never remount the editor.
+  // Read through a ref, so the preview options never change with it.
   const openNoteRef = useRef(onOpenNote);
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
@@ -102,19 +127,35 @@ export function WikiNoteEditor({
     agentChangeBar(),
     appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
   ]);
+  // The blocks the editor draws, each filled through a portal so the view keeps the app's context.
+  const [baseBlocks, setBaseBlocks] = useState<ReadonlyArray<BaseBlock>>([]);
+  const [stable] = useState(() => {
+    const ids = { next: 0 };
+    return {
+      openNote: (name: string) => openNoteRef.current(name),
+      codeBlocks: {
+        base: (source: string, element: HTMLElement) => {
+          const id = ids.next++;
+          setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
+          return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
+        },
+      },
+    };
+  });
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
+  // One options object per set of keys, since a drawn base block re-renders this component.
   const keys = useMarkdownEditorKeys(NOTE_EDITOR);
-  const livePreview: LivePreviewOptions = {
-    openWikilink: (target) => {
-      const name = wikilinkNoteName(target);
-      if (name !== null) openNoteRef.current(name);
-    },
-    // Embeds name wiki files, which the page cannot serve as images yet.
-    resolveEmbed: () => null,
+  const [preview, setPreview] = useState(() => ({
     keys,
-  };
+    options: previewOptions(keys, stable.openNote, stable.codeBlocks),
+  }));
+  let livePreview = preview.options;
+  if (preview.keys !== keys) {
+    livePreview = previewOptions(keys, stable.openNote, stable.codeBlocks);
+    setPreview({ keys, options: livePreview });
+  }
   return (
     <div
       className="min-h-full text-base leading-relaxed text-foreground"
@@ -130,6 +171,9 @@ export function WikiNoteEditor({
         vim={vim}
         vimPanel={false}
       />
+      {baseBlocks.map((block) =>
+        createPortal(renderBase(block.source), block.element, String(block.id)),
+      )}
     </div>
   );
 }

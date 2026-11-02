@@ -10,8 +10,9 @@ import { focusListRow, isListRow, listDefaultRow } from "./placeLists";
 
 const RAIL = "[data-app-rail]";
 const SIDEBAR = "[data-app-sidebar]";
-const CHAT_COLUMN = "[data-chat-column-maximized-away]";
 const PANE = "[data-pane-id]";
+/** A chat outside the panes; a chat tab's column is part of its pane's place. */
+const CHAT_COLUMN = `[data-chat-column-maximized-away]:not(${PANE} *)`;
 /** The main area, a region of its own on pages with neither panes nor a chat (Settings). */
 const MAIN = "[data-slot='sidebar-inset']";
 const REGION = [RAIL, SIDEBAR, CHAT_COLUMN, PANE].join(", ");
@@ -137,10 +138,12 @@ function defaultTarget(region: HTMLElement): HTMLElement | null {
   if (region.matches(`${RAIL}, ${SIDEBAR}`)) {
     const row = listDefaultRow(region);
     if (row) return row;
-  } else if (region.matches(CHAT_COLUMN)) {
+  }
+  if (region.matches(`${CHAT_COLUMN}, ${PANE}`)) {
     const composer = region.querySelector<HTMLElement>("[data-testid='composer-editor']");
     if (isUsable(composer, region)) return composer;
-  } else if (region.matches(PANE)) {
+  }
+  if (region.matches(PANE)) {
     const pill = region.querySelector<HTMLElement>("[data-pane-tab][aria-selected='true']");
     if (isUsable(pill, region)) return pill;
   }

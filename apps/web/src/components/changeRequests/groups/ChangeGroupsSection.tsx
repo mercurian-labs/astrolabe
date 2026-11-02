@@ -8,10 +8,8 @@ import { useState } from "react";
 import { cn } from "~/lib/utils";
 import { useChangeGroups } from "~/state/changeGroups";
 import { readThreadShell } from "~/state/entities";
-import {
-  showChangeRequestTab,
-  useFocusedChangeRequestTabKey,
-} from "../../pullRequest/pullRequestTabs";
+import { useWorkspaceFocusedKey } from "~/panes/workspace";
+import { showChangeRequestTab } from "../../pullRequest/pullRequestWorkspace";
 import { PullRequestGlyph } from "../../pullRequest/pullRequestIcons";
 import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../../sidebar/SidebarCard";
 import { Badge } from "../../ui/badge";
@@ -50,7 +48,7 @@ export function ChangeGroupsSection({
   const wikiScope = changeRequestWikiScope.useValue();
   const scope: ChangeGroupScope = { kind, projectId, projectEnvironmentId, wikiScope };
   const groups = useChangeGroups();
-  const focusedKey = useFocusedChangeRequestTabKey();
+  const focusedKey = useWorkspaceFocusedKey();
   const [expanded, setExpanded] = useState(true);
   const needle = query.trim().toLowerCase();
   const shown = groups.filter(

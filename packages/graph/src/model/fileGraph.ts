@@ -1,0 +1,125 @@
+/**
+ * A code graph: its roots in the middle and what they import and what imports them, as files,
+ * folders, modules or definitions, with opened nodes drawn as clusters of their parts
+ * (`FileGraph`). Its host caps, folds and filters it; the graph lays it out by forces and draws it
+ * as Obsidian draws a vault.
+ */
+
+export type FileGraphNodeKind = "file" | "package" | "dependency" | "folder" | "module" | "symbol";
+
+export interface FileGraphNode {
+  readonly id: string;
+  readonly name: string;
+  /** A dependency is the lightest dot, a folded folder a lighter one; files and packages are plain. */
+  readonly kind: FileGraphNodeKind;
+  /** Changed on its branch or not yet committed: filled amber while Changed files is on. */
+  readonly changed: boolean;
+  /** A test: its label is quieter. */
+  readonly test: boolean;
+  /** A folded folder's file count, said in its label and sizing its dot. */
+  readonly files: number | null;
+  /** The group whose colour tints it (one of `GROUP_SLOTS`), or null. */
+  readonly group: number | null;
+  /** The open cluster holding it, drawn around it; none when absent. */
+  readonly cluster?: string | null;
+}
+
+/** A node opened in place: a soft disc around the nodes it holds, its name above. */
+export interface FileGraphCluster {
+  readonly id: string;
+  readonly name: string;
+  /** The cluster holding this one. */
+  readonly parent: string | null;
+  /** Holds a root: its rim takes the accent. */
+  readonly root: boolean;
+}
+
+/** `from` imports `to`. */
+export interface FileGraphLink {
+  readonly from: string;
+  readonly to: string;
+  /** Resolved by name alone: drawn fainter. */
+  readonly guessed: boolean;
+}
+
+export interface FileGraphData {
+  /** Drawn in the accent, and named whatever the zoom. */
+  readonly roots: ReadonlyArray<string>;
+  readonly nodes: ReadonlyArray<FileGraphNode>;
+  readonly links: ReadonlyArray<FileGraphLink>;
+  readonly clusters?: ReadonlyArray<FileGraphCluster>;
+}
+
+/** What a story's step lights: its nodes, its links, and the links between its nodes. */
+export interface FileGraphFocus {
+  readonly nodes: ReadonlyArray<string>;
+  readonly links: ReadonlyArray<{ readonly from: string; readonly to: string }>;
+}
+
+/** How many group colours there are: the theme's `--atlas-lens-1` to `--atlas-lens-6`. */
+export const GROUP_SLOTS = 6;
+
+/** What a graph lays out, as one string: two graphs with the same lay out the same. */
+export const fileGraphStructure = (graph: FileGraphData): string =>
+  JSON.stringify([
+    graph.roots,
+    graph.nodes.map((node) => [node.id, node.cluster ?? null]),
+    graph.links.map((link) => [link.from, link.to]),
+    (graph.clusters ?? []).map((cluster) => [cluster.id, cluster.parent]),
+  ]);
+
+/** What a graph draws, as one string: two graphs with the same draw the same picture. */
+export const fileGraphSignature = (graph: FileGraphData): string =>
+  JSON.stringify([
+    fileGraphStructure(graph),
+    graph.nodes.map((node) => [
+      node.name,
+      node.kind,
+      node.changed,
+      node.test,
+      node.files,
+      node.group,
+    ]),
+    graph.links.map((link) => link.guessed),
+    (graph.clusters ?? []).map((cluster) => [cluster.name, cluster.root]),
+  ]);
+
+/** Each node's link count, a link to itself not counted. */
+export function fileGraphDegrees(graph: FileGraphData): Map<string, number> {
+  const degrees = new Map(graph.nodes.map((node) => [node.id, 0]));
+  for (const link of graph.links) {
+    if (link.from === link.to) continue;
+    degrees.set(link.from, (degrees.get(link.from) ?? 0) + 1);
+    degrees.set(link.to, (degrees.get(link.to) ?? 0) + 1);
+  }
+  return degrees;
+}
+
+/** A node and the nodes it links to either way: what a hover keeps lit. */
+export function neighbourhood(graph: FileGraphData, id: string): Set<string> {
+  const lit = new Set([id]);
+  for (const link of graph.links) {
+    if (link.from === id) lit.add(link.to);
+    if (link.to === id) lit.add(link.from);
+  }
+  return lit;
+}
+
+/** What a node's label says: its name, a folded folder's with its file count. */
+export const nodeLabel = (node: FileGraphNode): string =>
+  node.kind === "folder" && node.files !== null ? `${node.name} · ${node.files}` : node.name;
+
+/** Each cluster's ancestors, innermost first, the cluster itself included. */
+export function clusterChains(graph: FileGraphData): Map<string, ReadonlyArray<string>> {
+  const parents = new Map((graph.clusters ?? []).map((cluster) => [cluster.id, cluster.parent]));
+  const chains = new Map<string, ReadonlyArray<string>>();
+  for (const id of parents.keys()) {
+    const chain: Array<string> = [];
+    for (let at: string | null | undefined = id; at != null && !chain.includes(at);) {
+      chain.push(at);
+      at = parents.get(at);
+    }
+    chains.set(id, chain);
+  }
+  return chains;
+}

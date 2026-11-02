@@ -1,27 +1,28 @@
-# Repositories
+# Projects
 
-Astrolabe's section for a repository's files and changes, built as Wikis is: a rail
-item (`button "Repos"`, between Wikis and Changes) swaps the sidebar
-for the Repositories sidebar and fills the main area with tabs and splits (the same
-panes as Wikis, see [panes.md](panes.md)). Text files open in the editor wikis use;
+Astrolabe's section for a project's files and changes, built as Wikis is: a rail
+item (`button "Projects"`, between Wikis and Changes) swaps the sidebar
+for the Projects sidebar; files and diffs open as tabs in the one shared workspace
+([panes.md](panes.md)). Text files open in the editor wikis use;
 diffs and everything that is not text keep T3 Code's viewers. It is the home of a
-thread's Files and Diffs. User guide: `docs/user/repositories.md`.
+thread's Files and Diffs. User guide: `docs/user/projects.md`.
 
 ## Sub-features
 
-- **Sidebar**: heading **Repos** with **Search files**, **Filter repositories** and **Add a
-  repository** (the add-project palette; once it adds the repository the app leaves
-  `/repositories` for a new draft thread there, so click `button "Repos"` to come back). A
-  wiki's checkout and the server's scratch workspace (threads with no project) are never listed.
+- **Sidebar** (`role=navigation[name='Projects']`): heading **Projects** with **Search files**,
+  **Filter projects** and **Add a project** (the add-project palette; once it adds the project
+  the app leaves `/repositories` for a new draft thread there, so click `button "Projects"` to
+  come back). The server's scratch workspace (threads with no project) is never listed. With no
+  projects the list reads "No projects yet" with its own **Add a project**.
 - **Filter** (`RepositoryFilterMenu.tsx`, `repositoryFilter.ts`, localStorage
   `astrolabe:repository-filter:v1` `{repositories, hidden, changed}`), as Agents' and Wikis':
-  `button "Filter repositories"` (` (filtered)` appended and a dot while on) opens a multi-select
+  `button "Filter projects"` (` (filtered)` appended and a dot while on) opens a multi-select
   list with a `Search filters` field: **Status** (**Has changes** with its count of worktrees with
-  uncommitted files), **Repositories** (**All repositories**, then each, every one ticked while
+  uncommitted files), **Projects** (**All projects**, then each, every one ticked while
   none is picked), then **Worktrees** (`Worktrees · <repository>` with several) for each kept
   repository, ticked unless hidden. Picking keeps the list open; its foot holds **Manage
-  repositories** and **Add a repository**. Pills under the title (`[aria-label="Repository
-  filters"]`): **Has changes** one tap (shown while on or above 0), the picked repositories,
+  projects** and **Add a project**. Pills under the title (`[aria-label="Project
+  filters"]`): **Has changes** one tap (shown while on or above 0), the picked projects,
   `Hiding <worktrees>`; × clears a pill, **Clear** shows with two. The focused tab's repository
   and worktree show whatever the filter says, its header marked **hidden** (tooltip), and drop out
   when another tab comes to the front; nothing clears the filter for it. A repository left with
@@ -41,7 +42,9 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
   section's rows sit indented under its header along a guide line. File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
-  in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
+  in front (`workspace.show`): one already open comes forward; an empty tab is filled; a
+  chat, a linked tab or unsaved edits make way for a new tab; otherwise it replaces the tab
+  (Back returns). Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
 - **Worktrees**: `combobox "Open a branch in a worktree"` (beside the filter, while exactly one
   repository shows; opening a branch un-hides its worktree) lists local branches, each noting `main checkout` or `worktree <n>`
@@ -84,52 +87,66 @@ thread's Files and Diffs. User guide: `docs/user/repositories.md`.
 - **Search**: the header's search finds files by name, while one repository shows, in its
   focused-tab worktree, else its main checkout (`projects.searchEntries`); with several it asks
   to pick one in the filter.
-- **Main area**: one arrangement on the device (localStorage
-  `astrolabe:repository-panes:v1`, removed while it is the starting single empty tab) and
-  each tab's Back/Forward history (`astrolabe:repository-tab-history:v1`); a reload keeps
-  both. Each open tab renders into `[data-repository-tab="<tab key>"]`. An empty tab
-  reads **No file open**.
-- **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (`<branch> › <path>`, "An
+- **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`, history
+  `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
+  `[data-workspace-tab="<tab key>"]`. An empty tab shows the New tab launcher (**Open a tab**, panes.md).
+- **File tab** (`[data-workspace-tab^="repo-file:"]`): a header row (Back/Forward, then the
+  path as a breadcrumb, `navigation "File path breadcrumb"`: its folder muted, keeping its last
+  segment whole and cutting the rest from its start, and wrapping away (with its `/`) before
+  the file's name truncates, then the file's name, then the checkout's branch; "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
-  Read only / Too big to edit here). Markdown opens with the live preview (a centred
+  Read only / Too big to edit here; then **Open local graph**). Markdown opens with the live preview (a centred
   measure); code in `.cm-editor.cm-code` with line numbers and its language's colours
   (`@mercurian/editor/code`). Vim follows the device setting. Edits save 500 ms after
   typing stops through T3 Code's save (`projects.writeFile`), shared with the thread's
   Files view; the window regaining focus re-reads the file.
 - **Diff tab** (`repo-diff:…:working-tree` "Uncommitted changes", or `:branch-range`
-  "Branch changes"): T3 Code's diff renderer; each file's header has **Open**. Line
-  comments go to the composer of the thread in that checkout, else the repository's
+  "Branch changes"): a header reading `<checkout folder> / Uncommitted changes` or
+  `/ Changes against <base>` (`RepositoryDiffView.tsx`), then T3 Code's diff renderer; each
+  file's header has **Open**. Line
+  comments go to the composer of the thread in that checkout, else the project's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
-- **Manage repositories** (the filter's foot) opens Settings → Projects.
-- **Open in Repos**: a thread's right-panel **Files**, a file opened there, and
+- **Manage projects** (the filter's foot) opens Settings → Projects.
+- **Open in Projects**: a thread's right-panel **Files**, a file opened there, and
   **Diff** offer it in the tab's context menu; it opens the same file or its uncommitted
   changes (the focused tab brings its worktree into view), or the tree, for which the filter
-  adds the repository to its picks (when some are picked) and un-hides the worktree.
-  Repository tabs open in Wikis' and Changes' panes too and offer **Open in
-  Repositories** there.
-- **Keyboard and palette**: `menu g r` and the palette's **Open repositories**.
-
-- **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Repos"`
-  (`features/repositories/RepositoriesScreen.tsx`). `Filter by repository` (Repositories,
-  each repository; a name on two machines adds the machine). Every repository: its eight
-  latest files under its name. One: **Browse all files** (route `RepositoryFiles`, T3 Code's
-  tree with no thread), **Changes** (selects that tab, kind Repositories),
+  adds the project to its picks (when some are picked) and un-hides the worktree. Only
+  those thread surface tabs offer it (`panes/workspaceTabs.tsx`).
+- **Local graph** (`repo-graph:…`, keyed by the file's checkout as file tabs are, settings in `astrolabe:repository-local-graph:v1`):
+  opened from the file header's **Open local graph**, a sidebar file row's menu, or `r` `g`.
+  It splits to the right, carries the file's chain mark, and follows the file in front while
+  **Following** is pressed (`aria-pressed`). Header actions, in order: Back, Forward,
+  **Reset the graph** (only once something is expanded), **Following**, **Fit the graph**,
+  **Graph settings**. With no file it reads "Local graph", **Fit the graph** is disabled, and
+  the notice reads "Open a file to see its local graph…". A single click opens the node's file and re-roots there after ~280 ms (the
+  double-click window); a double-click toggles its neighbours; right-click offers Expand /
+  Collapse neighbours, Show / Hide contents, Centre here and Open. Levels and the graph
+  itself are in [code-graph.md](code-graph.md).
+- **Keyboard and palette**: `menu g r` and the palette's **Open projects**.
+- **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Projects"`
+  (`features/repositories/RepositoriesScreen.tsx`). `Filter by project` (All projects,
+  each project; a name on two machines adds the machine). The pick lives in memory only, so
+  an app restart returns to All projects. Every project: its eight latest files under its
+  name; a project with no recent files is left out. One: **Browse all files** (route
+  `RepositoryFiles`, T3 Code's tree with no thread), **Changes** (selects that tab with its
+  project kind, which the Changes filter names "Projects" only while it lists wikis too),
   **Uncommitted · N**, **Recently changed**. Rows are buttons named by path; a file opens
   read only on route `RepositoryFile`. Search (the tab's `Search files`) finds files by
-  name in a picked repository (`projects.searchEntries`); with every repository it narrows
-  each one's eight latest files by path, and a repository with no match drops out. Only
-  repositories on connected environments are listed. Both routes sit in the root stack: a
+  name in a picked project (`projects.searchEntries`); with every project it narrows
+  each one's eight latest files by path, and a project with no match drops out. Only
+  projects on connected environments are listed. Both routes sit in the root stack: a
   tab's screen reaches them with `navigate`, not `push`.
 
 ## Walk
 
 Setup: a throwaway git repository for edits (never this worktree's own files) with a
 commit, a folder holding a `.ts` file and one uncommitted change, added with **Add a
-repository**. With the **server** project that makes two repositories.
+project**. When a wiki exists on that server, the palette then asks to link it; pick **Not
+now**. With the **server** project that makes two projects.
 
-1. Click `button "Repos"`; with no repository picked the list shows one header per
-   repository.
-2. Pick only the scratch repository in **Filter repositories** (untick the others). Expect **Uncommitted · 1**;
+1. Click `button "Projects"`; with no project picked the list shows one header per
+   project.
+2. Pick only the scratch project in **Filter projects** (untick the others). Expect **Uncommitted · 1**;
    **Review uncommitted changes** opens the diff; **Open** opens the file in a new tab
    after the diff.
 3. Type in the file; within a second the file on disk changes (`git status` shows it).
@@ -156,7 +173,7 @@ repository**. With the **server** project that makes two repositories.
    With several worktrees there is one `file-tree-container` per open section; run the
    check on each (`document.querySelectorAll(...)[i]`).
 
-5. Pick only the other repository in the filter (**server** on a clean home; the tree stays),
+5. Pick only the other project in the filter (**server** on a clean home; the tree stays),
    wait for `[data-file-browser-panel$=':<its path>'] >> role=treeitem` and run the check
    again: `paths` are its top-level entries, not step 4's, and `painted` is true. Back on
    the scratch repository, **Open a branch in a worktree** → another branch: a second
@@ -166,18 +183,23 @@ repository**. With the **server** project that makes two repositories.
    branch, then reopen the first: the edits come back.
 6. Search a file name; Enter opens it.
 7. In a thread, add a **Diff** tab to the right panel, right-click it, **Open in
-   Repositories**: the URL is `/repositories` and the thread's worktree shows.
+   Projects**: the URL is `/repositories` and the thread's worktree shows.
 8. Hide a worktree in the filter while a tab of it is in front: its header stays, marked
    **hidden**, and the `Hiding …` pill shows; bring another tab to the front and it drops out.
    With a file written in one worktree, **Has changes** counts it and, on, leaves only it (and
    the focused tab's worktree, marked).
+9. With the `.ts` file in front, click **Open local graph**: a `repo-graph:` tab splits to
+   the right with the file's chain mark. Prove it paints: `document.elementFromPoint` at the
+   graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
+   the graph re-roots on it; unpress it and it stays.
 
 ## Source
 
-`apps/web/src/components/repositories/`, `routes/_chat.repositories.tsx`,
-`panes/sectionPanes.ts`, `packages/editor/src/code/`, `review.getRecentFiles` in
+`apps/web/src/components/repositories/` (incl. `RepositoryGraphView.tsx` and
+`localGraph.ts`), `components/codeGraph/`, `routes/_chat.repositories.tsx`,
+`packages/editor/src/code/`, `review.getRecentFiles` in
 `apps/server/src/review/ReviewService.ts`, `sectionTabs/` (the `repositories` section),
-`panes/rightPanelPaneTabs.tsx` (Open in Repos), the filter on
+`panes/workspaceTabs.tsx` (Open in Projects), the filter on
 `components/projects/ThreadsFilterParts.tsx` and `storedChoice.ts`, T3 Code's
 `components/files/FileBrowserPanel.tsx` (the tree). Mobile:
 `apps/mobile/src/features/repositories/`, `apps/mobile/src/state/repositories.ts`, the

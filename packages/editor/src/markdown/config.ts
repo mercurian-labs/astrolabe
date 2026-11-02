@@ -35,7 +35,19 @@ export interface LivePreviewOptions {
    * and code, and elsewhere fall through to the host and the browser's focus order.
    */
   tabIndentsProse?: boolean;
+  /**
+   * Fenced code blocks the host draws itself, by language, as Obsidian's code block processors
+   * do. While no selection is on a closed block's lines, its renderer fills an element standing
+   * in for them; editing the block shows its source. Keep the record and its functions stable.
+   */
+  codeBlocks?: Readonly<Record<string, CodeBlockRenderer>>;
 }
+
+/**
+ * Fills `element` with a drawing of a fenced block's `source`. Returns what to run when the
+ * element is taken down, if anything. Clicks on links and buttons inside it stay the host's.
+ */
+export type CodeBlockRenderer = (source: string, element: HTMLElement) => (() => void) | void;
 
 export interface ResolvedConfig {
   urlPolicy: UrlPolicy;
@@ -44,6 +56,7 @@ export interface ResolvedConfig {
   openUrl: ((href: string) => void) | null;
   linksOpenOnClick: boolean;
   tabIndentsProse: boolean;
+  codeBlocks: Readonly<Record<string, CodeBlockRenderer>>;
 }
 
 export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
@@ -56,6 +69,7 @@ export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
       openUrl: options.openUrl ?? null,
       linksOpenOnClick: options.linksOpenOnClick ?? false,
       tabIndentsProse: options.tabIndentsProse ?? true,
+      codeBlocks: options.codeBlocks ?? {},
     };
   },
 });

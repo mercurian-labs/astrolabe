@@ -89,8 +89,10 @@ export const WikiEditorWebView = forwardRef<
       keyboardDisplayRequiresUserAction={false}
       hideKeyboardAccessoryView
       allowsLinkPreview={false}
-      contentInsetAdjustmentBehavior="automatic"
-      automaticallyAdjustContentInsets
+      // The page pads itself by `env(safe-area-inset-*)` (mobilePage.css). An automatic inset
+      // lands after the first layout and leaves the page scrolled under the header.
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
       style={{ flex: 1, backgroundColor: "transparent" }}
       containerStyle={{ backgroundColor: "transparent" }}
     />

@@ -118,11 +118,16 @@ export const RPC_REQUIRED_SCOPES = {
   // Delivery logs hold request bodies, so they need the same scope as the URL.
   [WS_METHODS.scheduledTasksListWebhookDeliveries]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksGetWebhookDelivery]: AuthOrchestrationOperateScope,
+  // Astrolabe: code index reads are file reads; rebuild and clear come from CLIENT_GUARDED_RPC_SCOPES.
+  [WS_METHODS.codeIndexSubscribe]: AuthFilesystemReadScope,
+  [WS_METHODS.codeIndexLocalGraph]: AuthFilesystemReadScope,
+  [WS_METHODS.codeIndexStorage]: AuthFilesystemReadScope,
   // Astrolabe: wiki reads are file reads; writes come from CLIENT_GUARDED_RPC_SCOPES.
   [WS_METHODS.wikiList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.wikiIndex]: AuthFilesystemReadScope,
   [WS_METHODS.wikiReadNote]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiQuery]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,
   [WS_METHODS.cloudGetRelayClientStatus]: AuthRelayReadScope,

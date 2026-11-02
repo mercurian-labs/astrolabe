@@ -25,7 +25,7 @@ import { manuallyUnfolded } from "./unfolded.ts";
 import { previewBaseTheme } from "./theme.ts";
 import { revealAtomicNodes } from "../collab/reveal.ts";
 
-export type { LivePreviewOptions, PreviewRange } from "./config.ts";
+export type { CodeBlockRenderer, LivePreviewOptions, PreviewRange } from "./config.ts";
 export { previewExclusions } from "./config.ts";
 export { continueMarkup, markdownCommands, type MarkdownCommand } from "./keymap.ts";
 export {
