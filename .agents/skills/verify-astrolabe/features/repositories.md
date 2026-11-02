@@ -57,13 +57,59 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 - **File tab** (`[data-workspace-tab^="repo-file:"]`): a header row (Back/Forward, then the
   path as a breadcrumb, `navigation "File path breadcrumb"`: its folder muted, keeping its last
   segment whole and cutting the rest from its start, and wrapping away (with its `/`) before
-  the file's name truncates, then the file's name; "An
-  agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
-  Read only / Too big to edit here; then **Open local graph**). Markdown opens with the live preview (a centred
-  measure); code in `.cm-editor.cm-code` with line numbers and its language's colours
-  (`@mercurian/editor/code`). Vim follows the device setting. Edits save 500 ms after
-  typing stops through T3 Code's save (`projects.writeFile`), shared with the thread's
-  Files view; the window regaining focus re-reads the file.
+  the file's name truncates, then the file's name, both inside `navigation "Breadcrumbs"`, whose
+  trailing buttons are the symbols around the cursor (a click jumps there); then
+  `group "Compare changes with"` (**HEAD** / **This turn**, only once a turn changed the file);
+  "An agent is working in this checkout" while a thread there is mid-turn; the language
+  server's `role=status` (below); Saved / Saving… / Not saved / Deleted / Deleted, not saved /
+  Read only / Too big to edit here; then **Open local graph**). Markdown opens with the live
+  preview (a centred measure); code in `.cm-editor.cm-code` with line numbers and its
+  language's colours (`@mercurian/editor/code`). Vim follows the device setting. The file is a
+  live document the environment owns (`documents.*` RPCs, `apps/server/src/documents/`): edits
+  save 500 ms after typing stops, other tabs and outside writes show as they land, a deleted
+  file stays open with **Save** / **Discard**, and edits made offline that meet a changed file
+  offer **Keep mine** / **Use the file's**. Cmd+F finds (with replace), Cmd+Shift+O is **Go to
+  symbol**, Cmd+S saves (formatting first with **Format on save**).
+- **Change markers** (`packages/editor/src/git/gitChanges.ts`): `.atlas-git-gutter` beside the
+  line numbers holds `.atlas-git-marker.atlas-git-{added,modified,deleted}` against HEAD, or
+  against the turn with **This turn**. A click (or Cmd+') shows the old lines with
+  `role=toolbar[name=Change]`: **Restore this change**, **Previous change**, **Next change**;
+  Cmd+Shift+' shows every change; Cmd+F8 / Cmd+Shift+F8 step.
+- **Language server** (`apps/server/src/languageServers/`, client `packages/editor/src/lsp/`):
+  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs a
+  download` (**Download**), or failed / stopped / paused to save memory (**Restart**). The
+  toolchain is the checkout's own TypeScript (7 runs `tsc --lsp`, ≤6 typescript-language-server),
+  else a cached download. Problems underline with the message below the line
+  (`.atlas-diagnostic-messages`; F8 / Shift+F8 step); completion as you type; hover
+  (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
+  beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
+  rename (`input[aria-label="Rename <name>"]`, then a "Renamed X to Y" toast with **Undo**);
+  Cmd+. code actions (`.atlas-lightbulb`, `[aria-label="Code actions"]`); Cmd+Shift+I format.
+- **Right-click menu** (`packages/editor/src/lsp/contextMenu.ts`): moves the cursor to the
+  click unless it lands in the selection, then Go to Definition / Type Definition /
+  Implementation / Find All References | Rename Symbol… / Code Actions… / Format Document |
+  Cut / Copy / Paste | Copy Relative Path / Open Local Graph. Language rows show only with a
+  server and are faint while it starts or lacks the feature; Cut/Copy are faint with no
+  selection. On the web its items are `role=button` by name; on desktop the menu is native.
+- **Project search** (Cmd+Shift+F; `components/search/ProjectContentSearchDialog.tsx`): dialog
+  `Search project contents`, field placeholder `Search in <project>` (a combobox; type into it
+  by `[placeholder=…]`). It searches the checkout of the focused Projects tab, else the thread in
+  front; with neither it reads "Open a project to search its files." Match case / whole word /
+  regex, **Filters** (`Files to include`, `Files to exclude`, `Include gitignored files`),
+  pages of 500 (**Load more results**, **Keep searching**); unsaved edits in open files are
+  searched too. Enter opens a match at its line; Cmd+Enter **Open results in editor**.
+- **Results tabs** (`repositories/multibuffer/`): one editor of excerpts (`[data-excerpt]`, one
+  per match, under a header per file with `Open <name>`), editing the real files. `repo-search:`
+  "Search: <query>" (toolbar "N results for “q” in M files", `Replace with`, **Replace all**,
+  asking first above 10 files, then **Undo replace-all**); `repo-problems:` "Problems" (`e` `v`,
+  palette **Projects: Show Problems**; "N errors, M warnings in K files", live); `repo-locations:`
+  for references ("References of <name> · N places"). F7 / Shift+F7 step files, Shift+Enter
+  shows more lines, Alt+Enter opens the file at the cursor. They keep their place: a row click
+  or Back/Forward from one opens the file in a new tab after it (`keepsPlace`, panes.md).
+- **Agent tools** (`mcp/toolkits/code/`): `astrolabe_code_diagnostics`,
+  `astrolabe_code_definition`, `astrolabe_code_references` ask the same language server
+  ("Checked code diagnostics", "Found a definition", "Found references" in chat); they need an
+  agent turn to walk.
 - **Diff tab** (`repo-diff:…:working-tree` "Uncommitted changes", or `:branch-range`
   "Branch changes"): a header reading `<checkout folder> / Uncommitted changes` or
   `/ Changes against <base>` (`RepositoryDiffView.tsx`), then T3 Code's diff renderer; each
@@ -75,7 +121,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   project and checkout and opens the same file, its uncommitted changes, or the tree. Only
   those thread surface tabs offer it (`panes/workspaceTabs.tsx`).
 - **Local graph** (`repo-graph:…`, settings in `astrolabe:repository-local-graph:v1`):
-  opened from the file header's **Open local graph**, a sidebar file row's menu, or `r` `g`.
+  opened from the file header's **Open local graph**, the file's right-click menu, a sidebar
+  file row's menu, or `r` `g`.
   It splits to the right, carries the file's chain mark, and follows the file in front while
   **Following** is pressed (`aria-pressed`). Header actions, in order: Back, Forward,
   **Reset the graph** (only once something is expanded), **Following**, **Fit the graph**,
@@ -84,7 +131,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   double-click window); a double-click toggles its neighbours; right-click offers Expand /
   Collapse neighbours, Show / Hide contents, Centre here and Open. Levels and the graph
   itself are in [code-graph.md](code-graph.md).
-- **Keyboard and palette**: `menu g r` and the palette's **Open projects**.
+- **Keyboard and palette**: `menu g r` and the palette's **Open projects**; the editor's
+  commands are the keyboard menu's `e` group (which-key.md) and Settings → Keybindings →
+  **Editors**.
 
 - **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Projects"`
   (`features/repositories/RepositoriesScreen.tsx`). `Filter by project` (All projects,
@@ -147,11 +196,23 @@ now**. With the **server** project that makes two projects.
    the right with the file's chain mark. Prove it paints: `document.elementFromPoint` at the
    graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
    the graph re-roots on it; unpress it and it stays.
+9. Language server: in the `.ts` file wait for the header status `TypeScript <version>` (a
+   fresh machine asks to **Download** first). Type `const x: number = "a";`: Saving… → Saved
+   and a wavy underline with `.atlas-diagnostic-messages`.
+10. Right-click a call: the cursor moves there and the menu lists the language rows; choose
+    **Find All References**: a `repo-locations:` tab opens beside with `[data-excerpt]`
+    editors. Click a sidebar file: it opens after the results tab, which stays.
+11. Cmd+K `e` `v`: a `repo-problems:` tab ("N errors, …"). With that tab focused, Cmd+Shift+F,
+    type a name: "N results in M files"; Cmd+Enter opens a `repo-search:` tab.
+12. Delete the file on disk: status **Deleted**; **Save** recreates it.
 
 ## Source
 
-`apps/web/src/components/repositories/` (incl. `RepositoryGraphView.tsx` and
-`localGraph.ts`), `components/codeGraph/`, `routes/_chat.repositories.tsx`,
+`apps/web/src/components/repositories/` (incl. `RepositoryGraphView.tsx`,
+`localGraph.ts`, `multibuffer/`), `components/search/ProjectContentSearchDialog.tsx`,
+`components/outline/`, `packages/editor/src/{lsp,git,multibuffer,outline}/`,
+`apps/server/src/documents/`, `apps/server/src/languageServers/`, the language tools in
+`mcp/toolkits/code/`, `components/codeGraph/`, `routes/_chat.repositories.tsx`,
 `packages/editor/src/code/`, `review.getRecentFiles` in
 `apps/server/src/review/ReviewService.ts`, `sectionTabs/` (the `repositories` section),
 `panes/workspaceTabs.tsx` (Open in Projects), the filter on

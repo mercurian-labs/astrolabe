@@ -1,14 +1,38 @@
-import { FileCodeIcon, FileDiffIcon, WaypointsIcon } from "lucide-react";
+import {
+  CircleAlertIcon,
+  FileCodeIcon,
+  FileDiffIcon,
+  ListTreeIcon,
+  SearchIcon,
+  WaypointsIcon,
+} from "lucide-react";
 import { lazy, Suspense, type ReactNode } from "react";
 
 import { RepositoryDiffView } from "./RepositoryDiffView";
 import { RepositoryFileView } from "./RepositoryFileView";
+import { locationList } from "./multibuffer/openMultibuffer";
 import { fileName, parseRepositoryTabKey, type RepositoryTab } from "./repositoryTabs";
 
 // The local graph's renderer loads with its first tab, never with Repositories itself.
 const RepositoryGraphView = lazy(() => import("./RepositoryGraphView"));
+// The multi-file views load with their first tab.
+const RepositorySearchView = lazy(() =>
+  import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
+    default: module.RepositorySearchView,
+  })),
+);
+const RepositoryProblemsView = lazy(() =>
+  import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
+    default: module.RepositoryProblemsView,
+  })),
+);
+const RepositoryLocationsView = lazy(() =>
+  import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
+    default: module.RepositoryLocationsView,
+  })),
+);
 
-/** A file, a checkout's changes, or a file's local graph. */
+/** A file, a checkout's changes, a file's local graph, or a multi-file view. */
 export function RepositoryTabView({
   tabKey,
   tab,
@@ -25,6 +49,24 @@ export function RepositoryTabView({
       return (
         <Suspense fallback={null}>
           <RepositoryGraphView tabKey={tabKey} tab={tab} />
+        </Suspense>
+      );
+    case "search":
+      return (
+        <Suspense fallback={null}>
+          <RepositorySearchView tabKey={tabKey} tab={tab} />
+        </Suspense>
+      );
+    case "problems":
+      return (
+        <Suspense fallback={null}>
+          <RepositoryProblemsView tabKey={tabKey} tab={tab} />
+        </Suspense>
+      );
+    case "locations":
+      return (
+        <Suspense fallback={null}>
+          <RepositoryLocationsView tabKey={tabKey} tab={tab} />
         </Suspense>
       );
   }
@@ -46,6 +88,18 @@ export function repositoryTabLabel(tabKey: string): { title: string; icon: React
       return {
         title: tab.path === null ? "Local graph" : `Local graph · ${fileName(tab.path)}`,
         icon: <WaypointsIcon className="size-3.5 shrink-0" />,
+      };
+    case "search":
+      return {
+        title: `Search: ${tab.search.query}`,
+        icon: <SearchIcon className="size-3.5 shrink-0" />,
+      };
+    case "problems":
+      return { title: "Problems", icon: <CircleAlertIcon className="size-3.5 shrink-0" /> };
+    case "locations":
+      return {
+        title: locationList(tab.id)?.title ?? "Places",
+        icon: <ListTreeIcon className="size-3.5 shrink-0" />,
       };
   }
 }

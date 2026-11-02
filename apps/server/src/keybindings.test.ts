@@ -452,6 +452,59 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
     }).pipe(Effect.provide(layerKeybindings())),
   );
 
+  it.effect("hands a code file's editing keys to its editor, leaving customized rules alone", () =>
+    Effect.gen(function* () {
+      const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+      const keybindings = yield* Keybindings.Keybindings;
+      yield* writeKeybindingsConfig(keybindingsConfigPath, [
+        { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
+        { key: "mod+i", command: "markdown.italic", when: "editorFocus" },
+        { key: "mod+[", command: "navigation.back", when: "true" },
+      ]);
+
+      yield* keybindings.syncDefaultKeybindingsOnStartup;
+      const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+      const rulesFor = (command: string) => persisted.filter((entry) => entry.command === command);
+      assert.deepEqual(rulesFor("diff.toggle"), [
+        { key: "mod+d", command: "diff.toggle", when: "!terminalFocus && !codeEditorFocus" },
+      ]);
+      assert.deepEqual(rulesFor("markdown.italic"), [
+        { key: "mod+i", command: "markdown.italic", when: "editorFocus && !codeEditorFocus" },
+      ]);
+      assert.deepEqual(rulesFor("navigation.back"), [
+        { key: "mod+[", command: "navigation.back", when: "true" },
+      ]);
+      // The editor's own rules arrive with the other missing defaults.
+      assert.isTrue(
+        persisted.some(
+          (entry) => entry.command === "code.selectNextOccurrence" && entry.key === "mod+d",
+        ),
+      );
+    }).pipe(Effect.provide(layerKeybindings())),
+  );
+
+  it.effect(
+    "hands mod+shift+o to the outline in a file or note, leaving it a new thread elsewhere",
+    () =>
+      Effect.gen(function* () {
+        const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+        const keybindings = yield* Keybindings.Keybindings;
+        yield* writeKeybindingsConfig(keybindingsConfigPath, [
+          { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
+        ]);
+
+        yield* keybindings.syncDefaultKeybindingsOnStartup;
+        const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+        assert.deepEqual(
+          persisted.filter((entry) => entry.key === "mod+shift+o"),
+          [
+            { key: "mod+shift+o", command: "outline.open", when: "outlineFocus" },
+            { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus && !outlineFocus" },
+          ],
+        );
+      }).pipe(Effect.provide(layerKeybindings())),
+  );
+
   it.effect("moves an untouched mod+p from the file picker to the Command Palette, once", () =>
     Effect.gen(function* () {
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;

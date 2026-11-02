@@ -8,6 +8,7 @@ import type { Awareness } from "y-protocols/awareness";
 import { livePreview } from "./markdown/livePreview.ts";
 import type { LivePreviewOptions } from "./markdown/config.ts";
 import { agentChanges } from "./collab/agentChanges.ts";
+import { inFileSearch } from "./search.ts";
 import { vimMode, type VimHistory } from "./vim.ts";
 
 export interface AtlasEditorProps {
@@ -34,6 +35,11 @@ export interface AtlasEditorProps {
    * a reading view becomes an editing one without losing its scroll position.
    */
   readOnly?: boolean;
+  /**
+   * The keys that open the find bar (see `inFileSearch`); Mod-f when not given. Keep the array
+   * stable; a new one remounts.
+   */
+  findKeys?: readonly string[];
   className?: string;
 }
 
@@ -112,6 +118,7 @@ export function AtlasEditor({
   livePreview: livePreviewOptions,
   locked = false,
   readOnly = false,
+  findKeys,
 }: AtlasEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // The mounted editor, its Vim compartment, and the undo history Vim runs.
@@ -158,6 +165,8 @@ export function AtlasEditor({
           yCollab(text, awareness, { undoManager }),
           Prec.high(keymap.of(yUndoManagerKeymap)),
           isolatedUndoSteps(undoManager),
+          // Ahead of the default keymap, so a find key it also binds opens the bar.
+          inFileSearch(findKeys ? { keys: findKeys } : {}),
           liveMarkdown(livePreviewOptions),
           locked ? lockedView : [],
           agentChanges(text, awareness),
@@ -181,7 +190,7 @@ export function AtlasEditor({
       view.destroy();
       undoManager.destroy();
     };
-  }, [text, awareness, extensions, livePreviewOptions, locked]);
+  }, [text, awareness, extensions, livePreviewOptions, locked, findKeys]);
 
   // Vim on or off without remounting: the compartment is reconfigured in place.
   useEffect(() => {

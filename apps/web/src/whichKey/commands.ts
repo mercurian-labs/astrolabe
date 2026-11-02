@@ -1,12 +1,44 @@
 import {
   ASTROLABE_KEYBINDING_COMMANDS,
+  CODE_EDITOR_KEYBINDING_COMMANDS,
   type AstrolabeKeybindingCommand,
+  type CodeEditorKeybindingCommand,
   type KeybindingCommand,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/code/editing";
+import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
+import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
+import { hasOutline } from "@mercurian/editor/outline";
+import { excerptControls, isExcerpt } from "@mercurian/editor/multibuffer/excerpt";
+import {
+  hasDiagnosticsUi,
+  nextDiagnostic,
+  previousDiagnostic,
+} from "@mercurian/editor/lsp/diagnostics";
+import { startCompletion } from "@mercurian/editor/lsp/completion";
+import { showHover, showSignatureHelp } from "@mercurian/editor/lsp/hover";
+import {
+  findReferences,
+  goToDeclaration,
+  goToDefinition,
+  goToImplementation,
+  goToTypeDefinition,
+} from "@mercurian/editor/lsp/navigation";
+import { renameSymbol } from "@mercurian/editor/lsp/rename";
+import { formatCode } from "@mercurian/editor/lsp/format";
+import { showCodeActions } from "@mercurian/editor/lsp/code-actions";
+import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
+import { lastRename } from "~/components/repositories/renameUndo";
+import { hasLanguageServer } from "@mercurian/editor/lsp";
+import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
+import { EditorView } from "@codemirror/view";
 
+import { diffBaseControl, hasDiffBaseControl } from "~/components/repositories/fileDiffBase";
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
+import { codeEditingCommandOf } from "~/editorKeybindings";
+import { openOutlinePicker } from "~/components/outline/OutlinePicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import { focusedChatOf, workspace } from "~/panes/workspace";
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
@@ -20,6 +52,7 @@ import {
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
 import { localGraphOpener } from "~/components/repositories/localGraph";
+import { problemsOpener } from "~/components/repositories/multibuffer/openMultibuffer";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
 import type { FocusDirection } from "~/keyboardNav/regions.logic";
@@ -161,6 +194,61 @@ export function inEditor(origin: KeyOrigin | null, line: string): (() => void) |
       view.focus();
       runVimEx(view, line);
     });
+}
+
+/**
+ * The editor the key came from whose state `has` what is asked: the one holding the focused
+ * element, or the one around it (a table cell's editor sits inside its note's); null elsewhere.
+ */
+function editorFrom(
+  origin: KeyOrigin | null,
+  has: (state: EditorState) => boolean,
+): EditorView | null {
+  for (
+    let editor = origin?.element?.closest(".cm-editor") ?? null;
+    editor;
+    editor = editor.parentElement?.closest(".cm-editor") ?? null
+  ) {
+    const view = editor instanceof HTMLElement ? EditorView.findFromDOM(editor) : null;
+    if (view && has(view.state)) return view;
+  }
+  return null;
+}
+
+const HUNK_ENTRIES: Record<
+  Exclude<Extract<AstrolabeKeybindingCommand, `hunk.${string}`>, "hunk.toggleBase">,
+  { readonly command: HunkCommand; readonly label: string }
+> = {
+  "hunk.toggle": { command: "toggle", label: "Show or hide change" },
+  "hunk.expandAll": { command: "expandAll", label: "Show all changes" },
+  "hunk.restore": { command: "restore", label: "Restore change" },
+  "hunk.next": { command: "next", label: "Next change" },
+  "hunk.previous": { command: "previous", label: "Previous change" },
+};
+
+/** A language-server command on the code file the key came from; faint where none serves it. */
+function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorView) => boolean) {
+  const view = editorFrom(origin, hasLanguageServer);
+  return entry(
+    view ? label : "No language server here",
+    view ? () => afterPalette(() => void run(view)) : null,
+  );
+}
+
+/** A change command on the code file the key came from; faint where no file shows changes. */
+function hunkEntry(command: keyof typeof HUNK_ENTRIES, origin: KeyOrigin | null): AppCommand {
+  const { command: hunk, label } = HUNK_ENTRIES[command];
+  const view = editorFrom(origin, hasGitChanges);
+  return entry(
+    view ? label : "No changes here",
+    view
+      ? () =>
+          afterPalette(() => {
+            view.focus();
+            runHunkCommand(view, hunk);
+          })
+      : null,
+  );
 }
 
 /**
@@ -341,8 +429,113 @@ function astrolabeCommand(
         context.origin?.view ? "Clear search highlight" : "Nothing highlighted here",
         inEditor(context.origin, "nohlsearch"),
       );
+    case "search.find": {
+      const view = editorFrom(context.origin, hasInFileSearch);
+      return entry(
+        view ? "Find in editor" : "No editor to find in",
+        view ? () => afterPalette(() => openInFileSearch(view)) : null,
+      );
+    }
+    case "hunk.toggle":
+    case "hunk.expandAll":
+    case "hunk.restore":
+    case "hunk.next":
+    case "hunk.previous":
+      return hunkEntry(command, context.origin);
+    case "hunk.toggleBase": {
+      const control = editorFrom(context.origin, hasDiffBaseControl)?.state.facet(diffBaseControl);
+      const current = control?.current();
+      return entry(
+        current?.turnAvailable
+          ? current.base === "turn"
+            ? "Compare with HEAD"
+            : "Compare since this turn"
+          : "No turn changed this file",
+        control && current?.turnAvailable ? control.toggle : null,
+      );
+    }
+    case "diagnostic.next":
+    case "diagnostic.previous": {
+      const view = editorFrom(context.origin, hasDiagnosticsUi);
+      const next = command === "diagnostic.next";
+      return entry(
+        view ? (next ? "Next problem" : "Previous problem") : "No problems shown here",
+        view
+          ? () => afterPalette(() => void (next ? nextDiagnostic : previousDiagnostic)(view))
+          : null,
+      );
+    }
+    case "lsp.complete":
+      return lspEntry(context.origin, "Show completions", startCompletion);
+    case "lsp.hover":
+      return lspEntry(context.origin, "Show hover", showHover);
+    case "lsp.signatureHelp":
+      return lspEntry(context.origin, "Show signature help", showSignatureHelp);
+    case "lsp.definition":
+      return lspEntry(context.origin, "Go to definition", goToDefinition);
+    case "lsp.declaration":
+      return lspEntry(context.origin, "Go to declaration", goToDeclaration);
+    case "lsp.typeDefinition":
+      return lspEntry(context.origin, "Go to type definition", goToTypeDefinition);
+    case "lsp.implementation":
+      return lspEntry(context.origin, "Go to implementation", goToImplementation);
+    case "lsp.references":
+      return lspEntry(context.origin, "Find references", findReferences);
+    case "lsp.rename":
+      return lspEntry(context.origin, "Rename symbol", renameSymbol);
+    case "lsp.format":
+      return lspEntry(context.origin, "Format document", formatCode);
+    case "lsp.codeActions":
+      return lspEntry(context.origin, "Show code actions", showCodeActions);
+    case "file.save": {
+      const view = editorFrom(context.origin, hasFileSave);
+      const run = view?.state.facet(fileSave) ?? null;
+      return entry(run ? "Save file" : "No file to save here", run);
+    }
+    case "lsp.undoRename": {
+      const rename = lastRename.get();
+      return entry(rename?.label ?? "No rename to undo", rename?.run ?? null);
+    }
+    case "outline.open": {
+      const view = editorFrom(context.origin, hasOutline);
+      return entry(
+        view ? "Go to symbol" : "No file to outline",
+        view ? () => afterPalette(() => openOutlinePicker(view)) : null,
+      );
+    }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "multibuffer.expand":
+    case "multibuffer.openExcerpt":
+    case "multibuffer.nextFile":
+    case "multibuffer.previousFile": {
+      const view = editorFrom(context.origin, isExcerpt);
+      const controls = view ? excerptControls(view.state) : null;
+      const labels = {
+        "multibuffer.expand": "Show more lines around excerpt",
+        "multibuffer.openExcerpt": "Open excerpt in its file",
+        "multibuffer.nextFile": "Next file in results",
+        "multibuffer.previousFile": "Previous file in results",
+      } as const;
+      return entry(
+        controls ? labels[command] : "No results here",
+        view && controls
+          ? () =>
+              afterPalette(() => {
+                if (command === "multibuffer.expand") controls.expand(0, 0);
+                else if (command === "multibuffer.openExcerpt") {
+                  controls.open(view.state.doc.lineAt(view.state.selection.main.head).number);
+                } else controls.jumpFile(command === "multibuffer.nextFile" ? 1 : -1);
+              })
+          : null,
+      );
+    }
+    case "multibuffer.problems": {
+      const open = problemsOpener(panes?.controller ?? null);
+      return entry(open ? "Show problems" : "No project in front", open);
+    }
+    case "projectSearch.openInEditor":
+      return entry("Open results in editor, from project search", null);
     case "tab.toggleLink": {
       const link = focused ? (panes?.tabs.link?.(focused.leaf.active) ?? null) : null;
       return entry(link?.label ?? "Unlink tab", link?.run ?? null);
@@ -414,8 +607,83 @@ function upstreamCommand(command: KeybindingCommand, context: AppCommandContext)
   );
 }
 
+const CODE_COMMANDS = new Set<KeybindingCommand>(CODE_EDITOR_KEYBINDING_COMMANDS);
+
+const isCodeEditorCommand = (command: KeybindingCommand): command is CodeEditorKeybindingCommand =>
+  CODE_COMMANDS.has(command);
+
+/** A code file's commands as the menu says them. */
+const CODE_COMMAND_LABELS: Readonly<Record<CodeEditorKeybindingCommand, string>> = {
+  "code.selectNextOccurrence": "Select next occurrence",
+  "code.skipOccurrence": "Skip this occurrence",
+  "code.selectAllOccurrences": "Select all occurrences",
+  "code.addCursorAbove": "Add cursor above",
+  "code.addCursorBelow": "Add cursor below",
+  "code.expandSelection": "Expand selection",
+  "code.toggleComment": "Toggle comment",
+  "code.indentLess": "Indent less",
+  "code.indentMore": "Indent more",
+  "code.moveLineUp": "Move line up",
+  "code.moveLineDown": "Move line down",
+  "code.copyLineUp": "Copy line up",
+  "code.copyLineDown": "Copy line down",
+  "code.deleteLine": "Delete line",
+  "code.joinLines": "Join lines",
+  "code.sortLines": "Sort lines",
+  "code.upperCase": "Upper case",
+  "code.lowerCase": "Lower case",
+  "code.duplicateSelection": "Duplicate selection",
+  "code.fold": "Fold",
+  "code.unfold": "Unfold",
+  "code.foldAll": "Fold all",
+  "code.unfoldAll": "Unfold all",
+  "code.toggleSoftWrap": "Wrap lines",
+};
+
+/** The commands that change no text, so they run in a read-only file too. */
+const READING_CODE_COMMANDS = new Set<CodeEditorKeybindingCommand>([
+  "code.selectNextOccurrence",
+  "code.skipOccurrence",
+  "code.selectAllOccurrences",
+  "code.addCursorAbove",
+  "code.addCursorBelow",
+  "code.expandSelection",
+  "code.fold",
+  "code.unfold",
+  "code.foldAll",
+  "code.unfoldAll",
+  "code.toggleSoftWrap",
+]);
+
+/**
+ * One of a code file's editing commands, run in the code editor the key came from once the
+ * palette has gone; faint elsewhere, and for edits in a file that cannot be edited.
+ */
+function codeEditorCommand(
+  command: CodeEditorKeybindingCommand,
+  context: AppCommandContext,
+): AppCommand {
+  const view = editorFrom(context.origin, hasCodeEditing);
+  const label =
+    command === "code.toggleSoftWrap" && view && softWrapOn(view.state)
+      ? "Stop wrapping lines"
+      : CODE_COMMAND_LABELS[command];
+  const runs = view && (READING_CODE_COMMANDS.has(command) || !view.state.readOnly);
+  return entry(
+    label,
+    runs
+      ? () =>
+          afterPalette(() => {
+            view.focus();
+            runCodeEditing(view, codeEditingCommandOf(command));
+          })
+      : null,
+  );
+}
+
 /** The registry's entry for `command`, as it stands in `context`. */
 export function appCommand(command: KeybindingCommand, context: AppCommandContext): AppCommand {
+  if (isCodeEditorCommand(command)) return codeEditorCommand(command, context);
   return isAppCommand(command)
     ? astrolabeCommand(command, context)
     : upstreamCommand(command, context);

@@ -215,6 +215,7 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { refreshPushedPullRequests } from "./git/refreshPushedPullRequests.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as VcsBaseText from "./vcs/VcsBaseText.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
@@ -244,6 +245,9 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
+import * as Documents from "./documents/Documents.ts";
+import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
+import * as LanguageServers from "./languageServers/LanguageServers.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
@@ -1248,7 +1252,10 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
+    const baseTexts = yield* VcsBaseText.VcsBaseText;
+    const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
+    const languageServers = yield* LanguageServers.LanguageServers;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
       [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
@@ -1257,6 +1264,8 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.codeIndexPrune]: (_input) => codeIndex.prune,
       [WS_METHODS.codeIndexClear]: (_input) => codeIndex.clear.pipe(Effect.as({})),
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
+      [WS_METHODS.vcsReadBaseText]: (input) => baseTexts.read(input),
+      [WS_METHODS.subscribeVcsBaseText]: (input) => baseTexts.stream(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
@@ -1282,6 +1291,22 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
       [WS_METHODS.wikiSetProjectLink]: (input) => wikis.setProjectLink(input),
       [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
+      [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),
+      [WS_METHODS.documentsPush]: (input) => documents.push(input),
+      // Astrolabe: saving goes through the language servers, which format first when asked.
+      [WS_METHODS.documentsSave]: (input) => languageServers.save(input),
+      [WS_METHODS.documentsRecover]: (input) => documents.recover(input),
+      [WS_METHODS.documentsDiscard]: (input) => documents.discard(input),
+      [WS_METHODS.documentsReplaceAll]: (input) => documents.replaceAll(input),
+      [WS_METHODS.documentsUndoReplaceAll]: (input) => documents.undoReplaceAll(input),
+      [WS_METHODS.languageServersSubscribe]: (_input) => languageServers.subscribe,
+      [WS_METHODS.languageServersRestart]: (input) => languageServers.restart(input),
+      [WS_METHODS.languageServersStop]: (input) => languageServers.stop(input),
+      [WS_METHODS.languageServersConfirmDownload]: (_input) => languageServers.confirmDownload,
+      [WS_METHODS.languageServersSession]: (input) => languageServers.session(input),
+      [WS_METHODS.languageServersSend]: (input) => languageServers.send(input),
+      [WS_METHODS.languageServersUndoEdit]: (input) => languageServers.undoEdit(input),
+      [WS_METHODS.languageServersProblems]: (input) => languageServers.problems(input.cwd),
     });
   }),
 );
@@ -1404,6 +1429,7 @@ const layerWsUpstreamRpc = (
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+      const documents = yield* Documents.Documents;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
@@ -2846,6 +2872,12 @@ const layerWsUpstreamRpc = (
           ),
         [WS_METHODS.projectsSearchContents]: (input) =>
           workspaceEntries.searchContents(input).pipe(
+            // Astrolabe: open documents are searched as they are now, unsaved edits included.
+            Effect.flatMap((page) =>
+              documents
+                .unsavedTexts(input.cwd)
+                .pipe(Effect.map((unsaved) => withUnsavedTexts(input, page, unsaved))),
+            ),
             Effect.mapError(
               (cause) =>
                 new ProjectSearchContentsError({

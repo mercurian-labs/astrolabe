@@ -21,7 +21,7 @@
     "@codemirror/commands": "^6.11.1",
     "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.6",
-    "@codemirror/view": "^6.43.13",
+    "@codemirror/view": "^6.43.15",
     "@daypicker/react": "^10.0.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
@@ -99,6 +99,8 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@codemirror/collab": "6.1.1",
+    "@codemirror/lint": "^6.9.7",
     "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@tailwindcss/vite": "^4.0.0",

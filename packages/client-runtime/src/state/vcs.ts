@@ -317,6 +317,12 @@ export function createVcsEnvironmentAtoms<R, E>(
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
     }),
+    /** Astrolabe: an open file's base text for its change markers, sent again as it changes. */
+    baseText: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:vcs:base-text",
+      tag: WS_METHODS.subscribeVcsBaseText,
+      idleTtlMs: VCS_STATUS_IDLE_TTL_MS,
+    }),
     worktreeSetup: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:vcs:worktree-setup",
       tag: WS_METHODS.subscribeWorktreeSetup,

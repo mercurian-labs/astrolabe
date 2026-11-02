@@ -372,6 +372,12 @@ const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   astrolabe_code_find: tool(["Find", "Finding", "Found", "code uses"], "code-read"),
   astrolabe_code_changes: tool(["Read", "Reading", "Read", "code changes"], "code-read"),
   astrolabe_code_map: tool(["Map", "Mapping", "Mapped", "code dependencies"], "code-read"),
+  astrolabe_code_diagnostics: tool(
+    ["Check", "Checking", "Checked", "code diagnostics"],
+    "code-read",
+  ),
+  astrolabe_code_definition: tool(["Find", "Finding", "Found", "a definition"], "code-read"),
+  astrolabe_code_references: tool(["Find", "Finding", "Found", "references"], "code-read"),
   astrolabe_code_graph_show: tool(["Show", "Showing", "Showed", "a code graph"], "code-graph"),
 };
 

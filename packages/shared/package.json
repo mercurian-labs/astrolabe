@@ -4,6 +4,10 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./textReplace": {
+      "types": "./src/textReplace.ts",
+      "import": "./src/textReplace.ts"
+    },
     "./astrolabeEnv": {
       "types": "./src/astrolabeEnv.ts",
       "import": "./src/astrolabeEnv.ts"

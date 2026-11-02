@@ -1,33 +1,111 @@
 import "@mercurian/editor/markdown/theme.css";
 import "@mercurian/editor/code/theme.css";
 
-import { defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/code";
+import {
+  codeEditing,
+  hasCodeEditing,
+  setSoftWrap,
+  softWrapOn,
+} from "@mercurian/editor/code/editing";
+import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
+import { outline, type OutlineItem } from "@mercurian/editor/outline";
+import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
+import { environmentCompletion } from "@mercurian/editor/lsp/completion";
+import { environmentHover } from "@mercurian/editor/lsp/hover";
+import {
+  environmentNavigation,
+  type GoToKind,
+  type NavigationHost,
+  type NavigationLocation,
+} from "@mercurian/editor/lsp/navigation";
+import {
+  environmentRename,
+  type RenameHost,
+  type RenameResult,
+} from "@mercurian/editor/lsp/rename";
+import { environmentFormat, formattingOptions } from "@mercurian/editor/lsp/format";
+import {
+  type AppliedCodeAction,
+  type CodeActionHost,
+  environmentCodeActions,
+} from "@mercurian/editor/lsp/code-actions";
+import { fileSave } from "./fileSave";
+import { languageServersEnvironment } from "~/state/languageServers";
+import { useAtomCommand } from "~/state/use-atom-command";
+import { lastRename, type UndoableRename } from "./renameUndo";
+import { inFileSearch } from "@mercurian/editor/search";
+import { codeContextMenu, type CodeContextMenuHost } from "@mercurian/editor/lsp/context-menu";
+import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { readLocalApi } from "~/localApi";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
 import { BotIcon, WaypointsIcon } from "lucide-react";
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useAtomMount } from "@effect/atom-react";
+import type {
+  DocumentSession,
+  DocumentSessionState,
+} from "@t3tools/client-runtime/state/document-session";
+import {
+  type ReactNode,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
+import {
+  useCodeEditorKeys,
+  useEditorDiagnosticKeys,
+  useEditorFindKeys,
+  useEditorHunkKeys,
+  useFileSaveKeys,
+  useLspEditorKeys,
+} from "~/editorKeybindings";
 import { useClientSettings } from "~/hooks/useSettings";
 import { PanesHostContext } from "~/panes/panesHost";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
+import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
+import { activateTab, allTabs, openTab } from "~/panes/arrangement";
+import { leafWithTab } from "~/panes/tree";
+import { toastManager } from "../ui/toast";
+import { openLocationPicker, pathOfUri } from "../outline/LocationPicker";
+import { navigationList } from "./multibuffer/multibufferInputs";
+import { locationsTabKey } from "./multibuffer/openMultibuffer";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { appVimKeys } from "~/whichKey/doors";
+import { Button } from "../ui/button";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { composerHistory } from "../composerCodeMirror/composerUndo";
-import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFilesQueryState";
-import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
+import { useProjectFileQuery } from "../files/projectFilesQueryState";
 import { isTurnRunning } from "../wiki/wiki.logic";
 import { registerUnsavedCheck } from "~/panes/unsavedEdits";
+import { repositoryFileReveal, revealLine } from "./repositoryFileReveal";
+import {
+  diffBaseControl,
+  openingDiffBase,
+  pickDiffBase,
+  type DiffBaseControl,
+  type FileDiffBase,
+} from "./fileDiffBase";
 import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
+import { fileEditorChanged, registerFileEditor } from "./openFileEditors";
 import { openLocalGraph } from "./localGraph";
 import { workspace } from "~/panes/workspace";
 import { TabHeader } from "~/panes/TabHeader";
-import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
+import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
+import { repositoryTabKey, type RepositoryFileTab as FileTab } from "./repositoryTabs";
+import { LanguageServerStatusEntry } from "./LanguageServerStatus";
+import { useLanguageServer } from "./useLanguageServer";
+import { useRepositoryDocument } from "./useRepositoryDocument";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
 // rebuild the editor's styles.
@@ -48,6 +126,8 @@ const FILE_EDITOR_THEME = EditorView.theme({
   },
   "&.cm-focused": { outline: "none" },
   "&.cm-code .cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "13px" },
+  // The sidebar's resize handle overhangs a pane's first 8px: the change strips sit past it.
+  "&.cm-code .cm-gutters": { paddingLeft: "8px" },
   ".cm-scroller": { lineHeight: "inherit" },
   // Clears the fade under the tab's header at rest.
   "&.cm-editor .cm-content": {
@@ -66,12 +146,13 @@ const FILE_EDITOR_THEME = EditorView.theme({
 });
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
+const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
+const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
 
 /**
- * A repository file in the wiki editor (Markdown preview, code colours, Vim when on). Edits
- * autosave after typing stops through the thread Files view's save, which never overwrites newer
- * contents an agent or another editor saved. Files without write access or too big to read whole
- * are read only, and the view says when an agent works in the same checkout.
+ * A repository file in the wiki editor, as the environment's live document: it saves your edits
+ * and sends everyone else's as they land. Without write access it is read only; files too big or
+ * not text open read only from disk.
  */
 export function RepositoryFileView({
   tabKey,
@@ -81,98 +162,319 @@ export function RepositoryFileView({
   readonly tab: FileTab;
 }) {
   const { environmentId, cwd, path } = tab;
-  const file = useProjectFileQuery(environmentId, cwd, path);
+  // The view can be handed another tab: each file gets its own document session.
+  return <RepositoryFile key={`${environmentId}\0${cwd}\0${path}`} tabKey={tabKey} tab={tab} />;
+}
+
+// Files these failures leave out open read only from disk, as before documents.
+const READ_FROM_DISK = new Set(["too-large", "not-text", "other"]);
+
+function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab: FileTab }) {
+  const { environmentId, cwd, path } = tab;
   const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
-  const [pending, setPending] = useState(false);
-  const pendingRef = useRef(false);
-  // One identity: the save coordinator starts over when its pending callback changes.
-  const onPendingChange = useStableCallback((_path: string, next: boolean) => {
-    pendingRef.current = next;
-    setPending(next);
-  });
-  const save = useFileSaveCoordinator({
+  const { session, state } = useRepositoryDocument(environmentId, cwd, path, canWrite);
+  const fromDisk =
+    state.status === "failed" && state.failure !== null && READ_FROM_DISK.has(state.failure.reason);
+  const file = useProjectFileQuery(environmentId, cwd, path, fromDisk);
+  useEffect(() => registerUnsavedCheck(tabKey, () => session.getState().unsent), [tabKey, session]);
+
+  const contents = fromDisk ? (file.data?.contents ?? null) : session.text();
+  const readOnly = !canWrite || fromDisk;
+  const languageServer = useLanguageServer(
     environmentId,
     cwd,
-    relativePath: path,
-    onPendingChange,
-  });
-  useEffect(() => registerUnsavedCheck(tabKey, () => pendingRef.current), [tabKey]);
-  // What an agent or another editor saved meanwhile shows when the window comes back.
-  const refresh = file.refresh;
-  useEffect(() => {
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [refresh]);
-
-  const contents = file.data?.contents ?? null;
-  const readOnly = !canWrite || file.data?.truncated === true;
+    path,
+    session,
+    !fromDisk && state.status !== "failed",
+  );
   const agentWorking = useAgentWorkingIn(tab);
+  const bases = useBaseTexts(tab, !isMarkdownPath(path));
+  const [choice, setChoice] = useState<FileDiffBase | null>(null);
+  // What the file opens on, decided again only when another turn's start becomes the base.
+  const turnKey = bases.turn ? `${bases.turn.turn?.threadId}\0${bases.turn.hash}` : null;
+  const [opening, setOpening] = useState<{ readonly key: string; readonly base: FileDiffBase }>();
+  if (bases.turn && turnKey !== null && contents !== null && opening?.key !== turnKey) {
+    setOpening({ key: turnKey, base: openingDiffBase(bases.turn, contents) });
+  }
+  const diffBase = pickDiffBase(
+    choice,
+    bases.turn,
+    opening?.key === turnKey ? opening.base : undefined,
+  );
+  const baseText =
+    diffBase === "turn" ? bases.turn?.text : diffBase === "head" ? bases.head : undefined;
+  const turnAvailable = bases.turn != null;
+  const currentBase = useStableCallback(() => ({ base: diffBase ?? "head", turnAvailable }));
+  const toggleBase = useStableCallback(() => {
+    if (turnAvailable) setChoice(diffBase === "turn" ? "head" : "turn");
+  });
+  const baseControl = { current: currentBase, toggle: toggleBase };
+  const [trail, setTrail] = useState<OutlineTrail | null>(null);
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
-
-  const header = (
-    <TabHeader.Root>
-      <TabHeader.Path path={path} />
-      {agentWorking ? (
-        <TabHeader.Status className="text-info-foreground">
-          <BotIcon className="size-3.5" />
-          An agent is working in this checkout
-        </TabHeader.Status>
-      ) : null}
-      {contents === null ? null : (
-        <TabHeader.Status>
-          {readOnly
-            ? file.data?.truncated
-              ? "Too big to edit here"
-              : "Read only"
-            : pending
-              ? "Saving…"
-              : "Saved"}
-        </TabHeader.Status>
-      )}
-      <TabHeader.Actions>
-        <TabHeader.Action
-          label="Open local graph"
-          onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
-        >
-          <WaypointsIcon />
-        </TabHeader.Action>
-      </TabHeader.Actions>
-    </TabHeader.Root>
+  // A definition in another file of the checkout opens as a tab in this file's pane.
+  const openLocation = useStableCallback((location: NavigationLocation) => {
+    const target = pathOfUri(location.uri, cwd);
+    if (target.startsWith("/") || target.includes("://")) {
+      toastManager.add({ type: "info", title: "Outside this checkout", description: target });
+      return;
+    }
+    const key = repositoryTabKey({ ...tab, path: target });
+    panes.update((arrangement) =>
+      allTabs(arrangement).includes(key)
+        ? activateTab(arrangement, key)
+        : openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+    );
+    repositoryFileReveal.request(key, location.line, location.column);
+  });
+  // References and implementations open as one editor of excerpts beside this file.
+  const pickLocation = useStableCallback(
+    (
+      view: EditorView,
+      title: string,
+      locations: readonly NavigationLocation[],
+      kind: GoToKind | "references",
+    ) => {
+      const list = navigationList(kind, title, locations, (uri) => pathOfUri(uri, cwd));
+      if (list === null) return openLocationPicker(view, title, locations, cwd);
+      const key = locationsTabKey(tab, list);
+      panes.update((arrangement) =>
+        openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+      );
+    },
   );
-  if (file.error !== null && contents === null) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        {header}
-        <FileNotice>{file.error}</FileNotice>
-      </div>
-    );
+  const [navigation] = useState<NavigationHost>(() => ({
+    open: openLocation,
+    pick: pickLocation,
+  }));
+  const showGraph = useStableCallback(() =>
+    panes.update((arrangement) => openLocalGraph(arrangement, tab)),
+  );
+  const [contextMenu] = useState<CodeContextMenuHost>(() => ({
+    show: async (entries, at) => (await readLocalApi()?.contextMenu.show(entries, at)) ?? null,
+    readClipboard: () => readTextFromClipboard(),
+    writeClipboard: async (text) => void (await writeTextToClipboard(text)),
+    fileEntries: [
+      {
+        label: "Copy Relative Path",
+        run: () => void writeTextToClipboard(path).catch(() => undefined),
+      },
+      { label: "Open Local Graph", run: showGraph },
+    ],
+  }));
+  const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
+  // The environment applied the rename to every file: it offers Undo here, and to Undo Rename.
+  // An edit the environment applied for the language server (a rename, a code action): a notice
+  // with Undo, which Undo Rename runs too while it is the last.
+  const offerUndo = useStableCallback(
+    (title: string, result: AppliedCodeAction | RenameResult, undoLabel: string) => {
+      const files = result.files.length;
+      let done = false;
+      const undo: UndoableRename = {
+        label: undoLabel,
+        run: () => {
+          if (done) return;
+          done = true;
+          if (lastRename.get() === undo) lastRename.set(null);
+          void undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
+            if (outcome._tag !== "Success" || outcome.value.skipped.length === 0) return;
+            toastManager.add({
+              type: "warning",
+              title: "Some files changed since, and were left as they are",
+              description: outcome.value.skipped.join(", "),
+            });
+          });
+        },
+      };
+      lastRename.set(undo);
+      const toast = toastManager.add({
+        type: "success",
+        title,
+        description: `${result.edits} ${result.edits === 1 ? "place" : "places"} in ${files} ${files === 1 ? "file" : "files"}`,
+        actionProps: {
+          children: "Undo",
+          onClick: () => {
+            toastManager.close(toast);
+            undo.run();
+          },
+        },
+      });
+    },
+  );
+  const renamed = useStableCallback((_view: EditorView, result: RenameResult) =>
+    offerUndo(
+      `Renamed ${result.from} to ${result.to}`,
+      result,
+      `Undo rename of ${result.from} to ${result.to}`,
+    ),
+  );
+  const [rename] = useState<RenameHost>(() => ({ renamed }));
+  const appliedAction = useStableCallback((_view: EditorView, action: AppliedCodeAction) =>
+    offerUndo(action.title, action, `Undo ${action.title}`),
+  );
+  const [codeActions] = useState<CodeActionHost>(() => ({ applied: appliedAction }));
+
+  if (fromDisk) {
+    if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
+    if (file.data === null) return <FileNotice>Opening…</FileNotice>;
+  } else if (state.status === "failed") {
+    return <FileNotice>{state.failure?.message ?? "This file cannot be opened."}</FileNotice>;
+  } else if (state.status === "closed") {
+    return <FileNotice>This file was deleted.</FileNotice>;
+  } else if (state.status === "opening") {
+    return <FileNotice>Opening…</FileNotice>;
   }
-  if (contents === null) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        {header}
-        <FileNotice>{file.isPending ? "Opening…" : "Nothing to show."}</FileNotice>
-      </div>
-    );
-  }
+  const tooBig =
+    fromDisk && (file.data?.truncated === true || state.failure?.reason === "too-large");
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {header}
+      <TabHeader.Root>
+        <FileBreadcrumbs path={path} trail={trail} />
+        {turnAvailable ? (
+          <ToggleGroup
+            aria-label="Compare changes with"
+            className="shrink-0"
+            value={diffBase === undefined ? [] : [diffBase]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (next === "head" || next === "turn") setChoice(next);
+            }}
+          >
+            <Toggle value="head" title="Changes since the last commit">
+              HEAD
+            </Toggle>
+            <Toggle value="turn" title="Changes since the latest turn that changed this file">
+              This turn
+            </Toggle>
+          </ToggleGroup>
+        ) : null}
+        {agentWorking ? (
+          <TabHeader.Status className="text-info-foreground">
+            <BotIcon className="size-3.5" />
+            An agent is working in this checkout
+          </TabHeader.Status>
+        ) : null}
+        {fromDisk ? null : (
+          <LanguageServerStatusEntry environmentId={environmentId} status={languageServer.status} />
+        )}
+        <TabHeader.Status>
+          {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
+        </TabHeader.Status>
+        <TabHeader.Actions>
+          <TabHeader.Action
+            label="Open local graph"
+            onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
+          >
+            <WaypointsIcon />
+          </TabHeader.Action>
+        </TabHeader.Actions>
+      </TabHeader.Root>
+      {fromDisk || readOnly ? null : (
+        <DocumentNotice state={state} session={session} onClosed={() => workspace.close(tabKey)} />
+      )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
-          key={importLineKey(tab)}
+          tabKey={tabKey}
+          checkout={tab}
           file={importLineKey(tab)}
           path={path}
-          contents={contents}
+          source={fromDisk ? { contents: contents ?? "" } : { session }}
+          languageServer={fromDisk ? null : languageServer.extension}
+          navigation={navigation}
+          contextMenu={contextMenu}
+          rename={rename}
+          codeActions={codeActions}
           readOnly={readOnly}
-          pendingRef={pendingRef}
-          onChange={(next) => {
-            setProjectFileQueryData(environmentId, cwd, path, next);
-            save.change(next);
-          }}
+          baseText={baseText}
+          baseControl={baseControl}
+          onOutlinePath={(next, view) => setTrail({ path: next, view })}
         />
       </div>
+    </div>
+  );
+}
+
+function documentStatusLabel(state: DocumentSessionState): string {
+  if (state.status === "conflict" || state.status === "recovering") return "Not saved";
+  if (state.missing) return state.unsaved ? "Deleted, not saved" : "Deleted";
+  return state.unsaved ? "Saving…" : "Saved";
+}
+
+/** What needs a decision: a deleted file, edits the environment refused, a failed push. */
+function DocumentNotice({
+  state,
+  session,
+  onClosed,
+}: {
+  readonly state: DocumentSessionState;
+  readonly session: DocumentSession;
+  readonly onClosed: () => void;
+}) {
+  if (state.status === "conflict") {
+    return (
+      <NoticeBar
+        message={`This file changed while your edits were offline, so they were not applied. Your text is kept here.${
+          state.failure ? ` ${state.failure.message}` : ""
+        }`}
+      >
+        <Button size="xs" variant="outline" onClick={() => session.keepMine()}>
+          Keep mine
+        </Button>
+        <Button size="xs" variant="ghost" onClick={() => session.takeTheirs()}>
+          Use the file’s
+        </Button>
+      </NoticeBar>
+    );
+  }
+  if (state.status === "recovering") {
+    return <NoticeBar message="Sending your offline edits…" />;
+  }
+  if (state.missing) {
+    return (
+      <NoticeBar
+        message={
+          state.unsaved
+            ? "This file was deleted. Save to recreate it, or discard."
+            : "This file was deleted. Save to recreate it."
+        }
+      >
+        <Button size="xs" variant="outline" onClick={() => void session.save()}>
+          Save
+        </Button>
+        {state.unsaved ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => {
+              void session.discard().then((result) => {
+                if (result?.ok) onClosed();
+              });
+            }}
+          >
+            Discard
+          </Button>
+        ) : null}
+      </NoticeBar>
+    );
+  }
+  if (state.failure !== null) return <NoticeBar message={state.failure.message} />;
+  return null;
+}
+
+function NoticeBar({
+  message,
+  children,
+}: {
+  readonly message: string;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex shrink-0 items-center gap-2 border-b border-border bg-warning-surface px-3 py-1.5 text-xs text-warning-foreground"
+    >
+      <span className="min-w-0 flex-1">{message}</span>
+      {children}
     </div>
   );
 }
@@ -187,46 +489,106 @@ function FileNotice({ children }: { readonly children: string }) {
 
 /**
  * The CodeMirror view. Built once per file; what changes later goes through compartments: Vim,
- * the file's language once it loads, and read-only. Contents saved by someone else replace the
- * text, unless edits here are still on their way.
+ * the editor's keys, the file's language once it loads, read-only, and wrapping (code follows the
+ * word wrap setting, notes always wrap). A document's edits from elsewhere arrive through its
+ * session and stay out of undo.
  */
 function FileEditor({
+  tabKey,
+  checkout,
   file,
   path,
-  contents,
+  source,
+  languageServer,
+  navigation,
+  contextMenu,
+  rename,
+  codeActions,
   readOnly,
-  pendingRef,
-  onChange,
+  baseText,
+  baseControl,
+  onOutlinePath,
 }: {
+  readonly tabKey: string;
+  /** Where the file is, for edits made to many files at once (`openFileEditors`). */
+  readonly checkout: Pick<FileTab, "environmentId" | "cwd">;
   /** The file as the import-line highlight names it (`importLineKey`). */
   readonly file: string;
   readonly path: string;
-  readonly contents: string;
+  /** The live document, or a file read once from disk (read only). */
+  readonly source: { readonly session: DocumentSession } | { readonly contents: string };
+  /** The file's language server client, when one reads it. */
+  readonly languageServer: Extension | null;
+  /** Where its definitions and references open. */
+  readonly navigation: NavigationHost;
+  /** What a code file's right-click menu shows and runs beyond the editor's own. */
+  readonly contextMenu: CodeContextMenuHost;
+  /** Told of each rename the environment applied. */
+  readonly rename: RenameHost;
+  /** Told of each code action the environment applied. */
+  readonly codeActions: CodeActionHost;
   readonly readOnly: boolean;
-  readonly pendingRef: { readonly current: boolean };
-  readonly onChange: (contents: string) => void;
+  /** The text the changes are marked against; null for none, undefined while loading. */
+  readonly baseText: string | null | undefined;
+  readonly baseControl: DiffBaseControl;
+  /** The outline items around the cursor, whenever they change (the header's breadcrumbs). */
+  readonly onOutlinePath: (path: readonly OutlineItem[], view: EditorView) => void;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const vimRef = useRef<(() => Extension) | null>(null);
-  const onChangeRef = useRef(onChange);
-  useLayoutEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
+  const outlinePath = useStableCallback(onOutlinePath);
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
+  const findKeys = useEditorFindKeys();
+  const hunkKeys = useEditorHunkKeys();
+  const editingKeys = useCodeEditorKeys();
+  const diagnosticKeys = useEditorDiagnosticKeys();
+  const lspKeys = useLspEditorKeys();
+  const saveKeys = useFileSaveKeys();
+  const wordWrap = useClientSettings(selectWordWrap);
+  const formatOnSave = useClientSettings(selectFormatOnSave);
+  // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
+  const save = useStableCallback(() => {
+    const view = viewRef.current;
+    if (!view || !("session" in source) || view.state.readOnly) return;
+    const format = formatOnSave && languageServer ? formattingOptions(view.state) : undefined;
+    void source.session.save(format ? { format } : {});
+  });
+  const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
+  const revealHere = reveal?.tabKey === tabKey ? reveal : null;
   const [compartments] = useState(() => ({
     vim: new Compartment(),
+    keys: new Compartment(),
     language: new Compartment(),
     readOnly: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
-  const [initial] = useState(() => ({ file, path, contents, readOnly, vim }));
+  const [initial] = useState(() => ({
+    environmentId: checkout.environmentId,
+    cwd: checkout.cwd,
+    file,
+    path,
+    source,
+    languageServer,
+    navigation,
+    contextMenu,
+    rename,
+    codeActions,
+    readOnly,
+    vim,
+    wordWrap,
+    baseControl,
+    outlinePath,
+    save,
+  }));
 
   useLayoutEffect(() => {
     const element = host.current;
     if (!element) return;
     const markdown = isMarkdownPath(initial.path);
+    const session = "session" in initial.source ? initial.source.session : null;
+    const document = session?.initialState() ?? null;
     const history = composerHistory(() => viewRef.current!);
     const vimExtension = (): Extension => [
       vimMode(history.vim, { panel: false }),
@@ -236,24 +598,44 @@ function FileEditor({
     const view = new EditorView({
       parent: element,
       state: EditorState.create({
-        doc: initial.contents,
+        doc: document?.text ?? ("contents" in initial.source ? initial.source.contents : ""),
         extensions: [
           FILE_EDITOR_THEME,
           history.extension,
+          document?.extension ?? [],
           compartments.vim.of(initial.vim ? vimExtension() : []),
-          appVimKeys(() => null),
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
+          session ? fileSave.of(initial.save) : [],
+          appVimKeys((target) =>
+            session && !target.state.readOnly
+              ? { label: "Save the file", run: initial.save }
+              : null,
+          ),
+          compartments.keys.of([]),
+          markdown ? [] : diffBaseControl.of(initial.baseControl),
+          markdown ? livePreview() : [codeView(), codeContextMenu(initial.contextMenu)],
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
+          outline({ onPath: initial.outlinePath }),
           importLineExtension,
+          initial.languageServer ?? [],
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+            if (!update.docChanged) return;
+            session?.changed();
+            fileEditorChanged(update.view, update.changes);
           }),
         ],
       }),
     });
     viewRef.current = view;
+    session?.attach(view);
+    const unregister = registerFileEditor({
+      environmentId: initial.environmentId,
+      cwd: initial.cwd,
+      path: initial.path,
+      view,
+      writable: () =>
+        session !== null && session.getState().status === "open" && !view.state.readOnly,
+    });
     const stopLighting = followImportLine(view, initial.file);
     let cancelled = false;
     const language = markdown ? null : codeLanguageFor(initial.path);
@@ -264,7 +646,9 @@ function FileEditor({
     }
     return () => {
       cancelled = true;
+      unregister();
       stopLighting();
+      session?.detach();
       view.destroy();
       viewRef.current = null;
     };
@@ -277,25 +661,62 @@ function FileEditor({
     view.dispatch({ effects: compartments.vim.reconfigure(vim ? vimExtension() : []) });
   }, [compartments, vim]);
 
+  // The find bar's, change, editing and save keys follow the keybindings; wrapping, folds, the find bar
+  // and shown changes stay.
+  // oxlint-disable-next-line t3code/react-effect-budget -- carries rebound keys into the CodeMirror view
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const wrap = hasCodeEditing(view.state)
+      ? softWrapOn(view.state)
+      : isMarkdownPath(initial.path) || initial.wordWrap;
+    view.dispatch({
+      effects: compartments.keys.reconfigure([
+        // Ahead of the default keymap (in `codeEditing`), so a find key it also binds opens the bar.
+        inFileSearch({ keys: findKeys }),
+        isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
+        codeEditing({ keys: editingKeys, softWrap: wrap }),
+        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial) : [],
+        "session" in initial.source
+          ? keymap.of(
+              saveKeys.map((key) => ({
+                key,
+                run: () => {
+                  initial.save();
+                  return true;
+                },
+              })),
+            )
+          : [],
+      ]),
+    });
+  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys, saveKeys]);
+
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: compartments.readOnly.reconfigure(readOnlyExtension(readOnly)),
     });
   }, [compartments, readOnly]);
 
-  // Newer contents from elsewhere (an agent's edit, the thread's Files view) replace the text,
-  // unless edits typed here are still saving, which would otherwise be lost.
+  // oxlint-disable-next-line t3code/react-effect-budget -- hands the server's base text to CodeMirror
+  useEffect(() => {
+    if (baseText !== undefined) viewRef.current?.dispatch({ effects: setGitBase(baseText) });
+  }, [baseText]);
+
+  // oxlint-disable-next-line t3code/react-effect-budget -- moves the CodeMirror view to the line project search asked for
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || pendingRef.current) return;
-    const current = view.state.doc.toString();
-    if (current === contents) return;
-    const head = Math.min(view.state.selection.main.head, contents.length);
-    view.dispatch({
-      changes: { from: 0, to: current.length, insert: contents },
-      selection: { anchor: head },
-    });
-  }, [contents, pendingRef]);
+    if (!view || !revealHere) return;
+    view.dispatch(revealLine(view.state, revealHere.line, revealHere.column));
+    view.focus();
+    repositoryFileReveal.done(revealHere.id);
+  }, [revealHere]);
+
+  // oxlint-disable-next-line t3code/react-effect-budget -- carries the word wrap setting into the CodeMirror view
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view && !isMarkdownPath(initial.path)) setSoftWrap(view, wordWrap);
+  }, [initial, wordWrap]);
 
   return (
     <div
@@ -308,8 +729,61 @@ function FileEditor({
   );
 }
 
+/** What a code file with a language server shows and binds, under the keybindings' keys. */
+function languageServerUi(
+  keys: ReturnType<typeof useLspEditorKeys>,
+  diagnosticKeys: ReturnType<typeof useEditorDiagnosticKeys>,
+  hosts: {
+    readonly navigation: NavigationHost;
+    readonly rename: RenameHost;
+    readonly codeActions: CodeActionHost;
+  },
+): Extension {
+  return [
+    diagnosticsUi({ keys: diagnosticKeys }),
+    environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
+    environmentHover({
+      keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },
+    }),
+    environmentNavigation({
+      keys: {
+        definition: keys["lsp.definition"],
+        declaration: keys["lsp.declaration"],
+        typeDefinition: keys["lsp.typeDefinition"],
+        implementation: keys["lsp.implementation"],
+        references: keys["lsp.references"],
+      },
+      host: hosts.navigation,
+    }),
+    environmentRename({ keys: keys["lsp.rename"], host: hosts.rename }),
+    environmentFormat({ keys: keys["lsp.format"] }),
+    environmentCodeActions({ keys: keys["lsp.codeActions"], host: hosts.codeActions }),
+  ];
+}
+
 function readOnlyExtension(readOnly: boolean) {
   return readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [];
+}
+
+/**
+ * A code file's base texts, kept current: its committed text as commits and checkouts change it
+ * (the checkout's status is read again when the window comes back), and the turn base as turns
+ * in the checkout run. Undefined while they load or when not wanted.
+ */
+function useBaseTexts(tab: FileTab, wanted: boolean) {
+  const { environmentId, cwd, path } = tab;
+  useAtomMount(vcsStatusRevalidation(wanted ? { environmentId, cwd } : null));
+  const head = useEnvironmentQuery(
+    wanted ? vcsEnvironment.baseText({ environmentId, input: { cwd, path, base: "head" } }) : null,
+  );
+  const turn = useEnvironmentQuery(
+    wanted ? vcsEnvironment.baseText({ environmentId, input: { cwd, path, base: "turn" } }) : null,
+  );
+  return {
+    head: head.isSuccess ? (head.data?.text ?? null) : undefined,
+    // A turn base that cannot load (an older server) leaves the file on HEAD.
+    turn: turn.isSuccess ? turn.data : turn.error === null ? undefined : null,
+  };
 }
 
 /** Whether a thread's agent is mid-turn in the tab's checkout. */

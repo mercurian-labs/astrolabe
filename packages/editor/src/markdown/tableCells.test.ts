@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { EditorView, keymap, runScopeHandlers } from "@codemirror/view";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import * as Y from "yjs";
@@ -9,18 +9,6 @@ import { activeCell, activeLocation } from "./tableCells.ts";
 import { caret, destroyViews, mount, select, sourceText, texts } from "./testSupport.ts";
 
 afterEach(destroyViews);
-
-// Browsers queue `selectionchange` as a task. happy-dom fires it synchronously, inside the
-// update of whichever editor just wrote a DOM selection, which a focused child editor
-// does; that editor would then re-enter its own update. These tests drive selections
-// through transactions, so the event is dropped here.
-const dispatchEvent = document.dispatchEvent.bind(document);
-beforeAll(() => {
-  document.dispatchEvent = (event) => event.type === "selectionchange" || dispatchEvent(event);
-});
-afterAll(() => {
-  document.dispatchEvent = dispatchEvent;
-});
 
 /** The outer editor's own lines, not those of a nested cell editor. */
 const lines = (view: EditorView) => [

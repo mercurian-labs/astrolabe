@@ -33,8 +33,12 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   outside insert mode.
 - **Project files**: a Projects file tab ([repositories.md](repositories.md)) starts
   in normal mode with no mode panel and follows the switch live. Space opens the keyboard
-  menu and `:` the palette. Files save on their own, so `:w` is the disabled "Nothing to
-  write here". A Markdown file switches to the code font outside insert mode; a code file
+  menu and `:` the palette. Files save on their own; `:w` is **Save the file**, formatting
+  first when a language server runs and **Format on save** (Settings → Appearance) is on.
+  `]c`/`[c` jump to the next/previous change, and `K`, `gd`, `gD`, `gy`, `gI`, `gr` are hover,
+  definition, declaration, type definition, implementation and references
+  (`packages/editor/src/lsp/vimKeys.ts`). A bound Cmd/Ctrl/Alt key runs the editor's command
+  before Vim reads it as a character. A Markdown file switches to the code font outside insert mode; a code file
   (`.cm-editor.cm-code`) is monospace already, so only the block cursor shows the mode.
 - **Visual mode** (every Vim editor): `v`, `V` paint the selection in a theme colour
   (CodeMirror's `.cm-selectionLayer`); prove it with a screenshot, since the layer's
@@ -69,7 +73,8 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   win over the app's same keys. In the composer Cmd+Shift+X and Cmd+Shift+H stay the app's
   (they open the workspace and host pickers), and Cmd+B formats only with a selection in the
   composer; elsewhere it toggles the sidebar. Markdown file tabs in Projects use the live
-  preview without these keys.
+  preview without these keys. In a Projects code file Cmd+I grows the selection and
+  Cmd+Shift+K deletes the line instead.
 - **Typography**: with Vim on, Settings › Appearance › Typography › Monospace font's
   description ends "the terminal, and Vim's normal mode."
 - With the setting off, nothing changes: Escape leaves the composer as upstream does.

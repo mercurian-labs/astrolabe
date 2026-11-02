@@ -5,13 +5,14 @@ import { agentChangeBar } from "@mercurian/editor/collab/agent-changes";
 import { AtlasEditor } from "@mercurian/editor/editor";
 import { vimNormalModeFont } from "@mercurian/editor/vim";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
+import { outline } from "@mercurian/editor/outline";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ClientSettings } from "@t3tools/contracts";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { useMarkdownEditorKeys } from "~/editorKeybindings";
+import { useEditorFindKeys, useMarkdownEditorKeys } from "~/editorKeybindings";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import { appVimKeys } from "~/whichKey/doors";
@@ -50,7 +51,7 @@ const WIKI_EDITOR_THEME = EditorView.theme({
   "&.cm-editor .cm-content": { padding: "0 0 40vh", caretColor: "currentColor" },
   ".cm-line": { padding: "0" },
   // The change bar sticks to the bottom of the page's scroll area, over the note, as do Vim's
-  // search prompt and messages when Vim is on.
+  // search prompt and messages when Vim is on; the find bar sticks to its top.
   ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)" },
   ".cm-panels-bottom": { borderTop: "1px solid var(--border)" },
 });
@@ -76,9 +77,11 @@ const NOTE_EDITOR = { composer: false };
 // Editable notes get the agent change bar to review live amendments; a skill map is read only.
 // Under Vim, Space opens the keyboard menu and `:` the palette's ex line (see `appVimKeys`), and
 // the text reads in the code font outside insert mode, which shows the mode instead of a panel.
+// Either way, mod+shift+o opens the note's headings (`outline`).
 const READ_ONLY_EXTENSIONS = [
   WIKI_EDITOR_THEME,
   vimNormalModeFont,
+  outline(),
   EditorState.readOnly.of(true),
   EditorView.editable.of(false),
   appVimKeys(() => null),
@@ -124,6 +127,7 @@ export function WikiNoteEditor({
   const [editableExtensions] = useState(() => [
     WIKI_EDITOR_THEME,
     vimNormalModeFont,
+    outline(),
     agentChangeBar(),
     appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
   ]);
@@ -147,6 +151,7 @@ export function WikiNoteEditor({
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
   // One options object per set of keys, since a drawn base block re-renders this component.
   const keys = useMarkdownEditorKeys(NOTE_EDITOR);
+  const findKeys = useEditorFindKeys();
   const [preview, setPreview] = useState(() => ({
     keys,
     options: previewOptions(keys, stable.openNote, stable.codeBlocks),
@@ -170,6 +175,7 @@ export function WikiNoteEditor({
         livePreview={livePreview}
         vim={vim}
         vimPanel={false}
+        findKeys={findKeys}
       />
       {baseBlocks.map((block) =>
         createPortal(renderBase(block.source), block.element, String(block.id)),

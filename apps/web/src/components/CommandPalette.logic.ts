@@ -68,7 +68,12 @@ export function browseInputEndPaddingClass(input: {
   return "*:data-[slot=autocomplete-input]:pe-24!";
 }
 
-export type SearchOverlayMode = "command" | "files" | "content";
+// Astrolabe: `outline` is the outline picker of the editor it was opened from.
+export type SearchOverlayMode = "command" | "files" | "content" | "outline" | "locations";
+
+/** Escape in a child search goes back to the palette; the outline and location pickers close to their editor. */
+export const escapeReturnsToCommand = (mode: SearchOverlayMode) =>
+  mode !== "command" && mode !== "outline" && mode !== "locations";
 
 /** Astrolabe: what the add flow adds; a wiki shares a repository's folder, clone, and new steps. */
 export type CommandPaletteAddTarget = "repository" | "wiki";

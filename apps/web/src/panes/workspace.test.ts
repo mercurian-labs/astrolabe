@@ -617,3 +617,30 @@ describe("a thread's surface on its own", () => {
     expect(standaloneKeyOf({ id: "files", kind: "files" }, checkout)).toBeNull();
   });
 });
+
+describe("results tabs", () => {
+  const checkout = {
+    environmentId: "env-1" as EnvironmentId,
+    projectId: ProjectId.make("project-1"),
+    cwd: "/repo",
+  };
+  const file = (path: string) => repositoryTabKey({ kind: "file", ...checkout, path });
+
+  it("keep their place: a sidebar click or a step opens beside them", () => {
+    const workspace = createWorkspace(() => memoryStorage());
+    const problems = repositoryTabKey({ kind: "problems", ...checkout });
+    workspace.show(file("a.ts"));
+    workspace.show(file("b.ts"));
+    expect(panes(workspace)).toEqual([[file("b.ts")]]);
+    workspace.step("back");
+    expect(panes(workspace)).toEqual([[file("a.ts")]]);
+
+    workspace.show(problems);
+    expect(panes(workspace)).toEqual([[problems]]);
+    workspace.show(file("c.ts"));
+    expect(panes(workspace)).toEqual([[problems, file("c.ts")]]);
+    workspace.open(problems);
+    workspace.step("back");
+    expect(panes(workspace)).toEqual([[problems, file("a.ts"), file("c.ts")]]);
+  });
+});

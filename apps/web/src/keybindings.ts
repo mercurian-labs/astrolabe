@@ -19,7 +19,12 @@ import {
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
-import { isEditorFocused } from "./lib/editorFocus";
+import {
+  isCodeEditorFocused,
+  isEditorFocused,
+  isMultibufferFocused,
+  isOutlineEditorFocused,
+} from "./lib/editorFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
 export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
@@ -38,6 +43,12 @@ export interface ShortcutMatchContext {
    * from the page when unset, so no listener has to pass it.
    */
   editorFocus?: boolean;
+  /** Astrolabe: a code editor's text has focus (see `isCodeEditorFocused`), read the same way. */
+  codeEditorFocus?: boolean;
+  /** Astrolabe: an editor with an outline has focus (see `isOutlineEditorFocused`), read alike. */
+  outlineFocus?: boolean;
+  /** Astrolabe: an excerpt of a multi-file view has focus (see `isMultibufferFocused`). */
+  multibufferFocus?: boolean;
   [key: string]: boolean;
 }
 
@@ -193,6 +204,9 @@ export function resolveShortcutCommand(
   const context = {
     // Astrolabe
     editorFocus: typeof document !== "undefined" && isEditorFocused(),
+    codeEditorFocus: typeof document !== "undefined" && isCodeEditorFocused(),
+    outlineFocus: typeof document !== "undefined" && isOutlineEditorFocused(),
+    multibufferFocus: typeof document !== "undefined" && isMultibufferFocused(),
     ...resolveContext(options),
   };
 
