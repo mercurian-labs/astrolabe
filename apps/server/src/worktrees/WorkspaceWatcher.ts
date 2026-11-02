@@ -1,7 +1,8 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off - fs.watch is in place on return, before a subscriber's first event.
 import * as NodeFS from "node:fs";
+import * as NodeModule from "node:module";
 
-import * as ParcelWatcher from "@parcel/watcher";
+import type * as ParcelWatcherModule from "@parcel/watcher";
 import type { ProjectWorktreeChange } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -19,6 +20,12 @@ import * as Stream from "effect/Stream";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
+
+// @parcel/watcher's native addon stays external; a single-executable resolves disk modules only
+// through require, and a missing addon then fails the subscribe, leaving the worktree unwatched.
+const requireForParcelWatcher = NodeModule.createRequire(import.meta.url);
+const loadParcelWatcher = () =>
+  requireForParcelWatcher("@parcel/watcher") as typeof ParcelWatcherModule;
 
 /**
  * Astrolabe: changes on disk in a worktree, from an agent, a terminal or another editor. The first
@@ -181,7 +188,7 @@ const make = Effect.gen(function* () {
     const raw = yield* Effect.acquireRelease(Queue.unbounded<RawChange>(), Queue.shutdown);
     const ignore = [...ALWAYS_IGNORED, ...(yield* ignoredDirectories(root))];
     const subscribed = yield* Effect.tryPromise(() =>
-      ParcelWatcher.subscribe(
+      loadParcelWatcher().subscribe(
         real.success,
         (error, events) => {
           // The watcher reports dropped events as an error; reading everything again recovers.
