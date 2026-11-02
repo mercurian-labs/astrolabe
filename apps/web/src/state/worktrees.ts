@@ -8,6 +8,7 @@ import type {
   ProjectId,
   ProjectWorktreeListResult,
   ProjectWorktreeOwner,
+  ProjectWorktreeStatusResult,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { useEffect } from "react";
@@ -97,6 +98,77 @@ export function useManyProjectWorktrees(
   return useAtomValue(manyAtom(key));
 }
 
+const NO_STATUS = Atom.make(AsyncResult.initial<ProjectWorktreeStatusResult, never>()).pipe(
+  Atom.withLabel("worktrees:status:none"),
+);
+
+const statusAtom = (target: WorktreesTarget | null, path: string) =>
+  target === null
+    ? NO_STATUS
+    : worktreeEnvironment.status({
+        environmentId: target.environmentId,
+        input: { ...worktreeOwner(target), path },
+      });
+
+/**
+ * One worktree's uncommitted files, counted when something shows it (a list leaves them
+ * uncounted, as counting runs git status in each); null until counted.
+ */
+export function useWorktreeChangedFiles(target: WorktreesTarget | null, path: string) {
+  const result = useAtomValue(statusAtom(target, path));
+  return Option.getOrNull(AsyncResult.value(result))?.changedFiles ?? null;
+}
+
+const NO_WATCH = Atom.make(AsyncResult.initial<WorktreeWatch, never>()).pipe(
+  Atom.withLabel("worktrees:watch:none"),
+);
+
+const countsDue = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Counts a worktree's uncommitted files again shortly, once for however many changes land. */
+export function refreshWorktreeChangedFilesSoon(target: WorktreesTarget, path: string) {
+  const key = JSON.stringify({
+    environmentId: target.environmentId,
+    ...worktreeOwner(target),
+    path,
+  });
+  if (countsDue.has(key)) return;
+  countsDue.set(
+    key,
+    setTimeout(() => {
+      countsDue.delete(key);
+      appAtomRegistry.refresh(statusAtom(target, path));
+    }, 500),
+  );
+}
+
+interface CountedWorktree {
+  readonly target: WorktreesTarget;
+  readonly path: string;
+}
+
+const manyCountsAtom = Atom.family((key: string) =>
+  Atom.make((get): ReadonlyArray<number | null> =>
+    (JSON.parse(key) as CountedWorktree[]).map(
+      ({ target, path }) =>
+        Option.getOrNull(AsyncResult.value(get(statusAtom(target, path))))?.changedFiles ?? null,
+    ),
+  ).pipe(Atom.withLabel(`worktrees:counts:${key}`)),
+);
+
+/** Several worktrees' uncommitted files, in `worktrees`' order, each null until counted. */
+export function useManyWorktreeChangedFiles(
+  worktrees: ReadonlyArray<CountedWorktree>,
+): ReadonlyArray<number | null> {
+  const key = JSON.stringify(
+    worktrees.map(({ target, path }) => ({
+      target: { environmentId: target.environmentId, ...worktreeOwner(target) },
+      path,
+    })),
+  );
+  return useAtomValue(manyCountsAtom(key));
+}
+
 /** Reads a repository's worktrees again, after anything that changed them. */
 export function refreshProjectWorktrees(target: WorktreesTarget) {
   appAtomRegistry.refresh(listAtom(target));
@@ -118,12 +190,17 @@ export function refreshProjectWorktreesSoon(target: WorktreesTarget) {
 }
 
 /** A worktree's watch for changes on disk; null until it reports anything. */
-export function useWorktreeWatch(target: WorktreesTarget, path: string): WorktreeWatch | null {
+export function useWorktreeWatch(
+  target: WorktreesTarget | null,
+  path: string,
+): WorktreeWatch | null {
   const result = useAtomValue(
-    worktreeEnvironment.changes({
-      environmentId: target.environmentId,
-      input: { ...worktreeOwner(target), path },
-    }),
+    target === null
+      ? NO_WATCH
+      : worktreeEnvironment.changes({
+          environmentId: target.environmentId,
+          input: { ...worktreeOwner(target), path },
+        }),
   );
   return Option.getOrNull(AsyncResult.value(result));
 }

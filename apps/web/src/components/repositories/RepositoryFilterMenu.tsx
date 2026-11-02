@@ -2,6 +2,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ProjectWorktree } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  ChevronRightIcon,
   EyeOffIcon,
   FilePenLineIcon,
   FolderGit2Icon,
@@ -11,7 +12,10 @@ import {
   SettingsIcon,
 } from "lucide-react";
 
+import { useState } from "react";
+
 import { openCommandPalette } from "~/commandPaletteBus";
+import { projectWorktrees, useManyProjectWorktrees } from "~/state/worktrees";
 import { cn } from "~/lib/utils";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
@@ -52,7 +56,10 @@ import {
   toggleFilterRepository,
   type RepositoryFilter,
 } from "./repositoryFilter";
+import { worktreeFilesKey } from "./repositoryScope";
 import { WorktreeNumber } from "./WorktreeNumber";
+
+const NO_WORKTREES: ReadonlyArray<ProjectWorktree> = [];
 
 /** A repository the filter keeps, with its worktrees as last read. */
 export interface RepositoryWorktreeGroup {
@@ -90,14 +97,14 @@ const hiddenWorktrees = (
 
 /**
  * Astrolabe: the Projects filter, as the thread list's and the Wikis': worktrees with changes, every
- * repository or several, then the worktrees of those kept, each shown or hidden. Picking keeps the
- * list open; Manage and Add a project sit at its foot.
+ * project or several, each with its worktrees nested under it (folded until opened, or found by a
+ * search), each shown or hidden. Picking keeps the list open; Manage and Add a project sit at its
+ * foot.
  */
 export function RepositoryFilterMenu({
   repositories,
   filter,
   kept,
-  worktreeGroups,
   changedCount,
   menu,
   dispatchMenu,
@@ -105,20 +112,34 @@ export function RepositoryFilterMenu({
   readonly repositories: ReadonlyArray<EnvironmentProject>;
   readonly filter: RepositoryFilter;
   readonly kept: ReadonlySet<string> | null;
-  readonly worktreeGroups: ReadonlyArray<RepositoryWorktreeGroup>;
-  readonly changedCount: number;
+  /** Worktrees with changes, once Has changes has counted them all. */
+  readonly changedCount: number | null;
   readonly menu: SidebarProjectScopeMenuState;
   readonly dispatchMenu: (action: SidebarProjectScopeMenuAction) => void;
 }) {
   const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const comboboxFilter = useComboboxFilter();
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const repositoryKeys = repositories.map(
     (repository) => `${repository.environmentId}:${repository.id}`,
   );
   const repositoryByValue = new Map(
     repositories.map((repository, index) => [repositoryValue(repositoryKeys[index]!), repository]),
   );
+  const searching = menu.query.trim().length > 0;
+  // A search looks through every project's worktrees; otherwise only unfolded ones are read.
+  const listedRepositories = repositories.filter(
+    (_, index) => searching || unfolded.has(repositoryKeys[index]!),
+  );
+  const lists = useManyProjectWorktrees(listedRepositories.map(projectWorktrees));
+  const worktreeGroups = listedRepositories.map((repository, index) => ({
+    key: `${repository.environmentId}:${repository.id}`,
+    all: lists[index]?.worktrees ?? NO_WORKTREES,
+    worktreeKey: (worktree: ProjectWorktree) =>
+      worktreeFilesKey(repository.environmentId, worktree.path),
+  }));
+  const groupOf = new Map(worktreeGroups.map((group) => [group.key, group]));
   const worktreeByValue = new Map(
     worktreeGroups.flatMap((group) =>
       group.all.map((worktree) => [worktreeValue(group.worktreeKey(worktree)), worktree] as const),
@@ -132,22 +153,51 @@ export function RepositoryFilterMenu({
     const worktree = worktreeByValue.get(value);
     return worktree ? worktreeName(worktree) : value;
   };
+  const worktreeValuesOf = (key: string) => {
+    const group = groupOf.get(key);
+    return group ? group.all.map((worktree) => worktreeValue(group.worktreeKey(worktree))) : [];
+  };
   const groups = [
     { label: "Status", values: [CHANGED_VALUE] },
-    { label: "Projects", values: [ALL_VALUE, ...repositoryKeys.map(repositoryValue)] },
-    ...worktreeGroups.map((group) => ({
-      label: worktreeGroups.length === 1 ? "Worktrees" : `Worktrees · ${group.repository.title}`,
-      values: group.all.map((worktree) => worktreeValue(group.worktreeKey(worktree))),
-    })),
+    {
+      label: "Projects",
+      values: [
+        ALL_VALUE,
+        ...repositoryKeys.flatMap((key) => [repositoryValue(key), ...worktreeValuesOf(key)]),
+      ],
+    },
   ];
   const values = groups.flatMap((group) => group.values);
-  const matching = new Set(
+  const found = new Set(
     filterSidebarProjectScopeItems({
       items: values.map((value) => ({ value })),
       query: menu.query,
       matches: (item, query) => comboboxFilter.contains(item.value, query, labelOf),
     }).map((item) => item.value),
   );
+  // A project shows its worktrees while unfolded; a search shows the ones it finds, and their
+  // project with them.
+  const matching = new Set(
+    values.filter((value) => {
+      if (value.startsWith("repository:")) {
+        const key = value.slice("repository:".length);
+        return found.has(value) || worktreeValuesOf(key).some((each) => found.has(each));
+      }
+      if (!value.startsWith("worktree:")) return found.has(value);
+      return searching
+        ? found.has(value)
+        : worktreeGroups.some(
+            (group) => unfolded.has(group.key) && worktreeValuesOf(group.key).includes(value),
+          );
+    }),
+  );
+  const toggleUnfolded = (key: string) =>
+    setUnfolded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   // With no repository picked every one is in, so each shows ticked.
   const checked = (value: string) => {
     if (value === CHANGED_VALUE) return filter.changed;
@@ -170,8 +220,7 @@ export function RepositoryFilterMenu({
       storeRepositoryFilter(setWorktreeHidden(filter, key, !filter.hidden.includes(key)));
     }
   };
-  const active =
-    kept !== null || filter.changed || hiddenWorktrees(filter, worktreeGroups).length > 0;
+  const active = kept !== null || filter.changed || filter.hidden.length > 0;
   const closeAnd = (then: () => void) => {
     dispatchMenu({ type: "open-changed", open: false });
     then();
@@ -230,8 +279,11 @@ export function RepositoryFilterMenu({
                 {shown.map((value) => {
                   const repository = repositoryByValue.get(value);
                   const worktree = worktreeByValue.get(value);
+                  const repositoryKey = repository ? value.slice("repository:".length) : null;
+                  const open = repositoryKey !== null && unfolded.has(repositoryKey);
                   return (
                     <ComboboxItem key={value} hideIndicator value={value}>
+                      {worktree ? <span aria-hidden className="w-4 shrink-0" /> : null}
                       <ThreadsFilterCheckbox checked={checked(value)} />
                       {value === CHANGED_VALUE ? (
                         <ChangedIcon />
@@ -250,13 +302,34 @@ export function RepositoryFilterMenu({
                       )}
                       <span className="min-w-0 flex-1 truncate text-sm">{labelOf(value)}</span>
                       {value === CHANGED_VALUE ? (
-                        <span className="text-muted-foreground text-xs tabular-nums">
-                          {changedCount}
-                        </span>
+                        changedCount === null ? null : (
+                          <span className="text-muted-foreground text-xs tabular-nums">
+                            {changedCount}
+                          </span>
+                        )
                       ) : worktree?.isMain ? (
                         <span className="shrink-0 text-muted-foreground text-xs">
                           main checkout
                         </span>
+                      ) : repositoryKey !== null && !searching ? (
+                        <button
+                          type="button"
+                          aria-label={`${open ? "Hide" : "Show"} ${repository?.title ?? ""}'s worktrees`}
+                          aria-expanded={open}
+                          className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                          // The row picks the project; the chevron only folds its worktrees.
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            toggleUnfolded(repositoryKey);
+                          }}
+                        >
+                          <ChevronRightIcon
+                            className={cn("size-3.5 transition-transform", open && "rotate-90")}
+                          />
+                        </button>
                       ) : null}
                     </ComboboxItem>
                   );
@@ -302,7 +375,7 @@ export function RepositoryFilterPills({
   readonly filter: RepositoryFilter;
   readonly kept: ReadonlySet<string> | null;
   readonly worktreeGroups: ReadonlyArray<RepositoryWorktreeGroup>;
-  readonly changedCount: number;
+  readonly changedCount: number | null;
   readonly onOpen: () => void;
 }) {
   const picked =
@@ -312,7 +385,8 @@ export function RepositoryFilterPills({
           kept.has(`${repository.environmentId}:${repository.id}`),
         );
   const hidden = hiddenWorktrees(filter, worktreeGroups);
-  const showChanged = filter.changed || changedCount > 0;
+  // Counting every worktree runs git status in each, so Has changes shows only while it is on.
+  const showChanged = filter.changed;
   const count =
     (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0) + (hidden.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;

@@ -17,23 +17,32 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 - **Filter** (`RepositoryFilterMenu.tsx`, `repositoryFilter.ts`, localStorage
   `astrolabe:repository-filter:v1` `{repositories, hidden, changed}`), as Agents' and Wikis':
   `button "Filter projects"` (` (filtered)` appended and a dot while on) opens a multi-select
-  list with a `Search filters` field: **Status** (**Has changes** with its count of worktrees with
-  uncommitted files), **Projects** (**All projects**, then each, every one ticked while
-  none is picked), then **Worktrees** (`Worktrees · <repository>` with several) for each kept
-  repository, ticked unless hidden. Picking keeps the list open; its foot holds **Manage
-  projects** and **Add a project**. Pills under the title (`[aria-label="Project
-  filters"]`): **Has changes** one tap (shown while on or above 0), the picked projects,
+  list with a `Search filters` field: **Status** (**Has changes**, with its count of worktrees
+  with uncommitted files once it is on and has counted them all), **Projects** (**All
+  projects**, then each, every one ticked while none is picked). Each project row ends in
+  `button "Show <project>'s worktrees"` (`aria-expanded`; clicking it never ticks the row),
+  folded by default; unfolded, its worktrees follow it indented, ticked unless hidden. A search
+  reads every project's worktrees and shows the matches under their project. Picking keeps the
+  list open; its foot holds **Manage projects** and **Add a project**. Pills under the title
+  (`[aria-label="Project filters"]`): **Has changes** one tap (only while on), the picked projects,
   `Hiding <worktrees>`; × clears a pill, **Clear** shows with two. The focused tab's repository
   and worktree show whatever the filter says, its header marked **hidden** (tooltip), and drop out
   when another tab comes to the front; nothing clears the filter for it. A repository left with
   no worktree drops out once read.
 - **List** (default): with several repositories shown, one collapsible header each (favicon,
   name), open by default only for the focused tab's repository; every shown repository's worktree
-  list is read (`worktrees.list`) for the counts, but a folded one mounts no rows. With one
-  repository, its worktrees bare: one collapsible section per git
-  worktree (`ProjectWorktreeService`, `worktrees.list`), headed by its branch (or short
+  list is read (`worktrees.list`, no `git status`: `changedFiles` is null in a list), but a
+  folded one mounts no rows. With one repository, its worktrees bare: one collapsible section
+  per listed git worktree (`ProjectWorktreeService`), headed by its branch (or short
   commit when detached), the main checkout first and marked **main checkout**, with "N
-  changed" and a pin when held (tooltip: the holds). Under each: **Uncommitted · N** with
+  changed" (`worktrees.status`, counted per shown header, at most four `git status` at once on
+  the server, recounted on the watch's changes) and a pin when held (tooltip: the holds).
+  Listed: the main checkout, numbered ones, those held by a thread, terminal or Keep, those
+  with an open tab's checkout, a known change, or `lastActiveAt` within 7 days
+  (`worktreeFolding.ts`). The rest fold under `button "N more worktrees"`: a
+  `Find among <project>'s other worktrees` field, then groups by `madeBy` (Astrolabe, Claude
+  Code, T3 Code, Codex, Other; newest first), each row folded, unwatched and uncounted until
+  opened. Under each: **Uncommitted · N** with
   **Review uncommitted changes →** and each changed file (`+a −d`), **Changes against
   `<base>` →** (the branch's own base; "Changes against…" opening the picker when it has none)
   with `combobox "Compare with another branch"` beside it (tooltip; any local or remote
@@ -51,8 +60,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   when checked out; a pick puts the branch in its worktree, else a free one (no main
   checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder. Its `switch "Open in
   a new worktree"` (`astrolabe:open-in-new-worktree:v1`, shared with Wikis' picker) skips
-  free ones. Linked worktrees carry a number (server-kept, lowest free, held while the folder
-  exists) on their header and are listed by it.
+  free ones. A linked worktree gets a number (server-kept in `worktree-keep.json`'s `opened`,
+  lowest free, held while the folder exists) the first time something opens in it: a branch
+  opened or made there, or any of its tabs shown (`worktrees.markOpened`); numbered ones come
+  first. Others show a branch icon.
   A name that is no branch offers "New branch <name> from <main's branch>". A free
   worktree's uncommitted work is set aside as `refs/astrolabe/set-aside/<branch>` (row
   **Set-aside work on <branch>**, **Open** / **Discard**) and comes back when the branch

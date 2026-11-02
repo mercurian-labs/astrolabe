@@ -174,6 +174,8 @@ import {
   ProjectWorktreeRemoveInput,
   ProjectWorktreeRemoveResult,
   ProjectWorktreeSetKeptInput,
+  ProjectWorktreeStatusResult,
+  ProjectWorktreeTargetInput,
 } from "./worktrees.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
@@ -523,6 +525,8 @@ export const WS_METHODS = {
   worktreesSetKept: "worktrees.setKept",
   worktreesDiscardSetAside: "worktrees.discardSetAside",
   worktreesSubscribeChanges: "worktrees.subscribeChanges",
+  worktreesStatus: "worktrees.status",
+  worktreesMarkOpened: "worktrees.markOpened",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -1630,6 +1634,16 @@ const WsWorktreesDiscardSetAsideRpc = Rpc.make(WS_METHODS.worktreesDiscardSetAsi
   success: Schema.Void,
   error: worktreeError,
 });
+const WsWorktreesStatusRpc = Rpc.make(WS_METHODS.worktreesStatus, {
+  payload: ProjectWorktreeTargetInput,
+  success: ProjectWorktreeStatusResult,
+  error: worktreeError,
+});
+const WsWorktreesMarkOpenedRpc = Rpc.make(WS_METHODS.worktreesMarkOpened, {
+  payload: ProjectWorktreeTargetInput,
+  success: Schema.Void,
+  error: worktreeError,
+});
 const WsWorktreesSubscribeChangesRpc = Rpc.make(WS_METHODS.worktreesSubscribeChanges, {
   payload: ProjectWorktreeChangesInput,
   success: ProjectWorktreeChange,
@@ -2487,6 +2501,8 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWorktreesSetKeptRpc,
   WsWorktreesDiscardSetAsideRpc,
   WsWorktreesSubscribeChangesRpc,
+  WsWorktreesStatusRpc,
+  WsWorktreesMarkOpenedRpc,
   WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,

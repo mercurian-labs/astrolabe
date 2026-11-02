@@ -1,6 +1,12 @@
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  PositiveInt,
+  ProjectId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { WikiId } from "./wiki.ts";
 
 /**
@@ -16,6 +22,16 @@ export const ProjectWorktreeHold = Schema.Struct({
 });
 export type ProjectWorktreeHold = typeof ProjectWorktreeHold.Type;
 
+/** Which tool made a linked worktree, told by the folder it is in; null for the main checkout. */
+export const ProjectWorktreeMaker = Schema.Literals([
+  "astrolabe",
+  "claude-code",
+  "t3-code",
+  "codex",
+  "other",
+]);
+export type ProjectWorktreeMaker = typeof ProjectWorktreeMaker.Type;
+
 export const ProjectWorktree = Schema.Struct({
   path: TrimmedNonEmptyString,
   /** The repository's own checkout, never reused or deleted here. */
@@ -24,11 +40,21 @@ export const ProjectWorktree = Schema.Struct({
   head: Schema.NullOr(TrimmedNonEmptyString),
   /** What to call it: its branch, or its commit when detached. */
   alias: TrimmedNonEmptyString,
-  /** Its number among the repository's worktrees, kept while it exists; null for the main checkout. */
+  /**
+   * Its number among the repository's worktrees, given the first time something is opened in it
+   * and kept while it exists; null for the main checkout and for worktrees never opened.
+   */
   number: Schema.NullOr(PositiveInt),
+  madeBy: Schema.NullOr(ProjectWorktreeMaker),
+  /** When its branch last moved or its top folder last changed; null when unreadable. */
+  lastActiveAt: Schema.NullOr(IsoDateTime),
   kept: Schema.Boolean,
   holds: Schema.Array(ProjectWorktreeHold),
-  changedFiles: NonNegativeInt,
+  /**
+   * Its uncommitted files; null in a list, where counting every worktree would run git status in
+   * each (`worktrees.status` counts one).
+   */
+  changedFiles: Schema.NullOr(NonNegativeInt),
 });
 export type ProjectWorktree = typeof ProjectWorktree.Type;
 
@@ -113,6 +139,16 @@ export const ProjectWorktreeDiscardSetAsideInput = Schema.Struct({
   branch: TrimmedNonEmptyString,
 });
 export type ProjectWorktreeDiscardSetAsideInput = typeof ProjectWorktreeDiscardSetAsideInput.Type;
+
+/** One of a repository's worktrees, by its folder. */
+export const ProjectWorktreeTargetInput = Schema.Struct({
+  ...OwnerFields,
+  path: TrimmedNonEmptyString,
+});
+export type ProjectWorktreeTargetInput = typeof ProjectWorktreeTargetInput.Type;
+
+export const ProjectWorktreeStatusResult = Schema.Struct({ changedFiles: NonNegativeInt });
+export type ProjectWorktreeStatusResult = typeof ProjectWorktreeStatusResult.Type;
 
 /** One of a project's worktrees, by its folder, to follow changes on disk in. */
 export const ProjectWorktreeChangesInput = Schema.Struct({

@@ -114,7 +114,8 @@ export function OneTapFilterPill({
 }: {
   readonly on: boolean;
   readonly label: string;
-  readonly count: number;
+  /** Null while not yet known. */
+  readonly count: number | null;
   readonly icon: ReactNode;
   readonly onToggle: () => void;
 }) {
@@ -133,7 +134,7 @@ export function OneTapFilterPill({
     >
       {icon}
       {label}
-      <span className="tabular-nums opacity-70">{count}</span>
+      {count === null ? null : <span className="tabular-nums opacity-70">{count}</span>}
     </button>
   );
 }

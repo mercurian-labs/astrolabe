@@ -9,6 +9,7 @@ import {
   type ProjectWorktreeDiscardSetAsideInput,
   ProjectWorktreeError,
   type ProjectWorktreeHold,
+  type ProjectWorktreeMaker,
   type ProjectWorktreeListInput,
   type ProjectWorktreeListResult,
   type ProjectWorktreeOpenInput,
@@ -17,6 +18,8 @@ import {
   type ProjectWorktreeRemoveResult,
   type ProjectWorktreeSetAside,
   type ProjectWorktreeSetKeptInput,
+  type ProjectWorktreeStatusResult,
+  type ProjectWorktreeTargetInput,
   type TerminalSummary,
   type WikiId,
 } from "@t3tools/contracts";
@@ -26,6 +29,7 @@ import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -78,6 +82,14 @@ export class ProjectWorktreeService extends Context.Service<
     readonly discardSetAside: (
       input: ProjectWorktreeDiscardSetAsideInput,
     ) => Effect.Effect<void, ProjectWorktreeError>;
+    /** One worktree's uncommitted files, which a list leaves uncounted. */
+    readonly status: (
+      input: ProjectWorktreeTargetInput,
+    ) => Effect.Effect<ProjectWorktreeStatusResult, ProjectWorktreeError>;
+    /** Gives a worktree its number, the first time something is opened in it. */
+    readonly markOpened: (
+      input: ProjectWorktreeTargetInput,
+    ) => Effect.Effect<void, ProjectWorktreeError>;
     /** Changes on disk in one of the project's worktrees, while the stream runs. */
     readonly changes: (
       input: ProjectWorktreeChangesInput,
@@ -87,12 +99,16 @@ export class ProjectWorktreeService extends Context.Service<
 
 export const SET_ASIDE_REF_PREFIX = "refs/astrolabe/set-aside/";
 
-/** What the service keeps beside git: worktrees marked Keep, and each repository's numbering. */
+/**
+ * What the service keeps beside git: worktrees marked Keep, and the numbers of worktrees something
+ * was opened in. Numbering every worktree read as one per agent run (hundreds), so an older store's
+ * `numbers` is left unread.
+ */
 const KeptStore = Schema.Struct({
   version: Schema.Literal(1),
   kept: Schema.Array(Schema.String),
   /** By repository folder, then worktree folder. */
-  numbers: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Number)).pipe(
+  opened: Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Number)).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
 });
@@ -101,31 +117,46 @@ const KeptStoreJson = fromJsonStringPretty(KeptStore);
 const decodeKeptStore = Schema.decodeEffect(KeptStoreJson);
 const encodeKeptStore = Schema.encodeEffect(KeptStoreJson);
 
-/**
- * Numbers a repository's linked worktrees: one keeps its number while it exists, a new one takes
- * the lowest free number from 1. The same object when nothing changed.
- */
-export function numberWorktrees(
+/** A repository's numbers without those of worktrees gone; the same object when none went. */
+export function keepNumbers(
   numbers: Readonly<Record<string, number>>,
   paths: ReadonlyArray<string>,
 ): Readonly<Record<string, number>> {
   const kept = Object.fromEntries(
     Object.entries(numbers).filter(([worktreePath]) => paths.includes(worktreePath)),
   );
-  const taken = new Set(Object.values(kept));
-  let changed = Object.keys(kept).length !== Object.keys(numbers).length;
-  for (const worktreePath of paths) {
-    if (kept[worktreePath] !== undefined) continue;
-    let n = 1;
-    while (taken.has(n)) n += 1;
-    kept[worktreePath] = n;
-    taken.add(n);
-    changed = true;
-  }
-  return changed ? kept : numbers;
+  return Object.keys(kept).length === Object.keys(numbers).length ? numbers : kept;
+}
+
+/** Numbers a worktree with the lowest number free from 1; the same object when it has one. */
+export function claimNumber(
+  numbers: Readonly<Record<string, number>>,
+  worktreePath: string,
+): Readonly<Record<string, number>> {
+  if (numbers[worktreePath] !== undefined) return numbers;
+  const taken = new Set(Object.values(numbers));
+  let n = 1;
+  while (taken.has(n)) n += 1;
+  return { ...numbers, [worktreePath]: n };
+}
+
+/** Which tool made a linked worktree, told by the folder its agents' tools keep worktrees in. */
+export function worktreeMaker(
+  worktreePath: string,
+  context: { readonly managed: boolean; readonly home: string },
+): ProjectWorktreeMaker {
+  const under = (folder: string) => worktreePath.startsWith(`${context.home}/${folder}/`);
+  if (context.managed || under(".astrolabe/worktrees")) return "astrolabe";
+  if (worktreePath.includes("/.claude/worktrees/")) return "claude-code";
+  if (worktreePath.includes("/.codex/worktrees/")) return "codex";
+  if (under(".t3/worktrees")) return "t3-code";
+  return "other";
 }
 
 const fail = (message: string) => new ProjectWorktreeError({ message });
+
+/** How many free worktrees a branch looks through for one with nothing to set aside. */
+const FREE_WORKTREES_COUNTED = 5;
 const failWith = (prefix: string) => (cause: unknown) =>
   fail(
     `${prefix}: ${
@@ -211,7 +242,7 @@ const make = Effect.gen(function* () {
             Effect.flatMap(decodeKeptStore),
             Effect.mapError(failWith("Kept worktrees could not be read")),
           )
-      : { version: 1, kept: [], numbers: {} };
+      : { version: 1, kept: [], opened: {} };
     yield* Ref.set(keptCache, store);
     return store;
   });
@@ -236,15 +267,20 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  /** A repository's worktree numbers, after numbering any new worktree and freeing gone ones. */
+  /** A repository's worktree numbers, after freeing those of worktrees gone. */
   const numbersFor = (root: string, paths: ReadonlyArray<string>) =>
     updateStore((store) => {
-      const current = store.numbers[root] ?? {};
-      const next = numberWorktrees(current, paths);
-      return next === current && store.numbers[root] !== undefined
-        ? store
-        : { ...store, numbers: { ...store.numbers, [root]: next } };
-    }).pipe(Effect.map((store) => store.numbers[root] ?? {}));
+      const current = store.opened[root] ?? {};
+      const next = keepNumbers(current, paths);
+      return next === current ? store : { ...store, opened: { ...store.opened, [root]: next } };
+    }).pipe(Effect.map((store) => store.opened[root] ?? {}));
+
+  const claim = (root: string, worktreePath: string) =>
+    updateStore((store) => {
+      const current = store.opened[root] ?? {};
+      const next = claimNumber(current, worktreePath);
+      return next === current ? store : { ...store, opened: { ...store.opened, [root]: next } };
+    });
 
   /** The folder of the repository the worktrees are in: the project's, or the wiki's. */
   const repositoryRoot = Effect.fn("ProjectWorktreeService.repositoryRoot")(function* (owner: {
@@ -299,7 +335,6 @@ const make = Effect.gen(function* () {
       readonly threads: ReadonlyArray<OrchestrationV2ThreadShell>;
       readonly kept: boolean;
       readonly managed: boolean;
-      readonly changedFiles: number;
       readonly now: number;
     },
   ): ReadonlyArray<ProjectWorktreeHold> => {
@@ -328,16 +363,52 @@ const make = Effect.gen(function* () {
         break;
       }
     }
-    // Set-aside work is keyed by branch, so a detached checkout's edits have nowhere to go.
-    if (listed.branch === null && context.changedFiles > 0)
-      holds.push({ kind: "detached", label: "Uncommitted changes on a detached checkout" });
+    // Set-aside work is keyed by branch, so a detached checkout's edits would have nowhere to go;
+    // a list does not count them, so a detached checkout is never taken.
+    if (!listed.isMain && listed.branch === null)
+      holds.push({
+        kind: "detached",
+        label: "A detached checkout, with no branch to set work aside on",
+      });
     return holds;
   };
 
+  // git status reads a whole checkout (a second or more in a big one), so a repository with
+  // hundreds of worktrees counts a few at a time.
+  const statusPermits = yield* Semaphore.make(4);
+  const countChanged = (cwd: string) => statusPermits.withPermit(changedFiles(cwd));
+
+  const mtimeOf = (target: string) =>
+    fileSystem.stat(target).pipe(
+      Effect.map((info) => Option.getOrNull(info.mtime)?.getTime() ?? null),
+      Effect.orElseSucceed(() => null),
+    );
+
+  /** When a worktree was last used: its branch's reflog or its top folder, whichever moved last. */
+  const lastActiveAt = Effect.fnUntraced(function* (worktreePath: string) {
+    const dotGit = path.join(worktreePath, ".git");
+    // A linked worktree's `.git` is a file naming its git dir; the main checkout's is the dir.
+    const pointer = yield* fileSystem.readFileString(dotGit).pipe(Effect.orElseSucceed(() => ""));
+    const gitDir = pointer.startsWith("gitdir: ")
+      ? path.resolve(worktreePath, pointer.slice("gitdir: ".length).trim())
+      : dotGit;
+    const times = [
+      yield* mtimeOf(path.join(gitDir, "logs", "HEAD")),
+      yield* mtimeOf(path.join(gitDir, "HEAD")),
+      yield* mtimeOf(worktreePath),
+    ].filter((time) => time !== null);
+    return times.length === 0 ? null : DateTime.formatIso(DateTime.makeUnsafe(Math.max(...times)));
+  });
+
+  /** The worktrees each repository had when last listed, which a single worktree is checked against. */
+  const listedPaths = new Map<string, ReadonlySet<string>>();
+
+  /** A repository's worktrees, uncounted: counting each would run git status in every one. */
   const listWorktrees = Effect.fn("ProjectWorktreeService.listWorktrees")(function* (root: string) {
     const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
       Effect.map((result) => parseWorktreeList(result.stdout)),
     );
+    listedPaths.set(root, new Set(listed.map((entry) => entry.path)));
     const { kept } = yield* loadKept;
     const numbers = yield* numbersFor(
       root,
@@ -350,7 +421,8 @@ const make = Effect.gen(function* () {
       (thread) => thread.archivedAt === null && thread.deletedAt === null,
     );
     const now = yield* Clock.currentTimeMillis;
-    // The main checkout first, then by number, so a worktree keeps its place in the list.
+    const home = yield* HostProcess.HomeDirectory;
+    // The main checkout first, then the numbered by number, then the rest as git lists them.
     const ordered = listed.toSorted(
       (a, b) =>
         (a.isMain ? 0 : (numbers[a.path] ?? Number.MAX_SAFE_INTEGER)) -
@@ -360,10 +432,6 @@ const make = Effect.gen(function* () {
       ordered,
       (entry) =>
         Effect.gen(function* () {
-          const exists = yield* fileSystem
-            .exists(entry.path)
-            .pipe(Effect.orElseSucceed(() => false));
-          const files = exists ? yield* changedFiles(entry.path) : 0;
           const managed = entry.isMain ? false : yield* isManagedWorktreePath(entry.path);
           const worktree: ProjectWorktree = {
             path: entry.path,
@@ -372,20 +440,28 @@ const make = Effect.gen(function* () {
             head: entry.head,
             alias: entry.branch ?? entry.head?.slice(0, 8) ?? path.basename(entry.path),
             number: entry.isMain ? null : (numbers[entry.path] ?? null),
+            madeBy: entry.isMain ? null : worktreeMaker(entry.path, { managed, home }),
+            lastActiveAt: yield* lastActiveAt(entry.path),
             kept: kept.includes(entry.path),
-            holds: holdsFor(entry, {
-              threads,
-              kept: kept.includes(entry.path),
-              managed,
-              changedFiles: files,
-              now,
-            }),
-            changedFiles: files,
+            holds: holdsFor(entry, { threads, kept: kept.includes(entry.path), managed, now }),
+            changedFiles: null,
           };
           return worktree;
         }),
-      { concurrency: 4 },
+      { concurrency: 8 },
     );
+  });
+
+  /** A worktree with its uncommitted files counted; zero for a folder gone from disk. */
+  const counted = Effect.fnUntraced(function* (worktree: ProjectWorktree) {
+    const exists = yield* fileSystem.exists(worktree.path).pipe(Effect.orElseSucceed(() => false));
+    return { ...worktree, changedFiles: exists ? yield* countChanged(worktree.path) : 0 };
+  });
+
+  /** A worktree of the repository's by its folder, as listed now. */
+  const listedWorktree = Effect.fnUntraced(function* (root: string, worktreePath: string) {
+    const found = (yield* listWorktrees(root)).find((entry) => entry.path === worktreePath);
+    return found ?? (yield* fail("That worktree is not in this repository."));
   });
 
   const list: ProjectWorktreeService["Service"]["list"] = Effect.fn("ProjectWorktreeService.list")(
@@ -403,7 +479,8 @@ const make = Effect.gen(function* () {
   const setAside = Effect.fn("ProjectWorktreeService.setAside")(function* (
     worktree: ProjectWorktree,
   ) {
-    if (worktree.changedFiles === 0) return;
+    const { changedFiles } = yield* counted(worktree);
+    if (changedFiles === 0) return;
     if (worktree.branch === null)
       return yield* fail("A detached checkout's uncommitted changes have no branch to go with.");
     yield* checkpoints
@@ -466,19 +543,31 @@ const make = Effect.gen(function* () {
       return yield* fail(`"${branch}" is not a branch name.`);
   });
 
-  /** A free worktree, preferring one with nothing to set aside. */
-  const freeWorktree = (worktrees: ReadonlyArray<ProjectWorktree>) =>
-    worktrees
+  /**
+   * A free worktree, preferring one with nothing to set aside. The least recently used are
+   * counted first, a few at most, as counting each runs git status.
+   */
+  const freeWorktree = Effect.fnUntraced(function* (worktrees: ReadonlyArray<ProjectWorktree>) {
+    const free = worktrees
       .filter((worktree) => worktree.holds.length === 0)
-      .toSorted((a, b) => a.changedFiles - b.changedFiles)[0];
+      .toSorted((a, b) => (a.lastActiveAt ?? "").localeCompare(b.lastActiveAt ?? ""));
+    let best: ProjectWorktree | undefined;
+    for (const worktree of free.slice(0, FREE_WORKTREES_COUNTED)) {
+      const withCount = yield* counted(worktree);
+      if (withCount.changedFiles === 0) return withCount;
+      if (best === undefined || (withCount.changedFiles ?? 0) < (best.changedFiles ?? 0))
+        best = withCount;
+    }
+    return best;
+  });
 
-  const reread = (root: string, worktreePath: string) =>
-    listWorktrees(root).pipe(
-      Effect.flatMap((worktrees) => {
-        const found = worktrees.find((worktree) => worktree.path === worktreePath);
-        return found ? Effect.succeed(found) : Effect.fail(fail("The worktree went missing."));
-      }),
-    );
+  /** A worktree as it stands after a change, counted, and numbered as opened. */
+  const reread = Effect.fnUntraced(function* (root: string, worktreePath: string) {
+    yield* claim(root, worktreePath);
+    const found = (yield* listWorktrees(root)).find((worktree) => worktree.path === worktreePath);
+    if (found === undefined) return yield* fail("The worktree went missing.");
+    return yield* counted(found);
+  });
 
   /**
    * Puts `branch` in a worktree: the free one's work is set aside and it switches; with none free,
@@ -491,7 +580,7 @@ const make = Effect.gen(function* () {
     reuse: boolean,
   ) {
     const worktrees = yield* listWorktrees(root);
-    const free = reuse ? freeWorktree(worktrees) : undefined;
+    const free = reuse ? yield* freeWorktree(worktrees) : undefined;
     let target: string;
     if (free) {
       target = free.path;
@@ -530,7 +619,8 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const worktrees = yield* listWorktrees(root);
           const existing = worktrees.find((worktree) => worktree.branch === input.branch);
-          if (existing) return { worktree: existing, setAside: "none" as const };
+          if (existing)
+            return { worktree: yield* reread(root, existing.path), setAside: "none" as const };
           const target = yield* place(root, input.branch, null, input.newWorktree !== true);
           const restored = yield* withWorkspaceLease(target, restoreSetAside(target, input.branch));
           return { worktree: yield* reread(root, target), setAside: restored };
@@ -584,8 +674,9 @@ const make = Effect.gen(function* () {
       else if (hold.kind === "kept") warnings.push("You marked this worktree Keep.");
       else if (hold.kind === "external") warnings.push("It was made outside Astrolabe.");
     }
-    if (worktree.changedFiles > 0) {
-      const files = `${worktree.changedFiles} uncommitted ${worktree.changedFiles === 1 ? "file" : "files"}`;
+    const { changedFiles } = yield* counted(worktree);
+    if (changedFiles > 0) {
+      const files = `${changedFiles} uncommitted ${changedFiles === 1 ? "file" : "files"}`;
       warnings.push(
         worktree.branch === null
           ? `${files} will be lost.`
@@ -674,6 +765,23 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError(failWith("Set-aside work could not be discarded")));
   });
 
+  const status: ProjectWorktreeService["Service"]["status"] = Effect.fn(
+    "ProjectWorktreeService.status",
+  )(function* (input) {
+    const root = yield* repositoryRoot(input);
+    if (!listedPaths.get(root)?.has(input.path)) yield* listedWorktree(root, input.path);
+    const exists = yield* fileSystem.exists(input.path).pipe(Effect.orElseSucceed(() => false));
+    return { changedFiles: exists ? yield* countChanged(input.path) : 0 };
+  });
+
+  const markOpened: ProjectWorktreeService["Service"]["markOpened"] = Effect.fn(
+    "ProjectWorktreeService.markOpened",
+  )(function* (input) {
+    const root = yield* repositoryRoot(input);
+    const worktree = yield* listedWorktree(root, input.path);
+    if (!worktree.isMain) yield* claim(root, worktree.path);
+  });
+
   const changes: ProjectWorktreeService["Service"]["changes"] = (input) =>
     Stream.unwrap(
       Effect.gen(function* () {
@@ -694,6 +802,8 @@ const make = Effect.gen(function* () {
     remove,
     setKept,
     discardSetAside,
+    status,
+    markOpened,
     changes,
   });
 });

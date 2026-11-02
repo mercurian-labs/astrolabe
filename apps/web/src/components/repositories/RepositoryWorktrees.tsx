@@ -21,6 +21,8 @@ import {
   projectWorktrees,
   refreshProjectWorktrees,
   refreshProjectWorktreesSoon,
+  refreshWorktreeChangedFilesSoon,
+  useWorktreeChangedFiles,
   useWorktreeWatch,
   worktreeEnvironment,
   worktreeOwner,
@@ -64,10 +66,11 @@ export function WorktreeHeader({
   expanded,
   onToggle,
   label = worktree.alias,
-  menuItems,
+  renderMenuItems,
   filesShown = false,
   onToggleFiles,
   outsideFilter = false,
+  folded = false,
 }: {
   readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -75,22 +78,37 @@ export function WorktreeHeader({
   readonly onToggle: () => void;
   /** What to call it, when its branch says less than something else (a change request's title). */
   readonly label?: string;
-  /** More actions for its menu, above Keep and Delete. */
-  readonly menuItems?: ReactNode;
+  /** More actions for its menu, above Keep and Delete, given its count of uncommitted files. */
+  readonly renderMenuItems?: (changedFiles: number | null) => ReactNode;
   /** Whether it shows its file tree in place of its changes, and the switch between them. */
   readonly filesShown?: boolean;
   readonly onToggleFiles?: () => void;
   /** Whether the filter hides it, so it shows only while the focused tab is in it. */
   readonly outsideFilter?: boolean;
+  /** Listed under a project's other worktrees: neither watched nor counted until opened. */
+  readonly folded?: boolean;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
-  const watch = useWorktreeWatch(repository, worktree.path);
+  const live = !folded || expanded;
+  const watch = useWorktreeWatch(live ? repository : null, worktree.path);
+  const changedFiles =
+    useWorktreeChangedFiles(live ? repository : null, worktree.path) ?? worktree.changedFiles;
   const changes = watch?.changes ?? 0;
-  const refreshSoon = useEffectEvent(() => refreshProjectWorktreesSoon(repository));
+  const refreshSoon = useEffectEvent(() => {
+    refreshProjectWorktreesSoon(repository);
+    refreshWorktreeChangedFilesSoon(repository, worktree.path);
+  });
   // oxlint-disable-next-line t3code/react-effect-budget -- its count and branch follow changes on disk
   useEffect(() => {
     if (changes > 0) refreshSoon();
   }, [changes]);
+  const unwatched = live && watch?.unwatched != null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- with no watch, coming back to the window is the cue to count again
+  useEffect(() => {
+    if (!unwatched) return;
+    window.addEventListener("focus", refreshSoon);
+    return () => window.removeEventListener("focus", refreshSoon);
+  }, [unwatched]);
   const accessory = (
     <span className="flex shrink-0 items-center gap-1.5 text-3xs text-sidebar-muted-foreground/70">
       {watch?.unwatched ? (
@@ -108,8 +126,8 @@ export function WorktreeHeader({
       ) : null}
       {outsideFilter ? <OutsideFilterMark /> : null}
       {worktree.isMain ? <span>main checkout</span> : null}
-      {worktree.changedFiles > 0 ? (
-        <span className="tabular-nums">{`${worktree.changedFiles} changed`}</span>
+      {changedFiles !== null && changedFiles > 0 ? (
+        <span className="tabular-nums">{`${changedFiles} changed`}</span>
       ) : null}
       {holds.length > 0 ? (
         <Tooltip>
@@ -166,7 +184,7 @@ export function WorktreeHeader({
       ) : null}
       {worktree.isMain ? null : (
         <WorktreeMenu repository={repository} worktree={worktree} label={label}>
-          {menuItems}
+          {renderMenuItems?.(changedFiles)}
         </WorktreeMenu>
       )}
     </li>
@@ -211,6 +229,7 @@ export function WorktreeFiles({
   readonly fileMenuActions?: ReadonlyArray<FileMenuAction>;
 }) {
   const watch = useWorktreeWatch(owner, worktree.path);
+  const changedFiles = useWorktreeChangedFiles(owner, worktree.path);
   return (
     <div className="ms-4 border-s border-sidebar-border ps-1">
       <FileBrowserPanel
@@ -222,9 +241,7 @@ export function WorktreeFiles({
         onOpenFile={onOpenFile}
         {...(fileMenuActions ? { fileMenuActions } : {})}
         workspaceMutationId={
-          watch?.unwatched
-            ? `${worktree.head}:${worktree.changedFiles}`
-            : String(watch?.listings ?? 0)
+          watch?.unwatched ? `${worktree.head}:${changedFiles}` : String(watch?.listings ?? 0)
         }
         sidebar={WORKTREE_TREE_SIZE}
       />

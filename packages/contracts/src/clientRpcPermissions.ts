@@ -69,6 +69,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.worktreesRemove]: AuthSourceControlWriteScope,
   [WS_METHODS.worktreesSetKept]: AuthSourceControlWriteScope,
   [WS_METHODS.worktreesDiscardSetAside]: AuthSourceControlWriteScope,
+  [WS_METHODS.worktreesMarkOpened]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsCreateRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,

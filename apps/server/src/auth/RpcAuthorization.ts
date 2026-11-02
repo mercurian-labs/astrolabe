@@ -192,6 +192,7 @@ export const RPC_REQUIRED_SCOPES = {
   // Astrolabe: worktree writes come from CLIENT_GUARDED_RPC_SCOPES.
   [WS_METHODS.worktreesList]: AuthOrchestrationReadScope,
   [WS_METHODS.worktreesSubscribeChanges]: AuthOrchestrationReadScope,
+  [WS_METHODS.worktreesStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.reviewGetDiffFileContents]: AuthFilesystemReadScope,
   [WS_METHODS.terminalOpen]: AuthTerminalOperateScope,
   [WS_METHODS.terminalAttach]: AuthTerminalOperateScope,

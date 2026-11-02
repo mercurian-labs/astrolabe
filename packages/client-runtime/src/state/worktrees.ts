@@ -62,6 +62,16 @@ export function createWorktreeEnvironmentAtoms<R, E>(
       label: "environment-data:worktrees:set-kept",
       tag: WS_METHODS.worktreesSetKept,
     }),
+    status: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:worktrees:status",
+      tag: WS_METHODS.worktreesStatus,
+      // The watch says when it changes; until then a count read stays good.
+      staleTimeMs: 60_000,
+    }),
+    markOpened: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:worktrees:mark-opened",
+      tag: WS_METHODS.worktreesMarkOpened,
+    }),
     discardSetAside: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:worktrees:discard-set-aside",
       tag: WS_METHODS.worktreesDiscardSetAside,

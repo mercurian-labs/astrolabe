@@ -10,19 +10,26 @@ its base, and the files its commits changed most recently. It keeps up as files 
 whoever changes them: an agent, a terminal, or another editor. With several projects, each folds
 under its name, open when it holds the tab you're on.
 
-- **The filter** picks which projects show, hides worktrees you don't need, and with **Has
-  changes** shows only worktrees with uncommitted files. Pills under the title show what's
-  filtered. Whatever the tab in front is in shows anyway, marked "hidden", until you move to
-  another tab.
+- **The filter** picks which projects show and, under each project (open it with its arrow),
+  hides worktrees you don't need. **Has changes** shows only worktrees with uncommitted files; it
+  counts every worktree when you turn it on, which takes a while in a project with many. Pills
+  under the title show what's filtered. Whatever the tab in front is in shows anyway, marked
+  "hidden", until you move to another tab.
 - **Search** finds a file by name when one project shows, in the worktree of the tab you're on.
 - The tree button on a worktree's header swaps its changes for its whole file tree, and back.
 
 ## Worktrees and branches
 
-A project lists each of its worktrees under the branch checked out there, the project's own
-checkout first. Every other worktree has a number, which it keeps while it exists and which its
-files' tabs show, so you can tell where each branch is. Tabs follow the branch, not the folder: if
-a worktree later holds another branch, its old tabs offer to open their branch again.
+A project lists its worktrees under the branch checked out there, the project's own checkout
+first. A worktree gets a number the first time you open something in it, and keeps it while it
+exists; its files' tabs show the number, so you can tell where each branch is. Tabs follow the
+branch, not the folder: if a worktree later holds another branch, its old tabs offer to open their
+branch again.
+
+Agents' tools leave a worktree per run, so a busy project can have hundreds. The list shows the
+ones that matter: those with a number, a thread, a terminal, a Keep pin, open tabs, uncommitted
+changes you have seen, or activity in the last week. The rest fold under **N more worktrees**,
+grouped by the tool that made them, with a search box.
 
 - **Open a branch**, beside the filter while one project shows, puts a branch in a worktree: the
   one it is already in, else a free one, else a new one. Turn on **In a new worktree** in it to

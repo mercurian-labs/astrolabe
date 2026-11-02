@@ -5,9 +5,13 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { reviewEnvironment } from "~/state/review";
 import { useTheme } from "~/hooks/useTheme";
 import type { PaneTabLabel } from "~/panes/panesHost";
+import { useAtomCommand } from "~/state/use-atom-command";
 import {
+  refreshProjectWorktrees,
   useListedProjectWorktrees,
   useProjectWorktrees,
+  worktreeEnvironment,
+  worktreeOwner,
   type WorktreesTarget,
 } from "~/state/worktrees";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
@@ -26,6 +30,9 @@ import {
 } from "./repositoryTabs";
 import { useOpenBranch } from "./worktreeActions";
 import { WorktreeNumber } from "./WorktreeNumber";
+
+/** Worktrees asked to be numbered in this window, so each tab showing one asks once. */
+const numbering = new Set<string>();
 
 /** The worktrees a tab's checkout is among: its project's, or its wiki's. */
 const worktreesOf = (tab: RepositoryTab): WorktreesTarget =>
@@ -79,6 +86,19 @@ function CheckedOut({
   const holder = worktrees ? holderOf(worktrees.worktrees, checkout) : null;
   const cwd = "cwd" in checkout ? checkout.cwd : (holder?.path ?? null);
   const revision = holder?.head ?? null;
+  const markOpened = useAtomCommand(worktreeEnvironment.markOpened, { reportFailure: false });
+  const unnumbered = holder !== null && !holder.isMain && holder.number === null;
+  const holderPath = holder?.path ?? null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- a worktree is numbered the first time something of it opens, which the server keeps
+  useEffect(() => {
+    if (!unnumbered || holderPath === null || numbering.has(holderPath)) return;
+    numbering.add(holderPath);
+    const target = worktreesOf(tab);
+    void markOpened({
+      environmentId: target.environmentId,
+      input: { ...worktreeOwner(target), path: holderPath },
+    }).then(() => refreshProjectWorktrees(target));
+  }, [holderPath, markOpened, tab, unnumbered]);
   const seen = useRef({ cwd, revision });
   // oxlint-disable-next-line t3code/react-effect-budget -- a reused worktree changes files under the same folder; its new commit re-reads what this tab shows
   useEffect(() => {

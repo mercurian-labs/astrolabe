@@ -62,13 +62,14 @@ export const setWorktreeHidden = (
  * when that is asked for, and the one holding the focused tab whatever the filter says, marked
  * as outside it.
  */
-export function filterWorktrees<Worktree extends { readonly changedFiles: number }>(
+export function filterWorktrees<Worktree extends { readonly changedFiles: number | null }>(
   filter: RepositoryFilter,
   worktrees: ReadonlyArray<{ readonly key: string; readonly worktree: Worktree }>,
   focusedKey: string | null,
 ): ReadonlyArray<{ readonly worktree: Worktree; readonly outside: boolean }> {
   return worktrees.flatMap(({ key, worktree }): { worktree: Worktree; outside: boolean }[] => {
-    const passes = !filter.hidden.includes(key) && (!filter.changed || worktree.changedFiles > 0);
+    const passes =
+      !filter.hidden.includes(key) && (!filter.changed || (worktree.changedFiles ?? 0) > 0);
     if (passes) return [{ worktree, outside: false }];
     return key === focusedKey ? [{ worktree, outside: true }] : [];
   });

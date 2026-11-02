@@ -27,7 +27,9 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 import {
-  numberWorktrees,
+  claimNumber,
+  keepNumbers,
+  worktreeMaker,
   ProjectWorktreeService,
   layer as projectWorktreeLayer,
   SET_ASIDE_REF_PREFIX,
@@ -128,15 +130,28 @@ const fixture = Effect.gen(function* () {
 const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof layerBase> | Scope.Scope>) =>
   effect.pipe(Effect.provide(layerBase), Effect.scoped);
 
-describe("numberWorktrees", () => {
-  it("keeps each worktree's number, frees a gone one's, and fills the lowest gap", () => {
+describe("worktree numbers", () => {
+  it("free a gone worktree's number, and give an opened one the lowest free", () => {
     const numbers = { "/wt/a": 1, "/wt/b": 2, "/wt/c": 3 };
-    expect(numberWorktrees(numbers, ["/wt/a", "/wt/c", "/wt/d"])).toEqual({
-      "/wt/a": 1,
-      "/wt/c": 3,
-      "/wt/d": 2,
-    });
-    expect(numberWorktrees(numbers, ["/wt/a", "/wt/b", "/wt/c"])).toBe(numbers);
+    const kept = keepNumbers(numbers, ["/wt/a", "/wt/c", "/wt/d"]);
+    expect(kept).toEqual({ "/wt/a": 1, "/wt/c": 3 });
+    expect(claimNumber(kept, "/wt/d")).toEqual({ "/wt/a": 1, "/wt/c": 3, "/wt/d": 2 });
+    expect(keepNumbers(numbers, ["/wt/a", "/wt/b", "/wt/c"])).toBe(numbers);
+    expect(claimNumber(numbers, "/wt/b")).toBe(numbers);
+  });
+});
+
+describe("worktreeMaker", () => {
+  it("tells which tool made a worktree by the folder it is in", () => {
+    const context = { managed: false, home: "/Users/me" };
+    expect(worktreeMaker("/data/worktrees/app/t3-1", { ...context, managed: true })).toBe(
+      "astrolabe",
+    );
+    expect(worktreeMaker("/Users/me/.astrolabe/worktrees/app/t3-2", context)).toBe("astrolabe");
+    expect(worktreeMaker("/Users/me/dev/app/.claude/worktrees/fix", context)).toBe("claude-code");
+    expect(worktreeMaker("/Users/me/.codex/worktrees/10ee/app", context)).toBe("codex");
+    expect(worktreeMaker("/Users/me/.t3/worktrees/app/t3-3", context)).toBe("t3-code");
+    expect(worktreeMaker("/tmp/app-merge", context)).toBe("other");
   });
 });
 
@@ -238,6 +253,29 @@ describe("ProjectWorktreeService", () => {
           ["alpha", 1],
           ["beta", 2],
         ]);
+      }),
+    ),
+  );
+
+  it.live("lists another tool's worktree uncounted and unnumbered until it is opened", () =>
+    run(
+      Effect.gen(function* () {
+        const { service, fs, command, repo, worktreesDir } = yield* fixture;
+        const outside = `${worktreesDir}-outside`;
+        yield* command(repo, ["worktree", "add", "--quiet", outside, "alpha"]);
+        yield* fs.writeFileString(`${outside}/new.txt`, "untracked\n");
+
+        const listed = yield* service.list({ projectId });
+        const found = listed.worktrees.find((worktree) => worktree.path === outside);
+        expect(found).toMatchObject({ number: null, changedFiles: null, madeBy: "other" });
+        expect(found?.lastActiveAt).not.toBeNull();
+        expect(yield* service.status({ projectId, path: outside })).toEqual({ changedFiles: 1 });
+
+        yield* service.markOpened({ projectId, path: outside });
+        const after = yield* service.list({ projectId });
+        expect(after.worktrees.find((worktree) => worktree.path === outside)?.number).toBe(1);
+        const stranger = yield* Effect.flip(service.status({ projectId, path: "/nowhere" }));
+        expect(stranger.message).toBe("That worktree is not in this repository.");
       }),
     ),
   );

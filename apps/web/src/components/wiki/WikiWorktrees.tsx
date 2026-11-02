@@ -8,6 +8,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment } from "~/state/wiki";
 import {
   refreshProjectWorktrees,
+  refreshWorktreeChangedFilesSoon,
   useProjectWorktrees,
   type WorktreesTarget,
 } from "~/state/worktrees";
@@ -162,8 +163,8 @@ export function WikiWorktreeTrees({
                 label={label}
                 expanded={expanded(worktree)}
                 onToggle={() => toggle(worktree)}
-                menuItems={
-                  changeRequestId !== null && worktree.changedFiles > 0 ? (
+                renderMenuItems={(changedFiles) =>
+                  changeRequestId !== null && changedFiles !== null && changedFiles > 0 ? (
                     <MenuItem
                       onClick={async () => {
                         await saveWorktree({
@@ -175,6 +176,7 @@ export function WikiWorktreeTrees({
                           },
                         });
                         refreshProjectWorktrees(owner);
+                        refreshWorktreeChangedFilesSoon(owner, worktree.path);
                       }}
                     >
                       <SaveIcon />
