@@ -6,6 +6,7 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // Playwright reads package.json and browsers.json beside its runtime modules.
   "playwright-core",
   "node-pty",
+  "@parcel/watcher",
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",
@@ -29,10 +30,20 @@ const CURSOR_RUNTIME_DEPENDENCIES = [
   "@fastify/busboy",
 ] as const;
 
+// @parcel/watcher picks its platform package and compiles ignore globs at runtime.
+const PARCEL_WATCHER_RUNTIME_DEPENDENCIES = [
+  "detect-libc",
+  "is-glob",
+  "is-extglob",
+  "picomatch",
+] as const;
+
 export function isRuntimeExternalCliDependency(id: string): boolean {
   return (
     CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => id.startsWith(prefix)) ||
-    CURSOR_RUNTIME_DEPENDENCIES.some((name) => id === name || id.startsWith(`${name}/`))
+    [...CURSOR_RUNTIME_DEPENDENCIES, ...PARCEL_WATCHER_RUNTIME_DEPENDENCIES].some(
+      (name) => id === name || id.startsWith(`${name}/`),
+    )
   );
 }
 

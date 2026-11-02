@@ -55,7 +55,7 @@ vi.mock(import("~/components/repositories/RepositoryFinder"), async () => {
                   kind: "file",
                   environmentId: "env-1" as EnvironmentId,
                   projectId: ProjectId.make("project-1"),
-                  cwd: "/repo",
+                  checkout: { cwd: "/repo" },
                   path: "README.md",
                 })
               : "repo-diff:x",
@@ -293,7 +293,7 @@ const readme = repositoryTabKey({
   kind: "file",
   environmentId: "env-1" as EnvironmentId,
   projectId: ProjectId.make("project-1"),
-  cwd: "/repo",
+  checkout: { cwd: "/repo" },
   path: "README.md",
 });
 
@@ -470,7 +470,7 @@ describe("a thread's surface as a tab of the shared panes", () => {
       kind: "diff",
       environmentId: "env-1" as EnvironmentId,
       projectId: ProjectId.make("project-1"),
-      cwd: "/work/tree",
+      checkout: { cwd: "/work/tree" },
       source: "working-tree",
     });
     const [, linked] = leaves(workspace.arrangement().root);

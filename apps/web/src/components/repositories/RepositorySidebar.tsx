@@ -1,18 +1,9 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { useNavigate } from "@tanstack/react-router";
+import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
+import { ArrowRightIcon, FileDiffIcon, FileIcon, FolderPlusIcon } from "lucide-react";
 import {
-  ArrowRightIcon,
-  FileDiffIcon,
-  FileIcon,
-  FolderGit2Icon,
-  FolderPlusIcon,
-  GitBranchIcon,
-  ListIcon,
-  ListTreeIcon,
-  ListFilterIcon,
-  SettingsIcon,
-} from "lucide-react";
-import {
+  Fragment,
+  useEffect,
   useReducer,
   useRef,
   useState,
@@ -24,126 +15,230 @@ import {
 import { openCommandPalette } from "~/commandPaletteBus";
 import { readLocalApi } from "~/localApi";
 import { isElectron } from "~/env";
+import { useTheme } from "~/hooks/useTheme";
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
-import { useThreadShells } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useProjectPathSearch } from "~/state/queries";
 import { reviewEnvironment } from "~/state/review";
 import { vcsEnvironment } from "~/state/vcs";
+import { useAtomCommand } from "~/state/use-atom-command";
+import {
+  projectWorktrees,
+  useManyProjectWorktrees,
+  useManyWorktreeChangedFiles,
+  useWorktreeChangedFiles,
+} from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { changeRequestKindStore } from "../changeRequests/changeRequestKind";
-import FileBrowserPanel from "../files/FileBrowserPanel";
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
-import { ProjectFilterIcon } from "../projects/ProjectFilterIcon";
-import {
-  projectFilterOptions,
-  projectFilterValue,
-  searchProjectFilterOptions,
-  type ProjectFilterOption,
-} from "../projects/projectFilter";
-import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { reduceSidebarProjectScopeMenuState } from "../Sidebar.logic";
 import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../sidebar/SidebarCard";
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
-import {
-  SidebarHeaderIconButton,
-  SidebarPickerAction,
-  SidebarPickerFooter,
-  SidebarThreadHeader,
-} from "../sidebar/SidebarThreadHeader";
-import {
-  Combobox,
-  ComboboxEmpty,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxPopup,
-  ComboboxSearchInput,
-  ComboboxTrigger,
-  useComboboxFilter,
-} from "../ui/combobox";
+import { SidebarThreadHeader } from "../sidebar/SidebarThreadHeader";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
+import { SidebarContent, SidebarGroup } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { useWorkspaceFocusedKey, useWorkspaceOpenKeys, workspace } from "~/panes/workspace";
+import { checkoutTag, foldWorktrees } from "./worktreeFolding";
 import { showLocalGraph } from "./repositoryPanes";
-import { useWorkspaceFocusedKey, workspace } from "~/panes/workspace";
-import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
-import { fileName, folderOf, repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
+import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
+import {
+  FoldedWorktrees,
+  OpenBranchPicker,
+  SetAsideRows,
+  WorktreeFiles,
+  WorktreeHeader,
+  WorktreeRows,
+} from "./RepositoryWorktrees";
+import { RepositoryFilterMenu, RepositoryFilterPills } from "./RepositoryFilterMenu";
+import {
+  filterRepositoryKeys,
+  filterWorktrees,
+  setWorktreeHidden,
+  storeRepositoryFilter,
+  useStoredRepositoryFilter,
+} from "./repositoryFilter";
+import {
+  repositoryWorktreeFiles,
+  showWorktreeFiles,
+  worktreeFilesKey,
+  worktreeFilesShown,
+} from "./repositoryScope";
+import {
+  checkoutOf,
+  holderOf,
+  fileName,
+  folderOf,
+  parseRepositoryTabKey,
+  repositoryTabKey,
+  type RepositoryCheckout,
+  type ProjectFileTab,
+} from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
   `${project.environmentId}:${project.id}`;
 
-/** A checkout of a repository: its own, or a thread's working tree. */
-interface Checkout {
-  readonly cwd: string;
-  readonly label: string;
-}
-
-/** The repository's checkouts: its own first, then each thread's working tree, newest first. */
-function useCheckouts(repository: EnvironmentProject | null): ReadonlyArray<Checkout> {
-  const threads = useThreadShells();
-  if (repository === null) return [];
-  const seen = new Set([repository.workspaceRoot]);
-  const own: Checkout[] = [{ cwd: repository.workspaceRoot, label: "Project checkout" }];
-  const trees = threads
-    .filter(
-      (thread) =>
-        thread.environmentId === repository.environmentId &&
-        thread.projectId === repository.id &&
-        thread.worktreePath !== null &&
-        thread.archivedAt === null,
-    )
-    .toSorted((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-  for (const thread of trees) {
-    if (thread.worktreePath === null || seen.has(thread.worktreePath)) continue;
-    seen.add(thread.worktreePath);
-    own.push({
-      cwd: thread.worktreePath,
-      label: thread.branch ? `${thread.title} · ${thread.branch}` : thread.title,
-    });
-  }
-  return own;
-}
-
 /**
- * The Repositories sidebar, built like the Wikis one: title row (search, repository filter, Add),
- * then a list leading with what is moving (uncommitted changes, branch against base, change
- * requests) and then recently changed files; the filter's Tree choice shows the whole tree. A row
- * opens in the focused pane's front tab, or with the modifier in a new tab.
+ * The Projects sidebar: title row (search, open a branch, the filter, Add), then the repositories the
+ * filter keeps, each with its worktrees, main checkout first, each with what is moving there or
+ * its file tree. One repository shows its worktrees bare; several each sit under a header, open
+ * when it holds the focused tab. What the focused tab is in shows whatever the filter says.
  */
 export function RepositorySidebar() {
   const repositories = useRepositories();
-  const scope = repositoryScope.useValue();
-  const view = repositoryView.useValue();
-  const scoped = repositories.find((repository) => repositoryKey(repository) === scope) ?? null;
-  const checkouts = useCheckouts(scoped);
-  const storedCheckout = repositoryCheckout.useValue();
-  const checkout =
-    checkouts.find((candidate) => candidate.cwd === storedCheckout) ?? checkouts[0] ?? null;
+  const filter = useStoredRepositoryFilter();
+  const filesShown = repositoryWorktreeFiles.useValue();
+  const focusedKey = useWorkspaceFocusedKey();
+  const focusedTab = focusedKey === null ? null : parseRepositoryTabKey(focusedKey);
+  const focusedRepository =
+    focusedTab && "projectId" in focusedTab
+      ? repositoryKey({ environmentId: focusedTab.environmentId, id: focusedTab.projectId })
+      : null;
+  const kept = filterRepositoryKeys(filter, repositories.map(repositoryKey));
+  const candidates = repositories.filter(
+    (repository) =>
+      kept === null ||
+      kept.has(repositoryKey(repository)) ||
+      repositoryKey(repository) === focusedRepository,
+  );
+  const lists = useManyProjectWorktrees(
+    candidates.map((repository) => projectWorktrees(repository)),
+  );
+  // A list leaves worktrees uncounted; Has changes counts every worktree of the projects kept.
+  const counted = filter.changed
+    ? candidates.flatMap((repository, index) =>
+        kept !== null && !kept.has(repositoryKey(repository))
+          ? []
+          : (lists[index]?.worktrees ?? NO_WORKTREES).map((worktree) => ({
+              target: projectWorktrees(repository),
+              path: worktree.path,
+            })),
+      )
+    : [];
+  const counts = useManyWorktreeChangedFiles(counted);
+  const countOf = new Map(
+    counted.map((entry, index) => [
+      worktreeFilesKey(entry.target.environmentId, entry.path),
+      counts[index] ?? null,
+    ]),
+  );
+  const countedSoFar = counts.filter((count) => count !== null).length;
+  const stillCounting = countedSoFar < counts.length;
+  const openKeys = useWorkspaceOpenKeys();
+  const read = candidates.map((repository, index) => {
+    const key = repositoryKey(repository);
+    const listed = lists[index] ?? null;
+    const all = (listed?.worktrees ?? NO_WORKTREES).map((worktree) => {
+      const count = countOf.get(worktreeFilesKey(repository.environmentId, worktree.path));
+      return count === undefined ? worktree : { ...worktree, changedFiles: count };
+    });
+    const focused =
+      focusedTab && "checkout" in focusedTab && key === focusedRepository
+        ? holderOf(all, focusedTab.checkout)
+        : null;
+    return {
+      repository,
+      key,
+      listed,
+      all,
+      focused,
+      outside: kept !== null && !kept.has(key),
+      worktreeKey: (worktree: ProjectWorktree) =>
+        worktreeFilesKey(repository.environmentId, worktree.path),
+      openCheckouts: new Set(
+        openKeys.flatMap((openKey) => {
+          const tab = parseRepositoryTabKey(openKey);
+          return tab !== null &&
+            "checkout" in tab &&
+            "projectId" in tab &&
+            tab.projectId === repository.id &&
+            tab.environmentId === repository.environmentId
+            ? [checkoutTag(tab.checkout)]
+            : [];
+        }),
+      ),
+    };
+  });
+  const views = read.flatMap((entry) => {
+    const focusedWorktreeKey = entry.focused ? entry.worktreeKey(entry.focused) : null;
+    const worktrees = entry.outside
+      ? entry.focused
+        ? [{ worktree: entry.focused, outside: true }]
+        : []
+      : filterWorktrees(
+          filter,
+          entry.all.map((worktree) => ({ key: entry.worktreeKey(worktree), worktree })),
+          focusedWorktreeKey,
+        );
+    // A repository the filter leaves nothing of drops out once its worktrees are read.
+    if (entry.listed !== null && worktrees.length === 0) return [];
+    return [{ ...entry, worktrees }];
+  });
+  // Known only once Has changes has counted every worktree.
+  const changedCount =
+    !filter.changed || stillCounting
+      ? null
+      : read
+          .filter((entry) => !entry.outside)
+          .flatMap((entry) =>
+            entry.all.filter(
+              (worktree) =>
+                (worktree.changedFiles ?? 0) > 0 &&
+                !filter.hidden.includes(entry.worktreeKey(worktree)),
+            ),
+          ).length;
+  const single = views.length === 1 ? views[0]! : null;
+  const focused = views.find((view) => view.focused !== null)?.focused ?? null;
+  // Sections someone opened or closed; a worktree or repository that takes the focus opens again.
+  const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [focusedPath, setFocusedPath] = useState(focused?.path ?? null);
+  if ((focused?.path ?? null) !== focusedPath) {
+    setFocusedPath(focused?.path ?? null);
+    const reopened = [focused?.path, focusedRepository].filter(
+      (key): key is string => key != null && chosen.has(key),
+    );
+    if (reopened.length > 0) {
+      const next = new Map(chosen);
+      for (const key of reopened) next.delete(key);
+      setChosen(next);
+    }
+  }
+  const open = (key: string, fallback: boolean) => chosen.get(key) ?? fallback;
+  const toggle = (key: string, fallback: boolean) =>
+    setChosen((current) => new Map(current).set(key, !open(key, fallback)));
+  const reveal = (key: string) => setChosen((current) => new Map(current).set(key, true));
+  const searched = single?.repository ?? null;
+  const searchedIn =
+    single?.focused ?? single?.all.find((worktree) => worktree.isMain) ?? single?.all[0] ?? null;
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
+    open: false,
+    query: "",
+  });
   const search = useProjectPathSearch(
     {
-      environmentId: scoped?.environmentId ?? null,
-      cwd: checkout?.cwd ?? null,
+      environmentId: searched?.environmentId ?? null,
+      cwd: searchedIn?.path ?? null,
       query: searchQuery,
       kind: "file",
     },
     50,
   );
   const searching = searchQuery.trim().length > 0;
-  const results = scoped && searching ? search.entries : [];
+  const results = searched && searching ? search.entries : [];
   const clearSearch = () => {
     setSearchQuery("");
     setActiveIndex(0);
   };
   const openResult = (path: string) => {
-    if (!scoped || !checkout) return;
-    workspace.show(fileKey(scoped, checkout.cwd, path));
+    if (!searched || !searchedIn) return;
+    workspace.show(fileKey(searched, checkoutOf(searchedIn), path));
     clearSearch();
   };
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -161,6 +256,22 @@ export function RepositorySidebar() {
       searchInputRef.current?.blur();
     }
   };
+  const worktreeSections = (view: (typeof views)[number]) => (
+    <WorktreeSections
+      repository={view.repository}
+      worktrees={view.worktrees}
+      openCheckouts={view.openCheckouts}
+      setAside={view.listed?.setAside ?? null}
+      expanded={(worktree, fallback) => open(worktree.path, fallback)}
+      onToggle={(worktree, fallback) => toggle(worktree.path, fallback)}
+      onReveal={(worktree) => reveal(worktree.path)}
+      filesShown={filesShown}
+      focusedPath={view.focused?.path ?? null}
+      selectedPath={(worktree) =>
+        worktree.path === focused?.path && focusedTab?.kind === "file" ? focusedTab.path : null
+      }
+    />
+  );
 
   return (
     <>
@@ -173,7 +284,30 @@ export function RepositorySidebar() {
               title="Projects"
               searchNoun="file"
               hasProjects
-              projectScope={<RepositoryFilter repositories={repositories} scoped={scoped} />}
+              projectScope={
+                <>
+                  {single ? (
+                    <OpenBranchPicker
+                      repository={single.repository}
+                      worktrees={single.all}
+                      onOpened={(worktree) => {
+                        reveal(worktree.path);
+                        storeRepositoryFilter(
+                          setWorktreeHidden(filter, single.worktreeKey(worktree), false),
+                        );
+                      }}
+                    />
+                  ) : null}
+                  <RepositoryFilterMenu
+                    repositories={repositories}
+                    filter={filter}
+                    kept={kept}
+                    changedCount={changedCount}
+                    menu={menu}
+                    dispatchMenu={dispatchMenu}
+                  />
+                </>
+              }
               onNewThread={() => openCommandPalette({ open: "add-project" })}
               newThreadDisabled={false}
               newThreadShortcutLabel={null}
@@ -192,6 +326,22 @@ export function RepositorySidebar() {
               activeSearchResultIndex={activeIndex}
               onClearSearch={clearSearch}
             />
+            {repositories.length > 0 ? (
+              <RepositoryFilterPills
+                repositories={repositories}
+                filter={filter}
+                kept={kept}
+                worktreeGroups={read.filter((entry) => !entry.outside)}
+                changedCount={changedCount}
+                onOpen={() => dispatchMenu({ type: "open-changed", open: true })}
+              />
+            ) : null}
+            {stillCounting ? (
+              // Counting runs git status in each worktree, a second or more apiece.
+              <p role="status" className="px-2 pt-1 text-2xs text-sidebar-muted-foreground">
+                {`Counting changes… ${countedSoFar} of ${counts.length}`}
+              </p>
+            ) : null}
           </SidebarGroup>
         }
       >
@@ -200,12 +350,12 @@ export function RepositorySidebar() {
             {repositories.length === 0 ? (
               <EmptyRepositories />
             ) : searching ? (
-              scoped && checkout ? (
+              searched && searchedIn ? (
                 <ul role="presentation" className="flex flex-col gap-px">
                   {results.map((entry, index) => (
                     <FileRow
                       key={entry.path}
-                      tab={fileTab(scoped, checkout.cwd, entry.path)}
+                      tab={fileTab(searched, checkoutOf(searchedIn), entry.path)}
                       highlighted={index === activeIndex}
                       detail={folderOf(entry.path)}
                       onOpened={clearSearch}
@@ -216,60 +366,40 @@ export function RepositorySidebar() {
                   ) : null}
                 </ul>
               ) : (
-                <SidebarNote>Pick a project in the filter to find its files.</SidebarNote>
+                <SidebarNote>Pick one project in the filter to find its files.</SidebarNote>
               )
-            ) : scoped && checkout ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-2">
-                {checkouts.length > 1 ? (
-                  <CheckoutPicker
-                    checkouts={checkouts}
-                    value={checkout.cwd}
-                    onChange={(cwd) =>
-                      repositoryCheckout.set(cwd === scoped.workspaceRoot ? null : cwd)
-                    }
-                  />
-                ) : null}
-                {view === "tree" ? (
-                  // The tree's virtualized list is `height: 100%`, and the sidebar's scroll area
-                  // only gives its content a min-height, so the list collapsed to nothing. The
-                  // tree fills an absolutely placed box instead, whose height is definite.
-                  <div className="relative -mx-2 min-h-0 flex-1">
-                    <div className="absolute inset-0 flex flex-col">
-                      <FileBrowserPanel
-                        key={`${scoped.environmentId}:${checkout.cwd}`}
-                        environmentId={scoped.environmentId}
-                        cwd={checkout.cwd}
-                        projectName={scoped.title}
-                        selectedPath={null}
-                        selectedPathRevealId={0}
-                        onOpenFile={(path) => workspace.show(fileKey(scoped, checkout.cwd, path))}
-                        fileMenuActions={[
-                          {
-                            id: "local-graph",
-                            label: "Open local graph",
-                            run: (path) => showLocalGraph(fileTab(scoped, checkout.cwd, path)),
-                          },
-                        ]}
-                        workspaceMutationId={null}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <RepositoryList repository={scoped} cwd={checkout.cwd} showStatus />
-                )}
-              </div>
-            ) : view === "tree" ? (
-              <SidebarNote>Pick a project in the filter to see its files.</SidebarNote>
+            ) : views.length === 0 ? (
+              <SidebarNote>
+                {stillCounting ? "Counting changes…" : "Nothing here matches the filter."}
+              </SidebarNote>
+            ) : single && !single.outside ? (
+              worktreeSections(single)
             ) : (
-              <div className="flex flex-col gap-3">
-                {repositories.map((repository) => (
-                  <RepositoryList
-                    key={repositoryKey(repository)}
-                    repository={repository}
-                    cwd={repository.workspaceRoot}
-                    heading
-                  />
-                ))}
+              <div className="flex flex-col gap-1">
+                {views.map((view) => {
+                  const fallback = views.length === 1 || view.key === focusedRepository;
+                  const expanded = open(view.key, fallback);
+                  return (
+                    <Fragment key={view.key}>
+                      <ul role="presentation" aria-label={view.repository.title}>
+                        <li className="mx-0.5 flex h-8 list-none items-center gap-1">
+                          <CollapsibleSectionHeader
+                            onClick={() => toggle(view.key, fallback)}
+                            expanded={expanded}
+                            tone="muted"
+                            accessory={view.outside ? <OutsideFilterMark /> : null}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <ProjectFavicon project={view.repository} className="size-3.5" />
+                              {view.repository.title}
+                            </span>
+                          </CollapsibleSectionHeader>
+                        </li>
+                      </ul>
+                      {expanded ? <div className="ms-2">{worktreeSections(view)}</div> : null}
+                    </Fragment>
+                  );
+                })}
               </div>
             )}
           </TooltipProvider>
@@ -280,17 +410,147 @@ export function RepositorySidebar() {
   );
 }
 
-type FileTab = RepositoryFileTab;
+/**
+ * A repository's worktrees as the filter shows them, each a header over its changes and recent
+ * files or its file tree, then the work its branches set aside.
+ */
+function WorktreeSections({
+  repository,
+  worktrees,
+  openCheckouts,
+  setAside,
+  expanded,
+  onToggle,
+  onReveal,
+  filesShown,
+  selectedPath,
+  focusedPath,
+}: {
+  readonly repository: EnvironmentProject;
+  readonly worktrees: ReadonlyArray<{
+    readonly worktree: ProjectWorktree;
+    readonly outside: boolean;
+  }>;
+  /** The checkouts of the project's open tabs, whose worktrees stay listed. */
+  readonly openCheckouts: ReadonlySet<string>;
+  /** Null while the worktrees are being read. */
+  readonly setAside: ProjectWorktreeListResult["setAside"] | null;
+  /** Whether a worktree is open; `fallback` until someone opens or closes it. */
+  readonly expanded: (worktree: ProjectWorktree, fallback: boolean) => boolean;
+  readonly onToggle: (worktree: ProjectWorktree, fallback: boolean) => void;
+  readonly onReveal: (worktree: ProjectWorktree) => void;
+  readonly filesShown: Readonly<Record<string, boolean>>;
+  readonly selectedPath: (worktree: ProjectWorktree) => string | null;
+  /** The worktree of the focused tab, which opens on its own. */
+  readonly focusedPath: string | null;
+}) {
+  const owner = projectWorktrees(repository);
+  const [now] = useState(() => Date.now());
+  const { listed, rest } = foldWorktrees(worktrees, { openCheckouts, now });
+  const worktreeSection = (
+    { worktree, outside }: { readonly worktree: ProjectWorktree; readonly outside: boolean },
+    folded: boolean,
+  ) => {
+    const filesKey = worktreeFilesKey(repository.environmentId, worktree.path);
+    const files = worktreeFilesShown(filesShown, filesKey, worktree.isMain);
+    // Only the main checkout and the focused tab's start open: an open one reads its status and
+    // recent commits.
+    const fallback = !folded && (worktree.isMain || outside || worktree.path === focusedPath);
+    const open = expanded(worktree, fallback);
+    return (
+      <Fragment key={worktree.path}>
+        <ul role="presentation" className="flex flex-col gap-px">
+          <WorktreeHeader
+            repository={owner}
+            worktree={worktree}
+            expanded={open}
+            onToggle={() => onToggle(worktree, fallback)}
+            outsideFilter={outside}
+            folded={folded}
+            filesShown={files}
+            onToggleFiles={() => {
+              showWorktreeFiles(filesKey, !files);
+              onReveal(worktree);
+            }}
+            onCompare={() =>
+              workspace.show(
+                repositoryTabKey({
+                  kind: "diff",
+                  environmentId: repository.environmentId,
+                  projectId: repository.id,
+                  checkout: checkoutOf(worktree),
+                  source: "branch-range",
+                }),
+              )
+            }
+          />
+          {open && !files ? (
+            <WorktreeRows>
+              <RepositoryList
+                repository={repository}
+                cwd={worktree.path}
+                checkout={checkoutOf(worktree)}
+                head={worktree.head}
+              />
+            </WorktreeRows>
+          ) : null}
+        </ul>
+        {open && files ? (
+          <WorktreeFiles
+            key={filesKey}
+            owner={owner}
+            worktree={worktree}
+            projectName={`${repository.title} · ${worktree.alias}`}
+            selectedPath={selectedPath(worktree)}
+            onOpenFile={(path) => workspace.show(fileKey(repository, checkoutOf(worktree), path))}
+            fileMenuActions={[
+              {
+                id: "local-graph",
+                label: "Open local graph",
+                run: (path) => showLocalGraph(fileTab(repository, checkoutOf(worktree), path)),
+              },
+            ]}
+          />
+        ) : null}
+      </Fragment>
+    );
+  };
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      {listed.map((entry) => worktreeSection(entry, false))}
+      <FoldedWorktrees
+        ownerTitle={repository.title}
+        rest={rest}
+        renderEntry={(entry) => worktreeSection(entry, true)}
+      />
+      {setAside ? (
+        <ul role="presentation" className="flex flex-col gap-px">
+          <SetAsideRows repository={owner} setAside={setAside} />
+        </ul>
+      ) : (
+        <SidebarNote>Reading worktrees…</SidebarNote>
+      )}
+    </div>
+  );
+}
 
-const fileTab = (repository: EnvironmentProject, cwd: string, path: string): FileTab => ({
+const NO_WORKTREES: ReadonlyArray<ProjectWorktree> = [];
+
+type FileTab = ProjectFileTab;
+
+const fileTab = (
+  repository: EnvironmentProject,
+  checkout: RepositoryCheckout,
+  path: string,
+): FileTab => ({
   kind: "file",
   environmentId: repository.environmentId,
   projectId: repository.id,
-  cwd,
+  checkout,
   path,
 });
-const fileKey = (repository: EnvironmentProject, cwd: string, path: string) =>
-  repositoryTabKey(fileTab(repository, cwd, path));
+const fileKey = (repository: EnvironmentProject, checkout: RepositoryCheckout, path: string) =>
+  repositoryTabKey(fileTab(repository, checkout, path));
 
 function SidebarNote({ children }: { readonly children: string }) {
   return (
@@ -316,149 +576,92 @@ function EmptyRepositories() {
   );
 }
 
-/** Which checkout the list and tree read: the repository's own, or a thread's working tree. */
-function CheckoutPicker({
-  checkouts,
-  value,
-  onChange,
-}: {
-  readonly checkouts: ReadonlyArray<Checkout>;
-  readonly value: string;
-  readonly onChange: (cwd: string) => void;
-}) {
-  const items = checkouts.map((checkout) => ({ value: checkout.cwd, label: checkout.label }));
-  return (
-    <Select items={items} value={value} onValueChange={(next) => next && onChange(next)}>
-      <SelectTrigger size="sm" aria-label="Checkout" className="mx-0.5 w-auto">
-        <GitBranchIcon className="size-3.5 shrink-0 opacity-70" />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectPopup>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
-  );
-}
-
 /**
- * One repository's list: with `showStatus`, its checkout's uncommitted changes and its branch
- * against its base; a row into its change requests; then the files its commits changed most
- * recently. With `heading`, under the repository's name, as in the list of every repository.
+ * One worktree's rows: its uncommitted changes, its branch against a base, and the files its
+ * commits changed most recently.
  */
 function RepositoryList({
   repository,
   cwd,
-  heading = false,
-  showStatus = false,
+  checkout,
+  head,
 }: {
   readonly repository: EnvironmentProject;
   readonly cwd: string;
-  readonly heading?: boolean;
-  readonly showStatus?: boolean;
+  readonly checkout: RepositoryCheckout;
+  /** The worktree list's commit; when it or the count moves, the status and recent files reread. */
+  readonly head: string | null;
 }) {
-  const navigate = useNavigate();
-  const [expanded, setExpanded] = useState(true);
+  const changedFiles = useWorktreeChangedFiles(projectWorktrees(repository), cwd);
   const status = useEnvironmentQuery(
-    showStatus
-      ? vcsEnvironment.status({ environmentId: repository.environmentId, input: { cwd } })
-      : null,
+    vcsEnvironment.status({ environmentId: repository.environmentId, input: { cwd } }),
   );
   const recent = useEnvironmentQuery(
     reviewEnvironment.recentFiles({
       environmentId: repository.environmentId,
-      input: { cwd, limit: heading ? 8 : 40 },
+      input: { cwd, limit: 20 },
     }),
   );
+  const refreshStatus = useAtomCommand(vcsEnvironment.refreshStatus, { reportFailure: false });
+  // What the list and the count last saw of it; when either moves, the status and files reread.
+  const revision = `${head ?? ""}:${changedFiles ?? ""}`;
+  const reread = useStableCallback((_revision: string) => {
+    void refreshStatus({
+      environmentId: repository.environmentId,
+      input: { cwd, localOnly: true },
+    });
+    recent.refresh();
+  });
+  // oxlint-disable-next-line t3code/react-effect-budget -- the server's cached status misses edits made outside the app and branch switches; reread when the worktree list sees either
+  useEffect(() => {
+    reread(revision);
+  }, [revision, reread]);
   const uncommitted = status.data?.workingTree.files ?? [];
   const uncommittedPaths = new Set(uncommitted.map((file) => file.path));
   const recentFiles = (recent.data?.files ?? []).filter((file) => !uncommittedPaths.has(file.path));
-  const branch = status.data?.branchChanges;
-  const diffKey = (source: "working-tree" | "branch-range") =>
-    repositoryTabKey({
-      kind: "diff",
-      environmentId: repository.environmentId,
-      projectId: repository.id,
-      cwd,
-      source,
-    });
-  const openChangeRequests = () => {
-    changeRequestKindStore.set("repositories");
-    void navigate({
-      to: "/pull-requests",
-      search: {
-        ...readPullRequestListPreferences(),
-        projectId: repository.id,
-        environmentId: repository.environmentId,
-      },
-    });
-  };
+  const uncommittedKey = repositoryTabKey({
+    kind: "diff",
+    environmentId: repository.environmentId,
+    projectId: repository.id,
+    checkout,
+    source: "working-tree",
+  });
   return (
-    <ul role="presentation" aria-label={repository.title} className="flex flex-col gap-px">
-      {heading ? (
-        <li className="mx-0.5 flex h-8 list-none items-center gap-1">
-          <CollapsibleSectionHeader
-            onClick={() => setExpanded((open) => !open)}
-            expanded={expanded}
-            tone="muted"
-          >
-            {repository.title}
-          </CollapsibleSectionHeader>
-        </li>
-      ) : null}
-      {heading && !expanded ? null : (
+    <>
+      {uncommitted.length > 0 ? (
         <>
-          <LinkRow icon={FolderGit2Icon} label="Changes" onClick={openChangeRequests} />
-          {showStatus && uncommitted.length > 0 ? (
-            <>
-              <SectionLabel>{`Uncommitted · ${uncommitted.length}`}</SectionLabel>
-              <LinkRow
-                icon={FileDiffIcon}
-                label="Review uncommitted changes"
-                onClick={() => workspace.show(diffKey("working-tree"))}
-              />
-              {uncommitted.map((file) => (
-                <FileRow
-                  key={file.path}
-                  tab={fileTab(repository, cwd, file.path)}
-                  detail={folderOf(file.path)}
-                  trailing={`+${file.insertions} −${file.deletions}`}
-                />
-              ))}
-            </>
-          ) : null}
-          {showStatus &&
-          status.data?.isDefaultRef === false &&
-          branch &&
-          (branch.insertions > 0 || branch.deletions > 0) ? (
-            <LinkRow
-              icon={GitBranchIcon}
-              label={`Changes against ${branch.baseRef ?? "the base"}`}
-              onClick={() => workspace.show(diffKey("branch-range"))}
+          <SectionLabel>{`Uncommitted · ${uncommitted.length}`}</SectionLabel>
+          <LinkRow
+            icon={FileDiffIcon}
+            label="Review uncommitted changes"
+            onClick={() => workspace.show(uncommittedKey)}
+          />
+          {uncommitted.map((file) => (
+            <FileRow
+              key={file.path}
+              tab={fileTab(repository, checkout, file.path)}
+              detail={folderOf(file.path)}
+              trailing={`+${file.insertions} −${file.deletions}`}
             />
-          ) : null}
-          {recentFiles.length > 0 ? (
-            <>
-              {heading ? null : <SectionLabel>Recently changed</SectionLabel>}
-              {recentFiles.map((file) => (
-                <FileRow
-                  key={file.path}
-                  tab={fileTab(repository, cwd, file.path)}
-                  detail={folderOf(file.path)}
-                  note={file.subject}
-                  trailing={compactTime(file.changedAt)}
-                />
-              ))}
-            </>
-          ) : recent.isPending ? (
-            <SidebarNote>Reading recent changes…</SidebarNote>
-          ) : null}
+          ))}
         </>
-      )}
-    </ul>
+      ) : null}
+      {recentFiles.length > 0 ? (
+        <>
+          {recentFiles.map((file) => (
+            <FileRow
+              key={file.path}
+              tab={fileTab(repository, checkout, file.path)}
+              detail={folderOf(file.path)}
+              note={file.subject}
+              trailing={compactTime(file.changedAt)}
+            />
+          ))}
+        </>
+      ) : recent.isPending ? (
+        <SidebarNote>Reading recent changes…</SidebarNote>
+      ) : null}
+    </>
   );
 }
 
@@ -522,6 +725,7 @@ function FileRow({
   readonly onOpened?: () => void;
 }) {
   const key = repositoryTabKey(tab);
+  const { resolvedTheme } = useTheme();
   const focused = useWorkspaceFocusedKey();
   const active = focused === key;
   const open = (event: RowClick) => {
@@ -587,7 +791,12 @@ function FileRow({
             />
           }
         >
-          <FileIcon aria-hidden className="size-3.5 shrink-0 opacity-70" />
+          <PierreEntryIcon
+            pathValue={tab.path}
+            kind="file"
+            theme={resolvedTheme}
+            className="size-3.5"
+          />
           <span className="min-w-0 shrink truncate text-sm text-foreground/85">
             {fileName(tab.path)}
           </span>
@@ -604,125 +813,5 @@ function FileRow({
         </TooltipPopup>
       </Tooltip>
     </li>
-  );
-}
-
-type FilterOption = ProjectFilterOption<EnvironmentProject>;
-
-/**
- * The filter: every project or one, as every section's project filter offers them, with how the
- * list shows (as a list, or the whole file tree), Manage projects and Add a project at its foot.
- */
-function RepositoryFilter({
-  repositories,
-  scoped,
-}: {
-  readonly repositories: ReadonlyArray<EnvironmentProject>;
-  readonly scoped: EnvironmentProject | null;
-}) {
-  const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
-  const navigate = useNavigate();
-  const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
-    open: false,
-    query: "",
-  });
-  const filter = useComboboxFilter();
-  const view = repositoryView.useValue();
-  const items = projectFilterOptions({
-    repositories: repositories.map((repository) => ({
-      key: repositoryKey(repository),
-      label: repository.title,
-      repository,
-    })),
-    wikis: [],
-  });
-  const filtered = searchProjectFilterOptions(items, menu.query, (item, query) =>
-    filter.contains(item, query, (candidate) => candidate.label),
-  );
-  const value = scoped
-    ? projectFilterValue({ kind: "repository", key: repositoryKey(scoped) })
-    : projectFilterValue({ kind: "all" });
-  const selected = items.find((item) => item.value === value) ?? items[0];
-  const closeAnd = (then: () => void) => {
-    dispatchMenu({ type: "open-changed", open: false });
-    then();
-  };
-  return (
-    <Combobox
-      items={items}
-      filteredItems={filtered}
-      autoHighlight
-      itemToStringLabel={(item: FilterOption) => item.label}
-      isItemEqualToValue={(a: FilterOption, b: FilterOption) => a.value === b.value}
-      open={menu.open}
-      onOpenChange={(open) => dispatchMenu({ type: "open-changed", open })}
-      value={selected ?? null}
-      onValueChange={(item: FilterOption | null) => {
-        if (!item) return;
-        repositoryScope.set(item.kind === "repository" ? repositoryKey(item.repository) : null);
-        repositoryCheckout.set(null);
-      }}
-    >
-      <ComboboxTrigger
-        render={
-          <SidebarHeaderIconButton
-            label={scoped ? `Filter by project: ${scoped.title}` : "Filter by project"}
-          />
-        }
-      >
-        {scoped ? (
-          <span className="flex shrink-0">
-            <ProjectFavicon project={scoped} className="size-4" />
-          </span>
-        ) : (
-          <ListFilterIcon className="size-4" />
-        )}
-      </ComboboxTrigger>
-      <ComboboxPopup
-        align={!isMobile && !sidebarOpen ? "start" : "end"}
-        className="min-w-56 max-w-[min(18rem,var(--available-width))] overflow-hidden"
-      >
-        <ComboboxSearchInput
-          aria-label="Search projects"
-          placeholder="Search projects..."
-          value={menu.query}
-          onChange={(event) => dispatchMenu({ type: "query-changed", query: event.target.value })}
-        />
-        <ComboboxEmpty>No matching projects.</ComboboxEmpty>
-        <ComboboxList>
-          {(item: FilterOption) => (
-            <ComboboxItem key={item.value} hideIndicator value={item}>
-              <ProjectFilterIcon option={item} />
-              <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-            </ComboboxItem>
-          )}
-        </ComboboxList>
-        <SidebarPickerFooter>
-          <SidebarPickerAction
-            icon={view === "tree" ? ListIcon : ListTreeIcon}
-            onClick={() => closeAnd(() => repositoryView.set(view === "tree" ? "list" : "tree"))}
-          >
-            {view === "tree" ? "Show as list" : "Show the file tree"}
-          </SidebarPickerAction>
-          <SidebarPickerAction
-            icon={SettingsIcon}
-            onClick={() =>
-              closeAnd(() => {
-                setOpenMobile(false);
-                void navigate({ to: "/settings/projects" });
-              })
-            }
-          >
-            Manage projects
-          </SidebarPickerAction>
-          <SidebarPickerAction
-            icon={FolderPlusIcon}
-            onClick={() => closeAnd(() => openCommandPalette({ open: "add-project" }))}
-          >
-            Add a project
-          </SidebarPickerAction>
-        </SidebarPickerFooter>
-      </ComboboxPopup>
-    </Combobox>
   );
 }

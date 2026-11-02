@@ -2,7 +2,7 @@ import type { EnvironmentId, ProjectContentMatch, ProjectId } from "@t3tools/con
 
 import type { ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 
-import { parseRepositoryTabKey } from "../repositories/repositoryTabs";
+import { parseRepositoryTabKey, tabFolder } from "../repositories/repositoryTabs";
 
 export type IndexedContentMatch = ProjectContentMatch & { readonly resultIndex: number };
 
@@ -68,7 +68,10 @@ function fileRows(matches: ReadonlyArray<IndexedContentMatch>): ContentSearchRow
 
 export type ContentSearchTarget = Omit<ActiveProjectTarget, "threadRef">;
 
-/** Astrolabe: the checkout of the Projects tab in front, where no thread names one. */
+/**
+ * Astrolabe: the checkout of the Projects tab in front, where no thread names one: its folder, or
+ * the worktree holding its branch among the project's `worktrees`.
+ */
 export function focusedCheckoutTarget(
   focusedKey: string,
   projects: ReadonlyArray<{
@@ -77,18 +80,20 @@ export function focusedCheckoutTarget(
     readonly title: string;
     readonly workspaceRoot: string;
   }>,
+  worktrees: ReadonlyArray<{ readonly path: string; readonly branch: string | null }> | null,
 ): ContentSearchTarget | null {
   const tab = parseRepositoryTabKey(focusedKey);
-  if (tab === null) return null;
+  if (tab === null || !("projectId" in tab)) return null;
   const project = projects.find(
     (candidate) => candidate.environmentId === tab.environmentId && candidate.id === tab.projectId,
   );
-  if (project === undefined) return null;
+  const cwd = tabFolder(tab, worktrees);
+  if (project === undefined || cwd === null) return null;
   return {
     environmentId: tab.environmentId,
     projectId: tab.projectId,
-    cwd: tab.cwd,
-    worktreePath: tab.cwd === project.workspaceRoot ? null : tab.cwd,
+    cwd,
+    worktreePath: cwd === project.workspaceRoot ? null : cwd,
     projectName: project.title,
   };
 }

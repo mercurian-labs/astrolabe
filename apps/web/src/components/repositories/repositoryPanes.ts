@@ -1,13 +1,13 @@
 import { allTabs, focusedPane } from "~/panes/arrangement";
 import { workspace } from "~/panes/workspace";
 import { filePaneOf, openLocalGraph } from "./localGraph";
-import { parseRepositoryTabKey, repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
+import { parseRepositoryTabKey, repositoryTabKey, type ProjectFileTab } from "./repositoryTabs";
 
 /**
  * Opens a file's local graph as a split to its right, showing the file first where it is not open
  * (see `openLocalGraph`).
  */
-export function showLocalGraph(file: RepositoryFileTab) {
+export function showLocalGraph(file: ProjectFileTab) {
   const key = repositoryTabKey(file);
   const arrangement = workspace.arrangement();
   if (!allTabs(arrangement).includes(key)) {

@@ -99,7 +99,7 @@ function DiffFinder({ onPick }: { readonly onPick: (key: string) => void }) {
         kind: "diff",
         environmentId: repository.environmentId,
         projectId: repository.id,
-        cwd: repository.workspaceRoot,
+        checkout: { cwd: repository.workspaceRoot },
         source,
       });
       return [
@@ -223,7 +223,7 @@ function RepositoryFiles({
         kind: "file",
         environmentId: repository.environmentId,
         projectId: repository.id,
-        cwd,
+        checkout: { cwd },
         path: match.path,
       });
       return {

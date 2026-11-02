@@ -3,7 +3,11 @@ import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contrac
 import { useSyncExternalStore } from "react";
 
 import { pullRequestTargetOfKey } from "~/components/pullRequest/pullRequestTabs";
-import { parseRepositoryTabKey, repositoryTabKey } from "~/components/repositories/repositoryTabs";
+import {
+  parseRepositoryTabKey,
+  repositoryTabKey,
+  type RepositoryCheckout,
+} from "~/components/repositories/repositoryTabs";
 import {
   pullRequestSurfaceId,
   selectThreadRightPanelState,
@@ -278,11 +282,11 @@ export function surfaceOfKey(key: string): RightPanelSurface | null {
   );
 }
 
-/** The checkout a thread's surfaces read: its working tree, or its repository's own. */
+/** The checkout a thread's surfaces read: its working tree's branch, or its repository's own. */
 export interface ThreadCheckout {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
-  readonly cwd: string;
+  readonly checkout: RepositoryCheckout;
 }
 
 /**

@@ -22,7 +22,6 @@ import {
   type RepositoryLocationsTab,
   type RepositoryProblemsTab,
   type RepositorySearchTab,
-  type RepositoryTab,
 } from "../repositoryTabs";
 import { MultibufferView } from "./MultibufferView";
 import { locationFiles, problemCounts, problemFiles, searchFiles } from "./multibufferInputs";
@@ -41,14 +40,20 @@ const SEARCH_MATCH_CAP = 5000;
 /** Above this many files, replace-all asks first. */
 const REPLACE_CONFIRM_FILES = 10;
 
-type Checkout = Pick<RepositoryTab, "environmentId" | "projectId" | "cwd">;
+type Checkout = Pick<RepositorySearchTab, "environmentId" | "projectId" | "cwd">;
 
 /** Opens a file of the checkout at a line, in the panes the view is in. */
 function useOpenFile(checkout: Checkout) {
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   return (path: string, line: number) => {
     const { environmentId, projectId, cwd } = checkout;
-    const key = repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path });
+    const key = repositoryTabKey({
+      kind: "file",
+      environmentId,
+      projectId,
+      checkout: { cwd },
+      path,
+    });
     panes.update((next) => openTab(next, key));
     repositoryFileReveal.request(key, line);
   };

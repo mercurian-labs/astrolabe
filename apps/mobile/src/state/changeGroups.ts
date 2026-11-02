@@ -34,6 +34,7 @@ const changeGroupsAtom = Atom.family((key: string) =>
         overviews: get(wikiEnvironment.overview(environmentId)) ?? [],
         decisions: decisions?.decisions ?? [],
         settings: settings?.changeGroupGrouping ?? null,
+        threadBranches: decisions?.threadBranches ?? {},
       });
     });
     return groups.length === 0 ? EMPTY : groups;

@@ -13,9 +13,9 @@ import {
   parseRepositoryTabKey,
   repositoryTabKey,
   sameCheckout,
+  type ProjectFileTab,
   type RepositoryFileTab,
   type RepositoryGraphTab,
-  type RepositoryTab,
 } from "./repositoryTabs";
 
 /**
@@ -24,7 +24,7 @@ import {
  * one file; it opens as a split to the right of its file.
  */
 
-type Checkout = Pick<RepositoryTab, "environmentId" | "projectId" | "cwd">;
+type Checkout = Pick<RepositoryGraphTab, "environmentId" | "projectId" | "checkout">;
 
 /** A local graph's share of the room it divides with its file. */
 const GRAPH_WEIGHT = 0.4;
@@ -46,7 +46,7 @@ export const localGraphKey = (checkout: Checkout, path: string | null = null) =>
     kind: "graph",
     environmentId: checkout.environmentId,
     projectId: checkout.projectId,
-    cwd: checkout.cwd,
+    checkout: checkout.checkout,
     path,
   });
 
@@ -74,7 +74,7 @@ export function followedPath(
  * open comes to the front instead of a second opening: in its own pane, or split out to the
  * file's right when it shared the file's pane. One pinned elsewhere is pinned to this file.
  */
-export function openLocalGraph(arrangement: Arrangement, file: RepositoryFileTab): Arrangement {
+export function openLocalGraph(arrangement: Arrangement, file: ProjectFileTab): Arrangement {
   const fileKey = repositoryTabKey(file);
   if (!leafWithTab(arrangement.root, fileKey)) return arrangement;
   let next = activateTab(arrangement, fileKey);
@@ -118,13 +118,13 @@ export function filePaneOf(
 
 /**
  * Opens the local graph of the file in front of the focused pane of `panes` (the keyboard menu's
- * and the Command Palette's), or null when that is not a repository file.
+ * and the Command Palette's), or null when that is not a project's file.
  */
 export function localGraphOpener(panes: PaneArrangementStore | null): (() => void) | null {
   const arrangement = panes?.getSnapshot()?.arrangement;
   if (panes === null || arrangement === undefined) return null;
   const tab = parseRepositoryTabKey(focusedPane(arrangement).active);
-  if (tab?.kind !== "file") return null;
+  if (tab?.kind !== "file" || !("projectId" in tab)) return null;
   return () => panes.update((next) => openLocalGraph(next, tab));
 }
 

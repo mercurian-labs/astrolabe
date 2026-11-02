@@ -9,6 +9,7 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { useActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useWorkspaceFocusedKey } from "~/panes/workspace";
 import { useProjects } from "~/state/entities";
+import { useListedProjectWorktrees } from "~/state/worktrees";
 import { useRenderedAppearance, useTheme } from "~/hooks/useTheme";
 import { cn } from "~/lib/utils";
 import { useProjectContentSearch } from "~/state/queries";
@@ -20,6 +21,7 @@ import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { openRepositoryFileAtLine } from "../repositories/openInRepositories";
 import { openSearchResults } from "../repositories/multibuffer/openMultibuffer";
+import { parseRepositoryTabKey } from "../repositories/repositoryTabs";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
@@ -166,7 +168,6 @@ function OpenContentSearchDialog(props: {
         environmentId: target.environmentId,
         projectId: target.projectId,
         cwd: target.cwd,
-        worktreePath: target.worktreePath,
         path: match.path,
         line: match.lineNumber,
       },
@@ -465,7 +466,14 @@ function OpenContentSearchDialog(props: {
 
 export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProps) {
   const thread = useActiveProjectTarget();
-  const inFront = focusedCheckoutTarget(useWorkspaceFocusedKey(), useProjects());
+  const focusedKey = useWorkspaceFocusedKey();
+  const focusedTab = parseRepositoryTabKey(focusedKey);
+  const worktrees = useListedProjectWorktrees(
+    focusedTab && "projectId" in focusedTab
+      ? { environmentId: focusedTab.environmentId, projectId: focusedTab.projectId }
+      : null,
+  );
+  const inFront = focusedCheckoutTarget(focusedKey, useProjects(), worktrees?.worktrees ?? null);
   const active: ContentSearchTarget | null = inFront ?? thread;
   // Astrolabe: opening a match leaves the thread while the palette closes; swapping to the empty
   // dialog then would drop the focused field, and the closing dialog would take focus back.

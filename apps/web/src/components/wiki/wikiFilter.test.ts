@@ -50,6 +50,11 @@ describe("the wikis filter", () => {
     expect(parseWikiFilter('{"wikis":["a",3],"changed":true}')).toEqual({
       wikis: ["a"],
       changed: true,
+      hidden: [],
+    });
+    expect(parseWikiFilter('{"hidden":["env:/wt/a",1]}')).toEqual({
+      ...EMPTY_WIKI_FILTER,
+      hidden: ["env:/wt/a"],
     });
     expect(parseWikiFilter('{"changed":"yes"}')).toEqual(EMPTY_WIKI_FILTER);
     expect(parseWikiFilter("nope")).toBeNull();

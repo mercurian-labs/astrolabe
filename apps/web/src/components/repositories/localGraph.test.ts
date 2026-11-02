@@ -13,17 +13,17 @@ import {
   openLocalGraph,
   pinLocalGraph,
 } from "./localGraph";
-import { repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
+import { repositoryTabKey, type ProjectFileTab } from "./repositoryTabs";
 
 const checkout = {
   environmentId: EnvironmentId.make("env"),
   projectId: ProjectId.make("project"),
-  cwd: "/repo",
+  checkout: { cwd: "/repo" },
 };
-const file = (path: string, cwd = checkout.cwd): RepositoryFileTab => ({
+const file = (path: string, cwd = "/repo"): ProjectFileTab => ({
   kind: "file",
   ...checkout,
-  cwd,
+  checkout: { cwd },
   path,
 });
 const key = (path: string, cwd?: string) => repositoryTabKey(file(path, cwd));
@@ -124,7 +124,9 @@ describe("opening a local graph", () => {
     );
     const after = openLocalGraph(before, file("a.ts", "/worktree"));
     expect(leaves(after.root)).toHaveLength(3);
-    expect(leafWithTab(after.root, localGraphKey({ ...checkout, cwd: "/worktree" }))).toBeDefined();
+    expect(
+      leafWithTab(after.root, localGraphKey({ ...checkout, checkout: { cwd: "/worktree" } })),
+    ).toBeDefined();
   });
 });
 

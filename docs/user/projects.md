@@ -5,14 +5,43 @@ app. A project can be linked to a [wiki](wikis.md) that holds its research and p
 
 ## Find a file
 
-The sidebar leads with what is moving: a project's uncommitted changes, its branch against its
-base, and the files its commits changed most recently. Pick one project in the filter to see all
-of that for it; with every project, each shows its latest files.
+The sidebar leads with what is moving: each worktree's uncommitted changes, its branch against
+its base, and the files its commits changed most recently. It keeps up as files change on disk,
+whoever changes them: an agent, a terminal, or another editor. With several projects, each folds
+under its name, open when it holds the tab you're on.
 
-- **Search** finds a file by name in the project you picked.
-- **Show the file tree**, in the filter, swaps the list for the whole tree.
-- **Checkout** appears when a thread works in its own copy of the project. Pick the thread's
-  copy to read and edit what its agent is changing.
+- **The filter** picks which projects show and, under each project (open it with its arrow),
+  hides worktrees you don't need. **Has changes** shows only worktrees with uncommitted files; it
+  counts every worktree when you turn it on, which takes a while in a project with many. Pills
+  under the title show what's filtered. Whatever the tab in front is in shows anyway, marked
+  "hidden", until you move to another tab.
+- **Search** finds a file by name when one project shows, in the worktree of the tab you're on.
+- The tree button on a worktree's header swaps its changes for its whole file tree, and back. The
+  project's own checkout shows its file tree until you switch it.
+
+## Worktrees and branches
+
+A project lists its worktrees under the branch checked out there, the project's own checkout
+first. A worktree gets a number the first time you open something in it, and keeps it while it
+exists. No two worktrees share a number, even in different projects; its files' tabs show the
+number, so you can tell where each branch is. Tabs follow the branch, not the folder: if a
+worktree later holds another branch, its old tabs offer to open their branch again.
+
+Agents' tools leave a worktree per run, so a busy project can have hundreds. The list shows the
+ones that matter: those with a number, an agent working, a terminal, a Keep pin, open tabs,
+uncommitted changes you have seen, or activity in the last day. The rest fold under **N more worktrees**,
+grouped by the tool that made them, with a search box.
+
+- **Open a branch**, beside the filter while one project shows, puts a branch in a worktree: the
+  one it is already in, else a free one, else a new one. Turn on **In a new worktree** in it to
+  give every branch you open a worktree of its own instead. Type a new name to make a branch from
+  the main checkout's branch.
+- A worktree is free unless a thread uses it, a terminal is open in it, it is the project's own
+  checkout, or you chose **Keep for this branch** in its menu.
+- When a free worktree takes another branch, its uncommitted work is set aside on its branch and
+  comes back when you open that branch again. If the branch has new commits by then, the work is
+  kept under **Set-aside work** for you to open or discard.
+- **Delete worktree…**, in a worktree's menu, says first what you would lose. Its branch stays.
 
 ## Search the code
 
@@ -100,7 +129,8 @@ first built, the files that import this one appear once it finishes.
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base
-opens your branch's. Comment on lines to send them to the thread working in that copy, or to the
+opens your branch's, from the **⋯** menu on a worktree's header. To compare with another
+branch, pick it from the branch name in the changes tab's title. Comment on lines to send them to the thread working in that copy, or to the
 project's new thread.
 
 In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.

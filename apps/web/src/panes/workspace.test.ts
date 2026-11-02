@@ -296,7 +296,7 @@ describe("the shared panes", () => {
         kind: "file",
         environmentId: "env-1" as EnvironmentId,
         projectId: ProjectId.make("project-1"),
-        cwd: "/work/tree",
+        checkout: { cwd: "/work/tree" },
         path,
       });
     const device = memoryStorage({
@@ -332,7 +332,7 @@ describe("the shared panes", () => {
         kind: "file",
         environmentId: "env-1" as EnvironmentId,
         projectId: ProjectId.make("project-1"),
-        cwd: "/work/tree",
+        checkout: { cwd: "/work/tree" },
         path,
       });
     workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
@@ -360,7 +360,7 @@ describe("the shared panes", () => {
       kind: "file",
       environmentId: "env-1" as EnvironmentId,
       projectId: ProjectId.make("project-1"),
-      cwd: "/work/tree",
+      checkout: { cwd: "/work/tree" },
       path: "one.ts",
     });
     const device = memoryStorage({
@@ -453,7 +453,7 @@ describe("the shared panes", () => {
       kind: "diff",
       environmentId: refA.environmentId,
       projectId: ProjectId.make("project-1"),
-      cwd: "/repo",
+      checkout: { cwd: "/repo" },
       source: "working-tree",
     });
     workspace.openOnItsOwn(diff, changes);
@@ -507,7 +507,7 @@ describe("switching to Agents", () => {
     kind: "file",
     environmentId: "env-1" as EnvironmentId,
     projectId: ProjectId.make("project-1"),
-    cwd: "/repo",
+    checkout: { cwd: "/repo" },
     path: "README.md",
   });
   const terminal = chatSurfaceKey(chatA, "terminal:t1");
@@ -580,7 +580,7 @@ describe("a thread's surface on its own", () => {
   const checkout = {
     environmentId: "env-1" as EnvironmentId,
     projectId: ProjectId.make("project-1"),
-    cwd: "/work/tree",
+    checkout: { cwd: "/work/tree" },
   };
 
   it("is a file of the thread's checkout for a file, and its uncommitted changes for the diff", () => {
@@ -624,7 +624,14 @@ describe("results tabs", () => {
     projectId: ProjectId.make("project-1"),
     cwd: "/repo",
   };
-  const file = (path: string) => repositoryTabKey({ kind: "file", ...checkout, path });
+  const file = (path: string) =>
+    repositoryTabKey({
+      kind: "file",
+      environmentId: checkout.environmentId,
+      projectId: checkout.projectId,
+      checkout: { cwd: checkout.cwd },
+      path,
+    });
 
   it("keep their place: a sidebar click or a step opens beside them", () => {
     const workspace = createWorkspace(() => memoryStorage());

@@ -4,7 +4,8 @@ Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
 leftmost), the sidebar on screen (Agents, Wikis, Projects or Changes), each pane of the
-one shared set (panes.md), and a chat column outside the panes. A chat tab belongs to its
+one shared set (panes.md), and a chat column outside the panes; a page with neither
+panes nor a chat (Settings) makes the main area (`[data-slot='sidebar-inset']`) a place. A chat tab belongs to its
 pane's place (`keyboardNav/regions.ts` `CHAT_COLUMN`); moving into that pane lands on its
 composer. Never anything inside one (no stop for a tab strip, the timeline or the composer).
 
@@ -110,7 +111,7 @@ Space `d` scrolls the place half a page.
 ```
 preview_act press     key=k modifiers=["Meta"]                    # Cmd+K, then
 preview_act press     key=h                                       # h focuses a row (a click hands focus to the composer)
-preview_act press     key=l modifiers=["Control"]                 # to the main area
+preview_act press     key=l modifiers=["Control"]                 # to the main area (run this on Wikis: on a chat it lands in the composer, where Ctrl+H does nothing)
 preview_act press     key=h modifiers=["Control"]                 # back to the sidebar
 preview_act press     j                                           # next row
 preview_act press     Space                                       # leader

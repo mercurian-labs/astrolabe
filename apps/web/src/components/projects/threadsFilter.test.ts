@@ -1,9 +1,12 @@
+import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { makeThreadFixture } from "../../test-fixtures";
 import {
   EMPTY_THREADS_FILTER,
   filterHasProject,
   filterProjectGroupKeys,
+  listFilteredThreads,
   parseThreadsFilter,
   threadStatusFilterOf,
   toggleFilterProject,
@@ -66,5 +69,37 @@ describe("the threads filter", () => {
       parseThreadsFilter('{"projects":["r1",4],"kinds":["wikis"],"statuses":["asleep"]}'),
     ).toEqual({ projects: ["r1"], statuses: [] });
     expect(parseThreadsFilter("not json")).toBeNull();
+  });
+});
+
+describe("the threads the filter lists", () => {
+  const thread = (id: string, project: string, archived = false) =>
+    makeThreadFixture({
+      id: ThreadId.make(id),
+      projectId: ProjectId.make(project),
+      ...(archived ? { archivedAt: "2026-10-01T00:00:00.000Z" } : {}),
+    });
+  const threads = [
+    thread("kept", "shown"),
+    thread("other", "hidden"),
+    thread("gone", "hidden", true),
+  ];
+  const list = (openKey: string | null) =>
+    listFilteredThreads(threads, {
+      scopedProjectKeys: new Set(["environment-test:shown"]),
+      statuses: [],
+      openKey,
+      keyOf: (each) => each.id,
+    });
+
+  it("lists the open thread the filter hides, and says it is outside the filter", () => {
+    const { listed, outsideKey } = list("other");
+    expect(listed.map((each) => each.id)).toEqual(["kept", "other"]);
+    expect(outsideKey).toBe("other");
+  });
+
+  it("changes nothing for an open thread the filter keeps, or one never listed at all", () => {
+    expect(list("kept")).toEqual({ listed: [threads[0]], outsideKey: null });
+    expect(list("gone")).toEqual({ listed: [threads[0]], outsideKey: null });
   });
 });

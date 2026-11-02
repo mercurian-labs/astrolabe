@@ -1,4 +1,8 @@
-import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "../Sidebar.logic";
+import {
+  filterSidebarV2VisibleThreads,
+  resolveSidebarThreadStatus,
+  type SidebarThreadStatus,
+} from "../Sidebar.logic";
 import { storedChoice } from "./storedChoice";
 
 /**
@@ -52,6 +56,42 @@ export function threadMatchesStatuses(
 
 const threadsFilterIsEmpty = (filter: ThreadsFilter): boolean =>
   filter.projects.length === 0 && filter.statuses.length === 0;
+
+type ListableThread = Parameters<typeof filterSidebarV2VisibleThreads>[0][number] &
+  Parameters<typeof threadMatchesStatuses>[0];
+
+/**
+ * The threads the filter lists, plus the open one while the filter hides it, named as
+ * `outsideKey` so its row can say so. Opening a thread never changes the filter.
+ */
+export function listFilteredThreads<Thread extends ListableThread>(
+  threads: ReadonlyArray<Thread>,
+  {
+    scopedProjectKeys,
+    statuses,
+    openKey,
+    keyOf,
+  }: {
+    readonly scopedProjectKeys: ReadonlySet<string> | null;
+    readonly statuses: ReadonlyArray<ThreadStatusFilter>;
+    readonly openKey: string | null;
+    readonly keyOf: (thread: Thread) => string;
+  },
+): { readonly listed: ReadonlyArray<Thread>; readonly outsideKey: string | null } {
+  const listed = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter((thread) =>
+    threadMatchesStatuses(thread, statuses),
+  );
+  if (openKey === null || listed.some((thread) => keyOf(thread) === openKey)) {
+    return { listed, outsideKey: null };
+  }
+  const open = threads.find(
+    (thread) =>
+      keyOf(thread) === openKey && filterSidebarV2VisibleThreads([thread], null).length === 1,
+  );
+  return open === undefined
+    ? { listed, outsideKey: null }
+    : { listed: [...listed, open], outsideKey: openKey };
+}
 
 const without = <T>(values: ReadonlyArray<T>, removed: ReadonlyArray<T>) =>
   values.filter((value) => !removed.includes(value));

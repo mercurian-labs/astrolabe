@@ -20,7 +20,12 @@ import {
 import { CodeGraphView, GraphNotice, type CodeGraphViewHandle } from "../codeGraph/CodeGraphView";
 import { storedChoice } from "../projects/storedChoice";
 import { filePaneOf, followedPath, followLocalGraph, pinLocalGraph } from "./localGraph";
-import { fileName, repositoryTabKey, type RepositoryGraphTab } from "./repositoryTabs";
+import {
+  fileName,
+  repositoryTabKey,
+  type CheckedOutRepositoryTab,
+  type RepositoryGraphTab,
+} from "./repositoryTabs";
 
 /** The filter panel's choices, kept on the device for every local graph. */
 const graphOptions = storedChoice<CodeGraphOptions>({
@@ -40,7 +45,7 @@ export default function RepositoryGraphView({
   tab,
 }: {
   readonly tabKey: string;
-  readonly tab: RepositoryGraphTab;
+  readonly tab: RepositoryGraphTab & CheckedOutRepositoryTab;
 }) {
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   const arrangement = useSyncExternalStore(

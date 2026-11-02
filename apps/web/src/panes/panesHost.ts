@@ -25,6 +25,8 @@ export interface PaneTabLabel {
   readonly tooltip?: ReactNode;
   /** Drawn between the icon and the title, as a playing browser tab's speaker. */
   readonly accessory?: ReactNode;
+  /** Drawn after the title, just before the close button, as a file's worktree number. */
+  readonly trailing?: ReactNode;
   /** Renames the tab; double-clicking its title, or its menu's Rename, edits it in place. */
   readonly rename?: (title: string) => void;
 }

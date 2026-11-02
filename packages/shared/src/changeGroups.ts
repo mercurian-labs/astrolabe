@@ -25,7 +25,13 @@ export interface ChangeGroupThread {
   readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
   /** The branch the thread works on, if any. */
   readonly branch: string | null;
+  /** Astrolabe: every branch the thread has worked on; absent reads as `branch` alone. */
+  readonly branches?: ReadonlyArray<string>;
 }
+
+/** Every branch a thread has worked on, its current one included. */
+const branchesOf = (thread: ChangeGroupThread) =>
+  new Set([...(thread.branches ?? []), ...(thread.branch === null ? [] : [thread.branch])]);
 
 export interface ChangeGroupWikiChange {
   readonly wikiName: string;
@@ -125,9 +131,12 @@ export interface ChangeGroup {
 
 const ISSUE_KEY = /\b[A-Z][A-Z0-9]*-\d+\b/g;
 const issueKeys = (title: string) => new Set(title.match(ISSUE_KEY) ?? []);
-/** A thread's issue keys: its title's, and its branch's, which are usually lower case. */
+/** A thread's issue keys: its title's, and its branches', which are usually lower case. */
 const threadIssueKeys = (thread: ChangeGroupThread) =>
-  new Set([...issueKeys(thread.title), ...issueKeys((thread.branch ?? "").toUpperCase())]);
+  new Set([
+    ...issueKeys(thread.title),
+    ...[...branchesOf(thread)].flatMap((branch) => [...issueKeys(branch.toUpperCase())]),
+  ]);
 
 function pullRequestMember(
   link: ThreadPullRequestLink,
@@ -395,6 +404,9 @@ export function deriveChangeGroups(input: {
 /** Branches too common to say two threads work on the same thing. */
 const SHARED_BRANCHES = new Set(["main", "master", "develop", "trunk"]);
 
+/** Whether work on a branch says nothing about which effort it belongs to. */
+export const isSharedBranch = (branch: string) => SHARED_BRANCHES.has(branch);
+
 /**
  * A group's threads: the one it started from, those that opened its change requests, their
  * forks and coordinator's children, threads on its pull requests' branches and threads naming
@@ -461,7 +473,8 @@ function groupThreadsOf(input: {
       ),
     );
     for (const thread of threads.values()) {
-      if (thread.branch !== null && branches.has(thread.branch)) add(thread.id, "same-branch");
+      if ([...branchesOf(thread)].some((branch) => branches.has(branch)))
+        add(thread.id, "same-branch");
     }
   }
 

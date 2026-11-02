@@ -61,6 +61,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeServerLifecycle
   | typeof WS_METHODS.scheduledTasksSubscribe
   | typeof WS_METHODS.wikiSubscribe
+  | typeof WS_METHODS.worktreesSubscribeChanges
   | typeof WS_METHODS.documentsSubscribe
   | typeof WS_METHODS.codeIndexSubscribe
   | typeof WS_METHODS.languageServersSubscribe

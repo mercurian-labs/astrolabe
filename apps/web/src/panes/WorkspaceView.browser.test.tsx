@@ -380,7 +380,7 @@ describe("WorkspaceView chat tabs", () => {
       kind: "file",
       environmentId: env,
       projectId: ProjectId.make("project-1"),
-      cwd: "/repo",
+      checkout: { cwd: "/repo" },
       path: "README.md",
     });
     workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
@@ -576,7 +576,7 @@ describe("WorkspaceView under the chat routes", () => {
       kind: "file",
       environmentId: env,
       projectId: ProjectId.make("project-1"),
-      cwd: "/repo",
+      checkout: { cwd: "/repo" },
       path: "README.md",
     });
     workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
@@ -609,7 +609,7 @@ describe("WorkspaceView switching to Agents", () => {
     kind: "file",
     environmentId: env,
     projectId: ProjectId.make("project-1"),
-    cwd: "/repo",
+    checkout: { cwd: "/repo" },
     path: "README.md",
   });
   const terminal = chatSurfaceKey(chatOf("A"), "terminal:t1");

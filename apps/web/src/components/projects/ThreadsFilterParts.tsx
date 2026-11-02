@@ -8,10 +8,30 @@ import {
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ProjectFaviconProject } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "./ProjectFilterIcon";
 import type { ProjectFilterOption } from "./projectFilter";
 import { THREAD_STATUS_FILTER_LABELS, type ThreadStatusFilter } from "./threadsFilter";
+
+/**
+ * Astrolabe: marks a row or section the filter hides, shown anyway because it is open (the
+ * thread on screen, the document or tab in front) until something else is.
+ */
+export function OutsideFilterMark() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span className="shrink-0 text-3xs text-sidebar-muted-foreground/70" />}
+      >
+        hidden
+      </TooltipTrigger>
+      <TooltipPopup side="right" className="max-w-64">
+        <div className="text-xs">The filter hides this. It shows while you have it open.</div>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
 
 /** A filter row's checkbox, drawn only: the row itself is the option. */
 export function ThreadsFilterCheckbox({ checked }: { readonly checked: boolean }) {
@@ -94,7 +114,8 @@ export function OneTapFilterPill({
 }: {
   readonly on: boolean;
   readonly label: string;
-  readonly count: number;
+  /** Null while not yet known. */
+  readonly count: number | null;
   readonly icon: ReactNode;
   readonly onToggle: () => void;
 }) {
@@ -113,7 +134,7 @@ export function OneTapFilterPill({
     >
       {icon}
       {label}
-      <span className="tabular-nums opacity-70">{count}</span>
+      {count === null ? null : <span className="tabular-nums opacity-70">{count}</span>}
     </button>
   );
 }

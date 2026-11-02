@@ -5,14 +5,15 @@ import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import { workspace } from "~/panes/workspace";
 import { repositoryFileReveal } from "./repositoryFileReveal";
-import { repositoryCheckout, repositoryScope, repositoryView } from "./repositoryScope";
-import { repositoryTabKey } from "./repositoryTabs";
+import { revealInRepositoryFilter } from "./repositoryFilter";
+import { showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
+import { repositoryTabKey, type RepositoryCheckout } from "./repositoryTabs";
 
 /**
  * Astrolabe: "Open in Projects" for a thread's Files and Diffs, whose home is the
- * Repositories section: an open file opens there, on the thread's checkout; Diffs opens the
- * checkout's uncommitted changes; the file explorer opens the checkout's file tree. The thread
- * keeps its own tab, as its views are its own. Null for the panel's other surfaces.
+ * Repositories section: an open file opens there, on the thread's branch (in whichever worktree
+ * holds it); Diffs opens its uncommitted changes; the file explorer opens the file trees. The
+ * thread keeps its own tab, as its views are its own. Null for the panel's other surfaces.
  */
 export function repositoryMoveOfSurface(
   threadRef: ScopedThreadRef | null,
@@ -29,16 +30,31 @@ export function repositoryMoveOfSurface(
       const { environmentId, projectId } = thread;
       const cwd = thread.worktreePath ?? readProject({ environmentId, projectId })?.workspaceRoot;
       if (!cwd) return;
-      repositoryScope.set(`${environmentId}:${projectId}`);
-      repositoryCheckout.set(thread.worktreePath);
+      const checkout: RepositoryCheckout =
+        thread.worktreePath !== null && thread.branch !== null
+          ? { branch: thread.branch }
+          : { cwd };
       if (path !== null) {
-        workspace.show(repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path }));
+        workspace.show(
+          repositoryTabKey({ kind: "file", environmentId, projectId, checkout, path }),
+        );
       } else if (surfaceId === "diff") {
         workspace.show(
-          repositoryTabKey({ kind: "diff", environmentId, projectId, cwd, source: "working-tree" }),
+          repositoryTabKey({
+            kind: "diff",
+            environmentId,
+            projectId,
+            checkout,
+            source: "working-tree",
+          }),
         );
       } else {
-        repositoryView.set("tree");
+        // The tree has no tab to bring its worktree into view, so the filter makes room for it.
+        revealInRepositoryFilter(
+          `${environmentId}:${projectId}`,
+          worktreeFilesKey(environmentId, cwd),
+        );
+        showWorktreeFiles(worktreeFilesKey(environmentId, cwd), true);
       }
       void navigate({ to: "/repositories" });
     },
@@ -46,24 +62,27 @@ export function repositoryMoveOfSurface(
 }
 
 /**
- * Astrolabe: opens a file of a checkout (a thread's working tree, or the repository's own when
- * `worktreePath` is null) in a Repositories tab, asking it to show `line`.
+ * Astrolabe: opens a file of a checkout (a thread's working tree, or the repository's own) in a
+ * Projects tab of that folder, asking it to show `line`.
  */
 export function openRepositoryFileAtLine(
   target: {
     readonly environmentId: EnvironmentId;
     readonly projectId: ProjectId;
     readonly cwd: string;
-    readonly worktreePath: string | null;
     readonly path: string;
     readonly line: number;
   },
   navigate: NavigateFn,
 ) {
   const { environmentId, projectId, cwd, path } = target;
-  const tabKey = repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path });
-  repositoryScope.set(`${environmentId}:${projectId}`);
-  repositoryCheckout.set(target.worktreePath);
+  const tabKey = repositoryTabKey({
+    kind: "file",
+    environmentId,
+    projectId,
+    checkout: { cwd },
+    path,
+  });
   workspace.show(tabKey);
   repositoryFileReveal.request(tabKey, target.line);
   void navigate({ to: "/repositories" });

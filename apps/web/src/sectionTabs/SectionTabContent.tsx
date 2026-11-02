@@ -5,13 +5,15 @@ import {
 } from "~/components/changeRequests/groups/changeGroupTabs";
 import { useChangeGroupTabLabel } from "~/components/changeRequests/groups/useChangeGroupTabLabel";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
-import { RepositoryTabView, repositoryTabLabel } from "~/components/repositories/RepositoryTabView";
+import {
+  RepositoryTabView,
+  useRepositoryTabLabel,
+} from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
-import type { ReactNode } from "react";
 
 import ChatView from "~/components/ChatView";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
@@ -35,7 +37,7 @@ import {
   surfaceKey,
   type Arrangement,
 } from "~/panes/arrangement";
-import type { PaneArrangementStore } from "~/panes/panesHost";
+import type { PaneArrangementStore, PaneTabLabel } from "~/panes/panesHost";
 import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
@@ -87,11 +89,11 @@ export interface SectionTabMove {
 }
 
 /** The title and icon of a chat, document or pull request tab; null for any other key. */
-export function useSectionTabLabel(key: string): { title: string; icon: ReactNode } | null {
+export function useSectionTabLabel(key: string): PaneTabLabel | null {
   const chat = parseChatTabKey(key);
   const thread = useThreadShell(chat);
   const wikiLabel = useWikiTabLabel(key);
-  const repositoryLabel = repositoryTabLabel(key);
+  const repositoryLabel = useRepositoryTabLabel(key);
   const groupLabel = useChangeGroupTabLabel(key);
   if (repositoryLabel !== null) return repositoryLabel;
   if (groupLabel !== null) return groupLabel;

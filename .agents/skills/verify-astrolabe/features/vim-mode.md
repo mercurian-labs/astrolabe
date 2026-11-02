@@ -1,6 +1,7 @@
 # Vim mode
 
-The composer, wiki notes and Projects file tabs can edit with Vim, behind one
+The composer, wiki notes, Projects file tabs and the Projects results and problems tabs
+(`repositories/multibuffer/MultibufferView.tsx`) can edit with Vim, behind one
 device setting that is off by default. Turning it on asks you to type `:q` first, to
 show you know the way out. In Vim's normal mode `:` opens the Command Palette (see
 [which-key.md](which-key.md)), and the leader key (Space by default) opens the keyboard menu.

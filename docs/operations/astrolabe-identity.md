@@ -110,7 +110,7 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   renaming one.
 - `apps/web/src/components/KeybindingsUpdateToast.tsx`: the vimrc toasts.
 - `apps/mobile/src/features/workspace/workspace-tabs-state.ts`: upstream's configurable tab model,
-  with Astrolabe's Wikis, Repositories and Changes tabs added to it.
+  with Astrolabe's Wikis, Projects and Changes tabs added to it.
 - `packages/client-runtime/src/relay/cloudAccountService.ts` and
   `apps/mobile/src/features/cloud/cloudAccountService.ts`: upstream types the account service on
   Clerk. Astrolabe adapts it to the Mercurian account and keeps `@clerk/*` out of the dependency

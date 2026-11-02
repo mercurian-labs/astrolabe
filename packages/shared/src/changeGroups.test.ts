@@ -42,13 +42,18 @@ const thread = (
   id: string,
   pullRequests: ThreadPullRequestLink[] = [],
   parent: { id: string; as: "fork" | "subagent" } | null = null,
-  more: { readonly title?: string; readonly branch?: string } = {},
+  more: {
+    readonly title?: string;
+    readonly branch?: string;
+    readonly branches?: ReadonlyArray<string>;
+  } = {},
 ): ChangeGroupThread => ({
   id,
   title: more.title ?? `Thread ${id}`,
   lineage: { parentThreadId: parent?.id ?? null, relationshipToParent: parent?.as ?? null },
   pullRequests,
   branch: more.branch ?? null,
+  ...(more.branches === undefined ? {} : { branches: more.branches }),
 });
 const decided = (
   groupId: string,
@@ -214,6 +219,18 @@ describe("change groups", () => {
     ]);
     expect(threadsOf(derive(threads, [], [], { sameBranch: false }), "t1")).toEqual([
       ["t1", "opened"],
+    ]);
+  });
+
+  it("add a thread that worked on a member pull request's branch before moving on", () => {
+    const threads = [
+      thread("t1", [link(1, "Search"), link(2, "Search UI")]),
+      thread("moved-on", [], null, { branch: "later", branches: ["feature", "later"] }),
+      thread("never", [], null, { branch: "later", branches: ["later"] }),
+    ];
+    expect(threadsOf(derive(threads), "t1")).toEqual([
+      ["t1", "opened"],
+      ["moved-on", "same-branch"],
     ]);
   });
 

@@ -20,10 +20,11 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   not read). Pills (`[aria-label='Document filters']`): **Has changes** one tap
   (`aria-pressed`) while on or any document has changes, one for the picked wikis (× is
   `Remove filter: <names>`), and **Clear** with both. An empty list reads "No documents
-  match these filters". A wiki just added shows alone, unless it is the first. Opening a
-  document the filter hides (a link, Search, another section) clears the filter; a filter
-  changed under the open document, or a reload, keeps it. With no wikis, the sidebar's empty
-  state reads "No wikis yet" with its own **Add a wiki**. Change requests moved to Changes
+  match these filters". A wiki just added shows alone, unless it is the first. The document in
+  front stays listed while the filter hides it (opened from a link, Search or another section,
+  or the filter changed under it), its row marked **hidden**; the filter never clears for it.
+  With no wikis, the sidebar's empty state reads "No wikis yet" with its own **Add a wiki**.
+  Change requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
   every wiki) and goes there. Documents (newest first) use the settled threads'
@@ -34,6 +35,37 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
+- **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a change request in a worktree"`
+  beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
+  worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
+  a typed title offers "New change request “<title>” in a worktree". There is no list or
+  tree mode: outside search the sidebar is each shown wiki's worktrees (`WikiWorktreeSections`;
+  with several wikis each under `button "<wiki>"` with its icon, open by default), as Projects
+  lists a repository's: main under the wiki's main branch, a change request's under its title.
+  Each header has Projects' toggle, `button "Show its files"` / `"Show its documents"`
+  (`astrolabe:wiki-worktree-files:v1`, documents by default). Main's documents are the old list
+  (**Open changes · N**, then the notes the filter keeps); a change request's are the `.md` and
+  `.base` files its amendments touch, rows named `<note>, in <change request>` opening inside
+  it. Files show a `FileBrowserPanel`. The main line and the focused tab's worktree open on
+  their own. They fold as Projects'
+  do (`worktreeFolding.ts`, `FoldedWorktrees`): idle ones under `button "N more worktrees"` with
+  `textbox "Find among <wiki>'s other worktrees"`. The filter nests each wiki's worktrees under
+  it (`button "Show <wiki>'s worktrees"`, folded by default); unticking one hides it from the
+  sidebar (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
+  worktree staying, marked. A note or change request tab in a change request with a worktree
+  shows its number before its ✕; opening such a note numbers the worktree
+  (`useNumberWhenOpened`). A top-level `.md`
+  clicked in a tree, on the main line or a `cr/` branch, opens as
+  `wiki-note:<env>:<wiki>:<change request id or empty>:<name>`; README, AGENTS, CLAUDE,
+  `*.skillmap.md`, nested `.md`, any `.md` on another branch, and every other file open as
+  `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
+  or modifiers). A change request worktree's menu adds **Save edits to the change
+  request** while it has uncommitted files (`wiki.saveWorktree`, one amendment, worktree left
+  clean; refused with "No document in this worktree has unsaved changes." when only non-note
+  files changed). The main worktree has no menu. An amendment landing on a change request moves its worktree's files, and is
+  refused, naming the files, when they overlap unsaved edits there. The worktree calls name the wiki (`worktrees.*` with `wikiId`, read in the wiki's own
+  folder), so a wiki needs no project; a non-note file opens as `wiki-file:<env>:<wiki>:…`
+  (no local graph button, never in a change group).
 - **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`). A plain click on a row (or Enter on a focused row)
   replaces what the focused pane's tab in front shows, whatever it is (a file or a pull
   request too); a document already open in another tab comes forward there instead (no
@@ -49,7 +81,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   right** opens it in a new pane to the right; a document already open moves there
   instead (nothing happens when it is the focused pane's only tab).
 - **History**: each tab remembers what it showed (localStorage
-  `astrolabe:wiki-tab-history:v1`, keyed by the tab key it shows now, last 50 each
+  `astrolabe:workspace-tab-history:v1`, shared with every section, keyed by the tab key it shows now, last 50 each
   way). Clicks, Search, `:e`, deep links and followed wikilinks push onto it and clear
   its forward history; saving a note into a change request keeps it. The note header's
   **Back**/**Forward** walk that tab, and `mod+[`/`mod+]` and Space `t h`/`t l` walk
@@ -160,7 +192,7 @@ preview_act click     role=navigation[name='Sections'] >> role=button[name='Wiki
 preview_act click     role=button[name='<document>, <wiki>']        # replaces the tab in front
 preview_evaluate  dispatch a click with altKey on a row          # new tab
 preview_evaluate  dispatch a click with metaKey on a row         # selects it (data-selected), opens nothing
-preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
+preview_act click     [data-focused="true"] >> role=button[name='Back']   # the focused tab's history
 preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
 preview_act click     role=combobox[name=/^Filter documents/]   # rows: role=option; click a
                                                                 # wiki row by its measured x,y,

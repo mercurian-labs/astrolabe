@@ -132,7 +132,9 @@ const tab = {
   kind: "file",
   environmentId: EnvironmentId.make("documents-browser"),
   projectId: ProjectId.make("project"),
+  checkout: { cwd: "/repo" },
   cwd: "/repo",
+  checkoutName: "repo",
   path: "notes.txt",
 } as const;
 

@@ -40,20 +40,22 @@ actions at its right end.
   ignored on read but stays in storage until the next pick. The trigger and the pills show only
   with at least one project; with none the list reads "No projects yet" with
   `button "Add project"`. An empty list reads "No threads match these filters".
-- **Pills** (`[aria-label='Thread filters']`, under the title row): **Needs you** is a
+- **Pills** (`[aria-label='Thread filters']`, a plain div, so a CSS locator not a role one; under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
   or `N projects` past two) and one the other statuses. A pill's body opens the popup, its ×
   (`Remove filter: <label>`) clears that dimension, and **Clear** (with two or more pills)
-  clears all. Opening a thread the filter hides (search, the palette, a link, a reload onto
-  it) clears the whole filter. A thread row's menu offers `Filter by <project>` (that project
+  clears all. The open thread stays listed while the filter hides it (search, the palette, a
+  link, a reload onto it), its row marked **hidden** (`listFilteredThreads`); the filter never
+  clears for it, and the row drops out once another thread or page is open. A thread row's menu offers `Filter by <project>` (that project
   alone) or `Show all projects`. Search is upstream's integrated search: the
   button gives way to upstream's field, `combobox "Search threads"` (and a **Clear
   thread search** button while it holds a query). Typing replaces the list with
   `listbox "Thread search results"` (or a status: "Searching thread messages…",
   then "No threads found"). Escape
   clears a query; Escape on an empty field brings the heading and button back.
-  The keyboard menu's `/` opens the Search palette instead, not this field; its `n`
+  The keyboard menu's `/` opens the Search palette instead, not this field (a plain `/` while a
+  sidebar row has focus does open it); its `n`
   presses the row's New thread / New document button (which-key.md).
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
@@ -111,7 +113,7 @@ actions at its right end.
   arrives, then drops to one line. `components/sidebar/agentRowSummary.ts` decides the second
   line; `AgentRowDetails.tsx` and `SidebarCard.tsx`'s `SidebarAgentRowItem`/
   `SidebarAgentRowContent` draw it. Pinned rows sit under a resting **Pinned** heading
-  (`[data-testid=sidebar-pinned-header]`, `role=heading`, 24px tall) with no pin glyph, and an
+  (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading`) with no pin glyph, and an
   **Active** one (`sidebar-pinned-divider`) closes them while active rows follow; hovering a pinned
   row offers `button "Unpin thread"` beside Snooze and Settle. Draft-session rows
   (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the
@@ -142,7 +144,7 @@ the boxes from the drawn checkbox: `[...document.querySelectorAll('[role=option]
 [o.textContent, o.querySelector('svg.lucide-check') ? 'x' : ' '])` (there is no partial
 state). The sidebar's own search looks only inside the filter ("No threads found"
 for a hidden thread), so prove the reveal from the Search palette instead: Cmd+K `/`, type
-the hidden thread's title, Enter; the stored filter is gone and its row shows.
+the hidden thread's title, Enter; its row shows marked **hidden** and the stored filter is unchanged.
 
 **Proof:** each action's result (the field focused and
 `[role=listbox][aria-label="Thread search results"] [role=option]` rows as you

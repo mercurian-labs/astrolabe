@@ -56,14 +56,12 @@ export function describeIndexError(error: WikiIndexError): string {
   return `${error.file}: ${error.error}`;
 }
 
-/** A wiki failure as a person reads it. */
+/**
+ * A wiki failure as a person reads it. The server words each one, a busy checkout included: it
+ * names the folder (the wiki's, or a change request's worktree) and the files.
+ */
 export function describeWikiFailure(failure: unknown): string {
-  if (isWikiError(failure)) {
-    if (failure.reason === "checkout-busy") {
-      return `The wiki folder has local edits that overlap this change. Commit or discard them in the folder, then try again. (${failure.message})`;
-    }
-    return failure.message;
-  }
+  if (isWikiError(failure)) return failure.message;
   if (failure instanceof Error && failure.message.trim()) return failure.message;
   return "The wiki request failed.";
 }

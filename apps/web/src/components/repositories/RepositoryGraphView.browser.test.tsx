@@ -124,7 +124,7 @@ vi.mock("@mercurian/graph/file", async (importOriginal) => ({
 
 const environmentId = EnvironmentId.make("env");
 const projectId = ProjectId.make("project");
-const checkout = { environmentId, projectId, cwd: "/repo" };
+const checkout = { environmentId, projectId, checkout: { cwd: "/repo" } };
 const fileKey = (path: string) => repositoryTabKey({ kind: "file", ...checkout, path });
 const FOLLOWING: RepositoryGraphTab = { kind: "graph", ...checkout, path: null };
 
@@ -247,7 +247,10 @@ function graphView(host: ReturnType<typeof panesWith>["host"]) {
   return (
     <PanesHostContext.Provider value={host}>
       <div style={{ width: 640, height: 420, display: "flex" }}>
-        <RepositoryGraphView tabKey={localGraphKey(checkout)} tab={FOLLOWING} />
+        <RepositoryGraphView
+          tabKey={localGraphKey(checkout)}
+          tab={{ ...FOLLOWING, cwd: "/repo", checkoutName: "main" }}
+        />
       </div>
     </PanesHostContext.Provider>
   );
@@ -336,7 +339,7 @@ describe("a following local graph", () => {
     await expect.element(page.getByText('import { lib } from "./lib";')).toBeVisible();
     await expect.element(page.getByText("40 lines · changed on this branch")).toBeVisible();
     expect(importLineHighlight.get()).toEqual({
-      file: importLineKey({ ...checkout, path: "a.ts" }),
+      file: importLineKey({ environmentId, cwd: "/repo", path: "a.ts" }),
       line: 3,
     });
     await userEvent.unhover(page.getByRole("button", { name: "node lib.ts" }));

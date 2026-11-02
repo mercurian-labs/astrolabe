@@ -160,6 +160,23 @@ import {
   ChangeGroupListResult,
   ChangeGroupUpdateInput,
 } from "./changeGroups.ts";
+import {
+  ProjectWorktree,
+  ProjectWorktreeCreateInput,
+  ProjectWorktreeChange,
+  ProjectWorktreeChangesInput,
+  ProjectWorktreeDiscardSetAsideInput,
+  ProjectWorktreeError,
+  ProjectWorktreeListInput,
+  ProjectWorktreeListResult,
+  ProjectWorktreeOpenInput,
+  ProjectWorktreeOpenResult,
+  ProjectWorktreeRemoveInput,
+  ProjectWorktreeRemoveResult,
+  ProjectWorktreeSetKeptInput,
+  ProjectWorktreeStatusResult,
+  ProjectWorktreeTargetInput,
+} from "./worktrees.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ServerRemoveVimMappingInput,
@@ -398,6 +415,7 @@ import {
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
+  WikiSaveWorktreeInput,
   WikiSetChangeRequestStatusInput,
   WikiSetMirrorInput,
   WikiSetProjectLinkInput,
@@ -529,6 +547,15 @@ export const WS_METHODS = {
   reviewGetRecentFiles: "review.getRecentFiles",
   changeGroupsList: "changeGroups.list",
   changeGroupsUpdate: "changeGroups.update",
+  worktreesList: "worktrees.list",
+  worktreesOpen: "worktrees.open",
+  worktreesCreate: "worktrees.create",
+  worktreesRemove: "worktrees.remove",
+  worktreesSetKept: "worktrees.setKept",
+  worktreesDiscardSetAside: "worktrees.discardSetAside",
+  worktreesSubscribeChanges: "worktrees.subscribeChanges",
+  worktreesStatus: "worktrees.status",
+  worktreesMarkOpened: "worktrees.markOpened",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -623,6 +650,7 @@ export const WS_METHODS = {
   wikiAmend: "wiki.amend",
   wikiTransform: "wiki.transform",
   wikiRevertAmendment: "wiki.revertAmendment",
+  wikiSaveWorktree: "wiki.saveWorktree",
   wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
@@ -1625,6 +1653,54 @@ const WsChangeGroupsUpdateRpc = Rpc.make(WS_METHODS.changeGroupsUpdate, {
   error: Schema.Union([ChangeGroupError, EnvironmentAuthorizationError]),
 });
 
+const worktreeError = Schema.Union([ProjectWorktreeError, EnvironmentAuthorizationError]);
+const WsWorktreesListRpc = Rpc.make(WS_METHODS.worktreesList, {
+  payload: ProjectWorktreeListInput,
+  success: ProjectWorktreeListResult,
+  error: worktreeError,
+});
+const WsWorktreesOpenRpc = Rpc.make(WS_METHODS.worktreesOpen, {
+  payload: ProjectWorktreeOpenInput,
+  success: ProjectWorktreeOpenResult,
+  error: worktreeError,
+});
+const WsWorktreesCreateRpc = Rpc.make(WS_METHODS.worktreesCreate, {
+  payload: ProjectWorktreeCreateInput,
+  success: ProjectWorktree,
+  error: worktreeError,
+});
+const WsWorktreesRemoveRpc = Rpc.make(WS_METHODS.worktreesRemove, {
+  payload: ProjectWorktreeRemoveInput,
+  success: ProjectWorktreeRemoveResult,
+  error: worktreeError,
+});
+const WsWorktreesSetKeptRpc = Rpc.make(WS_METHODS.worktreesSetKept, {
+  payload: ProjectWorktreeSetKeptInput,
+  success: Schema.Void,
+  error: worktreeError,
+});
+const WsWorktreesDiscardSetAsideRpc = Rpc.make(WS_METHODS.worktreesDiscardSetAside, {
+  payload: ProjectWorktreeDiscardSetAsideInput,
+  success: Schema.Void,
+  error: worktreeError,
+});
+const WsWorktreesStatusRpc = Rpc.make(WS_METHODS.worktreesStatus, {
+  payload: ProjectWorktreeTargetInput,
+  success: ProjectWorktreeStatusResult,
+  error: worktreeError,
+});
+const WsWorktreesMarkOpenedRpc = Rpc.make(WS_METHODS.worktreesMarkOpened, {
+  payload: ProjectWorktreeTargetInput,
+  success: Schema.Void,
+  error: worktreeError,
+});
+const WsWorktreesSubscribeChangesRpc = Rpc.make(WS_METHODS.worktreesSubscribeChanges, {
+  payload: ProjectWorktreeChangesInput,
+  success: ProjectWorktreeChange,
+  error: worktreeError,
+  stream: true,
+});
+
 const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
   payload: ReviewRecentFilesInput,
   success: ReviewRecentFilesResult,
@@ -2088,6 +2164,12 @@ const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
 
 const WsWikiRevertAmendmentRpc = Rpc.make(WS_METHODS.wikiRevertAmendment, {
   payload: WikiRevertInput,
+  success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSaveWorktreeRpc = Rpc.make(WS_METHODS.wikiSaveWorktree, {
+  payload: WikiSaveWorktreeInput,
   success: WikiAmendResult,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
@@ -2574,6 +2656,15 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
 export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsChangeGroupsListRpc,
   WsChangeGroupsUpdateRpc,
+  WsWorktreesListRpc,
+  WsWorktreesOpenRpc,
+  WsWorktreesCreateRpc,
+  WsWorktreesRemoveRpc,
+  WsWorktreesSetKeptRpc,
+  WsWorktreesDiscardSetAsideRpc,
+  WsWorktreesSubscribeChangesRpc,
+  WsWorktreesStatusRpc,
+  WsWorktreesMarkOpenedRpc,
   WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,
@@ -2594,6 +2685,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiAmendRpc,
   WsWikiTransformRpc,
   WsWikiRevertAmendmentRpc,
+  WsWikiSaveWorktreeRpc,
   WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,

@@ -53,7 +53,10 @@ A clean home is not empty: the server adds the directory it runs in
 in it. Chat tabs need at least two threads. `start-dev.sh` runs on `$run/home`,
 so seed that home with the server stopped:
 `vp run migrate-dev-db --base-dir "$run/home"` (or seed the worktree's `.t3`, as
-AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above).
+AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above). The script reads
+`~/.t3/userdata` by default; on a machine that runs Astrolabe itself, its real data is in
+`~/.astrolabe/userdata`, so add `--source ~/.astrolabe/userdata/statev2.sqlite`. Wikis are not
+seeded; add a scratch one (below).
 
 ## Checks before driving
 
@@ -159,12 +162,25 @@ sidebar row (`role=button[name=/^<title>, /]`; the name is
 when the feature needs a real thread. Then:
 
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
-  Tools take Playwright selectors: a bare CSS descendant selector
-  (`[data-x] input`) is rejected; chain with `>>` or use roles. A role's `name` matches a
+  `preview_act` takes Playwright `role=` locators, chained with `>>` (`… >> nth=1`) and
+  `aria-ref=` refs from `preview_snapshot`. Its CSS is narrow: an attribute selector needs a
+  value (`[data-new-linked-tab="true"]`, spaced values in single quotes:
+  `[aria-label='Pane actions']`); a bare `[data-x]`, `tag[data-x]` or any CSS descendant chain
+  (`[data-x] >> [data-y]` too) is rejected as invalid, so the feature files' `[data-…] >> …`
+  forms read as `preview_evaluate` queries, not `preview_act` locators. A few names are
+  rejected outright (any locator holding "Add a wiki"); then read the element's centre with
+  `preview_evaluate`, check `document.elementFromPoint` hits it (a popup can cover a copy of
+  the same button), and click `x`/`y`. A role's `name` matches a
   substring: `button "Changes"` also hits the Projects list's Changes rows, and
   `Filter by project:` exists in both Projects and Changes. Scope to the section
   (`role=navigation[name='Changes'] >> …`) or match exactly with `[name="Changes" s]`; a
   click on an ambiguous locator waits out its timeout.
+- **Add a project** / **Add a wiki** → **Local folder** opens a path field prefilled with
+  `~/`: typed text lands after it, so `/private/tmp/x` becomes `~/private/tmp/x`, and Enter on
+  a folder that doesn't exist is **Create & Add**, which makes it under your home. Select all
+  and delete first (`press a` with `["Meta"]`, then `Backspace`), type the absolute path with a
+  trailing `/`, and check the dialog reads **Add** and lists the folder's entries before
+  Enter. The real path then opens a new-thread draft in it; go back to the section.
 - After a `preview_resize` to a freeform size, `{mode: "fill"}` can leave the page at the
   old width; set `freeform` back to the full size (for example 1280×800) instead, and read
   `innerWidth` before trusting the layout.

@@ -10,7 +10,7 @@ import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupInput } from "~/components/ui/input-group";
@@ -47,9 +47,24 @@ interface FileBrowserPanelProps {
   hostFolder?: boolean;
   onRefreshSelectedFile?: () => void;
   workspaceMutationId: string | null;
+  /** Astrolabe: the bare tree for a sidebar section, in its colours, as tall as its rows up to
+   * `maxRows`. */
+  sidebar?: { readonly maxRows: number };
   /** Astrolabe: more entries for a file's context menu, after the built-in ones. */
   fileMenuActions?: ReadonlyArray<FileMenuAction>;
 }
+
+// Rows line up with the sidebar's own: its colours, its text size, and its inset.
+const SIDEBAR_TREE_STYLE: CSSProperties = {
+  ["--trees-fg-override" as string]: "var(--color-sidebar-foreground)",
+  ["--trees-hover-bg-override" as string]: "var(--color-sidebar-row-hover)",
+  ["--trees-selected-bg-override" as string]: "var(--color-sidebar-row-active)",
+  ["--trees-selected-focused-border-color-override" as string]: "transparent",
+  ["--trees-font-size-override" as string]: "0.875rem",
+  ["--trees-padding-inline-override" as string]: "0px",
+  ["--trees-item-margin-x-override" as string]: "0px",
+  ["--trees-item-padding-x-override" as string]: "10px",
+};
 
 export interface FileMenuAction {
   readonly id: string;
@@ -152,6 +167,7 @@ export default function FileBrowserPanel({
   onRefreshSelectedFile,
   workspaceMutationId,
   hostFolder = false,
+  sidebar,
   fileMenuActions = NO_FILE_MENU_ACTIONS,
 }: FileBrowserPanelProps) {
   const panelPath = (relativePath: string) =>
@@ -330,6 +346,7 @@ export default function FileBrowserPanel({
   const allDirectoriesExpanded = useFileTreeSelector(model, (currentModel) =>
     areAllDirectoriesExpanded(currentModel, expandableDirectoryPaths),
   );
+  const visibleRows = useFileTreeSelector(model, (currentModel) => currentModel.getVisibleCount());
   const toggleAllDirectories = () => {
     const expanded = !(expandAll || allDirectoriesExpanded);
     setExpandAll(expanded);
@@ -509,10 +526,11 @@ export default function FileBrowserPanel({
   return (
     <div
       ref={panelRef}
-      className="flex min-h-0 flex-1 flex-col bg-background"
+      className={sidebar ? "flex flex-col" : "flex min-h-0 flex-1 flex-col bg-background"}
       data-file-browser-panel={`${environmentId}:${cwd}`}
     >
       <div
+        hidden={sidebar !== undefined}
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
       >
@@ -588,8 +606,16 @@ export default function FileBrowserPanel({
         <FileTree
           model={model}
           aria-label={`${projectName} files`}
-          className="min-h-0 flex-1 overflow-hidden"
-          style={pierreTreeStyle(resolvedTheme)}
+          className={sidebar ? "shrink-0 overflow-hidden" : "min-h-0 flex-1 overflow-hidden"}
+          style={
+            sidebar
+              ? {
+                  ...pierreTreeStyle(resolvedTheme),
+                  ...SIDEBAR_TREE_STYLE,
+                  height: Math.min(visibleRows, sidebar.maxRows) * model.getItemHeight(),
+                }
+              : pierreTreeStyle(resolvedTheme)
+          }
         />
       )}
     </div>

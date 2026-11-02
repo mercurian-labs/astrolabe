@@ -150,6 +150,10 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:revert-amendment",
       tag: WS_METHODS.wikiRevertAmendment,
     }),
+    saveWorktree: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:save-worktree",
+      tag: WS_METHODS.wikiSaveWorktree,
+    }),
     merge: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:merge",
       tag: WS_METHODS.wikiMerge,

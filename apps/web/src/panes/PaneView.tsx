@@ -135,7 +135,7 @@ function LabeledTabPill({
   label,
 }: TabPillProps & { readonly label: PaneTabLabel }) {
   const { controller, tabs } = usePanesHost();
-  const { title, icon, tooltip, accessory, rename } = label;
+  const { title, icon, tooltip, accessory, trailing, rename } = label;
   const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
   const dragging = useDragging(tabKey);
@@ -321,6 +321,8 @@ function LabeledTabPill({
       ) : (
         <TabTitle title={title} tooltip={tooltip} />
       )}
+      {/* Outside the end: a linked tab's ✕ is centred over the end's chain mark on hover. */}
+      {trailing}
       <span data-tab-end className="relative flex shrink-0 items-center gap-1.5">
         {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
         {closable ? (

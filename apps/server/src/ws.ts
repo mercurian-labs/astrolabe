@@ -249,6 +249,7 @@ import * as Documents from "./documents/Documents.ts";
 import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
 import * as LanguageServers from "./languageServers/LanguageServers.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
+import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
@@ -1252,11 +1253,21 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
+    const worktrees = yield* ProjectWorktreeService.ProjectWorktreeService;
     const baseTexts = yield* VcsBaseText.VcsBaseText;
     const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
     const languageServers = yield* LanguageServers.LanguageServers;
     return ServerWsAstrolabeRpcGroup.of({
+      [WS_METHODS.worktreesList]: (input) => worktrees.list(input),
+      [WS_METHODS.worktreesOpen]: (input) => worktrees.open(input),
+      [WS_METHODS.worktreesCreate]: (input) => worktrees.create(input),
+      [WS_METHODS.worktreesRemove]: (input) => worktrees.remove(input),
+      [WS_METHODS.worktreesSetKept]: (input) => worktrees.setKept(input),
+      [WS_METHODS.worktreesDiscardSetAside]: (input) => worktrees.discardSetAside(input),
+      [WS_METHODS.worktreesSubscribeChanges]: (input) => worktrees.changes(input),
+      [WS_METHODS.worktreesStatus]: (input) => worktrees.status(input),
+      [WS_METHODS.worktreesMarkOpened]: (input) => worktrees.markOpened(input),
       [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
       [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
       [WS_METHODS.codeIndexRebuild]: (input) => codeIndex.rebuild(input).pipe(Effect.as({})),
@@ -1286,6 +1297,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
       [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
+      [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
       [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),

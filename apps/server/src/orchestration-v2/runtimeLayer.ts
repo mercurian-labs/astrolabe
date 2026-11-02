@@ -1,6 +1,8 @@
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as ChangeGroupService from "../changeGroups/ChangeGroupService.ts";
+import * as ProjectWorktreeService from "../worktrees/ProjectWorktreeService.ts";
+import * as WorkspaceWatcher from "../worktrees/WorkspaceWatcher.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -278,7 +280,20 @@ const layerCodeIndexProvided = CodeIndex.layer.pipe(
 );
 // Astrolabe: change groups read the same wikis and threads (one wiki service per server).
 const layerChangeGroupServiceProvided = ChangeGroupService.layer.pipe(
-  Layer.provide(Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer)),
+  Layer.provide(
+    Layer.mergeAll(layerWikiServiceProvided, ProjectionStore.layer, layerEventStoreProvided),
+  ),
+);
+// Astrolabe: a repository's worktrees as buckets for branches.
+const layerProjectWorktreeServiceProvided = ProjectWorktreeService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      layerProjectService,
+      layerWikiServiceProvided,
+      ProjectionStore.layer,
+      WorkspaceWatcher.layer,
+    ),
+  ),
 );
 const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
   Layer.provide(
@@ -383,6 +398,7 @@ export const layerProduction = Layer.mergeAll(
   layerWikiServiceProvided,
   layerCodeIndexProvided,
   layerChangeGroupServiceProvided,
+  layerProjectWorktreeServiceProvided,
   layerThreadLaunchProvided,
   layerThreadLifecycleProvided,
   layerScheduledTaskProvided,

@@ -1,16 +1,29 @@
 import { storedChoice } from "../projects/storedChoice";
 
 /**
- * Astrolabe: the Wikis list's filter. The wikis widen (any of them, none picked is every wiki) and
- * "has changes" narrows to the documents an open change request touches.
+ * Astrolabe: the Wikis list's filter. The wikis widen (any of them, none picked is every wiki),
+ * "has changes" narrows to the documents an open change request touches, and hidden worktrees
+ * drop out of the file trees.
  */
 export interface WikiFilter {
   /** Wiki scope keys (`wikiScopeKey`). */
   readonly wikis: ReadonlyArray<string>;
   readonly changed: boolean;
+  /** Worktree keys (`environmentId:path`), so a new worktree shows until it is hidden. */
+  readonly hidden: ReadonlyArray<string>;
 }
 
-export const EMPTY_WIKI_FILTER: WikiFilter = { wikis: [], changed: false };
+export const EMPTY_WIKI_FILTER: WikiFilter = { wikis: [], changed: false, hidden: [] };
+
+/** Hides a wiki's worktree from the file trees, or shows it again. */
+export const setWikiWorktreeHidden = (
+  filter: WikiFilter,
+  key: string,
+  hidden: boolean,
+): WikiFilter => {
+  const rest = filter.hidden.filter((each) => each !== key);
+  return { ...filter, hidden: hidden ? [...rest, key] : rest };
+};
 
 /**
  * The wikis the filter keeps, or null for every wiki. Picks whose wiki is gone are ignored, and
@@ -60,11 +73,12 @@ export function parseWikiFilter(stored: string): WikiFilter | null {
   }
   if (typeof parsed !== "object" || parsed === null) return null;
   const record = parsed as Record<string, unknown>;
+  const strings = (value: unknown) =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
   return {
-    wikis: Array.isArray(record.wikis)
-      ? record.wikis.filter((entry): entry is string => typeof entry === "string")
-      : [],
+    wikis: strings(record.wikis),
     changed: record.changed === true,
+    hidden: strings(record.hidden),
   };
 }
 
@@ -78,4 +92,8 @@ const wikiFilterStore = storedChoice<WikiFilter>({
 export const useStoredWikiFilter = wikiFilterStore.useValue;
 
 export const storeWikiFilter = (filter: WikiFilter) =>
-  wikiFilterStore.set(filter.wikis.length === 0 && !filter.changed ? EMPTY_WIKI_FILTER : filter);
+  wikiFilterStore.set(
+    filter.wikis.length === 0 && !filter.changed && filter.hidden.length === 0
+      ? EMPTY_WIKI_FILTER
+      : filter,
+  );

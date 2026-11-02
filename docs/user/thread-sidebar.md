@@ -274,7 +274,9 @@ The linked pull request participates in automatic settlement.
 
 The filter at the top of the thread list picks **All projects** or one or several projects.
 **Changes** and **Projects** use the same list, Changes with your wikis after the projects, and
-each section remembers its own choice.
+each section remembers its own choice. A thread you open that the filter hides still shows in the
+list, marked **hidden**, until you move on; the filter stays as you set it. Wikis and Projects do
+the same for the document or file in front.
 
 On web and desktop, open the command palette with `Cmd/Ctrl+K` twice to search threads
 across connected environments by title, branch, pull request, or project.

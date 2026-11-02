@@ -50,6 +50,7 @@ import {
   type WikiQueryResult,
   type WikiRegisterInput,
   type WikiRevertInput,
+  type WikiSaveWorktreeInput,
   type WikiSetChangeRequestStatusInput,
   type WikiSetMirrorInput,
   type WikiSetProjectLinkInput,
@@ -75,6 +76,8 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
+import { parseWorktreeList } from "../worktrees/worktreeList.ts";
 import {
   AMENDMENT_LOG_FORMAT,
   CHANGE_REQUEST_BRANCH_PREFIX,
@@ -170,6 +173,8 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiSummary, WikiError>;
     /** The note a thread in this repository starts with, or null when no wiki is linked to it. */
     readonly agentNote: (projectId: ProjectId) => Effect.Effect<string | null, WikiError>;
+    /** The folder holding a wiki's main line, the repository its worktrees belong to. */
+    readonly root: (wikiId: WikiId) => Effect.Effect<string, WikiError>;
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
     readonly pushMirror: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
     readonly index: (input: WikiReadTarget) => Effect.Effect<WikiIndexResult, WikiError>;
@@ -215,6 +220,14 @@ export class WikiService extends Context.Service<
     /** Undoes one amendment with a new one, keeping later independent work. */
     readonly revertAmendment: (
       input: WikiRevertInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiAmendResult, WikiError>;
+    /**
+     * Lands the uncommitted document edits in the worktree that has a change request checked out
+     * as one amendment on it, leaving that worktree clean.
+     */
+    readonly saveWorktree: (
+      input: WikiSaveWorktreeInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
     /** A person's act: lands an open change request on main and moves the checkout with it. */
@@ -291,6 +304,8 @@ const decodeRegistry = Schema.decodeEffect(WikiRegistryJson);
 const encodeRegistry = Schema.encodeEffect(WikiRegistryJson);
 const decodeChangeRequest = Schema.decodeEffect(ChangeRequestRecordJson);
 const encodeChangeRequest = Schema.encodeEffect(ChangeRequestRecordJson);
+
+const isWikiError = Schema.is(WikiError);
 
 const oneLine = (text: string) => text.replace(/[\r\n<>]+/g, " ").trim();
 
@@ -623,6 +638,79 @@ const make = Effect.gen(function* () {
     return { tree: yield* buildTree(wiki.root, tree, resolved), conflicts: [] };
   });
 
+  /** The folder that has `ref` checked out: the wiki's own, one of its worktrees, or none. */
+  const checkoutHolding = Effect.fn("WikiService.checkoutHolding")(function* (
+    wiki: WikiRecord,
+    ref: string,
+  ) {
+    const listed = yield* runGit("worktreeList", wiki.root, [
+      "worktree",
+      "list",
+      "--porcelain",
+      "-z",
+    ]);
+    const branch = ref.slice("refs/heads/".length);
+    return parseWorktreeList(listed.stdout).find((entry) => entry.branch === branch)?.path ?? null;
+  });
+
+  /**
+   * Moves a branch with `move`, and the folder that has it checked out along with it by git's
+   * two-tree checkout, which refuses to overwrite local edits there. When `move` finds the ref
+   * already moved, the folder goes back to `from`.
+   */
+  const moveWithCheckout = Effect.fn("WikiService.moveWithCheckout")(function* (
+    wiki: WikiRecord,
+    ref: string,
+    from: string,
+    to: string,
+    move: Effect.Effect<
+      { readonly moved: true } | { readonly moved: false; readonly cause: unknown },
+      WikiError
+    >,
+    errors: {
+      readonly busy: (paths: ReadonlyArray<string>) => string;
+      readonly stale: (rolledBack: boolean, cause: unknown) => WikiError;
+    },
+  ) {
+    const at = yield* checkoutHolding(wiki, ref);
+    if (at === null) {
+      const result = yield* move;
+      if (!result.moved) return yield* errors.stale(true, result.cause);
+      return;
+    }
+    yield* withWorkspaceLease(
+      at,
+      Effect.gen(function* () {
+        // Stat-only differences would otherwise read as local edits.
+        yield* runGit("refreshIndex", at, ["update-index", "-q", "--refresh"], {
+          allowExitCodes: [1],
+        });
+        const checkout = yield* runGit("checkout", at, ["read-tree", "-u", "-m", from, to], {
+          allowExitCodes: [1, 128],
+        });
+        if (checkout.exitCode !== 0) {
+          return yield* new WikiError({
+            reason: "checkout-busy",
+            message: errors.busy(parseBusyPaths(checkout.stderr)),
+            cause: new WikiGitExitError({
+              operation: "checkout",
+              exitCode: checkout.exitCode,
+              stderr: checkout.stderr,
+            }),
+          });
+        }
+        // Only our own checkout is reversed; git refuses if an editor changed those files since.
+        const rollback = runGit("rollback", at, ["read-tree", "-u", "-m", to, from], {
+          allowExitCodes: [1, 128],
+        });
+        const result = yield* move.pipe(Effect.tapError(() => Effect.ignore(rollback)));
+        if (result.moved) return;
+        const rolledBack = yield* rollback;
+        return yield* errors.stale(rolledBack.exitCode === 0, result.cause);
+      }),
+    );
+  });
+
   /** Applies several ref moves at once; each checks its old value, so a racing writer fails. */
   const updateRefs = (
     cwd: string,
@@ -916,24 +1004,51 @@ const make = Effect.gen(function* () {
     message: string,
     env: Readonly<Record<string, string>>,
     head: string = stored.head,
+    // False when the folder holding the branch already has the new head's edits.
+    follow = true,
   ) {
     const next = yield* metadataCommit(wiki, record, stored.metadataCommit, message, env);
-    yield* updateRefs(wiki.root, [
-      ...(head === stored.head
-        ? []
-        : [
-            {
-              ref: changeRequestBranch(record.changeRequestId),
-              next: head,
-              previous: stored.head,
-            },
-          ]),
+    const branch = changeRequestBranch(record.changeRequestId);
+    const refs = updateRefs(wiki.root, [
+      ...(head === stored.head ? [] : [{ ref: branch, next: head, previous: stored.head }]),
       {
         ref: changeRequestMetadataRef(record.changeRequestId),
         next,
         previous: stored.metadataCommit,
       },
     ]);
+    if (head === stored.head || !follow) {
+      yield* refs;
+    } else {
+      yield* moveWithCheckout(
+        wiki,
+        branch,
+        stored.head,
+        head,
+        refs.pipe(
+          Effect.as({ moved: true } as const),
+          Effect.catchIf(
+            (error) => error.reason === "stale",
+            (error) => Effect.succeed({ moved: false, cause: error } as const),
+          ),
+        ),
+        {
+          busy: (paths) =>
+            `Unsaved edits in this change request's worktree overlap the amendment${
+              paths.length ? `: ${paths.join(", ")}` : ""
+            }. Save them to the change request or set them aside, then try again.`,
+          stale: (rolledBack, cause) =>
+            rolledBack && isWikiError(cause)
+              ? cause
+              : new WikiError({
+                  reason: "stale",
+                  message:
+                    "The change request moved while this ran and its worktree could not be put back; check its files.",
+                  cause,
+                }),
+        },
+      );
+    }
     metadataRecords.set(next, record);
     return { record, metadataCommit: next, head } satisfies StoredChangeRequest;
   });
@@ -1039,8 +1154,9 @@ const make = Effect.gen(function* () {
     author: WikiAuthor,
     message: string,
     plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment,
-    reverts?: string,
+    options: { readonly reverts?: string; readonly follow?: boolean } = {},
   ) {
+    const { reverts, follow = true } = options;
     const now = yield* DateTime.now;
     const at = DateTime.formatIso(now);
     const amendment = yield* newId;
@@ -1088,6 +1204,7 @@ const make = Effect.gen(function* () {
             "Amend change request",
             env,
             commit,
+            follow,
           )
         : yield* createChangeRequest(
             wiki,
@@ -1238,70 +1355,47 @@ const make = Effect.gen(function* () {
                 planAmendment(files, keepWarningHistory(files, inverseChanges), stamp, {
                   allowUnstamped: true,
                 }),
-              commit,
+              { reverts: commit },
             );
           }),
         ),
       input.changeRequestId,
     );
 
-  /** Moves main from `from` to `to`, and the root checkout with it when main is checked out. */
-  const moveMain = Effect.fn("WikiService.moveMain")(function* (
-    wiki: WikiRecord,
-    from: string,
-    to: string,
-  ) {
-    const head = yield* runGit("symbolicRef", wiki.root, ["symbolic-ref", "-q", "HEAD"], {
-      allowExitCodes: [1, 128],
-    });
-    const stale = (cause: unknown, rolledBack: boolean) =>
-      new WikiError({
-        reason: "stale",
-        message: rolledBack
-          ? "Main moved while merging, so nothing was merged. Merge again."
-          : "Main moved while merging and the wiki folder could not be put back; check its files before merging again.",
-        cause,
-      });
-    const casMain = runGit(
-      "updateMain",
-      wiki.root,
-      ["update-ref", "-m", "wiki: merge change request", mainRef(wiki), to, from],
-      { allowExitCodes: [1, 128] },
+  /** Moves main from `from` to `to`, and the folder that has main checked out with it. */
+  const moveMain = (wiki: WikiRecord, from: string, to: string) =>
+    moveWithCheckout(
+      wiki,
+      mainRef(wiki),
+      from,
+      to,
+      runGit(
+        "updateMain",
+        wiki.root,
+        ["update-ref", "-m", "wiki: merge change request", mainRef(wiki), to, from],
+        { allowExitCodes: [1, 128] },
+      ).pipe(
+        Effect.map((moved) =>
+          moved.exitCode === 0
+            ? ({ moved: true } as const)
+            : ({ moved: false, cause: moved.stderr } as const),
+        ),
+      ),
+      {
+        busy: (paths) =>
+          paths.length
+            ? `Local edits in the wiki folder overlap this merge: ${paths.join(", ")}. Commit or set them aside, then merge again.`
+            : "Local edits in the wiki folder overlap this merge. Commit or set them aside, then merge again.",
+        stale: (rolledBack, cause) =>
+          new WikiError({
+            reason: "stale",
+            message: rolledBack
+              ? "Main moved while merging, so nothing was merged. Merge again."
+              : "Main moved while merging and the wiki folder could not be put back; check its files before merging again.",
+            cause,
+          }),
+      },
     );
-    if (head.exitCode !== 0 || head.stdout.trim() !== mainRef(wiki)) {
-      const moved = yield* casMain;
-      if (moved.exitCode !== 0) return yield* stale(moved.stderr, true);
-      return;
-    }
-    // Stat-only differences would otherwise read as local edits.
-    yield* runGit("refreshIndex", wiki.root, ["update-index", "-q", "--refresh"], {
-      allowExitCodes: [1],
-    });
-    const checkout = yield* runGit("checkout", wiki.root, ["read-tree", "-u", "-m", from, to], {
-      allowExitCodes: [1, 128],
-    });
-    if (checkout.exitCode !== 0) {
-      const busy = parseBusyPaths(checkout.stderr);
-      return yield* new WikiError({
-        reason: "checkout-busy",
-        message: busy.length
-          ? `Local edits in the wiki folder overlap this merge: ${busy.join(", ")}. Commit or set them aside, then merge again.`
-          : "Local edits in the wiki folder overlap this merge. Commit or set them aside, then merge again.",
-        cause: new WikiGitExitError({
-          operation: "checkout",
-          exitCode: checkout.exitCode,
-          stderr: checkout.stderr,
-        }),
-      });
-    }
-    const moved = yield* casMain;
-    if (moved.exitCode === 0) return;
-    // Only our own checkout is reversed; git refuses if an editor changed those files since.
-    const rollback = yield* runGit("rollback", wiki.root, ["read-tree", "-u", "-m", to, from], {
-      allowExitCodes: [1, 128],
-    });
-    return yield* stale(moved.stderr, rollback.exitCode === 0);
-  });
 
   /** Pushes main to the mirror and records how it went; never fails for the push itself. */
   const pushToMirror = Effect.fn("WikiService.pushToMirror")(function* (wiki: WikiRecord) {
@@ -1369,6 +1463,105 @@ const make = Effect.gen(function* () {
     yield* publish("mirror", wiki.wikiId, null);
     return next;
   });
+
+  const saveWorktree: WikiService["Service"]["saveWorktree"] = (input, author) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            yield* requireOpen(stored);
+            const at = yield* checkoutHolding(wiki, changeRequestBranch(input.changeRequestId));
+            if (at === null) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: "This change request is not checked out in a worktree.",
+              });
+            }
+            return yield* withWorkspaceLease(
+              at,
+              Effect.gen(function* () {
+                if ((yield* gitOut("worktreeHead", at, ["rev-parse", "HEAD"])) !== stored.head) {
+                  return yield* new WikiError({
+                    reason: "stale",
+                    message: "The change request moved while this ran. Read it again and retry.",
+                  });
+                }
+                const status = yield* runGit("worktreeStatus", at, [
+                  "status",
+                  "--porcelain=v1",
+                  "-z",
+                  "--no-renames",
+                  "--untracked-files=all",
+                ]);
+                const changes: Record<string, string | null> = {};
+                for (const record of status.stdout.split("\0")) {
+                  const file = record.slice(3);
+                  if (record.length < 4 || !isWikiDocument(file)) continue;
+                  changes[file] = record.slice(0, 2).includes("D")
+                    ? null
+                    : yield* fileSystem.readFileString(path.join(at, file)).pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new WikiError({
+                              reason: "invalid",
+                              message: `${file} could not be read from the worktree.`,
+                              cause,
+                            }),
+                        ),
+                      );
+                }
+                if (Object.keys(changes).length === 0) {
+                  return yield* new WikiError({
+                    reason: "invalid",
+                    message: "No document in this worktree has unsaved changes.",
+                  });
+                }
+                const result = yield* land(
+                  wiki,
+                  { kind: "existing", stored },
+                  author,
+                  input.message,
+                  (files, stamp) => planAmendment(files, changes, stamp),
+                  { follow: false },
+                );
+                // The folder already holds the edits: line its index up with the new head, then
+                // write what the amendment changed besides them (stamps, map warnings).
+                const touched = (yield* runGit("amendedFiles", at, [
+                  "diff",
+                  "--name-status",
+                  "--no-renames",
+                  "-z",
+                  stored.head,
+                  result.commit,
+                ])).stdout
+                  .split("\0")
+                  .filter(Boolean);
+                const written: string[] = [];
+                const removed: string[] = [];
+                for (let position = 0; position + 1 < touched.length; position += 2) {
+                  const file = touched[position + 1]!;
+                  if (touched[position] === "D") removed.push(file);
+                  else written.push(file);
+                }
+                yield* runGit("adoptHead", at, ["read-tree", result.commit]);
+                if (written.length) {
+                  yield* runGit("writeAmended", at, ["checkout-index", "-f", "--", ...written]);
+                }
+                for (const file of removed) {
+                  yield* fileSystem
+                    .remove(path.join(at, file), { force: true })
+                    .pipe(Effect.ignore);
+                }
+                return result;
+              }),
+            );
+          }),
+        ),
+      input.changeRequestId,
+    );
 
   const merge: WikiService["Service"]["merge"] = (input) =>
     withWiki(
@@ -1943,8 +2136,13 @@ const make = Effect.gen(function* () {
         : locked(wiki, pushToMirror(wiki)).pipe(Effect.flatMap(summary)),
     );
 
+  const root: WikiService["Service"]["root"] = Effect.fn("WikiService.root")(function* (wikiId) {
+    return (yield* lookup(wikiId)).root;
+  });
+
   return WikiService.of({
     list,
+    root,
     subscribe: Stream.fromPubSub(events),
     register,
     create,
@@ -1965,6 +2163,7 @@ const make = Effect.gen(function* () {
     amend,
     transform,
     revertAmendment,
+    saveWorktree,
     merge,
     setChangeRequestStatus,
   });

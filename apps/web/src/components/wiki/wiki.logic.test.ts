@@ -79,10 +79,12 @@ describe("describeIndexError", () => {
 });
 
 describe("describeWikiFailure", () => {
-  it("explains a busy checkout as overlapping local edits", () => {
-    expect(
-      describeWikiFailure({ _tag: "WikiError", reason: "checkout-busy", message: "busy" }),
-    ).toMatch(/local edits that overlap/);
+  it("says what the server says, which names the busy folder", () => {
+    const busy =
+      "Unsaved edits in this change request's worktree overlap the amendment: Beta.md. Save them to the change request or set them aside, then try again.";
+    expect(describeWikiFailure({ _tag: "WikiError", reason: "checkout-busy", message: busy })).toBe(
+      busy,
+    );
     expect(describeWikiFailure({ _tag: "WikiError", reason: "invalid", message: "Bad name" })).toBe(
       "Bad name",
     );

@@ -43,7 +43,7 @@ import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToCl
 import { readLocalApi } from "~/localApi";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
-import { BotIcon, WaypointsIcon } from "lucide-react";
+import { BotIcon, GitBranchIcon, WaypointsIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
 import type {
   DocumentSession,
@@ -102,7 +102,9 @@ import { openLocalGraph } from "./localGraph";
 import { workspace } from "~/panes/workspace";
 import { TabHeader } from "~/panes/TabHeader";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
-import { repositoryTabKey, type RepositoryFileTab as FileTab } from "./repositoryTabs";
+import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs";
+
+type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
 import { LanguageServerStatusEntry } from "./LanguageServerStatus";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
@@ -236,7 +238,10 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       kind: GoToKind | "references",
     ) => {
       const list = navigationList(kind, title, locations, (uri) => pathOfUri(uri, cwd));
-      if (list === null) return openLocationPicker(view, title, locations, cwd);
+      // A places tab is a project's; a wiki's file picks from a list instead.
+      if (list === null || !("projectId" in tab)) {
+        return openLocationPicker(view, title, locations, cwd);
+      }
       const key = locationsTabKey(tab, list);
       panes.update((arrangement) =>
         openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
@@ -247,9 +252,9 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     open: openLocation,
     pick: pickLocation,
   }));
-  const showGraph = useStableCallback(() =>
-    panes.update((arrangement) => openLocalGraph(arrangement, tab)),
-  );
+  const showGraph = useStableCallback(() => {
+    if ("projectId" in tab) panes.update((arrangement) => openLocalGraph(arrangement, tab));
+  });
   const [contextMenu] = useState<CodeContextMenuHost>(() => ({
     show: async (entries, at) => (await readLocalApi()?.contextMenu.show(entries, at)) ?? null,
     readClipboard: () => readTextFromClipboard(),
@@ -259,7 +264,8 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
         label: "Copy Relative Path",
         run: () => void writeTextToClipboard(path).catch(() => undefined),
       },
-      { label: "Open Local Graph", run: showGraph },
+      // The code index, and so a local graph, is a project's.
+      ...("projectId" in tab ? [{ label: "Open Local Graph", run: showGraph }] : []),
     ],
   }));
   const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
@@ -330,6 +336,10 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     <div className="flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
         <FileBreadcrumbs path={path} trail={trail} />
+        <TabHeader.Status className="font-mono">
+          <GitBranchIcon className="size-3.5" />
+          {tab.checkoutName}
+        </TabHeader.Status>
         {turnAvailable ? (
           <ToggleGroup
             aria-label="Compare changes with"
@@ -360,14 +370,13 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
         <TabHeader.Status>
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
         </TabHeader.Status>
-        <TabHeader.Actions>
-          <TabHeader.Action
-            label="Open local graph"
-            onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
-          >
-            <WaypointsIcon />
-          </TabHeader.Action>
-        </TabHeader.Actions>
+        {"projectId" in tab ? (
+          <TabHeader.Actions>
+            <TabHeader.Action label="Open local graph" onClick={showGraph}>
+              <WaypointsIcon />
+            </TabHeader.Action>
+          </TabHeader.Actions>
+        ) : null}
       </TabHeader.Root>
       {fromDisk || readOnly ? null : (
         <DocumentNotice state={state} session={session} onClosed={() => workspace.close(tabKey)} />
@@ -788,12 +797,16 @@ function useBaseTexts(tab: FileTab, wanted: boolean) {
 
 /** Whether a thread's agent is mid-turn in the tab's checkout. */
 function useAgentWorkingIn(tab: FileTab): boolean {
-  const project = useProject({ environmentId: tab.environmentId, projectId: tab.projectId });
+  // No thread runs in a wiki.
+  const projectId = "projectId" in tab ? tab.projectId : null;
+  const project = useProject(
+    projectId === null ? null : { environmentId: tab.environmentId, projectId },
+  );
   const threads = useThreadShells();
   return threads.some(
     (thread) =>
       thread.environmentId === tab.environmentId &&
-      thread.projectId === tab.projectId &&
+      thread.projectId === projectId &&
       (thread.worktreePath ?? project?.workspaceRoot) === tab.cwd &&
       isTurnRunning(thread.source.status),
   );

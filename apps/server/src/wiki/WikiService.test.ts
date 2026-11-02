@@ -750,3 +750,116 @@ it.effect("reads a wiki by name, and searches and links from its index", () =>
     }),
   ),
 );
+
+/** A change request opened by an agent, checked out in a worktree of its own. */
+const changeRequestWorktree = (harness: Harness) =>
+  Effect.gen(function* () {
+    const wiki = yield* registeredWiki(harness);
+    const opened = yield* wiki.wikis.amend(
+      {
+        wikiId: wiki.wikiId,
+        message: "Grow Beta",
+        changes: { "Beta.md": "# Beta\n\nBeta grows.\n" },
+      },
+      agent("thread-worktree"),
+    );
+    const changeRequestId = opened.changeRequest.changeRequestId;
+    const worktree = yield* harness.folder("worktree");
+    yield* git(wiki.root, ["worktree", "add", "--quiet", worktree, `cr/${changeRequestId}`]);
+    return { ...wiki, changeRequestId, worktree };
+  });
+
+it.effect("carries a change request's worktree along when an amendment lands on it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis, changeRequestId, worktree } = yield* changeRequestWorktree(harness);
+      yield* wikis.amend(
+        {
+          wikiId,
+          changeRequestId,
+          message: "Steady Alpha",
+          changes: { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], steadily.\n" },
+        },
+        agent("thread-worktree"),
+      );
+      assert.equal(
+        yield* read(worktree, "Alpha.md"),
+        "# Alpha\n\nAlpha builds on [[Beta]], steadily.\n",
+      );
+      assert.equal(yield* git(worktree, ["status", "--porcelain"]), "");
+    }),
+  ),
+);
+
+it.effect("refuses an amendment that would overwrite unsaved edits in the worktree", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, changeRequestId, worktree } =
+        yield* changeRequestWorktree(harness);
+      yield* write(worktree, { "Beta.md": "# Beta\n\nMine, unsaved.\n" });
+      const head = yield* git(root, ["rev-parse", `cr/${changeRequestId}`]);
+      const refused = yield* failure(
+        wikis.amend(
+          {
+            wikiId,
+            changeRequestId,
+            message: "Beta again",
+            changes: { "Beta.md": "# Beta\n\nTheirs.\n" },
+          },
+          agent("thread-worktree"),
+        ),
+      );
+      assert.equal(refused.reason, "checkout-busy");
+      assert.include(refused.message, "Beta.md");
+      assert.equal(yield* git(root, ["rev-parse", `cr/${changeRequestId}`]), head);
+      assert.equal(yield* read(worktree, "Beta.md"), "# Beta\n\nMine, unsaved.\n");
+
+      // A change elsewhere still lands, and leaves the unsaved edit where it is.
+      yield* wikis.amend(
+        {
+          wikiId,
+          changeRequestId,
+          message: "Alpha",
+          changes: { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]] now.\n" },
+        },
+        agent("thread-worktree"),
+      );
+      assert.equal(yield* read(worktree, "Alpha.md"), "# Alpha\n\nAlpha builds on [[Beta]] now.\n");
+      assert.equal(yield* read(worktree, "Beta.md"), "# Beta\n\nMine, unsaved.\n");
+    }),
+  ),
+);
+
+it.effect("saves a worktree's unsaved document edits as one amendment and leaves it clean", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, changeRequestId, worktree } =
+        yield* changeRequestWorktree(harness);
+      yield* write(worktree, {
+        "Beta.md": "# Beta\n\nEdited by hand.\n",
+        "Gamma.md": "# Gamma\n\nSee [[Beta]].\n",
+        "notes.txt": "not a document\n",
+      });
+      const saved = yield* wikis.saveWorktree(
+        { wikiId, changeRequestId, message: "Hand edits" },
+        WikiService.person,
+      );
+      assert.equal(yield* git(root, ["rev-parse", `cr/${changeRequestId}`]), saved.commit);
+      assert.equal(
+        yield* git(root, ["show", `${saved.commit}:Beta.md`]),
+        "# Beta\n\nEdited by hand.",
+      );
+      assert.equal(
+        yield* git(root, ["show", `${saved.commit}:Gamma.md`]),
+        "# Gamma\n\nSee [[Beta]].",
+      );
+      assert.equal(yield* git(worktree, ["status", "--porcelain"]), "?? notes.txt");
+      assert.equal(
+        (yield* failure(
+          wikis.saveWorktree({ wikiId, changeRequestId, message: "Again" }, WikiService.person),
+        )).message,
+        "No document in this worktree has unsaved changes.",
+      );
+    }),
+  ),
+);

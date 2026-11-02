@@ -1,4 +1,4 @@
-import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
+import { branchGroupKey, type EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { CHANGE_GROUP_STATE_LABELS } from "@t3tools/shared/changeGroups";
 import { LayersIcon } from "lucide-react";
 import { useSyncExternalStore, type DragEvent, type MouseEvent, type ReactNode } from "react";
@@ -6,11 +6,12 @@ import { useSyncExternalStore, type DragEvent, type MouseEvent, type ReactNode }
 import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
 import { useUpdateChangeGroup } from "~/components/changeRequests/groups/useChangeGroupActions";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
-import { useChangeGroups } from "~/state/changeGroups";
+import { useChangeGroups, useChangeGroupsByBranch } from "~/state/changeGroups";
 import { surfaceIdOf } from "./arrangement";
 import { useTabGroupNumber } from "./tabGroupNumbers";
 
@@ -23,17 +24,20 @@ import { useTabGroupNumber } from "./tabGroupNumbers";
 
 /**
  * The change groups a tab belongs to: the one a change request or a group's own tab is in, every
- * group a thread's chat works in.
+ * group a thread's chat works in, and every group whose threads worked on a file's branch.
  */
 export type TabGroupLookup = (tabKey: string) => readonly EnvironmentChangeGroup[];
 
 const NO_GROUPS: readonly EnvironmentChangeGroup[] = [];
 
 export function useTabGroupLookup(): TabGroupLookup {
-  return tabGroupLookup(useChangeGroups());
+  return tabGroupLookup(useChangeGroups(), useChangeGroupsByBranch());
 }
 
-function tabGroupLookup(groups: readonly EnvironmentChangeGroup[]): TabGroupLookup {
+function tabGroupLookup(
+  groups: readonly EnvironmentChangeGroup[],
+  byBranch: ReadonlyMap<string, readonly EnvironmentChangeGroup[]>,
+): TabGroupLookup {
   if (groups.length === 0) return () => NO_GROUPS;
   const byMember = new Map<string, EnvironmentChangeGroup>();
   const byPullRequest = new Map<string, EnvironmentChangeGroup>();
@@ -62,6 +66,19 @@ function tabGroupLookup(groups: readonly EnvironmentChangeGroup[]): TabGroupLook
     }
     const chat = parseChatTabKey(tabKey);
     if (chat) return byThread.get(`${chat.environmentId}:${chat.threadId}`) ?? NO_GROUPS;
+    // A main-checkout or detached tab is keyed by folder, which names no one effort.
+    const repository = parseRepositoryTabKey(tabKey);
+    if (repository) {
+      if (
+        !("checkout" in repository) ||
+        !("branch" in repository.checkout) ||
+        !("projectId" in repository)
+      ) {
+        return NO_GROUPS;
+      }
+      const { environmentId, projectId, checkout } = repository;
+      return byBranch.get(branchGroupKey(environmentId, projectId, checkout.branch)) ?? NO_GROUPS;
+    }
     const wiki = parseWikiTabKey(tabKey);
     if (wiki?.kind === "change-request") {
       return one(byMember.get(`wiki:${wiki.wikiId}/${wiki.changeRequestId}`));

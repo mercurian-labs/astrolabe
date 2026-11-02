@@ -20,7 +20,11 @@ export function useAddWiki() {
     outcome: WikiCommandOutcome<WikiSummary>,
   ): Promise<WikiSummary | null> => {
     if (!outcome.ok) return null;
-    storeWikiFilter({ wikis: [wikiScopeKey(environmentId, outcome.value.wikiId)], changed: false });
+    storeWikiFilter({
+      wikis: [wikiScopeKey(environmentId, outcome.value.wikiId)],
+      changed: false,
+      hidden: [],
+    });
     await navigate({ to: "/wikis" });
     return outcome.value;
   };

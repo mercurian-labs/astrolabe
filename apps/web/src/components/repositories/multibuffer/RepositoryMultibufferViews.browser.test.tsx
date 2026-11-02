@@ -173,7 +173,16 @@ describe("RepositoryLocationsView", () => {
           <RepositoryLocationsView tabKey="results" tab={{ kind: "locations", ...checkout, id }} />
         </div>
         <div data-testid="file">
-          <RepositoryFileView tabKey="file" tab={{ kind: "file", ...checkout, path: "a.ts" }} />
+          <RepositoryFileView
+            tabKey="file"
+            tab={{
+              kind: "file",
+              ...checkout,
+              checkout: { cwd: checkout.cwd },
+              checkoutName: "repo",
+              path: "a.ts",
+            }}
+          />
         </div>
       </>,
     );
@@ -210,7 +219,13 @@ describe("RepositoryLocationsView", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Open a.ts" }));
     expect(allTabs(workspace.arrangement())).toContain(
-      repositoryTabKey({ kind: "file", ...checkout, path: "a.ts" }),
+      repositoryTabKey({
+        kind: "file",
+        environmentId: checkout.environmentId,
+        projectId: checkout.projectId,
+        checkout: { cwd: checkout.cwd },
+        path: "a.ts",
+      }),
     );
   });
 });

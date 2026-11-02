@@ -169,7 +169,10 @@ function standaloneKeyOfTab(tabKey: string): string | null {
   if (!surface || !thread) return null;
   const { environmentId, projectId } = thread;
   const cwd = thread.worktreePath ?? readProject({ environmentId, projectId })?.workspaceRoot;
-  return cwd ? standaloneKeyOf(surface, { environmentId, projectId, cwd }) : null;
+  if (!cwd) return null;
+  const checkout =
+    thread.worktreePath !== null && thread.branch ? { branch: thread.branch } : { cwd };
+  return standaloneKeyOf(surface, { environmentId, projectId, checkout });
 }
 
 /**

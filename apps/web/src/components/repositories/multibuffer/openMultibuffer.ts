@@ -4,8 +4,13 @@ import type { NavigateFn } from "@tanstack/react-router";
 import { focusedPane, openTab } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
 import { workspace } from "~/panes/workspace";
-import { repositoryCheckout, repositoryScope } from "../repositoryScope";
-import { parseRepositoryTabKey, repositoryTabKey, type RepositorySearch } from "../repositoryTabs";
+import { readListedProjectWorktrees } from "~/state/worktrees";
+import {
+  parseRepositoryTabKey,
+  repositoryTabKey,
+  tabFolder,
+  type RepositorySearch,
+} from "../repositoryTabs";
 
 /**
  * Astrolabe: ways into a multi-file view (stacked excerpt editors) in the Repositories area: a
@@ -50,8 +55,6 @@ export function rememberLocationList(list: LocationList): string {
 }
 
 function show(checkout: MultibufferCheckout, key: string, navigate: NavigateFn | null) {
-  repositoryScope.set(`${checkout.environmentId}:${checkout.projectId}`);
-  repositoryCheckout.set(checkout.worktreePath);
   workspace.show(key);
   if (navigate !== null) void navigate({ to: "/repositories" });
 }
@@ -101,8 +104,13 @@ export function problemsOpener(panes: PaneArrangementStore | null): (() => void)
   const arrangement = panes?.getSnapshot()?.arrangement;
   if (panes === null || arrangement === undefined) return null;
   const tab = parseRepositoryTabKey(focusedPane(arrangement).active);
-  if (tab === null) return null;
-  const { environmentId, projectId, cwd } = tab;
+  if (tab === null || !("projectId" in tab)) return null;
+  const { environmentId, projectId } = tab;
+  const cwd = tabFolder(
+    tab,
+    readListedProjectWorktrees({ environmentId, projectId })?.worktrees ?? null,
+  );
+  if (cwd === null) return null;
   const key = repositoryTabKey({ kind: "problems", environmentId, projectId, cwd });
   return () => panes.update((next) => openTab(next, key));
 }

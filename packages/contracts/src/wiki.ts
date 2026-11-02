@@ -371,6 +371,14 @@ export const WikiRevertInput = Schema.Struct({
 });
 export type WikiRevertInput = typeof WikiRevertInput.Type;
 
+/** Astrolabe: a change request's worktree's unsaved document edits, landed as one amendment. */
+export const WikiSaveWorktreeInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: WikiChangeRequestId,
+  message: TrimmedNonEmptyString,
+});
+export type WikiSaveWorktreeInput = typeof WikiSaveWorktreeInput.Type;
+
 export const WikiMergeResult = Schema.Struct({
   changeRequest: WikiChangeRequest,
   commit: Schema.String,

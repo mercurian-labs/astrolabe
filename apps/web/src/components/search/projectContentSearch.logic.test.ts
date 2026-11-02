@@ -93,25 +93,33 @@ describe("focusedCheckoutTarget", () => {
   const environmentId = EnvironmentId.make("environment");
   const projectId = ProjectId.make("project");
   const projects = [{ environmentId, id: projectId, title: "scratch", workspaceRoot: "/repo" }];
-  const fileIn = (cwd: string) =>
-    repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path: "src/a.ts" });
+  const fileIn = (checkout: { cwd: string } | { branch: string }) =>
+    repositoryTabKey({ kind: "file", environmentId, projectId, checkout, path: "src/a.ts" });
+  const worktrees = [{ path: "/worktrees/a", branch: "feature/a" }];
 
   it("searches the checkout of the Projects tab in front", () => {
-    expect(focusedCheckoutTarget(fileIn("/repo"), projects)).toEqual({
+    expect(focusedCheckoutTarget(fileIn({ cwd: "/repo" }), projects, null)).toEqual({
       environmentId,
       projectId,
       cwd: "/repo",
       worktreePath: null,
       projectName: "scratch",
     });
-    expect(focusedCheckoutTarget(fileIn("/worktrees/a"), projects)).toMatchObject({
+    expect(focusedCheckoutTarget(fileIn({ cwd: "/worktrees/a" }), projects, null)).toMatchObject({
       cwd: "/worktrees/a",
       worktreePath: "/worktrees/a",
     });
   });
 
+  it("searches the worktree holding a branch tab's branch", () => {
+    expect(
+      focusedCheckoutTarget(fileIn({ branch: "feature/a" }), projects, worktrees),
+    ).toMatchObject({ cwd: "/worktrees/a", worktreePath: "/worktrees/a" });
+    expect(focusedCheckoutTarget(fileIn({ branch: "gone" }), projects, worktrees)).toBeNull();
+  });
+
   it("finds nothing in front of a chat or a project it no longer knows", () => {
-    expect(focusedCheckoutTarget("chat:environment:thread", projects)).toBeNull();
-    expect(focusedCheckoutTarget(fileIn("/repo"), [])).toBeNull();
+    expect(focusedCheckoutTarget("chat:environment:thread", projects, null)).toBeNull();
+    expect(focusedCheckoutTarget(fileIn({ cwd: "/repo" }), [], null)).toBeNull();
   });
 });
