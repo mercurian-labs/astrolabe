@@ -2,8 +2,8 @@
 
 Astrolabe's section for a project's files and changes, built as Wikis is: a rail
 item (`button "Projects"`, between Wikis and Changes) swaps the sidebar
-for the Projects sidebar and fills the main area with tabs and splits (the same
-panes as Wikis, see [panes.md](panes.md)). Text files open in the editor wikis use;
+for the Projects sidebar; files and diffs open as tabs in the one shared workspace
+([panes.md](panes.md)). Text files open in the editor wikis use;
 diffs and everything that is not text keep T3 Code's viewers. It is the home of a
 thread's Files and Diffs. User guide: `docs/user/projects.md`.
 
@@ -30,7 +30,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `git log --name-only`, deleted files and files already under Uncommitted left out). File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
-  in front; Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
+  in front (`workspace.show`): one already open comes forward; an empty tab is filled; a
+  chat, a linked tab or unsaved edits make way for a new tab; otherwise it replaces the tab
+  (Back returns). Option/Alt-click, Cmd/Ctrl-click or middle-click opens a new tab (rows here
   have no selection); dragging places it.
 - **Checkout picker** (`combobox "Checkout"`, only with a thread working tree):
   "Project checkout", then each thread's working tree as `<thread> · <branch>`
@@ -49,27 +51,39 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   first project's files), so Walk 4 and 5 hit-test a row and compare row paths.
 - **Search**: the header's search finds files by name in the scoped project
   (`projects.searchEntries`); with every project it asks for one.
-- **Main area**: one arrangement on the device (localStorage
-  `astrolabe:repository-panes:v1`, removed while it is the starting single empty tab) and
-  each tab's Back/Forward history (`astrolabe:repository-tab-history:v1`); a reload keeps
-  both. Each open tab renders into `[data-repository-tab="<tab key>"]`. An empty tab
-  reads **No file open**.
-- **File tab** (`[data-repository-tab^="repo-file:"]`): a header row (path, "An
+- **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`, history
+  `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
+  `[data-workspace-tab="<tab key>"]`. An empty tab shows the New tab launcher (**Open a tab**, panes.md).
+- **File tab** (`[data-workspace-tab^="repo-file:"]`): a header row (Back/Forward, then the
+  path as a breadcrumb, `navigation "File path breadcrumb"`: its folder muted, keeping its last
+  segment whole and cutting the rest from its start, and wrapping away (with its `/`) before
+  the file's name truncates, then the file's name; "An
   agent is working in this checkout" while a thread there is mid-turn, Saved / Saving… /
-  Read only / Too big to edit here). Markdown opens with the live preview (a centred
+  Read only / Too big to edit here; then **Open local graph**). Markdown opens with the live preview (a centred
   measure); code in `.cm-editor.cm-code` with line numbers and its language's colours
   (`@mercurian/editor/code`). Vim follows the device setting. Edits save 500 ms after
   typing stops through T3 Code's save (`projects.writeFile`), shared with the thread's
   Files view; the window regaining focus re-reads the file.
 - **Diff tab** (`repo-diff:…:working-tree` "Uncommitted changes", or `:branch-range`
-  "Branch changes"): T3 Code's diff renderer; each file's header has **Open**. Line
+  "Branch changes"): a header reading `<checkout folder> / Uncommitted changes` or
+  `/ Changes against <base>` (`RepositoryDiffView.tsx`), then T3 Code's diff renderer; each
+  file's header has **Open**. Line
   comments go to the composer of the thread in that checkout, else the project's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
 - **Open in Projects**: a thread's right-panel **Files**, a file opened there, and
   **Diff** offer it in the tab's context menu; it scopes Projects to the thread's
-  project and checkout and opens the same file, its uncommitted changes, or the tree.
-  Project tabs open in Wikis' and Changes' panes too and offer **Open in
-  Projects** there.
+  project and checkout and opens the same file, its uncommitted changes, or the tree. Only
+  those thread surface tabs offer it (`panes/workspaceTabs.tsx`).
+- **Local graph** (`repo-graph:…`, settings in `astrolabe:repository-local-graph:v1`):
+  opened from the file header's **Open local graph**, a sidebar file row's menu, or `r` `g`.
+  It splits to the right, carries the file's chain mark, and follows the file in front while
+  **Following** is pressed (`aria-pressed`). Header actions, in order: Back, Forward,
+  **Reset the graph** (only once something is expanded), **Following**, **Fit the graph**,
+  **Graph settings**. With no file it reads "Local graph", **Fit the graph** is disabled, and
+  the notice reads "Open a file to see its local graph…". A single click opens the node's file and re-roots there after ~280 ms (the
+  double-click window); a double-click toggles its neighbours; right-click offers Expand /
+  Collapse neighbours, Show / Hide contents, Centre here and Open. Levels and the graph
+  itself are in [code-graph.md](code-graph.md).
 - **Keyboard and palette**: `menu g r` and the palette's **Open projects**.
 
 - **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Projects"`
@@ -129,13 +143,18 @@ now**. With the **server** project that makes two projects.
 6. Search a file name; Enter opens it.
 7. In a thread, add a **Diff** tab to the right panel, right-click it, **Open in
    Projects**: the URL is `/repositories`, the filter names the thread's project.
+8. With the `.ts` file in front, click **Open local graph**: a `repo-graph:` tab splits to
+   the right with the file's chain mark. Prove it paints: `document.elementFromPoint` at the
+   graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
+   the graph re-roots on it; unpress it and it stays.
 
 ## Source
 
-`apps/web/src/components/repositories/`, `routes/_chat.repositories.tsx`,
-`panes/sectionPanes.ts`, `packages/editor/src/code/`, `review.getRecentFiles` in
+`apps/web/src/components/repositories/` (incl. `RepositoryGraphView.tsx` and
+`localGraph.ts`), `components/codeGraph/`, `routes/_chat.repositories.tsx`,
+`packages/editor/src/code/`, `review.getRecentFiles` in
 `apps/server/src/review/ReviewService.ts`, `sectionTabs/` (the `repositories` section),
-`panes/rightPanelPaneTabs.tsx` (Open in Projects), the filter on
+`panes/workspaceTabs.tsx` (Open in Projects), the filter on
 `components/projects/projectFilter.ts` and `storedChoice.ts`, T3 Code's
 `components/files/FileBrowserPanel.tsx` (the tree). Mobile:
 `apps/mobile/src/features/repositories/`, `apps/mobile/src/state/repositories.ts`, the

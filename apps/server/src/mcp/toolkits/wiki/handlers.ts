@@ -1,4 +1,9 @@
-import { OrchestratorMcpFailure, type WikiError, WikiId } from "@t3tools/contracts";
+import {
+  OrchestratorMcpFailure,
+  WikiChangeRequestId,
+  type WikiError,
+  WikiId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as WikiService from "../../../wiki/WikiService.ts";
@@ -63,6 +68,19 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   ),
   astrolabe_wiki_links: McpToolAccess.reads(({ wiki, ...input }) =>
     read((wikis, threadId) => wikis.links({ ...input, wikiId: WikiId.make(wiki), threadId })),
+  ),
+  astrolabe_wiki_query: McpToolAccess.reads(({ wiki, base, view, changeRequestId }) =>
+    read((wikis, threadId) =>
+      wikis.query({
+        wikiId: WikiId.make(wiki.trim()),
+        base: base.trim(),
+        ...(view === undefined ? {} : { view: view.trim() }),
+        ...(changeRequestId === undefined
+          ? {}
+          : { changeRequestId: WikiChangeRequestId.make(changeRequestId.trim()) }),
+        threadId,
+      }),
+    ),
   ),
   astrolabe_wiki_change_request: McpToolAccess.reads(({ wiki, changeRequestId }) =>
     read((wikis, threadId) =>

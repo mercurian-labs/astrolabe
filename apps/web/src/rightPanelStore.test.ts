@@ -471,29 +471,6 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
   });
 
-  it("shares a change group's pull requests quietly, the panel and its front as they were", () => {
-    const store = useRightPanelStore.getState();
-    const pr = pullRequestSurface({ projectId: "project-a", repository: "o/r", number: 7 });
-    store.openFile(refA, "src/app.ts");
-    store.close(refA);
-    const revision = store.getUserActionRevision(refA);
-    store.shareSurfaces(refA, [pr], []);
-    let state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
-    expect(state.isOpen).toBe(false);
-    expect(state.activeSurfaceId).toBe("file:src/app.ts");
-    expect(state.surfaces.map((surface) => surface.id)).toEqual(["file:src/app.ts", pr.id]);
-    expect(store.getUserActionRevision(refA)).toBe(revision);
-
-    store.shareSurfaces(refB, [pr], []);
-    store.activateSurface(refB, pr.id);
-    store.shareSurfaces(refB, [], [pr.id]);
-    state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refB);
-    expect(state.isOpen).toBe(true);
-    expect(state.activeSurfaceId).toBeNull();
-    expect(state.surfaces).toEqual([]);
-    expect(useClosedViewStore.getState().entries).toEqual([]);
-  });
-
   it("keeps a maximized panel per thread without counting it as a manual choice", () => {
     const store = useRightPanelStore.getState();
     store.open(refA, "preview");

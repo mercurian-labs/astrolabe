@@ -1,4 +1,10 @@
-import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  type EnvironmentId,
+  type KeybindingCommand,
+  type ResolvedKeybindingTrigger,
+  ThreadId,
+} from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -7,6 +13,7 @@ import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/
 import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
+import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { appCommand, cycleKey, fullScreenState, type AppCommandContext } from "./commands";
 import type { PanesHandle } from "./handles";
 import {
@@ -147,6 +154,7 @@ describe("the keyboard menu built from the menu rules", () => {
       ["p", "Panes"],
       ["s", "Sidebar"],
       ["w", "Wikis"],
+      ["r", "Projects"],
       [",", "settings"],
     ]);
     // Only the focus moves and the scrolls repeat, there and nowhere in the groups.
@@ -331,6 +339,24 @@ describe("the keyboard menu built from the menu rules", () => {
     expect(press(context().root, ["p", "r"])).toBe(NOT_HERE);
     press(context({ chatTabs: { keys: ["a"], activeKey: "a", select, close } }).root, ["p", "r"]);
     expect(pressed).toEqual(["rightPanel.toggle"]);
+  });
+
+  it("toggles the terminal drawer only with a chat tab in focus", () => {
+    using _cleanup = cleanup();
+    const pressed = pressedCommands();
+    const select = vi.fn();
+    const close = vi.fn();
+    const chat = chatTabKey(scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A")));
+    const triggers = [...DEFAULT_RESOLVED_TRIGGERS, menuKeys("terminal.toggle", "o", "j")];
+    const focused = (activeKey: string | null) =>
+      context(
+        activeKey === null ? {} : { chatTabs: { keys: [chat, "file"], activeKey, select, close } },
+        triggers,
+      ).root;
+    expect(press(focused(null), ["o", "j"])).toBe(NOT_HERE);
+    expect(press(focused("file"), ["o", "j"])).toBe(NOT_HERE);
+    press(focused(chat), ["o", "j"]);
+    expect(pressed).toEqual(["terminal.toggle"]);
   });
 });
 

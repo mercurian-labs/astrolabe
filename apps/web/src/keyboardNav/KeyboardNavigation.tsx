@@ -5,7 +5,7 @@ import { openLeaderFrom } from "~/whichKey/doors";
 import { forgetEnteredRow, handleListKey, isListRow, roveTo } from "./placeLists";
 
 /** The tab buttons of the panes' and the chats' strips. */
-const TAB_BUTTONS = "[data-pane-tab], [data-chat-tab]";
+const TAB_BUTTONS = "[data-pane-tab]";
 
 /**
  * Page keyboard navigation between places and through their lists. It tracks focus and pointer

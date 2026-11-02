@@ -1,10 +1,9 @@
 # Changes (pull requests and wiki change requests)
 
 Astrolabe's section after Agents, Wikis and Projects: every pull request on the
-connected git hosts, listed in its own sidebar and opened in Obsidian-style tabs and
-splits (the same panes as Wikis and the right panel, see [panes.md](panes.md)).
-Astrolabe owns the section's shell (sidebar frame, panes, tab history, selection,
-drag); the list logic, filters, rows, the review itself and every action are upstream
+connected git hosts, listed in its own sidebar and opened as tabs of the panes every
+section shares ([panes.md](panes.md)). Astrolabe owns the section's sidebar shell
+(frame, selection, drag); the panes and their tab history are the shared ones. The list logic, filters, rows, the review itself and every action are upstream
 T3 Code's (`pullRequestList.logic.ts`, `PullRequestDetailPanel.tsx`), shared with the
 thread's own Pull request tab. Shown only when a connected server reports
 `capabilities.pullRequests` (every current server does).
@@ -28,8 +27,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   Back/Forward walk across both kinds. Hidden when a project or a single host is picked.
 - **A wiki change request's pull requests** (`client-runtime/src/wikiPullRequests.ts`):
   its view lists the writing thread's pull requests (`ul[aria-label='Pull requests']`,
-  state per row, **Open** shows one beside it: a Changes tab, a Wikis pane, or the
-  thread's own Pull request surface in its right panel). One merged → an info alert
+  state per row, **Open** shows one beside it as a tab, or as the thread's own Pull
+  request surface). One merged → an info alert
   "Pull request #N merged" with **Merge docs**; all closed unmerged → **Close change
   request**. **Merge** while one is open confirms first. Nothing merges on its own; the
   pull request's own view is upstream's and shows no link back.
@@ -51,16 +50,22 @@ thread's own Pull request tab. Shown only when a connected server reports
   member pull request's head branch (Same branch; never main/master/develop/trunk or the base),
   threads whose title or branch names its issue key (References), and threads added or accepted
   from suggestions (decisions keyed `thread:<threadId>`); a thread can be in several groups. The
-  tab (`change-group:<env>:<id>`) shows
-  `switch "Merge with the code"`, **Open as a tab group**, **Ask for suggestions** (when
+  tab (`change-group:<env>:<id>`) has the shared tab header (`nav[aria-label='Change group
+  breadcrumb']` reading `Changes / <title>`, the state as quiet status) whose icon buttons are
+  **Ask to update the docs** / **Draft the docs**, **Ask for suggestions** (when
   agent suggestions are on; messages the root thread to use `astrolabe_change_group_suggest`),
-  **Add a change request**, **Add a thread**, Suggested rows (✓ / ✕, threads too), Code /
-  Documentation rows and a **Threads** section (each `button "Open <title>"` with its reason and
-  Working / Settled / Idle; opens its chat beside) with ✕ to take out. **Open as a tab group**
-  opens the group's tab, every member's tab and every group thread's chat. **Ask to update the docs** shows on Docs behind;
+  **Add a change request**, **Add a thread** and **Open as a tab group**; below it the counts,
+  `switch "Merge with the code"`, Suggested rows (✓ / ✕, threads too), Code /
+  Documentation rows (each opens beside) and a **Threads** section (each `button "Open <title>"`
+  with its reason and Working / Settled / Idle; `workspace.openChat`: comes forward if open, else
+  fills a focused empty tab, else a new tab after the chat in front) with ✕ to take out. **Open as a tab group**
+  opens the group's threads as chats after the front chat (which stays in front); when the
+  front chat is in the group, the other tabs (the group's, its members') open linked to the
+  group, else they stand on their own, together in one new pane beside it. **Ask to update the docs** shows on Docs behind;
   **Draft the docs** on Docs missing with drafts on. The server sweeps armed groups each minute
   and merges their open docs once all live code merged. A thread's header shows
-  `button "Change group: <title>, <state>"`, which opens the tab here. Tab groups
+  `button "Change group: <title>, <state>"`, which opens the group's tab beside the chat (in
+  front where it is open) and stays in Agents. Tab groups
   (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs is headed by a
   marker, `button[data-tab-group]` named `<title>, tab group <n>, <state>` (`, collapsed`
   appended): a stack icon with the group's number (the same in every pane and section), in
@@ -144,28 +149,42 @@ thread's own Pull request tab. Shown only when a connected server reports
   - Quick actions: holding Shift shows `group "Quick actions for pull request #n"` on
     each row (Close/Merge, Ready for review, Reopen, as the host allows); they are in
     the DOM but `display: none` otherwise. They write to the host.
-- **Main area**: one arrangement on the device (localStorage
-  `t3code:right-panel-panes:v1:pull-requests`). A plain click shows the pull request in
-  the focused pane's tab in front (one open in another tab comes forward there; an
-  empty tab makes way). Option-click, middle-click, Alt+Enter and the row's right-click
+- **Main area**: the shared panes ([panes.md](panes.md)); `routes/_chat.pull-requests.tsx`
+  renders only the sidebar list (`PullRequestsPage.tsx`). The section's old arrangement
+  (`t3code:right-panel-panes:v1:pull-requests`) and history
+  (`astrolabe:pull-request-tab-history:v1`) join `astrolabe:workspace:v1` beside what was there
+  once, then are removed. A plain click replaces the focused pane's tab in front with the pull
+  request (`workspace.show`: one open in another tab comes forward there; an empty tab in front
+  is filled (`arrangement.ts` `openTab`); when the tab in front is a chat, a linked tab or has
+  unsaved edits, a new tab opens instead). Option-click, middle-click, Alt+Enter and the row's right-click
   **Open in new tab** open a new tab. Mod-click and Shift-click select rows
   (`data-selected`) without opening; a selected row's right-click is **Open N in new
   tabs**. Rows drag onto a pane's strip or content, the selection with them
-  (`placePullRequests`). Tabs are `[data-pane-tab]` labelled `#<n> <title>`; an empty
-  tab reads "No change request open". **Pane actions**: Split right / Split down (disabled
-  for a pane's only tab), Close pane. The URL follows the focused pane's pull request
-  (`repository`, `number`, `selectedHost`, `selectedProjectId`, `selectedEnvironmentId`).
-  With servers too old for pull requests it reads "Pull requests unavailable", as the
-  sidebar does. Below the md width the sidebar is a sheet, and opening a row closes it.
-- **History**: each tab walks back and forward through what it showed (localStorage
-  `astrolabe:pull-request-tab-history:v1`) with the title bar's **Back**/**Forward**,
-  `mod+[`/`mod+]` and Space `t h`/`t l`. A pull request picked inside a review (stack
-  menu, a link in its text) replaces that review's tab.
+  (`placePullRequests`). Tabs are `[data-pane-tab]` labelled `#<n> <owner/repo>`, keyed
+  `surface:pull-request:<env>:<project>:<host>:<repo>:<n>`; an empty tab shows the shared New
+  tab launcher. The URL follows the focused pane's pull request (`repository`, `number`,
+  `selectedHost`, `selectedProjectId`, `selectedEnvironmentId`), and a URL naming one opens it
+  (or brings it forward) once. The lit row (`aria-current="page"`) is the focused tab's pull
+  request. With servers too
+  old for pull requests the sidebar reads "Pull requests unavailable". Below the md width the sidebar is a sheet, and opening a row closes it.
+- **History**: each tab walks back and forward through what it showed (the shared panes'
+  `astrolabe:workspace-tab-history:v1`) with `mod+[`/`mod+]` and Space `t h`/`t l`, and the
+  arrows in its header. A pull request picked inside a review (stack menu, a link in its
+  text) or a Changes row click replaces that review's tab, which pushes onto its history.
+- **Header** (`PullRequestTabHeading.tsx`, the shared `TabHeader`, panes.md): in the shared
+  panes, `nav[aria-label='Pull request breadcrumb']` reads `<owner/repo> / #<n> <title>`, the
+  title truncating before the repository; then **Open** or **Draft** as quiet status, **Edit
+  title** only when the pull request can be edited (opens the title field below), and T3 Code's actions in the same row (Merge,
+  Check out, **More pull request actions**; a merged or closed one's state badge). A thread's
+  pull request adds **This thread's pull requests**. Below it the author, branches and diff
+  stat, then the Summary/Timeline/Code strip with no line above it; the review scrolls under a
+  line, not a fade (Summary's section headings and Code's file headers are sticky). Outside
+  the shared panes the panel keeps T3 Code's crumbs.
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
   labels, description, checks, comments), **Guide** (only with Settings → Source Control
   → review guides on), **Timeline** and **Code** (the diff, with scope, split/stacked,
   file tree, Viewed). Every review opens on Summary. A written guide coming on screen in
-  the focused pane collapses the sidebar (wide windows only) and maximizes the pane when
+  the focused pane collapses the sidebar (wide windows only, on Changes) and maximizes the pane when
   other panes share the area (`maximizeForGuide`). Leaving the Guide gives nothing back,
   as in T3 Code; leaving Changes opens the sidebar again unless it was opened by hand
   since. **More pull request actions**: Link to thread, Refresh, Ask a question, Explain
@@ -189,7 +208,7 @@ preview_act click     [data-pull-request-key] > button >> nth=1    # replaces th
 preview_act click     [data-pull-request-key] > button >> nth=2   button="right"
 preview_act click     role=button[name='Open in new tab']          # a second tab
 preview_evaluate  dispatch a click with metaKey / altKey on a row button
-preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
+preview_act click     [data-pane-id][data-focused] [data-tab-history] >> role=button[name='Back']   # or mod+[
 preview_evaluate  set the searchbox's value with the native setter, then dispatch input
 preview_navigate  /pull-requests?involvement=authored&state=open   # Filters shows 1
 ```
@@ -222,9 +241,8 @@ Save a screenshot of the section.
   Blur, then press Escape only while a menu is open.
 - Shift-click ranges follow the data's order, not the screen's, so a short range can
   select dozens of rows.
-- A reload brings every tab back: T3 Code keeps the page's record for the session only,
-  so the panes put back the pull requests their saved tab keys name
-  (`restorePullRequestTabs`). The default profile shares this localStorage with any
+- A reload brings every tab back: a pull request's tab key names it in full
+  (`pullRequestTargetOfKey`). The default profile shares this localStorage with any
   other tab on the same origin, so two walks at once overwrite each other's layout.
 - The row's right-click menu renders as plain buttons, not menuitems. Filters'
   submenus open on hover and often lag in the Browser panel; read their options from
@@ -234,15 +252,16 @@ Save a screenshot of the section.
 
 ## Owns
 
-`components/pullRequest/PullRequestsSidebar.tsx`, `PullRequestPanes.tsx`,
-`pullRequestTabs.ts`, `components/changeRequests/` (project filter, kind, Wiki changes,
+`components/pullRequest/PullRequestsSidebar.tsx`, `pullRequestTabs.ts`,
+`pullRequestWorkspace.ts`, `components/changeRequests/` (project filter, kind, Wiki changes,
 and `groups/` with the thread header's pill), `state/changeGroups.ts`,
 `components/projects/` (the project filter, shared with the Agents sidebar),
-`settings/ChangeRequestSettings.tsx` and `routes/settings.change-requests.tsx`, the
+`settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
+`pullRequest/PullRequestTabHeading.tsx` (the header), the
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
 `packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server
 `changeGroups/ChangeGroupService.ts` and `mcp/toolkits/changeGroups/`, the section shell in
-`pullRequest/PullRequestsPage.tsx` (sidebar portal, panes, selection, drag, row menu), its list
+`pullRequest/PullRequestsPage.tsx` (sidebar portal, selection, drag, row menu, URL), its list
 in `PullRequestsColumn.tsx` (`PullRequestsSidebarList`) and `PullRequestListGroups.tsx`, and
 the Pull Requests branches in `AppSidebarLayout.tsx`, `sidebar/AppIconRail.tsx` and
 `sidebar/mainAppLocation.ts`. Tab groups (`panes/tabGroups.tsx`) are panes.md's.

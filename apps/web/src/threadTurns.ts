@@ -1,11 +1,10 @@
-import type { OrchestrationV2ConversationMessage, OrchestrationV2Run } from "@t3tools/contracts";
+import type { OrchestrationV2Run } from "@t3tools/contracts";
 
 /**
- * A thread's turns as its views tell them (the Graph tab's story, the Lineage tab's checkpoints):
- * the runs the conversation shows, and what the person asked in each.
+ * A thread's turns as the Lineage tab tells them: the runs the conversation shows, and what the
+ * person asked in each.
  */
 
-const LABEL_LENGTH = 48;
 const ACTIVE_RUN = new Set(["preparing", "queued", "starting", "running", "waiting"]);
 
 /** One turn's input: its run and whether it is still being worked. */
@@ -67,34 +66,4 @@ export function replyLine(text: string): string | null {
     if (line !== "") return line;
   }
   return null;
-}
-
-/**
- * What the person asked in each run, as `askedLine` tells it, by run id. A run whose message is
- * not loaded, or says nothing, has none.
- */
-export function askedLines(
-  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
-): ReadonlyMap<string, string> {
-  const lines = new Map<string, string>();
-  const seen = new Set<string>();
-  for (const message of messages) {
-    if (message.role !== "user" || message.runId === null || seen.has(message.runId)) continue;
-    seen.add(message.runId);
-    const line = askedLine(message.text);
-    if (line !== null) lines.set(message.runId, line);
-  }
-  return lines;
-}
-
-/** Each turn's label: the first line of what the person asked in its run, shortened. */
-export function turnLabels(
-  turns: ReadonlyArray<StoryRun>,
-  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
-): string[] {
-  const asked = askedLines(messages);
-  return turns.map((turn, index) => {
-    const line = asked.get(turn.id) ?? `Turn ${index + 1}`;
-    return line.length > LABEL_LENGTH ? `${line.slice(0, LABEL_LENGTH - 1)}…` : line;
-  });
 }

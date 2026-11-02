@@ -8,10 +8,11 @@ import { codeLanguageFor, codeView, isMarkdownPath } from "@mercurian/editor/cod
 import { livePreview } from "@mercurian/editor/markdown";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
-import { BotIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BotIcon, WaypointsIcon } from "lucide-react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
+import { PanesHostContext } from "~/panes/panesHost";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useEnvironmentScope } from "~/state/session";
 import { useProject, useThreadShells } from "~/state/entities";
@@ -21,10 +22,12 @@ import { composerHistory } from "../composerCodeMirror/composerUndo";
 import { setProjectFileQueryData, useProjectFileQuery } from "../files/projectFilesQueryState";
 import { useFileSaveCoordinator } from "../files/useFileSaveCoordinator";
 import { isTurnRunning } from "../wiki/wiki.logic";
-import { registerUnsavedCheck } from "../wiki/wikiPanes";
-import type { RepositoryTab } from "./repositoryTabs";
-
-type FileTab = Extract<RepositoryTab, { kind: "file" }>;
+import { registerUnsavedCheck } from "~/panes/unsavedEdits";
+import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
+import { openLocalGraph } from "./localGraph";
+import { workspace } from "~/panes/workspace";
+import { TabHeader } from "~/panes/TabHeader";
+import type { RepositoryFileTab as FileTab } from "./repositoryTabs";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
 // rebuild the editor's styles.
@@ -46,7 +49,11 @@ const FILE_EDITOR_THEME = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   "&.cm-code .cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "13px" },
   ".cm-scroller": { lineHeight: "inherit" },
-  "&.cm-editor .cm-content": { padding: "12px 16px 40vh", caretColor: "currentColor" },
+  // Clears the fade under the tab's header at rest.
+  "&.cm-editor .cm-content": {
+    padding: "var(--workspace-titlebar-scroll-fade-height) 16px 40vh",
+    caretColor: "currentColor",
+  },
   // A note reads as a wiki's document does: a measure wide, in the middle of the pane.
   "&.cm-editor:not(.cm-code) .cm-content": {
     maxWidth: "48rem",
@@ -54,6 +61,8 @@ const FILE_EDITOR_THEME = EditorView.theme({
     padding: "24px 32px 40vh",
   },
   ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)" },
+  // The import a hovered local-graph node names.
+  ".cm-import-line": { backgroundColor: "color-mix(in oklab, var(--primary) 16%, transparent)" },
 });
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
@@ -98,24 +107,20 @@ export function RepositoryFileView({
   const contents = file.data?.contents ?? null;
   const readOnly = !canWrite || file.data?.truncated === true;
   const agentWorking = useAgentWorkingIn(tab);
+  // The panes this file is in, which its local graph opens beside it in.
+  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
 
-  if (file.error !== null && contents === null) {
-    return <FileNotice>{file.error}</FileNotice>;
-  }
-  if (contents === null) {
-    return <FileNotice>{file.isPending ? "Opening…" : "Nothing to show."}</FileNotice>;
-  }
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
-        {agentWorking ? (
-          <span className="flex shrink-0 items-center gap-1 text-info-foreground">
-            <BotIcon className="size-3.5" />
-            An agent is working in this checkout
-          </span>
-        ) : null}
-        <span className="shrink-0">
+  const header = (
+    <TabHeader.Root>
+      <TabHeader.Path path={path} />
+      {agentWorking ? (
+        <TabHeader.Status className="text-info-foreground">
+          <BotIcon className="size-3.5" />
+          An agent is working in this checkout
+        </TabHeader.Status>
+      ) : null}
+      {contents === null ? null : (
+        <TabHeader.Status>
           {readOnly
             ? file.data?.truncated
               ? "Too big to edit here"
@@ -123,11 +128,41 @@ export function RepositoryFileView({
             : pending
               ? "Saving…"
               : "Saved"}
-        </span>
+        </TabHeader.Status>
+      )}
+      <TabHeader.Actions>
+        <TabHeader.Action
+          label="Open local graph"
+          onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
+        >
+          <WaypointsIcon />
+        </TabHeader.Action>
+      </TabHeader.Actions>
+    </TabHeader.Root>
+  );
+  if (file.error !== null && contents === null) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {header}
+        <FileNotice>{file.error}</FileNotice>
       </div>
+    );
+  }
+  if (contents === null) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {header}
+        <FileNotice>{file.isPending ? "Opening…" : "Nothing to show."}</FileNotice>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {header}
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
-          key={`${environmentId}\0${cwd}\0${path}`}
+          key={importLineKey(tab)}
+          file={importLineKey(tab)}
           path={path}
           contents={contents}
           readOnly={readOnly}
@@ -156,12 +191,15 @@ function FileNotice({ children }: { readonly children: string }) {
  * text, unless edits here are still on their way.
  */
 function FileEditor({
+  file,
   path,
   contents,
   readOnly,
   pendingRef,
   onChange,
 }: {
+  /** The file as the import-line highlight names it (`importLineKey`). */
+  readonly file: string;
   readonly path: string;
   readonly contents: string;
   readonly readOnly: boolean;
@@ -183,7 +221,7 @@ function FileEditor({
     readOnly: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
-  const [initial] = useState(() => ({ path, contents, readOnly, vim }));
+  const [initial] = useState(() => ({ file, path, contents, readOnly, vim }));
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -208,6 +246,7 @@ function FileEditor({
           markdown ? [livePreview(), EditorView.lineWrapping] : codeView(),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
+          importLineExtension,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           }),
@@ -215,6 +254,7 @@ function FileEditor({
       }),
     });
     viewRef.current = view;
+    const stopLighting = followImportLine(view, initial.file);
     let cancelled = false;
     const language = markdown ? null : codeLanguageFor(initial.path);
     if (language) {
@@ -224,6 +264,7 @@ function FileEditor({
     }
     return () => {
       cancelled = true;
+      stopLighting();
       view.destroy();
       viewRef.current = null;
     };
@@ -259,7 +300,7 @@ function FileEditor({
   return (
     <div
       ref={host}
-      className="h-full min-h-0 overflow-hidden text-sm leading-relaxed text-foreground"
+      className="h-full min-h-0 overflow-hidden text-sm leading-relaxed text-foreground [&_.cm-scroller]:topbar-scroll-fade"
       onKeyDown={(event) => {
         if (event.key === "Escape") event.stopPropagation();
       }}

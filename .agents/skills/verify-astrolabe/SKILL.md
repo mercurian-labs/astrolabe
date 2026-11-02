@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (chat tabs, tabs and splits in the right panel, sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, the code graph, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -49,9 +49,11 @@ Then wait for `pairingUrl:` in the log, as `start-dev.sh` does, and stop it with
 `VITE_HTTP_URL` or `VITE_WS_URL`.
 
 A clean home is not empty: the server adds the directory it runs in
-(`apps/server`, shown as the **server** project) and opens a draft thread.
-Chat tabs need at least two threads; seed them with `vp run migrate-dev-db`
-(server stopped) into the worktree's `.t3`, as AGENTS.md describes.
+(`apps/server`, shown as the **server** project) and opens a real "New thread"
+in it. Chat tabs need at least two threads. `start-dev.sh` runs on `$run/home`,
+so seed that home with the server stopped:
+`vp run migrate-dev-db --base-dir "$run/home"` (or seed the worktree's `.t3`, as
+AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above).
 
 ## Checks before driving
 
@@ -149,8 +151,10 @@ state, and the incognito session does not outlive the browser: a later run lands
 on `/pair` again. On a tab already at `/pair`, navigating to `…/pair#token=…`
 only changes the hash and pairs nothing; type the token into
 `role=textbox[name='Pairing token']` and click **Continue** instead. The app boots behind a "Loading Astrolabe" status, so `preview_wait_for`
-`role=tablist[name='Open chats']` before acting. It lands on a draft in the
-**server** project; click a sidebar row (`role=button[name=/^<title>, /]`; the name is
+`[data-pane-tabs]` (the workspace tab strips) before acting. A fresh profile may first
+land on `/welcome` (the first-run gate): finish or skip it. A clean home then lands on a
+"New thread" in the **server** project, and seeded data goes straight to the app; click a
+sidebar row (`role=button[name=/^<title>, /]`; the name is
 `<title>, [<status>, ]<project>`, or `[data-testid=sidebar-row-card] >> nth=N`)
 when the feature needs a real thread. Then:
 
@@ -190,10 +194,27 @@ when the feature needs a real thread. Then:
   that times out too, close the tab and open a fresh one. Check a snapshot on a
   second page before blaming the page under test: a stuck snapshot can be the
   browser panel's, not the app's.
-- Right-panel arrangements live in localStorage under
-  `t3code:right-panel-panes:v1:<environmentId>:<threadId>`. Reading that key proves a
-  layout change without a screenshot, and surviving `location.reload()` proves
-  persistence.
+- Don't read React state through a DOM node's `__reactFiber$` key. React sets it when the
+  node is created and never updates it, so walking up from it can read the previous
+  render: a walk once reported a local graph that never redrew when the page was fine.
+  Read rendered output (DOM text, a screenshot) or query the state's own atom.
+- The shared panes live in localStorage under `astrolabe:workspace:v1` (the tree, plus
+  `owners`, `parked` and `front` for linked tabs). Reading that key proves a layout change
+  without a screenshot, and surviving `location.reload()` proves persistence. Tab histories
+  live in `astrolabe:workspace-tab-history:v1`.
+- The `incognito` profile is shared by every incognito tab in this session (a tab the user
+  walks in, for one), so its localStorage is too. Before driving, copy every `astrolabe:*` and
+  `t3code:*` localStorage key into your tab's sessionStorage, and write them back before
+  closing your tab (desktop Browser panel; the server browser isolates each incognito tab).
+- Panel shortcuts (Cmd+J, Cmd+Alt+B) act on the focused pane's chat only; Cmd+Alt+B also
+  on the chat whose linked tab has focus (`takesTerminalToggle`/`takesPanelShortcut` in
+  `useChatShortcuts.ts`, `workspace.ts`). Click the target pane's `[data-testid=composer-editor]` first so it is the
+  focused pane. Cmd+K opens from anywhere.
+- While a user walks your dev server, land a multi-file edit in one step: a half-landed edit
+  hot-reloads their tab into "X is not defined".
+- A tab another session or the user owns accepts only `preview_status`, `preview_snapshot`
+  and `preview_wait_for`; `preview_evaluate` and actions are refused ("This tab belongs to
+  another agent session…"). Open your own tab and reproduce there.
 
 ## Evidence
 

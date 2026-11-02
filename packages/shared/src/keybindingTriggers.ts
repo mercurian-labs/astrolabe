@@ -54,6 +54,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu t [", command: "chatTab.previous" },
   { key: "menu t c", command: "chatTab.close" },
   { key: "menu t r", command: "view.reopenClosed" },
+  { key: "menu t k", command: "tab.toggleLink" },
+  { key: "menu t n", command: "tab.newLinked" },
   // The tab in front's history, as h/l step left and right ([ and ] step between tabs).
   { key: "menu t h", command: "navigation.back" },
   { key: "menu t l", command: "navigation.forward" },
@@ -66,6 +68,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu s s", command: "sidebar.toggle" },
   { key: "menu w w", command: "section.wikis" },
   { key: "menu w f", command: "wiki.findDocument" },
+  { key: "menu r g", command: "repository.localGraph" },
   { key: "menu ,", command: "section.settings" },
   { key: ":q[uit]", command: "tab.close" },
   { key: ":w[rite]", command: "draft.write" },

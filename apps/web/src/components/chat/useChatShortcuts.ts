@@ -11,6 +11,8 @@ import { getTerminalFocusOwner, type TerminalFocusOwner } from "../../lib/termin
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
 import { surfaceLauncherClaimsKey } from "../RightPanelTabs";
+import { useChatOwner } from "../../panes/PaneSurfaceHost";
+import { isFocusedChatTab, takesPanelShortcut, takesTerminalToggle } from "../../panes/workspace";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 import { composerShortcutCommands } from "./composerShortcuts";
 
@@ -19,6 +21,16 @@ export type ChatShortcutHandler = (context: {
   readonly event: KeyboardEvent;
   readonly terminalFocusOwner: TerminalFocusOwner | null;
 }) => boolean | void;
+
+// Astrolabe: commands for a chat's right panel, which several chats on screen would otherwise
+// race for (`takesPanelShortcut`).
+const PANEL_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
+  "rightPanel.toggle",
+  "rightPanel.toggleMaximized",
+  "rightPanel.close",
+  "threadPanel.toggle",
+  "diff.toggle",
+]);
 
 export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcutHandler>>;
 
@@ -45,6 +57,7 @@ export interface ChatShortcutsInput {
  * act on the current render without re-registering on every change.
  */
 export function useChatShortcuts(input: ChatShortcutsInput) {
+  const owner = useChatOwner();
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     const { keybindings } = input;
     if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
@@ -65,6 +78,8 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
       shouldTypeToFocusComposer(event) &&
+      // Astrolabe: with chats side by side, typing goes to the focused one only.
+      isFocusedChatTab(owner) &&
       // Astrolabe: an open surface launcher keeps its letters (`surfaceLauncherClaimsKey`).
       !surfaceLauncherClaimsKey(event.key) &&
       input.composerRef.current?.insertTextAtEnd(event.key) === true
@@ -78,6 +93,9 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       context: shortcutContext,
     });
     if (!command) return;
+    // Astrolabe: in the shared panes only the focused chat tab toggles its drawer.
+    if (command === "terminal.toggle" && !takesTerminalToggle(owner)) return;
+    if (PANEL_COMMANDS.has(command) && !takesPanelShortcut(owner)) return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??

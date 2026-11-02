@@ -393,6 +393,9 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "focus.right": "Focus Right",
   "scroll.down": "Scroll Down",
   "scroll.up": "Scroll Up",
+  "repository.localGraph": "Projects: Open Local Graph",
+  "tab.toggleLink": "Tabs: Link or Unlink Tab",
+  "tab.newLinked": "Tabs: New Linked Tab",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

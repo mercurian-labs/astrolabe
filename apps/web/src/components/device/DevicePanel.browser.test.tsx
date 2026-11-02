@@ -95,6 +95,7 @@ vi.mock("~/rightPanelStore", () => ({
     }),
   },
   selectThreadRightPanelState: () => ({ isOpen: false, activeSurfaceId: null, surfaces: [] }),
+  pullRequestSurfaceId: () => "pull-request",
 }));
 vi.mock("~/components/device/DeviceHostUpdates", () => ({ DeviceHostUpdates: () => null }));
 vi.mock("~/components/device/DeviceWorkspace", () => ({

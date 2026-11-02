@@ -108,6 +108,8 @@ interface TabPillProps {
   paneFocused: boolean;
   /** Whether this is its pane's only tab. */
   only: boolean;
+  /** Whether it can close: all but a lone pane's lone empty tab, as closing one does nothing. */
+  closable: boolean;
   /** Whether no tab follows it in the strip. */
   last: boolean;
   /** Whether its strip is part of the window's title bar, which drags the window. */
@@ -127,6 +129,7 @@ function LabeledTabPill({
   active,
   paneFocused,
   only,
+  closable,
   last,
   draggableInTitlebar,
   label,
@@ -136,8 +139,6 @@ function LabeledTabPill({
   const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
   const dragging = useDragging(tabKey);
-  // A lone pane's lone empty tab is what an empty panel shows; there is nothing to close.
-  const closable = !(only && isEmptyTab(tabKey));
   const activate = () => controller.update((arrangement) => activateTab(arrangement, tabKey));
   const selected = useTabSelectionStore(
     (store) => store.selection.paneId === paneId && store.selection.keys.includes(tabKey),
@@ -320,15 +321,18 @@ function LabeledTabPill({
       ) : (
         <TabTitle title={title} tooltip={tooltip} />
       )}
-      {closable ? (
-        <TabCloseButton
-          label={`Close ${title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            tabs.close(tabKey);
-          }}
-        />
-      ) : null}
+      <span data-tab-end className="relative flex shrink-0 items-center gap-1.5">
+        {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
+        {closable ? (
+          <TabCloseButton
+            label={`Close ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              tabs.close(tabKey);
+            }}
+          />
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -414,6 +418,9 @@ function TabStrip({
       active={key === active}
       paneFocused={focused}
       only={leaf.tabs.length === 1}
+      // A lone pane's lone empty tab is what an empty panel shows; there is nothing to close.
+      // Beside other panes, closing it closes its pane, as `:q` does.
+      closable={!(alone && leaf.tabs.length === 1 && isEmptyTab(key))}
       last={key === leaf.tabs.at(-1)}
       draggableInTitlebar={titlebar}
     />

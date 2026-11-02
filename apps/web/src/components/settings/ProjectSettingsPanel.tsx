@@ -44,6 +44,7 @@ import {
   canPickExternalProjectFavicon,
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
+import { CodeIndexProjectSettings } from "./CodeIndexSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { RepositoryWikisMenu } from "../wiki/WikiLinkMenus";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
@@ -567,6 +568,7 @@ function ProjectDetail({
           />
         </SettingsSection>
         <ProjectDefaultsSettings category="project" />
+        <CodeIndexProjectSettings members={group.memberProjects} />
         <ProjectActionsSettings />
         {hasMultipleCheckouts ? checkoutChoices : null}
         <SettingsSection title="Danger">

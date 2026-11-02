@@ -27,12 +27,12 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   with nothing to act on here shows faint, **Not available here** (e.g. `g p` where
   Pull Requests is unsupported). Cmd+K shows it at once; the leader after ~300 ms,
   so a fast `Space g w` runs without it flashing.
-- **Top level** (defaults, sixteen rows in this order): `:` Command palette, `/`
+- **Top level** (defaults, seventeen rows in this order): `:` Command palette, `/`
   Search (always enabled), `n` New thread or document, `f` Find file (upstream's
   file picker), `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows
   read `← | h`; repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll
   down and `u` Scroll up (repeatable), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
-  `w` Wikis, `,` Settings. `n`'s
+  `w` Wikis, `r` Projects, `,` Settings. `n`'s
   label follows the section (on Wikis "New document", on Projects "Add a project", which opens
   the palette's add flow; where no section header is mounted, such as Changes, it is
   upstream's "New thread"). The popup is `aria-label="Keyboard commands"` (`[data-which-key]`),
@@ -40,15 +40,21 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   popover fades out, so wait for `[data-which-key]` to detach before reading "closed".
   A prefix the user added with no built-in name shows as `+N` (its entry count).
 - **Groups** (defaults): `g` t Agents, w Wikis, r Projects, p Changes,
-  u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close, `r` reopen closed (panel and
-  browser tabs, not chat tabs; see chat-tabs.md), `h` Back and `l` Forward (upstream's
+  u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
+  tab), `k` the focused tab's link item (panes.md, Linked tabs): "Unlink tab", "Link to the file
+  in front" for a pinned local graph, or a faint "Unlink tab" with nothing to link, `n` New linked tab for the focused chat (or the chat a
+  focused linked tab belongs to; faint otherwise), `r` reopen closed (panel and
+  browser tabs, not chats), `h` Back and `l` Forward on the focused pane's tab (upstream's
   `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Projects
   and Changes they walk the tab in front's history and are faint at either
-  end; elsewhere the route history). `p` `v` split right, `s` split down, `c` close pane, `m`
+  end; elsewhere the route history). On a chat tab or a thread's surface (`navigatesInPlace`)
+  `h` and `l` are always faint and `mod+[`/`mod+]` do nothing: no route-history fallback. `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
-  right panel (faint with no chat on screen); the focus moves are root keys now, not in Panes.
+  right panel (parks or restores the front chat's linked tabs); the focus moves are root keys now, not in Panes.
   `s` `s` toggle sidebar. `w` `w` open
-  Wikis, `f` find or create a document.
+  Wikis, `f` find or create a document. `r` `g` Open local graph, faint unless a Projects file
+  tab is focused. `terminal.toggle` is faint (here and in the palette) unless a chat tab is
+  focused.
 - **Search** (Cmd+/, the menu's `/`, Cmd+K again; the palette's plain mode, dialog
   name `Search`): empty, it lists
   Recent Threads only; upstream's Actions are the Command Palette's. A query finds
@@ -78,7 +84,8 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   `spaceLeaderEnabled`). It fires when focus is not in a text field, a control
   (`tabindex>=0`) or a dialog, not on a held key (nor with Shift when the leader is Space), and in a Vim editor's
   normal/visual mode. It also fires on a focused sidebar row, icon-rail button, or
-  pane or chat tab (`[data-pane-tab]`, `[data-chat-tab]`), where Space would
+  pane tab (`[data-pane-tab]`, a chat's being the one whose content is
+  `[data-workspace-tab^="chat:"]`), where Space would
   otherwise press it. Cmd+K always works; in the terminal Cmd+K stays the
   terminal's (`when: !terminalFocus`). Its description reads "Another way to open
   the keyboard menu, besides ⌘K. …".
@@ -148,7 +155,7 @@ and copy the backup back when done. The server picks changes up live.
 ## Flows
 
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
-   with the sixteen top-level rows (Search's row shows only `/`), `Esc close` footer
+   with the seventeen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
    `Menu › Go to`, rows Agents, Wikis, Projects, Changes (a faint "Section: Changes"
    where pull requests are unsupported), Usage, Settings → click **Backspace back**
@@ -159,11 +166,11 @@ and copy the backup back when done. The server picks changes up live.
    the finder (`[data-testid=wiki-finder]`) open with focus in its field.
 3. **Settings door.** Cmd+K `,` → `/settings/general`, with Settings / General in the
    title bar (Settings has no tabs).
-4. **Chat tabs.** With several chat tabs, focus off the composer, Cmd+K `t` `[` → the
-   previous chat tab is in front (strip read in chat-tabs.md).
+4. **Tabs.** With several tabs in the focused pane, focus off the composer, Cmd+K `t` `[` → the
+   previous tab of that pane is in front (panes read in panes.md).
 5. **Panes.** Open the right panel with two surfaces in one pane; focus a non-terminal
    tab → Cmd+K `p` `v` → two panes, focus in the new right pane → Cmd+K `:` `q`
-   Enter → one pane, chat strip unchanged (panes.md read).
+   Enter → one pane, the chat's pane unchanged (panes.md read).
 6. **Palette.** Cmd+K Cmd+K → Search, empty query, Recent Threads only; Escape,
    then Cmd+/ → Search again. On a Mac, Ctrl+N, Ctrl+N, Ctrl+P move the highlighted
    row (`[data-command-palette] [data-slot=command-item][data-active]`) down, down,
@@ -220,6 +227,8 @@ of the root menu, a group and the Command Palette.
 ## Owns
 
 `apps/web/src/whichKey/`, `apps/web/src/commandPaletteBus.ts`, `panes/paneCommands.ts`,
+`components/repositories/localGraph.ts` (`r` `g`), `panes/workspaceTabs.tsx` (the link
+action), `panes/WorkspaceView.tsx` (the history handle),
 the `useAppSections` handlers in `components/sidebar/AppIconRail.tsx`,
 `components/settings/KeybindingsDeviceSettings.tsx`, `KeybindingsTable.tsx`,
 `KeybindingsTable.logic.ts`, `KeybindingTriggerRows.tsx`,

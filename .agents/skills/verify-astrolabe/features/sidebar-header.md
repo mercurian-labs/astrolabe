@@ -1,10 +1,8 @@
 # Sidebar header
 
 The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark (the
-rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds and, in
-each section with tabs (Agents, Wikis, Projects, and Changes where the server
-supports pull requests), **Back** and **Forward** at its right end (`[data-tab-history]`, from
-`SidebarTabHistory.tsx`; see chat-tabs.md, wikis.md, repositories.md and pull-requests.md). It has a bottom border in
+rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds. Back
+and Forward live in each tab's header, not here (panes.md). It has a bottom border in
 line with the tab strip's and keeps the icon rail's colour (`bg-sidebar`), so the
 rail's title-bar cell and this row read as one band. Below it the sidebar's body
 (section title and list) takes the main area's background
@@ -74,8 +72,12 @@ actions at its right end.
   the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
   hidden, but `mod+b` still toggles the sidebar behind the modal. While one is open, two rail
   buttons carry `aria-current="page"`: the section underneath and Usage (or Settings). The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Agents returns to the last chat. Projects and Changes are
-  sections like Wikis, each with its own sidebar and panes ([repositories.md](repositories.md),
+  (`useAppSections`). Agents goes to the focused chat's (or focused linked tab's) thread,
+  else `/`; nothing comes forward (`panes/agentsRoute.ts`, `useNavigateToAgents` in
+  `sidebar/mainAppLocation.ts`). In Agents a row is lit only while that thread's chat or one
+  of its linked tabs has focus; a focused document, file, empty tab or pull request lights
+  none (`focusedChatOf` in `panes/workspace.ts`). Every section shares one set of panes;
+  only the sidebar differs ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
@@ -93,9 +95,8 @@ actions at its right end.
   bottom-border row, so it meets the sidebar header's border square at the
   sidebar's top-left corner. The open sidebar's right edge runs the full window
   height, through the title bar (`[data-app-sidebar]::after`); collapsed there is
-  none. Collapsed, the start of the main title bar (where its content starts) holds the
-  section's Back and Forward (`[data-sidebar-control] [data-tab-history]`, in sections
-  with tabs only), not Search or the filter. Settings and Usage have no tabs: their headers
+  none. Collapsed, the main title bar holds no sidebar actions: not Back/Forward, Search or
+  the filter. Settings and Usage have no tabs: their headers
   (Settings / page, Usage / environment / provider) sit inside their modals.
 - **Thread rows** (`[data-testid=sidebar-row-card]`): one line with the project picture, the
   title, the terminal and machine glyphs, and the age or status; a smaller second line only when
@@ -152,7 +153,7 @@ the picker or a new `/draft/` URL), plus a saved screenshot of the rows and pill
 tree are not proof they paint: for `[data-app-rail-mark]`, `[data-app-rail-toggle] button` and
 the first search result, take the `getBoundingClientRect` centre (nonzero height) and check
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
-read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill and the Back/Forward buttons are not clipped at the default sidebar width,
+read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
 `getBoundingClientRect().height` is 26 with one line and 42 with two (its `li` adds 2).
 
@@ -161,6 +162,8 @@ and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-
 - The order of the title row's actions is a design decision still open (search,
   filter, new today). Assert presence, not order, unless the change is about order.
 - Scope locators: `navigation "Agents"` (the sidebar), the rail's `button "Agents"`
-  and `heading "Agents"` share the name.
+  and `heading "Agents"` share the name, and so do Projects', Wikis' and Changes'. A diff
+  tab's header breadcrumb also renders `nav[aria-label="Changes"]`. Scope to
+  `nav[aria-label="Sections"]` for the rail and to the sidebar for a section's lists.
 - Upstream reworks `Sidebar.tsx` often. After a sync, check that all three
   actions still exist with these names.

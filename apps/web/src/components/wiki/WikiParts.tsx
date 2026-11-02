@@ -74,6 +74,20 @@ function Row({
   );
 }
 
+/** A note's name inline, as a wikilink reads: opens the note. */
+function NoteLink({ className, ...props }: Omit<ComponentProps<"button">, "type">) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "max-w-full truncate rounded-sm text-left text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 function Muted({ className, ...props }: ComponentProps<"p">) {
   return <p className={cn("px-2 text-xs text-muted-foreground", className)} {...props} />;
 }
@@ -108,4 +122,4 @@ function Fact({
   );
 }
 
-export const WikiPart = { Section, Row, Muted, ErrorList, Fact };
+export const WikiPart = { Section, Row, NoteLink, Muted, ErrorList, Fact };

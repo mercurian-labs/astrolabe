@@ -8,6 +8,8 @@ import { runVimEx } from "@mercurian/editor/vim";
 
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { isEmptyTab } from "~/panes/arrangement";
+import { focusedChatOf, workspace } from "~/panes/workspace";
+import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import {
   canClosePane,
   canSplitPane,
@@ -17,6 +19,7 @@ import {
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
+import { localGraphOpener } from "~/components/repositories/localGraph";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
 import type { FocusDirection } from "~/keyboardNav/regions.logic";
@@ -132,10 +135,20 @@ function closeTarget(context: AppCommandContext): (() => void) | null {
   return chatTabs && active ? () => chatTabs.close(active) : null;
 }
 
-/** `:w` where it came from, else the thread's composer on screen, which sends its draft. */
+const COMPOSER = '[data-testid="composer-editor"]';
+
+/**
+ * `:w` where it came from, else the focused chat's composer, which sends its draft. In the shared
+ * panes that is the chat in focus (or whose linked tab is): chats kept out of sight stay in the
+ * page, so the first composer there may be one no one sees.
+ */
 function writeTarget(origin: KeyOrigin | null): EditorWrite | null {
   if (origin?.view) return origin.write;
-  const form = document.querySelector('[data-testid="composer-editor"]')?.closest("form");
+  const chat = focusedChatOf(workspace.linked());
+  const tabs = [...document.querySelectorAll<HTMLElement>("[data-workspace-tab]")];
+  const scope =
+    tabs.length === 0 ? document : tabs.find((tab) => tab.dataset.workspaceTab === chat);
+  const form = scope?.querySelector(COMPOSER)?.closest("form");
   return form ? { label: "Send the draft", run: () => form.requestSubmit() } : null;
 }
 
@@ -328,6 +341,16 @@ function astrolabeCommand(
         context.origin?.view ? "Clear search highlight" : "Nothing highlighted here",
         inEditor(context.origin, "nohlsearch"),
       );
+    case "repository.localGraph":
+      return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "tab.toggleLink": {
+      const link = focused ? (panes?.tabs.link?.(focused.leaf.active) ?? null) : null;
+      return entry(link?.label ?? "Unlink tab", link?.run ?? null);
+    }
+    case "tab.newLinked": {
+      const chat = focusedChatOf(workspace.linked());
+      return entry("New linked tab", chat ? () => workspace.newLinkedTab(chat) : null);
+    }
   }
 }
 
@@ -361,6 +384,11 @@ export function fullScreenState(pane: {
 function upstreamCommand(command: KeybindingCommand, context: AppCommandContext): AppCommand {
   // The right panel is a thread's: with no chat on screen there is none to toggle.
   if (command === "rightPanel.toggle" && context.chatTabs === null) {
+    return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
+  }
+  // The terminal drawer is the focused chat tab's: with anything else in focus there is none.
+  const focusedTab = context.chatTabs?.activeKey ?? null;
+  if (command === "terminal.toggle" && (focusedTab === null || !parseChatTabKey(focusedTab))) {
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
   const label = UPSTREAM_LABELS[command] ?? commandLabel(command);

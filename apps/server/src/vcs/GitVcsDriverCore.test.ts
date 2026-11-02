@@ -1339,6 +1339,33 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
   });
 
   describe("review diff previews", () => {
+    it.effect("resolves where the checked-out branch left its base, not the base's tip", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", "-M", "main"]);
+        const forkPoint = yield* git(cwd, ["rev-parse", "HEAD"]);
+        yield* git(cwd, ["checkout", "-b", "feature/merge-base"]);
+        yield* writeTextFile(cwd, "feature.txt", "feature\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "feature work"]);
+        yield* git(cwd, ["checkout", "main"]);
+        yield* writeTextFile(cwd, "main.txt", "later\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "later main work"]);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        assert.deepStrictEqual(yield* driver.resolveBranchMergeBase(cwd), {
+          baseRef: null,
+          mergeBase: "HEAD",
+        });
+        yield* git(cwd, ["checkout", "feature/merge-base"]);
+        assert.deepStrictEqual(yield* driver.resolveBranchMergeBase(cwd), {
+          baseRef: "main",
+          mergeBase: forkPoint,
+        });
+      }),
+    );
+
     it.effect("loads repository-relative files from a nested project directory", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

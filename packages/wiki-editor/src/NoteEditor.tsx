@@ -5,7 +5,8 @@ import { agentChangeBar } from "@mercurian/editor/collab/agent-changes";
 import { AtlasEditor } from "@mercurian/editor/editor";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
 import { EditorView } from "@codemirror/view";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import type { WikiNoteSession } from "./noteBuffer";
 import { wikilinkNoteName } from "./incoming";
@@ -55,12 +56,15 @@ export function WikiNoteEditor({
   readOnly = false,
   onOpenNote,
   onOpenUrl,
+  renderBase,
 }: {
   readonly session: WikiNoteSession;
   readonly readOnly?: boolean;
   readonly onOpenNote: (name: string) => void;
   /** Opens an external link; the editor opens a new window when omitted. */
   readonly onOpenUrl?: (href: string) => void;
+  /** A ```base block's view, from its YAML; it shows until the block is edited. */
+  readonly renderBase?: (source: string) => ReactNode;
 }) {
   // Read through refs, so the preview options stay one object and never remount the editor.
   const openNoteRef = useRef(onOpenNote);
@@ -70,6 +74,21 @@ export function WikiNoteEditor({
     openUrlRef.current = onOpenUrl;
   }, [onOpenNote, onOpenUrl]);
   const hasOpenUrl = onOpenUrl !== undefined;
+  // The blocks the editor draws, each filled through a portal, so the view keeps this tree.
+  const [baseBlocks, setBaseBlocks] = useState<
+    ReadonlyArray<{ readonly id: number; readonly source: string; readonly element: HTMLElement }>
+  >([]);
+  const [codeBlocks] = useState(() => {
+    let next = 0;
+    return {
+      base: (source: string, element: HTMLElement) => {
+        const id = next++;
+        setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
+        return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
+      },
+    };
+  });
+  const drawsBases = renderBase !== undefined;
   const livePreview = useMemo<LivePreviewOptions>(
     () => ({
       openWikilink: (target) => {
@@ -80,8 +99,9 @@ export function WikiNoteEditor({
       linksOpenOnClick: true,
       // Embeds name wiki files, which the page cannot serve as images yet.
       resolveEmbed: () => null,
+      ...(drawsBases ? { codeBlocks } : {}),
     }),
-    [hasOpenUrl],
+    [hasOpenUrl, drawsBases, codeBlocks],
   );
   return (
     <div
@@ -97,6 +117,11 @@ export function WikiNoteEditor({
         livePreview={livePreview}
         readOnly={readOnly}
       />
+      {renderBase
+        ? baseBlocks.map((block) =>
+            createPortal(renderBase(block.source), block.element, String(block.id)),
+          )
+        : null}
     </div>
   );
 }

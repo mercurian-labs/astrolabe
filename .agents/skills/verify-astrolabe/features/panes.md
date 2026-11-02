@@ -1,21 +1,50 @@
-# Tabs and splits in the right panel
+# Shared tabs, splits and linked tabs
 
-T3 Code's right panel holds the chat's surfaces (Browser, Terminal, Files, Diff,
-Pull request, Linked pull requests, Device, Graph, Lineage) as tabs that split right or down.
-The panel belongs to the chat tab in front: switching chats swaps it, and each
-thread keeps its own arrangement. It runs the window's full height, its top
-strips sharing the title bar with the chat tabs. T3 Code's own toggle, width,
-resize and maximize still drive the panel itself.
+Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`,
+`panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread and draft routes, `/` unless
+the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
+pull requests, change requests, change groups, files, diffs, local graphs, wiki notes and a thread's right-panel surfaces
+(Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage) are
+all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
+thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
+chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
+else links to a chat: chats, documents, wiki change requests, change groups, project files and
+diffs stand on their own (a change group's **Open as a tab group** still links to the group, and
+a following local graph to its file). There
+is no right-panel frame: `ChatRightPanel` renders `panes/LinkedPanel.tsx`, which lends the panes
+ChatView's panel props and renders the live surface into the pane showing its tab.
 
 ## Sub-features
 
-- **Empty panel**: one "New tab" showing T3 Code's launcher ("Open a surface").
-  Picking a surface replaces it.
-- **New tab menu** (`+` in every strip): the same surfaces. Items without a
-  source are disabled, and hovering one shows why ("Browser previews are only
-  available in the Astrolabe desktop app."). `mod+t` (`rightPanel.new`) opens the
-  focused pane's menu, with the panel open and the terminal not focused. Astrolabe adds **Document** (`O`), which
-  opens the wiki finder and puts the pick in that pane as a document tab.
+- **Switching sections** (rail, which-key `g`, Command Palette's Open wikis/projects/pull
+  requests, the narrow window's footer): changes only the sidebar, never the arrangement, focus,
+  the front chat or which ChatViews are mounted. The rail's Agents (`useNavigateToAgents`,
+  `panes/agentsRoute.ts`) goes to the focused tab's thread when focus is on a chat or one of its
+  linked tabs, else to `/`. In Agents the route follows focus the same way: focusing a chat or its
+  linked tab navigates to its thread (the sidebar row lights), focusing a document, file, pull
+  request, change group or empty tab navigates to `/` (no row lit). Only a thread link, a sidebar
+  click, Back/Forward to a thread route or a deep link bring a chat forward (`openChat`).
+  `/` with only the starting empty tab still starts a draft, as T3 Code's start page does. Proof:
+  `localStorage['astrolabe:workspace:v1']` and every `[data-pane-id]`'s tabs unchanged across the
+  switch, the ChatView count unchanged, the URL, and the sidebar's lit row.
+
+- **Linked New tab** (the chat header's **New linked tab** `[data-new-linked-tab]`, `t` `n` `tab.newLinked`, or `rightPanel.toggle` with no linked tabs): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
+  Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Linked pull requests `L`, Device `M`,
+  Graph `G`, Lineage `I`). Rows without a source are disabled `div`s whose hover says why.
+  The surface picked takes the New tab's place (same pane and index), linked
+  (`workspace.targetPane(pane, blank)`, placed by `arriveAtTarget` as the record gains it).
+- **New tab** (`+` at the end of every strip, `button[name='New tab']`; `mod+t`,
+  `rightPanel.new`, in the focused pane): opens an unowned empty tab at the end of that
+  pane's tabs, in front, at once (no menu). It shows `panes/TabLauncher.tsx`
+  (`[aria-label="Open a tab"]`): **New chat** `N` (the front chat's project with one
+  project; with several, always the palette's project list), **Document** `O` (wiki
+  finder), **Project file** `R` (project list, then its files; one project skips
+  the list), **Project diff** `C` (each project's Uncommitted changes and Branch
+  changes), **Change group** `K`. Rows with nothing to offer are faint with a reason on
+  hover. Letters act only while that pane is focused, and differ from the surface
+  launcher's. The pick takes the New tab's place (`putInPlace`); a new chat arriving while a
+  New tab is focused lands in it. A lone empty pane shows the same launcher, in every
+  section. A New tab opened beside linked tabs stays when the chat changes.
 - **Lineage** (`I`, `components/lineage/`): the thread's fork family drawn left to
   right in `section[aria-label="Thread lineage"]`. The viewed thread runs along the
   centre lane, with one column per checkpoint across the family. Forks curve off the
@@ -24,7 +53,7 @@ resize and maximize still drive the panel itself.
   `Show the turn "<asked>" in the chat`, which scroll the chat to that turn; hovering one
   shows a card (ask, reply's first line, files and lines, model, when). Another
   thread's title, line or checkpoint is `Open <title> in a new tab`, which opens it as
-  a chat tab; a fork's label reads `<agent> · <running|waiting on you|idle · 3h ago|merged
+  a chat tab after the chat in front, in front; a fork's label reads `<agent> · <running|waiting on you|idle · 3h ago|merged
   back|not started> · <n> behind`. Quiet stretches fold into buttons named
   `Show <n> folded turns` (text `<n> turns`) that unfold on click; a bar under the drawing
   holds **Show every turn** / **Fold quiet turns** and, when the drawing overflows the panel,
@@ -34,26 +63,65 @@ resize and maximize still drive the panel itself.
   gets a halo (`circle.fill-foreground/12`), or its fold's button a solid border; drive it
   by setting `.messages-timeline-scroll`'s `scrollTop`. Thread details' Lineage section has **Show lineage** (only when the
   thread has a fork, parent or merge-back), which opens or focuses the tab.
-- **Tabs from other sections** (`apps/web/src/sectionTabs/`): the Wikis, Projects
-  and Changes panes can hold a chat (`chat:<env>:<thread>`), a document or wiki
-  change request (`wiki-note:`, `wiki-change:`), a project file or diff tab
-  (`repo-file:`, `repo-diff:`), a change group (`change-group:<env>:<id>`)
-  and a pull request named in full, beside their own tabs. A change request's **Open
-  thread** opens its thread beside it. A thread's right panel takes only wiki tabs
-  (Document, a Graph tab click, which opens one beside the graph, or a `[[` wiki-note chip
-  in the composer or a sent message, `button "Wiki note, <note> in <wiki>"`, which opens or
-  brings forward a `wiki-note:` tab in the focused pane and opens the panel) and change-group tabs
-  (from the group's shared run; see below). A tab outside its
-  own section has **Open in Agents / Wikis / Projects / Changes** first in
-  its right-click menu: it closes here and opens there (a chat in the chat tab in front,
-  a document in the Wikis tab in front, a repository tab in the Projects panes, a
-  change request or change group in Changes). The exception is a thread's
-  right-panel **Files**, **Diff** and opened-file tabs: their **Open in Projects**
-  keeps the tab here and opens the thread's checkout in Projects (the file, its
-  uncommitted changes, or the file tree; repositories.md). Section tab keys survive a
-  reload; a chat mounts only while its tab is in front.
+- **Chats as tabs**: a chat is `chat:<env>:<thread>` in any pane, labelled with its harness's
+  icon and title (`chatTabs/chatTabLabel.tsx`). Every chat tab renders its own ChatView
+  (`PaneChat`, rendered by `panes/WorkspaceView.tsx`); chats not in front stay mounted under
+  React's `<Activity mode="hidden">`, at most the 5 most recently shown (`KEPT_CHATS` in
+  `panes/recentChats.ts`), so a `[data-chat-header]` count includes hidden ones (check
+  visibility with `getClientRects()`) and showing a 6th chat unmounts the oldest. Every way
+  of showing a chat (sidebar click, Option/middle-click, **Open in new tab**, Search, the
+  palette, `:b`, a fork, New thread or a draft, a thread link, Lineage, a change group's
+  member row, a deep link, Back/Forward to a thread route) goes through `workspace.ts` `openChat`: a chat open
+  anywhere comes forward and its pane takes focus (never a second tab); else a focused
+  unowned New tab takes it in place; else it opens in a new tab right after the chat in
+  front, in that chat's pane, in front (after the focused pane's tab with no chat in front).
+  No chat replaces another: the one that was in front stays open, its linked tabs parked.
+  Threads dragged from the sidebar onto a pane open there. In Agents, focusing another chat's pane
+  navigates to it, and focusing a tab that is no chat's navigates to `/`. A chat deleted or a draft discarded closes its tab.
+- **Linked tabs** (`panes/linkedTabs.ts`, `localStorage['astrolabe:workspace:v1']`'s `owners`,
+  `parked`, `front`): `front` is the chat focused most recently while in front of some pane. A
+  thread's surface is `chat-surface:<env>:<thread>:<surface id>`, owned by `chat:<env>:<thread>`.
+  Switching chats parks the old chat's owned tabs and brings the new chat's back where they
+  stood, else into the pane the old ones vacated, else a new pane right of the chat (0.45 of
+  its room). Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
+  come back next time). Hiding (the chat's panel closing) parks its linked tabs, except an empty
+  one, which closes; closing a tab (its ✕, `:q`, the tab menu, Close pane, `t` `c`,
+  `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An
+  open panel with no linked tabs shows an owned empty tab with T3 Code's launcher; closing the
+  front chat's last linked tab closes its panel, and closing its last surface keeps the panel
+  open while other linked tabs remain. Linked tabs are added only as a linked New tab; there is no
+  linking a standalone tab to a chat. **Open as its own tab** (tab menu) puts a thread's
+  surface's standalone counterpart in its place, unlinked, and closes the surface in the
+  thread's record: a file (from chat or Files) becomes `repo-file:` on the thread's checkout,
+  Diff becomes `repo-diff:…:working-tree`, the thread's pull request a full-key pull request
+  tab (only when its host is known). Terminal, browser, device, Files, Graph, Lineage and
+  Linked pull requests have no counterpart and do not offer it. **Unlink tab** remains for a
+  tab still linked (a change group's, or one linked before). `t` `k` (`tab.toggleLink`) does
+  the focused tab's link item: a local graph's follow/pin (repositories.md) or Unlink tab, and
+  is faint otherwise.
+- **Linked tabs buttons** (`panes/LinkedTabsToggle.tsx`): in a pane's chat header, after the
+  thread details and terminal drawer toggles, in place of T3 Code's right-panel toggle.
+  **New linked tab** (`[data-new-linked-tab]`, square-plus, always there) opens a linked New tab
+  in front: showing, in the linked tabs' pane after them; hidden, after bringing them back where
+  they stood; with none, in a new pane right of the chat. The toggle (`[data-right-panel-toggle]`)
+  shows only with linked tabs: with the panel open, a square-minus, **Hide tabs** (pressed); with
+  tabs parked for that chat (its own and its change group's, plus record surfaces no pane held
+  yet), a rounded square holding their count (label `Show tabs (N hidden)`) that brings them all
+  straight back where they stood, the one in front still in front, with no menu.
+  `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette do the same as the toggle, so
+  two presses hide and restore; with none they open the linked New tab. The header has no
+  maximize of its own; the pane strip's does that.
+- **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
+  (`[data-link-mark=<ink>]`) in the ✕'s place on every linked tab on screen and on its owner (hovering the tab swaps it for the ✕; on a device without hover both show), with
+  the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
+  the next ink in reading order (`--link-ink-1..4`, the first is `--primary`). No motion.
+- **Change groups**: **Open as a tab group** in a group's tab opens its threads after the chat
+  in front and links the rest (the group's tab, its change requests, its pull requests named
+  in full) to the group (`owners[key] = change-group:<env>:<id>`), shown while the front chat
+  is one of the group's threads and parked otherwise. Beside a chat outside the group they
+  stand on their own, together in one new pane beside it. The groups' threads reach the panes through `GroupsSync`.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
-  strip, a thread's right panel and the chat tabs included (chat-tabs.md), a change
+  strip, a change
   group's run of tabs (its chats, wiki change requests and own tab, and pull requests
   matched by repository#number) is headed by a marker,
   `button[data-tab-group]` inside the tablist: a narrow tab with a stack icon and the
@@ -69,8 +137,7 @@ resize and maximize still drive the panel itself.
   only the strip's tab in front. The number is one numbering for the window
   (`panes/tabGroupNumbers.ts`, `localStorage['astrolabe:tab-group-numbers:v1']`): a
   group takes the lowest free number when a strip first shows it, and keeps it while any
-  tab it was shown with is open on the device, in any pane arrangement, the chat tabs or
-  a shared run (checked 250 ms after a strip loses a tab, and on load), across reloads.
+  tab it was shown with is open on the device, in any pane arrangement or parked (checked 250 ms after a strip loses a tab, and on load), across reloads.
   Every group wears the theme's primary colour (`--tab-group` is `var(--primary)`): the
   marker's icon and badge, the `[data-tab-group-run]` grid's `::after` 2px line along the
   strip's foot, and the 2px border of the tab in front inside the run. Dragging tabs
@@ -82,62 +149,40 @@ resize and maximize still drive the panel itself.
   the marker, a tick for the run to collapse, `dragover` then `drop` on the target strip
   at a `clientX`/`clientY`, then `dragend` on the marker. Change groups themselves are in
   pull-requests.md.
-- **Shared run beside a group's threads** (`panes/groupPanelRuns.ts`,
-  `panes/GroupPanelRunsSync.tsx`): beside every thread in a group (`group.threadIds`), the
-  group's own tab, its pull requests and its wiki change requests are one run the group
-  owns. Opening one beside a member thread (a pull request link, a member row in the
-  group's tab, the marker) opens it beside every member; closing one there (its ✕, Close
-  the group's tabs, Close pane, Open in Changes) closes it beside all of them. The other
-  members catch up when their panel shows (at once if it is on screen): missing tabs open
-  as one run in the pane already holding part of it, else the pane holding the thread's
-  surfaces, else the focused pane, never in front and with focus where it was; a closed
-  panel stays closed (pull requests join the thread's record quietly, `shareSurfaces`).
-  Where the tabs stand, which tab is in front, the thread's own surfaces and its splits
-  stay each thread's. A group tab the thread already held (its own pull request, opened
-  before the group formed) joins the run when the thread shows in the group; a thread in
-  two groups shows both runs. Only threads' right panels share: Changes, Wikis and
-  Projects panes don't. The store is
-  `JSON.parse(localStorage['astrolabe:group-panel-runs:v1']).state.runs[<change-group key>]`,
-  `{open: [entries], closed: [ids]}` (`closed` holds what was closed beside a member, until
-  it is opened again). From the group's tab beside a thread, **Open as a tab group** opens
-  the group's threads as chat tabs right after the chat in front (no navigation) and the
-  rest into the run; beside a thread outside the group they open in that panel too,
-  unshared. A thread row there opens it as a chat tab after the one in front, a pull
-  request row as the thread's own surface. In Changes, Wikis and Projects, **Open as a
-  tab group** opens everything in that section's focused pane. **Proof:** with member
-  threads A and B, open the group's tab beside A, show B: its strip holds the group's tab,
-  not `aria-selected`, and B's panel, if it was closed, is still closed; close it beside B,
-  show A: it is gone, and the store's `closed` lists it.
 - **Pane actions** (`⋯`): Split right, Split down (both disabled for a pane's only
   tab), Close pane (disabled for a lone pane holding only an empty tab). The same
   actions are commands (`pane.splitRight`, `pane.splitDown`, `pane.close`,
   `pane.toggleMaximized`, `pane.toggleFullScreen`): the keyboard menu's `p` group
   (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `r` for upstream's
-  `rightPanel.toggle`, faint with no chat on screen), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
+  `rightPanel.toggle`, which hides or brings back the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
-  `:q` with focus in the panes closes the focused pane's active tab, not the chat tab.
-- **Tab context menu** (right-click): Open in `<section>` (only for a tab outside its
-  section), then T3 Code's own items for the tab (**Rename** for a device, **Copy path**
-  for a workspace file, **Mute tab** / **Unmute tab** for a browser tab), Close, Close
+  `:q` closes the focused pane's active tab.
+- **Tab context menu** (right-click): **Open in Projects** for a thread's Files, Diff and
+  opened file, **Open as its own tab** for a
+  thread's file, Diff and pull request, then T3 Code's own items for the tab (**Rename** for a
+  device, **Copy path** for a workspace file, **Mute tab** / **Unmute tab** for a browser
+  tab), a local graph's link item or **Unlink tab** for a tab still linked, Close, Close
   others, Close tabs to the right, Split right, Split down. A lone tab cannot split.
   Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
   **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
   Escape clears a selection. A middle-click (`preview_act click button="middle"`) closes a
-  tab, except a lone empty one.
+  tab. Every tab has a ✕ (a linked one's shows on hover, over its chain mark) except a lone pane's lone empty
+  tab.
 - **Dividers**: between panes, a 1px line with a 3px `role=separator` handle
   (`aria-orientation` vertical for a side-by-side split, horizontal for a stacked one)
   that turns the primary colour on hover or drag (`data-active`). Dragging it rewrites
   the branch's `weights`, which persist in the stored tree (the `.root` read below). It
   is a pointer-capture drag: `preview_act drag` from the separator to an element in the
   neighbouring pane resizes it; read the new `weights` from `.root`.
-- **Maximize pane** / **Restore pane**: fills the panel, shown only beside other
-  panes. Separate from T3 Code's **Maximize panel**, which fills the main area.
+- **Closing a pane** gives its width to the pane it was split from (a leaf's `from`,
+  `panes/tree.ts` `removeLeaf`), else to a pane split from it, else to its neighbour; the
+  other panes keep their widths. Proof: split a pane right, close the new pane, and the
+  stored `weights` match what they were before the split.
+- **Maximize pane** / **Restore pane**: fills the panes, shown only beside other
+  panes. T3 Code's `rightPanel.toggleMaximized` (no header control in a pane)
+  maximizes the pane showing the front chat's live surface; restoring that pane ends it.
 - **Full screen** (`p f`, `pane.toggleFullScreen`, label "Full screen pane" /
-  "Exit full screen"): the focused pane takes the whole content area: it maximizes
-  the pane (unless alone) and, in a thread's right panel, the panel too, so the chat
-  column hides (`[data-chat-column-maximized-away=true]`); pressed again it restores
-  both. In Wikis, Projects and Changes it is maximizing the pane, faint for
-  a lone pane.
+  "Exit full screen"): maximizes the focused pane, faint for a lone pane.
 - **Chrome tabs**: tabs are drawn as Chrome's (`index.css`, `TabParts.tsx`): 240px
   wide, shrinking together to 96px; the title fades out before an always-shown ✕.
   As in T3 Code's panel, a browser tab playing audio has a speaker button
@@ -153,8 +198,21 @@ resize and maximize still drive the panel itself.
   the arrangement's focused pane (`[data-focused]`): with focus in the sidebar or rail no
   tab has the bar. Check
   `[data-pane-id][data-focused-place] [data-pane-tab][aria-selected=true]`. The view
-  header below (a wiki note's, a chat's) has no bottom border and the strip's height, so
-  tab and header read as one surface.
+  header below has no bottom border and the strip's height, so tab and header read as one
+  surface: a chat's, and every Astrolabe tab's (`[data-tab-header]`, `panes/TabHeader.tsx`: a
+  file, a checkout's changes, a local graph, the thread's Graph tab, a wiki note, a wiki change
+  request, a change group, a pull request), each a breadcrumb in the chat's type (muted place,
+  then the page) with quiet status and ghost icon actions.
+- **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
+  `TabHeader.History`), as Obsidian's tab headers do. They step that tab's own history
+  (`workspace.step(direction, tabKey)`), focused or not, and are disabled with nothing that way.
+  A chat's header and a thread surface's (the Graph tab, a thread's pull request) have none,
+  and `step`/`canStep` refuse them (`navigatesInPlace`): a chat never shows anything else in its
+  place, so its linked tabs are never left without their chat. Tabs with no header row have
+  none either: the New tab launcher and the thread's other surfaces (terminal, preview, diff,
+  files, pull requests, device, lineage). `mod+[`/`mod+]`, Space `t h`/`t l` and the palette's
+  Back/Forward still act on the focused pane's tab in front, and do nothing on a chat. Proof: two panes, click Back in the unfocused one's header; only its tab
+  changes. What scrolls beneath a header fades out under it (`topbar-scroll-fade`, static).
 - **Drag a tab** to another strip or a pane edge. Cmd/Ctrl-click and
   Shift-click select several tabs, which drag together. The page draws the drag's
   preview, a pill under the pointer (`body > [aria-hidden=true].fixed`, with a count
@@ -162,14 +220,21 @@ resize and maximize still drive the panel itself.
   centred on the strip, midway between the two tabs either side.
 - **One live surface**: only the record's active surface renders. Another
   pane's shown tab reads "Click to show" until its pane takes focus.
-- **Persistence**: each thread's arrangement survives a reload, per device.
-  Maximize pane is in memory only; a reload restores every pane.
-- **Narrow windows**: at 980px or less the panel is a sheet of plain T3 tabs, with
-  no panes (`[data-pane-id]` absent). Keep the viewport wider.
+- **Persistence**: the one arrangement, its links and parked tabs survive a reload, per
+  device (`astrolabe:workspace:v1`, history `astrolabe:workspace-tab-history:v1`). The first
+  load brings in the old chat tabs and the Projects, Wikis and Changes layouts (and their
+  tab histories) side by side and drops `t3code:right-panel-panes:v1:*` and
+  `astrolabe:group-panel-runs:v1`. Maximize pane is in memory only.
+- **Narrow windows**: the panes stay panes (no sheet); they scroll sideways below their
+  minimum widths.
 
 ## How to get to it (user POV)
 
-Open a chat and press **Toggle right panel** (top right, or Cmd+Alt+B).
+Press **+** at the end of any pane's tabs (or Cmd+T): a New tab opens there with **Open a tab**;
+pick one and it takes the New tab's place. Open a chat and press **New linked tab** at the end of
+its header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher;
+pressed again, another joins it in front. **Hide tabs** sets them aside; the button then counts
+them, and clicking it brings them back.
 
 ## Driving it with the Browser panel
 
@@ -178,13 +243,14 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 `Pane actions`.
 
 ```
-preview_act click  role=button[name='Toggle right panel']
+preview_act click  [data-chat-header] >> [data-new-linked-tab]                # New linked tab
+preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # Hide tabs / Show tabs (N hidden); absent with none
 preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
-preview_act click  [data-pane-id] >> role=button[name='New tab']
-preview_act click  role=menuitem[name=/^Files/]
+preview_act click  [data-pane-id] >> role=button[name='New tab']          # + : a New tab, no menu
+preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Project file/]
 preview_act click  [data-pane-id] >> role=button[name='Pane actions']
 preview_act click  role=menuitem[name='Split right']
-preview_act click  role=tab[name='<other chat>']                         # swaps the panel
+preview_act click  role=tab[name='<other chat>']                         # its linked tabs take the pane
 ```
 
 Read the panes:
@@ -222,23 +288,20 @@ its body:
 Every pane should have `w` and `h` above 0 and `tab` and `body` true; with two panes
 showing surfaces, exactly one (the unfocused one) is `waiting`.
 
-Stored trees, one per thread whose panel is not at its start:
-`Object.keys(localStorage).filter(k => k.startsWith('t3code:right-panel-panes:v1:')).map(k => [k, JSON.parse(localStorage.getItem(k)).root])`
-(`…:v1:pull-requests` is the Changes area's, not a thread's).
-Writes are debounced (150 ms) and flushed on `pagehide`; a panel left at its
-start (one empty tab) has no key.
+The stored workspace: `JSON.parse(localStorage['astrolabe:workspace:v1'])` (`root`, `focused`,
+`seq`, `owners`, `parked`, `front`; a leaf may carry `from`, the pane it was split from). Writes are debounced (150 ms) and flushed on `pagehide`; the
+starting arrangement (one empty tab, nothing parked) has no key.
 
-**Proof:** the panes read shows the split and the hit-test shows every pane painted,
-another chat tab shows its own panel, and returning shows the split again. After a
-reload both reads return the same result.
+**Proof:** the panes read shows the split and the hit-test shows every pane painted; bringing
+another chat to the front shows its linked tabs in that pane (its old ones listed in `parked`),
+and returning shows the first chat's again. After a reload both reads return the same result.
 
 ## Gotchas
 
 - `preview_act click` sends no modifier keys: drive a Cmd-click with `preview_evaluate`
   dispatching `new MouseEvent('click', {bubbles: true, metaKey: true})` on the tab
   (`[data-pane-tab]`). `preview_act drag` drops at the target's centre; for a pane-edge drop,
-  dispatch dragstart/dragover/drop with one DataTransfer near the edge, as chat-tabs.md's
-  Gotchas do.
+  dispatch dragstart/dragover/drop with one DataTransfer near the edge.
 - Closing a terminal asks first: press `role=button[name='Confirm']`.
 - The launcher's Diff row is a disabled `div`, not a button, outside a git-backed
   server thread; Files needs a project. Pick a seeded thread in a repository.
@@ -248,10 +311,9 @@ reload both reads return the same result.
 - Focus in a terminal keeps Cmd+K for the terminal. Click a non-terminal tab before
   using the keyboard menu (or the leader key; Cmd+K is the default `whichKey.open`).
 - The panes engine (`panesHost.ts`, `PaneView.tsx`, `PaneTree.tsx`, `maximize.ts`,
-  `paneCommands.ts`, `sectionPanes.ts`, `tabGroups.tsx`) is shared with the Wikis,
-  Projects and Changes areas; a change there walks wikis.md,
-  repositories.md and pull-requests.md too. The menu acts on whichever panes
-  registered last (one `panesSlot`).
+  `paneCommands.ts`, `tabGroups.tsx`) is shared with the Changes area; a change there walks
+  pull-requests.md too, and any change to the shared panes walks wikis.md and repositories.md.
+  The menu acts on whichever panes registered last (one `panesSlot`).
 - While a pane is maximized the others are `inert`, so role locators skip them and
   `nth` indexes shift.
 - The context menu renders as plain `button`s on web. The other menus use
@@ -268,4 +330,10 @@ reload both reads return the same result.
   live data had a merge-back (`orchestration_v2_projection_context_transfers` type
   `merge_back`), so only the layout tests cover dotted curves.
 - The bottom terminal drawer is T3 Code's own (Toggle terminal drawer, Cmd+J),
-  under the chat column, not a pane.
+  under the chat column, not a pane. Cmd+J (and `terminal.toggle` from which-key or the
+  palette, faint there otherwise) reaches only the chat that is the focused pane's tab in
+  front (`takesTerminalToggle`, checked in `useChatShortcuts`): with a file, document, linked
+  surface or other tab focused it does nothing, and no other visible or hidden chat answers.
+- Closing a chat's drawer gives focus back to that chat's own composer (per-chat composer
+  refs, `composerHandleContext.ts`); a chat beside it never takes focus, and type-to-focus
+  and paste-to-focus act only for the focused chat tab.

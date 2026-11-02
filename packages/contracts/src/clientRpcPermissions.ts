@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
   AuthAccessWriteScope,
+  AuthEnvironmentMaintainScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -48,6 +49,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.wikiSetMirror]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiSetProjectLink]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiPushMirror]: AuthSourceControlWriteScope,
+  // Astrolabe: rebuilding or clearing a code index is environment maintenance.
+  [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.codeIndexClear]: AuthEnvironmentMaintainScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,

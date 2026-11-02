@@ -5,18 +5,22 @@ import { noteKey } from "./wikiLogic.ts";
 
 /**
  * Astrolabe: the Wikis list, as the thread list is one list across projects: every open
- * change request, then every document, then the merged and closed change requests (the shelf
- * a closed one is reopened from), each newest first, across every wiki on every server.
+ * change request, then every document (notes and `.base` files), then the merged and closed
+ * change requests (the shelf a closed one is reopened from), each newest first, across every
+ * wiki on every server.
  */
 
-/** A document in the list: a note on its wiki's main line. */
+/** A document in the list: a note, or a `.base` file, on its wiki's main line. */
 export interface WikiDocumentEntry {
   readonly kind: "document";
   readonly key: string;
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
+  /** A base is named, and opened, by its file name (`Projects.base`), as on web. */
   readonly name: string;
   readonly file: string;
+  /** A `.base` file: read only, with no links of its own. */
+  readonly base: boolean;
   readonly links: number;
   readonly backlinks: number;
   /** When the note last changed on main; null when the wiki does not say. */
@@ -73,7 +77,16 @@ export function wikiListEntries(
     }
     open.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
     changes.push(...open);
-    for (const note of index?.notes ?? []) {
+    const notes = (index?.notes ?? []).map((note) => ({ ...note, base: false }));
+    const bases = (index?.bases ?? []).map((base) => ({
+      name: base.file,
+      file: base.file,
+      outgoing: 0,
+      incoming: 0,
+      editedAt: base.editedAt,
+      base: true,
+    }));
+    for (const note of [...notes, ...bases]) {
       documents.push({
         kind: "document",
         key: `document:${scopeKey}:${noteKey(note.name)}`,
@@ -81,6 +94,7 @@ export function wikiListEntries(
         wiki,
         name: note.name,
         file: note.file,
+        base: note.base,
         links: note.outgoing,
         backlinks: note.incoming,
         editedAt: note.editedAt ?? null,

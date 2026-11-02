@@ -25,6 +25,7 @@ import {
 import { manuallyUnfolded } from "./unfolded.ts";
 import {
   foldedChevron,
+  HostBlockWidget,
   opensLink,
   MathWidget,
   openExternal,
@@ -43,6 +44,21 @@ function mathBlockTex(state: EditorState, node: SyntaxNode) {
   const close = marks.at(-1);
   if (!open || !close || close.from === open.from) return null;
   return state.sliceDoc(open.to, close.from);
+}
+
+/** A closed fenced block's language and the text between its fences; null while unclosed. */
+function fencedBlock(state: EditorState, node: SyntaxNode) {
+  const open = node.firstChild;
+  const close = node.lastChild;
+  const first = state.doc.lineAt(node.from);
+  if (open?.name !== "CodeMark" || close?.name !== "CodeMark" || close.from <= first.to) {
+    return null;
+  }
+  const info = node.getChild("CodeInfo");
+  const language = info ? (state.sliceDoc(info.from, info.to).split(/\s/)[0] ?? "") : "";
+  const last = state.doc.lineAt(close.from);
+  const source = last.number > first.number + 1 ? state.sliceDoc(first.to + 1, last.from - 1) : "";
+  return { language, source };
 }
 
 /**
@@ -373,6 +389,15 @@ function buildFolds(state: EditorState): Folds {
       const widget = new MathWidget(tex, true, "block");
       folds.push(Decoration.replace({ widget, block: true }).range(lines.from, lines.to));
     }
+  }
+  const { codeBlocks } = state.facet(previewConfig);
+  for (const node of Object.keys(codeBlocks).length ? index.fencedCode : []) {
+    const block = fencedBlock(state, node);
+    const render = block && codeBlocks[block.language];
+    const lines = widgetLines(state, node);
+    if (!block || !render || !lines || reveal.lines(node.from, node.to)) continue;
+    const widget = new HostBlockWidget(block.language, block.source, render);
+    folds.push(Decoration.replace({ widget, block: true }).range(lines.from, lines.to));
   }
   // A block that holds a host-drawn range stays source, so the host's drawing shows.
   const kept = excluded.length

@@ -14,6 +14,8 @@ export interface Leaf {
   readonly tabs: readonly string[];
   /** The tab the pane shows, one of `tabs`. */
   readonly active: string;
+  /** The pane this one was split from, which gets its room back when it closes. */
+  readonly from?: string;
 }
 
 export interface Branch {
@@ -106,35 +108,105 @@ function normalize(branch: Branch): SplitNode {
   return { ...branch, children, weights };
 }
 
-/** Removes a pane; its neighbours take its room. Returns null when nothing is left. */
+/**
+ * Removes a pane. One pane beside it in its branch takes all its room and the others keep theirs:
+ * the one holding the pane it was split from, else one split from it (next to it, else the
+ * first), else the one before it, else the one after. Panes split from it count as split from
+ * the pane that took its place from then on. Returns null when nothing is left.
+ */
 export function removeLeaf(node: SplitNode, id: string): SplitNode | null {
-  if (node.type === "leaf") return node.id === id ? null : node;
-  if (!containsLeaf(node, id)) return node;
-  const children: SplitNode[] = [];
-  const weights: number[] = [];
-  node.children.forEach((child, index) => {
-    const next = removeLeaf(child, id);
-    if (next) {
-      children.push(next);
-      weights.push(node.weights[index] ?? 1);
-    }
-  });
+  const removed = findLeaf(node, id);
+  if (!removed) return node;
+  const dropped = dropLeaf(node, removed);
+  return dropped && repoint(dropped.node, removed, dropped.heir);
+}
+
+/** Removes `removed`, giving its room to one sibling; `heir` is the pane that took its place. */
+function dropLeaf(
+  node: SplitNode,
+  removed: Leaf,
+): { readonly node: SplitNode; readonly heir: string | undefined } | null {
+  if (node.type === "leaf") return node.id === removed.id ? null : { node, heir: undefined };
+  const weights = node.children.map((_, i) => node.weights[i] ?? 1);
+  const index = node.children.findIndex((c) => c.type === "leaf" && c.id === removed.id);
+  if (index === -1) {
+    const at = node.children.findIndex((c) => containsLeaf(c, removed.id));
+    const child = node.children[at];
+    if (!child) return { node, heir: undefined };
+    const inner = dropLeaf(child, removed);
+    if (!inner) return null;
+    const children = node.children.map((child, i) => (i === at ? inner.node : child));
+    return { node: normalize({ ...node, children, weights }), heir: inner.heir };
+  }
+  const { at, heir } = heirOf(node.children, index, removed);
+  const share = weights[index] ?? 1;
+  const children = node.children.filter((_, i) => i !== index);
+  const rest = weights.flatMap((w, i) => (i === index ? [] : [i === at ? w + share : w]));
   if (children.length === 0) return null;
-  return normalize({ ...node, children, weights });
+  return { node: normalize({ ...node, children, weights: rest }), heir };
+}
+
+/** Which of a removed pane's siblings takes its room, and the pane in it that takes its place. */
+function heirOf(children: readonly SplitNode[], index: number, removed: Leaf) {
+  const origin = removed.from;
+  if (origin !== undefined) {
+    const at = children.findIndex((c, i) => i !== index && containsLeaf(c, origin));
+    if (at !== -1) return { at, heir: origin };
+  }
+  const splitters = children.flatMap((child, at) => {
+    if (at === index) return [];
+    const splitter = leaves(child).find((leaf) => leaf.from === removed.id);
+    return splitter ? [{ at, heir: splitter.id }] : [];
+  });
+  const splitter =
+    splitters.find(({ at }) => at === index - 1) ??
+    splitters.find(({ at }) => at === index + 1) ??
+    splitters[0];
+  if (splitter) return splitter;
+  const at = index > 0 ? index - 1 : index + 1;
+  const neighbour = children[at];
+  return { at, heir: neighbour?.type === "leaf" ? neighbour.id : undefined };
 }
 
 /**
- * Divides the target pane and puts `leaf` on the given side of it. The divided pane's
- * share is halved between the two, so the other panes keep their size.
+ * Points panes split from `removed` at `heir`, the pane that took its place; `heir` itself
+ * takes `removed`'s own origin.
+ */
+function repoint(node: SplitNode, removed: Leaf, heir: string | undefined): SplitNode {
+  if (node.type === "leaf") {
+    if (node.from !== removed.id) return node;
+    const from = node.id === heir ? removed.from : heir;
+    return withOrigin(node, from === node.id ? undefined : from);
+  }
+  let changed = false;
+  const children = node.children.map((child) => {
+    const next = repoint(child, removed, heir);
+    if (next !== child) changed = true;
+    return next;
+  });
+  return changed ? { ...node, children } : node;
+}
+
+export function withOrigin(leaf: Leaf, from: string | undefined): Leaf {
+  if (from !== undefined) return { ...leaf, from };
+  const { from: _from, ...rest } = leaf;
+  return rest;
+}
+
+/**
+ * Divides the target pane and puts `newLeaf` on the given side of it, remembering it was split from
+ * the target. The divided pane's share is halved between the two, so the other panes keep their
+ * size.
  */
 export function insertBeside(
   node: SplitNode,
   targetId: string,
-  leaf: Leaf,
+  newLeaf: Leaf,
   side: Side,
   branchId: string,
 ): SplitNode {
   const direction = sideDirection(side);
+  const leaf = withOrigin(newLeaf, targetId);
   const pair = (target: SplitNode) => (isBefore(side) ? [leaf, target] : [target, leaf]);
   if (node.type === "leaf") {
     if (node.id !== targetId) return node;
@@ -156,7 +228,7 @@ export function insertBeside(
   }
   let changed = false;
   const children = node.children.map((child) => {
-    const next = insertBeside(child, targetId, leaf, side, branchId);
+    const next = insertBeside(child, targetId, newLeaf, side, branchId);
     if (next !== child) changed = true;
     return next;
   });

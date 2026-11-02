@@ -10,9 +10,9 @@ import type {
 import { parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useAtomValue } from "@effect/atom-react";
-import { Link } from "@tanstack/react-router";
-import { CircleCheckIcon, TriangleAlertIcon } from "lucide-react";
-import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { CircleCheckIcon, MessagesSquareIcon, TriangleAlertIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 
@@ -24,6 +24,7 @@ import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { TabHeader } from "~/panes/TabHeader";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import {
@@ -32,10 +33,8 @@ import {
   unmergedPullRequests,
 } from "@t3tools/client-runtime/wikiPullRequests";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
-import { ScrollArea } from "../ui/scroll-area";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -47,7 +46,6 @@ import {
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
 
-const STATUS_BADGE = { open: "info", merged: "success", closed: "secondary" } as const;
 const STATUS_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
 /** A change request: what it changes, who changed it, and whether it can merge. */
@@ -71,6 +69,9 @@ export function WikiChangeRequestView({
   const detail = useEnvironmentQuery(
     wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
+  const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const wikiName = wikis.data?.wikis.find((wiki) => wiki.wikiId === wikiId)?.name ?? null;
+  const navigate = useNavigate();
   // Astrolabe: the pull requests of the thread that wrote it (see `changeRequestPullRequests`).
   const threadId = detail.data?.changeRequest.threadId ?? null;
   const thread = useThreadShell(threadId === null ? null : scopeThreadRef(environmentId, threadId));
@@ -83,18 +84,36 @@ export function WikiChangeRequestView({
   const setStatus = useWikiCommand(wikiEnvironment.setChangeRequestStatus, "Couldn't update");
   const [busy, setBusy] = useState<"merge" | "status" | null>(null);
 
+  const frame = (title: string, header: ReactNode, body: ReactNode) => (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <TabHeader.Root>
+        <TabHeader.Title label="Change request" parent={wikiName}>
+          {title}
+        </TabHeader.Title>
+        {header}
+      </TabHeader.Root>
+      {body}
+    </div>
+  );
+
   if (detail.data === null) {
-    return detail.error !== null ? (
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>Couldn't open this change request</EmptyTitle>
-          <EmptyDescription>{describeWikiFailure(detail.failure ?? detail.error)}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    ) : (
-      <Empty>
-        <Spinner size="md" tone="muted" />
-      </Empty>
+    return frame(
+      "Change request",
+      null,
+      detail.error !== null ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Couldn't open this change request</EmptyTitle>
+            <EmptyDescription>
+              {describeWikiFailure(detail.failure ?? detail.error)}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <Empty>
+          <Spinner size="md" tone="muted" />
+        </Empty>
+      ),
     );
   }
 
@@ -124,78 +143,61 @@ export function WikiChangeRequestView({
     setBusy(null);
   };
 
-  return (
-    <ScrollArea className="min-h-0 flex-1">
+  const openThread = (threadId: ThreadId) => {
+    if (onOpenThread) onOpenThread(threadId);
+    else void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
+  };
+
+  return frame(
+    changeRequest.title,
+    <>
+      <TabHeader.Status>{STATUS_LABEL[changeRequest.status]}</TabHeader.Status>
+      <TabHeader.Actions>
+        {changeRequest.threadId ? (
+          <TabHeader.Action
+            label="Open thread"
+            onClick={() => {
+              if (changeRequest.threadId) openThread(changeRequest.threadId);
+            }}
+          >
+            <MessagesSquareIcon className="size-4" />
+          </TabHeader.Action>
+        ) : null}
+        {open ? (
+          <TabHeader.Action
+            label="Close change request"
+            disabled={!canSetStatus || busy !== null}
+            onClick={() => void runStatus("closed")}
+          >
+            {busy === "status" ? <Spinner /> : <PullRequestGlyph.closed className="size-4" />}
+          </TabHeader.Action>
+        ) : changeRequest.status === "closed" ? (
+          <TabHeader.Action
+            label="Reopen change request"
+            disabled={!canSetStatus || busy !== null}
+            onClick={() => void runStatus("open")}
+          >
+            {busy === "status" ? <Spinner /> : <PullRequestGlyph.reopen className="size-4" />}
+          </TabHeader.Action>
+        ) : null}
+        {open ? (
+          <MergeButton
+            blocked={blocked}
+            busy={busy === "merge"}
+            disabled={busy !== null}
+            onMerge={() => void runMerge()}
+          />
+        ) : null}
+      </TabHeader.Actions>
+    </>,
+    <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 pt-6 pb-12">
-        <header className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 text-lg font-semibold break-words">{changeRequest.title}</h2>
-            <Badge variant={STATUS_BADGE[changeRequest.status]}>
-              {STATUS_LABEL[changeRequest.status]}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {`Opened by ${changeRequest.createdBy} ${formatRelativeTimeLabel(changeRequest.createdAt)}`}
-            {changeRequest.threadId ? (
-              <>
-                {" · "}
-                {onOpenThread ? (
-                  <button
-                    type="button"
-                    className="cursor-pointer underline-offset-4 hover:underline"
-                    onClick={() => {
-                      if (changeRequest.threadId) onOpenThread(changeRequest.threadId);
-                    }}
-                  >
-                    Open thread
-                  </button>
-                ) : (
-                  <Link
-                    to="/$environmentId/$threadId"
-                    params={{ environmentId, threadId: changeRequest.threadId }}
-                    className="underline-offset-4 hover:underline"
-                  >
-                    Open thread
-                  </Link>
-                )}
-              </>
-            ) : null}
-            {changeRequest.mergedCommit
-              ? ` · Merged as ${changeRequest.mergedCommit.slice(0, 7)}`
-              : null}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {open ? (
-              <>
-                <MergeButton
-                  blocked={blocked}
-                  busy={busy === "merge"}
-                  disabled={busy !== null}
-                  onMerge={() => void runMerge()}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!canSetStatus || busy !== null}
-                  onClick={() => void runStatus("closed")}
-                >
-                  {busy === "status" ? <Spinner /> : <PullRequestGlyph.closed />}
-                  Close
-                </Button>
-              </>
-            ) : changeRequest.status === "closed" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!canSetStatus || busy !== null}
-                onClick={() => void runStatus("open")}
-              >
-                {busy === "status" ? <Spinner /> : <PullRequestGlyph.reopen />}
-                Reopen
-              </Button>
-            ) : null}
-          </div>
-        </header>
+        <p className="text-sm text-muted-foreground">
+          {`Opened by ${changeRequest.createdBy} ${formatRelativeTimeLabel(changeRequest.createdAt)}`}
+          {changeRequest.mergedCommit
+            ? ` · Merged as ${changeRequest.mergedCommit.slice(0, 7)}`
+            : null}
+        </p>
 
         <LinkedPullRequests
           links={pullRequestLinks}
@@ -268,7 +270,7 @@ export function WikiChangeRequestView({
           )}
         </WikiPart.Section>
       </div>
-    </ScrollArea>
+    </div>,
   );
 }
 

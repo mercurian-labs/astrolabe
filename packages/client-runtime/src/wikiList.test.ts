@@ -93,4 +93,29 @@ describe("wikiListEntries", () => {
     expect(found.changes.map((change) => change.changeRequest.title)).toEqual(["Grow Old"]);
     expect(found.settled).toEqual([]);
   });
+
+  it("lists a wiki's .base files as documents named by their file, marked as bases", () => {
+    const withBase: WikiOverview = {
+      environmentId,
+      wiki: wiki("c", "Plans"),
+      index: {
+        ...index([{ name: "Roadmap", editedAt: "2026-10-01T00:00:00Z" }]),
+        bases: [{ file: "Projects.base", editedAt: "2026-10-02T00:00:00Z" }],
+      } as unknown as WikiIndexResult,
+      changeRequests: [
+        changeRequest("cr-base", "Add a view", "open", "2026-10-04T00:00:00Z", ["Projects.base"]),
+      ],
+    };
+    const { documents } = wikiListEntries([withBase], null);
+    expect(documents.map((document) => [document.name, document.file, document.base])).toEqual([
+      ["Projects.base", "Projects.base", true],
+      ["Roadmap", "Roadmap.md", false],
+    ]);
+    expect(documents[0]?.changes.map((change) => change.title)).toEqual(["Add a view"]);
+    expect(
+      searchWikiListEntries(wikiListEntries([withBase], null), "project").documents.map(
+        (document) => document.name,
+      ),
+    ).toEqual(["Projects.base"]);
+  });
 });

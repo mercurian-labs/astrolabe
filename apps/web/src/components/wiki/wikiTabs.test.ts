@@ -9,7 +9,7 @@ import type {
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { allTabs, focusedPane, startingArrangement } from "~/panes/arrangement";
+import { allTabs, focusedPane, openTab, startingArrangement } from "~/panes/arrangement";
 import { leaves } from "~/panes/tree";
 import { openWikiTab, replaceWikiTab, showWikiTab, stepWikiTab, wikiPanes } from "./wikiPanes";
 import {
@@ -222,6 +222,19 @@ describe("a wiki tab's history", () => {
     expect(front()).toBe(key("Delta"));
     stepWikiTab("back");
     expect(front()).toBe(key("Alpha"));
+  });
+
+  it("shows a clicked document in place of a file in front, but never in a chat's place", () => {
+    const file = "repo-file:env-1:project-1:%2Frepo:src%2Fa.ts";
+    const chat = "chat:env-1:thread-1";
+    wikiPanes.update((current) => openTab(current, file));
+    showWikiTab(note("Alpha"));
+    expect(allTabs(arrangement())).toEqual([key("Alpha")]);
+    stepWikiTab("back");
+    expect(front()).toBe(file);
+    wikiPanes.update((current) => openTab(current, chat));
+    showWikiTab(note("Beta"));
+    expect(allTabs(arrangement())).toEqual([file, chat, key("Beta")]);
   });
 
   it("brings a document open in another tab forward, rather than showing it twice", () => {

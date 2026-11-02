@@ -48,17 +48,61 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 A thread's branch and agent show under its title only when they differ from your defaults, beside
 its pull request and **Draft** for an unsent message. Hover a row for its full context.
 
-## Chat tabs
+## Tabs and splits
 
-Open chats sit as tabs above the chat. Clicking a thread in the sidebar shows it in
-the tab in front, as a link does in a browser; a thread already open in another tab
-comes to the front there instead. To open one in a new tab, Option-click it
-(Alt-click on Windows and Linux), middle-click it, or right-click it and choose
-**Open in new tab**, or drag it onto the tabs to open it where you drop it (a selection of
-threads goes together). Search, `:b`, and new threads also show in the tab in front.
+Agents, Wikis, Projects and Changes share one set of tabs on this device: chats, files,
+changes, documents, pull requests and a thread's terminals and browsers can stand side by side,
+and every tab splits. Switching sections from the icon rail, the keyboard menu or the Command
+Palette changes what the sidebar lists, not the tabs or which one has focus. In Agents, the thread
+selected in the sidebar is the one whose chat (or one of its linked tabs) has focus; with a
+document, a file or a pull request in focus, none is. Drag a tab to a pane's edge to split it, or
+onto another pane's tabs to move it there.
 
-Each tab remembers what it showed. The arrows at the top of the sidebar, `mod+[`
-and `mod+]`, or Space `t` `h` and `t` `l` go back and forward in the tab in front.
+The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
+browser does. It offers a new chat, a document, a project's file or changes, and a change
+group, each with a letter key; what you pick takes the New tab's place.
+
+Clicking a thread in the sidebar opens it in a new tab right after the chat in front, and the
+chat you were in stays open behind it. A thread already open in a tab comes to the front there
+instead, so a thread is never open twice. A focused New tab takes the thread in its place, as a
+browser's new tab takes a link. Search, `:b`, new threads, forks and links to a thread open the
+same way. Drag a thread onto a pane's tabs to open it where you drop it (a selection of threads
+goes together).
+
+A file or document tab remembers what it showed. The arrows at the start of its header go back
+and forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do the same in the
+focused tab. A chat has no arrows: nothing ever takes a chat's place, so the terminal, browser
+and other tabs linked to it always stay with their chat.
+
+`mod+j` opens and closes the terminal drawer of the chat in the focused tab. With a file, a
+document or any other tab in focus it does nothing, even with a chat showing in another pane.
+
+### Linked tabs
+
+A thread's terminals, browsers, diff, files, pull request, Graph and Lineage are linked to its
+chat, and show only while that chat is in front: bring another chat to the front and the pane beside it shows
+that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
+the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
+and browsers for the next time you open it.
+
+Linked tabs are added from **New linked tab** at the end of the chat's header, or Space `t` `n`.
+It opens a linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull
+request and the rest), in front beside the chat's other linked tabs, bringing back any that were
+hidden first; the one you pick takes its place. Once a chat has linked tabs, the button next to
+it hides them. Hiding sets them aside rather than closing them: while they are hidden the button
+shows how many, and clicking it brings them all back where they stood. `mod+alt+b`, or Space
+`p` `r`, does the same. A linked tab's ✕ closes it for good: a terminal closed this way ends, and the
+tab does not come back. A New tab opened with a pane's **+** stands on its own, even beside
+linked tabs, and stays where it is when another chat comes to the front.
+
+A linked tab and its owner carry the same chain mark; hover it to see what it belongs to.
+Everything else (chats, documents, project files and changes, change groups) stands on its
+own. To keep a thread's file, diff or pull request whichever chat is in front, right-click its
+tab and choose **Open as its own tab**: a file becomes the project's file, the diff the
+checkout's uncommitted changes, and the pull request its own tab, in the same place.
+
+A change group's **Open as a tab group** links its change requests to the group, so they show
+beside every thread in the group and no other.
 The sidebar's toggle is in the top-left corner, above the icon rail (after the window buttons in the macOS app).
 
 ## Pin and reorder threads

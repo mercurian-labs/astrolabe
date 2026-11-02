@@ -7,6 +7,7 @@ import {
   WikiIndexError,
   WikiListResult,
   WikiNoteResult,
+  WikiQueryResult,
   WikiTransform,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -143,6 +144,35 @@ const WikiLinksTool = Tool.make("astrolabe_wiki_links", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+// Plain strings: a description on a trimming schema never reaches the agent.
+const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
+  ...shared,
+  description:
+    "Run a base, a saved question over a wiki's notes in Obsidian's Bases format: one view's matching notes as rows of that view's properties (frontmatter values; links read [[Name]]). Name a .base file, or a note to run its first ```base block.",
+  parameters: Schema.Struct({
+    wiki: Schema.NonEmptyString.annotate({
+      description: "The wiki's id or name, as astrolabe_wiki_list shows it.",
+    }),
+    base: Schema.NonEmptyString.annotate({
+      description: "A .base file's name, or a note's name to run its first ```base block.",
+    }),
+    view: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description: "The view to run, by name. Omit for the base's first view.",
+      }),
+    ),
+    changeRequestId: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description:
+          "Read a change request's head. Omit to read your thread's own open change request on this wiki, or main when it has none.",
+      }),
+    ),
+  }),
+  success: WikiQueryResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 const writeTarget = {
   wiki,
   message: TrimmedNonEmptyString.annotate({
@@ -208,6 +238,7 @@ export const WikiToolkit = Toolkit.make(
   WikiSearchTool,
   WikiOrientTool,
   WikiLinksTool,
+  WikiQueryTool,
   WikiAmendTool,
   WikiTransformTool,
   WikiChangeRequestTool,

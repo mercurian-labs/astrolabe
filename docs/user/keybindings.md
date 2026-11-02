@@ -123,10 +123,11 @@ you need.
 | Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right       |
 | `d` `u`                 | [Scroll](#scrolling) down or up half a page                |
 | `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward         |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward, link   |
 | `p`                     | Panes: split, close, maximize, full screen, right panel    |
 | `s` `s`                 | Show or hide the sidebar                                   |
 | `w`                     | Open Wikis, or find or create a document                   |
+| `r` `g`                 | Open the local graph of the project file in front          |
 | `,`                     | Settings                                                   |
 
 These are the defaults. A row lists every key in its group that runs the same
@@ -188,7 +189,7 @@ they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
 
 ### The sidebar's list
 
-With a row of the Agents, Wikis, or Pull Requests sidebar focused (move there
+With a row of the Agents, Wikis, or Changes sidebar focused (move there
 with `Ctrl+H`, or click a row), or a button of the icon rail:
 
 | Key                    | Does                                  |
@@ -224,7 +225,7 @@ commands such as `s/old/new/` run in that editor.
 
 ## Copy pull request references
 
-With a PR open in the right panel or on the Pull requests page, use `mod+shift+c`
+With a PR open beside a chat, or focused on Changes, use `mod+shift+c`
 to copy its URL and `mod+shift+k` (outside the composer and notes) to copy its
 number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
@@ -355,13 +356,15 @@ in a text field such as the composer. Once you type or press another key, the
 field gets its own undo back. Terminals always keep their native shortcut.
 
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
-through the pages you have visited, like a browser's back and forward buttons. On
-Agents and Wikis they go back and forward in the tab in front instead, as the
-arrows at the top of the sidebar do.
+through the pages you have visited, like a browser's back and forward buttons. In
+every section they go back and forward in the focused tab instead, as the arrows at the start of
+each tab's header do for their own tab.
 
-Space `p` `f` takes the focused pane full screen: it fills its panes and, in a
-thread's right panel, the panel covers the chat too. Press it again to restore
-both. Space `p` `r` shows or hides the right panel.
+Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
+again to restore it. Space `p` `r` hides the
+[linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, or brings them back as
+its tabs button does; Space `t` `n` opens a new linked tab for the focused chat, and Space
+`t` `k` links the focused tab to the chat in front, or unlinks it.
 
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your

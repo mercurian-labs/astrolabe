@@ -34,7 +34,7 @@ import {
   isPullRequestsPath,
   isRepositoriesPath,
   isWikisPath,
-  useNavigateToMainApp,
+  useNavigateToAgents,
   useSectionPathname,
 } from "./mainAppLocation";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -60,7 +60,7 @@ export function useAppSections(): readonly AppSection[] {
   // Settings and Usage open over a section, which stays the one its button marks.
   const sectionPathname = useSectionPathname();
   const navigate = useNavigate();
-  const navigateToMainApp = useNavigateToMainApp();
+  const navigateToAgents = useNavigateToAgents();
   const pullRequestsSupported = usePullRequestsSupported();
 
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
@@ -77,7 +77,7 @@ export function useAppSections(): readonly AppSection[] {
       label: "Agents",
       icon: <MessagesSquare />,
       active: onThreads,
-      open: () => void navigateToMainApp(),
+      open: () => void navigateToAgents(),
       foot: false,
     },
     {

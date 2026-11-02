@@ -38,10 +38,9 @@ import {
   isSidebarUtilityPage,
   isRepositoriesPath,
   isWikisPath,
-  useNavigateToMainApp,
+  useNavigateToAgents,
   useSectionPathname,
 } from "./mainAppLocation";
-import { SidebarTabHistory } from "./SidebarTabHistory";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -96,8 +95,6 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           </div>
         ) : null}
       </div>
-      {/* Astrolabe: back and forward for the section's tab in front. */}
-      <SidebarTabHistory />
     </div>
   );
 });
@@ -155,7 +152,7 @@ function SidebarUtilityItem({
 
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
-  const navigateToMainApp = useNavigateToMainApp();
+  const navigateToAgents = useNavigateToAgents();
   const { isMobile, setOpenMobile } = useSidebar();
   // Settings and Usage open over a section, which keeps its footer.
   const sectionPathname = useSectionPathname();
@@ -198,7 +195,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 
   const handleBackClick = () => {
     closeMobileSidebar();
-    void navigateToMainApp();
+    void navigateToAgents();
   };
 
   // Astrolabe: on desktop the icon rail holds the sections, Agents among them as the way back,

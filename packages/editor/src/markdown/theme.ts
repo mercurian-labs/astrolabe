@@ -185,6 +185,7 @@ export const previewBaseTheme = EditorView.baseTheme({
     fontStyle: "italic",
   },
   ".cm-md-math-widget": { cursor: "default" },
+  ".cm-md-host-block": { cursor: "default", margin: "0.5em 0" },
   ".cm-md-math-display": { display: "block", overflowX: "auto", overflowY: "hidden" },
   ".cm-md-math-display .katex-display": { margin: "0.5em 0" },
   // The table hugs its content and scrolls sideways inside its own element. In an editable

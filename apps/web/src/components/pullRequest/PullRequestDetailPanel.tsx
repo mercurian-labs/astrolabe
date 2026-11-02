@@ -38,6 +38,7 @@ import {
 import {
   lazy,
   Suspense,
+  useContext,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -98,6 +99,8 @@ import {
 } from "./PullRequestDetailActions";
 import { PullRequestBaseBranch } from "./PullRequestBaseBranch";
 import { PullRequestDetailCrumbs } from "./PullRequestDetailCrumbs";
+import { PaneTabKeyContext } from "~/panes/PaneSurfaceHost";
+import { PullRequestTabHeading } from "./PullRequestTabHeading";
 import { PullRequestTitleEditor } from "./PullRequestTitleEditor";
 import { PullRequestActivityUnavailableState } from "./PullRequestActivityUnavailableState";
 import { DiffPanelLoadingState } from "../DiffPanelShell";
@@ -340,6 +343,9 @@ export function PullRequestDetailPanel({
   useEnvironmentQuery(pullRequestEnvironment.changeBreakdown({ environmentId, input: reference }));
   const [threadPickerOpen, setThreadPickerOpen] = useState(false);
   const [openReviewRequest, setOpenReviewRequest] = useState(0);
+  // Astrolabe: in the shared panes the tab's header (`PullRequestTabHeading`) replaces the crumbs.
+  const inPane = useContext(PaneTabKeyContext) !== null;
+  const [renameRequest, setRenameRequest] = useState(0);
   const {
     canWriteSourceControl,
     detailQuery,
@@ -1228,9 +1234,20 @@ export function PullRequestDetailPanel({
     />
   );
 
+  const paneHeading = inPane ? (
+    <PullRequestTabHeading
+      reference={reference}
+      summary={detail ?? sharedSummary ?? matchingListEntry}
+      detail={detail}
+      onEditTitle={() => setRenameRequest((count) => count + 1)}
+      onBack={onBack}
+    />
+  ) : null;
+
   if (detailQuery.isPending && !detail) {
     return (
       <PullRequestDetailGhost
+        heading={paneHeading}
         seed={matchingListEntry}
         summary={sharedSummary}
         checkoutCommand={checkoutCommand}
@@ -1271,18 +1288,26 @@ export function PullRequestDetailPanel({
         className={cn(
           "@container/pr-header grid min-w-0 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2",
           detail && "border-b border-border/60",
-          !detail && !onClose && "hidden",
+          !detail && !onClose && !inPane && "hidden",
+          inPane && "[&>nav]:border-t-0",
         )}
       >
-        <PullRequestDetailCrumbs
-          detail={detail}
-          toneClassName={statePresentation?.toneClassName ?? null}
-          condensed={condensed}
-          repositoryUrl={repositoryUrl}
-          openOnHostText={openOnHostText}
-          onBack={onBack}
-        />
-        <div className="mr-4 flex h-7 shrink-0 items-center justify-end gap-1">
+        {paneHeading ?? (
+          <PullRequestDetailCrumbs
+            detail={detail}
+            toneClassName={statePresentation?.toneClassName ?? null}
+            condensed={condensed}
+            repositoryUrl={repositoryUrl}
+            openOnHostText={openOnHostText}
+            onBack={onBack}
+          />
+        )}
+        <div
+          className={cn(
+            "mr-4 flex h-7 shrink-0 items-center justify-end gap-1",
+            inPane && "mr-(--workspace-gutter-end) h-(--workspace-topbar-height)",
+          )}
+        >
           {detail ? (
             <TooltipProvider delay={150} closeDelay={150} timeout={400}>
               {!nativeStack && supportsStackActions && nativeStackQuery.error ? (
@@ -1509,6 +1534,7 @@ export function PullRequestDetailPanel({
                     detail={detail}
                     canWriteSourceControl={canWriteSourceControl}
                     onSaved={refreshDetail}
+                    editRequest={inPane ? renameRequest : undefined}
                   />
                 }
                 author={

@@ -98,7 +98,7 @@ let preview: { readonly element: HTMLElement; readonly stop: () => void } | null
  * the strip around the tab, so it is replaced by a blank image; a group marker previews as itself.
  * Ends on drop, on drag end, or with `stopTabDragPreview`.
  */
-export function startTabDragPreview(event: DragEvent<HTMLElement>, count = 1) {
+function startTabDragPreview(event: DragEvent<HTMLElement>, count = 1) {
   stopTabDragPreview();
   const tab = event.currentTarget;
   const box = tab.getBoundingClientRect();

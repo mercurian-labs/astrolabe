@@ -1,8 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { CHAT_TABS_STORAGE_KEY } from "~/chatTabs/chatTabsStore";
 import { allTabs } from "./arrangement";
-import { GROUP_PANEL_RUNS_STORAGE_KEY, parseGroupPanelRuns, runTabKeys } from "./groupPanelRuns";
 import type { PaneArrangementStore } from "./panesHost";
 import { arrangementStorageKey, parseArrangement } from "./persistence";
 
@@ -94,48 +92,31 @@ export function parseTabGroupNumbers(value: unknown): TabGroupNumbers {
 
 type ReadableStorage = Pick<Storage, "length" | "key" | "getItem">;
 
-// Where the pane hosts keep their arrangements: the threads' right panels and the Pull Requests
-// area's under `persistence.ts`'s prefix, and the Wikis (`wikiPanes.ts`) and Repositories
-// (`repositoryPanes.ts`) areas' under their own keys. A host added elsewhere joins here.
+// Where the pane hosts keep their arrangements: the Changes area's under `persistence.ts`'s
+// prefix, and the shared panes' (`workspace.ts`) under their own key, with the tabs they set
+// aside. A host added elsewhere joins here.
 const PANEL_PREFIX = arrangementStorageKey("");
-const SECTION_KEYS = new Set(["astrolabe:wiki-panes:v1", "astrolabe:repository-panes:v1"]);
+const WORKSPACE_KEY = "astrolabe:workspace:v1";
 
-/** What a zustand store keeps under `key`, inside its wrapper; null when unreadable. */
-function storedState(storage: ReadableStorage, key: string): Record<string, unknown> | null {
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null && !Array.isArray(value);
-  try {
-    const raw = storage.getItem(key);
-    const stored: unknown = raw ? JSON.parse(raw) : null;
-    return isRecord(stored) && isRecord(stored.state) ? stored.state : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Every tab kept open on the device: the pane arrangements' tabs, the chat tabs
- * (`chatTabsStore.ts`), and the tabs of the change groups' shared runs (`groupPanelRuns.ts`).
- */
+/** Every tab kept open on the device: the pane arrangements' tabs, those set aside included. */
 export function storedTabKeys(storage: ReadableStorage): Set<string> {
   const open = new Set<string>();
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
-    if (key === null || !(key.startsWith(PANEL_PREFIX) || SECTION_KEYS.has(key))) continue;
+    if (key === null || !(key.startsWith(PANEL_PREFIX) || key === WORKSPACE_KEY)) continue;
     try {
       const raw = storage.getItem(key);
-      const arrangement = raw ? parseArrangement(JSON.parse(raw), () => true) : null;
+      const stored: unknown = raw ? JSON.parse(raw) : null;
+      const arrangement = parseArrangement(stored, () => true);
       for (const tab of arrangement ? allTabs(arrangement) : []) open.add(tab);
+      const parked = (stored as { parked?: unknown } | null)?.parked;
+      if (typeof parked === "object" && parked !== null) {
+        for (const tab of Object.keys(parked)) open.add(tab);
+      }
     } catch {
       // Unreadable: it holds no tabs.
     }
   }
-  const chats = storedState(storage, CHAT_TABS_STORAGE_KEY)?.keys;
-  for (const chat of Array.isArray(chats) ? chats : []) {
-    if (typeof chat === "string") open.add(chat);
-  }
-  const runs = parseGroupPanelRuns(storedState(storage, GROUP_PANEL_RUNS_STORAGE_KEY)?.runs);
-  for (const tab of runTabKeys(runs)) open.add(tab);
   return open;
 }
 
@@ -223,9 +204,8 @@ function scheduleTabGroupRelease() {
 }
 
 /**
- * Schedules a release whenever a strip showing these tabs (of `store`'s pane, or of the chat tabs,
- * which keep no arrangement) loses one, or goes away; while it is on screen, the release counts
- * `store`'s tabs as open.
+ * Schedules a release whenever a strip showing these tabs (of `store`'s pane) loses one, or goes
+ * away; while it is on screen, the release counts `store`'s tabs as open.
  */
 export function useTabGroupRelease(store: PaneArrangementStore | null, tabs: readonly string[]) {
   const held = useRef(tabs);

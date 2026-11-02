@@ -16,10 +16,36 @@ of that for it; with every project, each shows its latest files.
 
 ## Edit
 
-Files open in tabs that split, as wiki documents do. Markdown files open with the live preview;
+Files open in the tabs every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Markdown files open with the live preview;
 code opens with line numbers and its language's colours, with Vim if you turned it on in
 Settings. Your edits save on their own a moment after you stop typing. A file shows when an agent
 is working in the same copy, and an edit never overwrites newer changes saved there.
+
+## Local graph
+
+A file's local graph shows the file in the accent colour with the files it imports and the files
+that import it, drawn the way Obsidian draws its graph. Open it with the graph button in a file's
+header, **Open local graph** in a file's menu in the sidebar, or `r` `g` in the
+[keyboard menu](keybindings.md#keyboard-menu). It opens beside the file and follows the file you
+are reading, carrying the same chain mark as that file's tab; turn off **Following** in its
+header, or choose **Unlink tab** in its tab menu, to keep it on one file.
+
+Click a file to open it in place of the file the graph shows (⌘-click or Ctrl-click for a new
+tab), and the graph moves to it; a graph kept on one file moves to the file you click. Click a
+folded folder (a lighter dot named by the end of its path, such as `web/src · 975`) to open it.
+Double-click a file to add its neighbours, and right-click any dot to show its contents or centre
+the graph on it: see [Code graph](code-graph.md) for levels of detail and growing the graph.
+Hovering a file names it and its neighbours, lights them, shows the import that links it, and
+highlights that line in the open file. To see which files changed on your branch or are not yet
+committed, turn on **Changed files** in the panel's Display.
+
+**Graph settings** in the header opens a panel to search the graph, set its level and depth and
+whether uses, files that use it, tests and outside packages show, and tune the display and the
+forces that lay the graph out. A group colours the files whose path holds every word of its query. **Animate**
+lays the graph out again.
+
+The graph reads the project's code index, set in **Settings → Projects**. While the index is
+first built, the files that import this one appear once it finishes.
 
 ## Review changes
 

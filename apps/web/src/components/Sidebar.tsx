@@ -238,7 +238,6 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
-import { useChatTabsStore } from "../chatTabs/chatTabsStore";
 import { rowClickIntent } from "../tabNavigation.logic";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import {
@@ -1287,12 +1286,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       params: buildThreadRouteParams(threadRef),
     });
   };
-  // Astrolabe: a thread in a new chat tab, after the one in front (or the tab already showing it).
-  const openThreadInNewTab = (threadRef: ScopedThreadRef) => {
-    useChatTabsStore.getState().openNew(scopedThreadKey(threadRef));
-    void navigateToThread(threadRef);
-  };
-
   const handleThreadFileDrop = async (threadRef: ScopedThreadRef, files: File[]) => {
     const dropId = queuePendingFileDrop({ threadRef, files });
     const landedBefore =
@@ -1315,17 +1308,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
   };
 
-  const navigateToDraft = (draftId: DraftId, options?: { readonly newTab?: boolean }) => {
+  const navigateToDraft = (draftId: DraftId) => {
     clearSelection();
-    // Astrolabe: a draft opens in the chat tab in front unless a new tab was asked for.
-    const session = options?.newTab
-      ? useComposerDraftStore.getState().getDraftSession(draftId)
-      : null;
-    if (session) {
-      useChatTabsStore
-        .getState()
-        .openNew(scopedThreadKey(scopeThreadRef(session.environmentId, session.threadId)));
-    }
     if (isMobile) {
       setOpenMobile(false);
     }
@@ -1411,11 +1395,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const isMac = isMacPlatform(navigator.platform);
     const isModClick = isMac ? event.metaKey : event.ctrlKey;
     const threadKey = scopedThreadKey(threadRef);
-    // Astrolabe: a plain click shows the thread in the chat tab in front; Option-click and the
-    // middle button open it in a new tab.
+    // Astrolabe: Option-click and the middle button open the thread as a plain click does, in a
+    // new tab unless it is open already (`workspace.openChat`).
     if (rowClickIntent(event, isMac) === "new-tab") {
       event.preventDefault();
-      openThreadInNewTab(threadRef);
+      void navigateToThread(threadRef);
       return;
     }
     if (isModClick) {
@@ -2388,7 +2372,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         if (clicked._tag === "Failure") return;
         switch (clicked.value) {
           case OPEN_IN_NEW_TAB_ITEM.id:
-            navigateToDraft(draftId, { newTab: true });
+            navigateToDraft(draftId);
             return;
           case "project-settings":
             if (projectGroup)
@@ -2498,7 +2482,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
         if (clicked.value === OPEN_IN_NEW_TAB_ITEM.id) {
-          openThreadInNewTab(threadRef);
+          void navigateToThread(threadRef);
           return;
         }
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;

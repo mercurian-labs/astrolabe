@@ -7,6 +7,7 @@ import type { RpcSession } from "../rpc/session.ts";
 import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import {
+  AuthEnvironmentMaintainScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -113,6 +114,37 @@ describe("command permissions", () => {
         expect(registry.get(cleanup.permissionAtom(other))).toBe(false);
       }),
     ),
+  );
+
+  it.effect(
+    "requires the destination maintenance grant to rebuild, clean or clear a code index",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* setup;
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+          const maintain = {
+            ...grant(true),
+            scopes: [AuthEnvironmentMaintainScope],
+            permissions: [AuthEnvironmentMaintainScope],
+          };
+          for (const tag of [
+            WS_METHODS.codeIndexRebuild,
+            WS_METHODS.codeIndexPrune,
+            WS_METHODS.codeIndexClear,
+          ] as const) {
+            const command = createCommandPermissions(runtime, tag);
+            registry.set(sessions(env), AsyncResult.success(grant(true)));
+            expect(registry.get(command.permissionAtom(env))).toBe(false);
+            expect((yield* command.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+              "EnvironmentAuthorizationError",
+            );
+            registry.set(sessions(env), AsyncResult.success(maintain));
+            expect(registry.get(command.permissionAtom(env))).toBe(true);
+            yield* command.authorize(registry, env);
+          }
+        }),
+      ),
   );
 
   it.effect("uses the target grant for both availability and execution", () =>

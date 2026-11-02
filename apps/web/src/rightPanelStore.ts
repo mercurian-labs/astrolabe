@@ -173,17 +173,6 @@ interface RightPanelStoreState {
    * `surfaceId` is not open.
    */
   replaceSurface: (ref: ScopedThreadRef, surfaceId: string, surface: RightPanelSurface) => void;
-  /**
-   * Astrolabe: adds and drops the pull requests a change group shares across its threads' panels
-   * (`panes/groupPanelRuns.ts`), on the app's behalf: the panel stays open or closed and keeps the
-   * surface in front, unless that one is dropped, which leaves none in front for the panes to
-   * choose. Not a user choice, and nothing dropped is remembered as closed.
-   */
-  shareSurfaces: (
-    ref: ScopedThreadRef,
-    add: readonly RightPanelSurface[],
-    removeIds: readonly string[],
-  ) => void;
   closeOtherSurfaces: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
@@ -923,24 +912,6 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               isOpen: true,
               surfaces: current.surfaces.map((entry, at) => (at === index ? surface : entry)),
               activeSurfaceId: surface.id,
-            };
-          }),
-        ),
-      shareSurfaces: (ref, add, removeIds) =>
-        set((state) =>
-          automaticUpdate(state, scopedThreadKey(ref), (current) => {
-            const removing = new Set(removeIds);
-            const kept = current.surfaces.filter((surface) => !removing.has(surface.id));
-            const known = new Set(kept.map((surface) => surface.id));
-            const added = add.filter((surface) => !known.has(surface.id));
-            if (added.length === 0 && kept.length === current.surfaces.length) return current;
-            return {
-              ...current,
-              surfaces: [...kept, ...added],
-              activeSurfaceId:
-                current.activeSurfaceId !== null && removing.has(current.activeSurfaceId)
-                  ? null
-                  : current.activeSurfaceId,
             };
           }),
         ),

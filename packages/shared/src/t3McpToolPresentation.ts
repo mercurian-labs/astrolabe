@@ -67,7 +67,9 @@ export type T3McpToolSummaryAction =
   | "html-preview"
   | "html-render"
   | "wiki-read"
-  | "wiki-amend";
+  | "wiki-amend"
+  | "code-read"
+  | "code-graph";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -87,7 +89,7 @@ function tool(
 
 const T3_MCP_SERVER_ALIASES = new Set(["t3-code", "t3_code", "t3code"]);
 
-const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
+const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   link_pull_request: tool(
     ["Link", "Linking", "Linked", "a pull request"],
     "link-pr",
@@ -359,12 +361,28 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   astrolabe_wiki_search: tool(["Search", "Searching", "Searched", "a wiki"], "wiki-read"),
   astrolabe_wiki_orient: tool(["Read", "Reading", "Read", "a wiki skill map"], "wiki-read"),
   astrolabe_wiki_links: tool(["Read", "Reading", "Read", "wiki links"], "wiki-read"),
+  astrolabe_wiki_query: tool(["Query", "Querying", "Queried", "a wiki base"], "wiki-read"),
   astrolabe_wiki_change_request: tool(
     ["Review", "Reviewing", "Reviewed", "a wiki change request"],
     "wiki-read",
   ),
   astrolabe_wiki_amend: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
   astrolabe_wiki_transform: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),
+  astrolabe_code_outline: tool(["Outline", "Outlining", "Outlined", "code"], "code-read"),
+  astrolabe_code_find: tool(["Find", "Finding", "Found", "code uses"], "code-read"),
+  astrolabe_code_changes: tool(["Read", "Reading", "Read", "code changes"], "code-read"),
+  astrolabe_code_map: tool(["Map", "Mapping", "Mapped", "code dependencies"], "code-read"),
+  astrolabe_code_graph_show: tool(["Show", "Showing", "Showed", "a code graph"], "code-graph"),
+};
+
+// Astrolabe's wiki and change-group tools were `t3_*` until 2026-10-30; older threads still say so.
+const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
+  ...CURRENT_T3_MCP_TOOLS,
+  ...Object.fromEntries(
+    Object.entries(CURRENT_T3_MCP_TOOLS)
+      .filter(([name]) => /^astrolabe_(?:wiki|change_group)/.test(name))
+      .map(([name, definition]) => [name.replace(/^astrolabe_/, "t3_"), definition]),
+  ),
 };
 
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));
