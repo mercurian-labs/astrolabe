@@ -1,7 +1,12 @@
-import type { ProjectContentMatch } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, type ProjectContentMatch } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupContentSearchMatches, type ContentSearchRow } from "./projectContentSearch.logic";
+import { repositoryTabKey } from "../repositories/repositoryTabs";
+import {
+  focusedCheckoutTarget,
+  groupContentSearchMatches,
+  type ContentSearchRow,
+} from "./projectContentSearch.logic";
 
 function match(
   path: string,
@@ -81,5 +86,32 @@ describe("groupContentSearchMatches", () => {
   it("drops context lines that would fall before the first line", () => {
     const [group] = groupContentSearchMatches([match("a.ts", 1, { before: [], after: ["l2"] })]);
     expect(describeRows(group!.rows)).toEqual(["1*", "2"]);
+  });
+});
+
+describe("focusedCheckoutTarget", () => {
+  const environmentId = EnvironmentId.make("environment");
+  const projectId = ProjectId.make("project");
+  const projects = [{ environmentId, id: projectId, title: "scratch", workspaceRoot: "/repo" }];
+  const fileIn = (cwd: string) =>
+    repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path: "src/a.ts" });
+
+  it("searches the checkout of the Projects tab in front", () => {
+    expect(focusedCheckoutTarget(fileIn("/repo"), projects)).toEqual({
+      environmentId,
+      projectId,
+      cwd: "/repo",
+      worktreePath: null,
+      projectName: "scratch",
+    });
+    expect(focusedCheckoutTarget(fileIn("/worktrees/a"), projects)).toMatchObject({
+      cwd: "/worktrees/a",
+      worktreePath: "/worktrees/a",
+    });
+  });
+
+  it("finds nothing in front of a chat or a project it no longer knows", () => {
+    expect(focusedCheckoutTarget("chat:environment:thread", projects)).toBeNull();
+    expect(focusedCheckoutTarget(fileIn("/repo"), [])).toBeNull();
   });
 });

@@ -6,7 +6,9 @@ import { ListFilterIcon } from "lucide-react";
 
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
+import { useActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
+import { useWorkspaceFocusedKey } from "~/panes/workspace";
+import { useProjects } from "~/state/entities";
 import { useRenderedAppearance, useTheme } from "~/hooks/useTheme";
 import { cn } from "~/lib/utils";
 import { useProjectContentSearch } from "~/state/queries";
@@ -24,7 +26,11 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HighlightedSearchLine } from "./HighlightedSearchLine";
-import { groupContentSearchMatches } from "./projectContentSearch.logic";
+import {
+  focusedCheckoutTarget,
+  groupContentSearchMatches,
+  type ContentSearchTarget,
+} from "./projectContentSearch.logic";
 
 interface ProjectContentSearchDialogProps {
   readonly onOpenChange: (open: boolean) => void;
@@ -94,7 +100,7 @@ const scrollSelectedRowIntoView = (row: HTMLElement | null) => {
 
 function OpenContentSearchDialog(props: {
   readonly onOpenChange: (open: boolean) => void;
-  readonly target: ActiveProjectTarget;
+  readonly target: ContentSearchTarget;
 }) {
   const { target } = props;
   const { resolvedTheme } = useTheme();
@@ -458,7 +464,9 @@ function OpenContentSearchDialog(props: {
 }
 
 export function ProjectContentSearchDialog(props: ProjectContentSearchDialogProps) {
-  const active = useActiveProjectTarget();
+  const thread = useActiveProjectTarget();
+  const inFront = focusedCheckoutTarget(useWorkspaceFocusedKey(), useProjects());
+  const active: ContentSearchTarget | null = inFront ?? thread;
   // Astrolabe: opening a match leaves the thread while the palette closes; swapping to the empty
   // dialog then would drop the focused field, and the closing dialog would take focus back.
   const [opened, setOpened] = useState(active);

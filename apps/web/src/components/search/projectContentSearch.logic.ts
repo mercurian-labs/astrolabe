@@ -1,4 +1,8 @@
-import type { ProjectContentMatch } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectContentMatch, ProjectId } from "@t3tools/contracts";
+
+import type { ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
+
+import { parseRepositoryTabKey } from "../repositories/repositoryTabs";
 
 export type IndexedContentMatch = ProjectContentMatch & { readonly resultIndex: number };
 
@@ -60,4 +64,31 @@ function fileRows(matches: ReadonlyArray<IndexedContentMatch>): ContentSearchRow
     }
   }
   return rows;
+}
+
+export type ContentSearchTarget = Omit<ActiveProjectTarget, "threadRef">;
+
+/** Astrolabe: the checkout of the Projects tab in front, where no thread names one. */
+export function focusedCheckoutTarget(
+  focusedKey: string,
+  projects: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly id: ProjectId;
+    readonly title: string;
+    readonly workspaceRoot: string;
+  }>,
+): ContentSearchTarget | null {
+  const tab = parseRepositoryTabKey(focusedKey);
+  if (tab === null) return null;
+  const project = projects.find(
+    (candidate) => candidate.environmentId === tab.environmentId && candidate.id === tab.projectId,
+  );
+  if (project === undefined) return null;
+  return {
+    environmentId: tab.environmentId,
+    projectId: tab.projectId,
+    cwd: tab.cwd,
+    worktreePath: tab.cwd === project.workspaceRoot ? null : tab.cwd,
+    projectName: project.title,
+  };
 }
