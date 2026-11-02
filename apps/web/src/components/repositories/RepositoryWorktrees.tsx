@@ -487,7 +487,8 @@ export function OpenBranchPicker({
   const placedOn = (branch: string) => {
     const holder = worktrees.find((worktree) => worktree.branch === branch);
     if (holder === undefined) return null;
-    return holder.number === null ? "main checkout" : `worktree ${holder.number}`;
+    if (holder.isMain) return "main checkout";
+    return holder.number === null ? "a worktree" : `worktree ${holder.number}`;
   };
   return (
     <Combobox
