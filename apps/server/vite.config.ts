@@ -71,7 +71,9 @@ const codeGraphRequire = NodeModule.createRequire(`${CODE_GRAPH_DIR}package.json
 /** A file beside one a package resolves to. */
 const besideResolved = (specifier: string, file: string) =>
   NodeURL.fileURLToPath(new URL(file, NodeURL.pathToFileURL(codeGraphRequire.resolve(specifier))));
-const CODE_GRAPH_WASM = [
+// Resolved at pack time: vp loads this config for every task graph, including filtered installs
+// (the landing deploy) that never install code-graph's grammars.
+const codeGraphWasm = () => [
   ...["typescript", "tsx", "python", "go", "rust"].map((language) =>
     besideResolved("@vscode/tree-sitter-wasm/package.json", `wasm/tree-sitter-${language}.wasm`),
   ),
@@ -116,7 +118,7 @@ export default mergeConfig(
                 to: `${outDir}/code-graph/queries${folder}`,
               })),
               { from: `${CODE_GRAPH_DIR}queries/NOTICE`, to: `${outDir}/code-graph/queries` },
-              { from: CODE_GRAPH_WASM, to: `${outDir}/code-graph/wasm` },
+              { from: codeGraphWasm(), to: `${outDir}/code-graph/wasm` },
             ],
           }),
       outDir: packExecutable ? "dist-exe" : "dist",
