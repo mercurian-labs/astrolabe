@@ -4,7 +4,8 @@ The code graph over a project's code index, drawn the way Obsidian draws its gra
 `packages/graph`): a thread's **Graph** tab (a right-panel surface and linked tab, around the
 files the thread changed) and the Projects local graph (around one file, see the Projects
 section in repositories.md; opened from the file header, a file's right-click menu (**Open Local
-Graph**), a sidebar row's menu or `r` `g`; its **Following** toggle keeps it on the file in front). Both render `CodeGraphView`. Agents show pictures and stories in the Graph tab
+Graph**; the header and sidebar menus say **Open local graph**), a sidebar row's menu or `menu r g`
+(Cmd+K or the leader first); a project's files only, not a wiki's; its **Following** toggle keeps it on the file in front). Both render `CodeGraphView`. Agents show pictures and stories in the Graph tab
 with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 
 ## Sub-features
@@ -55,7 +56,7 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 5. Ask the agent: "Walk me through how X reaches Y, as a diagram I can step through." The tab
    opens on the story; step it; the view menu lists it; after a reload the tab opens on
    **Changes** and the story is still in `combobox "Graph view"`.
-6. Projects: open a file's local graph (`r g`); click, double-click and the menu behave as in
+6. Projects: open a file's local graph (Cmd+K `r` `g`); click, double-click and the menu behave as in
    3–4, and a following graph follows the file the click opened.
 7. Phone (test-t3-mobile): open the thread from step 5; the work log row reads `Showed “<title>” ·
    N steps`; tap it: the numbered captions and the "Open this thread on a computer" line.

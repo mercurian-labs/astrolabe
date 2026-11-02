@@ -40,7 +40,7 @@ actions at its right end.
   ignored on read but stays in storage until the next pick. The trigger and the pills show only
   with at least one project; with none the list reads "No projects yet" with
   `button "Add project"`. An empty list reads "No threads match these filters".
-- **Pills** (`[aria-label='Thread filters']`, under the title row): **Needs you** is a
+- **Pills** (`[aria-label='Thread filters']`, a plain div, so a CSS locator not a role one; under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
   or `N projects` past two) and one the other statuses. A pill's body opens the popup, its ×
@@ -54,7 +54,8 @@ actions at its right end.
   `listbox "Thread search results"` (or a status: "Searching thread messages…",
   then "No threads found"). Escape
   clears a query; Escape on an empty field brings the heading and button back.
-  The keyboard menu's `/` opens the Search palette instead, not this field; its `n`
+  The keyboard menu's `/` opens the Search palette instead, not this field (a plain `/` while a
+  sidebar row has focus does open it); its `n`
   presses the row's New thread / New document button (which-key.md).
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
@@ -112,7 +113,7 @@ actions at its right end.
   arrives, then drops to one line. `components/sidebar/agentRowSummary.ts` decides the second
   line; `AgentRowDetails.tsx` and `SidebarCard.tsx`'s `SidebarAgentRowItem`/
   `SidebarAgentRowContent` draw it. Pinned rows sit under a resting **Pinned** heading
-  (`[data-testid=sidebar-pinned-header]`, `role=heading`, 24px tall) with no pin glyph, and an
+  (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading`) with no pin glyph, and an
   **Active** one (`sidebar-pinned-divider`) closes them while active rows follow; hovering a pinned
   row offers `button "Unpin thread"` beside Snooze and Settle. Draft-session rows
   (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the

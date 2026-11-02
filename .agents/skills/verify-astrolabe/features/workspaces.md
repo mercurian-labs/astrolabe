@@ -36,8 +36,8 @@ creates the account approved off the waitlist. Approving through the browser
 pages works too (`<API>/device?user_code=<code>`, codes from
 `cloud-kit.sh mail`), but the emulator's load balancer drops all but the last
 `Set-Cookie`, so that sign-in often bounces. Act as a second person with
-`cloud-kit.sh person <email>`, whose bearer token drives the write API or
-`createWorkspaceSync` from a Node script, so changes arrive while you watch.
+`cloud-kit.sh person <email>`, whose bearer token drives the write API (`cloud-kit.sh write
+<email> <mutation> '<json>'`), so changes arrive while you watch.
 
 ## Driving it with the Browser panel
 

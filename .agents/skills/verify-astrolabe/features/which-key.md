@@ -79,12 +79,11 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   content search, Cmd+P switches to it). Empty, it lists every command once (label,
   its alias such as `q[uit]` or else its menu keys as `Space t ]`, its shortcut)
   under Commands, then upstream's Actions. An alias runs its command: `q` closes the
-  focused pane's tab when focus is in the panes (the Wikis area is all panes), else
-  the chat tab in front; `w` send or save, `sp`/`vs` split, `e <name>` a document,
+  focused pane's front tab, whatever it is; `w` send or save, `sp`/`vs` split, `e <name>` a document,
   `b <name>` a thread (open chat tabs first), `noh`. Picking `b`/`e` fills the line
   and waits for the name. Any other line shows
-  **Run in the editor** when opened from a Vim editor (see vim-mode.md), else **Not
-  an editor command**. A request to open the palette made before it mounts (a key
+  **Run in the editor** when opened from a Vim editor (see vim-mode.md); otherwise it
+  lists the commands it matches, and **Not an editor command** only when none do. A request to open the palette made before it mounts (a key
   just after a page load) waits for it.
 - **Leader key**: Settings › Keybindings › This device › **Leader key**: Space
   (default), Another key… (records one key; not Escape, Enter, Tab, Backspace,

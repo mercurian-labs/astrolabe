@@ -93,7 +93,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   open while other linked tabs remain. Linked tabs are added only as a linked New tab; there is no
   linking a standalone tab to a chat. **Open as its own tab** (tab menu) puts a thread's
   surface's standalone counterpart in its place, unlinked, and closes the surface in the
-  thread's record: a file (from chat or Files) becomes `repo-file:` on the thread's checkout,
+  thread's record: a file (from chat or Files) becomes `repo-file:` on the thread's checkout
+  (its branch when it has a worktree and a branch, else its folder),
   Diff becomes `repo-diff:…:working-tree`, the thread's pull request a full-key pull request
   tab (only when its host is known). Terminal, browser, device, Files, Graph, Lineage and
   Linked pull requests have no counterpart and do not offer it. **Unlink tab** remains for a
@@ -123,8 +124,10 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   stand on their own, together in one new pane beside it. The groups' threads reach the panes through `GroupsSync`.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
   strip, a change
-  group's run of tabs (its chats, wiki change requests and own tab, and pull requests
-  matched by repository#number) is headed by a marker,
+  group's run of tabs (its chats, wiki change requests and own tab, pull requests
+  matched by repository#number, and Projects file, changes and graph tabs keyed by a branch
+  its threads ever worked on, main/master/develop/trunk excepted; folder-keyed tabs, such as
+  the main checkout's, join none) is headed by a marker,
   `button[data-tab-group]` inside the tablist: a narrow tab with a stack icon and the
   group's number as a badge, title and state in its tooltip, named
   `<title>, tab group <n>, <state>` (`, collapsed` appended). It is no `[role=tab]` or
@@ -185,7 +188,9 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 - **Full screen** (`p f`, `pane.toggleFullScreen`, label "Full screen pane" /
   "Exit full screen"): maximizes the focused pane, faint for a lone pane.
 - **Chrome tabs**: tabs are drawn as Chrome's (`index.css`, `TabParts.tsx`): 240px
-  wide, shrinking together to 96px; the title fades out before an always-shown ✕.
+  wide, shrinking together to 96px; the title fades out before an always-shown ✕. A
+  Projects tab held by a numbered worktree shows `[aria-label="Worktree N"]` between its
+  title and its end (`PaneTabLabel.trailing`); the tab's own name is only its title.
   As in T3 Code's panel, a browser tab playing audio has a speaker button
   (`Mute <title>` / `Unmute <title>`), a file still saving has a dot on its icon, and
   a device tab names its host and OS version on hover and renames on double-click

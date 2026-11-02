@@ -18,9 +18,12 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `astrolabe:repository-filter:v1` `{repositories, hidden, changed}`), as Agents' and Wikis':
   `button "Filter projects"` (` (filtered)` appended and a dot while on) opens a multi-select
   list with a `Search filters` field: **Status** (**Has changes**, with its count of worktrees
-  with uncommitted files once it is on and has counted them all), **Projects** (**All
+  with uncommitted files once it is on and has counted them all; meanwhile
+  `role=status` "Counting changes… N of M" sits under the pills, and an empty list reads
+  "Counting changes…"), **Projects** (**All
   projects**, then each, every one ticked while none is picked). Each project row ends in
-  `button "Show <project>'s worktrees"` (`aria-expanded`; clicking it never ticks the row),
+  `button "Show <project>'s worktrees"` (`"Hide <project>'s worktrees"` once open;
+  `aria-expanded`; clicking it never ticks the row; gone while the search has text),
   folded by default; unfolded, its worktrees follow it indented, ticked unless hidden. A search
   reads every project's worktrees and shows the matches under their project. Picking keeps the
   list open; its foot holds **Manage projects** and **Add a project**. Pills under the title
@@ -74,7 +77,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   (`repo-file:<env>:<project>:branch:<branch>:<path>`); main-checkout and detached tabs
   by folder. A branch tab with no worktree reads "<branch> is not checked out in any
   worktree." with **Open <branch>**. A repository tab shows the number of the worktree
-  holding it now (`[aria-label="Worktree N"]`) just before its ✕, none for the main
+  holding it now (`[aria-label="Worktree N"]`) just before its ✕ (before
+  `[data-tab-end]`, so on a linked tab before its chain mark), none for the main
   checkout; hovering its title gives the path (or the changes' title) over
   `<branch> · worktree N` / `main checkout` / `not in a worktree`.
 - **Tree**: a worktree header's `button "Show its files"` / `"Show its changes"` swaps its
@@ -141,7 +145,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   server and are faint while it starts or lacks the feature; Cut/Copy are faint with no
   selection. On the web its items are `role=button` by name; on desktop the menu is native.
 - **Project search** (Cmd+Shift+F; `components/search/ProjectContentSearchDialog.tsx`): dialog
-  `Search project contents`, field placeholder `Search in <project>` (a combobox; type into it
+  `Search file contents in <project>` (`Search project contents` only when there is nothing
+  to search), field placeholder `Search in <project>` (a combobox; type into it
   by `[placeholder=…]`). It searches the checkout of the focused Projects tab, else the thread in
   front; with neither it reads "Open a project to search its files." Match case / whole word /
   regex, **Filters** (`Files to include`, `Files to exclude`, `Include gitignored files`),
@@ -163,7 +168,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   "Branch changes"): a header reading `<branch> / Uncommitted changes` or
   `/ Changes against <base>` (`RepositoryDiffView.tsx`), where `<base>` is
   `combobox "Compare with another branch than <base>"` (any local or remote branch; a pick
-  takes the tab's place as `branch-range~<base>`, so Back returns), then T3 Code's diff renderer; each
+  takes the tab's place as `branch-range~<base>`, titled "Against <base>", so Back returns; with
+  no known base the trigger reads "a branch…" and its name ends "than its base"), then T3 Code's diff renderer; each
   file's header has **Open**. Line
   comments go to the composer of the thread in that checkout, else the project's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
@@ -211,11 +217,15 @@ now**. With the **server** project that makes two projects.
 
 1. Click `button "Projects"`; with no project picked the list shows one header per
    project.
-2. Pick only the scratch project in **Filter projects** (untick the others). Expect **Uncommitted · 1**;
-   **Review uncommitted changes** opens the diff; **Open** opens the file in a new tab
-   after the diff.
+2. Pick only the scratch project in **Filter projects** (untick the others). The main
+   checkout opens on its file tree (`button "Show its changes"`, `aria-pressed=true`); click
+   that button. Expect **Uncommitted · 1**; **Review uncommitted changes** opens the diff;
+   **Open** opens the file in a new tab after the diff. Click `button "Show its files"` to
+   go back to the tree. Its `button "<main branch> worktree actions"` menu holds only
+   `menuitem "Changes against its base"`: it opens `…:branch-range` in place; pick another
+   branch from the title's combobox and the tab becomes "Against <branch>"; Back returns.
 3. Type in the file; within a second the file on disk changes (`git status` shows it).
-4. **Show its files** on the worktree's header, wait for `[data-file-browser-panel] >> role=treeitem`, then
+4. With the main checkout's tree showing, wait for `[data-file-browser-panel] >> role=treeitem`, then
    prove the rows paint with `preview_evaluate`:
 
    ```js
@@ -242,14 +252,22 @@ now**. With the **server** project that makes two projects.
    wait for `[data-file-browser-panel$=':<its path>'] >> role=treeitem` and run the check
    again: `paths` are its top-level entries, not step 4's, and `painted` is true. Back on
    the scratch repository, **Open a branch in a worktree** → another branch: a second
-   section appears; expand it and check again: `panel` ends in that worktree's path and
-   its rows paint. Save the sidebar with `preview_snapshot` `save: true`.
+   section appears, already open on its changes; click its `button "Show its files"` and
+   check again: `panel` ends in that worktree's path and its rows paint. A file opened there
+   numbers the worktree: its header and the file's tab show `[aria-label="Worktree N"]`, and
+   no other worktree in any project has that N. Save the sidebar with `preview_snapshot` `save: true`.
+   Folding: `git worktree add ../scratch-old -b old` in the scratch repository, then
+   `touch -t 202601010000` the new folder and its `.git/worktrees/scratch-old/HEAD` and
+   `logs/HEAD` (the server reads those times), and refocus the window: it folds under
+   `button "1 more worktree"`; open it for `textbox "Find among <project>'s other worktrees"`
+   and the group "Other · 1".
    Worktree reuse, set-aside, Keep and Delete: make the worktree dirty, open another
    branch, then reopen the first: the edits come back.
 6. Search a file name; Enter opens it.
 7. In a thread, add a **Diff** tab to the right panel, right-click it, **Open in
    Projects**: the URL is `/repositories` and the thread's worktree shows.
-8. Hide a worktree in the filter while a tab of it is in front: its header stays, marked
+8. In the filter, unfold the project (`button "Show <project>'s worktrees"`) and untick a
+   worktree while a tab of it is in front: its header stays, marked
    **hidden**, and the `Hiding …` pill shows; bring another tab to the front and it drops out.
    With a file written in one worktree, **Has changes** counts it and, on, leaves only it (and
    the focused tab's worktree, marked).

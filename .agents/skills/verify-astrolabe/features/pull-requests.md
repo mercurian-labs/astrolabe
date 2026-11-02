@@ -41,7 +41,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   Walk on an iPhone with agent-device; rows are buttons named
   `<title>, change request in <wiki>`.
 - **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
-  server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`):
+  server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`, every
+  branch a thread was on in `<state>/thread-branches.json`):
   `ul[aria-label="Change groups"]` heads the list (a collapsible `button "Groups N"`, the count at the right in the new design and "Groups · N" in the classic one; merged groups are hidden),
   each card `button "<title>, change group, <state>"` with a primary-colour dot, its members as
   buttons (`<member>, in <group>`) and `button "N threads in <group>"`. A group needs two
@@ -67,8 +68,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   `button "Change group: <title>, <state>"`, which opens the group's tab beside the chat (in
   front where it is open) and stays in Agents. Tab groups
   (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs (its chats, change
-  requests, and project file/changes tabs on a branch its threads worked on, main and other
-  shared branches excepted) is headed by a marker, `button[data-tab-group]` named `<title>, tab group <n>, <state>` (`, collapsed`
+  requests, and project file, changes and graph tabs keyed by any branch its threads ever
+  worked on, main/master/develop/trunk excepted; main-checkout tabs are keyed by folder and
+  never join; a branch tab apart from the group's tabs gets its own marker with the same number) is headed by a marker, `button[data-tab-group]` named `<title>, tab group <n>, <state>` (`, collapsed`
   appended): a stack icon with the group's number (the same in every pane and section), in
   the primary colour as every group is. Click shows the group's tab, opening it at the head
   of the run when it is not open; right-click (plain buttons on web): Expand the group /
