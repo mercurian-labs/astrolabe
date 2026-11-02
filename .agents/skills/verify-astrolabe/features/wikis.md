@@ -67,6 +67,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Vim**: with Vim keybindings on, notes edit with Vim and `:w` opens Save to change
   request (vim-mode.md). The keyboard menu's `w` group opens Wikis and the finder,
   and `:e <name>` in the Command Palette opens a document.
+- **Find and symbols**: in a note Cmd+F opens CodeMirror's find bar (`.cm-search`, focus in
+  `input[name=search]`, a replace row; Cmd+Enter replaces all), read-only notes too, and
+  Cmd+Shift+O opens `[aria-label="Go to symbol"]` listing the note's headings. Outside an
+  editor Cmd+F finds in the thread and Cmd+Shift+O is a new thread.
 - **Search**: the Search palette (Cmd+K twice) finds every wiki's documents from
   anywhere in a Documents group; a pick shows it in the focused pane's tab in front,
   as a click does (or brings an open copy forward), and goes to `/wikis`.
