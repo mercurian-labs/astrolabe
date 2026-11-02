@@ -74,7 +74,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   (`repo-file:<env>:<project>:branch:<branch>:<path>`); main-checkout and detached tabs
   by folder. A branch tab with no worktree reads "<branch> is not checked out in any
   worktree." with **Open <branch>**. A repository tab shows the number of the worktree
-  holding it now (`[aria-label="Worktree N"]`) between its icon and title, none for the main
+  holding it now (`[aria-label="Worktree N"]`) just before its ✕, none for the main
   checkout; hovering its title gives the path (or the changes' title) over
   `<branch> · worktree N` / `main checkout` / `not in a worktree`.
 - **Tree**: a worktree header's `button "Show its files"` / `"Show its changes"` swaps its

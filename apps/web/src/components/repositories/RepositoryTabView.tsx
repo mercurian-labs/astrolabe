@@ -186,7 +186,7 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
         : `worktree ${holder.number}`;
   return {
     ...label,
-    ...(holder?.number ? { accessory: <WorktreeNumber number={holder.number} /> } : {}),
+    ...(holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {}),
     tooltip: (
       <div className="flex flex-col">
         <span className={tab.kind === "file" ? "font-mono" : undefined}>
