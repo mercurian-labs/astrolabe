@@ -121,7 +121,8 @@ export function RepositorySidebar() {
       counts[index] ?? null,
     ]),
   );
-  const stillCounting = counts.some((count) => count === null);
+  const countedSoFar = counts.filter((count) => count !== null).length;
+  const stillCounting = countedSoFar < counts.length;
   const openKeys = useWorkspaceOpenKeys();
   const read = candidates.map((repository, index) => {
     const key = repositoryKey(repository);
@@ -326,6 +327,12 @@ export function RepositorySidebar() {
                 changedCount={changedCount}
                 onOpen={() => dispatchMenu({ type: "open-changed", open: true })}
               />
+            ) : null}
+            {stillCounting ? (
+              // Counting runs git status in each worktree, a second or more apiece.
+              <p role="status" className="px-2 pt-1 text-2xs text-sidebar-muted-foreground">
+                {`Counting changes… ${countedSoFar} of ${counts.length}`}
+              </p>
             ) : null}
           </SidebarGroup>
         }
