@@ -57,7 +57,7 @@ export function RepositoryTabView({
         checkedOut.kind === "file" ? (
           <RepositoryFileView tabKey={tabKey} tab={checkedOut} />
         ) : checkedOut.kind === "diff" ? (
-          <RepositoryDiffView tab={checkedOut} />
+          <RepositoryDiffView tabKey={tabKey} tab={checkedOut} />
         ) : (
           <Suspense fallback={null}>
             <RepositoryGraphView tabKey={tabKey} tab={checkedOut} />

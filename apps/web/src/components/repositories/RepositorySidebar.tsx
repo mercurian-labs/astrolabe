@@ -44,7 +44,6 @@ import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/to
 import { useWorkspaceFocusedKey, useWorkspaceOpenKeys, workspace } from "~/panes/workspace";
 import { checkoutTag, foldWorktrees, groupFolded } from "./worktreeFolding";
 import { showLocalGraph } from "./repositoryPanes";
-import { BranchCompareRow } from "./BranchCompareRow";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import {
   OpenBranchPicker,
@@ -466,6 +465,17 @@ function WorktreeSections({
               showWorktreeFiles(filesKey, !files);
               onReveal(worktree);
             }}
+            onCompare={() =>
+              workspace.show(
+                repositoryTabKey({
+                  kind: "diff",
+                  environmentId: repository.environmentId,
+                  projectId: repository.id,
+                  checkout: checkoutOf(worktree),
+                  source: "branch-range",
+                }),
+              )
+            }
           />
           {open && !files ? (
             <WorktreeRows>
@@ -626,16 +636,13 @@ function RepositoryList({
   const uncommitted = status.data?.workingTree.files ?? [];
   const uncommittedPaths = new Set(uncommitted.map((file) => file.path));
   const recentFiles = (recent.data?.files ?? []).filter((file) => !uncommittedPaths.has(file.path));
-  const branch = status.data?.branchChanges;
-  const diffKey = (source: "working-tree" | "branch-range", base?: string) =>
-    repositoryTabKey({
-      kind: "diff",
-      environmentId: repository.environmentId,
-      projectId: repository.id,
-      checkout,
-      source,
-      ...(base === undefined ? {} : { base }),
-    });
+  const uncommittedKey = repositoryTabKey({
+    kind: "diff",
+    environmentId: repository.environmentId,
+    projectId: repository.id,
+    checkout,
+    source: "working-tree",
+  });
   return (
     <>
       {uncommitted.length > 0 ? (
@@ -644,7 +651,7 @@ function RepositoryList({
           <LinkRow
             icon={FileDiffIcon}
             label="Review uncommitted changes"
-            onClick={() => workspace.show(diffKey("working-tree"))}
+            onClick={() => workspace.show(uncommittedKey)}
           />
           {uncommitted.map((file) => (
             <FileRow
@@ -656,17 +663,8 @@ function RepositoryList({
           ))}
         </>
       ) : null}
-      {status.data ? (
-        <BranchCompareRow
-          environmentId={repository.environmentId}
-          cwd={cwd}
-          defaultBase={branch?.baseRef ?? null}
-          onOpen={(base) => workspace.show(diffKey("branch-range", base))}
-        />
-      ) : null}
       {recentFiles.length > 0 ? (
         <>
-          <SectionLabel>Recently changed</SectionLabel>
           {recentFiles.map((file) => (
             <FileRow
               key={file.path}

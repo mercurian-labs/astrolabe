@@ -78,8 +78,8 @@ first built, the files that import this one appear once it finishes.
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base
-opens your branch's. To compare with any other branch, pick it with the compare button beside
-that row. Comment on lines to send them to the thread working in that copy, or to the
+opens your branch's, from the compare button on a worktree's header. To compare with another
+branch, pick it from the branch name in the changes tab's title. Comment on lines to send them to the thread working in that copy, or to the
 project's new thread.
 
 In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.

@@ -5,6 +5,7 @@ import {
   EyeOffIcon,
   GitBranchIcon,
   GitBranchPlusIcon,
+  GitCompareArrowsIcon,
   ListIcon,
   ListTreeIcon,
   PinIcon,
@@ -71,6 +72,7 @@ export function WorktreeHeader({
   onToggleFiles,
   outsideFilter = false,
   folded = false,
+  onCompare,
 }: {
   readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -87,6 +89,8 @@ export function WorktreeHeader({
   readonly outsideFilter?: boolean;
   /** Listed under a project's other worktrees: neither watched nor counted until opened. */
   readonly folded?: boolean;
+  /** Opens its branch's changes against its base. */
+  readonly onCompare?: () => void;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
   const live = !folded || expanded;
@@ -162,6 +166,23 @@ export function WorktreeHeader({
           {label}
         </span>
       </CollapsibleSectionHeader>
+      {onCompare ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={`Changes on ${label} against its base`}
+                onClick={onCompare}
+                className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              />
+            }
+          >
+            <GitCompareArrowsIcon className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">Changes against its base</TooltipPopup>
+        </Tooltip>
+      ) : null}
       {onToggleFiles ? (
         <Tooltip>
           <TooltipTrigger

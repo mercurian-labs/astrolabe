@@ -44,11 +44,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `Find among <project>'s other worktrees` field, then groups by `madeBy` (Astrolabe, Claude
   Code, T3 Code, Codex, Other; newest first), each row folded, unwatched and uncounted until
   opened. Under each: **Uncommitted · N** with
-  **Review uncommitted changes →** and each changed file (`+a −d`), **Changes against
-  `<base>` →** (the branch's own base; "Changes against…" opening the picker when it has none)
-  with `combobox "Compare with another branch"` beside it (tooltip; any local or remote
-  branch; the tab key's source becomes `branch-range~<base>`), the same in every worktree,
-  then **Recently changed** (20 files; `review.getRecentFiles`, `git log --name-only`). A
+  **Review uncommitted changes →** and each changed file (`+a −d`), then the 20 files its
+  commits changed most recently, with no heading (`review.getRecentFiles`,
+  `git log --name-only`). Each header has `button "Changes on <branch> against its base"`
+  (compare arrows, before the files toggle), opening `repo-diff:…:branch-range`. A
   section's rows sit indented under its header along a guide line. File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
@@ -113,8 +112,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   typing stops through T3 Code's save (`projects.writeFile`), shared with the thread's
   Files view; the window regaining focus re-reads the file.
 - **Diff tab** (`repo-diff:…:working-tree` "Uncommitted changes", or `:branch-range`
-  "Branch changes"): a header reading `<checkout folder> / Uncommitted changes` or
-  `/ Changes against <base>` (`RepositoryDiffView.tsx`), then T3 Code's diff renderer; each
+  "Branch changes"): a header reading `<branch> / Uncommitted changes` or
+  `/ Changes against <base>` (`RepositoryDiffView.tsx`), where `<base>` is
+  `combobox "Compare with another branch than <base>"` (any local or remote branch; a pick
+  takes the tab's place as `branch-range~<base>`, so Back returns), then T3 Code's diff renderer; each
   file's header has **Open**. Line
   comments go to the composer of the thread in that checkout, else the project's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.

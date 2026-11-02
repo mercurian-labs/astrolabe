@@ -24,6 +24,9 @@ import { useReviewFilePatches } from "../diffs/useReviewFilePatches";
 import { Button } from "../ui/button";
 import { workspace } from "~/panes/workspace";
 import { TabHeader } from "~/panes/TabHeader";
+import { leafWithTab } from "~/panes/tree";
+import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
+import { CompareBasePicker } from "./CompareBasePicker";
 import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs";
 
 type DiffTab = Extract<CheckedOutRepositoryTab, { kind: "diff" }>;
@@ -38,7 +41,13 @@ export const diffPreviewInput = (cwd: string, base: string | undefined) =>
  * composer of the thread working in that checkout, or else of the repository's new thread. A
  * file's header opens the file.
  */
-export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
+export function RepositoryDiffView({
+  tabKey,
+  tab,
+}: {
+  readonly tabKey: string;
+  readonly tab: DiffTab;
+}) {
   const { environmentId, cwd, source: sourceKind, base } = tab;
   const { canReadFiles } = useFilesystemReadAccess(environmentId);
   const { resolvedTheme } = useTheme();
@@ -90,11 +99,30 @@ export function RepositoryDiffView({ tab }: { readonly tab: DiffTab }) {
       ? "Uncommitted changes"
       : `Changes against ${base ?? source?.baseRef ?? "the base"}`;
 
+  // Another base takes this tab's place, as a click in the sidebar would; Back returns to it.
+  const compareWith = (branch: string) => {
+    const { cwd: _cwd, checkoutName: _name, ...shown } = tab;
+    const paneId = leafWithTab(workspace.arrangement().root, tabKey)?.id;
+    workspace.show(repositoryTabKey({ ...shown, base: branch }), paneId);
+  };
+
   // No scroll fade below: each file's header sticks to the diff's top edge, where it would fade.
   const header = (
     <TabHeader.Root>
       <TabHeader.Title label="Changes" parent={tab.checkoutName}>
-        {title}
+        {sourceKind === "working-tree" ? (
+          title
+        ) : (
+          <WorkspaceBreadcrumbText className="flex items-center gap-1.5">
+            Changes against
+            <CompareBasePicker
+              environmentId={environmentId}
+              cwd={cwd}
+              base={base ?? source?.baseRef ?? null}
+              onPick={compareWith}
+            />
+          </WorkspaceBreadcrumbText>
+        )}
       </TabHeader.Title>
     </TabHeader.Root>
   );
