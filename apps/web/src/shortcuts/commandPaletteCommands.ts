@@ -5,7 +5,7 @@ import {
   isCommandPaletteMounted,
   useCommandPaletteStore,
 } from "../commandPaletteStore";
-import { overlayModeForCommand } from "../components/CommandPalette.logic";
+import { escapeReturnsToCommand, overlayModeForCommand } from "../components/CommandPalette.logic";
 import { APPEARANCE_OPTIONS, notifyThemeSaveFailure } from "../components/CommandPaletteThemeItems";
 import { toggleThemeEditorForTheme } from "../components/settings/themeEditorStore";
 import { toastManager } from "../components/ui/toast";
@@ -52,7 +52,7 @@ export function installCommandPaletteCommands(
       onKeyDown: (event) => {
         if (event.isComposing || event.key !== "Escape") return false;
         const { open, mode } = useCommandPaletteStore.getState();
-        if (!open || mode === "command") return false;
+        if (!open || !escapeReturnsToCommand(mode)) return false;
         consume(event);
         dispatchCommandPalette({ _tag: "BackToCommand" });
       },

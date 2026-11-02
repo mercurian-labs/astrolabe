@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import type { Command } from "@codemirror/view";
 import { EditorView, keymap, runScopeHandlers } from "@codemirror/view";
@@ -40,17 +40,6 @@ import {
 import { caret, destroyViews, mount } from "./testSupport.ts";
 
 afterEach(destroyViews);
-
-// Browsers queue `selectionchange` as a task; happy-dom fires it synchronously, inside the
-// update of a focused cell editor that just wrote its DOM selection. The tests drive
-// selections through transactions, so the event is dropped (as in tableCells.test.ts).
-const dispatchEvent = document.dispatchEvent.bind(document);
-beforeAll(() => {
-  document.dispatchEvent = (event) => event.type === "selectionchange" || dispatchEvent(event);
-});
-afterAll(() => {
-  document.dispatchEvent = dispatchEvent;
-});
 
 const widget = (view: EditorView) =>
   view.contentDOM.querySelector<HTMLElement>(".cm-md-table-widget");

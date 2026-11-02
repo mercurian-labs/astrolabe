@@ -57,6 +57,26 @@ const MODEL_PICKER_KEYBINDING_COMMANDS = [
 export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMANDS)[number];
 
 /**
+ * Astrolabe: a code file's language-server commands, which its editor binds itself while it has
+ * focus (`codeEditorFocus`) and the command registry runs too.
+ */
+export const LSP_KEYBINDING_COMMANDS = [
+  "lsp.complete",
+  "lsp.hover",
+  "lsp.signatureHelp",
+  "lsp.definition",
+  "lsp.declaration",
+  "lsp.typeDefinition",
+  "lsp.implementation",
+  "lsp.references",
+  "lsp.rename",
+  "lsp.undoRename",
+  "lsp.format",
+  "lsp.codeActions",
+] as const;
+export type LspKeybindingCommand = (typeof LSP_KEYBINDING_COMMANDS)[number];
+
+/**
  * Astrolabe: commands the client's command registry runs (`apps/web/src/whichKey/commands.ts`),
  * reached from the keyboard menu, the Command Palette's aliases, and shortcuts alike.
  */
@@ -89,7 +109,26 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "buffer.open",
   "document.open",
   "search.clearHighlight",
+  "search.find",
+  "hunk.toggle",
+  "hunk.expandAll",
+  "hunk.restore",
+  "hunk.next",
+  "hunk.previous",
+  "hunk.toggleBase",
+  "outline.open",
+  "diagnostic.next",
+  "diagnostic.previous",
+  ...LSP_KEYBINDING_COMMANDS,
   "repository.localGraph",
+  "file.save",
+  // Multi-file views (search results, problems): stacked excerpt editors.
+  "multibuffer.expand",
+  "multibuffer.openExcerpt",
+  "multibuffer.nextFile",
+  "multibuffer.previousFile",
+  "multibuffer.problems",
+  "projectSearch.openInEditor",
   "tab.toggleLink",
   "tab.newLinked",
 ] as const;
@@ -105,6 +144,38 @@ export const MARKDOWN_KEYBINDING_COMMANDS = [
   "markdown.link",
 ] as const;
 export type MarkdownKeybindingCommand = (typeof MARKDOWN_KEYBINDING_COMMANDS)[number];
+
+/**
+ * Astrolabe: a code editor's editing commands (`codeEditing` in `@mercurian/editor/code/editing`),
+ * which the repository file editor binds itself while it has focus (`codeEditorFocus`).
+ */
+export const CODE_EDITOR_KEYBINDING_COMMANDS = [
+  "code.selectNextOccurrence",
+  "code.skipOccurrence",
+  "code.selectAllOccurrences",
+  "code.addCursorAbove",
+  "code.addCursorBelow",
+  "code.expandSelection",
+  "code.toggleComment",
+  "code.indentLess",
+  "code.indentMore",
+  "code.moveLineUp",
+  "code.moveLineDown",
+  "code.copyLineUp",
+  "code.copyLineDown",
+  "code.deleteLine",
+  "code.joinLines",
+  "code.sortLines",
+  "code.upperCase",
+  "code.lowerCase",
+  "code.duplicateSelection",
+  "code.fold",
+  "code.unfold",
+  "code.foldAll",
+  "code.unfoldAll",
+  "code.toggleSoftWrap",
+] as const;
+export type CodeEditorKeybindingCommand = (typeof CODE_EDITOR_KEYBINDING_COMMANDS)[number];
 
 export const STATIC_KEYBINDING_COMMANDS = [
   "sidebar.toggle",
@@ -168,6 +239,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   // Astrolabe
   ...ASTROLABE_KEYBINDING_COMMANDS,
   ...MARKDOWN_KEYBINDING_COMMANDS,
+  ...CODE_EDITOR_KEYBINDING_COMMANDS,
 ] as const;
 
 export const SCRIPT_RUN_COMMAND_PATTERN = Schema.TemplateLiteral([

@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 
 import { pullRequestTargetOfKey } from "~/components/pullRequest/pullRequestTabs";
 import {
+  parseRepositoryTabKey,
   repositoryTabKey,
   type RepositoryCheckout,
 } from "~/components/repositories/repositoryTabs";
@@ -122,6 +123,12 @@ const isWorkspaceKey = (key: string) =>
  */
 export const navigatesInPlace = (key: string) =>
   parseChatTabKey(key) === null && parseChatSurfaceKey(key) === null;
+
+/** Results (a search, problems, places) are worked through, not browsed past: never shown over. */
+const keepsPlace = (key: string) => {
+  const kind = parseRepositoryTabKey(key)?.kind;
+  return kind === "search" || kind === "problems" || kind === "locations";
+};
 
 function isRecordObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -622,8 +629,8 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   /**
    * Shows `key` as a sidebar row's click does: in the focused pane's tab in front (or `paneId`'s,
    * which takes focus), which remembers what it showed. One open already comes to the front; an
-   * empty tab, a chat, or one with unsaved edits makes way for a new tab, and a linked tab is
-   * left to its owner.
+   * empty tab, a chat, results, or one with unsaved edits makes way for a new tab, and a linked
+   * tab is left to its owner.
    */
   const show = (key: string, paneId?: string) => {
     const linked = current();
@@ -636,6 +643,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       leafWithTab(arrangement.root, key) !== undefined ||
       isEmptyTab(active) ||
       hasUnsavedEdits(active) ||
+      keepsPlace(active) ||
       parseChatTabKey(active) !== null ||
       active in linked.owners;
     if (keep) {
@@ -665,7 +673,12 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       goTo = historyTarget(tabHistories, active, direction);
     }
     const pruned = tabHistories;
-    if (goTo === null || hasUnsavedEdits(active) || leafWithTab(arrangement.root, goTo)) {
+    if (
+      goTo === null ||
+      hasUnsavedEdits(active) ||
+      keepsPlace(active) ||
+      leafWithTab(arrangement.root, goTo)
+    ) {
       const to = goTo;
       updateWithHistory(
         (before) =>

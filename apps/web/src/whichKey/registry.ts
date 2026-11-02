@@ -17,7 +17,13 @@ const GROUP_LABELS: Readonly<Record<string, string>> = {
   p: "Panes",
   s: "Sidebar",
   w: "Wikis",
+  e: "Editor",
   r: "Projects",
+};
+
+/** Names of built-in groups below the root, by their keys from it. */
+const NESTED_GROUP_LABELS: Readonly<Record<string, string>> = {
+  "e g": "Go to code",
 };
 
 interface Node {
@@ -33,6 +39,7 @@ function rows(
   level: Node,
   atRoot: boolean,
   command: (id: KeybindingCommand) => AppCommand,
+  path: readonly string[] = [],
 ): WhichKeyItem[] {
   const items: WhichKeyItem[] = [];
   const rowFor = new Map<KeybindingCommand, number>();
@@ -40,8 +47,8 @@ function rows(
     // A key that leads on is a group, even where a shorter sequence also ends on it.
     if (child.children.size > 0) {
       const group: WhichKeyGroup = {
-        label: (atRoot ? GROUP_LABELS[key] : undefined) ?? "",
-        items: rows(child, false, command),
+        label: (atRoot ? GROUP_LABELS[key] : NESTED_GROUP_LABELS[[...path, key].join(" ")]) ?? "",
+        items: rows(child, false, command, [...path, key]),
       };
       const label = group.label || `+${group.items.length}`;
       items.push({ keys: [key], label, group: { ...group, label } });

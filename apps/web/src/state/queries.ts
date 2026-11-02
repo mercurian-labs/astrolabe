@@ -353,6 +353,10 @@ interface ProjectContentSearchTarget {
   readonly caseSensitive: boolean;
   readonly wholeWord: boolean;
   readonly useRegex: boolean;
+  readonly include?: string;
+  readonly exclude?: string;
+  readonly includeIgnored?: boolean;
+  readonly contextLines?: number;
 }
 
 export function useProjectContentSearch(target: ProjectContentSearchTarget) {
@@ -363,31 +367,65 @@ export function useProjectContentSearch(target: ProjectContentSearchTarget) {
   // Preserve query whitespace; trim only to detect blank input.
   const query = target.query;
   const hasQuery = query.trim().length > 0;
-  const debouncedQuery = useDebouncedValue(query, PROJECT_CONTENT_SEARCH_DEBOUNCE_MS);
-  const result = useEnvironmentQuery(
+  const typed = JSON.stringify([query, target.include ?? "", target.exclude ?? ""]);
+  const debouncedTyped = useDebouncedValue(typed, PROJECT_CONTENT_SEARCH_DEBOUNCE_MS);
+  const [debouncedQuery, include, exclude] = JSON.parse(debouncedTyped) as [string, string, string];
+  const input =
     canReadFiles &&
-      target.environmentId !== null &&
-      target.cwd !== null &&
-      hasQuery &&
-      debouncedQuery.trim().length > 0
+    target.environmentId !== null &&
+    target.cwd !== null &&
+    hasQuery &&
+    debouncedQuery.trim().length > 0
+      ? {
+          cwd: target.cwd,
+          query: debouncedQuery,
+          limit: PROJECT_CONTENT_SEARCH_LIMIT,
+          caseSensitive: target.caseSensitive,
+          wholeWord: target.wholeWord,
+          useRegex: target.useRegex,
+          ...(include.trim().length > 0 ? { include } : {}),
+          ...(exclude.trim().length > 0 ? { exclude } : {}),
+          ...(target.includeIgnored ? { includeIgnored: true } : {}),
+          ...(target.contextLines ? { contextLines: target.contextLines } : {}),
+        }
+      : null;
+  const searchKey = input === null ? null : JSON.stringify([target.environmentId, input]);
+  // Earlier pages are kept as shown when more are asked for; only the newest page is a query.
+  const [loaded, setLoaded] = useState<{
+    readonly searchKey: string | null;
+    readonly cursor: string | undefined;
+    readonly earlier: ReadonlyArray<ProjectContentMatch>;
+  }>({ searchKey: null, cursor: undefined, earlier: EMPTY_CONTENT_MATCHES });
+  const pages =
+    loaded.searchKey === searchKey ? loaded : { cursor: undefined, earlier: EMPTY_CONTENT_MATCHES };
+  const result = useEnvironmentQuery(
+    input !== null && target.environmentId !== null
       ? projectContentSearch({
           environmentId: target.environmentId,
-          input: {
-            cwd: target.cwd,
-            query: debouncedQuery,
-            limit: PROJECT_CONTENT_SEARCH_LIMIT,
-            caseSensitive: target.caseSensitive,
-            wholeWord: target.wholeWord,
-            useRegex: target.useRegex,
-          },
+          input: pages.cursor === undefined ? input : { ...input, cursor: pages.cursor },
         })
       : null,
   );
+  const pageMatches = result.data?.matches ?? EMPTY_CONTENT_MATCHES;
+  const matches =
+    pages.earlier.length === 0
+      ? pageMatches
+      : pageMatches.length === 0
+        ? pages.earlier
+        : [...pages.earlier, ...pageMatches];
+  const isLoadingMore = pages.cursor !== undefined && result.isPending;
+  const nextCursor = result.isPending ? undefined : result.data?.nextCursor;
+  const loadMore = () => {
+    if (searchKey === null || nextCursor === undefined) return;
+    setLoaded({ searchKey, cursor: nextCursor, earlier: matches });
+  };
 
   return {
     canReadFiles,
     isCheckingAccess,
-    matches: result.data?.matches ?? EMPTY_CONTENT_MATCHES,
+    /** Changes when a new search starts, not when more of the same search loads. */
+    searchKey,
+    matches,
     error:
       !hasTarget || isCheckingAccess
         ? null
@@ -396,9 +434,15 @@ export function useProjectContentSearch(target: ProjectContentSearchTarget) {
           : (fileAccess.error ?? "This connection cannot search host files."),
     isPending:
       isCheckingAccess ||
-      (canReadFiles && hasQuery && (query !== debouncedQuery || result.isPending)),
+      (canReadFiles &&
+        hasQuery &&
+        (typed !== debouncedTyped || (result.isPending && pages.cursor === undefined))),
+    isLoadingMore,
     hasQuery,
     truncated: result.data?.truncated ?? false,
+    limited: result.data?.limited ?? false,
+    canLoadMore: nextCursor !== undefined,
+    loadMore,
     invalidRegex: target.useRegex && result.data?.regexFallbackError !== undefined,
   };
 }

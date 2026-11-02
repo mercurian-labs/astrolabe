@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
   AuthAccessWriteScope,
+  AuthFilesystemWriteScope,
   AuthEnvironmentMaintainScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -10,6 +11,7 @@ import {
   AuthSourceControlWriteScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
+import { languageServerSendWrites } from "./languageServers.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
 
@@ -50,10 +52,23 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.wikiSetMirror]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiSetProjectLink]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiPushMirror]: AuthSourceControlWriteScope,
+  // Astrolabe: document edits are file writes.
+  [WS_METHODS.documentsPush]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsSave]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsRecover]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsDiscard]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsReplaceAll]: AuthFilesystemWriteScope,
+  [WS_METHODS.documentsUndoReplaceAll]: AuthFilesystemWriteScope,
   // Astrolabe: rebuilding or clearing a code index is environment maintenance.
   [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexClear]: AuthEnvironmentMaintainScope,
+  // Astrolabe: language servers are processes the environment runs and downloads.
+  [WS_METHODS.languageServersRestart]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersStop]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersConfirmDownload]: AuthEnvironmentMaintainScope,
+  // Astrolabe: undoing a rename writes the files it changed.
+  [WS_METHODS.languageServersUndoEdit]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
@@ -104,6 +119,10 @@ export function clientRpcRequiredScopes(
       (payload.action === "create_pr" || payload.action === "commit_push_pr")
     )
       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+  }
+  // Astrolabe: a request carrying unconfirmed edits lands them on the file's document.
+  if (method === WS_METHODS.languageServersSend && languageServerSendWrites(input)) {
+    return [AuthFilesystemWriteScope];
   }
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

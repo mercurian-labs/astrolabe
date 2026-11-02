@@ -42,6 +42,13 @@ const listAtom = (target: WorktreesTarget) =>
 
 const atomOf = (target: WorktreesTarget | null) => (target === null ? NONE : listAtom(target));
 
+/** A repository's worktrees as last read, outside React; null until the first answer. */
+export function readListedProjectWorktrees(
+  target: WorktreesTarget,
+): ProjectWorktreeListResult | null {
+  return Option.getOrNull(AsyncResult.value(appAtomRegistry.get(listAtom(target))));
+}
+
 /**
  * A repository's worktrees as last read, for what only labels by them (a tab per file), so the
  * window coming back reads them once, not once per label.

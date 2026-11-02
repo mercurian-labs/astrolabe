@@ -32,6 +32,8 @@ export * from "./server.ts";
 export * from "./settings.ts";
 export * from "./git.ts";
 export * from "./vcs.ts";
+// Astrolabe
+export * from "./vcsBaseText.ts";
 export * from "./sourceControl.ts";
 export * from "./projectClone.ts";
 export * from "./pullRequest.ts";
@@ -65,7 +67,9 @@ export * from "./resourceTelemetry.ts";
 export * from "./usage.ts";
 export * from "./scheduledTask.ts";
 export * from "./wiki.ts";
+export * from "./documents.ts";
 export * from "./codeIndex.ts";
+export * from "./languageServers.ts";
 export * from "./changeGroups.ts";
 export * from "./worktrees.ts";
 export * from "./worktreeMcp.ts";

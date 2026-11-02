@@ -156,6 +156,18 @@
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"
     },
+    "./state/documents": {
+      "types": "./src/state/documents.ts",
+      "default": "./src/state/documents.ts"
+    },
+    "./state/document-session": {
+      "types": "./src/state/documentSession.ts",
+      "default": "./src/state/documentSession.ts"
+    },
+    "./state/language-servers": {
+      "types": "./src/state/languageServers.ts",
+      "default": "./src/state/languageServers.ts"
+    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"
@@ -534,6 +546,8 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@codemirror/collab": "6.1.1",
+    "@codemirror/state": "^6.7.6",
     "@electric-sql/client": "1.5.28",
     "@pierre/diffs": "catalog:",
     "@t3tools/contracts": "workspace:*",

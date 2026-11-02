@@ -1,10 +1,12 @@
 import {
   CodeChanges,
   CodeFindResult,
+  CodeLocations,
   CodeGraphShowInput,
   CodeGraphShowResult,
   CodeMap,
   CodeOutline,
+  FileDiagnostics,
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
@@ -12,6 +14,7 @@ import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
 import * as CodeIndex from "../../../codeIndex/CodeIndex.ts";
+import * as LanguageServers from "../../../languageServers/LanguageServers.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
@@ -92,6 +95,74 @@ const CodeMapTool = Tool.make("astrolabe_code_map", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
+  ...shared,
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    ProjectService.ProjectService,
+    LanguageServers.LanguageServers,
+  ],
+  description:
+    "The errors and warnings TypeScript's language server reports for TypeScript and JavaScript files at your thread's checkout, as the files are now: everything you wrote before the call is included. Use it after editing to check those files instead of type-checking the whole project. Lines and columns count from 1. The first call in a checkout can take a while as the project loads. Paths are repository-relative.",
+  parameters: Schema.Struct({
+    paths: Schema.Array(Text)
+      .check(Schema.isMinLength(1), Schema.isMaxLength(20))
+      .annotate({ description: "The files to check." }),
+  }),
+  success: Schema.Struct({
+    files: Schema.Array(FileDiagnostics),
+    skipped: Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        reason: Schema.String.annotate({ description: "Why it has no diagnostics." }),
+      }),
+    ),
+  }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const languageServerDependencies = [
+  McpInvocationContext.McpInvocationContext,
+  ThreadManagementService.ThreadManagementService,
+  ProjectService.ProjectService,
+  LanguageServers.LanguageServers,
+];
+
+const SYMBOL_AT = Schema.Struct({
+  path: Text.annotate({ description: "The repository-relative file the symbol is written in." }),
+  line: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).annotate({
+    description: "The line it is on, from 1.",
+  }),
+  symbol: Text.annotate({
+    description: "The symbol as written on that line; its first occurrence there is used.",
+  }),
+});
+
+const LANGUAGE_SERVER_SCOPE =
+  "Asks TypeScript's language server about TypeScript and JavaScript files at your thread's checkout, as they are now, so it is exact where a name is shared, re-exported, or imported under another name. Lines and columns count from 1; each location has its line's text. The first call in a checkout can take a while as the project loads.";
+
+const CodeDefinitionTool = Tool.make("astrolabe_code_definition", {
+  ...shared,
+  dependencies: languageServerDependencies,
+  description: `Where the symbol written at a file's line is defined: follows imports and aliases to the declaration. Use it to jump from a use you are reading to the code behind it. ${LANGUAGE_SERVER_SCOPE}`,
+  parameters: SYMBOL_AT,
+  success: CodeLocations,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const CodeReferencesTool = Tool.make("astrolabe_code_references", {
+  ...shared,
+  dependencies: languageServerDependencies,
+  description: `Every place the symbol written at a file's line is used, its declaration included. Use it before changing or removing a function, type, or field you have open, to find each caller you must update. ${LANGUAGE_SERVER_SCOPE} Long lists are cut and say \`truncated\`.`,
+  parameters: SYMBOL_AT,
+  success: CodeLocations,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 const CodeGraphShowTool = Tool.make("astrolabe_code_graph_show", {
   ...shared,
   description: `Show the user a picture of the code in the thread's Graph tab, or a story they step through: each step lights a few files, folders or definitions and the links between them, with a caption. Use it only when the user asks for an explanation, a diagram or a walkthrough of how code fits together, or when a skill tells you to; never during ordinary coding work. Name nodes by path, or definitions by the \`id\` astrolabe_code_outline and astrolabe_code_find return. The result lists any ids the checkout does not hold; the graph leaves them out. ${SCOPE}`,
@@ -106,5 +177,8 @@ export const CodeToolkit = Toolkit.make(
   CodeFindTool,
   CodeChangesTool,
   CodeMapTool,
+  CodeDiagnosticsTool,
+  CodeDefinitionTool,
+  CodeReferencesTool,
   CodeGraphShowTool,
 );

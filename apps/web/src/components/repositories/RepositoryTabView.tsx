@@ -1,4 +1,11 @@
-import { FileDiffIcon, GitBranchIcon, WaypointsIcon } from "lucide-react";
+import {
+  CircleAlertIcon,
+  FileDiffIcon,
+  GitBranchIcon,
+  ListTreeIcon,
+  SearchIcon,
+  WaypointsIcon,
+} from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -26,8 +33,10 @@ import {
   holderOf,
   parseRepositoryTabKey,
   type CheckedOutRepositoryTab,
+  type CheckoutRepositoryTab,
   type RepositoryTab,
 } from "./repositoryTabs";
+import { locationList } from "./multibuffer/openMultibuffer";
 import { useOpenBranch } from "./worktreeActions";
 import { WorktreeNumber } from "./WorktreeNumber";
 
@@ -42,8 +51,24 @@ const worktreesOf = (tab: RepositoryTab): WorktreesTarget =>
 
 // The local graph's renderer loads with its first tab, never with Repositories itself.
 const RepositoryGraphView = lazy(() => import("./RepositoryGraphView"));
+// The multi-file views load with their first tab.
+const RepositorySearchView = lazy(() =>
+  import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
+    default: module.RepositorySearchView,
+  })),
+);
+const RepositoryProblemsView = lazy(() =>
+  import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
+    default: module.RepositoryProblemsView,
+  })),
+);
+const RepositoryLocationsView = lazy(() =>
+  import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
+    default: module.RepositoryLocationsView,
+  })),
+);
 
-/** A file, a checkout's changes, or a file's local graph. */
+/** A file, a checkout's changes, a file's local graph, or a multi-file view. */
 export function RepositoryTabView({
   tabKey,
   tab,
@@ -51,6 +76,26 @@ export function RepositoryTabView({
   readonly tabKey: string;
   readonly tab: RepositoryTab;
 }) {
+  switch (tab.kind) {
+    case "search":
+      return (
+        <Suspense fallback={null}>
+          <RepositorySearchView tabKey={tabKey} tab={tab} />
+        </Suspense>
+      );
+    case "problems":
+      return (
+        <Suspense fallback={null}>
+          <RepositoryProblemsView tabKey={tabKey} tab={tab} />
+        </Suspense>
+      );
+    case "locations":
+      return (
+        <Suspense fallback={null}>
+          <RepositoryLocationsView tabKey={tabKey} tab={tab} />
+        </Suspense>
+      );
+  }
   return (
     <CheckedOut tab={tab}>
       {(checkedOut) =>
@@ -76,7 +121,7 @@ function CheckedOut({
   tab,
   children,
 }: {
-  readonly tab: RepositoryTab;
+  readonly tab: CheckoutRepositoryTab;
   readonly children: (tab: CheckedOutRepositoryTab) => ReactNode;
 }) {
   const worktrees = useProjectWorktrees(worktreesOf(tab));
@@ -148,6 +193,20 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const listed = useListedProjectWorktrees(tab === null ? null : worktreesOf(tab));
   const { resolvedTheme } = useTheme();
   if (tab === null) return null;
+  switch (tab.kind) {
+    case "search":
+      return {
+        title: `Search: ${tab.search.query}`,
+        icon: <SearchIcon className="size-3.5 shrink-0" />,
+      };
+    case "problems":
+      return { title: "Problems", icon: <CircleAlertIcon className="size-3.5 shrink-0" /> };
+    case "locations":
+      return {
+        title: locationList(tab.id)?.title ?? "Places",
+        icon: <ListTreeIcon className="size-3.5 shrink-0" />,
+      };
+  }
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;
   const label =
     tab.kind === "graph"

@@ -35,15 +35,58 @@ export type RepositoryTab =
       readonly checkout: RepositoryCheckout;
       /** The file it is pinned to; null while it follows the file in front (`followedPath`). */
       readonly path: string | null;
+    }
+  // A project search's results as one editor, run again from the key after a reload.
+  | {
+      readonly kind: "search";
+      readonly environmentId: EnvironmentId;
+      readonly projectId: ProjectId;
+      readonly cwd: string;
+      readonly search: RepositorySearch;
+    }
+  // Every file's language-server problems in a checkout.
+  | {
+      readonly kind: "problems";
+      readonly environmentId: EnvironmentId;
+      readonly projectId: ProjectId;
+      readonly cwd: string;
+    }
+  // Places in a checkout's files someone asked to see together (`openLocationsInMultibuffer`).
+  | {
+      readonly kind: "locations";
+      readonly environmentId: EnvironmentId;
+      readonly projectId: ProjectId;
+      readonly cwd: string;
+      readonly id: string;
     };
+
+/** What a search tab searches for, as the project search palette asked. */
+export interface RepositorySearch {
+  readonly query: string;
+  readonly caseSensitive: boolean;
+  readonly wholeWord: boolean;
+  readonly useRegex: boolean;
+  readonly include?: string;
+  readonly exclude?: string;
+  readonly includeIgnored?: boolean;
+}
 
 export type RepositoryFileTab = Extract<RepositoryTab, { kind: "file" }>;
 /** A project's file, the only kind with a local graph (the code index is a project's). */
 export type ProjectFileTab = Extract<RepositoryFileTab, { readonly projectId: ProjectId }>;
 export type RepositoryGraphTab = Extract<RepositoryTab, { kind: "graph" }>;
+export type RepositorySearchTab = Extract<RepositoryTab, { kind: "search" }>;
+export type RepositoryProblemsTab = Extract<RepositoryTab, { kind: "problems" }>;
+export type RepositoryLocationsTab = Extract<RepositoryTab, { kind: "locations" }>;
+
+/** A tab read from a checkout (a file, changes, a local graph), as against a folder's multi-file views. */
+export type CheckoutRepositoryTab = Extract<
+  RepositoryTab,
+  { readonly checkout: RepositoryCheckout }
+>;
 
 /** A file or changes tab with the folder its checkout is in now, and what that checkout is called. */
-export type CheckedOutRepositoryTab = RepositoryTab & {
+export type CheckedOutRepositoryTab = CheckoutRepositoryTab & {
   readonly cwd: string;
   readonly checkoutName: string;
 };
@@ -58,6 +101,17 @@ export const holderOf = <
   worktrees.find((worktree) =>
     "branch" in checkout ? worktree.branch === checkout.branch : worktree.path === checkout.cwd,
   ) ?? null;
+
+/** The folder a tab reads now: its own, or the worktree's holding its branch; null when none does. */
+export const tabFolder = (
+  tab: RepositoryTab,
+  worktrees: ReadonlyArray<{ readonly path: string; readonly branch: string | null }> | null,
+): string | null =>
+  !("checkout" in tab)
+    ? tab.cwd
+    : "cwd" in tab.checkout
+      ? tab.checkout.cwd
+      : (holderOf(worktrees ?? [], tab.checkout)?.path ?? null);
 
 /** A checkout's name: its branch, or a folder's branch, or the folder's own name when detached. */
 export const checkoutName = (
@@ -89,6 +143,30 @@ const WIKI_FILE_PREFIX = "wiki-file:";
 // A chosen base rides on the source part; git refuses `~` in a ref name, so it never collides.
 const BASE_SEPARATOR = "~";
 const GRAPH_PREFIX = "repo-graph:";
+const SEARCH_PREFIX = "repo-search:";
+const PROBLEMS_PREFIX = "repo-problems:";
+const LOCATIONS_PREFIX = "repo-locations:";
+
+function searchOf(text: string): RepositorySearch | null {
+  try {
+    const value: unknown = JSON.parse(text);
+    if (typeof value !== "object" || value === null) return null;
+    const { query, caseSensitive, wholeWord, useRegex, include, exclude, includeIgnored } =
+      value as Record<string, unknown>;
+    if (typeof query !== "string" || query.length === 0) return null;
+    return {
+      query,
+      caseSensitive: caseSensitive === true,
+      wholeWord: wholeWord === true,
+      useRegex: useRegex === true,
+      ...(typeof include === "string" && include !== "" ? { include } : {}),
+      ...(typeof exclude === "string" && exclude !== "" ? { exclude } : {}),
+      ...(includeIgnored === true ? { includeIgnored: true } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
 
 const encode = (parts: readonly string[]) => parts.map(encodeURIComponent).join(":");
 // A branch checkout adds a marker part; a folder's keeps the four parts keys had before.
@@ -124,6 +202,15 @@ export function repositoryTabKey(tab: RepositoryTab): string {
           ...(tab.path === null ? [] : [tab.path]),
         ])
       );
+    case "search":
+      return (
+        SEARCH_PREFIX +
+        encode([tab.environmentId, tab.projectId, tab.cwd, JSON.stringify(tab.search)])
+      );
+    case "problems":
+      return PROBLEMS_PREFIX + encode([tab.environmentId, tab.projectId, tab.cwd]);
+    case "locations":
+      return LOCATIONS_PREFIX + encode([tab.environmentId, tab.projectId, tab.cwd, tab.id]);
   }
 }
 
@@ -143,6 +230,18 @@ function decode(rest: string): {
       return { environmentId, projectId, checkout: { cwd: first }, tail: after };
     const [branch, ...tail] = after;
     return branch === undefined ? null : { environmentId, projectId, checkout: { branch }, tail };
+  } catch {
+    return null;
+  }
+}
+
+/** A folder-scoped key's parts (search, problems, places), when there are as many as `counts` allows. */
+function decodeParts(rest: string, counts: readonly number[] = [4]): string[] | null {
+  const parts = rest.split(":");
+  if (!counts.includes(parts.length)) return null;
+  try {
+    const decoded = parts.map(decodeURIComponent);
+    return decoded.every((part) => part.length > 0) ? decoded : null;
   } catch {
     return null;
   }
@@ -209,6 +308,43 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
       projectId: ProjectId.make(projectId),
       checkout,
       path: tail[0] ?? null,
+    };
+  }
+  if (key.startsWith(SEARCH_PREFIX)) {
+    const parts = decodeParts(key.slice(SEARCH_PREFIX.length));
+    if (parts === null) return null;
+    const [environmentId, projectId, cwd, text] = parts as [string, string, string, string];
+    const search = searchOf(text);
+    if (search === null) return null;
+    return {
+      kind: "search",
+      environmentId: EnvironmentId.make(environmentId),
+      projectId: ProjectId.make(projectId),
+      cwd,
+      search,
+    };
+  }
+  if (key.startsWith(PROBLEMS_PREFIX)) {
+    const parts = decodeParts(key.slice(PROBLEMS_PREFIX.length), [3]);
+    if (parts === null) return null;
+    const [environmentId, projectId, cwd] = parts as [string, string, string];
+    return {
+      kind: "problems",
+      environmentId: EnvironmentId.make(environmentId),
+      projectId: ProjectId.make(projectId),
+      cwd,
+    };
+  }
+  if (key.startsWith(LOCATIONS_PREFIX)) {
+    const parts = decodeParts(key.slice(LOCATIONS_PREFIX.length));
+    if (parts === null) return null;
+    const [environmentId, projectId, cwd, id] = parts as [string, string, string, string];
+    return {
+      kind: "locations",
+      environmentId: EnvironmentId.make(environmentId),
+      projectId: ProjectId.make(projectId),
+      cwd,
+      id,
     };
   }
   return null;

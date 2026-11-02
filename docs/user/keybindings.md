@@ -114,25 +114,26 @@ have pressed show at the top, Backspace goes back a level, and Escape or a click
 elsewhere closes it. A key with nothing bound says so. The menu waits as long as
 you need.
 
-| Key                     | Does                                                       |
-| ----------------------- | ---------------------------------------------------------- |
-| `:`                     | Command Palette                                            |
-| `/`                     | Search threads, wiki documents, projects, and settings     |
-| `n`                     | New thread, or new document on Wikis                       |
-| `f`                     | Find a file in the current project                         |
-| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right       |
-| `d` `u`                 | [Scroll](#scrolling) down or up half a page                |
-| `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings |
-| `t`                     | Tabs: next, previous, close, reopen, back, forward, link   |
-| `p`                     | Panes: split, close, maximize, full screen, right panel    |
-| `s` `s`                 | Show or hide the sidebar                                   |
-| `w`                     | Open Wikis, or find or create a document                   |
-| `r` `g`                 | Open the local graph of the project file in front          |
-| `,`                     | Settings                                                   |
+| Key                     | Does                                                                                                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `:`                     | Command Palette                                                                                                                                                                                                                                                    |
+| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                                                                                                                             |
+| `n`                     | New thread, or new document on Wikis                                                                                                                                                                                                                               |
+| `f`                     | Find a file in the current project                                                                                                                                                                                                                                 |
+| Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                                                                               |
+| `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                                                                        |
+| `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings                                                                                                                                                                                                         |
+| `t`                     | Tabs: next, previous, close, reopen, back, forward, link                                                                                                                                                                                                           |
+| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                                                                            |
+| `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                                                                           |
+| `w`                     | Open Wikis, or find or create a document                                                                                                                                                                                                                           |
+| `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, [problems](#problems-in-a-code-file), and [language features](#language-features-in-a-code-file) |
+| `r` `g`                 | Open the local graph of the project file in front                                                                                                                                                                                                                  |
+| `,`                     | Settings                                                                                                                                                                                                                                                           |
 
 These are the defaults. A row lists every key in its group that runs the same
 command, joined by `|`. Press `mod+k` again to open Search, as `/` does; `mod+/`
-opens Search from anywhere but the terminal. Change either shortcut in
+opens Search from anywhere but the terminal and a code file. Change either shortcut in
 **Settings → Keybindings** under **Keyboard Menu: Open** and **Search**. The file picker has no shortcut by default (`mod+p` opens the Command
 Palette); bind **File Picker: Toggle** to give it one.
 
@@ -142,8 +143,8 @@ you choose another key, or None, in **Settings → Keybindings → This device �
 Leader key**; `mod+k` works either way. The menu appears after a moment, so a
 quick sequence like Space `g` `w` runs without it showing.
 
-In the composer and wiki notes, `mod+shift+k` inserts a link. Elsewhere it copies
-an open pull request's number (below).
+In the composer and wiki notes, `mod+shift+k` inserts a link, and in a code file it
+deletes the line. Elsewhere it copies an open pull request's number (below).
 
 ### Moving focus
 
@@ -231,6 +232,173 @@ number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
 
+## Find in a file or note
+
+In a repository file or a wiki note, `mod+f` opens a find bar above the text, starting from the
+words you selected. Enter and `Shift+Enter` move between matches, as do `mod+g` and
+`mod+shift+g` from the text. `Alt+Enter` selects every match in a note, so typing changes them
+all. `mod+alt+c`, `mod+alt+w`, and `mod+alt+x` switch match case, whole words, and regular
+expressions. Where you can edit, the bar's second row replaces: Enter replaces the current match
+and `mod+Enter` every match. Escape closes the bar. Read-only files and notes can be searched too.
+
+With Vim on, `/`, `?`, `n`, and `N` stay Vim's own search in normal mode. On Windows and Linux,
+`Ctrl+F` in normal mode is Vim's page down, so use `/` or Space `e` `f` there. Change the
+shortcut in **Settings → Keybindings** under **Find in Editor**. In the composer, `mod+f` finds
+in the thread instead.
+
+## Go to a symbol
+
+In a repository file or a wiki note, `mod+shift+o` lists the file's outline: a note's headings,
+and the classes, functions, methods, and other declarations of TypeScript, JavaScript, Python,
+Rust, and CSS files. Type to filter by name; words before the last one match the items around it,
+so `store add` finds `add` inside `Store`. Enter puts the cursor on the symbol, in the middle of
+the view, and Escape goes back with the cursor where it was. Space `e` `o` and the Command Palette
+open it too. Elsewhere `mod+shift+o` still starts a new thread. Change the shortcut in
+**Settings → Keybindings** under **Go to Symbol in File**.
+
+A repository file's header shows the symbols around the cursor after its path. Click one to go
+to it.
+
+## Edit code
+
+A repository file edits like a code editor. Add cursors and selections and type into all of
+them at once, drag with `Alt` held to select a column, and fold blocks from the markers that
+show when you point at the gutter. Brackets and quotes close as you type, and the bracket
+matching the one at the cursor is outlined.
+
+While a code file has focus, these keys are the editor's, and the app's command on the same
+key works everywhere else:
+
+| Key                             | In a code file                                            | Elsewhere                    |
+| ------------------------------- | --------------------------------------------------------- | ---------------------------- |
+| `mod+d`                         | Select the next occurrence (the word at the cursor first) | Show or hide the diff        |
+| `mod+shift+d`                   | Skip this occurrence: the last one moves to the next      |                              |
+| `mod+shift+l`                   | Select every occurrence                                   | Previous worktree (composer) |
+| `mod+i`                         | Expand the selection to the enclosing code                | Italic in notes              |
+| `mod+shift+k`                   | Delete the line                                           | Link in notes                |
+| `mod+[` `mod+]`                 | Indent less or more                                       | Back or forward              |
+| `mod+/`                         | Comment or uncomment                                      | Search                       |
+| `mod+alt+Up` `mod+alt+Down`     | Add a cursor above or below                               |                              |
+| `alt+Up` `alt+Down`             | Move the line up or down                                  |                              |
+| `alt+shift+Up` `alt+shift+Down` | Copy the line up or down                                  |                              |
+| `mod+alt+[` `mod+alt+]`         | Fold or unfold the block at the cursor                    |                              |
+
+`mod+u` stays Usage, and `mod+k` (the keyboard menu) and `mod+p` (the Command Palette) still
+open from a code file. Space `e` then a key runs the commands with no shortcut of their own,
+which the Command Palette also lists: `c` comment, `d` duplicate the selection, `j` join lines,
+`s` sort lines, `u` and `l` upper and lower case, `w` wrap long lines, and `[` and `]` fold or
+unfold everything.
+
+Code files wrap long lines when **Settings → Appearance → Typography → Word wrap** is on; Space
+`e` `w` switches one file. Markdown files in a repository edit the same way, but always wrap,
+and `mod+i` and `mod+shift+k` stay italic and link there.
+
+With Vim on, normal mode keeps its keys. Selecting occurrences enters visual mode, where `c`
+changes them all and Escape keeps a cursor at each. On Windows and Linux `mod` is Ctrl, so in
+normal mode `Ctrl+D`, `Ctrl+I` and `Ctrl+[` stay Vim's.
+
+Change any of these in **Settings → Keybindings** under **Editors**; their names start with
+**Code:**, and their condition is `codeEditorFocus`.
+
+## Changes in a code file
+
+In a repository's code file, a strip beside the line numbers marks every line that differs from
+the file's last commit: green where lines were added, yellow where they changed, and a red notch
+where lines were deleted. The strips follow your typing, and refresh when you commit or switch
+branches.
+
+Click a strip, or press `mod+'` with the cursor on a change, to show the lines it replaced above
+it; press again, or Escape, to hide them. `mod+shift+'` shows every change in the file. A shown
+change has a small bar with **Restore**, which puts the committed lines back (undo takes it back),
+and arrows to the changes before and after it. `mod+alt+z` restores the changes under the cursor
+without showing them, and `mod+f8` and `mod+shift+f8` move to the next and previous change,
+wrapping at the ends of the file. With Vim on, `]c` and `[c` move between changes in normal mode,
+and Escape leaves insert mode before it hides changes.
+
+Change these shortcuts in **Settings → Keybindings** under **Editors**. Files that are new and
+not yet committed show no strips.
+
+When an agent's turn has changed the file, the header offers **HEAD** and **This turn**. This
+turn marks what changed since the latest turn, from any thread in this checkout, that changed
+the file started, so you see just what the agent did; while that turn runs, its edits show as
+they land. A file opens on This turn while it has changes from that turn, and on HEAD
+otherwise. Restore puts back the lines from the base you are comparing with, so in This turn it
+reverts that change of the agent's. `e` `b` in the keyboard menu, or **Compare With HEAD or
+This Turn** in the Command Palette, switches too.
+
+## Problems in a code file
+
+TypeScript and JavaScript files show the problems TypeScript's language server finds: a wavy
+underline, a mark beside the line number, and the message on hover. The messages of the line the
+cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
+`.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
+
+The header names the language server and says when it is starting. It runs the project's own
+TypeScript when it has one. Without one, the first time an environment needs a language server
+it asks to download it: click **Download**. If a server keeps stopping, or was paused because
+several ran at once, click **Restart** in the header.
+
+## Language features in a code file
+
+TypeScript and JavaScript files also take these from their language server. Each is in the
+Command Palette, and you can rebind it under **Editors**.
+
+| Key                          | Does                       | Keyboard menu | Vim     |
+| ---------------------------- | -------------------------- | ------------- | ------- |
+| `ctrl+space`                 | Show completions           | `e` `m`       |         |
+| `mod+shift+space`            | Show signature help        | `e` `i`       |         |
+|                              | Show hover                 | `e` `h`       | `K`     |
+| `f12`, or `mod`-click a name | Go to definition           | `e` `g` `d`   | `g` `d` |
+|                              | Go to declaration          | `e` `g` `c`   | `g` `D` |
+| `mod+f12`                    | Go to type definition      | `e` `g` `t`   | `g` `y` |
+| `shift+f12`                  | Go to implementation       | `e` `g` `i`   | `g` `I` |
+| `alt+shift+f12`              | Find references            | `e` `g` `r`   | `g` `r` |
+| `f2`                         | Rename symbol              | `e` `e`       |         |
+|                              | Undo rename or code action | `e` `z`       |         |
+| `mod+shift+i`                | Format document            | `e` `=`       |         |
+| `mod+.`                      | Show code actions          | `e` `q`       |         |
+| `mod+s`                      | Save the file, formatted   |               | `:w`    |
+
+Completions open as you type a name or a `.`. Tab or Enter accepts the selected one, `ctrl+n`
+and `ctrl+p` move through them, and Escape closes the list (in Vim's insert mode you stay in
+insert mode). Accepting a name another module exports also adds its import.
+
+Pointing at a name shows what the server knows about it; so does Show Hover at the cursor, until
+you move or type. Edits an agent makes elsewhere in the file leave it open. Signature help opens
+as you type a call's `(` or `,`, with the parameter you are on in bold; when a function has
+several signatures, `mod+shift+Up` and `mod+shift+Down` step through them.
+
+Go to definition puts the cursor on the definition, opening its file in a tab beside this one
+when it is elsewhere in the checkout. When there are several, places close together are all
+selected, and otherwise you pick one from a list; type to narrow it. On a definition itself, it
+finds the references instead. Find References opens every use, the declaration included, as
+[one editor of excerpts](projects.md#results-in-one-editor) in a tab beside the file; so does
+Go to Implementation when there are several. Uses outside the checkout are left out of it. With
+`mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
+
+Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. It is
+not in the file's own undo: click **Undo** on the notice, or run Undo Rename, to put every file
+back. Edits made since are kept.
+
+Format Document reformats the file with its language server, as one step you can undo. Repository
+files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and formats the file
+first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
+this off with **Format on save** in Settings → Appearance.
+
+When the server has fixes or refactors for where the cursor rests, a light bulb shows beside the
+line. Click it, or press `mod+.`, for the list; Enter applies one. Like a rename, the environment
+applies it to every file it touches, and the notice's **Undo** (or Undo Rename) takes it back.
+
+## Search results and problems in one editor
+
+In a tab of [search results or problems](projects.md#results-in-one-editor), `f7` and
+`shift+f7` jump to the next and previous file, `shift+enter` shows more lines around an excerpt,
+and `alt+enter` opens the excerpt's file at the cursor. In the keyboard menu they are `e` `}`,
+`e` `{`, `e` `x` and `e` `k`, and `e` `v` opens the problems of the checkout in front. In the
+project search, `mod+enter` opens its results this way. Change them under **Editors**; their
+condition is `multibufferFocus` (`projectSearchFocus` for the search's).
+
 ## Find in a diff
 
 Click into a diff in the Diff panel or a pull request's Code tab, then press
@@ -297,7 +465,9 @@ menu key or alias, and can restore it.
 
 The composer's and notes' formatting keys are commands too: `markdown.bold`,
 `markdown.italic`, `markdown.code`, `markdown.strikethrough`,
-`markdown.highlight`, and `markdown.link`, with the `editorFocus` condition.
+`markdown.highlight`, and `markdown.link`, with the `editorFocus` condition. A code
+file's editing commands are `code.*`, such as `code.selectNextOccurrence` and
+`code.sortLines`, with the `codeEditorFocus` condition.
 
 Project scripts use `script.{id}.run`, such as `script.test.run`.
 
@@ -311,9 +481,12 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
 `previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
-`turnRunning`, `editableFocus`, `editorFocus`, `isWeb`, and `isDesktop`.
+`turnRunning`, `editableFocus`, `editorFocus`, `codeEditorFocus`, `outlineFocus`, `isWeb`, and
+`isDesktop`.
 `editableFocus` is true while a text field, the composer, or another editor has
-the keyboard. `editorFocus` is true while the composer or a wiki note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
+the keyboard. `editorFocus` is true while the composer, a wiki note, or a repository file has
+it, `codeEditorFocus` only while a repository file's text has it, and `outlineFocus` while a
+repository file or wiki note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the

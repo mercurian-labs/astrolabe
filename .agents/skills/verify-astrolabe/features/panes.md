@@ -3,7 +3,8 @@
 Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`,
 `panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread and draft routes, `/` unless
 the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
-pull requests, change requests, change groups, files, diffs, local graphs, wiki notes and a thread's right-panel surfaces
+pull requests, change requests, change groups, files, diffs, local graphs, project search results,
+problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), wiki notes and a thread's right-panel surfaces
 (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
@@ -206,6 +207,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 - **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
   `TabHeader.History`), as Obsidian's tab headers do. They step that tab's own history
   (`workspace.step(direction, tabKey)`), focused or not, and are disabled with nothing that way.
+  From a results tab (search, problems, places; `keepsPlace`) or one with unsaved edits a step
+  opens the entry as a new tab after it in the same pane, and the results tab stays.
   A chat's header and a thread surface's (the Graph tab, a thread's pull request) have none,
   and `step`/`canStep` refuse them (`navigatesInPlace`): a chat never shows anything else in its
   place, so its linked tabs are never left without their chat. Tabs with no header row have

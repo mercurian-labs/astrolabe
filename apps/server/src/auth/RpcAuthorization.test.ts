@@ -2,6 +2,7 @@ import {
   AuthEnvironmentMaintainScope,
   AuthDiagnosticsReadScope,
   AuthFilesystemReadScope,
+  AuthFilesystemWriteScope,
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
@@ -14,6 +15,7 @@ import {
   AuthTerminalOperateScope,
   WS_METHODS,
   WsRpcGroup,
+  clientRpcRequiredScopes,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -61,6 +63,65 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.terminalClose,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthTerminalOperateScope);
+    }
+  });
+
+  it("lets file readers open documents and only file writers change them", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.documentsSubscribe)).toBe(AuthFilesystemReadScope);
+    for (const method of [
+      WS_METHODS.documentsPush,
+      WS_METHODS.documentsSave,
+      WS_METHODS.documentsRecover,
+      WS_METHODS.documentsDiscard,
+      WS_METHODS.documentsReplaceAll,
+      WS_METHODS.documentsUndoReplaceAll,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemWriteScope);
+      expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthFilesystemWriteScope]);
+    }
+  });
+
+  it("lets file readers use language servers, file writers land edits, and maintainers manage them", () => {
+    for (const method of [
+      WS_METHODS.languageServersSubscribe,
+      WS_METHODS.languageServersSession,
+      WS_METHODS.languageServersSend,
+      WS_METHODS.languageServersProblems,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
+    }
+    const send = { sessionId: "s", message: "{}" };
+    const document = { loadId: "l", version: 3, clientId: "c" };
+    expect(clientRpcRequiredScopes(WS_METHODS.languageServersSend, send)).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        document: { ...document, unconfirmed: [] },
+      }),
+    ).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        document: { ...document, unconfirmed: [[3, [0, "x"]]] },
+      }),
+    ).toEqual([AuthFilesystemWriteScope]);
+    // A rename's answer is applied to the files it names.
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+        ...send,
+        message: JSON.stringify({ id: 4, method: "textDocument/rename", params: {} }),
+      }),
+    ).toEqual([AuthFilesystemWriteScope]);
+    expect(requiredScopeForRpcMethod(WS_METHODS.languageServersUndoEdit)).toBe(
+      AuthFilesystemWriteScope,
+    );
+    for (const method of [
+      WS_METHODS.languageServersRestart,
+      WS_METHODS.languageServersStop,
+      WS_METHODS.languageServersConfirmDownload,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
+      expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthEnvironmentMaintainScope]);
     }
   });
 

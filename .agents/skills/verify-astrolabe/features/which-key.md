@@ -4,7 +4,7 @@ Cmd+K (Ctrl+K off Apple) opens a which-key menu of the app's commands, hanging
 from the main area's top-right corner. The device's leader key (Space by default)
 opens it too, when you are not typing and in Vim's normal mode. The palette is one
 key further: **Search** is the menu's `/`, Cmd+K again, or Cmd+/ (Ctrl+/ off Apple)
-anywhere but the terminal; the **Command Palette** is its `:` (or Cmd+P anywhere but the terminal).
+anywhere but the terminal and a code file (where it toggles a comment); the **Command Palette** is its `:` (or Cmd+P anywhere but the terminal).
 The menu, the Command Palette and shortcuts run the
 same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live in
 `keybindings.json`.
@@ -27,12 +27,12 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   with nothing to act on here shows faint, **Not available here** (e.g. `g p` where
   Pull Requests is unsupported). Cmd+K shows it at once; the leader after ~300 ms,
   so a fast `Space g w` runs without it flashing.
-- **Top level** (defaults, seventeen rows in this order): `:` Command palette, `/`
+- **Top level** (defaults, eighteen rows in this order): `:` Command palette, `/`
   Search (always enabled), `n` New thread or document, `f` Find file (upstream's
   file picker), `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows
   read `← | h`; repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll
   down and `u` Scroll up (repeatable), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
-  `w` Wikis, `r` Projects, `,` Settings. `n`'s
+  `w` Wikis, `e` Editor, `r` Projects, `,` Settings. `n`'s
   label follows the section (on Wikis "New document", on Projects "Add a project", which opens
   the palette's add flow; where no section header is mounted, such as Changes, it is
   upstream's "New thread"). The popup is `aria-label="Keyboard commands"` (`[data-which-key]`),
@@ -53,7 +53,16 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   right panel (parks or restores the front chat's linked tabs); the focus moves are root keys now, not in Panes.
   `s` `s` toggle sidebar. `w` `w` open
   Wikis, `f` find or create a document. `r` `g` Open local graph, faint unless a Projects file
-  tab is focused. `terminal.toggle` is faint (here and in the palette) unless a chat tab is
+  tab is focused. `e` Editor acts on the focused code file, note or results tab: `f` find,
+  `n`/`p`/`t`/`a`/`r` next/previous/show/all/restore change, `b` compare with HEAD or since this
+  turn, `o` go to symbol, `.`/`,` next/previous problem, `m`/`h`/`i` completions, hover,
+  signature help, `g` Go to code (`d` definition, `c` declaration, `t` type definition, `i`
+  implementation, `r` references), `e` rename, `z` undo rename, `=` format, `q` code actions,
+  `v` Show problems, `x`/`k`/`}`/`{` results-tab moves, then editing (`c` comment, `d` duplicate,
+  `j` join, `s` sort, `u`/`l` case, `w` wrap, `[`/`]` fold all). Rows with nothing to act on
+  are faint with their own reason ("No editor to find in", "No changes here", "No turn changed
+  this file", "No language server here", "No results here", "No project in front"; `v` needs a
+  Projects tab focused). `terminal.toggle` is faint (here and in the palette) unless a chat tab is
   focused.
 - **Search** (Cmd+/, the menu's `/`, Cmd+K again; the palette's plain mode, dialog
   name `Search`): empty, it lists
@@ -155,7 +164,7 @@ and copy the backup back when done. The server picks changes up live.
 ## Flows
 
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
-   with the seventeen top-level rows (Search's row shows only `/`), `Esc close` footer
+   with the eighteen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
    `Menu › Go to`, rows Agents, Wikis, Projects, Changes (a faint "Section: Changes"
    where pull requests are unsupported), Usage, Settings → click **Backspace back**
@@ -217,7 +226,8 @@ of the root menu, a group and the Command Palette.
   other focused switch or button, Space presses it (correctly, not a leader).
 - Inside the terminal, Cmd+K clears the terminal instead (by design).
 - Cmd+K opens the menu from a wiki note too; the editor's link key is Cmd+Shift+K.
-  Cmd+/ in a note opens Search, not a comment toggle.
+  Cmd+/ in a note opens Search, not a comment toggle. In a Projects code file Cmd+/ toggles
+  a comment and Cmd+Shift+K deletes the line.
 - Cmd+K while the palette is open closes it.
 - The table shows menu keys alone (`g w`), whatever the leader key; the file says
   `menu g w`. The Command Palette's list prefixes them with the leader's label.

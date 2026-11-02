@@ -17,6 +17,7 @@ import {
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_SEARCH_CONTENTS_MAX_LIMIT = 500;
+const PROJECT_SEARCH_CONTENTS_MAX_CONTEXT_LINES = 5;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 const PROJECT_READ_FILE_PATH_MAX_LENGTH = 512;
 
@@ -267,9 +268,21 @@ export const ProjectSearchContentsInput = Schema.Struct({
   caseSensitive: Schema.Boolean,
   wholeWord: Schema.Boolean,
   useRegex: Schema.Boolean,
+  /** Comma-separated globs; commas inside `{}` don't split and `\` escapes the next character. */
+  include: Schema.optional(Schema.String.check(Schema.isMaxLength(1024))),
+  /** Same syntax as `include`. Exclusions win over inclusions. */
+  exclude: Schema.optional(Schema.String.check(Schema.isMaxLength(1024))),
+  includeIgnored: Schema.optional(Schema.Boolean),
+  /** Lines of context returned before and after each matching line. */
+  contextLines: Schema.optional(
+    NonNegativeInt.check(Schema.isLessThanOrEqualTo(PROJECT_SEARCH_CONTENTS_MAX_CONTEXT_LINES)),
+  ),
+  /** `nextCursor` from the previous page of the same search. */
+  cursor: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(4096))),
 });
 export type ProjectSearchContentsInput = typeof ProjectSearchContentsInput.Type;
 
+/** UTF-16 code unit offsets into `lineContent`. */
 export const ProjectContentMatchRange = Schema.Struct({
   start: NonNegativeInt,
   end: NonNegativeInt,
@@ -281,12 +294,18 @@ export const ProjectContentMatch = Schema.Struct({
   lineNumber: PositiveInt,
   lineContent: Schema.String,
   matchRanges: Schema.Array(ProjectContentMatchRange),
+  contextBefore: Schema.optional(Schema.Array(Schema.String)),
+  contextAfter: Schema.optional(Schema.Array(Schema.String)),
 });
 export type ProjectContentMatch = typeof ProjectContentMatch.Type;
 
 export const ProjectSearchContentsResult = Schema.Struct({
   matches: Schema.Array(ProjectContentMatch),
+  /** More matches may exist; `nextCursor` continues the search. */
   truncated: Schema.Boolean,
+  /** The page stopped because it reached `limit`, not because the time budget ran out. */
+  limited: Schema.optional(Schema.Boolean),
+  nextCursor: Schema.optional(TrimmedNonEmptyString),
   regexFallbackError: Schema.optional(Schema.String),
 });
 export type ProjectSearchContentsResult = typeof ProjectSearchContentsResult.Type;

@@ -8,6 +8,8 @@ import {
   type CodeIndexErrorReason,
   type CodeOutline,
   EnvironmentId,
+  LanguageServerError,
+  type LanguageServerErrorReason,
   type Project,
   ProjectId,
   ProviderInstanceId,
@@ -19,6 +21,7 @@ import * as Layer from "effect/Layer";
 import { McpSchema, McpServer } from "effect/ai";
 
 import * as CodeIndex from "../../../codeIndex/CodeIndex.ts";
+import * as LanguageServers from "../../../languageServers/LanguageServers.ts";
 import { checkpointRefForScopeOrdinal } from "../../../orchestration-v2/CheckpointService.ts";
 import type { ProjectionCheckpointContext } from "../../../orchestration-v2/ProjectionStore.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -132,6 +135,7 @@ interface Fakes {
   readonly worktreePath?: string | null;
   readonly checkpoints?: ProjectionCheckpointContext;
   readonly failure?: CodeIndexErrorReason;
+  readonly diagnosticsFailure?: LanguageServerErrorReason;
   /** The node ids the checkout holds. */
   readonly known?: ReadonlyArray<string>;
 }
@@ -172,6 +176,64 @@ const harness = (fakes: Fakes = {}) => {
             calls.push({ method: "checkNodes", input });
             const known = new Set(fakes.known ?? []);
             return Effect.succeed({ unknown: input.ids.filter((id) => !known.has(id)) });
+          },
+        }),
+        Layer.mock(LanguageServers.LanguageServers)({
+          locate: (input) => {
+            calls.push({ method: "locate", input });
+            if (fakes.diagnosticsFailure !== undefined) {
+              return Effect.fail(
+                new LanguageServerError({
+                  reason: fakes.diagnosticsFailure,
+                  message: "The language server is still loading the project.",
+                }),
+              );
+            }
+            return Effect.succeed({
+              locations: [
+                {
+                  path: "src/session/resolve.ts",
+                  line: 3,
+                  column: 23,
+                  endLine: 3,
+                  endColumn: 37,
+                  preview: "export async function resolveSession(token: string) {",
+                },
+              ],
+              truncated: false,
+            });
+          },
+          diagnostics: (input) => {
+            calls.push({ method: "diagnostics", input });
+            if (input.relativePath.endsWith(".md")) {
+              return Effect.fail(
+                new LanguageServerError({ reason: "unsupported", message: "No server reads it." }),
+              );
+            }
+            if (fakes.diagnosticsFailure !== undefined) {
+              return Effect.fail(
+                new LanguageServerError({
+                  reason: fakes.diagnosticsFailure,
+                  message: "The language server is still loading the project.",
+                }),
+              );
+            }
+            return Effect.succeed({
+              path: input.relativePath,
+              version: 4,
+              diagnostics: [
+                {
+                  severity: "error",
+                  line: 3,
+                  column: 7,
+                  endLine: 3,
+                  endColumn: 12,
+                  message: "Type 'string' is not assignable to type 'number'.",
+                  code: "2322",
+                },
+              ],
+              truncated: false,
+            });
           },
         }),
         Layer.mock(GitVcsDriver.GitVcsDriver)({
@@ -297,6 +359,78 @@ describe("code toolkit handlers", () => {
           message: expect.stringMatching(message),
         });
       }
+    }),
+  );
+
+  it.effect(
+    "checks each file once in the thread's checkout and lists the ones no server reads",
+    () =>
+      Effect.gen(function* () {
+        const tools = harness({ worktreePath: worktree });
+        const result = yield* tools.call("astrolabe_code_diagnostics", {
+          paths: ["src/session.ts", "README.md", "src/session.ts"],
+        });
+        expect(tools.calls).toEqual([
+          { method: "diagnostics", input: { cwd: worktree, relativePath: "src/session.ts" } },
+          { method: "diagnostics", input: { cwd: worktree, relativePath: "README.md" } },
+        ]);
+        expect(result.structuredContent).toMatchObject({
+          files: [{ path: "src/session.ts", version: 4, diagnostics: [{ line: 3, code: "2322" }] }],
+          skipped: [{ path: "README.md", reason: "No server reads it." }],
+        });
+
+        const loading = yield* harness({ diagnosticsFailure: "timeout" }).call(
+          "astrolabe_code_diagnostics",
+          { paths: ["src/session.ts"] },
+        );
+        expect(declaredFailure(loading)).toMatchObject({
+          code: "orchestration_error",
+          message: expect.stringMatching(
+            /still loading the project\. Run the project's type checker/,
+          ),
+        });
+      }),
+  );
+
+  it.effect("asks the language server about the symbol on a line of the thread's checkout", () =>
+    Effect.gen(function* () {
+      const tools = harness({ worktreePath: worktree });
+      const input = { path: "src/api/login.ts", line: 4, symbol: "resolveSession" };
+      const definition = yield* tools.call("astrolabe_code_definition", input);
+      yield* tools.call("astrolabe_code_references", input);
+      expect(tools.calls).toEqual([
+        {
+          method: "locate",
+          input: {
+            cwd: worktree,
+            relativePath: input.path,
+            line: 4,
+            symbol: "resolveSession",
+            kind: "definition",
+          },
+        },
+        {
+          method: "locate",
+          input: {
+            cwd: worktree,
+            relativePath: input.path,
+            line: 4,
+            symbol: "resolveSession",
+            kind: "references",
+          },
+        },
+      ]);
+      expect(definition.structuredContent).toMatchObject({
+        locations: [{ path: "src/session/resolve.ts", line: 3 }],
+      });
+      const loading = yield* harness({ diagnosticsFailure: "timeout" }).call(
+        "astrolabe_code_references",
+        input,
+      );
+      expect(declaredFailure(loading)).toMatchObject({
+        code: "orchestration_error",
+        message: expect.stringMatching(/still loading the project\. Use astrolabe_code_find/),
+      });
     }),
   );
 

@@ -104,6 +104,9 @@ import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolve
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
+import * as Documents from "./documents/Documents.ts";
+import * as LanguageServers from "./languageServers/LanguageServers.ts";
+import * as WorkspaceChangeSignals from "./languageServers/WorkspaceChangeSignals.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
@@ -111,6 +114,7 @@ import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
+import * as VcsBaseText from "./vcs/VcsBaseText.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -460,10 +464,24 @@ const layerWorkspaceFileSystem = WorkspaceFileSystem.layer.pipe(
   Layer.provide(layerKnownWorkspaces),
 );
 
+const layerDocuments = Documents.layer.pipe(
+  Layer.provide(WorkspacePaths.layer),
+  Layer.provide(layerKnownWorkspaces),
+  Layer.provide(layerWorkspaceFileSystem),
+);
+
+// Astrolabe: language servers read the open documents.
+const layerLanguageServers = LanguageServers.layer.pipe(
+  Layer.provide(layerDocuments),
+  Layer.provide(layerKnownWorkspaces),
+);
+
 const layerWorkspace = Layer.mergeAll(
   WorkspacePaths.layer,
   layerWorkspaceEntries,
   layerWorkspaceFileSystem,
+  layerDocuments,
+  layerLanguageServers,
 );
 
 const layerProjectFaviconResolver = ProjectFaviconResolver.layer.pipe(
@@ -616,6 +634,10 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderUsageLimitsIngestion.layer,
   layerProviderInstallationRefresh,
   ReplayMarkers.layer,
+  // Astrolabe: an open file's base texts, which read the checkout's status and its turns.
+  VcsBaseText.layer,
+  // Astrolabe: tells language servers of the files the checkout's signals show changed.
+  WorkspaceChangeSignals.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),

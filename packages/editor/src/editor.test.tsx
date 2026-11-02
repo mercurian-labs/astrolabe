@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { searchPanelOpen } from "@codemirror/search";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
@@ -17,13 +18,19 @@ afterEach(async () => {
   }
 });
 
-async function mountEditor(text: Y.Text) {
+async function mountEditor(text: Y.Text, findKeys?: readonly string[]) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   mounted.push({ root, host });
   await act(async () =>
-    root.render(<AtlasEditor text={text} awareness={new Awareness(text.doc ?? new Y.Doc())} />),
+    root.render(
+      <AtlasEditor
+        text={text}
+        awareness={new Awareness(text.doc ?? new Y.Doc())}
+        {...(findKeys ? { findKeys } : {})}
+      />,
+    ),
   );
   const editor = host.querySelector<HTMLElement>(".cm-editor");
   const view = editor ? EditorView.findFromDOM(editor) : null;
@@ -45,6 +52,21 @@ function undo(view: EditorView) {
 }
 
 describe("AtlasEditor", () => {
+  it("opens the find bar from a find key that the default keymap also binds", async () => {
+    const { view } = await mountEditor(new Y.Doc().getText("note"), ["Mod-]"]);
+    const mac = /Mac/.test(navigator.platform);
+    const event = new KeyboardEvent("keydown", {
+      key: "]",
+      keyCode: 221,
+      metaKey: mac,
+      ctrlKey: !mac,
+      bubbles: true,
+      cancelable: true,
+    });
+    runScopeHandlers(view, event, "editor");
+    expect(searchPanelOpen(view.state)).toBe(true);
+  });
+
   it("gives a checkbox click its own Yjs undo step between two bursts of typing", async () => {
     const doc = new Y.Doc();
     const text = doc.getText("note");

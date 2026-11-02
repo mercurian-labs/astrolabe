@@ -62,7 +62,11 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.scheduledTasksSubscribe
   | typeof WS_METHODS.wikiSubscribe
   | typeof WS_METHODS.worktreesSubscribeChanges
+  | typeof WS_METHODS.documentsSubscribe
   | typeof WS_METHODS.codeIndexSubscribe
+  | typeof WS_METHODS.languageServersSubscribe
+  | typeof WS_METHODS.languageServersSession
+  | typeof WS_METHODS.languageServersProblems
   | typeof WS_METHODS.serverGetStorageCleanupReport
   | typeof WS_METHODS.serverGetDatabaseStorage
   | typeof WS_METHODS.subscribeTerminalEvents
@@ -73,6 +77,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeResourceTelemetry
   | typeof WS_METHODS.pullRequestsSubscribeRefreshes
   | typeof WS_METHODS.subscribeVcsStatus
+  | typeof WS_METHODS.subscribeVcsBaseText
   | typeof WS_METHODS.subscribeWorktreeSetup
   | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.terminalAttach

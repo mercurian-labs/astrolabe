@@ -122,6 +122,12 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.codeIndexSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.codeIndexLocalGraph]: AuthFilesystemReadScope,
   [WS_METHODS.codeIndexStorage]: AuthFilesystemReadScope,
+  // Astrolabe: language-server reads are file reads; a send that lands edits, and restarting,
+  // stopping or downloading servers, come from clientRpcRequiredScopes.
+  [WS_METHODS.languageServersSubscribe]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersSession]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersSend]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersProblems]: AuthFilesystemReadScope,
   // Astrolabe: wiki reads are file reads; writes come from CLIENT_GUARDED_RPC_SCOPES.
   [WS_METHODS.wikiList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiSubscribe]: AuthFilesystemReadScope,
@@ -130,6 +136,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.wikiQuery]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,
+  // Astrolabe: opening a document reads the file; edits come from CLIENT_GUARDED_RPC_SCOPES.
+  [WS_METHODS.documentsSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.cloudGetRelayClientStatus]: AuthRelayReadScope,
   [WS_METHODS.cloudInstallRelayClient]: AuthRelayWriteScope,
   [WS_METHODS.pullRequestsList]: AuthOrchestrationReadScope,
@@ -187,6 +195,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.vcsListRefs]: AuthOrchestrationReadScope,
   [WS_METHODS.reviewGetDiffPreview]: AuthFilesystemReadScope,
   [WS_METHODS.reviewGetRecentFiles]: AuthFilesystemReadScope,
+  [WS_METHODS.vcsReadBaseText]: AuthFilesystemReadScope,
+  [WS_METHODS.subscribeVcsBaseText]: AuthFilesystemReadScope,
   [WS_METHODS.changeGroupsList]: AuthOrchestrationReadScope,
   [WS_METHODS.changeGroupsUpdate]: AuthOrchestrationOperateScope,
   // Astrolabe: worktree writes come from CLIENT_GUARDED_RPC_SCOPES.

@@ -136,7 +136,9 @@ export function RepositorySidebar() {
       return count === undefined ? worktree : { ...worktree, changedFiles: count };
     });
     const focused =
-      focusedTab && key === focusedRepository ? holderOf(all, focusedTab.checkout) : null;
+      focusedTab && "checkout" in focusedTab && key === focusedRepository
+        ? holderOf(all, focusedTab.checkout)
+        : null;
     return {
       repository,
       key,
@@ -150,6 +152,7 @@ export function RepositorySidebar() {
         openKeys.flatMap((openKey) => {
           const tab = parseRepositoryTabKey(openKey);
           return tab !== null &&
+            "checkout" in tab &&
             "projectId" in tab &&
             tab.projectId === repository.id &&
             tab.environmentId === repository.environmentId

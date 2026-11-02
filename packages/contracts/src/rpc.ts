@@ -451,6 +451,35 @@ import {
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import { VcsBaseTextError, VcsBaseTextInput, VcsBaseTextResult } from "./vcsBaseText.ts";
+import {
+  DocumentDiscardInput,
+  DocumentError,
+  DocumentPushInput,
+  DocumentPushResult,
+  DocumentRecoverInput,
+  DocumentRecoverResult,
+  DocumentReplaceAllInput,
+  DocumentReplaceAllResult,
+  DocumentSaveInput,
+  DocumentSaveResult,
+  DocumentStreamItem,
+  DocumentSubscribeInput,
+  DocumentUndoReplaceAllInput,
+  DocumentUndoReplaceAllResult,
+} from "./documents.ts";
+import {
+  LanguageServerError,
+  LanguageServerProblemsInput,
+  LanguageServerProblemsItem,
+  LanguageServerSendInput,
+  LanguageServerSessionInput,
+  LanguageServerSessionItem,
+  LanguageServerStatus,
+  LanguageServerTarget,
+  LanguageServerUndoEditInput,
+  LanguageServerUndoEditResult,
+} from "./languageServers.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -602,6 +631,10 @@ export const WS_METHODS = {
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
 
+  // Astrolabe: the text an open file's change markers compare against, and its changes.
+  vcsReadBaseText: "vcs.readBaseText",
+  subscribeVcsBaseText: "subscribeVcsBaseText",
+
   // Astrolabe: local wikis.
   wikiList: "wiki.list",
   wikiSubscribe: "wiki.subscribe",
@@ -624,6 +657,14 @@ export const WS_METHODS = {
   wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
 
+  // Astrolabe: open repository files, with the environment as their authority.
+  documentsSubscribe: "documents.subscribe",
+  documentsPush: "documents.push",
+  documentsSave: "documents.save",
+  documentsRecover: "documents.recover",
+  documentsDiscard: "documents.discard",
+  documentsReplaceAll: "documents.replaceAll",
+  documentsUndoReplaceAll: "documents.undoReplaceAll",
   // Astrolabe: each repository's code index.
   codeIndexSubscribe: "codeIndex.subscribe",
   codeIndexLocalGraph: "codeIndex.localGraph",
@@ -631,6 +672,15 @@ export const WS_METHODS = {
   codeIndexStorage: "codeIndex.storage",
   codeIndexPrune: "codeIndex.prune",
   codeIndexClear: "codeIndex.clear",
+  // Astrolabe: language servers in the environment, and the gateway browsers reach them through.
+  languageServersSubscribe: "languageServers.subscribe",
+  languageServersRestart: "languageServers.restart",
+  languageServersStop: "languageServers.stop",
+  languageServersConfirmDownload: "languageServers.confirmDownload",
+  languageServersSession: "languageServers.session",
+  languageServersSend: "languageServers.send",
+  languageServersUndoEdit: "languageServers.undoEdit",
+  languageServersProblems: "languageServers.problems",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2017,6 +2067,21 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+// Astrolabe: an open file's base text. The subscription sends it first, then again whenever the
+// checkout's status changes it.
+const WsVcsReadBaseTextRpc = Rpc.make(WS_METHODS.vcsReadBaseText, {
+  payload: VcsBaseTextInput,
+  success: VcsBaseTextResult,
+  error: Schema.Union([VcsBaseTextError, EnvironmentAuthorizationError]),
+});
+
+const WsSubscribeVcsBaseTextRpc = Rpc.make(WS_METHODS.subscribeVcsBaseText, {
+  payload: VcsBaseTextInput,
+  success: VcsBaseTextResult,
+  error: Schema.Union([VcsBaseTextError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 // Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
 const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
   payload: Schema.Struct({}),
@@ -2137,6 +2202,103 @@ const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   payload: WikiTarget,
   success: WikiSummary,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+// Astrolabe: subscribing holds the document open; leaving the stream is closing it.
+const WsDocumentsSubscribeRpc = Rpc.make(WS_METHODS.documentsSubscribe, {
+  payload: DocumentSubscribeInput,
+  success: DocumentStreamItem,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsDocumentsPushRpc = Rpc.make(WS_METHODS.documentsPush, {
+  payload: DocumentPushInput,
+  success: DocumentPushResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsSaveRpc = Rpc.make(WS_METHODS.documentsSave, {
+  payload: DocumentSaveInput,
+  success: DocumentSaveResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsRecoverRpc = Rpc.make(WS_METHODS.documentsRecover, {
+  payload: DocumentRecoverInput,
+  success: DocumentRecoverResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsDiscardRpc = Rpc.make(WS_METHODS.documentsDiscard, {
+  payload: DocumentDiscardInput,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsReplaceAllRpc = Rpc.make(WS_METHODS.documentsReplaceAll, {
+  payload: DocumentReplaceAllInput,
+  success: DocumentReplaceAllResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+const WsDocumentsUndoReplaceAllRpc = Rpc.make(WS_METHODS.documentsUndoReplaceAll, {
+  payload: DocumentUndoReplaceAllInput,
+  success: DocumentUndoReplaceAllResult,
+  error: Schema.Union([DocumentError, EnvironmentAuthorizationError]),
+});
+
+/** Every running or waiting language server now, then the whole list again on each change. */
+const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscribe, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(LanguageServerStatus),
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** Starts it again, also after a stop, a cap or giving up. */
+const WsLanguageServersRestartRpc = Rpc.make(WS_METHODS.languageServersRestart, {
+  payload: LanguageServerTarget,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+const WsLanguageServersStopRpc = Rpc.make(WS_METHODS.languageServersStop, {
+  payload: LanguageServerTarget,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** The yes to this environment's first language-server download; later ones need none. */
+const WsLanguageServersConfirmDownloadRpc = Rpc.make(WS_METHODS.languageServersConfirmDownload, {
+  payload: Schema.Struct({}),
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** One LSP connection to a checkout's server: its status, then LSP messages from the gateway. */
+const WsLanguageServersSessionRpc = Rpc.make(WS_METHODS.languageServersSession, {
+  payload: LanguageServerSessionInput,
+  success: LanguageServerSessionItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** One LSP message from the client to its session. */
+const WsLanguageServersSendRpc = Rpc.make(WS_METHODS.languageServersSend, {
+  payload: LanguageServerSendInput,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Undoes an edit the environment applied for a language server (a rename), by its id. */
+const WsLanguageServersUndoEditRpc = Rpc.make(WS_METHODS.languageServersUndoEdit, {
+  payload: LanguageServerUndoEditInput,
+  success: LanguageServerUndoEditResult,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** A checkout's problems now, then each file's as it changes. */
+const WsLanguageServersProblemsRpc = Rpc.make(WS_METHODS.languageServersProblems, {
+  payload: LanguageServerProblemsInput,
+  success: LanguageServerProblemsItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
 });
 
 /** Every repository's index status now, then each change. */
@@ -2507,6 +2669,8 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,
   WsServerSetVimOptionRpc,
+  WsVcsReadBaseTextRpc,
+  WsSubscribeVcsBaseTextRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
   WsWikiRegisterRpc,
@@ -2527,12 +2691,27 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiSetMirrorRpc,
   WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
+  WsDocumentsSubscribeRpc,
+  WsDocumentsPushRpc,
+  WsDocumentsSaveRpc,
+  WsDocumentsRecoverRpc,
+  WsDocumentsDiscardRpc,
+  WsDocumentsReplaceAllRpc,
+  WsDocumentsUndoReplaceAllRpc,
   WsCodeIndexSubscribeRpc,
   WsCodeIndexLocalGraphRpc,
   WsCodeIndexRebuildRpc,
   WsCodeIndexStorageRpc,
   WsCodeIndexPruneRpc,
   WsCodeIndexClearRpc,
+  WsLanguageServersSubscribeRpc,
+  WsLanguageServersRestartRpc,
+  WsLanguageServersUndoEditRpc,
+  WsLanguageServersStopRpc,
+  WsLanguageServersConfirmDownloadRpc,
+  WsLanguageServersSessionRpc,
+  WsLanguageServersSendRpc,
+  WsLanguageServersProblemsRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

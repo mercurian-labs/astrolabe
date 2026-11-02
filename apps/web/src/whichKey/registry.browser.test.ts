@@ -1,3 +1,11 @@
+import { setDiagnostics } from "@codemirror/lint";
+import { EditorState, type Extension } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { codeEditing, softWrapOn } from "@mercurian/editor/code/editing";
+import { gitChanges, gitHunks, setGitBase } from "@mercurian/editor/git";
+import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
+import { outline } from "@mercurian/editor/outline";
+import { inFileSearch } from "@mercurian/editor/search";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   type EnvironmentId,
@@ -9,10 +17,12 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { isOutlineEditorFocused } from "~/lib/editorFocus";
 import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/panes/arrangement";
 import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
+import { diffBaseControl, type FileDiffBase } from "~/components/repositories/fileDiffBase";
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { appCommand, cycleKey, fullScreenState, type AppCommandContext } from "./commands";
 import type { PanesHandle } from "./handles";
@@ -94,7 +104,12 @@ function context(
     ...overrides,
   };
   const root = whichKeyRoot(triggers, (id: KeybindingCommand) => appCommand(id, value));
-  return { root, ran };
+  /** The same context, acting from `origin`. */
+  const actingFrom = (origin: AppCommandContext["origin"]): AppCommandContext => ({
+    ...value,
+    origin,
+  });
+  return { root, ran, actingFrom };
 }
 
 /** Two panes side by side, the second focused. */
@@ -154,6 +169,7 @@ describe("the keyboard menu built from the menu rules", () => {
       ["p", "Panes"],
       ["s", "Sidebar"],
       ["w", "Wikis"],
+      ["e", "Editor"],
       ["r", "Projects"],
       [",", "settings"],
     ]);
@@ -357,6 +373,251 @@ describe("the keyboard menu built from the menu rules", () => {
     expect(press(focused("file"), ["o", "j"])).toBe(NOT_HERE);
     press(focused(chat), ["o", "j"]);
     expect(pressed).toEqual(["terminal.toggle"]);
+  });
+});
+
+describe("Find in editor", () => {
+  /** An editor on the page, inside `parent` (the body when not given), gone as the test ends. */
+  function editor(extensions: Extension, parent: HTMLElement = document.body) {
+    const view = new EditorView({
+      parent: parent.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc: "find me", extensions }),
+    });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+
+  /** Where a key pressed in `view` comes from, as the menu's chord reports it. */
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("opens the find bar of the editor the menu was opened from, with e f", async () => {
+    using _cleanup = cleanup();
+    const view = editor(inFileSearch());
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    expect(press(root, ["e", "f"])).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(view.dom.querySelector(".cm-search input[name=search]")),
+    );
+  });
+
+  it("finds in the note around a table cell's editor, and is faint where no editor has a bar", () => {
+    using _cleanup = cleanup();
+    const note = editor(inFileSearch());
+    const cell = editor([], note.dom);
+    expect(appCommand("search.find", context().actingFrom(keyIn(cell))).disabled).toBe(false);
+
+    // The composer: an editor with no find bar, where mod+f stays thread find.
+    const composer = editor([]);
+    const faint = appCommand("search.find", context().actingFrom(keyIn(composer)));
+    expect(faint).toMatchObject({ label: "No editor to find in", disabled: true });
+    expect(appCommand("search.find", context().actingFrom(null)).disabled).toBe(true);
+  });
+});
+
+describe("a code file's changes from the keyboard menu", () => {
+  /** A code editor showing changes against `base`, gone as the test ends. */
+  function codeEditor(base: string | null, doc: string, extensions: Extension = []) {
+    const view = new EditorView({
+      parent: document.body.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc, extensions: [gitChanges(), extensions] }),
+    });
+    view.dispatch({ effects: setGitBase(base) });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("steps to the next change and restores it, with e n and e r", async () => {
+    using _cleanup = cleanup();
+    const view = codeEditor("a\nb\nc\nd\n", "a\nB\nc\nd\n");
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    press(root, ["e", "n"]);
+    await vi.waitFor(() =>
+      expect(view.state.doc.lineAt(view.state.selection.main.head).number).toBe(2),
+    );
+    press(root, ["e", "r"]);
+    await vi.waitFor(() => expect(gitHunks(view.state)).toEqual([]));
+    expect(view.state.doc.toString()).toBe("a\nb\nc\nd\n");
+  });
+
+  it("is faint where the editor shows no changes", () => {
+    using _cleanup = cleanup();
+    const plain = codeEditor(null, "a\n");
+    const faint = appCommand("hunk.next", context().actingFrom(keyIn(plain)));
+    expect(faint).toMatchObject({ label: "No changes here", disabled: true });
+    expect(appCommand("hunk.restore", context().actingFrom(null)).disabled).toBe(true);
+  });
+
+  it("switches a file between HEAD and since this turn with e b, faint without a turn", () => {
+    using _cleanup = cleanup();
+    let base: FileDiffBase = "turn";
+    let turnAvailable = true;
+    const view = codeEditor("a\n", "b\n", [
+      diffBaseControl.of({
+        current: () => ({ base, turnAvailable }),
+        toggle: () => {
+          base = base === "turn" ? "head" : "turn";
+        },
+      }),
+    ]);
+    const switchBase = () => appCommand("hunk.toggleBase", context().actingFrom(keyIn(view)));
+    expect(switchBase().label).toBe("Compare with HEAD");
+    press(context({ origin: keyIn(view) }).root, ["e", "b"]);
+    expect(base).toBe("head");
+    expect(switchBase().label).toBe("Compare since this turn");
+
+    turnAvailable = false;
+    expect(switchBase()).toMatchObject({ label: "No turn changed this file", disabled: true });
+    expect(appCommand("hunk.toggleBase", context().actingFrom(null)).disabled).toBe(true);
+  });
+});
+
+describe("Go to symbol", () => {
+  function editor(extensions: Extension, parent: HTMLElement = document.body) {
+    const view = new EditorView({
+      parent: parent.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc: "# Title", extensions }),
+    });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("acts on the file or note the key came from, through a table cell's editor too", () => {
+    using _cleanup = cleanup();
+    const note = editor(outline());
+    const cell = editor([], note.dom);
+    expect(appCommand("outline.open", context().actingFrom(keyIn(note)))).toMatchObject({
+      label: "Go to symbol",
+      disabled: false,
+    });
+    expect(appCommand("outline.open", context().actingFrom(keyIn(cell))).disabled).toBe(false);
+
+    // The composer has no outline, so mod+shift+o stays a new thread there.
+    const composer = editor([]);
+    expect(appCommand("outline.open", context().actingFrom(keyIn(composer)))).toMatchObject({
+      label: "No file to outline",
+      disabled: true,
+    });
+    composer.focus();
+    expect(isOutlineEditorFocused()).toBe(false);
+    cell.focus();
+    expect(isOutlineEditorFocused()).toBe(true);
+  });
+});
+
+describe("a code file's editing commands", () => {
+  function editor(doc: string, extensions: Extension) {
+    const view = new EditorView({
+      parent: document.body.appendChild(document.createElement("div")),
+      state: EditorState.create({ doc, extensions }),
+    });
+    stops.push(() => {
+      view.destroy();
+      view.dom.parentElement?.remove();
+    });
+    return view;
+  }
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+
+  it("lists them in the Editor group, and runs one in the code file the menu came from", async () => {
+    using _cleanup = cleanup();
+    const view = editor("pear\napple\nfig", codeEditing());
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    const group = root.items.find((item) => item.label === "Editor")?.group;
+    expect(group?.items.map((item) => [item.keys.join(" "), item.label])).toEqual([
+      // This editor has no find bar.
+      ["f", "No editor to find in"],
+      // Nor any changes to show.
+      ["n", "No changes here"],
+      ["p", "No changes here"],
+      ["t", "No changes here"],
+      ["a", "No changes here"],
+      ["r", "No changes here"],
+      ["b", "No turn changed this file"],
+      ["o", "No file to outline"],
+      // Nor a language server's problems.
+      [".", "No problems shown here"],
+      [",", "No problems shown here"],
+      // Nor a language server to ask.
+      ["m", "No language server here"],
+      ["h", "No language server here"],
+      ["i", "No language server here"],
+      ["g", "Go to code"],
+      ["e", "No language server here"],
+      ["z", "No rename to undo"],
+      ["=", "No language server here"],
+      ["q", "No language server here"],
+      // Nor a repository tab in front, or a multi-file view's excerpt.
+      ["v", "No project in front"],
+      ["x", "No results here"],
+      ["k", "No results here"],
+      ["}", "No results here"],
+      ["{", "No results here"],
+      ["c", "Toggle comment"],
+      ["d", "Duplicate selection"],
+      ["j", "Join lines"],
+      ["s", "Sort lines"],
+      ["u", "Upper case"],
+      ["l", "Lower case"],
+      ["w", "Wrap lines"],
+      ["[", "Fold all"],
+      ["]", "Unfold all"],
+    ]);
+    expect(press(root, ["e", "s"])).toBeNull();
+    await vi.waitFor(() => expect(view.state.doc.toString()).toBe("apple\nfig\npear"));
+
+    press(root, ["e", "w"]);
+    await vi.waitFor(() => expect(softWrapOn(view.state)).toBe(true));
+    expect(appCommand("code.toggleSoftWrap", context().actingFrom(keyIn(view))).label).toBe(
+      "Stop wrapping lines",
+    );
+  });
+
+  it("steps to the next problem in a file that shows them", async () => {
+    using _cleanup = cleanup();
+    const view = editor(
+      "const a = 1;\nconst b = 2;\n",
+      diagnosticsUi({ keys: { next: [], previous: [] } }),
+    );
+    view.dispatch(
+      setDiagnostics(view.state, [{ from: 19, to: 20, severity: "error", message: "b is unused" }]),
+    );
+    view.focus();
+    const { root } = context({ origin: keyIn(view) });
+    expect(appCommand("diagnostic.next", context().actingFrom(keyIn(view)))).toMatchObject({
+      label: "Next problem",
+      disabled: false,
+    });
+    press(root, ["e", "."]);
+    await vi.waitFor(() => expect(view.state.selection.main.from).toBe(19));
+  });
+
+  it("is faint outside a code file, and for edits in one that cannot be edited", () => {
+    using _cleanup = cleanup();
+    const note = editor("a note", []);
+    const notHere = appCommand("code.sortLines", context().actingFrom(keyIn(note)));
+    expect(notHere).toMatchObject({ label: "Sort lines", disabled: true });
+
+    const readOnly = editor("b\na", [codeEditing(), EditorState.readOnly.of(true)]);
+    const from = context().actingFrom(keyIn(readOnly));
+    expect(appCommand("code.sortLines", from).disabled).toBe(true);
+    expect(appCommand("code.foldAll", from).disabled).toBe(false);
+    expect(appCommand("code.toggleSoftWrap", from).disabled).toBe(false);
   });
 });
 

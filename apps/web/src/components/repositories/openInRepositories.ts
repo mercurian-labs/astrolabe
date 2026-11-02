@@ -1,8 +1,10 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
+import type { NavigateFn } from "@tanstack/react-router";
 
 import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import { workspace } from "~/panes/workspace";
+import { repositoryFileReveal } from "./repositoryFileReveal";
 import { revealInRepositoryFilter } from "./repositoryFilter";
 import { showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
 import { repositoryTabKey, type RepositoryCheckout } from "./repositoryTabs";
@@ -57,4 +59,31 @@ export function repositoryMoveOfSurface(
       void navigate({ to: "/repositories" });
     },
   };
+}
+
+/**
+ * Astrolabe: opens a file of a checkout (a thread's working tree, or the repository's own) in a
+ * Projects tab of that folder, asking it to show `line`.
+ */
+export function openRepositoryFileAtLine(
+  target: {
+    readonly environmentId: EnvironmentId;
+    readonly projectId: ProjectId;
+    readonly cwd: string;
+    readonly path: string;
+    readonly line: number;
+  },
+  navigate: NavigateFn,
+) {
+  const { environmentId, projectId, cwd, path } = target;
+  const tabKey = repositoryTabKey({
+    kind: "file",
+    environmentId,
+    projectId,
+    checkout: { cwd },
+    path,
+  });
+  workspace.show(tabKey);
+  repositoryFileReveal.request(tabKey, target.line);
+  void navigate({ to: "/repositories" });
 }

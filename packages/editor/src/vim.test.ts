@@ -1,9 +1,15 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
-import { Vim, getCM, vim as packageVim, type CodeMirrorV } from "@replit/codemirror-vim";
+import {
+  CodeMirror,
+  Vim,
+  getCM,
+  vim as packageVim,
+  type CodeMirrorV,
+} from "@replit/codemirror-vim";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { AtlasEditor } from "./editor.tsx";
@@ -41,17 +47,6 @@ const yjsClock = vi.hoisted(() => {
 });
 afterAll(yjsClock.restore);
 
-// Browsers queue `selectionchange` as a task; happy-dom fires it synchronously, inside the
-// update of a focused child (cell) editor. These tests drive selections through
-// transactions, so the event is dropped here, as the table tests do.
-const dispatchEvent = document.dispatchEvent.bind(document);
-beforeAll(() => {
-  document.dispatchEvent = (event) => event.type === "selectionchange" || dispatchEvent(event);
-});
-afterAll(() => {
-  document.dispatchEvent = dispatchEvent;
-});
-
 const mounted: { root: Root; host: HTMLElement }[] = [];
 afterEach(async () => {
   destroyViews();
@@ -65,7 +60,7 @@ const mac = /Mac/.test(navigator.platform);
 
 /**
  * Presses a key through the editor's real key handling (a keydown on its content), so Vim
- * sees it as it would a keyboard's. `binding` is a key name, optionally with `Ctrl-`,
+ * sees it as it would a keyboard's. `binding` is a key name, optionally with `Ctrl-`, `Alt-`,
  * `Shift-`, or `Mod-` (Cmd on macOS, else Ctrl).
  */
 function press(view: EditorView, binding: string) {
@@ -77,6 +72,7 @@ function press(view: EditorView, binding: string) {
     code: key.length === 1 ? `Key${key.toUpperCase()}` : key,
     keyCode: key.length === 1 ? key.toUpperCase().charCodeAt(0) : key === "Escape" ? 27 : 0,
     shiftKey: parts.includes("Shift"),
+    altKey: parts.includes("Alt"),
     ctrlKey: parts.includes("Ctrl") || (mod && !mac),
     metaKey: mod && mac,
     bubbles: true,
@@ -930,6 +926,25 @@ describe("Vim for other hosts", () => {
     press(view, "Ctrl-h");
     await settle();
     expect(moves).toEqual(["left", "right"]);
+  });
+
+  it("runs the editor's binding for a modified key Vim would read as a character, else leaves it Vim's", () => {
+    // As on macOS, where Vim reads Option-/ as `/` (Option types characters there).
+    const isMac: unknown = Reflect.get(CodeMirror, "isMac");
+    Reflect.set(CodeMirror, "isMac", true);
+    try {
+      let ran = 0;
+      const bound = plainVim("hello", keymap.of([{ key: "Alt-/", run: () => (ran++, true) }]));
+      press(bound, "Alt-/");
+      expect(ran).toBe(1);
+      expect(prompt(bound)).toBeNull();
+
+      const unbound = plainVim("hello");
+      press(unbound, "Alt-/");
+      expect(prompt(unbound)).not.toBeNull();
+    } finally {
+      Reflect.set(CodeMirror, "isMac", isMac);
+    }
   });
 
   it("runs an ex command routed back from the host, as Vim's ex line would", () => {

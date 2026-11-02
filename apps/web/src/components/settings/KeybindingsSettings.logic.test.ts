@@ -9,6 +9,7 @@ import { resolveShortcutCommand } from "../../keybindings";
 
 import {
   buildKeybindingRows,
+  groupKeybindingRows,
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
@@ -17,6 +18,18 @@ import {
 } from "./KeybindingsSettings.logic";
 
 describe("KeybindingsSettings.logic", () => {
+  it("lists the editors' search commands under Editors", () => {
+    const groups = groupKeybindingRows([
+      { command: "search.find" },
+      { command: "search.clearHighlight" },
+      { command: "sidebar.toggle" },
+    ]);
+    expect(groups.map((group) => [group.id, group.rows.map((row) => row.command)])).toEqual([
+      ["navigation", ["sidebar.toggle"]],
+      ["editor", ["search.find", "search.clearHighlight"]],
+    ]);
+  });
+
   it("keeps sibling row identities when a saved binding moves to the end", () => {
     const bindings = compileResolvedKeybindingsConfig([
       { command: "chat.new", key: "mod+n" },

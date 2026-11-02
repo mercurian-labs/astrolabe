@@ -150,6 +150,28 @@ const MOVED_DEFAULT_KEYBINDINGS: ReadonlyArray<{
     from: { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
     to: { key: "mod+p", command: "commandLine.open", when: "!terminalFocus" },
   },
+  // In a repository file or wiki note, mod+shift+o opens its outline (`outline.open`).
+  {
+    id: "astrolabe:mod+shift+o:chat.new:!outlineFocus",
+    from: { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
+    to: { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus && !outlineFocus" },
+  },
+  // In a code file these keys are the editor's (`code.*`).
+  ...(
+    [
+      ["mod+d", "diff.toggle", "!terminalFocus"],
+      ["mod+/", "commandPalette.toggle", "!terminalFocus"],
+      ["mod+[", "navigation.back", "!terminalFocus"],
+      ["mod+]", "navigation.forward", "!terminalFocus"],
+      ["mod+shift+l", "composer.previousWorktree", "!terminalFocus"],
+      ["mod+i", "markdown.italic", "editorFocus"],
+      ["mod+shift+k", "markdown.link", "editorFocus"],
+    ] as const
+  ).map(([key, command, when]) => ({
+    id: `astrolabe:${key}:${command}:!codeEditorFocus`,
+    from: { key, command, when },
+    to: { key, command, when: `${when} && !codeEditorFocus` },
+  })),
 ];
 
 function keybindingShortcutContext(rule: KeybindingRule): string | null {

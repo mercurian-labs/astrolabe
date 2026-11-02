@@ -180,6 +180,7 @@ import {
   type AddProjectEnvironmentOption,
   buildPaletteRemoteSourceReadiness,
   errorMessage,
+  escapeReturnsToCommand,
   getEnvironmentBrowsePlatform,
   remoteProjectInputPlaceholder,
   reduceCommandPaletteSearchState,
@@ -214,6 +215,8 @@ import {
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { Checkbox } from "./ui/checkbox";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
+import { LocationPicker, locationPickerEditor } from "./outline/LocationPicker";
+import { OutlinePicker, outlinePickerEditor } from "./outline/OutlinePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
@@ -290,7 +293,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       <CommandDialog
         open={state.open}
         onOpenChange={(open, eventDetails) => {
-          if (!open && eventDetails.reason === "escape-key" && state.mode !== "command") {
+          if (!open && eventDetails.reason === "escape-key" && escapeReturnsToCommand(state.mode)) {
             eventDetails.cancel();
             dispatchCommandPalette({ _tag: "BackToCommand" });
             return;
@@ -334,13 +337,32 @@ function CommandPaletteDialog(props: {
           ? "File picker"
           : props.mode === "content"
             ? "Search project contents"
-            : "Search"
+            : props.mode === "outline"
+              ? "Go to symbol"
+              : props.mode === "locations"
+                ? "Pick a location"
+                : "Search"
       }
       className={cn("overflow-hidden", props.mode === "content" && "h-105")}
       data-command-palette="true"
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
+        const editor =
+          props.mode === "outline"
+            ? outlinePickerEditor()
+            : props.mode === "locations"
+              ? locationPickerEditor()
+              : null;
+        if (editor) {
+          editor.focus();
+          return false;
+        }
+        // Astrolabe: an action that focused what it opened (a search result's editor) keeps it.
+        const active = document.activeElement;
+        if (active && active !== document.body && !active.closest("[data-command-palette]")) {
+          return false;
+        }
         const composer = composerHandleRef?.current;
         if (!composer) return true;
         composer.focusAtEnd();
@@ -352,6 +374,10 @@ function CommandPaletteDialog(props: {
     >
       {props.mode === "files" ? (
         <ProjectFilePicker setOpen={props.setOpen} />
+      ) : props.mode === "outline" ? (
+        <OutlinePicker setOpen={props.setOpen} />
+      ) : props.mode === "locations" ? (
+        <LocationPicker setOpen={props.setOpen} />
       ) : props.mode === "content" ? (
         <ProjectContentSearchDialog onOpenChange={props.setOpen} />
       ) : (

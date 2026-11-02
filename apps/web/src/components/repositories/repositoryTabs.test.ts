@@ -66,6 +66,21 @@ describe("Repositories tab keys", () => {
         path: "src/a b:c.ts",
       },
       { kind: "graph", environmentId, projectId, checkout: { branch: "feature/a" }, path: null },
+      {
+        kind: "search",
+        environmentId,
+        projectId,
+        cwd: "/tmp/wt",
+        search: {
+          query: "a: b",
+          caseSensitive: true,
+          wholeWord: false,
+          useRegex: false,
+          include: "src/**",
+        },
+      },
+      { kind: "problems", environmentId, projectId, cwd: "/tmp/wt" },
+      { kind: "locations", environmentId, projectId, cwd: "/tmp/wt", id: "refs-1" },
     ];
     for (const tab of tabs) expect(parseRepositoryTabKey(repositoryTabKey(tab))).toEqual(tab);
   });
