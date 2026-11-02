@@ -4,6 +4,7 @@ import { GitBranchPlusIcon, SaveIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { openTab } from "~/panes/arrangement";
+import { useWorkspaceOpenKeys } from "~/panes/workspace";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment } from "~/state/wiki";
 import {
@@ -13,13 +14,16 @@ import {
   type WorktreesTarget,
 } from "~/state/worktrees";
 import { storedName } from "../projects/storedChoice";
-import { repositoryTabKey } from "../repositories/repositoryTabs";
+import { parseRepositoryTabKey, repositoryTabKey } from "../repositories/repositoryTabs";
 import {
+  FoldedWorktrees,
   NewWorktreeSwitch,
   SetAsideRows,
   WorktreeFiles,
   WorktreeHeader,
 } from "../repositories/RepositoryWorktrees";
+import { worktreeFilesKey } from "../repositories/repositoryScope";
+import { checkoutTag, foldWorktrees } from "../repositories/worktreeFolding";
 import { useOpenBranch } from "../repositories/worktreeActions";
 import {
   SidebarHeaderIconButton,
@@ -38,7 +42,7 @@ import {
 import { MenuItem } from "../ui/menu";
 import { noteNameOfFile } from "./wiki.logic";
 import { showWikiTab, wikiPanes } from "./wikiPanes";
-import type { WikiTab } from "./wikiTabs";
+import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 
 /** Astrolabe: whether the Wikis sidebar lists documents or shows each worktree's file tree. */
 export const wikiView = storedName("astrolabe:wiki-view:v1", ["list", "tree"] as const);
@@ -52,8 +56,19 @@ const changeRequestOf = (branch: string | null) =>
     ? null
     : ((CHANGE_REQUEST_BRANCH.exec(branch)?.[1] as WikiChangeRequestId | undefined) ?? null);
 
+/** A wiki's worktree as its sidebar names it: the main branch, else its change request's title. */
+export function wikiWorktreeLabel(overview: WikiOverview, worktree: ProjectWorktree): string {
+  if (worktree.isMain) return overview.wiki.mainBranch;
+  if (worktree.branch === null) return worktree.alias;
+  const changeRequestId = changeRequestOf(worktree.branch);
+  return (
+    overview.changeRequests?.find((entry) => entry.changeRequestId === changeRequestId)?.title ??
+    worktree.branch
+  );
+}
+
 /** A wiki's worktrees: those of the repository in its own folder. */
-const worktreesOfWiki = (overview: WikiOverview): WorktreesTarget => ({
+export const worktreesOfWiki = (overview: WikiOverview): WorktreesTarget => ({
   environmentId: overview.environmentId,
   wikiId: overview.wiki.wikiId,
 });
@@ -66,13 +81,18 @@ const worktreesOfWiki = (overview: WikiOverview): WorktreesTarget => ({
 export function WikiWorktreeTrees({
   overview,
   focused,
+  hidden,
 }: {
   readonly overview: WikiOverview;
   readonly focused: WikiTab | null;
+  /** Worktree keys the filter hides; the focused tab's shows anyway, marked. */
+  readonly hidden: ReadonlyArray<string>;
 }) {
   const owner = worktreesOfWiki(overview);
   const listed = useProjectWorktrees(owner);
   const saveWorktree = useAtomCommand(wikiEnvironment.saveWorktree);
+  const [now] = useState(() => Date.now());
+  const openKeys = useWorkspaceOpenKeys();
   // Sections someone opened or closed; a worktree that takes the focus opens again.
   const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
@@ -109,8 +129,6 @@ export function WikiWorktreeTrees({
   }
   const expanded = (worktree: ProjectWorktree) =>
     chosen.get(worktree.path) ?? (listed.worktrees.length === 1 || worktree.path === active?.path);
-  const toggle = (worktree: ProjectWorktree) =>
-    setChosen((current) => new Map(current).set(worktree.path, !expanded(worktree)));
   const selectedPath =
     focusedHere?.kind === "note"
       ? (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??
@@ -145,60 +163,95 @@ export function WikiWorktreeTrees({
     });
     wikiPanes.update((arrangement) => openTab(arrangement, key, arrangement.focused));
   };
+  // What the wiki's open tabs read: a change request's branch, or a file's checkout.
+  const openCheckouts = new Set(
+    openKeys.flatMap((key) => {
+      const wikiTab = parseWikiTabKey(key);
+      if (wikiTab !== null) {
+        return wikiTab.environmentId === overview.environmentId &&
+          wikiTab.wikiId === wiki.wikiId &&
+          wikiTab.changeRequestId !== undefined
+          ? [`branch:${changeRequestBranch(wikiTab.changeRequestId)}`]
+          : [];
+      }
+      const fileTab = parseRepositoryTabKey(key);
+      return fileTab !== null &&
+        "wikiId" in fileTab &&
+        fileTab.wikiId === wiki.wikiId &&
+        fileTab.environmentId === overview.environmentId
+        ? [checkoutTag(fileTab.checkout)]
+        : [];
+    }),
+  );
+  const shown = listed.worktrees.flatMap(
+    (worktree): Array<{ readonly worktree: ProjectWorktree; readonly outside: boolean }> => {
+      const outside = hidden.includes(worktreeFilesKey(overview.environmentId, worktree.path));
+      return !outside || worktree.path === active?.path ? [{ worktree, outside }] : [];
+    },
+  );
+  const { listed: listedEntries, rest } = foldWorktrees(shown, { openCheckouts, now });
+  const section = (
+    { worktree, outside }: { readonly worktree: ProjectWorktree; readonly outside: boolean },
+    folded: boolean,
+  ) => {
+    const changeRequestId = changeRequestOf(worktree.branch);
+    const label = wikiWorktreeLabel(overview, worktree);
+    const open = folded ? (chosen.get(worktree.path) ?? false) : expanded(worktree);
+    return (
+      <Fragment key={worktree.path}>
+        <ul role="presentation">
+          <WorktreeHeader
+            repository={owner}
+            worktree={worktree}
+            label={label}
+            expanded={open}
+            onToggle={() => setChosen((current) => new Map(current).set(worktree.path, !open))}
+            outsideFilter={outside}
+            folded={folded}
+            renderMenuItems={(changedFiles) =>
+              changeRequestId !== null && changedFiles !== null && changedFiles > 0 ? (
+                <MenuItem
+                  onClick={async () => {
+                    await saveWorktree({
+                      environmentId: overview.environmentId,
+                      input: {
+                        wikiId: wiki.wikiId,
+                        changeRequestId,
+                        message: "Edits from the worktree",
+                      },
+                    });
+                    refreshProjectWorktrees(owner);
+                    refreshWorktreeChangedFilesSoon(owner, worktree.path);
+                  }}
+                >
+                  <SaveIcon />
+                  Save edits to the change request
+                </MenuItem>
+              ) : null
+            }
+          />
+        </ul>
+        {open ? (
+          <WorktreeFiles
+            key={`${overview.environmentId}:${worktree.path}`}
+            owner={owner}
+            worktree={worktree}
+            projectName={`${wiki.name} · ${label}`}
+            selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
+            onOpenFile={(file) => openFile(worktree, file)}
+          />
+        ) : null}
+      </Fragment>
+    );
+  };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {listed.worktrees.map((worktree) => {
-        const changeRequestId = changeRequestOf(worktree.branch);
-        const label = worktree.isMain
-          ? wiki.mainBranch
-          : worktree.branch
-            ? titleOf(worktree.branch)
-            : worktree.alias;
-        return (
-          <Fragment key={worktree.path}>
-            <ul role="presentation">
-              <WorktreeHeader
-                repository={owner}
-                worktree={worktree}
-                label={label}
-                expanded={expanded(worktree)}
-                onToggle={() => toggle(worktree)}
-                renderMenuItems={(changedFiles) =>
-                  changeRequestId !== null && changedFiles !== null && changedFiles > 0 ? (
-                    <MenuItem
-                      onClick={async () => {
-                        await saveWorktree({
-                          environmentId: overview.environmentId,
-                          input: {
-                            wikiId: wiki.wikiId,
-                            changeRequestId,
-                            message: "Edits from the worktree",
-                          },
-                        });
-                        refreshProjectWorktrees(owner);
-                        refreshWorktreeChangedFilesSoon(owner, worktree.path);
-                      }}
-                    >
-                      <SaveIcon />
-                      Save edits to the change request
-                    </MenuItem>
-                  ) : null
-                }
-              />
-            </ul>
-            {expanded(worktree) ? (
-              <WorktreeFiles
-                key={`${overview.environmentId}:${worktree.path}`}
-                owner={owner}
-                worktree={worktree}
-                projectName={`${wiki.name} · ${label}`}
-                selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
-                onOpenFile={(file) => openFile(worktree, file)}
-              />
-            ) : null}
-          </Fragment>
-        );
-      })}
+      {listedEntries.map((entry) => section(entry, false))}
+      <FoldedWorktrees
+        ownerTitle={wiki.name}
+        rest={rest}
+        renderEntry={(entry) => section(entry, true)}
+      />
       <ul role="presentation" className="flex flex-col gap-px">
         <SetAsideRows repository={owner} setAside={listed.setAside} branchLabel={titleOf} />
       </ul>

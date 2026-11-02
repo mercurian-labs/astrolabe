@@ -134,6 +134,10 @@ export interface WikiChangeItem {
   readonly files: ReadonlyArray<string>;
 }
 
+/** The branch a change request's worktree holds. */
+export const changeRequestBranch = (changeRequestId: WikiChangeRequestId) =>
+  `cr/${changeRequestId}`;
+
 /** The scope a wiki filter picks: one wiki on one server. */
 export const wikiScopeKey = (environmentId: EnvironmentId, wikiId: WikiId) =>
   `${environmentId}:${wikiId}`;

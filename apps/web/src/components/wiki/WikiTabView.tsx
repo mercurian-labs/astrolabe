@@ -6,18 +6,43 @@ import type {
   WikiId,
 } from "@t3tools/contracts";
 import { FilePenLineIcon, FileTextIcon, SquareDashed, TableIcon } from "lucide-react";
-import { type ReactNode } from "react";
-
 import { ensureLocalApi } from "~/localApi";
+import type { PaneTabLabel } from "~/panes/panesHost";
+import { useListedProjectWorktrees } from "~/state/worktrees";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { useNumberWhenOpened } from "../repositories/worktreeNumbering";
+import { WorktreeNumber } from "../repositories/WorktreeNumber";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import { WikiNoteView } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
-import { isBaseTab, parseWikiTabKey, wikiTabKey, type WikiTab } from "./wikiTabs";
+import {
+  changeRequestBranch,
+  isBaseTab,
+  parseWikiTabKey,
+  wikiTabKey,
+  type WikiTab,
+} from "./wikiTabs";
+
+/** The worktree holding a change request's branch, for a tab in a change request; else null. */
+function useChangeRequestWorktree(tab: WikiTab | null) {
+  const changeRequestId = tab?.changeRequestId;
+  const target =
+    tab !== null && changeRequestId !== undefined
+      ? { environmentId: tab.environmentId, wikiId: tab.wikiId }
+      : null;
+  const listed = useListedProjectWorktrees(target);
+  const holder =
+    changeRequestId === undefined
+      ? null
+      : (listed?.worktrees.find(
+          (worktree) => worktree.branch === changeRequestBranch(changeRequestId),
+        ) ?? null);
+  return { target, holder };
+}
 
 /**
  * Where a wiki tab's links lead in the panes holding it: the Wikis area's, or another section's
@@ -71,6 +96,9 @@ function NoteTab({
   readonly nav: WikiTabNav;
 }) {
   const all = useChangeRequests(tab.environmentId, tab.wikiId);
+  const { target, holder } = useChangeRequestWorktree(tab);
+  // A change request's document is something opened in its worktree.
+  useNumberWhenOpened(target, holder);
   const openChangeRequests = (all ?? []).filter((changeRequest) => changeRequest.status === "open");
   const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
   if (isBaseTab(tab)) {
@@ -149,9 +177,14 @@ function ChangeRequestTab({
   );
 }
 
-/** A tab's title and icon: a note's name, or a change request's title. */
-export function useWikiTabLabel(tabKey: string): { title: string; icon: ReactNode } {
+/**
+ * A tab's title and icon, a note's name or a change request's title, with the number of the
+ * worktree holding its change request.
+ */
+export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const tab = parseWikiTabKey(tabKey);
+  const { holder } = useChangeRequestWorktree(tab);
+  const trailing = holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {};
   const changeRequests = useEnvironmentQuery(
     tab?.kind === "change-request"
       ? wikiEnvironment.changeRequests({
@@ -166,6 +199,7 @@ export function useWikiTabLabel(tabKey: string): { title: string; icon: ReactNod
       return {
         title: tab.name.replace(/\.base$/, ""),
         icon: <TableIcon className="size-3.5 shrink-0" />,
+        ...trailing,
       };
     }
     return {
@@ -176,13 +210,18 @@ export function useWikiTabLabel(tabKey: string): { title: string; icon: ReactNod
         ) : (
           <FilePenLineIcon className="size-3.5 shrink-0" />
         ),
+      ...trailing,
     };
   }
   const title =
     changeRequests.data?.changeRequests.find(
       (entry) => entry.changeRequestId === tab.changeRequestId,
     )?.title ?? "Change request";
-  return { title, icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" /> };
+  return {
+    title,
+    icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" />,
+    ...trailing,
+  };
 }
 
 /** Closes a tab with `close`, asking first when it holds unsaved edits. */

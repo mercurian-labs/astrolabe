@@ -12,7 +12,7 @@ import {
   Trash2Icon,
   UndoIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useEnvironmentQuery } from "~/state/query";
@@ -46,12 +46,14 @@ import {
   ComboboxTrigger,
 } from "../ui/combobox";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { SidebarInput } from "../ui/sidebar";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openInNewWorktree } from "./repositoryScope";
 import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import { WorktreeNumber } from "./WorktreeNumber";
+import { groupFolded } from "./worktreeFolding";
 
 /** Whose worktrees the controls act on: a project's, or a wiki's own folder. */
 type WorktreeOwner = WorktreesTarget;
@@ -198,6 +200,54 @@ export function WorktreeHeader({
         </WorktreeMenu>
       )}
     </li>
+  );
+}
+
+/**
+ * A repository's folded worktrees under "N more worktrees": found by name or folder, grouped by
+ * the tool that made them, most recent first.
+ */
+export function FoldedWorktrees<Entry extends { readonly worktree: ProjectWorktree }>({
+  ownerTitle,
+  rest,
+  renderEntry,
+}: {
+  /** The project's or wiki's name, for the search field's label. */
+  readonly ownerTitle: string;
+  readonly rest: ReadonlyArray<Entry>;
+  readonly renderEntry: (entry: Entry) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  if (rest.length === 0) return null;
+  return (
+    <ul role="presentation" className="flex flex-col gap-px">
+      <li className="mx-0.5 flex h-8 list-none items-center">
+        <CollapsibleSectionHeader onClick={() => setOpen(!open)} expanded={open} tone="muted">
+          {`${rest.length} more ${rest.length === 1 ? "worktree" : "worktrees"}`}
+        </CollapsibleSectionHeader>
+      </li>
+      {open ? (
+        <li className="flex list-none flex-col gap-1 ps-2">
+          <SidebarInput
+            aria-label={`Find among ${ownerTitle}'s other worktrees`}
+            placeholder="Find a worktree..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {groupFolded(rest, query).map((group) => (
+            <ul key={group.maker} role="presentation" aria-label={group.label}>
+              <li className="mx-2.5 mt-2 list-none text-2xs font-medium text-sidebar-muted-foreground/70">
+                {`${group.label} · ${group.entries.length}`}
+              </li>
+              {group.entries.map((entry) => (
+                <Fragment key={entry.worktree.path}>{renderEntry(entry)}</Fragment>
+              ))}
+            </ul>
+          ))}
+        </li>
+      ) : null}
+    </ul>
   );
 }
 

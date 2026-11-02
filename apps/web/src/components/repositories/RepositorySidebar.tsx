@@ -39,13 +39,14 @@ import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../sidebar/
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
 import { SidebarThreadHeader } from "../sidebar/SidebarThreadHeader";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
-import { SidebarContent, SidebarGroup, SidebarInput } from "../ui/sidebar";
+import { SidebarContent, SidebarGroup } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useWorkspaceFocusedKey, useWorkspaceOpenKeys, workspace } from "~/panes/workspace";
-import { checkoutTag, foldWorktrees, groupFolded } from "./worktreeFolding";
+import { checkoutTag, foldWorktrees } from "./worktreeFolding";
 import { showLocalGraph } from "./repositoryPanes";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import {
+  FoldedWorktrees,
   OpenBranchPicker,
   SetAsideRows,
   WorktreeFiles,
@@ -445,8 +446,6 @@ function WorktreeSections({
 }) {
   const owner = projectWorktrees(repository);
   const [now] = useState(() => Date.now());
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [moreQuery, setMoreQuery] = useState("");
   const { listed, rest } = foldWorktrees(worktrees, { openCheckouts, now });
   const worktreeSection = (
     { worktree, outside }: { readonly worktree: ProjectWorktree; readonly outside: boolean },
@@ -519,35 +518,11 @@ function WorktreeSections({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
       {listed.map((entry) => worktreeSection(entry, false))}
-      {rest.length > 0 ? (
-        <ul role="presentation" className="flex flex-col gap-px">
-          <li className="mx-0.5 flex h-8 list-none items-center">
-            <CollapsibleSectionHeader
-              onClick={() => setMoreOpen(!moreOpen)}
-              expanded={moreOpen}
-              tone="muted"
-            >
-              {`${rest.length} more ${rest.length === 1 ? "worktree" : "worktrees"}`}
-            </CollapsibleSectionHeader>
-          </li>
-          {moreOpen ? (
-            <li className="flex list-none flex-col gap-1 ps-2">
-              <SidebarInput
-                aria-label={`Find among ${repository.title}'s other worktrees`}
-                placeholder="Find a worktree..."
-                value={moreQuery}
-                onChange={(event) => setMoreQuery(event.target.value)}
-              />
-              {groupFolded(rest, moreQuery).map((group) => (
-                <ul key={group.maker} role="presentation" aria-label={group.label}>
-                  <SectionLabel>{`${group.label} · ${group.entries.length}`}</SectionLabel>
-                  {group.entries.map((entry) => worktreeSection(entry, true))}
-                </ul>
-              ))}
-            </li>
-          ) : null}
-        </ul>
-      ) : null}
+      <FoldedWorktrees
+        ownerTitle={repository.title}
+        rest={rest}
+        renderEntry={(entry) => worktreeSection(entry, true)}
+      />
       {setAside ? (
         <ul role="presentation" className="flex flex-col gap-px">
           <SetAsideRows repository={owner} setAside={setAside} />

@@ -102,12 +102,26 @@ import { isTurnRunning, noteNameOfFile } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
-import { WikiWorktreePicker, WikiWorktreeTrees, wikiView } from "./WikiWorktrees";
+import { useManyProjectWorktrees } from "~/state/worktrees";
+import {
+  WikiWorktreePicker,
+  WikiWorktreeTrees,
+  wikiView,
+  wikiWorktreeLabel,
+  worktreesOfWiki,
+} from "./WikiWorktrees";
+import {
+  HiddenWorktreesPill,
+  WorktreeFilterMark,
+  WorktreeFoldButton,
+} from "../repositories/RepositoryFilterMenu";
+import { worktreeFilesKey } from "../repositories/repositoryScope";
 import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
 import { WikiSettingsDialog } from "./WikiSettingsDialog";
 import {
   EMPTY_WIKI_FILTER,
   filterWikiKeys,
+  setWikiWorktreeHidden,
   storeWikiFilter,
   toggleFilterWiki,
   useStoredWikiFilter,
@@ -174,7 +188,7 @@ export function WikiSidebar() {
     filter,
     overviews.map((overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId)),
   );
-  const filterActive = kept !== null || filter.changed;
+  const filterActive = kept !== null || filter.changed || filter.hidden.length > 0;
   // The one wiki picked, for what still takes a single wiki (Change Requests, a new document).
   const scope = kept?.size === 1 ? [...kept][0]! : null;
   const scoped =
@@ -467,7 +481,11 @@ export function WikiSidebar() {
               )
             ) : view === "tree" ? (
               worktreeWiki ? (
-                <WikiWorktreeTrees overview={worktreeWiki} focused={focused} />
+                <WikiWorktreeTrees
+                  overview={worktreeWiki}
+                  focused={focused}
+                  hidden={filter.hidden}
+                />
               ) : (
                 <p
                   role="status"
@@ -573,6 +591,7 @@ function EmptyStateButton({ onClick, children }: { onClick: () => void; children
 
 const CHANGED_VALUE = "changed";
 const ALL_WIKIS_VALUE = "all";
+const WORKTREE_PREFIX = "worktree:";
 const CHANGED_LABEL = "Has changes";
 
 function ChangedIcon({ className }: { readonly className?: string }) {
@@ -585,9 +604,10 @@ function ChangedIcon({ className }: { readonly className?: string }) {
 }
 
 /**
- * The Wikis filter, as the thread list's: documents with open changes, then every wiki or several,
- * each wiki's settings from its row, and adding a wiki from the foot of the list. Picking keeps
- * the list open.
+ * The Wikis filter, as the thread list's and the Projects': documents with open changes, then every
+ * wiki or several, each with its worktrees nested under it (folded until opened, or found by a
+ * search) to show or hide in the file trees, each wiki's settings from its row, and adding a wiki
+ * from the foot of the list. Picking keeps the list open.
  */
 function WikiFilterMenu({
   overviews,
@@ -613,6 +633,7 @@ function WikiFilterMenu({
   const { isMobile, open: sidebarOpen } = useSidebar();
   const comboboxFilter = useComboboxFilter();
   const view = wikiView.useValue();
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const overviewByKey = new Map(
     overviews.map((overview) => [
       wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
@@ -620,30 +641,77 @@ function WikiFilterMenu({
     ]),
   );
   const wikiKeys = [...overviewByKey.keys()];
-  const labelOf = (value: string) =>
-    value === CHANGED_VALUE
-      ? CHANGED_LABEL
-      : value === ALL_WIKIS_VALUE
-        ? "All wikis"
-        : (overviewByKey.get(value)?.wiki.name ?? value);
-  const values = [CHANGED_VALUE, ALL_WIKIS_VALUE, ...wikiKeys];
-  const filtered = filterSidebarProjectScopeItems({
-    items: values.map((value) => ({ value })),
-    query: menu.query,
-    matches: (item, query) => comboboxFilter.contains(item.value, query, labelOf),
-  }).map((item) => item.value);
+  const searching = menu.query.trim().length > 0;
+  // A search looks through every wiki's worktrees; otherwise only unfolded ones are read.
+  const listedWikis = overviews.filter(
+    (overview) =>
+      searching || unfolded.has(wikiScopeKey(overview.environmentId, overview.wiki.wikiId)),
+  );
+  const lists = useManyProjectWorktrees(listedWikis.map(worktreesOfWiki));
+  const worktreeRows = listedWikis.flatMap((overview, index) =>
+    (lists[index]?.worktrees ?? []).map((worktree) => ({
+      value: `${WORKTREE_PREFIX}${worktreeFilesKey(overview.environmentId, worktree.path)}`,
+      wikiKey: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
+      overview,
+      worktree,
+    })),
+  );
+  const worktreeByValue = new Map(worktreeRows.map((row) => [row.value, row]));
+  const worktreeValuesOf = (wikiKey: string) =>
+    worktreeRows.filter((row) => row.wikiKey === wikiKey).map((row) => row.value);
+  const labelOf = (value: string) => {
+    if (value === CHANGED_VALUE) return CHANGED_LABEL;
+    if (value === ALL_WIKIS_VALUE) return "All wikis";
+    const row = worktreeByValue.get(value);
+    if (row) return wikiWorktreeLabel(row.overview, row.worktree);
+    return overviewByKey.get(value)?.wiki.name ?? value;
+  };
+  const values = [
+    CHANGED_VALUE,
+    ALL_WIKIS_VALUE,
+    ...wikiKeys.flatMap((key) => [key, ...worktreeValuesOf(key)]),
+  ];
+  const found = new Set(
+    filterSidebarProjectScopeItems({
+      items: values.map((value) => ({ value })),
+      query: menu.query,
+      matches: (item, query) => comboboxFilter.contains(item.value, query, labelOf),
+    }).map((item) => item.value),
+  );
+  // A wiki shows its worktrees while unfolded; a search shows the ones it finds, and their wiki
+  // with them.
+  const filtered = values.filter((value) => {
+    if (overviewByKey.has(value)) {
+      return found.has(value) || worktreeValuesOf(value).some((each) => found.has(each));
+    }
+    const row = worktreeByValue.get(value);
+    if (!row) return found.has(value);
+    return searching ? found.has(value) : unfolded.has(row.wikiKey);
+  });
+  const toggleUnfolded = (key: string) =>
+    setUnfolded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   // With no wiki picked every wiki is in, so each shows ticked.
-  const checked = (value: string) =>
-    value === CHANGED_VALUE
-      ? filter.changed
-      : value === ALL_WIKIS_VALUE
-        ? kept === null
-        : kept === null || kept.has(value);
+  const checked = (value: string) => {
+    if (value === CHANGED_VALUE) return filter.changed;
+    if (value === ALL_WIKIS_VALUE) return kept === null;
+    if (value.startsWith(WORKTREE_PREFIX)) {
+      return !filter.hidden.includes(value.slice(WORKTREE_PREFIX.length));
+    }
+    return kept === null || kept.has(value);
+  };
   const selected = values.filter(checked);
   const toggle = (value: string) => {
     if (value === CHANGED_VALUE) onFilter({ ...filter, changed: !filter.changed });
     else if (value === ALL_WIKIS_VALUE) onFilter({ ...filter, wikis: [] });
-    else onFilter(toggleFilterWiki(filter, value, wikiKeys));
+    else if (value.startsWith(WORKTREE_PREFIX)) {
+      const key = value.slice(WORKTREE_PREFIX.length);
+      onFilter(setWikiWorktreeHidden(filter, key, !filter.hidden.includes(key)));
+    } else onFilter(toggleFilterWiki(filter, value, wikiKeys));
   };
   const closeAnd = (then: () => void) => {
     dispatchMenu({ type: "open-changed", open: false });
@@ -705,11 +773,15 @@ function WikiFilterMenu({
                 <ComboboxGroupLabel>{group.label}</ComboboxGroupLabel>
                 {group.values.map((value) => {
                   const overview = overviewByKey.get(value) ?? null;
+                  const row = worktreeByValue.get(value) ?? null;
                   return (
                     <ComboboxItem key={value} hideIndicator value={value}>
+                      {row ? <span aria-hidden className="w-4 shrink-0" /> : null}
                       <ThreadsFilterCheckbox checked={checked(value)} />
                       {value === CHANGED_VALUE ? (
                         <ChangedIcon />
+                      ) : row ? (
+                        <WorktreeFilterMark worktree={row.worktree} />
                       ) : overview ? (
                         <WikiIcon
                           environmentId={overview.environmentId}
@@ -724,6 +796,18 @@ function WikiFilterMenu({
                         <span className="text-muted-foreground text-xs tabular-nums">
                           {changedCount}
                         </span>
+                      ) : null}
+                      {row?.worktree.isMain ? (
+                        <span className="shrink-0 text-muted-foreground text-xs">
+                          main checkout
+                        </span>
+                      ) : null}
+                      {overview && !searching ? (
+                        <WorktreeFoldButton
+                          open={unfolded.has(value)}
+                          ownerTitle={overview.wiki.name}
+                          onToggle={() => toggleUnfolded(value)}
+                        />
                       ) : null}
                       {overview ? (
                         <Button
@@ -768,7 +852,7 @@ function WikiFilterMenu({
   );
 }
 
-/** The Wikis filter in force: Has changes as one tap, then the wikis picked. */
+/** The Wikis filter in force: Has changes as one tap, then the wikis picked and the worktrees hidden. */
 function WikiFilterPills({
   overviews,
   filter,
@@ -790,8 +874,20 @@ function WikiFilterPills({
       : overviews.filter((overview) =>
           kept.has(wikiScopeKey(overview.environmentId, overview.wiki.wikiId)),
         );
+  // Only read while something is hidden, to name it.
+  const lists = useManyProjectWorktrees(
+    filter.hidden.length === 0 ? [] : overviews.map(worktreesOfWiki),
+  );
+  const hiddenNames = overviews.flatMap((overview, index) =>
+    (lists[index]?.worktrees ?? [])
+      .filter((worktree) =>
+        filter.hidden.includes(worktreeFilesKey(overview.environmentId, worktree.path)),
+      )
+      .map((worktree) => wikiWorktreeLabel(overview, worktree)),
+  );
   const showChanged = filter.changed || changedCount > 0;
-  const count = (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0);
+  const count =
+    (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0) + (hiddenNames.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills label="Document filters" count={count} onClear={() => onFilter(EMPTY_WIKI_FILTER)}>
@@ -825,6 +921,13 @@ function WikiFilterPills({
             ))}
           </PillIcons>
         </FilterPill>
+      ) : null}
+      {hiddenNames.length > 0 ? (
+        <HiddenWorktreesPill
+          names={hiddenNames}
+          onOpen={onOpen}
+          onRemove={() => onFilter({ ...filter, hidden: [] })}
+        />
       ) : null}
     </FilterPills>
   );

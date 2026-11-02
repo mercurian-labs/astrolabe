@@ -77,6 +77,67 @@ const worktreeValue = (key: string) => `worktree:${key}`;
 
 const worktreeName = (worktree: ProjectWorktree) => worktree.branch ?? worktree.alias;
 
+/** A worktree's mark in a filter row: its number, else a branch icon. */
+export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
+  return worktree.number === null ? (
+    <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+  ) : (
+    <span className="flex size-4 shrink-0 items-center justify-center">
+      <WorktreeNumber number={worktree.number} />
+    </span>
+  );
+}
+
+/** Folds or unfolds a filter row's worktrees; it never picks the row. */
+export function WorktreeFoldButton({
+  open,
+  ownerTitle,
+  onToggle,
+}: {
+  readonly open: boolean;
+  readonly ownerTitle: string;
+  readonly onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`${open ? "Hide" : "Show"} ${ownerTitle}'s worktrees`}
+      aria-expanded={open}
+      className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      <ChevronRightIcon className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+    </button>
+  );
+}
+
+/** The filter's pill for worktrees it hides. */
+export function HiddenWorktreesPill({
+  names,
+  onOpen,
+  onRemove,
+}: {
+  readonly names: ReadonlyArray<string>;
+  readonly onOpen: () => void;
+  readonly onRemove: () => void;
+}) {
+  return (
+    <FilterPill
+      label={`Hiding ${namesOrCount(names, "worktrees")}`}
+      onOpen={onOpen}
+      onRemove={onRemove}
+    >
+      <EyeOffIcon aria-hidden className="size-3.5 shrink-0 text-sidebar-muted-foreground" />
+    </FilterPill>
+  );
+}
+
 function ChangedIcon({ className }: { readonly className?: string }) {
   return (
     <FilePenLineIcon
@@ -290,13 +351,7 @@ export function RepositoryFilterMenu({
                       ) : repository ? (
                         <ProjectFavicon project={repository} className="size-4 shrink-0" />
                       ) : worktree ? (
-                        worktree.number === null ? (
-                          <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-                        ) : (
-                          <span className="flex size-4 shrink-0 items-center justify-center">
-                            <WorktreeNumber number={worktree.number} />
-                          </span>
-                        )
+                        <WorktreeFilterMark worktree={worktree} />
                       ) : (
                         <FolderGit2Icon className="size-4 shrink-0" />
                       )}
@@ -312,24 +367,11 @@ export function RepositoryFilterMenu({
                           main checkout
                         </span>
                       ) : repositoryKey !== null && !searching ? (
-                        <button
-                          type="button"
-                          aria-label={`${open ? "Hide" : "Show"} ${repository?.title ?? ""}'s worktrees`}
-                          aria-expanded={open}
-                          className="-me-1 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-                          // The row picks the project; the chevron only folds its worktrees.
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            toggleUnfolded(repositoryKey);
-                          }}
-                        >
-                          <ChevronRightIcon
-                            className={cn("size-3.5 transition-transform", open && "rotate-90")}
-                          />
-                        </button>
+                        <WorktreeFoldButton
+                          open={open}
+                          ownerTitle={repository?.title ?? ""}
+                          onToggle={() => toggleUnfolded(repositoryKey)}
+                        />
                       ) : null}
                     </ComboboxItem>
                   );
@@ -427,13 +469,11 @@ export function RepositoryFilterPills({
         </FilterPill>
       ) : null}
       {hidden.length > 0 ? (
-        <FilterPill
-          label={`Hiding ${namesOrCount(hidden.map(worktreeName), "worktrees")}`}
+        <HiddenWorktreesPill
+          names={hidden.map(worktreeName)}
           onOpen={onOpen}
           onRemove={() => storeRepositoryFilter({ ...filter, hidden: [] })}
-        >
-          <EyeOffIcon aria-hidden className="size-3.5 shrink-0 text-sidebar-muted-foreground" />
-        </FilterPill>
+        />
       ) : null}
     </FilterPills>
   );

@@ -39,15 +39,27 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
   worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
   a typed title offers "New change request “<title>” in a worktree". The filter's foot
-  toggles **Show the file trees** / **Show as list** (`astrolabe:wiki-view:v1`). Tree
+  toggles **Show the file trees** / **Show as list** (`astrolabe:wiki-view:v1`; picking a
+  change request in the worktree picker switches to trees too). With several wikis and none
+  picked, tree mode reads only "Pick a wiki in the filter to see its files." Tree
   mode drops the document list and the **Open changes** row for one collapsible section
   per worktree (main under the wiki's main branch, a change request's under its title),
-  each a `FileBrowserPanel`; the focused tab's worktree opens on its own. A note clicked
-  in a tree opens as `wiki-note:<env>:<wiki>:<change request id or empty>:<name>`, other
-  files as repository file tabs; tree rows open on a plain click only (no middle-click
+  each a `FileBrowserPanel`; the focused tab's worktree opens on its own. They fold as Projects'
+  do (`worktreeFolding.ts`, `FoldedWorktrees`): idle ones under `button "N more worktrees"` with
+  `textbox "Find among <wiki>'s other worktrees"`. The filter nests each wiki's worktrees under
+  it (`button "Show <wiki>'s worktrees"`, folded by default); unticking one hides it from the
+  trees (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
+  worktree staying, marked. A note or change request tab in a change request with a worktree
+  shows its number before its ✕; opening such a note numbers the worktree
+  (`useNumberWhenOpened`). A top-level `.md`
+  clicked in a tree, on the main line or a `cr/` branch, opens as
+  `wiki-note:<env>:<wiki>:<change request id or empty>:<name>`; README, AGENTS, CLAUDE,
+  `*.skillmap.md`, nested `.md`, any `.md` on another branch, and every other file open as
+  `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
   or modifiers). A change request worktree's menu adds **Save edits to the change
-  request** when it has unsaved edits (`wiki.saveWorktree`, one amendment, worktree left
-  clean). An amendment landing on a change request moves its worktree's files, and is
+  request** while it has uncommitted files (`wiki.saveWorktree`, one amendment, worktree left
+  clean; refused with "No document in this worktree has unsaved changes." when only non-note
+  files changed). The main worktree has no menu. An amendment landing on a change request moves its worktree's files, and is
   refused, naming the files, when they overlap unsaved edits there. The worktree calls name the wiki (`worktrees.*` with `wikiId`, read in the wiki's own
   folder), so a wiki needs no project; a non-note file opens as `wiki-file:<env>:<wiki>:…`
   (no local graph button, never in a change group).
@@ -66,7 +78,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   right** opens it in a new pane to the right; a document already open moves there
   instead (nothing happens when it is the focused pane's only tab).
 - **History**: each tab remembers what it showed (localStorage
-  `astrolabe:wiki-tab-history:v1`, keyed by the tab key it shows now, last 50 each
+  `astrolabe:workspace-tab-history:v1`, shared with every section, keyed by the tab key it shows now, last 50 each
   way). Clicks, Search, `:e`, deep links and followed wikilinks push onto it and clear
   its forward history; saving a note into a change request keeps it. The note header's
   **Back**/**Forward** walk that tab, and `mod+[`/`mod+]` and Space `t h`/`t l` walk
