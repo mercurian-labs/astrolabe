@@ -68,7 +68,7 @@ export function WorktreeHeader({
   worktree,
   expanded,
   onToggle,
-  label = worktree.alias,
+  label: labelProp,
   renderMenuItems,
   filesShown = false,
   onToggleFiles,
@@ -97,6 +97,7 @@ export function WorktreeHeader({
   /** Opens its branch's changes against its base. */
   readonly onCompare?: () => void;
 }) {
+  const label = labelProp ?? worktree.alias;
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
   const live = !folded || expanded;
   const watch = useWorktreeWatch(live ? repository : null, worktree.path);
@@ -400,7 +401,7 @@ function useRemoveWorktree() {
 export function SetAsideRows({
   repository,
   setAside,
-  branchLabel = (branch) => branch,
+  branchLabel,
 }: {
   readonly repository: WorktreeOwner;
   /** What to call a branch, when something else says more (a change request's title). */
@@ -418,7 +419,7 @@ export function SetAsideRows({
           className="mx-0.5 flex h-8 list-none items-center gap-1.5 px-2 text-xs text-sidebar-muted-foreground"
         >
           <UndoIcon aria-hidden className="size-3.5 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{`Set-aside work on ${branchLabel(entry.branch)}`}</span>
+          <span className="min-w-0 flex-1 truncate">{`Set-aside work on ${branchLabel?.(entry.branch) ?? entry.branch}`}</span>
           <button
             type="button"
             className="cursor-pointer rounded px-1 hover:text-sidebar-foreground"
@@ -431,7 +432,7 @@ export function SetAsideRows({
             className="cursor-pointer rounded px-1 hover:text-destructive-foreground"
             onClick={async () => {
               const confirmed = await requestConfirmDialog(
-                `Discard the work set aside on ${branchLabel(entry.branch)}?`,
+                `Discard the work set aside on ${branchLabel?.(entry.branch) ?? entry.branch}?`,
                 { variant: "destructive" },
               );
               if (confirmed !== true) return;
