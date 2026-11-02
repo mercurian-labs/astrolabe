@@ -58,8 +58,8 @@ type WorktreeOwner = WorktreesTarget;
 
 /**
  * A worktree's header: its number and branch (or commit), how many files it has uncommitted, what
- * holds it, whether it shows its changes or its files, and Keep and Delete. Its contents collapse
- * under it.
+ * holds it, whether it shows its changes or its files, and a menu (compare, Keep, Delete; the
+ * main checkout has only compare). Its contents collapse under it.
  */
 export function WorktreeHeader({
   repository,
@@ -166,23 +166,6 @@ export function WorktreeHeader({
           {label}
         </span>
       </CollapsibleSectionHeader>
-      {onCompare ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`Changes on ${label} against its base`}
-                onClick={onCompare}
-                className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-              />
-            }
-          >
-            <GitCompareArrowsIcon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">Changes against its base</TooltipPopup>
-        </Tooltip>
-      ) : null}
       {onToggleFiles ? (
         <Tooltip>
           <TooltipTrigger
@@ -203,8 +186,14 @@ export function WorktreeHeader({
           </TooltipPopup>
         </Tooltip>
       ) : null}
-      {worktree.isMain ? null : (
+      {worktree.isMain && !onCompare ? null : (
         <WorktreeMenu repository={repository} worktree={worktree} label={label}>
+          {onCompare ? (
+            <MenuItem onClick={onCompare}>
+              <GitCompareArrowsIcon />
+              Changes against its base
+            </MenuItem>
+          ) : null}
           {renderMenuItems?.(changedFiles)}
         </WorktreeMenu>
       )}
@@ -298,22 +287,33 @@ function WorktreeMenu({
       </MenuTrigger>
       <MenuPopup side="bottom" align="end">
         {children}
-        <MenuItem
-          onClick={async () => {
-            await setKept({
-              environmentId: repository.environmentId,
-              input: { ...worktreeOwner(repository), path: worktree.path, kept: !worktree.kept },
-            });
-            refreshProjectWorktrees(repository);
-          }}
-        >
-          <PinIcon />
-          {worktree.kept ? "Stop keeping" : "Keep for this branch"}
-        </MenuItem>
-        <MenuItem variant="destructive" onClick={() => void remove(repository, worktree, label)}>
-          <Trash2Icon />
-          Delete worktree…
-        </MenuItem>
+        {worktree.isMain ? null : (
+          <>
+            <MenuItem
+              onClick={async () => {
+                await setKept({
+                  environmentId: repository.environmentId,
+                  input: {
+                    ...worktreeOwner(repository),
+                    path: worktree.path,
+                    kept: !worktree.kept,
+                  },
+                });
+                refreshProjectWorktrees(repository);
+              }}
+            >
+              <PinIcon />
+              {worktree.kept ? "Stop keeping" : "Keep for this branch"}
+            </MenuItem>
+            <MenuItem
+              variant="destructive"
+              onClick={() => void remove(repository, worktree, label)}
+            >
+              <Trash2Icon />
+              Delete worktree…
+            </MenuItem>
+          </>
+        )}
       </MenuPopup>
     </Menu>
   );

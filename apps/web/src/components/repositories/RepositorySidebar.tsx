@@ -60,7 +60,12 @@ import {
   storeRepositoryFilter,
   useStoredRepositoryFilter,
 } from "./repositoryFilter";
-import { repositoryWorktreeFiles, showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
+import {
+  repositoryWorktreeFiles,
+  showWorktreeFiles,
+  worktreeFilesKey,
+  worktreeFilesShown,
+} from "./repositoryScope";
 import {
   checkoutOf,
   holderOf,
@@ -430,7 +435,7 @@ function WorktreeSections({
   readonly expanded: (worktree: ProjectWorktree, fallback: boolean) => boolean;
   readonly onToggle: (worktree: ProjectWorktree, fallback: boolean) => void;
   readonly onReveal: (worktree: ProjectWorktree) => void;
-  readonly filesShown: ReadonlyArray<string>;
+  readonly filesShown: Readonly<Record<string, boolean>>;
   readonly selectedPath: (worktree: ProjectWorktree) => string | null;
   /** The worktree of the focused tab, which opens on its own. */
   readonly focusedPath: string | null;
@@ -445,7 +450,7 @@ function WorktreeSections({
     folded: boolean,
   ) => {
     const filesKey = worktreeFilesKey(repository.environmentId, worktree.path);
-    const files = filesShown.includes(filesKey);
+    const files = worktreeFilesShown(filesShown, filesKey, worktree.isMain);
     // Only the main checkout and the focused tab's start open: an open one reads its status and
     // recent commits.
     const fallback = !folded && (worktree.isMain || outside || worktree.path === focusedPath);

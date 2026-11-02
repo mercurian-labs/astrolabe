@@ -16,7 +16,8 @@ under its name, open when it holds the tab you're on.
   under the title show what's filtered. Whatever the tab in front is in shows anyway, marked
   "hidden", until you move to another tab.
 - **Search** finds a file by name when one project shows, in the worktree of the tab you're on.
-- The tree button on a worktree's header swaps its changes for its whole file tree, and back.
+- The tree button on a worktree's header swaps its changes for its whole file tree, and back. The
+  project's own checkout shows its file tree until you switch it.
 
 ## Worktrees and branches
 
@@ -78,7 +79,7 @@ first built, the files that import this one appear once it finishes.
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base
-opens your branch's, from the compare button on a worktree's header. To compare with another
+opens your branch's, from the **⋯** menu on a worktree's header. To compare with another
 branch, pick it from the branch name in the changes tab's title. Comment on lines to send them to the thread working in that copy, or to the
 project's new thread.
 

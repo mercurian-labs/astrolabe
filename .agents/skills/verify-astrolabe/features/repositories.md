@@ -46,8 +46,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   opened. Under each: **Uncommitted · N** with
   **Review uncommitted changes →** and each changed file (`+a −d`), then the 20 files its
   commits changed most recently, with no heading (`review.getRecentFiles`,
-  `git log --name-only`). Each header has `button "Changes on <branch> against its base"`
-  (compare arrows, before the files toggle), opening `repo-diff:…:branch-range`. A
+  `git log --name-only`). Each header's `button "<label> worktree actions"` menu (the main checkout's too,
+  holding only this) has `menuitem "Changes against its base"`, opening `repo-diff:…:branch-range`. A
   section's rows sit indented under its header along a guide line. File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
@@ -79,7 +79,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `<branch> · worktree N` / `main checkout` / `not in a worktree`.
 - **Tree**: a worktree header's `button "Show its files"` / `"Show its changes"` swaps its
   rows for T3 Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree, per
-  worktree (`astrolabe:repository-worktree-files:v1`); the focused tab's worktree opens on
+  worktree (`astrolabe:repository-worktree-files:v2`, a map of picks); until picked the main
+  checkout shows its files and the others their changes. The focused tab's worktree opens on
   its own. Each panel is
   `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. In the sidebar
   its toolbar (refresh, search, expand all) is `hidden`; the header's **Search files** is
