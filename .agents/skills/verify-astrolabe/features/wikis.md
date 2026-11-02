@@ -38,17 +38,20 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a change request in a worktree"`
   beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
   worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
-  a typed title offers "New change request “<title>” in a worktree". The filter's foot
-  toggles **Show the file trees** / **Show as list** (`astrolabe:wiki-view:v1`; picking a
-  change request in the worktree picker switches to trees too). With several wikis and none
-  picked, tree mode reads only "Pick a wiki in the filter to see its files." Tree
-  mode drops the document list and the **Open changes** row for one collapsible section
-  per worktree (main under the wiki's main branch, a change request's under its title),
-  each a `FileBrowserPanel`; the focused tab's worktree opens on its own. They fold as Projects'
+  a typed title offers "New change request “<title>” in a worktree". There is no list or
+  tree mode: outside search the sidebar is each shown wiki's worktrees (`WikiWorktreeSections`;
+  with several wikis each under `button "<wiki>"` with its icon, open by default), as Projects
+  lists a repository's: main under the wiki's main branch, a change request's under its title.
+  Each header has Projects' toggle, `button "Show its files"` / `"Show its documents"`
+  (`astrolabe:wiki-worktree-files:v1`, documents by default). Main's documents are the old list
+  (**Open changes · N**, then the notes the filter keeps); a change request's are the `.md` and
+  `.base` files its amendments touch, rows named `<note>, in <change request>` opening inside
+  it. Files show a `FileBrowserPanel`. The main line and the focused tab's worktree open on
+  their own. They fold as Projects'
   do (`worktreeFolding.ts`, `FoldedWorktrees`): idle ones under `button "N more worktrees"` with
   `textbox "Find among <wiki>'s other worktrees"`. The filter nests each wiki's worktrees under
   it (`button "Show <wiki>'s worktrees"`, folded by default); unticking one hides it from the
-  trees (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
+  sidebar (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
   worktree staying, marked. A note or change request tab in a change request with a worktree
   shows its number before its ✕; opening such a note numbers the worktree
   (`useNumberWhenOpened`). A top-level `.md`

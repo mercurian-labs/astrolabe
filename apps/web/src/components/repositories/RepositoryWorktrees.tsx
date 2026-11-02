@@ -72,6 +72,7 @@ export function WorktreeHeader({
   renderMenuItems,
   filesShown = false,
   onToggleFiles,
+  rowsLabel = "changes",
   outsideFilter = false,
   folded = false,
   onCompare,
@@ -87,6 +88,8 @@ export function WorktreeHeader({
   /** Whether it shows its file tree in place of its changes, and the switch between them. */
   readonly filesShown?: boolean;
   readonly onToggleFiles?: () => void;
+  /** What its rows are, for the toggle's label: a repository's changes, a wiki's documents. */
+  readonly rowsLabel?: string;
   /** Whether the filter hides it, so it shows only while the focused tab is in it. */
   readonly outsideFilter?: boolean;
   /** Listed under a project's other worktrees: neither watched nor counted until opened. */
@@ -174,7 +177,7 @@ export function WorktreeHeader({
             render={
               <button
                 type="button"
-                aria-label={filesShown ? "Show its changes" : "Show its files"}
+                aria-label={filesShown ? `Show its ${rowsLabel}` : "Show its files"}
                 aria-pressed={filesShown}
                 onClick={onToggleFiles}
                 className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
@@ -184,7 +187,7 @@ export function WorktreeHeader({
             {filesShown ? <ListIcon className="size-3.5" /> : <ListTreeIcon className="size-3.5" />}
           </TooltipTrigger>
           <TooltipPopup side="top">
-            {filesShown ? "Show its changes" : "Show its files"}
+            {filesShown ? `Show its ${rowsLabel}` : "Show its files"}
           </TooltipPopup>
         </Tooltip>
       ) : null}

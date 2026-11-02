@@ -1,7 +1,7 @@
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { ProjectWorktree, WikiChangeRequestId } from "@t3tools/contracts";
 import { GitBranchPlusIcon, SaveIcon } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
 import { openTab } from "~/panes/arrangement";
 import { useWorkspaceOpenKeys } from "~/panes/workspace";
@@ -13,7 +13,6 @@ import {
   useProjectWorktrees,
   type WorktreesTarget,
 } from "~/state/worktrees";
-import { storedName } from "../projects/storedChoice";
 import { parseRepositoryTabKey, repositoryTabKey } from "../repositories/repositoryTabs";
 import {
   FoldedWorktrees,
@@ -21,8 +20,13 @@ import {
   SetAsideRows,
   WorktreeFiles,
   WorktreeHeader,
+  WorktreeRows,
 } from "../repositories/RepositoryWorktrees";
-import { worktreeFilesKey } from "../repositories/repositoryScope";
+import {
+  storedWorktreeFiles,
+  worktreeFilesKey,
+  worktreeFilesShown,
+} from "../repositories/repositoryScope";
 import { checkoutTag, foldWorktrees } from "../repositories/worktreeFolding";
 import { useOpenBranch } from "../repositories/worktreeActions";
 import {
@@ -44,8 +48,8 @@ import { noteNameOfFile } from "./wiki.logic";
 import { showWikiTab, wikiPanes } from "./wikiPanes";
 import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 
-/** Astrolabe: whether the Wikis sidebar lists documents or shows each worktree's file tree. */
-export const wikiView = storedName("astrolabe:wiki-view:v1", ["list", "tree"] as const);
+/** Astrolabe: each wiki worktree shows its documents unless someone switched it to its files. */
+const wikiWorktreeFiles = storedWorktreeFiles("astrolabe:wiki-worktree-files:v1");
 
 const CHANGE_REQUEST_BRANCH = /^cr\/(.+)$/;
 const NOT_NOTES = new Set(["readme.md", "agents.md", "claude.md"]);
@@ -74,22 +78,30 @@ export const worktreesOfWiki = (overview: WikiOverview): WorktreesTarget => ({
 });
 
 /**
- * A wiki's worktrees, each under its change request's title (its main line under the main
- * branch), with its file tree. A note opens as the wiki's own tab, read from that worktree's
- * change request; any other file opens as a file. The focused tab's worktree opens on its own.
+ * A wiki's worktrees as Projects lists a repository's: each under its change request's title (its
+ * main line under the main branch), showing its documents (`renderRows`) or its file tree. A note
+ * clicked in a tree opens as the wiki's own tab, read from that worktree's change request; any
+ * other file opens as a file. The main line and the focused tab's worktree start open.
  */
-export function WikiWorktreeTrees({
+export function WikiWorktreeSections({
   overview,
   focused,
   hidden,
+  renderRows,
 }: {
   readonly overview: WikiOverview;
   readonly focused: WikiTab | null;
   /** Worktree keys the filter hides; the focused tab's shows anyway, marked. */
   readonly hidden: ReadonlyArray<string>;
+  /** A worktree's documents: the main line's notes, or those its change request touches. */
+  readonly renderRows: (
+    worktree: ProjectWorktree,
+    changeRequestId: WikiChangeRequestId | null,
+  ) => ReactNode;
 }) {
   const owner = worktreesOfWiki(overview);
   const listed = useProjectWorktrees(owner);
+  const filesChoices = wikiWorktreeFiles.useValue();
   const saveWorktree = useAtomCommand(wikiEnvironment.saveWorktree);
   const [now] = useState(() => Date.now());
   const openKeys = useWorkspaceOpenKeys();
@@ -128,7 +140,7 @@ export function WikiWorktreeTrees({
     }
   }
   const expanded = (worktree: ProjectWorktree) =>
-    chosen.get(worktree.path) ?? (listed.worktrees.length === 1 || worktree.path === active?.path);
+    chosen.get(worktree.path) ?? (worktree.isMain || worktree.path === active?.path);
   const selectedPath =
     focusedHere?.kind === "note"
       ? (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??
@@ -197,6 +209,8 @@ export function WikiWorktreeTrees({
     const changeRequestId = changeRequestOf(worktree.branch);
     const label = wikiWorktreeLabel(overview, worktree);
     const open = folded ? (chosen.get(worktree.path) ?? false) : expanded(worktree);
+    const filesKey = worktreeFilesKey(overview.environmentId, worktree.path);
+    const files = worktreeFilesShown(filesChoices, filesKey, false);
     return (
       <Fragment key={worktree.path}>
         <ul role="presentation">
@@ -208,6 +222,12 @@ export function WikiWorktreeTrees({
             onToggle={() => setChosen((current) => new Map(current).set(worktree.path, !open))}
             outsideFilter={outside}
             folded={folded}
+            filesShown={files}
+            onToggleFiles={() => {
+              wikiWorktreeFiles.set({ ...wikiWorktreeFiles.get(), [filesKey]: !files });
+              setChosen((current) => new Map(current).set(worktree.path, true));
+            }}
+            rowsLabel="documents"
             renderMenuItems={(changedFiles) =>
               changeRequestId !== null && changedFiles !== null && changedFiles > 0 ? (
                 <MenuItem
@@ -230,8 +250,11 @@ export function WikiWorktreeTrees({
               ) : null
             }
           />
+          {open && !files ? (
+            <WorktreeRows>{renderRows(worktree, changeRequestId)}</WorktreeRows>
+          ) : null}
         </ul>
-        {open ? (
+        {open && files ? (
           <WorktreeFiles
             key={`${overview.environmentId}:${worktree.path}`}
             owner={owner}
@@ -283,7 +306,6 @@ export function WikiWorktreePicker({ overview }: { readonly overview: WikiOvervi
   };
   const placeIn = async (changeRequestId: string) => {
     await openBranch(target, `cr/${changeRequestId}`);
-    wikiView.set("tree");
   };
   return (
     <Combobox
