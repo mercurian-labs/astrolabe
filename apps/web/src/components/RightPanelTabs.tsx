@@ -161,7 +161,7 @@ function shouldOpenDefaultBrowserProfileFromMenuClick(pointerType: string | unde
   return pointerType !== "touch";
 }
 
-export const SURFACE_DISABLED_REASONS = {
+const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the Astrolabe desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
@@ -297,7 +297,7 @@ function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement })
   );
 }
 
-export function SurfaceMenuItem(props: {
+function SurfaceMenuItem(props: {
   available: boolean;
   disabledReason?: string;
   shortcut: string;

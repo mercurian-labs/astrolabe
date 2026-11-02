@@ -16,7 +16,7 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
 import { repositoryFileReveal } from "../repositoryFileReveal";
-import { repositoryPanes } from "../repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import {
   repositoryTabKey,
   type RepositoryLocationsTab,
@@ -45,7 +45,7 @@ type Checkout = Pick<RepositoryTab, "environmentId" | "projectId" | "cwd">;
 
 /** Opens a file of the checkout at a line, in the panes the view is in. */
 function useOpenFile(checkout: Checkout) {
-  const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
+  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   return (path: string, line: number) => {
     const { environmentId, projectId, cwd } = checkout;
     const key = repositoryTabKey({ kind: "file", environmentId, projectId, cwd, path });

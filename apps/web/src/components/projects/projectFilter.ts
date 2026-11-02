@@ -4,10 +4,8 @@ import { wikiScopeKey } from "../wiki/wikiTabs";
 import { storedName } from "./storedChoice";
 
 /**
- * The project filter every section's list shares. A project is a repository or a wiki: All, then
- * Repositories and each repository, then Wikis and each wiki, the headings meaning every project
- * of that kind. A wiki's checkout is a T3 Code project but is listed once, as the wiki; a section
- * listing one kind offers only that kind.
+ * The filter every section's list shares: All, then each project, then each wiki. A list holding
+ * both splits them under Projects and Wikis, the headings meaning every one of that kind.
  */
 export type ProjectFilterChoice =
   | { readonly kind: "all" }
@@ -42,8 +40,6 @@ export type ProjectFilterOption<Repository> =
       readonly overview: WikiOverview;
     };
 
-export type ProjectFilterKinds = "both" | "repositories" | "wikis";
-
 export const projectFilterValue = (choice: ProjectFilterChoice): string => {
   switch (choice.kind) {
     case "all":
@@ -70,54 +66,41 @@ export const projectFilterChoice = (option: ProjectFilterOption<unknown>): Proje
   }
 };
 
-/** The `environmentId:projectId` keys of the wikis' checkouts. */
-export function wikiCheckoutKeys(overviews: ReadonlyArray<WikiOverview>): ReadonlySet<string> {
-  return new Set(
-    overviews.flatMap((overview) =>
-      overview.wiki.projectId === null
-        ? []
-        : [`${overview.environmentId}:${overview.wiki.projectId}`],
-    ),
-  );
-}
-
 export function projectFilterOptions<Repository>({
   repositories,
   wikis,
-  kinds = "both",
 }: {
   readonly repositories: ReadonlyArray<ProjectFilterRepository<Repository>>;
   readonly wikis: ReadonlyArray<WikiOverview>;
-  readonly kinds?: ProjectFilterKinds;
 }): ReadonlyArray<ProjectFilterOption<Repository>> {
-  const options: ProjectFilterOption<Repository>[] = [];
-  if (kinds === "both") options.push({ value: "all", kind: "all", label: "All projects" });
-  if (kinds !== "wikis" && (repositories.length > 0 || kinds === "repositories")) {
-    options.push({ value: "repositories", kind: "repositories", label: "Repositories" });
-    for (const { key, label, repository } of repositories) {
-      options.push({
-        value: projectFilterValue({ kind: "repository", key }),
-        kind: "repository",
-        label,
-        repository,
-      });
-    }
+  const repositoryOptions = repositories.map(
+    ({ key, label, repository }): ProjectFilterOption<Repository> => ({
+      value: projectFilterValue({ kind: "repository", key }),
+      kind: "repository",
+      label,
+      repository,
+    }),
+  );
+  const wikiOptions = wikis.map((overview): ProjectFilterOption<Repository> => ({
+    value: projectFilterValue({
+      kind: "wiki",
+      key: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
+    }),
+    kind: "wiki",
+    label: overview.wiki.name,
+    overview,
+  }));
+  if (repositoryOptions.length > 0 && wikiOptions.length > 0) {
+    return [
+      { value: "all", kind: "all", label: "All" },
+      { value: "repositories", kind: "repositories", label: "Projects" },
+      ...repositoryOptions,
+      { value: "wikis", kind: "wikis", label: "Wikis" },
+      ...wikiOptions,
+    ];
   }
-  if (kinds !== "repositories" && (wikis.length > 0 || kinds === "wikis")) {
-    options.push({ value: "wikis", kind: "wikis", label: "Wikis" });
-    for (const overview of wikis) {
-      options.push({
-        value: projectFilterValue({
-          kind: "wiki",
-          key: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
-        }),
-        kind: "wiki",
-        label: overview.wiki.name,
-        overview,
-      });
-    }
-  }
-  return options;
+  const allLabel = wikiOptions.length > 0 ? "All wikis" : "All projects";
+  return [{ value: "all", kind: "all", label: allLabel }, ...repositoryOptions, ...wikiOptions];
 }
 
 /**

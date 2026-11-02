@@ -28,6 +28,7 @@ import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as WikiService from "../wiki/WikiService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
@@ -151,6 +152,8 @@ export const layer: Layer.Layer<
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
+    // Astrolabe: optional, so a runtime without wikis starts turns unchanged.
+    const wikis = yield* Effect.serviceOption(WikiService.WikiService);
 
     const recreateMissingWorktree = Effect.fn("ProviderTurnStartService.recreateMissingWorktree")(
       function* (input: {
@@ -1177,6 +1180,24 @@ export const layer: Layer.Layer<
           )
           .map((source) => source.id),
       );
+      const nativeThreadHasTurns =
+        nativeInputRunIds.size > 0 ||
+        (legacyInputRunIds.size > 0 &&
+          sameNativeThread &&
+          !acceptedAttempts.some((source) => source.nativeThreadId !== undefined));
+      // Astrolabe: a new native conversation learns its repository's linked wikis. Slash commands
+      // (and /goal) stay verbatim, since providers parse everything after them as arguments.
+      const wikiNote =
+        nativeThreadHasTurns || userText.trimStart().startsWith("/") || Option.isNone(wikis)
+          ? null
+          : yield* wikis.value.agentNote(projection.thread.projectId).pipe(
+              Effect.catch((cause) =>
+                Effect.logWarning("Could not read the wikis linked to this project.", {
+                  cause,
+                }).pipe(Effect.as(null)),
+              ),
+            );
+      const providerText = wikiNote === null ? userText : `${userText}\n\n${wikiNote}`;
       // Legacy attempts lack native ids; exclude recovered attachments absent from the replacement thread.
       const nativeContextEstimate = Effect.gen(function* () {
         return sameNativeThread
@@ -1268,7 +1289,7 @@ export const layer: Layer.Layer<
               return handoffBudget({
                 tokenCap,
                 modelContextWindow,
-                userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
+                userText: restartNote === "" ? providerText : `${restartNote}\n\n${providerText}`,
                 attachments: message.attachments,
                 providerThread: budgetProviderThread,
                 nativeContextEstimate:
@@ -1318,8 +1339,8 @@ export const layer: Layer.Layer<
               ...turnInput.message,
               text:
                 context === "" || goalCommand
-                  ? userText
-                  : `${context}\n\nUser message:\n${userText}`,
+                  ? providerText
+                  : `${context}\n\nUser message:\n${providerText}`,
             },
           }).pipe(
             // Clear pending handoff markers for refused prompts so the next turn retains the native session.
@@ -1389,18 +1410,14 @@ export const layer: Layer.Layer<
               .filter((turn) => turn.providerThreadId === providerThread.id)
               .map((turn) => turn.ordinal),
           ) + 1,
-        nativeThreadHasTurns:
-          nativeInputRunIds.size > 0 ||
-          (legacyInputRunIds.size > 0 &&
-            sameNativeThread &&
-            !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
+        nativeThreadHasTurns,
         shouldStartProviderTurn: runControls.shouldStartProviderTurn,
         shouldFinalizeRun: runControls.shouldFinalizeRun,
         hasUnpairedRunInterruptRequest: runControls.hasUnpairedRunInterruptRequest,
         loadRunInterruptReason: runControls.loadRunInterruptReason,
         message: {
           messageId: message.id,
-          text: userText,
+          text: providerText,
           attachments: message.attachments,
           createdBy: message.createdBy,
           creationSource: message.creationSource,

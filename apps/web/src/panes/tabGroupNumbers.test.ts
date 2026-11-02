@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { CHAT_TABS_STORAGE_KEY } from "~/chatTabs/chatTabsStore";
 import { openTab, startingArrangement } from "./arrangement";
-import { GROUP_PANEL_RUNS_STORAGE_KEY, openRunEntries } from "./groupPanelRuns";
 import { arrangementStorageKey } from "./persistence";
 import {
   lowestFreeNumber,
@@ -73,20 +71,22 @@ describe("releasing tab groups' numbers", () => {
     const three = openTab(startingArrangement(), "wiki:a");
     const storage = memoryStorage({
       [arrangementStorageKey("env:thread")]: JSON.stringify(one),
-      "astrolabe:wiki-panes:v1": JSON.stringify(two),
+      "astrolabe:workspace:v1": JSON.stringify(two),
       "astrolabe:something-else": JSON.stringify(three),
       [arrangementStorageKey("broken")]: "{",
     });
     expect([...storedTabKeys(storage)].sort()).toEqual(["chat:a", "chat:b"]);
   });
 
-  it("counts the chat tabs and the change groups' shared runs as open", () => {
-    const runs = openRunEntries({}, "change-group:env:g1", [{ kind: "group" }]);
+  it("counts the shared panes' tabs as open, those set aside included", () => {
     const storage = memoryStorage({
-      [CHAT_TABS_STORAGE_KEY]: JSON.stringify({ state: { keys: ["env:t1", 2] }, version: 1 }),
-      [GROUP_PANEL_RUNS_STORAGE_KEY]: JSON.stringify({ state: { runs }, version: 1 }),
+      "astrolabe:workspace:v1": JSON.stringify({
+        ...openTab(startingArrangement(), "chat:a"),
+        owners: { "change-group:env:g1": "change-group:env:g1" },
+        parked: { "change-group:env:g1": { pane: "p0", index: 1, active: false } },
+      }),
     });
-    expect([...storedTabKeys(storage)].sort()).toEqual(["change-group:env:g1", "env:t1"]);
+    expect([...storedTabKeys(storage)].sort()).toEqual(["change-group:env:g1", "chat:a"]);
   });
 });
 

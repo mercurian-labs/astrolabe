@@ -1,7 +1,6 @@
 import { useAtomSet } from "@effect/atom-react";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   searchWikiListEntries,
   wikiListEntries,
@@ -24,9 +23,7 @@ import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { scopedProjectKey } from "../../lib/scopedEntities";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
-import { useProjects } from "../../state/entities";
 import { changeRequestProjectKindAtom, changeRequestWikiScopeAtom } from "../../state/wiki";
 import { useWorkspaceState } from "../../state/workspace";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
@@ -65,7 +62,6 @@ export function WikisScreen() {
   const workspace = useWorkspaceTabs()!;
   const insets = useSafeAreaInsets();
   const { environments } = useWorkspaceState();
-  const projects = useProjects();
   const listRef = useRef<LegendListRef>(null);
   const [initialOffset] = useState(() => workspace.getScrollOffset("wikis"));
   const tab = workspace.state.tabs.wikis;
@@ -97,19 +93,9 @@ export function WikisScreen() {
       ),
     [overviews, connected],
   );
-  const projectByKey = useMemo(
-    () =>
-      new Map<string, EnvironmentProject>(
-        projects.map((project) => [scopedProjectKey(project.environmentId, project.id), project]),
-      ),
-    [projects],
-  );
   const items = useMemo(
-    () =>
-      buildWikiListItems(searchWikiListEntries(wikiListEntries(overviews, scope), query), {
-        projects: projectByKey,
-      }),
-    [overviews, scope, query, projectByKey],
+    () => buildWikiListItems(searchWikiListEntries(wikiListEntries(overviews, scope), query)),
+    [overviews, scope, query],
   );
 
   const openDocument = useCallback(
@@ -170,7 +156,6 @@ export function WikisScreen() {
           return (
             <WikiDocumentRow
               entry={item.entry}
-              project={item.project}
               showTrailingDivider={item.showTrailingDivider}
               onSelect={openDocument}
             />

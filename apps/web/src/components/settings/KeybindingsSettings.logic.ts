@@ -386,6 +386,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "commandLine.open": "Command Palette",
   "section.new": "New Thread or Document",
   "section.threads": "Section: Agents",
+  "section.repositories": "Section: Projects",
   "section.pullRequests": "Section: Changes",
   "tab.close": "Close Tab or Pane Tab",
   "draft.write": "Send Draft or Save Note",
@@ -420,13 +421,15 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "lsp.format": "Format Document",
   "lsp.codeActions": "Show Code Actions",
   "file.save": "Save File",
-  "repository.localGraph": "Repositories: Open Local Graph",
   "multibuffer.expand": "Show More Lines Around Excerpt",
   "multibuffer.openExcerpt": "Open Excerpt in Its File",
   "multibuffer.nextFile": "Next File in Results",
   "multibuffer.previousFile": "Previous File in Results",
-  "multibuffer.problems": "Repositories: Show Problems",
+  "multibuffer.problems": "Projects: Show Problems",
   "projectSearch.openInEditor": "Open Search Results in Editor",
+  "repository.localGraph": "Projects: Open Local Graph",
+  "tab.toggleLink": "Tabs: Link or Unlink Tab",
+  "tab.newLinked": "Tabs: New Linked Tab",
 };
 
 export function commandLabel(command: KeybindingCommand): string {

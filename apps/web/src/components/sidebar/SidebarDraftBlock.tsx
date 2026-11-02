@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { cn, isMacPlatform } from "~/lib/utils";
+import { cn } from "~/lib/utils";
 import { resolveSidebarRowAccessibility } from "../Sidebar.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -19,7 +19,6 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../../composerDraftStore";
-import { rowClickIntent } from "../../tabNavigation.logic";
 import { draftSurfaceClassName } from "./SidebarThreadRow";
 import {
   SIDEBAR_ROW_SURFACE_CLASS,
@@ -35,8 +34,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   project: ProjectFaviconProject | null;
   projectDisplayName: string | null;
   isActive: boolean;
-  /** Astrolabe: `newTab` opens it in a new chat tab rather than the one in front. */
-  onNavigate: (draftId: DraftId, options?: { readonly newTab?: boolean }) => void;
+  onNavigate: (draftId: DraftId) => void;
   onDiscard: (draftId: DraftId) => void;
   onContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
 }) {
@@ -63,13 +61,9 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     projectDisplayName: props.projectDisplayName,
     isActive: props.isActive,
   });
-  // Astrolabe: Option-click and the middle button open the draft in a new chat tab.
-  const handleActivate = (event: ReactMouseEvent) =>
-    onNavigate(draftId, {
-      newTab: rowClickIntent(event, isMacPlatform(navigator.platform)) === "new-tab",
-    });
+  const handleActivate = () => onNavigate(draftId);
   const handleAuxClick = (event: ReactMouseEvent) => {
-    if (event.button === 1) handleActivate(event);
+    if (event.button === 1) handleActivate();
   };
   const handleKeyDown = (event: ReactKeyboardEvent) => {
     // Keys targeting the nested discard button belong to the button:
@@ -168,7 +162,7 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   projectDisplayNameByKey: ReadonlyMap<string, string>;
   scopedProjectKeys: ReadonlySet<string> | null;
   routeDraftId: string | null;
-  onNavigateToDraft: (draftId: DraftId, options?: { readonly newTab?: boolean }) => void;
+  onNavigateToDraft: (draftId: DraftId) => void;
   onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
 }) {
   const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);

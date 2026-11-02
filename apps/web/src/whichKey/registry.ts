@@ -18,7 +18,7 @@ const GROUP_LABELS: Readonly<Record<string, string>> = {
   s: "Sidebar",
   w: "Wikis",
   e: "Editor",
-  r: "Repositories",
+  r: "Projects",
 };
 
 /** Names of built-in groups below the root, by their keys from it. */

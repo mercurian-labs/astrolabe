@@ -133,6 +133,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.wikiSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.wikiIndex]: AuthFilesystemReadScope,
   [WS_METHODS.wikiReadNote]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiQuery]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,
   // Astrolabe: opening a document reads the file; edits come from CLIENT_GUARDED_RPC_SCOPES.

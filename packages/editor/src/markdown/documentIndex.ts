@@ -32,6 +32,8 @@ export interface DocumentIndex {
   /** Tables and `$$` blocks, which render as block widgets replacing their lines. */
   tables: readonly IndexedTable[];
   mathBlocks: readonly SyntaxNode[];
+  /** Fenced code blocks, which a host may draw itself where they start a line. */
+  fencedCode: readonly SyntaxNode[];
   /** Every definition as one string: equal strings mean links resolve the same way. */
   definitionsKey: string;
 }
@@ -78,6 +80,7 @@ export function documentIndex(state: EditorState): DocumentIndex {
   const foldableCallouts: FoldableCallout[] = [];
   const tables: IndexedTable[] = [];
   const mathBlocks: SyntaxNode[] = [];
+  const fencedCode: SyntaxNode[] = [];
   let frontmatter: DocumentIndex["frontmatter"] = null;
   tree.iterate({
     enter(ref) {
@@ -122,6 +125,9 @@ export function documentIndex(state: EditorState): DocumentIndex {
         case "MathBlock":
           mathBlocks.push(ref.node);
           return false;
+        case "FencedCode":
+          fencedCode.push(ref.node);
+          return false;
         case "Blockquote": {
           const callout = calloutOf(state, ref.node);
           if (callout?.fold === "-") {
@@ -147,6 +153,7 @@ export function documentIndex(state: EditorState): DocumentIndex {
     foldableCallouts,
     tables,
     mathBlocks,
+    fencedCode,
     definitionsKey,
   };
   indexes.set(tree, index);

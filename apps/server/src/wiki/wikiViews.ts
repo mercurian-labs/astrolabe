@@ -6,6 +6,7 @@
  */
 import {
   backlinks,
+  baseBlocks,
   findMap,
   key,
   noteName,
@@ -15,7 +16,7 @@ import {
   type WikiFiles,
   type WikiIndex,
 } from "@mercurian/wiki";
-import type { WikiId, WikiIndexResult, WikiNoteResult } from "@t3tools/contracts";
+import type { WikiId, WikiIndexResult, WikiNoteResult, WikiQueryInput } from "@t3tools/contracts";
 
 /** Each distinct link target of a note, as first written, compared case-insensitively. */
 const outgoingTargets = (index: WikiIndex, name: string): ReadonlyArray<string> => {
@@ -56,6 +57,10 @@ export const indexResult = (
     commit,
     notes: notes.map((note) => ({ ...note, incoming: incoming.get(key(note.name))?.size ?? 0 })),
     links,
+    bases: [...index.bases.keys()].map((file) => {
+      const editedAt = editTimes.get(file);
+      return editedAt === undefined ? { file } : { file, editedAt };
+    }),
     maps: [...index.maps].map(([file, map]) => ({
       file,
       name: map.name,
@@ -92,6 +97,44 @@ export const noteResult = (
     outgoing: outgoingTargets(index, name),
     incoming: backlinks(index, name),
   };
+};
+
+/** Where a query's base comes from: its YAML, and the file `this` names inside it. */
+export type LocatedBase =
+  | { readonly source: string; readonly self: string | undefined }
+  | { readonly problem: "not-found" | "invalid"; readonly message: string };
+
+/**
+ * A `.base` file, else a note's first ```base block, by `base`; or `source` as a block in
+ * `note` holds it, unsaved edits and all.
+ */
+export const locateBase = (
+  index: WikiIndex,
+  input: Pick<WikiQueryInput, "base" | "source" | "note">,
+): LocatedBase => {
+  if ((input.base === undefined) === (input.source === undefined)) {
+    return { problem: "invalid", message: "Name a base, or give a base's source; not both." };
+  }
+  if (input.source !== undefined) {
+    if (input.note === undefined) return { source: input.source, self: undefined };
+    const note = index.notes.get(key(noteName(input.note)));
+    return { source: input.source, self: note?.file ?? `${noteName(input.note)}.md` };
+  }
+  const name = input.base ?? "";
+  const wanted = [key(name), key(`${name}.base`)];
+  for (const candidate of wanted) {
+    for (const [file, source] of index.bases) {
+      if (key(file) === candidate) return { source, self: file };
+    }
+  }
+  const note = index.notes.get(key(noteName(name)));
+  if (note === undefined) {
+    return { problem: "not-found", message: `No base or note is named ${name}.` };
+  }
+  const [block] = baseBlocks(note.source);
+  return block === undefined
+    ? { problem: "invalid", message: `${note.name} holds no \`\`\`base block.` }
+    : { source: block, self: note.file };
 };
 
 export interface WikiLinksResult {

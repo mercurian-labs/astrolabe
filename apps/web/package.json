@@ -34,7 +34,6 @@
     "@lezer/common": "^1.5.2",
     "@mercurian/editor": "workspace:*",
     "@mercurian/graph": "workspace:*",
-    "@mercurian/wiki": "workspace:*",
     "@mercurian/wiki-editor": "workspace:*",
     "@noble/hashes": "catalog:",
     "@pierre/diffs": "catalog:",

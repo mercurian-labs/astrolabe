@@ -1,10 +1,8 @@
 # Sidebar header
 
 The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark (the
-rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds and, in
-each section with tabs (Agents, Wikis, Repositories, and Changes where the server
-supports pull requests), **Back** and **Forward** at its right end (`[data-tab-history]`, from
-`SidebarTabHistory.tsx`; see chat-tabs.md, wikis.md, repositories.md and pull-requests.md). It has a bottom border in
+rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds. Back
+and Forward live in each tab's header, not here (panes.md). It has a bottom border in
 line with the tab strip's and keeps the icon rail's colour (`bg-sidebar`), so the
 rail's title-bar cell and this row read as one band. Below it the sidebar's body
 (section title and list) takes the main area's background
@@ -13,7 +11,7 @@ sidebar colour. There is no sidebar artwork: the identification setting offers
 the version pill or none, and a stored "artwork" shows the pill.
 
 Below it, the sidebar opens on its **section title**, as ChatGPT's does: a large
-"Agents" (or "Wikis", "Repositories", "Changes"; see [wikis.md](wikis.md)) heading with the section's
+"Agents" (or "Wikis", "Projects", "Changes"; see [wikis.md](wikis.md)) heading with the section's
 actions at its right end.
 
 ## Sub-features
@@ -22,8 +20,7 @@ actions at its right end.
   as a rail button, 6px corners) heads the rail. Where the open sidebar meets the rail and the
   title bar, `[data-app-rail-corner]` rounds the join with the tab's 6px radius (`--radius-md`). With the
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
-  corner the same way, where the rail's edge meets the title bar's bottom border (strips,
-  and the Settings and Usage headers).
+  corner the same way, where the rail's edge meets the title bar's bottom border (strips).
 - Title row: heading **Agents**, then **Search threads**, **Filter threads**, **New thread**.
   The filter is a multi-select combobox (`projects/useThreadsFilter.ts` over the pure model in
   `projects/threadsFilter.ts` and the shared `projects/projectFilter.ts`; pills and checkboxes
@@ -31,17 +28,18 @@ actions at its right end.
   `Filter threads`, or `Filter threads (filtered)` with a dot while anything is picked. Its
   popup has a `Search filters` field (placeholder `Filter...`; "No matching filters." when
   nothing matches), then a **Status** group (Needs you, Working, Errored, each with the count
-  of visible threads in the picked projects) and a **Projects** group: All projects, a
-  **Repositories** heading and each repository, a **Wikis** heading and each wiki (a wiki's
-  checkout is listed once, as the wiki; a heading shows only when it has entries), and a last
-  **New project** row. Every row is a checkbox and picking keeps the popup open. Values in one
-  group widen, the two groups narrow. With no project picked, All projects and every row under
-  it show ticked; unticking one keeps the rest, and ticking every project or unticking the
-  last is All projects again. A heading stands for every project of its kind, including later
-  ones; unticking one project under a ticked heading turns it into picks of the others and
-  the heading shows a minus (partial). The filter is kept in localStorage
-  `astrolabe:threads-filter:v1` as `{projects, kinds, statuses}` (removed when empty; the old
-  single pick is not read). An empty list reads "No threads match these filters".
+  of visible threads in the picked projects) and a **Projects** group: All projects, then each
+  project (wikis are not projects, so none is listed); All projects drops out while the field
+  holds a query. Under the list, `button "New project"` is a plain button, not an option.
+  Every option is a checkbox and picking keeps the popup open. Values in one group widen, the
+  two groups narrow. With no project picked, All projects and every project show ticked;
+  unticking one keeps the rest, and ticking every project or unticking the last is All
+  projects again. The filter is kept in localStorage `astrolabe:threads-filter:v1` as
+  `{projects, statuses}`, `projects` being project group keys (a repository identity such as
+  `github.com/owner/name`), not names; it is removed when empty, and an older stored `kinds` is
+  ignored on read but stays in storage until the next pick. The trigger and the pills show only
+  with at least one project; with none the list reads "No projects yet" with
+  `button "Add project"`. An empty list reads "No threads match these filters".
 - **Pills** (`[aria-label='Thread filters']`, under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
@@ -60,28 +58,36 @@ actions at its right end.
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
   list, the "New thread in…" picker. It is disabled with no projects. Each project row in
-  the filter's popup has a `Project settings for <name>` gear.
+  the filter's popup has a gear named only by its title, `[title="Project settings for <name>"]`
+  (it is `aria-hidden` with `tabIndex=-1`); right-clicking the row also opens project settings.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
-  (Agents, Wikis, Repositories, Changes when the server supports pull requests),
+  (Agents, Wikis, Projects, Changes when the server supports pull requests),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
   (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a link (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
   Rail mark).
-  Usage has no sidebar: there it shows collapsed and the toggle is gone (`mod+b` does
-  nothing), and leaving Usage restores the open state. The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Agents returns to the last chat. Repositories and Changes are
-  sections like Wikis, each with its own sidebar and panes ([repositories.md](repositories.md),
+  Usage and Settings open as full-screen modals (`dialog "Usage"`, `dialog "Settings"`) over
+  the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
+  hidden, but `mod+b` still toggles the sidebar behind the modal. While one is open, two rail
+  buttons carry `aria-current="page"`: the section underneath and Usage (or Settings). The rail's sections are the keyboard menu's Go to
+  (`useAppSections`). Agents goes to the focused chat's (or focused linked tab's) thread,
+  else `/`; nothing comes forward (`panes/agentsRoute.ts`, `useNavigateToAgents` in
+  `sidebar/mainAppLocation.ts`). In Agents a row is lit only while that thread's chat or one
+  of its linked tabs has focus; a focused document, file, empty tab or pull request lights
+  none (`focusedChatOf` in `panes/workspace.ts`). Every section shares one set of panes;
+  only the sidebar differs ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
   monogram, is absent; the header row carries no brand at any width, and below 768px it starts
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
-  account menu), Wikis, Repositories, Changes (when the server supports pull requests) and
-  Usage; while on Wikis, Repositories or Changes, that section's button reads Agents
-  instead. On Settings (legacy `/projects/…` links included) and Usage it shows only Back,
-  beside the account menu when there is one.
+  account menu), Wikis, Projects, Changes (when the server supports pull requests) and
+  Usage; while on Wikis, Projects or Changes, that section's button reads Agents
+  instead. Only legacy `/projects/…` pages show Back there (beside the account menu when
+  there is one); Settings and Usage keep the footer of the section underneath, and their modal
+  covers the sheet.
 - **Toggle main sidebar** is drawn over the rail's title-bar cell, above the monogram (same icon,
   tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while open; outside the rail's list,
   so `j`/`k` no longer reach it). On narrow windows (no rail) the toggle stays in the
@@ -89,10 +95,9 @@ actions at its right end.
   bottom-border row, so it meets the sidebar header's border square at the
   sidebar's top-left corner. The open sidebar's right edge runs the full window
   height, through the title bar (`[data-app-sidebar]::after`); collapsed there is
-  none. Collapsed, the start of the main title bar (where its content starts) holds the
-  section's Back and Forward (`[data-sidebar-control] [data-tab-history]`, in sections
-  with tabs only), not Search or the filter. Settings has no tabs: its header
-  (Settings / page) is the title bar, as Usage's is.
+  none. Collapsed, the main title bar holds no sidebar actions: not Back/Forward, Search or
+  the filter. Settings and Usage have no tabs: their headers
+  (Settings / page, Usage / environment / provider) sit inside their modals.
 - **Thread rows** (`[data-testid=sidebar-row-card]`): one line with the project picture, the
   title, the terminal and machine glyphs, and the age or status; a smaller second line only when
   the thread has something particular, its parts joined by `·`: `Draft`
@@ -134,21 +139,21 @@ The trigger is a `role=combobox` button, and status rows carry their count in th
 (`Working3`), so match them with a leading regex. Clicking the trigger through
 `preview_evaluate` (`.click()`) does not open Base UI's popup; use `preview_act click`. Read
 the boxes from the drawn checkbox: `[...document.querySelectorAll('[role=option]')].map(o =>
-[o.textContent, o.querySelector('svg.lucide-check') ? 'x' : o.querySelector('svg.lucide-minus')
-? '-' : ' '])`. The sidebar's own search looks only inside the filter ("No threads found"
+[o.textContent, o.querySelector('svg.lucide-check') ? 'x' : ' '])` (there is no partial
+state). The sidebar's own search looks only inside the filter ("No threads found"
 for a hidden thread), so prove the reveal from the Search palette instead: Cmd+K `/`, type
 the hidden thread's title, Enter; the stored filter is gone and its row shows.
 
 **Proof:** each action's result (the field focused and
 `[role=listbox][aria-label="Thread search results"] [role=option]` rows as you
 type, the filter popup with its `Search filters` field, the Status and Projects groups and
-the New project row, every box ticked under All projects, the stored filter and the pill
+the New project button, every box ticked under All projects, the stored filter and the pill
 after a pick, the row count dropping to the picked projects and returning after the pill's ×,
 the picker or a new `/draft/` URL), plus a saved screenshot of the rows and pills. Rows in the accessibility
 tree are not proof they paint: for `[data-app-rail-mark]`, `[data-app-rail-toggle] button` and
 the first search result, take the `getBoundingClientRect` centre (nonzero height) and check
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
-read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill and the Back/Forward buttons are not clipped at the default sidebar width,
+read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
 `getBoundingClientRect().height` is 26 with one line and 42 with two (its `li` adds 2).
 
@@ -157,6 +162,8 @@ and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-
 - The order of the title row's actions is a design decision still open (search,
   filter, new today). Assert presence, not order, unless the change is about order.
 - Scope locators: `navigation "Agents"` (the sidebar), the rail's `button "Agents"`
-  and `heading "Agents"` share the name.
+  and `heading "Agents"` share the name, and so do Projects', Wikis' and Changes'. A diff
+  tab's header breadcrumb also renders `nav[aria-label="Changes"]`. Scope to
+  `nav[aria-label="Sections"]` for the rail and to the sidebar for a section's lists.
 - Upstream reworks `Sidebar.tsx` often. After a sync, check that all three
   actions still exist with these names.

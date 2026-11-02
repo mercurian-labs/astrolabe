@@ -55,6 +55,7 @@ import {
   filterListing,
   gitFailed,
   isManifest,
+  isTsConfig,
   parseLsTree,
   parseStatus,
   runGit,
@@ -63,12 +64,15 @@ import {
   type View,
 } from "./checkout.ts";
 import { decodeJson, type StoredFacts, type StoredImport } from "./facts.ts";
+import { parseNodeId } from "./levels.ts";
 import * as Queries from "./queries.ts";
 import {
   CheckoutModules,
   Packages,
   readManifest,
+  readTsConfig,
   type FileView,
+  type TsConfig,
   type WorkspacePackage,
 } from "./resolve.ts";
 import {
@@ -108,6 +112,10 @@ export class CodeIndex extends Context.Service<
     readonly find: (input: CodeFindInput) => Effect.Effect<CodeFindResult, CodeIndexError>;
     readonly changes: (input: CodeChangesInput) => Effect.Effect<CodeChanges, CodeIndexError>;
     readonly map: (input: CodeMapInput) => Effect.Effect<CodeMap, CodeIndexError>;
+    /** Which of `ids` (files, folders, `module:` folders, `path#Qualified.name`) the checkout lacks. */
+    readonly checkNodes: (
+      input: CodeCheckout & { readonly ids: ReadonlyArray<string> },
+    ) => Effect.Effect<{ readonly unknown: ReadonlyArray<string> }, CodeIndexError>;
   }
 >()("t3/codeIndex/CodeIndex") {}
 
@@ -133,6 +141,7 @@ export const layerPlaceholder = Layer.succeed(
     find: notBuilt,
     changes: notBuilt,
     map: notBuilt,
+    checkNodes: notBuilt,
   }),
 );
 
@@ -299,7 +308,9 @@ interface Repo {
   readonly listings: Map<string, Listing>;
   /** The tree of the project's checkout at the last build. */
   builtTree: string | null;
+  /** Manifests and tsconfigs read, by blob. */
   readonly manifests: Map<string, WorkspacePackage | null>;
+  readonly tsConfigs: Map<string, TsConfig | null>;
   readonly mergeBases: Map<string, string | null>;
   /** The objects the repository's branches, worktrees and checkpoints reached at the last look. */
   reachable: { readonly tips: ReadonlySet<string>; readonly objects: ReadonlySet<string> } | null;
@@ -834,36 +845,47 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     failure: null,
   });
 
-  /** The repository a project's folder is in, or null when it is not in one. */
+  /** The repository a folder is in and where in it (`apps/server`, or ""), or null outside one. */
   const locate = (cwd: string) =>
     git
       .execute({
         operation: "codeIndex.locate",
         cwd,
-        args: ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"],
+        args: [
+          "rev-parse",
+          "--path-format=absolute",
+          "--show-toplevel",
+          "--git-common-dir",
+          "--show-prefix",
+        ],
         allowNonZeroExit: true,
       })
       .pipe(
         Effect.map((result) => {
-          const [root, commonDir] = result.stdout.trim().split("\n");
-          return result.exitCode === 0 && root !== undefined && commonDir !== undefined
-            ? { root, commonDir }
+          // The prefix line is empty at the top level, so the output is not trimmed first.
+          const [root, commonDir, prefix] = result.stdout.split("\n");
+          return result.exitCode === 0 && root && commonDir && prefix !== undefined
+            ? { root, commonDir, prefix: prefix.replace(/\/$/, "") }
             : null;
         }),
         Effect.orElseSucceed(() => null),
       );
 
-  /** Match the repositories to the projects and their settings; start the builds that changed. */
-  const reconcile = Effect.fn("CodeIndex.reconcile")(function* () {
+  /** Every project but the wikis, with its index settings: what the index may hold. */
+  const indexedProjects = Effect.fn("CodeIndex.indexedProjects")(function* () {
     const settings = yield* serverSettings.getSettings;
     const shells = yield* projects.listShells();
     const registered = yield* wikis.list.pipe(Effect.orElseSucceed(() => ({ wikis: [] })));
-    const wikiProjects = new Set(registered.wikis.flatMap((wiki) => wiki.projectId ?? []));
     const wikiRoots = new Set(registered.wikis.map((wiki) => wiki.root));
+    return shells
+      .filter((shell) => !wikiRoots.has(shell.workspaceRoot))
+      .map((shell) => ({ shell, wanted: settingsFor(settings, shell.id) }));
+  });
+
+  /** Match the repositories to the projects and their settings; start the builds that changed. */
+  const reconcile = Effect.fn("CodeIndex.reconcile")(function* () {
     const seen = new Set<ProjectId>();
-    for (const shell of shells) {
-      if (wikiProjects.has(shell.id) || wikiRoots.has(shell.workspaceRoot)) continue;
-      const wanted = settingsFor(settings, shell.id);
+    for (const { shell, wanted } of yield* indexedProjects()) {
       let repo = repos.get(shell.id);
       if (repo === undefined) {
         const located = yield* locate(shell.workspaceRoot);
@@ -881,6 +903,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           listings: new Map(),
           builtTree: null,
           manifests: new Map(),
+          tsConfigs: new Map(),
           mergeBases: new Map(),
           reachable: null,
           uncommittedSeen: new Map(),
@@ -1013,9 +1036,9 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       return Effect.succeed(repo);
     });
 
-  /** The checkout's top level, when it is a checkout of the repository. */
-  const checkoutRoot = Effect.fn("CodeIndex.checkoutRoot")(function* (repo: Repo, cwd: string) {
-    if (cwd === repo.root) return repo.root;
+  /** A checkout of the repository: its top level, and where the folder asking sits in it. */
+  const checkoutOf = Effect.fn("CodeIndex.checkoutOf")(function* (repo: Repo, cwd: string) {
+    if (cwd === repo.root) return { root: repo.root, prefix: "" };
     const located = yield* locate(cwd);
     if (located === null || located.commonDir !== repo.commonDir) {
       return yield* new CodeIndexError({
@@ -1023,12 +1046,18 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         message: `${cwd} is not a checkout of this repository.`,
       });
     }
-    return located.root;
+    return { root: located.root, prefix: located.prefix };
   });
 
-  /** The repository's own packages, by the manifests the checkout holds. */
-  const packagesOf = Effect.fn("CodeIndex.packagesOf")(function* (repo: Repo, view: View) {
-    const unread = [...view.manifests].filter(([, blob]) => !repo.manifests.has(blob));
+  /** The checkout's modules: its files, and the packages and path aliases its manifests name. */
+  const modulesOf = Effect.fn("CodeIndex.modulesOf")(function* (repo: Repo, view: View) {
+    const known = (file: string, blob: string) =>
+      (isTsConfig(file) ? repo.tsConfigs : repo.manifests).has(blob);
+    const keep = (file: string, blob: string, text: string | null) => {
+      if (isTsConfig(file)) repo.tsConfigs.set(blob, text === null ? null : readTsConfig(text));
+      else repo.manifests.set(blob, text === null ? null : readManifest(file, text));
+    };
+    const unread = [...view.manifests].filter(([file, blob]) => !known(file, blob));
     const fromGit: Array<[string, string]> = [];
     for (const [file, blob] of unread) {
       if (view.root === null || !view.uncommitted.has(file)) {
@@ -1038,7 +1067,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       const text = yield* fs
         .readFileString(path.join(view.root, file))
         .pipe(Effect.orElseSucceed(() => null));
-      repo.manifests.set(blob, text === null ? null : readManifest(file, text));
+      keep(file, blob, text);
     }
     if (fromGit.length > 0) {
       const texts = yield* Effect.tryPromise({
@@ -1052,20 +1081,27 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         },
         catch: gitFailed,
       });
-      for (const [index, [file, blob]] of fromGit.entries()) {
-        const text = texts[index];
-        repo.manifests.set(blob, text === undefined ? null : readManifest(file, text));
-      }
+      for (const [index, [file, blob]] of fromGit.entries()) keep(file, blob, texts[index] ?? null);
     }
     const found: Array<WorkspacePackage> = [];
-    for (const blob of view.manifests.values()) {
-      const manifest = repo.manifests.get(blob);
-      if (manifest !== null && manifest !== undefined) found.push(manifest);
+    const tsConfigs = new Map<string, TsConfig>();
+    for (const [file, blob] of view.manifests) {
+      if (isTsConfig(file)) {
+        const config = repo.tsConfigs.get(blob);
+        if (config) tsConfigs.set(file, config);
+      } else {
+        const manifest = repo.manifests.get(blob);
+        if (manifest) found.push(manifest);
+      }
     }
-    return new Packages(found);
+    return new CheckoutModules(view.files, new Packages(found), tsConfigs);
   });
 
-  const snapshotOf = Effect.fn("CodeIndex.snapshotOf")(function* (repo: Repo, view: View) {
+  const snapshotOf = Effect.fn("CodeIndex.snapshotOf")(function* (
+    repo: Repo,
+    view: View,
+    prefix: string,
+  ) {
     const versionOf = (file: string) => {
       const blob = view.files.get(file);
       return blob === undefined ? undefined : repo.versions.get(file, blob);
@@ -1105,10 +1141,11 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
       }
       return out;
     });
-    const packages = yield* packagesOf(repo, view);
+    const modules = yield* modulesOf(repo, view);
     return {
       view,
-      modules: new CheckoutModules(view.files, packages),
+      prefix,
+      modules,
       linesOf: (file) => {
         const version = versionOf(file);
         return version?.state === VersionState.parsed ? version.lines : null;
@@ -1175,10 +1212,10 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     repo: Repo,
     cwd: string,
   ) {
-    const root = yield* checkoutRoot(repo, cwd);
+    const { root, prefix } = yield* checkoutOf(repo, cwd);
     const view = yield* viewOfCheckout(repo, root);
     yield* topUp(repo, view, root);
-    return yield* snapshotOf(repo, view);
+    return yield* snapshotOf(repo, view, prefix);
   });
 
   const refSnapshot = Effect.fn("CodeIndex.refSnapshot")(function* (
@@ -1186,10 +1223,10 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     cwd: string,
     ref: string,
   ) {
-    const root = yield* checkoutRoot(repo, cwd);
+    const { root, prefix } = yield* checkoutOf(repo, cwd);
     const view = yield* viewOfRef(repo, root, ref);
     yield* topUp(repo, view, root);
-    return yield* snapshotOf(repo, view);
+    return yield* snapshotOf(repo, view, prefix);
   });
 
   /** Files that differ from the default branch's merge-base, and uncommitted ones. */
@@ -1246,26 +1283,31 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
   const localGraph: CodeIndex["Service"]["localGraph"] = Effect.fn("CodeIndex.localGraph")(
     function* (input) {
       const repo = yield* repoFor(input.projectId);
-      const root = yield* checkoutRoot(repo, input.cwd);
+      const { root, prefix } = yield* checkoutOf(repo, input.cwd);
       const view = yield* viewOfCheckout(repo, root);
       const pending = !repo.ready;
       if (pending) {
-        // Before the first build, only the file itself is parsed: what it imports, not who imports it.
-        const center = Queries.normalizePath(input.path);
+        // Before the first build, only the roots are parsed: what they import, not who imports them.
+        const roots = new Set(
+          input.roots.flatMap((id) => {
+            const ref = parseNodeId(id);
+            return ref.kind === "module" ? [] : (Queries.repositoryPath(prefix, ref.path) ?? []);
+          }),
+        );
         yield* parse(
           repo,
           root,
-          missingOf(repo, view).filter((file) => file.path === center),
+          missingOf(repo, view).filter((file) => roots.has(file.path)),
           null,
         );
       } else {
         yield* topUp(repo, view, root);
       }
-      const snapshot = yield* snapshotOf(repo, view);
+      const snapshot = yield* snapshotOf(repo, view, prefix);
       const fileChanges = yield* changesOf(repo, view);
       const graph = yield* Queries.localGraph(
         snapshot,
-        pending ? { ...input, depth: 1 } : input,
+        pending ? { ...input, depth: Math.min(input.depth, 1) as 0 | 1 } : input,
         fileChanges,
         pending,
       );
@@ -1301,6 +1343,13 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const repo = yield* ready(input);
     return yield* Queries.map(yield* checkoutSnapshot(repo, input.cwd), input.paths);
   });
+
+  const checkNodes: CodeIndex["Service"]["checkNodes"] = Effect.fn("CodeIndex.checkNodes")(
+    function* (input) {
+      const repo = yield* ready(input);
+      return yield* Queries.checkNodes(yield* checkoutSnapshot(repo, input.cwd), input.ids);
+    },
+  );
 
   // Maintenance.
 
@@ -1371,12 +1420,16 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
 
   /** What cleanup would delete: repositories gone or turned off, and unreachable versions. */
   const unused = Effect.fn("CodeIndex.unused")(function* () {
+    // Decided by the projects, not by `repos`, which is empty until the repositories register.
+    const kept = new Set<string>(
+      (yield* indexedProjects().pipe(Effect.mapError(failedWith("Could not list the projects."))))
+        .filter(({ wanted }) => wanted.enabled)
+        .map(({ shell }) => shell.id),
+    );
     const stored = yield* read(
       sql<{ readonly projectId: string }>`SELECT project_id AS "projectId" FROM repos`,
     );
-    const dropped = stored
-      .map((row) => row.projectId)
-      .filter((projectId) => repos.get(projectId as ProjectId)?.settings.enabled !== true);
+    const dropped = stored.map((row) => row.projectId).filter((projectId) => !kept.has(projectId));
     let droppedVersions = 0;
     if (dropped.length > 0) {
       const rows = yield* read(
@@ -1390,7 +1443,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const versionIds: Array<number> = [];
     const byRepo = new Map<Repo, Array<number>>();
     for (const repo of repos.values()) {
-      if (!repo.settings.enabled) continue;
+      if (!repo.settings.enabled || !kept.has(repo.projectId)) continue;
       yield* loadVersions(repo);
       const reachable = yield* reachableBlobs(repo);
       const ids: Array<number> = [];
@@ -1431,9 +1484,14 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     }
     for (const projectId of found.dropped) {
       const repo = repos.get(projectId as ProjectId);
-      if (repo !== undefined) {
-        yield* forget(repo);
-        repo.loaded = false;
+      if (repo === undefined) continue;
+      repo.generation += 1;
+      yield* forget(repo);
+      repo.loaded = false;
+      // An index turned off says so already; one turned back on meanwhile builds again.
+      if (repo.settings.enabled) {
+        yield* setStatus(repo, { state: "waiting", files: 0 });
+        yield* builds.enqueue(repo.projectId, { rebuild: false });
       }
     }
     return { bytesFreed: Math.max(0, before - (yield* fileBytes)), fileVersions: deleted };
@@ -1495,6 +1553,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     find,
     changes: changesBetween,
     map,
+    checkNodes,
   });
 });
 

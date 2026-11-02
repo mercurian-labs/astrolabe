@@ -707,7 +707,7 @@ function WikiFilterMenu({
                   const overview = overviewByKey.get(value) ?? null;
                   return (
                     <ComboboxItem key={value} hideIndicator value={value}>
-                      <ThreadsFilterCheckbox check={checked(value) ? "checked" : "unchecked"} />
+                      <ThreadsFilterCheckbox checked={checked(value)} />
                       {value === CHANGED_VALUE ? (
                         <ChangedIcon />
                       ) : overview ? (
@@ -1109,9 +1109,11 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       details={
         <ThreadHoverCard title={item.name}>
           <WikiPlaceDetails item={item} />
-          <DetailLine icon={<LinkIcon className={DETAIL_ICON_CLASS} />}>
-            {linkSummary(item)}
-          </DetailLine>
+          {item.file.endsWith(".base") ? null : (
+            <DetailLine icon={<LinkIcon className={DETAIL_ICON_CLASS} />}>
+              {linkSummary(item)}
+            </DetailLine>
+          )}
           {item.changes.map((entry) => (
             <DetailLine
               key={entry.changeRequestId}

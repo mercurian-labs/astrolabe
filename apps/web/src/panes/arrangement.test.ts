@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   closeTab,
   moveTabs,
+  newTab,
   openBeside,
   openTab,
   placeTabs,
+  putInPlace,
   showTabBefore,
   splitTab,
   splitTabs,
@@ -57,6 +59,24 @@ describe("opening tabs", () => {
   });
 });
 
+describe("picking what a New tab shows", () => {
+  it("puts it in the New tab's place: same pane, same index, in front and focused", () => {
+    const withNew = newTab(openTab(sideBySide(), browser, "p0"), "p0");
+    const blank = leaves(withNew.root)[0]!.tabs[2]!;
+    const unfocused = { ...withNew, focused: leaves(withNew.root)[1]!.id };
+    const picked = putInPlace(unfocused, blank, "doc");
+    expect(panes(picked)).toEqual([[diff, browser, "doc"], [files]]);
+    expect(leaves(picked.root)[0]?.active).toBe("doc");
+    expect(picked.focused).toBe("p0");
+  });
+
+  it("moves a pick open in another pane into the New tab's place, closing a pane it empties", () => {
+    const withNew = newTab(sideBySide(), "p0");
+    const blank = leaves(withNew.root)[0]!.tabs[1]!;
+    expect(panes(putInPlace(withNew, blank, files))).toEqual([[diff, files]]);
+  });
+});
+
 describe("showing a tab group's own tab from its marker", () => {
   const group = surfaceKey("group");
 
@@ -98,6 +118,52 @@ describe("closing tabs", () => {
     expect(tabsToClose(three, files, "others")).toEqual([diff, browser]);
     expect(tabsToClose(three, files, "after")).toEqual([browser]);
     expect(tabsToClose(three, browser, "after")).toEqual([]);
+  });
+});
+
+/** Diff, Files split right from it, and Browser split right from Files. */
+function threeInARow(): Arrangement {
+  const two = openBeside(openTab(startingArrangement(), diff), files, "p0", "right");
+  return openBeside(two, browser, "p1", "right");
+}
+
+function weights(arrangement: Arrangement) {
+  return (arrangement.root as Branch).weights;
+}
+
+describe("giving a closed pane's room back", () => {
+  it("returns it to the pane it was split from, whichever way the pane closes", () => {
+    const three = threeInARow();
+    expect(weights(three)).toEqual([1, 0.5, 0.5]);
+    const closed = closeTab(three, browser);
+    expect(panes(closed)).toEqual([[diff], [files]]);
+    expect(weights(closed)).toEqual([1, 1]);
+    const moved = moveTabs(three, [browser], "p0");
+    expect(panes(moved)).toEqual([[diff, browser], [files]]);
+    expect(weights(moved)).toEqual([1, 1]);
+    const reopened = openTab(three, browser, "p0");
+    expect(weights(reopened)).toEqual([1, 1]);
+  });
+
+  it("gives a closed origin's room to the pane split from it", () => {
+    const closed = closeTab(threeInARow(), diff);
+    expect(panes(closed)).toEqual([[files], [browser]]);
+    expect(weights(closed)).toEqual([1.5, 0.5]);
+  });
+
+  it("prefers the pane it was split from to one split from it", () => {
+    const closed = closeTab(threeInARow(), files);
+    expect(panes(closed)).toEqual([[diff], [browser]]);
+    expect(weights(closed)).toEqual([1.5, 0.5]);
+    // Browser, split from Files, now counts as split from Diff, which took Files' room.
+    expect(leaves(closed.root)[1]?.from).toBe("p0");
+  });
+
+  it("returns a pane split off by a drop to the pane it was dropped on", () => {
+    const three = openTab(threeInARow(), surfaceKey("notes"), "p0");
+    const dropped = splitWithTabs(three, [surfaceKey("notes")], "p0", "left");
+    expect(weights(dropped)).toEqual([0.5, 0.5, 0.5, 0.5]);
+    expect(weights(closeTab(dropped, surfaceKey("notes")))).toEqual([1, 0.5, 0.5]);
   });
 });
 

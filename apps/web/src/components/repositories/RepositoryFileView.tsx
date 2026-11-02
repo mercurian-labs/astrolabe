@@ -87,8 +87,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { composerHistory } from "../composerCodeMirror/composerUndo";
 import { useProjectFileQuery } from "../files/projectFilesQueryState";
 import { isTurnRunning } from "../wiki/wiki.logic";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { registerUnsavedCheck } from "../wiki/wikiPanes";
+import { registerUnsavedCheck } from "~/panes/unsavedEdits";
 import { repositoryFileReveal, revealLine } from "./repositoryFileReveal";
 import {
   diffBaseControl,
@@ -100,7 +99,8 @@ import {
 import { followImportLine, importLineExtension, importLineKey } from "./importLineHighlight";
 import { fileEditorChanged, registerFileEditor } from "./openFileEditors";
 import { openLocalGraph } from "./localGraph";
-import { repositoryPanes } from "./repositoryPanes";
+import { workspace } from "~/panes/workspace";
+import { TabHeader } from "~/panes/TabHeader";
 import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
 import { repositoryTabKey, type RepositoryFileTab as FileTab } from "./repositoryTabs";
 import { LanguageServerStatusEntry } from "./LanguageServerStatus";
@@ -129,7 +129,11 @@ const FILE_EDITOR_THEME = EditorView.theme({
   // The sidebar's resize handle overhangs a pane's first 8px: the change strips sit past it.
   "&.cm-code .cm-gutters": { paddingLeft: "8px" },
   ".cm-scroller": { lineHeight: "inherit" },
-  "&.cm-editor .cm-content": { padding: "12px 16px 40vh", caretColor: "currentColor" },
+  // Clears the fade under the tab's header at rest.
+  "&.cm-editor .cm-content": {
+    padding: "var(--workspace-titlebar-scroll-fade-height) 16px 40vh",
+    caretColor: "currentColor",
+  },
   // A note reads as a wiki's document does: a measure wide, in the middle of the pane.
   "&.cm-editor:not(.cm-code) .cm-content": {
     maxWidth: "48rem",
@@ -207,7 +211,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   const baseControl = { current: currentBase, toggle: toggleBase };
   const [trail, setTrail] = useState<OutlineTrail | null>(null);
   // The panes this file is in, which its local graph opens beside it in.
-  const panes = useContext(PanesHostContext)?.controller ?? repositoryPanes.store;
+  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   // A definition in another file of the checkout opens as a tab in this file's pane.
   const openLocation = useStableCallback((location: NavigationLocation) => {
     const target = pathOfUri(location.uri, cwd);
@@ -324,7 +328,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     fromDisk && (file.data?.truncated === true || state.failure?.reason === "too-large");
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
+      <TabHeader.Root>
         <FileBreadcrumbs path={path} trail={trail} />
         {turnAvailable ? (
           <ToggleGroup
@@ -345,40 +349,28 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           </ToggleGroup>
         ) : null}
         {agentWorking ? (
-          <span className="flex shrink-0 items-center gap-1 text-info-foreground">
+          <TabHeader.Status className="text-info-foreground">
             <BotIcon className="size-3.5" />
             An agent is working in this checkout
-          </span>
+          </TabHeader.Status>
         ) : null}
         {fromDisk ? null : (
           <LanguageServerStatusEntry environmentId={environmentId} status={languageServer.status} />
         )}
-        <span className="shrink-0">
+        <TabHeader.Status>
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label="Open local graph"
-                className="shrink-0"
-                size="icon-xs"
-                variant="ghost-muted"
-                onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
-              />
-            }
+        </TabHeader.Status>
+        <TabHeader.Actions>
+          <TabHeader.Action
+            label="Open local graph"
+            onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
           >
             <WaypointsIcon />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">Open local graph</TooltipPopup>
-        </Tooltip>
-      </div>
+          </TabHeader.Action>
+        </TabHeader.Actions>
+      </TabHeader.Root>
       {fromDisk || readOnly ? null : (
-        <DocumentNotice
-          state={state}
-          session={session}
-          onClosed={() => repositoryPanes.close(tabKey)}
-        />
+        <DocumentNotice state={state} session={session} onClosed={() => workspace.close(tabKey)} />
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
         <FileEditor
@@ -729,7 +721,7 @@ function FileEditor({
   return (
     <div
       ref={host}
-      className="h-full min-h-0 overflow-hidden text-sm leading-relaxed text-foreground"
+      className="h-full min-h-0 overflow-hidden text-sm leading-relaxed text-foreground [&_.cm-scroller]:topbar-scroll-fade"
       onKeyDown={(event) => {
         if (event.key === "Escape") event.stopPropagation();
       }}

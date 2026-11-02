@@ -80,4 +80,24 @@ describe("summarizeT3ToolCalls", () => {
       failedCount: 0,
     });
   });
+
+  it("names a lone code graph's story, and counts several", () => {
+    const story = {
+      title: "How a turn starts",
+      steps: [
+        { caption: "The request lands here.", focus: ["src/ws.ts"] },
+        { caption: "It reaches the orchestrator.", focus: ["src/orchestrator.ts"] },
+      ],
+    };
+    const untitled = { steps: [story.steps[0]] };
+    expect(summarizeT3ToolCalls("code-graph", [completed(story)]).label).toBe(
+      "Showed “How a turn starts” · 2 steps",
+    );
+    expect(summarizeT3ToolCalls("code-graph", [completed(JSON.stringify(untitled))]).label).toBe(
+      "Showed a picture of the code",
+    );
+    expect(summarizeT3ToolCalls("code-graph", [completed(story), completed(untitled)]).label).toBe(
+      "Showed 2 code graphs",
+    );
+  });
 });

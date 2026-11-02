@@ -3,7 +3,7 @@ import type { NavigateFn } from "@tanstack/react-router";
 
 import { focusedPane, openTab } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
-import { repositoryPanes } from "../repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import { repositoryCheckout, repositoryScope } from "../repositoryScope";
 import { parseRepositoryTabKey, repositoryTabKey, type RepositorySearch } from "../repositoryTabs";
 
@@ -52,7 +52,7 @@ export function rememberLocationList(list: LocationList): string {
 function show(checkout: MultibufferCheckout, key: string, navigate: NavigateFn | null) {
   repositoryScope.set(`${checkout.environmentId}:${checkout.projectId}`);
   repositoryCheckout.set(checkout.worktreePath);
-  repositoryPanes.show(key);
+  workspace.show(key);
   if (navigate !== null) void navigate({ to: "/repositories" });
 }
 

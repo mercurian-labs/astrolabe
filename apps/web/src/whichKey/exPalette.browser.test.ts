@@ -1,10 +1,14 @@
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 
 import type { CommandPaletteActionItem } from "~/components/CommandPalette.logic";
-import { openBeside, startingArrangement, type Arrangement } from "~/panes/arrangement";
+import { openBeside, openTab, startingArrangement, type Arrangement } from "~/panes/arrangement";
+import { workspace } from "~/panes/workspace";
+import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
 import { appCommand } from "./commands";
@@ -145,6 +149,36 @@ describe("the palette's ex commands", () => {
     expect(rows("w")[0]?.title).toBe("Send the draft");
     await run("w");
     expect(submitted).toHaveBeenCalledOnce();
+  });
+
+  it("sends the focused chat's draft, never one kept out of sight", async () => {
+    using _cleanup = cleanup();
+    const chat = (thread: string) =>
+      chatTabKey(scopeThreadRef("env-1" as EnvironmentId, ThreadId.make(thread)));
+    workspace.update(() => openTab(openTab(startingArrangement(), chat("B")), chat("A")));
+    using _panes = { [Symbol.dispose]: () => workspace.update(() => startingArrangement()) };
+    // B, behind A in its pane, stays mounted and first in the page.
+    document.body.innerHTML = ["B", "A"]
+      .map(
+        (thread) =>
+          `<div data-workspace-tab="${chat(thread)}"><form data-chat="${thread}"><div data-testid="composer-editor"></div></form></div>`,
+      )
+      .join("");
+    const submitted: string[] = [];
+    const listening = new AbortController();
+    using _listener = { [Symbol.dispose]: () => listening.abort() };
+    document.addEventListener(
+      "submit",
+      (event) => {
+        event.preventDefault();
+        submitted.push((event.target as HTMLElement).dataset.chat ?? "");
+      },
+      { signal: listening.signal },
+    );
+
+    await run("w");
+
+    expect(submitted).toEqual(["A"]);
   });
 
   it("switches threads by name with :b, open chat tabs first, and lists the open ones bare", () => {

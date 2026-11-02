@@ -2,8 +2,15 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { Outlet, createFileRoute, redirect, useMatches } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { ChatTabs } from "../chatTabs/ChatTabs";
-import { isAppModalPage } from "../components/sidebar/mainAppLocation";
+import {
+  isAppModalPage,
+  isPullRequestsPath,
+  isRepositoriesPath,
+  isWikisPath,
+  useSectionPathname,
+} from "../components/sidebar/mainAppLocation";
+import { useWorkspaceStarting } from "../panes/workspace";
+import { WorkspaceView } from "../panes/WorkspaceView";
 import { SidebarInset } from "../components/ui/sidebar";
 import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../threadRoutes";
 import { retainThreadFindForRoute } from "../components/chat/threadFindStore";
@@ -28,19 +35,30 @@ function ChatRouteLayout() {
     setBackgroundTarget(threadTarget);
   }
   const shownTarget = modalOpen ? backgroundTarget : threadTarget;
+  // Astrolabe: Agents, Wikis, Repositories and Changes share one set of panes; their routes only say which
+  // sidebar shows and, in Agents, which thread it selects. The start page is Agents with no
+  // thread selected; only with nothing in the panes does it start a draft, as T3 Code's does.
+  const sectionPathname = useSectionPathname();
+  const starting = useWorkspaceStarting();
+  const onStartPage = sectionPathname === "/";
+  const agents = shownTarget !== null || onStartPage;
+  const inWorkspace =
+    shownTarget !== null ||
+    (onStartPage && !starting) ||
+    isRepositoriesPath(sectionPathname) ||
+    isWikisPath(sectionPathname) ||
+    isPullRequestsPath(sectionPathname);
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (
         <ThreadLinkPrompt threadRef={shownTarget.threadRef} />
       ) : null}
-      {shownTarget ? (
-        <ChatTabs target={shownTarget} background={modalOpen} />
+      {inWorkspace ? (
+        <WorkspaceView routeTarget={shownTarget} agents={agents} background={modalOpen} />
       ) : modalOpen ? (
         <SidebarInset className="h-dvh" />
-      ) : (
-        <Outlet />
-      )}
-      {modalOpen ? <Outlet /> : null}
+      ) : null}
+      {modalOpen || !inWorkspace || (shownTarget === null && !onStartPage) ? <Outlet /> : null}
     </>
   );
 }

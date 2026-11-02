@@ -121,9 +121,8 @@ Merging a stack lands it through GitCafe, and updating a branch restacks the lay
 
 ## Start, clone, or publish a project
 
-To start from nothing, choose **New repository** in the command palette (`Cmd/Ctrl+K` twice), or
-**Add project**, then **Repository**, then **New repository** (on your phone, **New project** under
-**Add Project**), and type a name. T3 Code makes a Git
+To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K` twice), or
+**New project** under **Add project** (on your phone too), and type a name. T3 Code makes a Git
 repository in `~/.astrolabe/projects` (the `projects` folder of your T3 data directory) with a README,
 an icon, and a first commit, then opens a new thread in it. Until the project has a thread, new
 threads work in its folder, even when your default is a new worktree. The folder is named after the project,
@@ -131,8 +130,8 @@ like `pinball-stats` for "Pinball Stats". Turn on **Create private repository on
 publish it. If Git has no name or email on that machine, the project is created without the
 first commit.
 
-Use **Add project**, then **Repository**, in the command palette (`Cmd/Ctrl+K` twice), or **Add a
-repository** in Repositories, to clone a repository. Choose a hosting
+Use **Add project** in the command palette (`Cmd/Ctrl+K` twice), or **Add a project** in
+Projects, to clone a repository. Choose a hosting
 provider or paste a Git URL, then choose where to save it. The project opens right away while the
 clone runs in the background: you can write your first prompt, and sending waits until the files
 are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the
@@ -165,11 +164,11 @@ where the host allows it. GitLab calls these merge requests.
 
 The sidebar lists reviews, with search, sort and filters above them, and your wikis' change
 requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The project filter beside the
-search picks every repository's pull requests or one repository's, every wiki's change requests
+search picks every project's pull requests or one project's, every wiki's change requests
 or one wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
-tab; tabs split and rearrange as wiki documents' do, so two reviews can sit side by side, and the
-arrows at the top of the sidebar go back and forward through what a tab showed. Open tabs come
-back after a restart.
+tab among the ones every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)),
+so a review can sit beside another, a chat or a file, and `mod+[` and `mod+]` go back and
+forward through what the focused tab showed. Open tabs come back after a restart.
 
 On mobile, **Changes** lists reviews across your connected environments, with your
 wikis' change requests in a **Wiki changes** group above them. Open a review
@@ -233,11 +232,11 @@ documentation the moment the code has; a merge the wiki refuses stays open for y
 you can add a change request or a thread by hand or take one out, ask an agent for suggestions of
 either (you accept or dismiss each), and ask a thread to update documentation that fell behind or to
 draft missing documentation. **Open as a tab group** opens the group's threads, pull requests and
-documentation together behind a numbered marker. Beside a thread, the group's threads open as chat
-tabs after the one you're in, and its other tabs open beside every thread in the group: open or close
-one of them beside any of those threads and it opens or closes beside all of them, while each thread
-keeps its own layout. Clicking the marker shows the group's tab (a marker in the chat tabs shows it
-in the right panel); its menu collapses the group, merges it with the code or closes its tabs.
+documentation together behind a numbered marker. Beside a thread, the group's threads open as chats
+after the one you're in, and its other tabs are [linked](./thread-sidebar.md#linked-tabs) to the
+group: they show beside whichever of its threads is in front, and close for all of them at once.
+Clicking the marker shows the group's tab; its menu collapses the group, merges it with the code or
+closes its tabs.
 Dragging a tab away doesn't take it out of the group: it gets a marker of its own where it lands.
 
 Which rules group change requests and threads, including **Same branch**, and what an agent may do,

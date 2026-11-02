@@ -137,7 +137,7 @@ vi.mock(import("~/state/entities"), async (original) => ({
 
 import { allTabs } from "~/panes/arrangement";
 import { RepositoryFileView } from "../RepositoryFileView";
-import { repositoryPanes } from "../repositoryPanes";
+import { workspace } from "~/panes/workspace";
 import { repositoryTabKey } from "../repositoryTabs";
 import { rememberLocationList } from "./openMultibuffer";
 import { RepositoryLocationsView } from "./RepositoryMultibufferViews";
@@ -209,7 +209,7 @@ describe("RepositoryLocationsView", () => {
       </div>,
     );
     await userEvent.click(screen.getByRole("button", { name: "Open a.ts" }));
-    expect(allTabs(repositoryPanes.arrangement())).toContain(
+    expect(allTabs(workspace.arrangement())).toContain(
       repositoryTabKey({ kind: "file", ...checkout, path: "a.ts" }),
     );
   });

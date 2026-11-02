@@ -110,6 +110,12 @@ export function createWikiEnvironmentAtoms<R, E>(
       tag: WS_METHODS.wikiReadNote,
       refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
     }),
+    /** One view of a base, run on the server over the notes the read sees. */
+    query: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:query",
+      tag: WS_METHODS.wikiQuery,
+      refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
+    }),
     changeRequests,
     changeRequest: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:wiki:change-request",
@@ -155,6 +161,10 @@ export function createWikiEnvironmentAtoms<R, E>(
     setMirror: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:mirror:set",
       tag: WS_METHODS.wikiSetMirror,
+    }),
+    setProjectLink: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:project-link:set",
+      tag: WS_METHODS.wikiSetProjectLink,
     }),
     pushMirror: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:mirror:push",

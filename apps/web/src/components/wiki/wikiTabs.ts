@@ -79,6 +79,10 @@ export function parseWikiTabKey(key: string): WikiTab | null {
   return null;
 }
 
+/** Whether a document tab shows a base: a `.base` file, opened by its file name. */
+export const isBaseTab = (tab: WikiTab): boolean =>
+  tab.kind === "note" && tab.name.endsWith(".base");
+
 /** Whether two tabs show the same thing; note names compare as the wiki compares them. */
 export function sameWikiTab(a: WikiTab, b: WikiTab): boolean {
   if (a.environmentId !== b.environmentId || a.wikiId !== b.wikiId) return false;
@@ -176,7 +180,15 @@ export function wikiSidebarItems(
     }
     const openItems = open.map(item);
     changes.push(...openItems);
-    for (const note of overview.index?.notes ?? []) {
+    // A base is a document too, opened by its file name.
+    const bases = (overview.index?.bases ?? []).map((base) => ({
+      name: base.file,
+      file: base.file,
+      outgoing: 0,
+      incoming: 0,
+      editedAt: base.editedAt,
+    }));
+    for (const note of [...(overview.index?.notes ?? []), ...bases]) {
       documents.push({
         key: wikiTabKey({
           kind: "note",

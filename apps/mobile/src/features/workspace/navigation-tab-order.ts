@@ -18,7 +18,7 @@ export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
   // Astrolabe: pull requests and the wikis' change requests, as web's Changes section.
   pullRequests: "Changes",
   wikis: "Wikis",
-  repositories: "Repositories",
+  repositories: "Projects",
   usage: "Usage",
 };
 

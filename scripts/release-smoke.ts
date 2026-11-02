@@ -50,8 +50,9 @@ const workspaceFiles = [
   "packages/source-control-testing/package.json",
   "packages/effect-acp/package.json",
   "packages/effect-codex-app-server/package.json",
-  // Astrolabe's wiki packages, which the server, web and mobile apps depend on.
+  // Astrolabe's wiki and code graph packages, which the server, web and mobile apps depend on.
   "packages/wiki/package.json",
+  "packages/code-graph/package.json",
   "packages/editor/package.json",
   "packages/graph/package.json",
   "packages/wiki-editor/package.json",

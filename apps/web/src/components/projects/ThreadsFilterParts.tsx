@@ -3,7 +3,6 @@ import {
   CircleAlertIcon,
   CircleDashedIcon,
   MessageCircleQuestionIcon,
-  MinusIcon,
   XIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -13,24 +12,18 @@ import type { ProjectFaviconProject } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "./ProjectFilterIcon";
 import type { ProjectFilterOption } from "./projectFilter";
 import { THREAD_STATUS_FILTER_LABELS, type ThreadStatusFilter } from "./threadsFilter";
-import type { ThreadsFilterCheck } from "./useThreadsFilter";
 
 /** A filter row's checkbox, drawn only: the row itself is the option. */
-export function ThreadsFilterCheckbox({ check }: { readonly check: ThreadsFilterCheck }) {
+export function ThreadsFilterCheckbox({ checked }: { readonly checked: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
         "flex size-3.5 shrink-0 items-center justify-center rounded-sm border",
-        check === "unchecked" ? "border-muted-foreground/50" : "border-primary",
-        check === "checked" && "bg-primary",
+        checked ? "border-primary bg-primary" : "border-muted-foreground/50",
       )}
     >
-      {check === "checked" ? (
-        <CheckIcon className="size-2.5 text-primary-foreground" strokeWidth={3} />
-      ) : check === "partial" ? (
-        <MinusIcon className="size-2.5 text-primary" strokeWidth={3} />
-      ) : null}
+      {checked ? <CheckIcon className="size-2.5 text-primary-foreground" strokeWidth={3} /> : null}
     </span>
   );
 }

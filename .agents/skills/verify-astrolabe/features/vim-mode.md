@@ -1,6 +1,6 @@
 # Vim mode
 
-The composer, wiki notes and Repositories file tabs can edit with Vim, behind one
+The composer, wiki notes and Projects file tabs can edit with Vim, behind one
 device setting that is off by default. Turning it on asks you to type `:q` first, to
 show you know the way out. In Vim's normal mode `:` opens the Command Palette (see
 [which-key.md](which-key.md)), and the leader key (Space by default) opens the keyboard menu.
@@ -9,8 +9,8 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
 
 - **Setting**: Settings › Keybindings › This device › **Vim keybindings** (`role=switch`), stored
   as `vimModeEnabled` in `localStorage['t3code:client-settings:v1']`. Turning it
-  on opens a one-line Vim editor under the row, in normal mode (block cursor),
-  while the switch stays off. `:q`, `:quit` or `:q!` then Enter turns it on. Any
+  on opens a one-line Vim editor under the row (`role=textbox[name='Type :q and press Enter']`),
+  in normal mode (block cursor), while the switch stays off. `:q`, `:quit` or `:q!` then Enter turns it on. Any
   other ex command (`:w` too), Escape in normal mode, or **Cancel** backs out and
   returns focus to the switch. Turning it off is one click.
 - **Move by screen line** (the row under it, `vimScreenLinesEnabled`, off by default, disabled
@@ -20,16 +20,18 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   read the fat cursor's `getBoundingClientRect().top` after each key.
 - **Composer**: a new or cleared draft is in insert mode, and a send returns it there
   (a draft restored after a reload can open in normal mode). Insert mode
-  keeps every composer key (Enter sends, Shift+Enter, ArrowUp history, the `@`/`$`
-  menus). Escape closes an open menu first, then enters normal mode with focus kept
-  in the composer. Outside insert mode the draft switches to the code font (the
+  keeps every composer key (Enter sends, Shift+Enter, ArrowUp history, and every menu
+  trigger: `/`, `@`, `$`, `#` and the `[[` wiki-note menu). Escape closes an open menu first,
+  then enters normal mode with focus kept in the composer; normal mode opens no menus. In an
+  empty draft the insert caret shows at the left edge (`.cm-cursorLayer:not(.cm-vimCursorLayer)
+  .cm-cursor`, `margin-left: 0`, inside `.cm-scroller`), only while the composer has focus. Outside insert mode the draft switches to the code font (the
   mode's only marker) and every key is Vim's: Enter and the arrows move, they never
   send or add a line. Mod+Enter still sends. One Vim change (`cw` plus the typed
   text, a whole insert session) is one undo step.
 - **Notes**: wiki notes start in normal mode, with no mode panel: like the composer,
   the text reads in the code font (`--font-mono`, the Monospace font setting)
   outside insert mode.
-- **Repository files**: a Repositories file tab ([repositories.md](repositories.md)) starts
+- **Project files**: a Projects file tab ([repositories.md](repositories.md)) starts
   in normal mode with no mode panel and follows the switch live. Space opens the keyboard
   menu and `:` the palette. Files save on their own, so `:w` is the disabled "Nothing to
   write here". A Markdown file switches to the code font outside insert mode; a code file
@@ -38,10 +40,11 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   (CodeMirror's `.cm-selectionLayer`); prove it with a screenshot, since the layer's
   elements are not always there to count.
 - **Ex commands** (through the Command Palette; the app's are aliases, keybinding
-  rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the composer's draft, or opens a note's
-  **Save to change request** ("No edits to save" on a clean note; "Nothing to write
-  here" elsewhere). `q` is the app's close tab: from the composer it closes the chat
-  tab in front. Lines no command claims (`:s/a/b/`, `:%s`, `:12`) show **Run in the
+  rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the focused chat's draft (or that of
+  the chat whose linked tab is focused; `writeTarget` in `whichKey/commands.ts`), or opens a
+  note's **Save to change request** ("No edits to save" on a clean note); with any other tab
+  focused it offers "Nothing to write here". `q` is the app's close tab: it closes the focused pane's tab in
+  front (a chat takes its linked tabs with it). Lines no command claims (`:s/a/b/`, `:%s`, `:12`) show **Run in the
   editor** (first, ahead of any palette matches) when the palette came from a Vim
   editor, and run in that editor's own Vim with focus back in it.
 - **Vim configuration**: Settings › Keybindings › **Vim**, the server's vimrc file
@@ -62,8 +65,11 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   mappings.
 - **Formatting keys** are keybinding commands that fire while an editor has focus
   (`when: editorFocus`): `markdown.bold` (Cmd+B), italic (Cmd+I), code (Cmd+E),
-  strikethrough (Cmd+Shift+X), highlight (Cmd+Shift+H), link (Cmd+Shift+K). In an
-  editor they win over the app's same keys (Cmd+B does not toggle the sidebar).
+  strikethrough (Cmd+Shift+X), highlight (Cmd+Shift+H), link (Cmd+Shift+K). In notes they
+  win over the app's same keys. In the composer Cmd+Shift+X and Cmd+Shift+H stay the app's
+  (they open the workspace and host pickers), and Cmd+B formats only with a selection in the
+  composer; elsewhere it toggles the sidebar. Markdown file tabs in Projects use the live
+  preview without these keys.
 - **Typography**: with Vim on, Settings › Appearance › Typography › Monospace font's
   description ends "the terminal, and Vim's normal mode."
 - With the setting off, nothing changes: Escape leaves the composer as upstream does.
@@ -91,11 +97,12 @@ preview_wait_for  text=Run in the editor                     # the row settles a
 preview_act press     Enter                                      # runs in the editor
 ```
 
-Read the composer's state:
+Read the composer's state, scoped to the focused pane: hidden chats stay mounted under
+`Activity`, so a bare `document.querySelector('[data-testid=composer-editor]')` can hit one.
 
 ```js
 (() => {
-  const ed = document.querySelector("[data-testid=composer-editor]");
+  const ed = document.querySelector("[data-pane-id][data-focused] [data-testid=composer-editor]");
   return {
     mode: ed.closest("[data-vim-mode]")?.dataset.vimMode,
     text: ed.innerText,
@@ -105,9 +112,10 @@ Read the composer's state:
 })();
 ```
 
-A note's mode: `document.querySelector('[data-pane-id] [data-vim-mode]').dataset.vimMode`
-and its font `getComputedStyle(document.querySelector('[data-pane-id] .cm-content')).fontFamily`.
-A Repositories file tab reads the same way.
+A note's mode: `document.querySelector('[data-pane-id][data-focused] [data-vim-mode]').dataset.vimMode`
+(with a chat in that pane, `[data-vim-mode]` can match its composer instead) and its font
+`getComputedStyle(document.querySelector('[data-pane-id][data-focused] .cm-content')).fontFamily`.
+A Projects file tab reads the same way.
 
 ## Flows
 
@@ -149,7 +157,9 @@ Walk these end to end; each crosses into another feature.
 composer in normal mode (code font) and the ex palette. A `[data-vim-mode]` value is
 not proof the editor paints: `document.elementFromPoint` at the centre of the gate's
 and the composer's `.cm-editor` must land inside it, and `.cm-fat-cursor` must have a
-non-zero rect. The visual-mode selection needs the screenshot, since its layer draws
+non-zero rect. In an empty, focused Vim draft the insert caret must have a non-zero width
+with `margin-left: 0px` and sit inside `.cm-scroller` (it blinks: take two screenshots if the
+first misses it). The visual-mode selection needs the screenshot, since its layer draws
 under the text and a hit-test lands on the text.
 
 ## Gotchas
@@ -157,7 +167,8 @@ under the text and a hit-test lands on the text.
 - Opening a thread focuses its composer **in insert mode**, so a Space or letter
   sent "to the page" types into the draft. Press Escape (normal mode, where Space is
   the leader) or open the menu with Cmd+K; a click outside leaves focus on the page,
-  where type-to-focus sends the key into the composer. Clear any stray text.
+  where type-to-focus sends the key into the composer while that chat is the focused pane's
+  tab in front. Clear any stray text.
 - Do not send from the composer on a seeded home unless a provider is configured:
   `:w` and Enter in insert mode start a real turn.
 - Locators for `preview_act type` must be Playwright selectors; a bare CSS descendant

@@ -7,7 +7,7 @@ import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { documentsEnvironment } from "~/state/documents";
 import { useEnvironmentScope } from "~/state/session";
-import { registerUnsavedCheck } from "../../wiki/wikiPanes";
+import { registerUnsavedCheck } from "~/panes/unsavedEdits";
 
 // Unique per document session; `crypto.randomUUID` is missing on plain-HTTP origins.
 export const newClientId = () =>

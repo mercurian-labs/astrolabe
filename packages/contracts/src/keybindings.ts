@@ -129,6 +129,8 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "multibuffer.previousFile",
   "multibuffer.problems",
   "projectSearch.openInEditor",
+  "tab.toggleLink",
+  "tab.newLinked",
 ] as const;
 export type AstrolabeKeybindingCommand = (typeof ASTROLABE_KEYBINDING_COMMANDS)[number];
 

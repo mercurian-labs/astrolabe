@@ -9,7 +9,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
-import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
+import { parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { useChangeGroups } from "~/state/changeGroups";
 import { surfaceIdOf } from "./arrangement";
 import { useTabGroupNumber } from "./tabGroupNumbers";
@@ -68,7 +68,7 @@ function tabGroupLookup(groups: readonly EnvironmentChangeGroup[]): TabGroupLook
     }
     // A pull request's surface id ends with its repository and number, whatever names its
     // server and host before them (a thread's right panel leaves those out).
-    const surfaceId = surfaceIdOf(tabKey);
+    const surfaceId = surfaceIdOf(tabKey) ?? parseChatSurfaceKey(tabKey)?.surfaceId;
     if (surfaceId?.startsWith("pull-request:")) {
       const parts = surfaceId.split(":");
       try {

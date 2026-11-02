@@ -172,6 +172,9 @@ const composerTheme = EditorView.theme({
   },
   "&.cm-editor .cm-content": { padding: "0", caretColor: "currentColor" },
   ".cm-line": { padding: "0" },
+  // With no line padding, a drawn caret's default -0.6px offset leaves it mostly outside the
+  // scroller at the start of a line, so an empty draft showed no caret in Vim mode.
+  "&.cm-editor .cm-cursor, &.cm-editor .cm-dropCursor": { marginLeft: "0" },
   // Vim's ex line (`:`) opens beneath the draft.
   ".cm-panels": { backgroundColor: "transparent", color: "inherit" },
   ".cm-panels-bottom": { borderTop: "1px solid var(--border)" },

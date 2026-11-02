@@ -1,5 +1,4 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { WikiChangeEntry, WikiDocumentEntry } from "@t3tools/client-runtime/wikiList";
 import { isTurnRunning } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, ThreadId, WikiSummary } from "@t3tools/contracts";
@@ -23,31 +22,14 @@ import {
 } from "../threads/thread-list-v2-row-appearance";
 import { wikiChangeFooter, wikiDocumentFooter } from "./wikisList";
 
-/**
- * A wiki's icon, as web draws it: its project's icon when the wiki's folder is a project, else
- * a monogram of the wiki's name.
- */
-function WikiIcon(props: {
-  readonly environmentId: EnvironmentId;
-  readonly wiki: WikiSummary;
-  readonly project: EnvironmentProject | null;
-}) {
-  const { project, wiki } = props;
-  return project ? (
+/** A wiki's icon: a monogram of its name. */
+function WikiIcon(props: { readonly environmentId: EnvironmentId; readonly wiki: WikiSummary }) {
+  return (
     <ProjectFavicon
       environmentId={props.environmentId}
-      faviconPath={project.faviconPath}
-      projectIcon={project.projectIcon}
+      projectIcon={{ kind: "monogram", text: projectMonogram(props.wiki.name), color: "gray" }}
       size={15}
-      projectTitle={project.title}
-      workspaceRoot={project.workspaceRoot}
-    />
-  ) : (
-    <ProjectFavicon
-      environmentId={props.environmentId}
-      projectIcon={{ kind: "monogram", text: projectMonogram(wiki.name), color: "gray" }}
-      size={15}
-      projectTitle={wiki.name}
+      projectTitle={props.wiki.name}
     />
   );
 }
@@ -67,7 +49,6 @@ function useAgentWorking(environmentId: EnvironmentId, threadId: ThreadId | null
 function WikiRowFrame(props: {
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
-  readonly project: EnvironmentProject | null;
   readonly timestamp: string | null;
   readonly working: boolean;
   readonly title: string;
@@ -89,11 +70,7 @@ function WikiRowFrame(props: {
       <View>
         <View className={THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME}>
           <View className="flex-row items-center gap-1.5">
-            <WikiIcon
-              environmentId={props.environmentId}
-              wiki={props.wiki}
-              project={props.project}
-            />
+            <WikiIcon environmentId={props.environmentId} wiki={props.wiki} />
             <Text
               className={cn("flex-1 text-sm font-t3-medium", ROW.mutedForegroundClassName)}
               numberOfLines={1}
@@ -135,10 +112,12 @@ function WikiRowFrame(props: {
   );
 }
 
-/** A document: its wiki and when it last changed, its name, and its links or open change. */
+/**
+ * A document: its wiki and when it last changed, its name, and its links or open change. A base
+ * reads `<name>.base`, as on web, over a table icon.
+ */
 export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
   readonly entry: WikiDocumentEntry;
-  readonly project: EnvironmentProject | null;
   readonly showTrailingDivider: boolean;
   readonly onSelect: (entry: WikiDocumentEntry) => void;
 }) {
@@ -149,19 +128,18 @@ export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
     <WikiRowFrame
       environmentId={entry.environmentId}
       wiki={entry.wiki}
-      project={props.project}
       timestamp={entry.editedAt}
       working={working}
       title={entry.name}
       accessibilityLabel={`${entry.name}, ${entry.wiki.name}`}
-      accessibilityHint="Opens the document"
+      accessibilityHint={entry.base ? "Opens the base" : "Opens the document"}
       showTrailingDivider={props.showTrailingDivider}
       onPress={() => onSelect(entry)}
       footer={
         <>
-          {footer.inChange ? (
+          {footer.inChange || entry.base ? (
             <SymbolView
-              name="square.and.pencil"
+              name={footer.inChange ? "square.and.pencil" : "tablecells"}
               size={11}
               tintColorClassName={ROW.mutedIconTintClassName}
               type="monochrome"
@@ -191,7 +169,6 @@ const CHANGE_STATUS_ICON = {
 /** A change request: its wiki and when it last moved, its title, and what it holds. */
 export const WikiChangeRow = memo(function WikiChangeRow(props: {
   readonly entry: WikiChangeEntry;
-  readonly project: EnvironmentProject | null;
   readonly showTrailingDivider: boolean;
   readonly onSelect: (entry: WikiChangeEntry) => void;
 }) {
@@ -203,7 +180,6 @@ export const WikiChangeRow = memo(function WikiChangeRow(props: {
     <WikiRowFrame
       environmentId={entry.environmentId}
       wiki={entry.wiki}
-      project={props.project}
       timestamp={changeRequest.updatedAt}
       working={working}
       title={changeRequest.title}

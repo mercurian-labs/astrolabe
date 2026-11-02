@@ -14,7 +14,9 @@ import {
 } from "@t3tools/contracts";
 import {
   BlocksIcon,
+  FileTextIcon,
   FolderIcon,
+  LinkIcon,
   MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
@@ -30,6 +32,7 @@ import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
+import type { ComposerWikiLinkItem, ComposerWikiNoteItem } from "./composerWikiNoteItems";
 
 export type ComposerCommandItem =
   | {
@@ -77,7 +80,9 @@ export type ComposerCommandItem =
       thread: ScopedThreadRef;
       label: string;
       description: string;
-    };
+    }
+  | ComposerWikiNoteItem
+  | ComposerWikiLinkItem;
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   listId: string;
@@ -144,7 +149,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   ? "Searching workspace skills..."
                   : props.triggerKind === "pull-request"
                     ? "Finding pull request..."
-                    : "Searching workspace files..."
+                    : props.triggerKind === "wiki-note"
+                      ? "Loading wiki notes..."
+                      : "Searching workspace files..."
                 : (props.emptyStateText ??
                   (props.triggerKind === "skill"
                     ? "No skills found. Try / to browse provider commands."
@@ -202,6 +209,12 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
+      {props.item.type === "wiki-note" ? (
+        <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "wiki-link" ? (
+        <LinkIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
       {pullRequestPresentation ? (
         <pullRequestPresentation.Icon
           role="img"
@@ -244,6 +257,7 @@ const LISTBOX_LABEL_BY_TRIGGER: Record<ComposerTriggerKind, string> = {
   "pull-request": "Pull requests",
   "slash-command": "Commands",
   skill: "Skills",
+  "wiki-note": "Wiki notes",
 };
 
 const SKILL_SOURCE_ICON_BY_KIND: Record<ProviderSkillSourceKind, LucideIcon> = {

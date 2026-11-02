@@ -83,3 +83,11 @@ export function buildHostedPairingUrl(input: {
 
   return setPairingTokenOnUrl(url, input.token).toString();
 }
+
+export function buildHostedChannelSelectionUrl(input: {
+  readonly channel: HostedAppChannel;
+}): string {
+  const url = new URL("/__t3code/channel", configuredHostedAppUrl());
+  url.searchParams.set("channel", input.channel);
+  return url.toString();
+}

@@ -1,0 +1,9 @@
+filters:
+  or:
+    - file.hasTag("tag")
+    - and:
+        - file.hasTag("book")
+        - file.hasLink("Textbook")
+    - not:
+        - file.hasTag("book")
+        - file.inFolder("Required Reading")

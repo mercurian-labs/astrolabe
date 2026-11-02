@@ -16,6 +16,14 @@
       "types": "./src/imageAttachmentSize.ts",
       "default": "./src/imageAttachmentSize.ts"
     },
+    "./codeGraphStory": {
+      "types": "./src/codeGraphStory.ts",
+      "default": "./src/codeGraphStory.ts"
+    },
+    "./codeGraphViews": {
+      "types": "./src/codeGraphViews.ts",
+      "default": "./src/codeGraphViews.ts"
+    },
     "./handoff": {
       "types": "./src/handoff.ts",
       "default": "./src/handoff.ts"

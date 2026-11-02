@@ -393,11 +393,14 @@ import {
   WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
+  WikiQueryInput,
+  WikiQueryResult,
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
   WikiSetChangeRequestStatusInput,
   WikiSetMirrorInput,
+  WikiSetProjectLinkInput,
   WikiSummary,
   WikiTarget,
   WikiTransformInput,
@@ -613,6 +616,7 @@ export const WS_METHODS = {
   wikiRemove: "wiki.remove",
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
+  wikiQuery: "wiki.query",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
@@ -622,6 +626,7 @@ export const WS_METHODS = {
   wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
+  wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
 
   // Astrolabe: open repository files, with the environment as their authority.
@@ -2045,6 +2050,12 @@ const WsWikiReadNoteRpc = Rpc.make(WS_METHODS.wikiReadNote, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
+  payload: WikiQueryInput,
+  success: WikiQueryResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
   payload: WikiChangeRequestListInput,
   success: WikiChangeRequestListResult,
@@ -2095,6 +2106,12 @@ const WsWikiSetChangeRequestStatusRpc = Rpc.make(WS_METHODS.wikiSetChangeRequest
 
 const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
   payload: WikiSetMirrorInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSetProjectLinkRpc = Rpc.make(WS_METHODS.wikiSetProjectLink, {
+  payload: WikiSetProjectLinkInput,
   success: WikiSummary,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
@@ -2570,6 +2587,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiRemoveRpc,
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
+  WsWikiQueryRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
   WsWikiChangeRequestsOpenRpc,
@@ -2579,6 +2597,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,
+  WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
   WsDocumentsSubscribeRpc,
   WsDocumentsPushRpc,

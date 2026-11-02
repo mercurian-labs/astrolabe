@@ -1,261 +1,125 @@
 /**
- * A file graph: one file in the middle and the files it imports and that import it, as the
- * Repositories' local graph draws it (`FileGraph`). Its host caps and folds it, so it lays out in
- * one pass on rings around the centre, never by forces: the files it uses to the right, the files
- * that use it to the left, each ring one link further out.
+ * A code graph: its roots in the middle and what they import and what imports them, as files,
+ * folders, modules or definitions, with opened nodes drawn as clusters of their parts
+ * (`FileGraph`). Its host caps, folds and filters it; the graph lays it out by forces and draws it
+ * as Obsidian draws a vault.
  */
-import { medianNearestNeighbour, type GraphLayout } from "../layout/forceLayout.ts";
-import { NodeShape } from "./kinds.ts";
-import type { Memory, MemoryNote } from "./memory.ts";
-import { NO_FILTERS } from "./search.ts";
-import { buildUniverse, type Universe } from "./universe.ts";
-import { countWords, deriveView, Emphasis, type ReadingView } from "./view.ts";
 
-export type FileGraphNodeKind = "file" | "package" | "dependency" | "folder";
+export type FileGraphNodeKind = "file" | "package" | "dependency" | "folder" | "module" | "symbol";
 
 export interface FileGraphNode {
   readonly id: string;
   readonly name: string;
-  /** A file is a dot, another package a square, a dependency a faint dot, a folded folder a ring. */
+  /** A dependency is the lightest dot, a folded folder a lighter one; files and packages are plain. */
   readonly kind: FileGraphNodeKind;
-  /** Changed on its branch or not yet committed: it carries a ring. */
+  /** Changed on its branch or not yet committed: filled amber while Changed files is on. */
   readonly changed: boolean;
-  /** A folded folder's file count, said in its label. */
+  /** A test: its label is quieter. */
+  readonly test: boolean;
+  /** A folded folder's file count, said in its label and sizing its dot. */
   readonly files: number | null;
+  /** The group whose colour tints it (one of `GROUP_SLOTS`), or null. */
+  readonly group: number | null;
+  /** The open cluster holding it, drawn around it; none when absent. */
+  readonly cluster?: string | null;
+}
+
+/** A node opened in place: a soft disc around the nodes it holds, its name above. */
+export interface FileGraphCluster {
+  readonly id: string;
+  readonly name: string;
+  /** The cluster holding this one. */
+  readonly parent: string | null;
+  /** Holds a root: its rim takes the accent. */
+  readonly root: boolean;
 }
 
 /** `from` imports `to`. */
 export interface FileGraphLink {
   readonly from: string;
   readonly to: string;
-  /** Resolved by name alone: drawn dashed. */
+  /** Resolved by name alone: drawn fainter. */
   readonly guessed: boolean;
 }
 
 export interface FileGraphData {
-  readonly center: string;
+  /** Drawn in the accent, and named whatever the zoom. */
+  readonly roots: ReadonlyArray<string>;
   readonly nodes: ReadonlyArray<FileGraphNode>;
   readonly links: ReadonlyArray<FileGraphLink>;
+  readonly clusters?: ReadonlyArray<FileGraphCluster>;
 }
 
-/** World units between rings, and the least arc between neighbours on one. */
-const RING_GAP = 66;
-const MIN_ARC = 27;
-/** The half-width of each side's fan, short of a half circle so the two sides stay apart. */
-const HALF_FAN = Math.PI * 0.42;
-/** A dependency's emphasis: a faint leaf. */
-const FAINT = 0.3;
-
-const universeKeys = new WeakMap<FileGraphData, string>();
-let nextKey = 0;
-
-/** A key per graph handed over: a new graph is a new picture, never one grown from the last. */
-function keyOf(graph: FileGraphData): string {
-  let key = universeKeys.get(graph);
-  if (key === undefined) {
-    nextKey += 1;
-    key = `file-graph/${nextKey}`;
-    universeKeys.set(graph, key);
-  }
-  return key;
+/** What a story's step lights: its nodes, its links, and the links between its nodes. */
+export interface FileGraphFocus {
+  readonly nodes: ReadonlyArray<string>;
+  readonly links: ReadonlyArray<{ readonly from: string; readonly to: string }>;
 }
+
+/** How many group colours there are: the theme's `--atlas-lens-1` to `--atlas-lens-6`. */
+export const GROUP_SLOTS = 6;
+
+/** What a graph lays out, as one string: two graphs with the same lay out the same. */
+export const fileGraphStructure = (graph: FileGraphData): string =>
+  JSON.stringify([
+    graph.roots,
+    graph.nodes.map((node) => [node.id, node.cluster ?? null]),
+    graph.links.map((link) => [link.from, link.to]),
+    (graph.clusters ?? []).map((cluster) => [cluster.id, cluster.parent]),
+  ]);
 
 /** What a graph draws, as one string: two graphs with the same draw the same picture. */
 export const fileGraphSignature = (graph: FileGraphData): string =>
   JSON.stringify([
-    graph.center,
-    graph.nodes.map((node) => [node.id, node.name, node.kind, node.changed, node.files]),
-    graph.links.map((link) => [link.from, link.to, link.guessed]),
+    fileGraphStructure(graph),
+    graph.nodes.map((node) => [
+      node.name,
+      node.kind,
+      node.changed,
+      node.test,
+      node.files,
+      node.group,
+    ]),
+    graph.links.map((link) => link.guessed),
+    (graph.clusters ?? []).map((cluster) => [cluster.name, cluster.root]),
   ]);
 
-export function fileGraphMemory(graph: FileGraphData): Memory {
-  return {
-    id: keyOf(graph),
-    notes: graph.nodes.map((node): MemoryNote => ({
-      id: node.id,
-      name: node.name,
-      frontier: false,
-      ...(node.kind === "folder" ? { kind: "folder" } : {}),
-      ...(node.kind === "package" ? { shape: NodeShape.square } : {}),
-    })),
-    links: graph.links.map((link) => ({
-      from: link.from,
-      to: link.to,
-      kind: "imports",
-      resolution: link.guessed ? "heuristic" : "exact",
-    })),
-    lenses: [],
-  };
-}
-
-export const fileGraphUniverse = (graph: FileGraphData): Universe =>
-  buildUniverse(keyOf(graph), fileGraphMemory(graph));
-
-/** How many links each node is from the centre one way: along imports (`uses`) or against them. */
-function reach(graph: FileGraphData, direction: "uses" | "usedBy"): Map<string, number> {
-  const next = new Map<string, Array<string>>();
+/** Each node's link count, a link to itself not counted. */
+export function fileGraphDegrees(graph: FileGraphData): Map<string, number> {
+  const degrees = new Map(graph.nodes.map((node) => [node.id, 0]));
   for (const link of graph.links) {
-    const [from, to] = direction === "uses" ? [link.from, link.to] : [link.to, link.from];
-    const list = next.get(from) ?? [];
-    list.push(to);
-    next.set(from, list);
+    if (link.from === link.to) continue;
+    degrees.set(link.from, (degrees.get(link.from) ?? 0) + 1);
+    degrees.set(link.to, (degrees.get(link.to) ?? 0) + 1);
   }
-  const depth = new Map([[graph.center, 0]]);
-  let ring = [graph.center];
-  while (ring.length > 0) {
-    const out: Array<string> = [];
-    for (const id of ring) {
-      for (const to of next.get(id) ?? []) {
-        if (depth.has(to)) continue;
-        depth.set(to, (depth.get(id) ?? 0) + 1);
-        out.push(to);
-      }
-    }
-    ring = out;
-  }
-  return depth;
+  return degrees;
 }
 
-interface Placed {
-  readonly side: "uses" | "usedBy";
-  readonly depth: number;
-  /** The node one ring in that leads here, for ordering a ring by where its parents sit. */
-  readonly parent: string | null;
-}
-
-/**
- * Each node's side and ring: the nearer way from the centre, along imports when tied. A node
- * neither way reaches (the host's fold may cut a path) sits on the outer ring of the uses side.
- */
-export function fileGraphRings(graph: FileGraphData): Map<string, Placed> {
-  const uses = reach(graph, "uses");
-  const usedBy = reach(graph, "usedBy");
-  const placed = new Map<string, Placed>();
-  const outer = Math.max(1, ...uses.values(), ...usedBy.values());
-  for (const node of graph.nodes) {
-    if (node.id === graph.center) continue;
-    const forward = uses.get(node.id);
-    const backward = usedBy.get(node.id);
-    if (forward === undefined && backward === undefined) {
-      placed.set(node.id, { side: "uses", depth: outer, parent: null });
-      continue;
-    }
-    const side = backward === undefined || (forward !== undefined && forward <= backward);
-    const depth = (side ? forward : backward) ?? outer;
-    placed.set(node.id, { side: side ? "uses" : "usedBy", depth, parent: null });
-  }
-  // A parent: a linked node one ring in on the same side (the centre for the first ring).
+/** A node and the nodes it links to either way: what a hover keeps lit. */
+export function neighbourhood(graph: FileGraphData, id: string): Set<string> {
+  const lit = new Set([id]);
   for (const link of graph.links) {
-    for (const [id, other] of [
-      [link.to, link.from],
-      [link.from, link.to],
-    ] as const) {
-      const here = placed.get(id);
-      if (here === undefined || here.parent !== null) continue;
-      const there = other === graph.center ? { side: here.side, depth: 0 } : placed.get(other);
-      if (there?.side === here.side && there.depth === here.depth - 1) {
-        placed.set(id, { ...here, parent: other });
-      }
-    }
+    if (link.from === id) lit.add(link.to);
+    if (link.to === id) lit.add(link.from);
   }
-  return placed;
+  return lit;
 }
 
-/**
- * The rings, laid out: the centre at the origin, each side's ring fanned around its own direction
- * (both fans share the circle when only one side has nodes), and each ring ordered by where its
- * nodes' parents sit, so links fan outward rather than cross. A crowded ring moves out until its
- * nodes stand `MIN_ARC` apart.
- */
-export function fileGraphLayout(universe: Universe, graph: FileGraphData): GraphLayout {
-  const started = performance.now();
-  const rings = fileGraphRings(graph);
-  // Where each node sits across its side's fan, 0 at the top to 1 at the bottom.
-  const share = new Map<string, number>([[graph.center, 0.5]]);
-  const radiusOf = new Map<string, number>([[graph.center, 0]]);
-  const angle = new Map<string, number>([[graph.center, 0]]);
-  const sides = new Set([...rings.values()].map((place) => place.side));
-  const fan = sides.size === 2 ? HALF_FAN : Math.PI * (1 - 1 / 24);
-  const depths = [...new Set([...rings.values()].map((place) => place.depth))].sort(
-    (left, right) => left - right,
-  );
-  let previousRadius = 0;
-  for (const depth of depths) {
-    const ring = [...rings].filter(([, place]) => place.depth === depth);
-    const crowd = Math.max(
-      ...(["uses", "usedBy"] as const).map(
-        (side) => ring.filter(([, place]) => place.side === side).length,
-      ),
-    );
-    const radius = Math.max(previousRadius + RING_GAP, (crowd * MIN_ARC) / (2 * fan));
-    previousRadius = radius;
-    for (const side of ["uses", "usedBy"] as const) {
-      const members = ring
-        .filter(([, place]) => place.side === side)
-        .map(([id, place]) => ({
-          id,
-          parentShare: place.parent === null ? 1 : (share.get(place.parent) ?? 1),
-        }))
-        .sort((left, right) =>
-          left.parentShare !== right.parentShare
-            ? left.parentShare - right.parentShare
-            : left.id < right.id
-              ? -1
-              : 1,
-        );
-      members.forEach((member, at) => {
-        const across = (at + 0.5) / members.length;
-        const offset = fan - across * 2 * fan;
-        share.set(member.id, across);
-        radiusOf.set(member.id, radius);
-        angle.set(member.id, side === "uses" || sides.size === 1 ? offset : Math.PI - offset);
-      });
-    }
-  }
-  const positions = new Float32Array(universe.nodes.length * 3);
-  let extent = 0;
-  universe.nodes.forEach((node, at) => {
-    const r = radiusOf.get(node.id) ?? 0;
-    const theta = angle.get(node.id) ?? 0;
-    positions[at * 3] = r * Math.cos(theta);
-    positions[at * 3 + 1] = r * Math.sin(theta);
-    extent = Math.max(extent, r);
-  });
-  return {
-    dimensions: 2,
-    positions,
-    center: [0, 0, 0],
-    radius: extent,
-    spacing: Math.max(medianNearestNeighbour(positions, universe.nodes.length), MIN_ARC),
-    ms: performance.now() - started,
-  };
-}
+/** What a node's label says: its name, a folded folder's with its file count. */
+export const nodeLabel = (node: FileGraphNode): string =>
+  node.kind === "folder" && node.files !== null ? `${node.name} · ${node.files}` : node.name;
 
-/**
- * Every node and link shown: the centre in front (held as the pick, so it grows and keeps its
- * label outlined), its neighbours just behind, a dependency faint, a changed file ringed (the
- * shaders' worked-note mark), and a folded folder saying how many files it holds.
- */
-export function fileGraphView(universe: Universe, graph: FileGraphData): ReadingView {
-  const view = deriveView({
-    universe,
-    lenses: [],
-    shownLensSlots: [],
-    reading: null,
-    whole: true,
-    pickedId: universe.indexOf.has(graph.center) ? graph.center : null,
-    depth: 0,
-    filters: NO_FILTERS,
-  });
-  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-  const nodeOf = (at: number) => byId.get(universe.nodes[view.nodes[at] ?? -1]?.id ?? "");
-  const nodeEmphasis = view.nodeEmphasis.map((emphasis, at) =>
-    nodeOf(at)?.kind === "dependency" ? FAINT : Math.max(emphasis, Emphasis.whole),
-  );
-  const nodeGlow = view.nodeGlow.map((_, at) => (nodeOf(at)?.changed === true ? 1 : 0));
-  const nodeCount = Array.from(view.nodes, (_, at) => {
-    const files = nodeOf(at)?.files ?? null;
-    return files === null ? "" : countWords(files, "file");
-  });
-  return { ...view, nodeEmphasis, nodeGlow, nodeCount };
+/** Each cluster's ancestors, innermost first, the cluster itself included. */
+export function clusterChains(graph: FileGraphData): Map<string, ReadonlyArray<string>> {
+  const parents = new Map((graph.clusters ?? []).map((cluster) => [cluster.id, cluster.parent]));
+  const chains = new Map<string, ReadonlyArray<string>>();
+  for (const id of parents.keys()) {
+    const chain: Array<string> = [];
+    for (let at: string | null | undefined = id; at != null && !chain.includes(at);) {
+      chain.push(at);
+      at = parents.get(at);
+    }
+    chains.set(id, chain);
+  }
+  return chains;
 }

@@ -1,7 +1,13 @@
 import type { WikiChangeRequest } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { isSkillMapFile, wikiDocumentAuthor, wikiDocumentSubtitle } from "./wikiDocument.logic";
+import {
+  isSkillMapFile,
+  isWikiBaseFile,
+  wikiBaseTitle,
+  wikiDocumentAuthor,
+  wikiDocumentSubtitle,
+} from "./wikiDocument.logic";
 
 const amendment = (actor: string, commit: string, at: string, files: string[]) =>
   ({ actor, commit, at, files }) as unknown as WikiChangeRequest["amendments"][number];
@@ -67,5 +73,15 @@ describe("isSkillMapFile", () => {
   it("tells skill maps from notes", () => {
     expect(isSkillMapFile("Product.skillmap.md")).toBe(true);
     expect(isSkillMapFile("Atlas.md")).toBe(false);
+  });
+});
+
+describe("wiki base files", () => {
+  it("opens a .base file as its view, titled without the extension", () => {
+    expect(isWikiBaseFile("Projects.base")).toBe(true);
+    expect(isWikiBaseFile("Projects")).toBe(false);
+    expect(isWikiBaseFile("Database notes")).toBe(false);
+    expect(wikiBaseTitle("Projects.base")).toBe("Projects");
+    expect(wikiBaseTitle("plans/Open work.base")).toBe("plans/Open work");
   });
 });

@@ -79,7 +79,7 @@ export function PullRequestListEmptyState({
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button size="sm" onClick={() => openCommandPalette({ open: "add-repository" })}>
+          <Button size="sm" onClick={() => openCommandPalette({ open: "add-project" })}>
             <PlusIcon className="size-3.5" />
             Add project
           </Button>

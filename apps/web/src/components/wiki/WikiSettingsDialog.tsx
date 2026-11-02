@@ -22,6 +22,7 @@ import {
 import { describeIndexError, summarizeMirror, type MirrorTone } from "./wiki.logic";
 import { WikiMirrorDialog } from "./WikiDialogs";
 import { useWikiCommand } from "./wikiEnvironment";
+import { WikiRepositoriesMenu } from "./WikiLinkMenus";
 import { closeWikiTabs } from "./wikiPanes";
 import { WikiPart } from "./WikiParts";
 
@@ -42,8 +43,8 @@ function WikiMirrorBadge({ wiki }: { readonly wiki: WikiSummary }) {
 
 /**
  * A wiki's settings, opened from its row in the wiki filter as a project's are from the project
- * filter: where it lives, how it stands, its mirror, and removing it. Removing unregisters the
- * wiki; its files stay.
+ * filter: where it lives, how it stands, the repositories it plans, its mirror, and removing it.
+ * Removing unregisters the wiki; its files stay.
  */
 export function WikiSettingsDialog({
   environmentId,
@@ -87,6 +88,9 @@ export function WikiSettingsDialog({
                 </WikiPart.Fact>
                 <WikiPart.Fact label="Open change requests">
                   {wiki.openChangeRequests}
+                </WikiPart.Fact>
+                <WikiPart.Fact label="Projects">
+                  <WikiRepositoriesMenu environmentId={environmentId} wiki={wiki} />
                 </WikiPart.Fact>
                 <WikiPart.Fact label="Mirror">
                   {wiki.mirror ? (

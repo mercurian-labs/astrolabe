@@ -1,11 +1,14 @@
 import { ChangeGroupView } from "~/components/changeRequests/groups/ChangeGroupView";
-import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import {
+  changeGroupTabKey,
+  parseChangeGroupTabKey,
+} from "~/components/changeRequests/groups/changeGroupTabs";
 import { useChangeGroupTabLabel } from "~/components/changeRequests/groups/useChangeGroupTabLabel";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { RepositoryTabView, repositoryTabLabel } from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ProjectId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -13,27 +16,17 @@ import type { ReactNode } from "react";
 import ChatView from "~/components/ChatView";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { guideShown, pullRequestActed } from "~/components/pullRequest/pullRequestWorkspace";
 import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
-  type PullRequestTarget,
 } from "~/components/pullRequest/pullRequestTabs";
-import {
-  closeAskingFirst,
-  useWikiTabLabel,
-  WikiTabView,
-  type WikiTabNav,
-} from "~/components/wiki/WikiTabView";
-import { hasUnsavedEdits } from "~/components/wiki/wikiPanes";
+import { useWikiTabLabel, WikiTabView, type WikiTabNav } from "~/components/wiki/WikiTabView";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
-import { ChatTabStripContext } from "~/chatTabs/ChatTabStrip";
-import { useChatTabsStore } from "~/chatTabs/chatTabsStore";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
-import { ensureLocalApi } from "~/localApi";
 import {
   activateTab,
-  closeTab,
   focusedPane,
   openBeside,
   openTab,
@@ -43,18 +36,12 @@ import {
   type Arrangement,
 } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
-import { ThreadPanesProvider } from "~/panes/ThreadPanes";
+import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { useThreadShell } from "~/state/entities";
-import { openInSection } from "./openInSection";
-import {
-  chatTabKey,
-  parseChatTabKey,
-  SECTION_LABELS,
-  tabSection,
-  type SectionId,
-} from "./sectionTabs";
+import { chatTabKey, parseChatTabKey } from "./sectionTabs";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
 export function showKeyIn(
@@ -68,91 +55,35 @@ export function showKeyIn(
     : openTab(arrangement, key, arrangement.focused);
 }
 
-/**
- * Where a wiki tab's links lead in panes other than the Wikis area's: into the same panes. A
- * change request's thread opens beside it as a chat, unless `chats` is off (a thread's own right
- * panel), where its link goes to the thread.
- */
+/** Where a wiki tab's links lead: into the same panes, each tab standing on its own. */
 function paneTabNav(
   store: PaneArrangementStore,
-  {
-    chats = true,
-    openPullRequest,
-  }: {
-    readonly chats?: boolean;
-    readonly openPullRequest?: (target: FullPullRequestTarget) => void;
-  } = {},
+  openPullRequest?: (target: FullPullRequestTarget) => void,
 ): WikiTabNav {
+  const open = (key: string, placement: "tab" | "beside" = "tab") =>
+    store.update((arrangement) => showKeyIn(arrangement, key, placement));
   return {
     // A pull request opens beside, named in full so its tab reads on its own.
     openPullRequest:
-      openPullRequest ??
-      ((target) =>
-        store.update((arrangement) =>
-          showKeyIn(arrangement, surfaceKey(pullRequestSurface(target).id), "beside"),
-        )),
-    open: (key, placement) => store.update((arrangement) => showKeyIn(arrangement, key, placement)),
+      openPullRequest ?? ((target) => open(surfaceKey(pullRequestSurface(target).id), "beside")),
+    open,
     replace: (from, key) =>
       store.update((arrangement) =>
         leafWithTab(arrangement.root, key)
           ? activateTab(arrangement, key)
           : replaceTab(arrangement, from, key),
       ),
-    ...(chats
-      ? {
-          openThread: (ref: ScopedThreadRef) =>
-            store.update((arrangement) => showKeyIn(arrangement, chatTabKey(ref), "beside")),
-        }
-      : {}),
+    openThread: (ref: ScopedThreadRef) =>
+      store === workspace.store
+        ? workspace.openChat(chatTabKey(ref))
+        : store.update((arrangement) => showKeyIn(arrangement, chatTabKey(ref), "beside")),
   };
 }
 
-/** Closes a tab from a set of panes, asking first when it holds unsaved edits. */
-export function closeSectionTab(store: PaneArrangementStore, key: string) {
-  closeAskingFirst(key, () => store.update((arrangement) => closeTab(arrangement, key)));
-}
-
-/** "Open in <section>" for a tab outside its own section. */
+/** "Open in <section>" for a tab whose home section has more to show of it. */
 export interface SectionTabMove {
   readonly label: string;
   readonly run: (navigate: NavigateFn) => void;
-}
-
-/**
- * Moving a tab to its own section: it closes here (asking first over unsaved edits) and opens
- * there. Null for a tab already in its section, or one that never leaves its panes.
- */
-export function sectionTabMove(
-  key: string,
-  here: SectionId,
-  close: (key: string) => void,
-  pullRequest?: PullRequestTarget | null,
-): SectionTabMove | null {
-  const home = tabSection(key);
-  if (home === null || home === here) return null;
-  return {
-    label: `Open in ${SECTION_LABELS[home]}`,
-    run(navigate) {
-      const move = () => {
-        close(key);
-        openInSection(key, navigate, pullRequest ?? undefined);
-      };
-      if (!hasUnsavedEdits(key)) {
-        move();
-        return;
-      }
-      void ensureLocalApi()
-        .dialogs.confirm(
-          `Open this in ${SECTION_LABELS[home]}? Your unsaved edits here will be lost.`,
-          {
-            variant: "destructive",
-          },
-        )
-        .then((confirmed) => {
-          if (confirmed) move();
-        });
-    },
-  };
 }
 
 /** The title and icon of a chat, document or pull request tab; null for any other key. */
@@ -182,72 +113,60 @@ export function useSectionTabLabel(key: string): { title: string; icon: ReactNod
 }
 
 /**
- * A chat, document or pull request shown in another section's panes. `store` is those panes,
- * where a document's links lead. `active` says the tab is its pane's front tab in the focused
- * pane, so its shortcuts listen.
+ * A chat, document, change group or pull request in a set of panes. `store` is those panes, where
+ * a document's links lead. `active` says the tab is its pane's front tab in the focused pane, so
+ * its shortcuts listen.
  */
 export function SectionTabContent({
   tabKey,
   store,
   active,
-  chats = true,
   openPullRequest,
   openAll,
 }: {
   readonly tabKey: string;
   readonly store: PaneArrangementStore;
   readonly active: boolean;
-  readonly chats?: boolean;
   /** Where a change request's pull request opens, for panes that hold them their own way. */
   readonly openPullRequest?: (target: FullPullRequestTarget) => void;
   /** How tabs open together (a change group's tab group), for panes that hold them their own way. */
   readonly openAll?: (keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void;
 }) {
   const chat = parseChatTabKey(tabKey);
-  if (chat !== null) return chats ? <PaneChat threadRef={chat} /> : null;
+  if (chat !== null) return <PaneChat threadRef={chat} />;
   const repository = parseRepositoryTabKey(tabKey);
   if (repository !== null) return <RepositoryTabView tabKey={tabKey} tab={repository} />;
   const group = parseChangeGroupTabKey(tabKey);
   if (group !== null) {
+    const shared = store === workspace.store;
     return (
       <ChangeGroupView
         tab={group}
         open={(key) => {
-          // Beside a thread, which holds no chats, a thread opens in the chat tabs after the chat
-          // in front, and a pull request as the thread's own.
-          const thread = chats ? null : parseChatTabKey(key);
-          const pullRequest = chats ? null : pullRequestTargetOfKey(key);
-          if (thread !== null) {
-            useChatTabsStore.getState().openBesideFront([scopedThreadKey(thread)]);
-          } else if (pullRequest !== null && openPullRequest) {
-            openPullRequest(pullRequest);
-          } else {
-            store.update((arrangement) => showKeyIn(arrangement, key, "beside"));
-          }
+          // In the shared panes a thread opens as a sidebar row's does, and the rest beside it.
+          const thread = shared ? parseChatTabKey(key) : null;
+          if (thread !== null) workspace.openChat(chatTabKey(thread));
+          else store.update((arrangement) => showKeyIn(arrangement, key, "beside"));
         }}
         openAll={
           openAll ??
-          ((keys) =>
-            store.update((arrangement) => {
-              const pane = focusedPane(arrangement);
-              const [front] = keys;
-              if (front === undefined) return arrangement;
-              const index = Math.max(0, pane.tabs.indexOf(front));
-              return placeTabs(arrangement, keys, pane.id, { side: null, index }, front);
-            }))
+          (shared
+            ? openTabGroup
+            : (keys) =>
+                store.update((arrangement) => {
+                  const pane = focusedPane(arrangement);
+                  const [front] = keys;
+                  if (front === undefined) return arrangement;
+                  const index = Math.max(0, pane.tabs.indexOf(front));
+                  return placeTabs(arrangement, keys, pane.id, { side: null, index }, front);
+                }))
         }
       />
     );
   }
   const wiki = parseWikiTabKey(tabKey);
   if (wiki !== null) {
-    return (
-      <WikiTabView
-        tabKey={tabKey}
-        tab={wiki}
-        nav={paneTabNav(store, { chats, ...(openPullRequest ? { openPullRequest } : {}) })}
-      />
-    );
+    return <WikiTabView tabKey={tabKey} tab={wiki} nav={paneTabNav(store, openPullRequest)} />;
   }
   const pullRequest = pullRequestTargetOfKey(tabKey);
   if (pullRequest !== null) {
@@ -257,21 +176,57 @@ export function SectionTabContent({
 }
 
 /**
- * A thread's chat in a pane, as Agents shows it but without the chat tabs: the pane's own strip
- * holds the tab. Its right panel is the thread's, as in Agents.
+ * A change group's **Open as a tab group** in the shared panes. Its threads open as chats after
+ * the chat in front, which stays in front; the rest open linked to the group beside it, so they
+ * show beside every thread of the group and none other. Beside a chat outside the group they
+ * stand on their own, together in one pane beside it.
  */
-function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  return (
-    <ChatTabStripContext.Provider value={null}>
-      <ThreadPanesProvider threadRef={threadRef}>
-        <ChatView
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          routeKind="server"
-          reserveTitleBarControlInset={false}
-        />
-      </ThreadPanesProvider>
-    </ChatTabStripContext.Provider>
+function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) {
+  const chats = keys.flatMap((key) => {
+    const ref = parseChatTabKey(key);
+    return ref ? [chatTabKey(ref)] : [];
+  });
+  if (chats.length > 0) workspace.openChatsBesideFront(chats);
+  const front = workspace.linked().front;
+  const groupKey = changeGroupTabKey(group);
+  const inGroup =
+    front !== null &&
+    group.threadIds.some(
+      (threadId) =>
+        chatTabKey(scopeThreadRef(group.environmentId, ThreadId.make(threadId))) === front,
+    );
+  let beside = true;
+  for (const key of keys) {
+    if (parseChatTabKey(key) !== null) continue;
+    if (inGroup) workspace.openLinked(key, groupKey);
+    else workspace.open(key, beside ? "beside" : "tab");
+    beside = false;
+  }
+}
+
+/**
+ * A thread's chat in a pane: its tab is the pane's, and its surfaces are tabs linked to it
+ * (`LinkedPanel`). A thread with a draft shows the draft, as the draft's route does, until the
+ * draft becomes the thread; one unkeyed ChatView carries the chat through that change.
+ */
+export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const draftId = useComposerDraftStore((store) => store.getDraftIdByRef(threadRef));
+  return draftId ? (
+    <ChatView
+      draftId={draftId}
+      environmentId={threadRef.environmentId}
+      threadId={threadRef.threadId}
+      routeKind="draft"
+      reserveTitleBarControlInset={false}
+      forceExpandedMobileComposer
+    />
+  ) : (
+    <ChatView
+      environmentId={threadRef.environmentId}
+      threadId={threadRef.threadId}
+      routeKind="server"
+      reserveTitleBarControlInset={false}
+    />
   );
 }
 
@@ -287,7 +242,10 @@ function shortcutContext() {
   };
 }
 
-/** A pull request in a pane outside Change Requests; one picked inside it replaces it. */
+/**
+ * A pull request in a pane; one picked inside it replaces it. Its Guide's tour takes the window
+ * (`guideShown`), and what it does to the pull request reaches the Changes list.
+ */
 function PanePullRequest({
   tabKey,
   target,
@@ -304,6 +262,9 @@ function PanePullRequest({
       environmentId={target.environmentId as ScopedThreadRef["environmentId"]}
       shortcutsEnabled={active}
       getShortcutContext={shortcutContext}
+      tabOnPage
+      onGuideShown={() => guideShown(tabKey)}
+      onActed={(action, phase = "done") => pullRequestActed(target, action, phase)}
       reference={{
         projectId: target.projectId as ProjectId,
         repository: target.repository,

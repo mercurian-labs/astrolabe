@@ -62,6 +62,39 @@ describe("the wiki editor page", () => {
     expect(editor.buffer.current()).toBe("theirs\n");
   });
 
+  it("asks the app for each base block once, and keeps every view of it current", () => {
+    const { page: editor, events } = page();
+    let heard = 0;
+    const source = 'filters: file.hasTag("area")';
+    editor.watchBase(source, () => heard++);
+    editor.watchBase(source, () => heard++);
+    expect(events).toEqual([{ type: "queryBase", source }]);
+    const result = {
+      view: { name: "Table", type: "table" as const },
+      columns: [{ id: "file.name", label: "Name" }],
+      groupBy: null,
+      rows: [{ name: "Alpha", file: "Alpha.md", values: { "file.name": "Alpha.md" } }],
+      total: 1,
+      truncated: false,
+    };
+    editor.handle({ type: "baseResult", source, result, error: null });
+    expect(editor.getBase(source)).toEqual({ result, error: null });
+    expect(heard).toBe(2);
+    expect(
+      parseWikiEditorCommand({ type: "baseResult", source, result: { rows: "no" }, error: null }),
+    ).toEqual({ type: "baseResult", source, result: null, error: "The base sent no view." });
+  });
+
+  it("shows a base file alone once told to, and drops a malformed show", () => {
+    const { page: editor } = page();
+    expect(editor.getState().base).toBeNull();
+    const command = parseWikiEditorCommand({ type: "showBase", source: "Projects.base" });
+    expect(command).toEqual({ type: "showBase", source: "Projects.base" });
+    editor.handle(command!);
+    expect(editor.getState().base).toBe("Projects.base");
+    expect(parseWikiEditorCommand({ type: "showBase" })).toBeNull();
+  });
+
   it("switches between reading and editing", () => {
     const { page: editor } = page();
     expect(editor.getState().mode).toBe("read");

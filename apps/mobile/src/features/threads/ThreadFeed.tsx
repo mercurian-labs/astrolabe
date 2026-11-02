@@ -1898,6 +1898,14 @@ function UserMessageContent(props: UserMessageContentProps) {
       });
       return;
     }
+    if (record?.kind === "wiki-note" && "wikiId" in record) {
+      navigation.navigate("WikiDocument", {
+        environmentId: String(props.environmentId),
+        wikiId: String(record.wikiId),
+        name: record.name,
+      });
+      return;
+    }
     const document = composerDocumentAttachmentRecord(record);
     if (document) {
       navigation.navigate("ThreadAttachment", {

@@ -5,17 +5,21 @@ import {
   ProjectId,
   type BackgroundPolicySnapshot,
   type CodeIndexState,
+  type CodeLocalGraph,
   type CodeLocalGraphInput,
   type OrchestrationProjectShell,
   type ServerSettings,
 } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
-import type * as Scope from "effect/Scope";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
@@ -72,12 +76,26 @@ const SOURCES = {
 interface Harness {
   readonly index: CodeIndex.CodeIndex["Service"];
   readonly root: string;
+  /** The project's folder: the repository's top level, or the subfolder it was given. */
+  readonly project: string;
   /** A fresh folder beside the repository. */
   readonly folder: (name: string) => Effect.Effect<string>;
   /** Every job a worker ran, in order. */
   readonly jobs: Array<WorkerJob>;
   readonly setSettings: (settings: ServerSettings) => Effect.Effect<void>;
   readonly setPolicy: (run: boolean) => Effect.Effect<void>;
+  /**
+   * Stop the index and start another over the same state, as a server restart does; it registers
+   * the repositories once `registering` completes.
+   */
+  readonly restart: (
+    registering: Deferred.Deferred<void>,
+  ) => Effect.Effect<CodeIndex.CodeIndex["Service"], never, NodeServices.NodeServices>;
+  /** Hold the next delete job until `release` runs; `held` waits until it is held. */
+  readonly holdNextDelete: Effect.Effect<{
+    readonly held: Effect.Effect<void>;
+    readonly release: Effect.Effect<void>;
+  }>;
 }
 
 const policySnapshot = (run: boolean) =>
@@ -89,6 +107,8 @@ const withIndex = <A, E>(
     readonly files: Readonly<Record<string, string>>;
     readonly settings?: ServerSettings;
     readonly run?: boolean;
+    /** The project's folder inside the repository; its top level by default. */
+    readonly project?: string;
   },
   body: (harness: Harness) => Effect.Effect<A, E, Scope.Scope | NodeServices.NodeServices>,
 ) =>
@@ -101,6 +121,7 @@ const withIndex = <A, E>(
     );
     const folder = (name: string) => Effect.succeed(path.join(scratch, name));
     const root = path.join(scratch, "repo");
+    const project = options.project === undefined ? root : path.join(root, options.project);
     yield* fileSystem.makeDirectory(root);
     yield* git(root, ["init", "--quiet", "--initial-branch=main"]);
     yield* write(root, options.files);
@@ -112,59 +133,93 @@ const withIndex = <A, E>(
     const policyChanges = yield* PubSub.unbounded<BackgroundPolicySnapshot>();
     const jobs: Array<WorkerJob> = [];
 
-    const services = Layer.mergeAll(
-      Layer.mock(ProjectService.ProjectService)({
-        listShells: () =>
-          Effect.succeed([
-            {
-              id: PROJECT,
-              title: "Repo",
-              workspaceRoot: root,
-            } as unknown as OrchestrationProjectShell,
-          ]),
-      }),
-      Layer.mock(WikiService.WikiService)({
-        list: Effect.succeed({ wikis: [] }),
-        subscribe: Stream.never,
-      }),
-      Layer.mock(ServerSettingsService.ServerSettingsService)({
-        getSettings: Ref.get(settings),
-        subscribeChanges: Effect.succeed(Stream.fromPubSub(settingsChanges)),
-      }),
-      Layer.mock(BackgroundPolicy.BackgroundPolicy)({
-        subscribe: Effect.succeed({
-          latest: policySnapshot(options.run ?? true),
-          changes: Stream.fromPubSub(policyChanges),
+    let hold: {
+      readonly held: Deferred.Deferred<void>;
+      readonly release: Deferred.Deferred<void>;
+    } | null = null;
+
+    const services = (registering: Effect.Effect<void>) =>
+      Layer.mergeAll(
+        Layer.mock(ProjectService.ProjectService)({
+          listShells: () =>
+            Effect.succeed([
+              {
+                id: PROJECT,
+                title: "Repo",
+                workspaceRoot: project,
+              } as unknown as OrchestrationProjectShell,
+            ]),
         }),
-      }),
-      Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
-        latestApplicationSequence: Effect.succeed(0),
-        streamProjectedApplicationEvents: () => Stream.never,
-      }),
-      GitVcsDriver.layer.pipe(
-        Layer.provide(VcsProcess.layer),
-        Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
-      ),
-    );
-    const index = yield* Effect.gen(function* () {
-      const command = yield* CodeIndex.workerCommand();
-      assert.isNotNull(command);
-      const runWorker = yield* CodeIndex.makeWorkerRunner(command!);
-      return yield* CodeIndex.make({
-        runWorker: (job, onOutput) => {
-          jobs.push(job);
-          return runWorker(job, onOutput);
-        },
-      });
-    }).pipe(Effect.provide(services));
+        Layer.mock(WikiService.WikiService)({
+          list: Effect.succeed({ wikis: [] }),
+          subscribe: Stream.never,
+        }),
+        Layer.mock(ServerSettingsService.ServerSettingsService)({
+          getSettings: Ref.get(settings),
+          subscribeChanges: Effect.succeed(Stream.fromPubSub(settingsChanges)),
+        }),
+        Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+          subscribe: Effect.succeed({
+            latest: policySnapshot(options.run ?? true),
+            changes: Stream.fromPubSub(policyChanges),
+          }),
+        }),
+        // The index registers its repositories after reading this.
+        Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
+          latestApplicationSequence: registering.pipe(Effect.as(0)),
+          streamProjectedApplicationEvents: () => Stream.never,
+        }),
+        GitVcsDriver.layer.pipe(
+          Layer.provide(VcsProcess.layer),
+          Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
+        ),
+      );
+    const open = (registering: Effect.Effect<void>) =>
+      Effect.gen(function* () {
+        const command = yield* CodeIndex.workerCommand();
+        assert.isNotNull(command);
+        const runWorker = yield* CodeIndex.makeWorkerRunner(command!);
+        return yield* CodeIndex.make({
+          runWorker: (job, onOutput) => {
+            jobs.push(job);
+            const gate = job.op === "delete" ? hold : null;
+            if (gate !== null) hold = null;
+            const waited =
+              gate === null
+                ? Effect.void
+                : Deferred.succeed(gate.held, undefined).pipe(
+                    Effect.andThen(Deferred.await(gate.release)),
+                  );
+            return waited.pipe(Effect.andThen(runWorker(job, onOutput)));
+          },
+        });
+      }).pipe(Effect.provide(services(registering)));
+    const outer = yield* Effect.scope;
+    let running = yield* Scope.fork(outer);
+    const index = yield* open(Effect.void).pipe(Scope.provide(running));
     return yield* body({
       index,
       root,
+      project,
       folder,
       jobs,
       setSettings: (next) =>
         Ref.set(settings, next).pipe(Effect.andThen(PubSub.publish(settingsChanges, next))),
       setPolicy: (run) => PubSub.publish(policyChanges, policySnapshot(run)).pipe(Effect.asVoid),
+      restart: (registering) =>
+        Effect.gen(function* () {
+          yield* Scope.close(running, Exit.void);
+          running = yield* Scope.fork(outer);
+          return yield* open(Deferred.await(registering)).pipe(Scope.provide(running));
+        }).pipe(Effect.orDie),
+      holdNextDelete: Effect.gen(function* () {
+        const gate = { held: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() };
+        hold = gate;
+        return {
+          held: Deferred.await(gate.held),
+          release: Deferred.succeed(gate.release, undefined).pipe(Effect.asVoid),
+        };
+      }),
     });
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
@@ -190,12 +245,15 @@ const graphInput = (
 ): CodeLocalGraphInput => ({
   projectId: PROJECT,
   cwd,
-  path,
+  roots: [path],
   depth: 1,
   uses: true,
   usedBy: true,
   dependencies: false,
-  expanded: [],
+  level: "file",
+  expandedContents: [],
+  collapsedContents: [],
+  expandedNeighbours: [],
   ...overrides,
 });
 
@@ -326,6 +384,244 @@ it.effect("marks files changed on the branch and uncommitted ones", () =>
   ),
 );
 
+/** A monorepo whose project is `apps/server`, importing a package and imported from beside it. */
+const MONOREPO = {
+  "apps/server/package.json": '{ "name": "@fixture/server" }\n',
+  "apps/server/src/main.ts":
+    'import { helper } from "./helper.ts";\nimport { shared } from "@fixture/shared";\nexport const main = () => helper() + shared();\n',
+  "apps/server/src/helper.ts": "export function helper() {\n  return 1;\n}\n",
+  "apps/web/src/view.ts":
+    'import { helper } from "../../server/src/helper.ts";\nexport const view = helper();\n',
+  "packages/shared/package.json":
+    '{ "name": "@fixture/shared", "exports": { ".": "./src/index.ts" } }\n',
+  "packages/shared/src/index.ts": "export function shared() {\n  return 2;\n}\n",
+};
+
+it.effect("answers a project in a subfolder in paths relative to its folder", () =>
+  withIndex({ files: MONOREPO, project: "apps/server" }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const cwd = harness.project;
+      const sharedEntry = "../../packages/shared/src/index.ts";
+
+      const usedBy = yield* harness.index.localGraph(graphInput(cwd, "src/helper.ts"));
+      assert.deepStrictEqual(usedBy.roots, ["src/helper.ts"]);
+      assert.deepStrictEqual(
+        usedBy.nodes.map((node) => [node.id, node.path, node.outsideProject ?? false]),
+        [
+          ["src/helper.ts", "src/helper.ts", false],
+          ["../web/src/view.ts", "../web/src/view.ts", true],
+          ["src/main.ts", "src/main.ts", false],
+        ],
+      );
+      assert.deepStrictEqual(
+        usedBy.links.map((link) => [link.from, link.to]),
+        [
+          ["../web/src/view.ts", "src/helper.ts"],
+          ["src/main.ts", "src/helper.ts"],
+        ],
+      );
+      const uses = yield* harness.index.localGraph(
+        graphInput(cwd, "./src/main.ts", { usedBy: false }),
+      );
+      assert.deepStrictEqual(
+        uses.nodes.map((node) => [node.id, node.kind, node.path, node.outsideProject ?? false]),
+        [
+          ["src/main.ts", "file", "src/main.ts", false],
+          ["@fixture/shared", "package", sharedEntry, true],
+          ["src/helper.ts", "file", "src/helper.ts", false],
+        ],
+      );
+
+      const outline = yield* harness.index.outline({ projectId: PROJECT, cwd, path: "src" });
+      assert.deepStrictEqual(
+        outline.files.map((file) => [file.path, file.symbols.map((symbol) => symbol.path)]),
+        [
+          ["src/helper.ts", ["src/helper.ts"]],
+          ["src/main.ts", ["src/main.ts"]],
+        ],
+      );
+      const beside = yield* harness.index.outline({
+        projectId: PROJECT,
+        cwd,
+        path: "../../packages/shared",
+      });
+      assert.deepStrictEqual(
+        beside.files.map((file) => file.path),
+        [sharedEntry],
+      );
+
+      const helper = yield* harness.index.find({ projectId: PROJECT, cwd, name: "helper" });
+      assert.deepStrictEqual(
+        helper.definitions.map((definition) => definition.path),
+        ["src/helper.ts"],
+      );
+      assert.deepStrictEqual(helper.uses.map((use) => [use.path, use.line, use.kind]).toSorted(), [
+        ["../web/src/view.ts", 1, "imports"],
+        ["../web/src/view.ts", 2, "calls"],
+        ["src/main.ts", 1, "imports"],
+        ["src/main.ts", 3, "calls"],
+      ]);
+      const scoped = yield* harness.index.find({
+        projectId: PROJECT,
+        cwd,
+        name: "shared",
+        path: "../../packages",
+      });
+      assert.deepStrictEqual(
+        scoped.definitions.map((definition) => definition.path),
+        [sharedEntry],
+      );
+
+      const mapped = yield* harness.index.map({ projectId: PROJECT, cwd, paths: ["src"] });
+      assert.deepStrictEqual(
+        mapped.files.map((file) => file.path),
+        ["src/helper.ts", "src/main.ts"],
+      );
+      assert.deepStrictEqual(
+        mapped.links.map((link) => [link.from, link.to]),
+        [["src/main.ts", "src/helper.ts"]],
+      );
+      assert.deepStrictEqual(
+        mapped.outside.map((entry) => [entry.path, entry.direction]).toSorted(),
+        [
+          ["../../packages/shared/src/index.ts", "uses"],
+          ["../web/src/view.ts", "usedBy"],
+        ],
+      );
+
+      yield* write(harness.root, {
+        "apps/server/src/helper.ts":
+          'import { shared } from "@fixture/shared";\nexport function helper() {\n  return shared();\n}\n',
+      });
+      const changed = yield* harness.index.changes({ projectId: PROJECT, cwd, from: "HEAD" });
+      assert.deepStrictEqual(changed.files, [{ path: "src/helper.ts", change: "modified" }]);
+      assert.deepStrictEqual(
+        changed.symbols.map((entry) => [entry.change, entry.symbol.path, entry.symbol.name]),
+        [["changed", "src/helper.ts", "helper"]],
+      );
+      assert.deepStrictEqual(
+        changed.links.map((link) => [link.change, link.from, link.to]),
+        [["made", "src/helper.ts#helper", `${sharedEntry}#shared`]],
+      );
+
+      // From the repository's top level, the same checkout answers in repository paths.
+      const control = yield* harness.index.localGraph(
+        graphInput(harness.root, "apps/server/src/helper.ts"),
+      );
+      assert.deepStrictEqual(
+        control.nodes.map((node) => [node.id, node.outsideProject ?? false]),
+        [
+          ["apps/server/src/helper.ts", false],
+          ["@fixture/shared", false],
+          ["apps/server/src/main.ts", false],
+          ["apps/web/src/view.ts", false],
+        ],
+      );
+      const rootOutline = yield* harness.index.outline({
+        projectId: PROJECT,
+        cwd: harness.root,
+        path: "packages",
+      });
+      assert.deepStrictEqual(
+        rootOutline.files.map((file) => file.path),
+        ["packages/shared/src/index.ts"],
+      );
+    }),
+  ),
+);
+
+it.effect("reads a vendored package.json as vendored code, not a package of the repository", () =>
+  withIndex(
+    {
+      files: {
+        "src/app.ts": 'import * as Effect from "effect/Effect";\nexport const app = Effect;\n',
+        ".repos/effect-smol/packages/effect/package.json":
+          '{ "name": "effect", "exports": { "./*": "./src/*.ts" } }\n',
+        ".repos/effect-smol/packages/effect/src/Effect.ts": "export const succeed = 1;\n",
+      },
+    },
+    (harness) =>
+      Effect.gen(function* () {
+        yield* reach(harness.index, "ready");
+        const graph = yield* harness.index.localGraph(
+          graphInput(harness.root, "src/app.ts", { dependencies: true }),
+        );
+        assert.deepStrictEqual(
+          graph.nodes.map((node) => [node.id, node.kind]),
+          [
+            ["src/app.ts", "file"],
+            ["dependency:effect", "dependency"],
+          ],
+        );
+      }),
+  ),
+);
+
+/**
+ * A web app importing through its tsconfig `paths` and its package.json `imports`, and a CLI whose
+ * tsconfig takes its `paths` from the repository's base config.
+ */
+const ALIASED = {
+  "tsconfig.base.json":
+    '{\n  // Every app extends this.\n  "compilerOptions": { "paths": { "@shared/*": ["./packages/shared/src/*"] }, },\n}\n',
+  "apps/web/tsconfig.json":
+    '{ "extends": "../../tsconfig.base.json", "compilerOptions": { "paths": { "~/*": ["./src/*"] } } }\n',
+  "apps/web/package.json":
+    '{ "name": "@fixture/web", "imports": { "#lib/*": "./src/lib/*.ts" } }\n',
+  "apps/web/src/main.ts":
+    'import { arrange } from "~/panes/arrangement";\nimport { tree } from "~/panes/tree.js";\nimport { util } from "#lib/util";\nimport "~/app.css";\nexport const main = () => arrange() + tree() + util();\n',
+  "apps/web/src/panes/arrangement.ts": "export function arrange() {\n  return 1;\n}\n",
+  "apps/web/src/panes/tree.ts": "export function tree() {\n  return 2;\n}\n",
+  "apps/web/src/lib/util.ts": "export function util() {\n  return 3;\n}\n",
+  "apps/cli/tsconfig.json": '{ "extends": "../../tsconfig.base.json" }\n',
+  "apps/cli/src/run.ts":
+    'import { words } from "@shared/strings";\nexport const run = () => words();\n',
+  "packages/shared/src/strings.ts": "export function words() {\n  return 4;\n}\n",
+};
+
+it.effect("resolves imports through tsconfig paths and package.json imports", () =>
+  withIndex({ files: ALIASED }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const uses = yield* harness.index.localGraph(
+        graphInput(harness.root, "apps/web/src/main.ts", { usedBy: false, dependencies: true }),
+      );
+      assert.deepStrictEqual(
+        uses.nodes.map((node) => [node.id, node.kind]),
+        [
+          ["apps/web/src/main.ts", "file"],
+          ["apps/web/src/lib/util.ts", "file"],
+          ["apps/web/src/panes/arrangement.ts", "file"],
+          ["apps/web/src/panes/tree.ts", "file"],
+        ],
+      );
+      assert.isTrue(uses.links.every((link) => link.resolution === "exact"));
+
+      const usedBy = yield* harness.index.localGraph(
+        graphInput(harness.root, "apps/web/src/panes/arrangement.ts", { uses: false }),
+      );
+      assert.deepStrictEqual(
+        usedBy.links.map((link) => [link.from, link.to, link.line]),
+        [["apps/web/src/main.ts", "apps/web/src/panes/arrangement.ts", 1]],
+      );
+
+      const words = yield* harness.index.find({
+        projectId: PROJECT,
+        cwd: harness.root,
+        name: "words",
+      });
+      assert.deepStrictEqual(
+        words.uses.map((use) => [use.path, use.line, use.kind, use.resolution]),
+        [
+          ["apps/cli/src/run.ts", 1, "imports", "exact"],
+          ["apps/cli/src/run.ts", 2, "calls", "exact"],
+        ],
+      );
+    }),
+  ),
+);
+
 const crowd = (() => {
   const files: Record<string, string> = {
     "lib/target.ts": 'import { other } from "./other.ts";\nexport const target = other;\n',
@@ -359,10 +655,385 @@ it.effect("folds a crowded ring by folder, keeps tests, and opens the folders as
       );
 
       const opened = yield* harness.index.localGraph(
-        graphInput(harness.root, "lib/target.ts", { expanded: ["users"] }),
+        graphInput(harness.root, "lib/target.ts", { expandedContents: ["users"] }),
       );
       assert.strictEqual(opened.nodes.filter((node) => node.id.startsWith("users/")).length, 45);
       assert.isFalse(opened.nodes.some((node) => node.kind === "folder"));
+    }),
+  ),
+);
+
+/**
+ * 269 importers of `lib/target.ts` over nested folders, one alone in its folder, three at the top;
+ * 45 more import `apps/desktop/src/d0.ts` from a folder below it.
+ */
+const sprawl = (() => {
+  const files: Record<string, string> = { "lib/target.ts": "export const target = 1;\n" };
+  const add = (folder: string, prefix: string, count: number, imported = "lib/target.ts") => {
+    const up = folder === "" ? "./" : "../".repeat(folder.split("/").length);
+    for (let index = 0; index < count; index += 1) {
+      const file = `${folder === "" ? "" : `${folder}/`}${prefix}${index}.ts`;
+      files[file] = `import * as imported from "${up}${imported}";\nexport const v = imported;\n`;
+    }
+  };
+  add("apps/desktop/src", "d", 10);
+  add("apps/desktop/src/app", "e", 10);
+  add("apps/web/src", "w", 5);
+  add("apps/web/src/components", "c", 30);
+  add("apps/web/src/hooks", "h", 10);
+  for (let index = 0; index < 10; index += 1) add(`packages/p${index}/src`, "f", 20);
+  add("packages/solo/src", "s", 1);
+  add("", "r", 3);
+  add("apps/desktop/src/app/deep", "x", 45, "apps/desktop/src/d0.ts");
+  return files;
+})();
+
+/** Folder groups drawn inside another drawn folder group. */
+const nestedFolders = (nodes: ReadonlyArray<{ readonly id: string; readonly kind: string }>) => {
+  const folders = nodes.filter((node) => node.kind === "folder").map((node) => node.id);
+  return folders.filter((inner) => folders.some((outer) => inner.startsWith(`${outer}/`)));
+};
+
+it.effect("folds a crowded side at the one finest folder level that fits", () =>
+  withIndex({ files: sprawl }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const folded = yield* harness.index.localGraph(graphInput(harness.root, "lib/target.ts"));
+      const ring = folded.nodes.filter((node) => node.depth === 1);
+      assert.deepStrictEqual(nestedFolders(ring), []);
+      assert.deepStrictEqual(
+        ring.map((node) => [node.id, node.kind, node.files]),
+        [
+          ["apps/desktop/src", "folder", 20],
+          ["apps/web/src", "folder", 45],
+          ...Array.from({ length: 10 }, (_, index) => [`packages/p${index}/src`, "folder", 20]),
+          ["packages/solo/src/s0.ts", "file", null],
+          ["r0.ts", "file", null],
+          ["r1.ts", "file", null],
+          ["r2.ts", "file", null],
+        ],
+      );
+      assert.deepStrictEqual(
+        folded.links.find((link) => link.from === "apps/desktop/src"),
+        {
+          from: "apps/desktop/src",
+          to: "lib/target.ts",
+          line: null,
+          text: null,
+          resolution: "exact",
+        },
+      );
+
+      // An opened folder past the limit folds again below itself.
+      const web = yield* harness.index.localGraph(
+        graphInput(harness.root, "lib/target.ts", { expandedContents: ["apps/web/src"] }),
+      );
+      const inWeb = web.nodes.filter((node) => node.id.startsWith("apps/web/src/"));
+      assert.deepStrictEqual(
+        inWeb.map((node) => [node.id, node.kind, node.files]),
+        [
+          ["apps/web/src/components", "folder", 30],
+          ["apps/web/src/hooks", "folder", 10],
+          ...Array.from({ length: 5 }, (_, index) => [`apps/web/src/w${index}.ts`, "file", null]),
+        ],
+      );
+      assert.isFalse(web.nodes.some((node) => node.id === "apps/web/src"));
+      assert.deepStrictEqual(nestedFolders(web.nodes), []);
+
+      const components = yield* harness.index.localGraph(
+        graphInput(harness.root, "lib/target.ts", {
+          expandedContents: ["apps/web/src", "apps/web/src/components"],
+        }),
+      );
+      const shown = components.nodes.filter((node) =>
+        node.id.startsWith("apps/web/src/components/"),
+      );
+      assert.strictEqual(shown.length, 30);
+      assert.isTrue(shown.every((node) => node.kind === "file"));
+
+      // The second ring folds its own way, but a folder inside one the first ring drew joins it.
+      const deeper = yield* harness.index.localGraph(
+        graphInput(harness.root, "lib/target.ts", { depth: 2 }),
+      );
+      assert.deepStrictEqual(nestedFolders(deeper.nodes), []);
+      assert.deepStrictEqual(
+        deeper.nodes
+          .filter((node) => node.id.startsWith("apps/desktop/"))
+          .map((node) => [node.id, node.depth, node.files]),
+        [["apps/desktop/src", 1, 65]],
+      );
+    }),
+  ),
+);
+
+/** Two workspace packages: the app's entry imports two files of its own and the library. */
+const PACKAGES = {
+  "packages/app/package.json": '{ "name": "@fixture/app" }\n',
+  "packages/app/src/main.ts":
+    'import { a } from "./util/a.ts";\nimport { b } from "./util/b.ts";\nimport { lib } from "@fixture/lib";\nexport const main = () => a() + b() + lib();\n',
+  "packages/app/src/util/a.ts": "export function a() {\n  return 1;\n}\n",
+  "packages/app/src/util/b.ts":
+    'import { a } from "./a.ts";\nexport function b() {\n  return a();\n}\n',
+  "packages/lib/package.json": '{ "name": "@fixture/lib", "exports": { ".": "./src/index.ts" } }\n',
+  "packages/lib/src/index.ts": "export function lib() {\n  return 2;\n}\n",
+};
+
+const shape = (graph: CodeLocalGraph) => ({
+  nodes: graph.nodes.map((node) => [node.id, node.kind, node.parent, node.files]),
+  clusters: graph.clusters.map((cluster) => [cluster.id, cluster.kind, cluster.parent]),
+  links: graph.links.map((link) => [link.from, link.to]),
+});
+
+it.effect("rolls imports up to folders and modules, and opens the ones asked for in place", () =>
+  withIndex({ files: PACKAGES }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const root = "packages/app/src/main.ts";
+      const folders = yield* harness.index.localGraph(
+        graphInput(harness.root, root, { level: "directory" }),
+      );
+      assert.deepStrictEqual(shape(folders), {
+        nodes: [
+          ["packages/app/src", "folder", null, 1],
+          ["@fixture/lib", "package", null, null],
+          ["packages/app/src/util", "folder", null, 2],
+        ],
+        clusters: [],
+        links: [
+          ["packages/app/src", "@fixture/lib"],
+          ["packages/app/src", "packages/app/src/util"],
+        ],
+      });
+      assert.deepStrictEqual(folders.roots, ["packages/app/src"]);
+
+      const opened = yield* harness.index.localGraph(
+        graphInput(harness.root, root, {
+          level: "directory",
+          expandedContents: ["packages/app/src/util"],
+        }),
+      );
+      assert.deepStrictEqual(shape(opened), {
+        nodes: [
+          ["packages/app/src", "folder", null, 1],
+          ["@fixture/lib", "package", null, null],
+          ["packages/app/src/util/a.ts", "file", "packages/app/src/util", null],
+          ["packages/app/src/util/b.ts", "file", "packages/app/src/util", null],
+        ],
+        clusters: [["packages/app/src/util", "folder", null]],
+        links: [
+          ["packages/app/src", "@fixture/lib"],
+          ["packages/app/src", "packages/app/src/util/a.ts"],
+          ["packages/app/src", "packages/app/src/util/b.ts"],
+          ["packages/app/src/util/b.ts", "packages/app/src/util/a.ts"],
+        ],
+      });
+
+      // A module is the workspace package: the app's three files are one node.
+      const modules = yield* harness.index.localGraph(
+        graphInput(harness.root, root, { level: "module" }),
+      );
+      assert.deepStrictEqual(shape(modules), {
+        nodes: [
+          ["module:packages/app", "module", null, 3],
+          ["@fixture/lib", "package", null, null],
+        ],
+        clusters: [],
+        links: [["module:packages/app", "@fixture/lib"]],
+      });
+
+      // Closing a folder at the file level folds its files into it.
+      const closed = yield* harness.index.localGraph(
+        graphInput(harness.root, root, { collapsedContents: ["packages/app/src/util"] }),
+      );
+      assert.deepStrictEqual(shape(closed).nodes, [
+        ["packages/app/src/main.ts", "file", null, null],
+        ["@fixture/lib", "package", null, null],
+        ["packages/app/src/util", "folder", null, 2],
+      ]);
+    }),
+  ),
+);
+
+/** A class whose method calls a helper, and a caller of the class. */
+const CLASSES = {
+  ...SOURCES,
+  "src/helper.ts": "export function helper() {\n  return 1;\n}\n",
+  "src/shape.ts":
+    'import { helper } from "./helper.ts";\nexport class Shape {\n  area() {\n    return helper();\n  }\n  name() {\n    return "shape";\n  }\n}\n',
+  "src/use.ts":
+    'import { Shape } from "./shape.ts";\nexport function measure() {\n  return new Shape().area();\n}\n',
+};
+
+it.effect("opens files into their definitions and links them by their uses", () =>
+  withIndex({ files: CLASSES }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const symbols = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { level: "symbol" }),
+      );
+      assert.deepStrictEqual(shape(symbols), {
+        nodes: [
+          ["src/a.ts#alpha", "symbol", "src/a.ts", null],
+          ["src/b.ts#beta", "symbol", "src/b.ts", null],
+          ["src/c.ts#gamma", "symbol", "src/c.ts", null],
+        ],
+        clusters: [
+          ["src/a.ts", "file", null],
+          ["src/b.ts", "file", null],
+          ["src/c.ts", "file", null],
+        ],
+        links: [
+          ["src/a.ts#alpha", "src/b.ts#beta"],
+          ["src/c.ts#gamma", "src/a.ts#alpha"],
+        ],
+      });
+      assert.deepStrictEqual(
+        symbols.nodes.map((node) => [node.id, node.root, node.symbol?.line]),
+        [
+          ["src/a.ts#alpha", true, 2],
+          ["src/b.ts#beta", false, 1],
+          ["src/c.ts#gamma", false, 2],
+        ],
+      );
+
+      // At the file level one file opens; its neighbours' links end at its definitions.
+      const one = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedContents: ["src/a.ts"] }),
+      );
+      assert.deepStrictEqual(shape(one).links, [
+        ["src/a.ts#alpha", "src/b.ts"],
+        ["src/c.ts", "src/a.ts#alpha"],
+      ]);
+      assert.deepStrictEqual(
+        one.links.map((link) => link.line),
+        [null, null],
+      );
+
+      // At the member level a class opens into its methods; a closed file stays one node.
+      const members = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/shape.ts", {
+          level: "member",
+          collapsedContents: ["src/use.ts"],
+        }),
+      );
+      assert.deepStrictEqual(shape(members), {
+        nodes: [
+          ["src/shape.ts#Shape.area", "symbol", "src/shape.ts#Shape", null],
+          ["src/shape.ts#Shape.name", "symbol", "src/shape.ts#Shape", null],
+          ["src/helper.ts#helper", "symbol", "src/helper.ts", null],
+          ["src/use.ts", "file", null, null],
+        ],
+        clusters: [
+          ["src/helper.ts", "file", null],
+          ["src/shape.ts", "file", null],
+          ["src/shape.ts#Shape", "symbol", "src/shape.ts"],
+        ],
+        links: [
+          ["src/shape.ts#Shape.area", "src/helper.ts#helper"],
+          ["src/use.ts", "src/shape.ts#Shape"],
+          ["src/use.ts", "src/shape.ts#Shape.area"],
+        ],
+      });
+    }),
+  ),
+);
+
+it.effect(
+  "grows from several roots, keeps depth 0 to the links between them, and says what it lacks",
+  () =>
+    withIndex({ files: CLASSES }, (harness) =>
+      Effect.gen(function* () {
+        yield* reach(harness.index, "ready");
+        const graph = yield* harness.index.localGraph({
+          ...graphInput(harness.root, "src/a.ts", { depth: 0 }),
+          roots: ["src/a.ts", "src/c.ts", "src/missing.ts", "src/a.ts#nothing"],
+        });
+        assert.deepStrictEqual(shape(graph), {
+          nodes: [
+            ["src/a.ts", "file", null, null],
+            ["src/c.ts", "file", null, null],
+          ],
+          clusters: [],
+          links: [["src/c.ts", "src/a.ts"]],
+        });
+        assert.deepStrictEqual(graph.roots, ["src/a.ts", "src/c.ts"]);
+        assert.deepStrictEqual(graph.unknown, ["src/missing.ts", "src/a.ts#nothing"]);
+
+        // A definition as a root shows alone in its file, with what it links to.
+        const one = yield* harness.index.localGraph({
+          ...graphInput(harness.root, "src/a.ts", { depth: 0, level: "symbol" }),
+          roots: ["src/shape.ts#Shape", "src/helper.ts#helper"],
+        });
+        assert.deepStrictEqual(shape(one).nodes, [
+          ["src/helper.ts#helper", "symbol", "src/helper.ts", null],
+          ["src/shape.ts#Shape", "symbol", "src/shape.ts", null],
+        ]);
+        assert.deepStrictEqual(shape(one).links, [["src/shape.ts#Shape", "src/helper.ts#helper"]]);
+
+        const checked = yield* harness.index.checkNodes({
+          projectId: PROJECT,
+          cwd: harness.root,
+          ids: ["src", "src/a.ts", "src/shape.ts#Shape.area", "src/shape.ts#Circle", "lib"],
+        });
+        assert.deepStrictEqual(checked.unknown, ["src/shape.ts#Circle", "lib"]);
+      }),
+    ),
+);
+
+/** A chain of importers: e → d → c → a → b. */
+const CHAIN = {
+  ...SOURCES,
+  "src/d.ts": 'import { gamma } from "./c.ts";\nexport const delta = gamma;\n',
+  "src/e.ts": 'import { delta } from "./d.ts";\nexport const epsilon = delta;\n',
+};
+
+it.effect("adds a node's neighbours in place, and drops an expansion only its nodes held", () =>
+  withIndex({ files: CHAIN }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      const ids = (graph: CodeLocalGraph) => graph.nodes.map((node) => [node.id, node.depth]);
+      const plain = yield* harness.index.localGraph(graphInput(harness.root, "src/a.ts"));
+      assert.deepStrictEqual(ids(plain), [
+        ["src/a.ts", 0],
+        ["src/b.ts", 1],
+        ["src/c.ts", 1],
+      ]);
+
+      const both = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedNeighbours: ["src/c.ts", "src/d.ts"] }),
+      );
+      assert.deepStrictEqual(ids(both), [
+        ["src/a.ts", 0],
+        ["src/b.ts", 1],
+        ["src/c.ts", 1],
+        ["src/d.ts", 2],
+        ["src/e.ts", 3],
+      ]);
+      assert.deepStrictEqual(
+        both.links.map((link) => [link.from, link.to]),
+        [
+          ["src/a.ts", "src/b.ts"],
+          ["src/c.ts", "src/a.ts"],
+          ["src/d.ts", "src/c.ts"],
+          ["src/e.ts", "src/d.ts"],
+        ],
+      );
+
+      // Without c's expansion, d is not shown, so its expansion adds nothing.
+      const orphaned = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", { expandedNeighbours: ["src/d.ts"] }),
+      );
+      assert.deepStrictEqual(ids(orphaned), ids(plain));
+
+      // At the directory level, a folder's neighbours are its files' neighbours, rolled up.
+      const folders = yield* harness.index.localGraph(
+        graphInput(harness.root, "src/a.ts", {
+          depth: 0,
+          level: "directory",
+          expandedNeighbours: ["src"],
+        }),
+      );
+      assert.deepStrictEqual(ids(folders), [["src", 0]]);
     }),
   ),
 );
@@ -393,6 +1064,63 @@ it.effect("cleanup keeps what a branch, worktree or checkpoint reaches and remov
       assert.deepStrictEqual([after.fileVersions, after.unusedFileVersions], [3, 0]);
 
       // The repository's own checkout still answers.
+      const outline = yield* harness.index.outline({
+        projectId: PROJECT,
+        cwd: harness.root,
+        path: "src",
+      });
+      assert.strictEqual(outline.files.length, 3);
+    }),
+  ),
+);
+
+it.effect(
+  "keeps the index when cleanup runs before a restarted server registers repositories",
+  () =>
+    withIndex({ files: SOURCES }, (harness) =>
+      Effect.gen(function* () {
+        yield* reach(harness.index, "ready");
+        const registering = yield* Deferred.make<void>();
+        const restarted = yield* harness.restart(registering);
+        const pruned = yield* restarted.prune;
+        assert.strictEqual(pruned.fileVersions, 0);
+
+        yield* Deferred.succeed(registering, undefined);
+        const ready = yield* reach(restarted, "ready");
+        assert.strictEqual(ready?.files, 3);
+        // Built from what was stored: nothing parsed again.
+        assert.strictEqual(harness.jobs.filter((job) => job.op === "parse").length, 1);
+      }),
+    ),
+);
+
+it.effect("builds a repository again when cleanup deletes its index after it was turned on", () =>
+  withIndex({ files: SOURCES }, (harness) =>
+    Effect.gen(function* () {
+      yield* reach(harness.index, "ready");
+      yield* harness.setSettings({
+        ...DEFAULT_SERVER_SETTINGS,
+        projectSettingsOverrides: {
+          [PROJECT]: { codeIndex: { enabled: false, skippedPaths: [] } },
+        },
+      });
+      yield* reach(harness.index, "off");
+      // Cleanup decides to drop the turned-off index; it is turned back on before the delete runs.
+      const gate = yield* harness.holdNextDelete;
+      const pruning = yield* Effect.forkChild(harness.index.prune);
+      yield* gate.held;
+      yield* harness.setSettings(DEFAULT_SERVER_SETTINGS);
+      yield* reach(harness.index, "ready");
+      yield* gate.release;
+      assert.strictEqual((yield* Fiber.join(pruning)).fileVersions, 3);
+
+      const rebuilt = yield* reach(harness.index, "ready");
+      assert.strictEqual(rebuilt?.files, 3);
+      assert.deepStrictEqual(parsedPaths(harness.jobs.at(-1)), [
+        "src/a.ts",
+        "src/b.ts",
+        "src/c.ts",
+      ]);
       const outline = yield* harness.index.outline({
         projectId: PROJECT,
         cwd: harness.root,

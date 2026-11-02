@@ -2,6 +2,7 @@ import type { EditorView } from "@codemirror/view";
 import { outlinePath, revealOutlineItem, type OutlineItem } from "@mercurian/editor/outline";
 import { ChevronRightIcon } from "lucide-react";
 
+import { TabHeader } from "~/panes/TabHeader";
 import { Button } from "../ui/button";
 
 /** The items around a file editor's cursor, as `outline()` last reported them. */
@@ -24,7 +25,9 @@ export function FileBreadcrumbs(props: {
       aria-label="Breadcrumbs"
       className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
     >
-      <span className="min-w-0 shrink truncate font-mono">{props.path}</span>
+      <div className="flex min-w-0 shrink">
+        <TabHeader.Path path={props.path} />
+      </div>
       {trail?.path.map((item, index) => (
         <span className="flex min-w-0 shrink-[2] items-center gap-0.5" key={item.nameFrom}>
           <ChevronRightIcon aria-hidden className="size-3 shrink-0" />

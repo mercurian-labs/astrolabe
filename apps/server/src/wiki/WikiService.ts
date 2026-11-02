@@ -8,6 +8,7 @@
 import {
   AmendmentError,
   amendmentMessage,
+  BaseError,
   indexFiles,
   isWikiDocument,
   keepWarningHistory,
@@ -21,10 +22,11 @@ import {
   type WikiFiles,
   type WikiIndex,
   mergeMarkdown,
+  parseBase,
+  queryBase,
 } from "@mercurian/wiki";
 import {
-  CommandId,
-  ProjectId,
+  type ProjectId,
   type ThreadId,
   type WikiAmendInput,
   type WikiAmendResult,
@@ -44,23 +46,26 @@ import {
   type WikiMergePreview,
   type WikiMergeResult,
   type WikiNoteResult,
+  type WikiQueryInput,
+  type WikiQueryResult,
   type WikiRegisterInput,
   type WikiRevertInput,
   type WikiSetChangeRequestStatusInput,
   type WikiSetMirrorInput,
+  type WikiSetProjectLinkInput,
   type WikiSummary,
   type WikiTarget,
   type WikiTransformInput,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { newProjectFolderName } from "@t3tools/shared/path";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -69,7 +74,6 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
-import * as ProjectService from "../project/ProjectService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import {
   AMENDMENT_LOG_FORMAT,
@@ -96,6 +100,7 @@ import {
 import {
   indexResult,
   linksResult,
+  locateBase,
   noteResult,
   orientResult,
   searchNotes,
@@ -124,6 +129,21 @@ export interface WikiAuthor {
 /** The person at the keyboard, for changes made from the app. */
 export const person: WikiAuthor = { actor: "You", threadId: null };
 
+const quoteList = (names: ReadonlyArray<string>) => {
+  const quoted = names.map((name) => `"${name}"`);
+  return quoted.length < 2
+    ? quoted.join("")
+    : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
+};
+
+/** What a thread's agent is told about the wikis its repository is linked to. */
+const linkedWikiNote = (names: ReadonlyArray<string>): string | null =>
+  names.length === 0
+    ? null
+    : `<astrolabe_wikis>
+This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${quoteList(names)}, where its research and plans live. When a task involves research, planning, or building a feature, first search it with the astrolabe_wiki_* tools for what it already says. Write findings and plans there with astrolabe_wiki_amend, not as files in this repository.
+</astrolabe_wikis>`;
+
 /**
  * Where a read comes from: a named change request's head, else the thread's own open change
  * request on that wiki, else the main line. `wikiId` may also be the wiki's name, for agents.
@@ -145,6 +165,11 @@ export class WikiService extends Context.Service<
     /** Forgets the wiki; its folder and history stay as they are. */
     readonly remove: (input: WikiTarget) => Effect.Effect<void, WikiError>;
     readonly setMirror: (input: WikiSetMirrorInput) => Effect.Effect<WikiSummary, WikiError>;
+    readonly setProjectLink: (
+      input: WikiSetProjectLinkInput,
+    ) => Effect.Effect<WikiSummary, WikiError>;
+    /** The note a thread in this repository starts with, or null when no wiki is linked to it. */
+    readonly agentNote: (projectId: ProjectId) => Effect.Effect<string | null, WikiError>;
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
     readonly pushMirror: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
     readonly index: (input: WikiReadTarget) => Effect.Effect<WikiIndexResult, WikiError>;
@@ -160,6 +185,10 @@ export class WikiService extends Context.Service<
     readonly links: (
       input: WikiReadTarget & { readonly name: string },
     ) => Effect.Effect<WikiLinksResult & { readonly commit: string }, WikiError>;
+    /** Runs one view of a base over the notes read, with at most `QUERY_ROWS` rows. */
+    readonly query: (
+      input: WikiReadTarget & Omit<WikiQueryInput, "wikiId" | "changeRequestId">,
+    ) => Effect.Effect<WikiQueryResult, WikiError>;
     readonly changeRequestsList: (
       input: WikiChangeRequestListInput,
     ) => Effect.Effect<WikiChangeRequestListResult, WikiError>;
@@ -195,6 +224,9 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
   }
 >()("t3/wiki/WikiService") {}
+
+/** The most rows a base query returns, for a view and for an agent's context alike. */
+const QUERY_ROWS = 200;
 
 // Product commits never run the user's hooks or ask to sign; git never prompts.
 const PRODUCT_GIT_CONFIG = [
@@ -300,7 +332,6 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const git = yield* GitVcsDriver.GitVcsDriver;
-  const projects = yield* ProjectService.ProjectService;
   const crypto = yield* Crypto.Crypto;
 
   const events = yield* PubSub.sliding<WikiEvent>(256);
@@ -1403,7 +1434,7 @@ const make = Effect.gen(function* () {
         name: wiki.name,
         root: wiki.root,
         mainBranch: wiki.mainBranch,
-        projectId: wiki.projectId,
+        projectIds: wiki.projectIds,
         mirror: wiki.mirror,
         openChangeRequests,
         createdAt: wiki.createdAt,
@@ -1466,6 +1497,41 @@ const make = Effect.gen(function* () {
       commit,
       ...linksResult(snapshot.index, input.name),
     }));
+
+  const query: WikiService["Service"]["query"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const commit = yield* readCommit(wiki, input);
+          const snapshot = yield* snapshotAt(wiki, commit);
+          const located = locateBase(snapshot.index, input);
+          if ("problem" in located) {
+            return yield* new WikiError({ reason: located.problem, message: located.message });
+          }
+          const editTimes = yield* editTimesAt(wiki, commit);
+          const now = yield* Clock.currentTimeMillis;
+          const result = yield* Effect.try({
+            try: () =>
+              queryBase(snapshot.index, parseBase(located.source), {
+                view: input.view,
+                self: located.self,
+                editTimes,
+                now,
+                cap: QUERY_ROWS,
+              }),
+            // A base's own errors name what to fix; anything else is ours.
+            catch: (cause) =>
+              new WikiError({
+                reason: "invalid",
+                message: cause instanceof BaseError ? cause.message : "The base could not run.",
+                cause,
+              }),
+          });
+          return { commit, ...result };
+        }),
+      input.changeRequestId,
+    );
 
   const orient: WikiService["Service"]["orient"] = (input) =>
     readAt(input, (_wiki, commit, snapshot) => {
@@ -1649,43 +1715,11 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  /** The T3 project in the wiki's folder, made if none exists. Never fails the registration. */
-  const linkProject = (root: string, name: string) =>
-    projects.getByWorkspaceRoot(root).pipe(
-      Effect.flatMap(
-        Option.match({
-          onSome: (project) => Effect.succeed<ProjectId | null>(project.id),
-          onNone: () =>
-            newId.pipe(
-              Effect.flatMap((id) =>
-                projects.create({
-                  commandId: CommandId.make(`wiki-project:${id}`),
-                  projectId: ProjectId.make(`wiki-${id}`),
-                  title: name,
-                  workspaceRoot: root,
-                }),
-              ),
-              Effect.map((project): ProjectId | null => project.id),
-              Effect.catchTags({
-                ProjectConflictError: (conflict) => Effect.succeed(conflict.conflictingProjectId),
-              }),
-            ),
-        }),
-      ),
-      Effect.catch((cause) =>
-        Effect.logWarning("Could not link a project to the wiki").pipe(
-          Effect.annotateLogs({ cause }),
-          Effect.as(null),
-        ),
-      ),
-    );
-
   const addRecord = Effect.fn("WikiService.addRecord")(function* (
     root: string,
     name: string,
     mainBranch: string,
   ) {
-    const projectId = yield* linkProject(root, name);
     const wikiId = WikiId.make(yield* newId);
     const createdAt = yield* nowIso;
     const record: WikiRecord = {
@@ -1693,7 +1727,7 @@ const make = Effect.gen(function* () {
       name,
       root,
       mainBranch,
-      projectId,
+      projectIds: [],
       mirror: null,
       createdAt,
     };
@@ -1868,6 +1902,40 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const setProjectLink: WikiService["Service"]["setProjectLink"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      locked(
+        wiki,
+        updateRegistry((registry) => {
+          const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId) ?? wiki;
+          const others = current.projectIds.filter((id) => id !== input.projectId);
+          const next = {
+            ...current,
+            projectIds: input.linked ? [...others, input.projectId] : others,
+          };
+          return Effect.succeed([
+            {
+              ...registry,
+              wikis: registry.wikis.map((entry) => (entry.wikiId === next.wikiId ? next : entry)),
+            },
+            next,
+          ] as const);
+        }),
+      ).pipe(
+        Effect.tap(() => publish("linked", wiki.wikiId, null)),
+        Effect.flatMap(summary),
+      ),
+    );
+
+  const agentNote: WikiService["Service"]["agentNote"] = (projectId) =>
+    loadRegistry.pipe(
+      Effect.map((registry) =>
+        linkedWikiNote(
+          registry.wikis.filter((wiki) => wiki.projectIds.includes(projectId)).map((w) => w.name),
+        ),
+      ),
+    );
+
   const pushMirror: WikiService["Service"]["pushMirror"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       wiki.mirror === null
@@ -1882,10 +1950,13 @@ const make = Effect.gen(function* () {
     create,
     remove,
     setMirror,
+    setProjectLink,
+    agentNote,
     pushMirror,
     index,
     readNote,
     search,
+    query,
     orient,
     links,
     changeRequestsList,

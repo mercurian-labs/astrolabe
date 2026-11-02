@@ -1,13 +1,9 @@
 import type { EnvironmentId, WikiSummary } from "@t3tools/contracts";
 import { BookOpenIcon } from "lucide-react";
 
-import { useProjects } from "~/state/entities";
-import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+import { ProjectFavicon } from "../ProjectFavicon";
 
-/**
- * A wiki's icon, as a project's is drawn in the thread list: its project's own icon when the
- * wiki's folder is a project, else the same lettered fallback a project without one gets.
- */
+/** A wiki's icon, drawn the way a project's is: a favicon from its folder, else a book. */
 export function WikiIcon({
   environmentId,
   wiki,
@@ -17,9 +13,11 @@ export function WikiIcon({
   readonly wiki: WikiSummary;
   readonly className?: string;
 }) {
-  const projects = useProjects();
-  const project: ProjectFaviconProject = projects.find(
-    (candidate) => candidate.environmentId === environmentId && candidate.id === wiki.projectId,
-  ) ?? { environmentId, workspaceRoot: wiki.root, title: wiki.name };
-  return <ProjectFavicon project={project} className={className} fallbackIcon={BookOpenIcon} />;
+  return (
+    <ProjectFavicon
+      project={{ environmentId, workspaceRoot: wiki.root, title: wiki.name }}
+      className={className}
+      fallbackIcon={BookOpenIcon}
+    />
+  );
 }

@@ -3,10 +3,10 @@
 Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
-leftmost), the sidebar on screen (Agents, Wikis, Repositories or Changes), the chat
-column, and each pane (the right panel's, the Wikis area's, the Repositories area's,
-the Changes area's). Never anything inside one (no stop for a tab strip, the
-timeline or the composer).
+leftmost), the sidebar on screen (Agents, Wikis, Projects or Changes), each pane of the
+one shared set (panes.md), and a chat column outside the panes. A chat tab belongs to its
+pane's place (`keyboardNav/regions.ts` `CHAT_COLUMN`); moving into that pane lands on its
+composer. Never anything inside one (no stop for a tab strip, the timeline or the composer).
 
 ## Sub-features
 
@@ -15,11 +15,12 @@ timeline or the composer).
   The neighbour is geometric: the nearest place that way overlapping the focused one
   across the direction (between equals, the one focused last), else the nearest
   centre. No wrap: at an edge the command shows faint in the menu. Skipped: a collapsed
-  or off-screen sidebar, the chat column while the right panel is maximized (width 0),
-  panes `inert` behind a maximized pane. With focus on the page (nothing focused), it
-  acts from the place last clicked, else the chat column.
+  or off-screen sidebar, a chat column outside the panes while the right panel is maximized
+  (width 0), panes `inert` behind a maximized pane. With focus on the page (nothing
+  focused), it acts from the place last clicked, else a chat column outside the panes, else
+  the focused pane.
 - **Landing**: back on what last had focus in that place, if still there; else the
-  composer (`[data-testid=composer-editor]`), a pane's tab in front
+  composer (`[data-testid=composer-editor]`, a chat tab's pane included), a pane's tab in front
   (`[data-pane-tab][aria-selected=true]`), the sidebar's or the rail's last focused,
   current (`aria-current`) or first row/button; else the place's first focusable.
 - **Triggers**: the menu's root arrows and `h`/`j`/`k`/`l` (Space or Cmd+K first;
@@ -28,13 +29,15 @@ timeline or the composer).
   binds them); Ctrl+H/J/K/L (Ctrl on a Mac
   too) with `when: !editableFocus && !terminalFocus`, so never in a field, an editor
   (Vim or not) or a terminal, and repeating while held; where `mod` is Ctrl, Ctrl+J
-  and Ctrl+K stay `terminal.toggle` and `whichKey.open` (earlier in the defaults). In
+  and Ctrl+K stay `terminal.toggle` and `whichKey.open` (later in the defaults, and the last
+  matching rule wins). In
   a Vim editor's normal mode `<C-w>h/j/k/l`, `<C-w><Left>` …, `<C-w><C-h>` …; plain
   Ctrl+H there stays Vim's. The window keys are Vim keymap entries
   (`<C-w><character>`), so a vimrc `nnoremap <C-h> <C-w>h` works.
 - **Repeat window**: a focus move or a scroll run from the menu by its key arms the
-  menu for `menuRepeatWindowMs` (client setting, default 500, 0 off; Settings ›
-  Keybindings › This device › Repeat window, search "repeat window"). While armed,
+  menu for `menuRepeatWindowMs` (client setting, default 500, 0 off, at most 5000; Settings ›
+  Keybindings › This device › Repeat window, search "repeat window"; the field is
+  `Repeat window in milliseconds`, its reset `Reset repeat window to default`). While armed,
   the root's repeatable keys (arrows, `h`/`j`/`k`/`l`, `d`/`u`; held too) run again
   with the menu hidden, each restarting the window; at an edge the key is spent but
   moves nothing, except up/down from a sidebar row or rail button, which ends the
@@ -47,8 +50,8 @@ timeline or the composer).
   never arm. The mechanism is generic: `AppCommand`'s `repeatable` flag, read by
   `pressRepeat` in `whichKey/menu.ts`.
 - **Focus mark**: the place keys act from (last focused or pressed in) wears
-  `[data-focused-place]`; on a pane or the chat column its tab in front
-  (`[data-pane-tab]` / `[data-chat-tab]` with `aria-selected=true`) gets a 2px bar in
+  `[data-focused-place]` (a chat tab's pane, not its column); on a pane or a chat column its tab in front
+  (`[data-pane-tab]` with `aria-selected=true`, a chat's included) gets a 2px bar in
   `--focus-bar` (the theme's `focusBar` role; rust in Mercurian, the focus color in themes
   without one) along the tab's top edge (a background-image). It follows mouse focus too. The sidebar
   and the rail have no mark of their own beyond the attribute: their focused row or
@@ -60,26 +63,32 @@ timeline or the composer).
   skipped; Enter clicks the row, showing it in the tab in front, and keeps focus on it
   (Agents: the opened thread's composer does not take focus, `keepsListFocus`; a click
   still hands it focus), Alt+Enter clicks with Alt (opens it in a new
-  tab; any other Alt chord stays the page's), Mod+Enter Mod-clicks it (Agents:
-  toggles selection, in Wikis and PRs too); `/` opens the sidebar's search; Escape focuses the place to the right;
+  tab; any other Alt chord stays the page's). On a thread row, Enter, a plain click and
+  Alt+Enter all open the chat as `openChat` does (panes.md): an open one comes forward,
+  one not yet open lands in a new tab after the chat in front. Mod+Enter Mod-clicks it (Agents:
+  toggles selection, in Wikis and PRs too); `/` opens the sidebar's search (Escape in its empty field returns focus to the row); Escape focuses the place to the right;
   Space opens the keyboard menu. Keys act only with the row itself focused, not a
   control in it (nor the Agents filter's pills above the list, `[aria-label='Thread
   filters']`, which are plain buttons: `j`/`k` do nothing there and Space presses them). The right panel's launcher letters leave a focused row its list keys
   (`gg`, `G`). The reached row shows the rows' light keyboard ring (`:focus-visible`:
   a 1px `--ring` inset edge and a 3px `--ring`/24% band, as inputs have), apart from
   the current row's fill. Rows are a roving tab stop: after a row has focus, only it
-  keeps `tabindex=0`. The Repositories sidebar's rows are not list rows yet (a known
+  keeps `tabindex=0`. The Projects sidebar's rows are not list rows yet (a known
   gap, not a regression): the list keys do nothing there, and focus moving in lands on
   its first focusable control, not the current file.
 - **Rail list** (focus on a rail button, `[data-app-rail] [data-sidebar=menu-button]`;
   each is a tooltip trigger, so its `data-slot` reads `tooltip-trigger`): the sections,
-  the desktop app's update control when shown, then **Settings** at the foot.
+  then at the foot the update control when shown (`Check for updates`, or the providers'
+  "Update N providers" pill), **Usage**, and **Settings**. With cloud sign-in configured the
+  Settings slot is the account menu: signed in it is named after the user, uses the solid
+  focus ring, and Enter opens the menu instead of the section.
   **Toggle main sidebar** sits above the rail in the title bar's cell
   (`[data-app-rail-toggle]`), outside the list, so the list keys never reach it. The
   same keys as the sidebar list, minus `/`; Enter opens the section and keeps focus on
   the button; Escape goes to the sidebar (or the main area, collapsed). The buttons
-  are their own roving tab stop and show the same light ring (`focusRing="light"` on
-  `SidebarMenuButton`).
+  are their own roving tab stop (after a rail button has had focus once) and show the same
+  light ring (`focusRing="light"` on `SidebarMenuButton`), except the account menu and the
+  update pill.
 - **Scrolling** `scroll.down` / `scroll.up` (menu "Scroll down/up", table "Scroll
   Down/Up", palette rows with double-chevron icons): half the scroll area's height,
   instant, on the main scroll area of the place keys act from: the largest element in
@@ -116,7 +125,7 @@ Read where focus is, by place and element:
 (() => {
   const a = document.activeElement;
   const place = a?.closest(
-    "[data-app-rail], [data-app-sidebar], [data-chat-column-maximized-away], [data-pane-id], [data-slot=sidebar-inset]",
+    "[data-app-rail], [data-app-sidebar], [data-chat-column-maximized-away]:not([data-pane-id] *), [data-pane-id], [data-slot=sidebar-inset]",
   );
   const name = (el) =>
     el?.matches("[data-app-rail]")
@@ -129,7 +138,7 @@ Read where focus is, by place and element:
             ? "chat"
             : (el?.getAttribute("data-slot") ?? null);
   const marked = document.querySelector("[data-focused-place]");
-  const bar = marked?.querySelector(":is([data-pane-tab], [data-chat-tab])[aria-selected=true]");
+  const bar = marked?.querySelector("[data-pane-tab][aria-selected=true]");
   // What paints at an element's horizontal centre, `dy` px below its top (else its centre).
   const at = (el, dy) => {
     const r = el.getBoundingClientRect();
@@ -140,7 +149,7 @@ Read where focus is, by place and element:
     element: a?.getAttribute("aria-label") ?? a?.getAttribute("data-testid") ?? a?.tagName,
     marked: name(marked),
     bar: bar ? getComputedStyle(bar).backgroundImage : null,
-    barHit: bar ? at(bar, 1)?.closest(":is([data-pane-tab], [data-chat-tab])") === bar : null,
+    barHit: bar ? at(bar, 1)?.closest("[data-pane-tab]") === bar : null,
     ringed: !!a?.matches(":focus-visible") && getComputedStyle(a).boxShadow !== "none",
     hit: a ? a.contains(at(a)) : false,
   };
@@ -189,14 +198,14 @@ dark: only one pill carries the bar.
 
 ## Flows
 
-1. **Sidebar to chat to panes.** On a chat with the right panel open and split right:
+1. **Sidebar to chat to panes.** On a chat tab with its linked tabs showing and split right:
    Cmd+K `h` to a sidebar row (a click on a row already focuses the composer) → Ctrl+L →
-   place `chat`, element `composer-editor`, the chat
-   tab's bar → click the chat's title (focus on the page) → Ctrl+L → the left pane, its
+   the chat's pane (`pane <id>`, not `chat`), element `composer-editor`, the chat
+   tab's bar → click the chat's title (focus on the page) → Ctrl+L → the left linked pane, its
    active pill, the bar moved to that pill → Ctrl+L → the right pane → Ctrl+L →
-   unchanged (no wrap) → Ctrl+H twice → `chat` → Ctrl+H → sidebar, the row clicked
+   unchanged (no wrap) → Ctrl+H twice → the chat's pane → Ctrl+H → sidebar, the row clicked
    first, no bar anywhere.
-2. **Repeat window.** From the sidebar: Space `l` → `chat` (the composer; the window
+2. **Repeat window.** From the sidebar: Space `l` → the chat's pane (the composer; the window
    outlives the landing) → `l` within half a second → the left pane, nothing typed in
    the composer → `l` → the right pane → wait 1 s → `l` → nothing moves (the window
    passed; with focus on a pill, `l` is no key of its). Space → (the arrow) from
@@ -211,7 +220,7 @@ dark: only one pill carries the bar.
    Ctrl+H from the chat → the rail (the sidebar is skipped) → Ctrl+H → unchanged; Cmd+K
    `h` row faint.
 5. **Not while typing.** In the composer (Vim off) Ctrl+H → caret behaviour only, place
-   stays `chat`. In a terminal tab Ctrl+L → the terminal's (place unchanged). With Vim
+   stays the chat's pane. In a terminal tab Ctrl+L → the terminal's (place unchanged). With Vim
    on: Escape, Ctrl+W `l` → the right panel's pane, then plain `h` → no move (Vim's
    keys never arm); Ctrl+H in normal mode → stays in the composer.
 6. **Mouse marks too.** Click inside the right pane's content → the bar on its active
@@ -245,8 +254,9 @@ dark: only one pill carries the bar.
 
 - `preview_act press` sends `modifiers:["Control"]` for Ctrl+H; on a Mac host Meta is
   Cmd, which is not these keys.
-- For the leader, put focus on a row (Cmd+K `h`): a focused row takes Space as the
-  leader, a focused button elsewhere presses it, and focus on the bare page sends Space
+- For the leader, put focus on a row (Cmd+K `h`): a focused row, or a focused tab pill
+  (`[data-pane-tab]`, a chat's in its pane included, where a focus move lands), takes Space as
+  the leader, a focused button elsewhere presses it, and focus on the bare page sends Space
   into the composer through type-to-focus.
 - In the repeat window `h`/`l` are still focus moves: after Space `h` into the
   sidebar, `h` goes on to the rail. `j`/`k` there step the list at once.
@@ -273,8 +283,8 @@ dark: only one pill carries the bar.
 `apps/web/src/keyboardNav/` (places in `regions.ts`, lists in `placeLists.ts`,
 scrolling in `scroll.ts`), the `focus.*` and `scroll.*` entries in
 `whichKey/commands.ts` and their `repeatable` flag, the rail's `focusRing="light"`
-(`components/ui/sidebar.tsx`, `AppIconRail.tsx`), `keepsListFocus` in `ChatView.tsx`'s composer focus, the launcher guard in
-`RightPanelTabs.tsx`, the repeat window in `whichKey/menu.ts` (`pressRepeat`,
+(`components/ui/sidebar.tsx`, `AppIconRail.tsx`), `keepsListFocus` in `ChatView.tsx`'s composer focus, the launcher guards in
+`RightPanelTabs.tsx` and `panes/TabLauncher.tsx`, the repeat window in `whichKey/menu.ts` (`pressRepeat`,
 `createWhichKeyMenu`'s arming) and `WhichKey.tsx`, `menuRepeatWindowMs` in
 `packages/contracts/src/settings.ts` and its row in `KeybindingsDeviceSettings.tsx`, the
 window keys in `whichKey/doors.ts` (`appVimKeys`) and `packages/editor/src/vim.ts`
@@ -283,4 +293,5 @@ window keys in `whichKey/doors.ts` (`appVimKeys`) and `packages/editor/src/vim.t
 `packages/shared/src/keybindings.ts`, the `menu h`…, arrow and `d`/`u` rules and named menu keys in
 `packages/shared/src/keybindingTriggers.ts`, the rows' focus ring in
 `SIDEBAR_ROW_SURFACE_CLASS` (`components/sidebar/SidebarCard.tsx`), and the
-`[data-focused-place]` tab bar at the end of `index.css`.
+`[data-focused-place]` tab bar in `index.css` (beside the rail-canvas rules, which also drop
+the front tab's own focus ring).

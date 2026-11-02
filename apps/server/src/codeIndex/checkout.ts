@@ -2,22 +2,30 @@
  * What a checkout holds, read from git: each indexable file's path and blob, with uncommitted
  * files hashed as git would hash them. A checkout's code index is this list plus the shared facts.
  */
-import { isIndexable } from "@mercurian/code-graph/languages";
+import { inSkippedDirectory, isIndexable } from "@mercurian/code-graph/languages";
 import { CodeIndexError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import type * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 
 const MANIFEST = "package.json";
+/** `tsconfig.json`, `jsconfig.json`, and the configs they extend, such as `tsconfig.base.json`. */
+const TS_CONFIG = /(?:^|\/)(?:tsconfig|jsconfig)(?:\.[^/]*)?\.json$/;
+export const isTsConfig = (path: string) => TS_CONFIG.test(path);
+/**
+ * A manifest naming the repository's own packages, or a tsconfig naming its path aliases;
+ * vendored ones name dependencies.
+ */
 export const isManifest = (path: string) =>
-  (path === MANIFEST || path.endsWith(`/${MANIFEST}`)) && !path.split("/").includes("node_modules");
+  (path === MANIFEST || path.endsWith(`/${MANIFEST}`) || isTsConfig(path)) &&
+  !inSkippedDirectory(path);
 
 /** A git tree's files the index reads. */
 export interface Listing {
   readonly tree: string;
   /** Indexable files: path → blob. */
   readonly files: ReadonlyMap<string, string>;
-  /** `package.json` files, which name the repository's packages: path → blob. */
+  /** `package.json` and tsconfig files, which name its packages and path aliases: path → blob. */
   readonly manifests: ReadonlyMap<string, string>;
 }
 

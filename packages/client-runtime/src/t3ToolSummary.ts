@@ -1,5 +1,7 @@
 import type { T3McpToolSummaryAction } from "@t3tools/shared/t3McpToolPresentation";
 
+import { codeGraphShowInput, codeGraphStoryLabel } from "./codeGraphStory.ts";
+
 export interface T3ToolSummaryCall {
   readonly input: unknown;
   readonly output: unknown;
@@ -452,6 +454,15 @@ export function summarizeT3ToolCalls(
     case "code-read":
       label = phrase("Read", "read", `the code index ${times}`);
       break;
+    case "code-graph": {
+      const story = selected.length === 1 ? codeGraphShowInput(selected[0]!.input) : null;
+      label = phrase(
+        "Showed",
+        "show",
+        story ? codeGraphStoryLabel(story) : quantity(selected.length, "code graph"),
+      );
+      break;
+    }
   }
   return { label, failedCount };
 }
