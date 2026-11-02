@@ -5,6 +5,8 @@ import {
   type OrchestrationV2ThreadShell,
   ProjectId,
   ThreadId,
+  WikiError,
+  WikiId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -23,6 +25,7 @@ import * as TerminalManager from "../terminal/Manager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as WikiService from "../wiki/WikiService.ts";
 import {
   numberWorktrees,
   ProjectWorktreeService,
@@ -32,6 +35,7 @@ import {
 import * as WorkspaceWatcher from "./WorkspaceWatcher.ts";
 
 const projectId = ProjectId.make("project-1");
+const wikiIdOfRepo = WikiId.make("wiki-1");
 
 const layerVcsProcess = VcsProcess.layer.pipe(Layer.provide(NodeServices.layer));
 const layerBase = Layer.mergeAll(
@@ -86,6 +90,14 @@ const fixture = Effect.gen(function* () {
     Effect.provideService(ProjectService.ProjectService, {
       getById: () => Effect.succeedSome({ workspaceRoot: repo }),
     } as unknown as ProjectService.ProjectService["Service"]),
+    Effect.provideService(WikiService.WikiService, {
+      root: (wikiId: WikiId) =>
+        wikiId === wikiIdOfRepo
+          ? Effect.succeed(repo)
+          : Effect.fail(
+              new WikiError({ reason: "not-found", message: "No wiki has this id or name." }),
+            ),
+    } as unknown as WikiService.WikiService["Service"]),
     Effect.provideService(ProjectionStore.ProjectionStoreV2, {
       getShellSnapshot: () => Effect.sync(() => ({ threads: state.threads, archivedThreads: [] })),
     } as unknown as ProjectionStore.ProjectionStoreV2["Service"]),
@@ -139,6 +151,23 @@ describe("ProjectWorktreeService", () => {
         const alpha = yield* service.open({ projectId, branch: "alpha" });
         expect(alpha.worktree.path.startsWith(worktreesDir)).toBe(true);
         expect(alpha.worktree).toMatchObject({ branch: "alpha", alias: "alpha", holds: [] });
+      }),
+    ),
+  );
+
+  it.live("reads a wiki's worktrees in its own folder, as a project's are read in its", () =>
+    run(
+      Effect.gen(function* () {
+        const { service, worktreesDir } = yield* fixture;
+        const alpha = yield* service.open({ wikiId: wikiIdOfRepo, branch: "alpha" });
+        expect(alpha.worktree.path.startsWith(worktreesDir)).toBe(true);
+        const listed = yield* service.list({ wikiId: wikiIdOfRepo });
+        expect(listed.worktrees.map((worktree) => worktree.branch)).toEqual(["main", "alpha"]);
+
+        const unknown = yield* Effect.flip(service.list({ wikiId: WikiId.make("wiki-2") }));
+        expect(unknown.message).toBe("No wiki has this id or name.");
+        const neither = yield* Effect.flip(service.list({}));
+        expect(neither.message).toBe("Name a project or a wiki.");
       }),
     ),
   );

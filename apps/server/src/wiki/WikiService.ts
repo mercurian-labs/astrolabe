@@ -173,6 +173,8 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiSummary, WikiError>;
     /** The note a thread in this repository starts with, or null when no wiki is linked to it. */
     readonly agentNote: (projectId: ProjectId) => Effect.Effect<string | null, WikiError>;
+    /** The folder holding a wiki's main line, the repository its worktrees belong to. */
+    readonly root: (wikiId: WikiId) => Effect.Effect<string, WikiError>;
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
     readonly pushMirror: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
     readonly index: (input: WikiReadTarget) => Effect.Effect<WikiIndexResult, WikiError>;
@@ -2134,8 +2136,13 @@ const make = Effect.gen(function* () {
         : locked(wiki, pushToMirror(wiki)).pipe(Effect.flatMap(summary)),
     );
 
+  const root: WikiService["Service"]["root"] = Effect.fn("WikiService.root")(function* (wikiId) {
+    return (yield* lookup(wikiId)).root;
+  });
+
   return WikiService.of({
     list,
+    root,
     subscribe: Stream.fromPubSub(events),
     register,
     create,

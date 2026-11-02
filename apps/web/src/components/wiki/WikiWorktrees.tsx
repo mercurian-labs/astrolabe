@@ -4,10 +4,13 @@ import { GitBranchPlusIcon, SaveIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { openTab } from "~/panes/arrangement";
-import { useProjects } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment } from "~/state/wiki";
-import { refreshProjectWorktrees, useProjectWorktrees } from "~/state/worktrees";
+import {
+  refreshProjectWorktrees,
+  useProjectWorktrees,
+  type WorktreesTarget,
+} from "~/state/worktrees";
 import { storedName } from "../projects/storedChoice";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import {
@@ -48,18 +51,11 @@ const changeRequestOf = (branch: string | null) =>
     ? null
     : ((CHANGE_REQUEST_BRANCH.exec(branch)?.[1] as WikiChangeRequestId | undefined) ?? null);
 
-/**
- * The project standing in a wiki's folder, as the worktree controls take it. Wikis no longer make
- * one, so only a wiki whose folder was added as a project (as older wikis were) has worktrees.
- */
-function useWikiOwner(overview: WikiOverview) {
-  const project = useProjects().find(
-    (candidate) =>
-      candidate.environmentId === overview.environmentId &&
-      candidate.workspaceRoot === overview.wiki.root,
-  );
-  return project ? { environmentId: project.environmentId, id: project.id } : null;
-}
+/** A wiki's worktrees: those of the repository in its own folder. */
+const worktreesOfWiki = (overview: WikiOverview): WorktreesTarget => ({
+  environmentId: overview.environmentId,
+  wikiId: overview.wiki.wikiId,
+});
 
 /**
  * A wiki's worktrees, each under its change request's title (its main line under the main
@@ -73,15 +69,12 @@ export function WikiWorktreeTrees({
   readonly overview: WikiOverview;
   readonly focused: WikiTab | null;
 }) {
-  const owner = useWikiOwner(overview);
-  const listed = useProjectWorktrees(
-    owner ? { environmentId: owner.environmentId, projectId: owner.id } : null,
-  );
+  const owner = worktreesOfWiki(overview);
+  const listed = useProjectWorktrees(owner);
   const saveWorktree = useAtomCommand(wikiEnvironment.saveWorktree);
   // Sections someone opened or closed; a worktree that takes the focus opens again.
   const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
-  if (owner === null) return <Note>This wiki has no project, so it has no worktrees.</Note>;
   if (listed === null) return <Note>Reading worktrees…</Note>;
   const { wiki } = overview;
   const titleOf = (branch: string) => {
@@ -142,7 +135,7 @@ export function WikiWorktreeTrees({
     const key = repositoryTabKey({
       kind: "file",
       environmentId: overview.environmentId,
-      projectId: owner.id,
+      wikiId: wiki.wikiId,
       checkout:
         worktree.isMain || worktree.branch === null
           ? { cwd: worktree.path }
@@ -181,7 +174,7 @@ export function WikiWorktreeTrees({
                             message: "Edits from the worktree",
                           },
                         });
-                        refreshProjectWorktrees(owner.environmentId, owner.id);
+                        refreshProjectWorktrees(owner);
                       }}
                     >
                       <SaveIcon />
@@ -216,13 +209,11 @@ export function WikiWorktreeTrees({
  * so several can be worked on side by side.
  */
 export function WikiWorktreePicker({ overview }: { readonly overview: WikiOverview }) {
-  const owner = useWikiOwner(overview);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const openBranch = useOpenBranch();
   const openChangeRequest = useAtomCommand(wikiEnvironment.openChangeRequest);
-  if (owner === null) return null;
-  const target = { environmentId: owner.environmentId, projectId: owner.id };
+  const target = worktreesOfWiki(overview);
   const changeRequests = (overview.changeRequests ?? []).filter(
     (changeRequest) => changeRequest.status === "open",
   );

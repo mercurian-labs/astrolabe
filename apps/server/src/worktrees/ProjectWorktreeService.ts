@@ -9,6 +9,7 @@ import {
   type ProjectWorktreeDiscardSetAsideInput,
   ProjectWorktreeError,
   type ProjectWorktreeHold,
+  type ProjectWorktreeListInput,
   type ProjectWorktreeListResult,
   type ProjectWorktreeOpenInput,
   type ProjectWorktreeOpenResult,
@@ -17,6 +18,7 @@ import {
   type ProjectWorktreeSetAside,
   type ProjectWorktreeSetKeptInput,
   type TerminalSummary,
+  type WikiId,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -43,13 +45,14 @@ import * as ServerSettings from "../serverSettings.ts";
 import { storageCleanupThreadIdle } from "../storageCleanup.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as WikiService from "../wiki/WikiService.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { makeIsManagedWorktreePath, resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 import * as WorkspaceWatcher from "./WorkspaceWatcher.ts";
 import { countStatusFiles, type ListedWorktree, parseWorktreeList } from "./worktreeList.ts";
 
 /**
- * Astrolabe: a repository's worktrees as buckets for branches. Opening a branch uses the worktree
+ * Astrolabe: a repository's worktrees as buckets for branches, a project's or a wiki's. Opening a branch uses the worktree
  * it is checked out in, else a free one, else a new one. A free worktree's uncommitted work is set
  * aside under its branch (a checkpoint ref) and comes back when that branch is next opened, as
  * long as the branch has not moved on. Holds say why a worktree is not free.
@@ -57,9 +60,9 @@ import { countStatusFiles, type ListedWorktree, parseWorktreeList } from "./work
 export class ProjectWorktreeService extends Context.Service<
   ProjectWorktreeService,
   {
-    readonly list: (input: {
-      readonly projectId: ProjectId;
-    }) => Effect.Effect<ProjectWorktreeListResult, ProjectWorktreeError>;
+    readonly list: (
+      input: ProjectWorktreeListInput,
+    ) => Effect.Effect<ProjectWorktreeListResult, ProjectWorktreeError>;
     readonly open: (
       input: ProjectWorktreeOpenInput,
     ) => Effect.Effect<ProjectWorktreeOpenResult, ProjectWorktreeError>;
@@ -136,6 +139,7 @@ const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const projects = yield* ProjectService.ProjectService;
+  const wikis = yield* WikiService.WikiService;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitWorkflow = yield* GitWorkflow.GitWorkflowService;
@@ -149,12 +153,12 @@ const make = Effect.gen(function* () {
   const keptPath = path.join(config.stateDir, "worktree-keep.json");
   const keptCache = yield* Ref.make<KeptStore | undefined>(undefined);
   const keptLock = yield* Semaphore.make(1);
-  const projectLocks = new Map<string, Semaphore.Semaphore>();
-  const projectLock = (projectId: ProjectId) => {
-    const existing = projectLocks.get(projectId);
+  const repositoryLocks = new Map<string, Semaphore.Semaphore>();
+  const repositoryLock = (root: string) => {
+    const existing = repositoryLocks.get(root);
     if (existing) return existing;
     const created = Semaphore.makeUnsafe(1);
-    projectLocks.set(projectId, created);
+    repositoryLocks.set(root, created);
     return created;
   };
 
@@ -242,11 +246,18 @@ const make = Effect.gen(function* () {
         : { ...store, numbers: { ...store.numbers, [root]: next } };
     }).pipe(Effect.map((store) => store.numbers[root] ?? {}));
 
-  const repositoryRoot = Effect.fn("ProjectWorktreeService.repositoryRoot")(function* (
-    projectId: ProjectId,
-  ) {
+  /** The folder of the repository the worktrees are in: the project's, or the wiki's. */
+  const repositoryRoot = Effect.fn("ProjectWorktreeService.repositoryRoot")(function* (owner: {
+    readonly projectId?: ProjectId;
+    readonly wikiId?: WikiId;
+  }) {
+    if (owner.wikiId !== undefined) {
+      if (owner.projectId !== undefined) return yield* fail("Name a project or a wiki, not both.");
+      return yield* wikis.root(owner.wikiId).pipe(Effect.mapError((error) => fail(error.message)));
+    }
+    if (owner.projectId === undefined) return yield* fail("Name a project or a wiki.");
     const project = yield* projects
-      .getById(projectId)
+      .getById(owner.projectId)
       .pipe(Effect.mapError(failWith("The project could not be read")));
     if (Option.isNone(project)) return yield* fail("The project was not found.");
     return project.value.workspaceRoot;
@@ -379,7 +390,7 @@ const make = Effect.gen(function* () {
 
   const list: ProjectWorktreeService["Service"]["list"] = Effect.fn("ProjectWorktreeService.list")(
     function* (input) {
-      const root = yield* repositoryRoot(input.projectId);
+      const root = yield* repositoryRoot(input);
       const worktrees = yield* listWorktrees(root);
       const setAside = yield* listSetAside(root);
       return { worktrees, setAside };
@@ -513,9 +524,9 @@ const make = Effect.gen(function* () {
 
   const open: ProjectWorktreeService["Service"]["open"] = Effect.fn("ProjectWorktreeService.open")(
     function* (input) {
-      const root = yield* repositoryRoot(input.projectId);
+      const root = yield* repositoryRoot(input);
       yield* checkBranchName(root, input.branch);
-      return yield* projectLock(input.projectId).withPermit(
+      return yield* repositoryLock(root).withPermit(
         Effect.gen(function* () {
           const worktrees = yield* listWorktrees(root);
           const existing = worktrees.find((worktree) => worktree.branch === input.branch);
@@ -531,7 +542,7 @@ const make = Effect.gen(function* () {
   const create: ProjectWorktreeService["Service"]["create"] = Effect.fn(
     "ProjectWorktreeService.create",
   )(function* (input) {
-    const root = yield* repositoryRoot(input.projectId);
+    const root = yield* repositoryRoot(input);
     yield* checkBranchName(root, input.branch);
     const taken = yield* tryGit("branchExists", root, [
       "show-ref",
@@ -548,7 +559,7 @@ const make = Effect.gen(function* () {
       `${input.base}^{commit}`,
     ]);
     if (base.exitCode !== 0) return yield* fail(`${input.base} is not a branch or commit here.`);
-    return yield* projectLock(input.projectId).withPermit(
+    return yield* repositoryLock(root).withPermit(
       Effect.gen(function* () {
         const target = yield* place(
           root,
@@ -603,8 +614,8 @@ const make = Effect.gen(function* () {
   const remove: ProjectWorktreeService["Service"]["remove"] = Effect.fn(
     "ProjectWorktreeService.remove",
   )(function* (input) {
-    const root = yield* repositoryRoot(input.projectId);
-    return yield* projectLock(input.projectId).withPermit(
+    const root = yield* repositoryRoot(input);
+    return yield* repositoryLock(root).withPermit(
       Effect.gen(function* () {
         const worktrees = yield* listWorktrees(root);
         const worktree = worktrees.find((entry) => entry.path === input.path);
@@ -645,7 +656,7 @@ const make = Effect.gen(function* () {
   const setKept: ProjectWorktreeService["Service"]["setKept"] = Effect.fn(
     "ProjectWorktreeService.setKept",
   )(function* (input) {
-    const root = yield* repositoryRoot(input.projectId);
+    const root = yield* repositoryRoot(input);
     const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
       Effect.map((result) => parseWorktreeList(result.stdout)),
     );
@@ -657,7 +668,7 @@ const make = Effect.gen(function* () {
   const discardSetAside: ProjectWorktreeService["Service"]["discardSetAside"] = Effect.fn(
     "ProjectWorktreeService.discardSetAside",
   )(function* (input) {
-    const root = yield* repositoryRoot(input.projectId);
+    const root = yield* repositoryRoot(input);
     yield* checkpoints
       .deleteCheckpointRefs({ cwd: root, checkpointRefs: [setAsideRef(input.branch)] })
       .pipe(Effect.mapError(failWith("Set-aside work could not be discarded")));
@@ -666,7 +677,7 @@ const make = Effect.gen(function* () {
   const changes: ProjectWorktreeService["Service"]["changes"] = (input) =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const root = yield* repositoryRoot(input.projectId);
+        const root = yield* repositoryRoot(input);
         const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
           Effect.map((result) => parseWorktreeList(result.stdout)),
         );

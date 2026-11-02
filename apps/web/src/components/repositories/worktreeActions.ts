@@ -1,11 +1,14 @@
-import type { EnvironmentId, ProjectId, ProjectWorktree } from "@t3tools/contracts";
+import type { ProjectWorktree } from "@t3tools/contracts";
 
-import { refreshProjectWorktrees, worktreeEnvironment } from "~/state/worktrees";
+import {
+  refreshProjectWorktrees,
+  worktreeEnvironment,
+  worktreeOwner,
+  type WorktreesTarget,
+} from "~/state/worktrees";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { toastManager } from "../ui/toast";
 import { openInNewWorktree } from "./repositoryScope";
-
-type Repository = { readonly environmentId: EnvironmentId; readonly projectId: ProjectId };
 
 /** Whether the person asked for a worktree of its own for every branch they open. */
 const newWorktree = () => openInNewWorktree.get() === "new";
@@ -17,12 +20,12 @@ const newWorktree = () => openInNewWorktree.get() === "new";
  */
 export function useOpenBranch() {
   const open = useAtomCommand(worktreeEnvironment.open);
-  return async (repository: Repository, branch: string): Promise<ProjectWorktree | null> => {
+  return async (repository: WorktreesTarget, branch: string): Promise<ProjectWorktree | null> => {
     const result = await open({
       environmentId: repository.environmentId,
-      input: { projectId: repository.projectId, branch, newWorktree: newWorktree() },
+      input: { ...worktreeOwner(repository), branch, newWorktree: newWorktree() },
     });
-    refreshProjectWorktrees(repository.environmentId, repository.projectId);
+    refreshProjectWorktrees(repository);
     if (result._tag !== "Success") return null;
     if (result.value.setAside === "restored") {
       toastManager.add({ type: "success", title: `Work set aside on ${branch} is back` });
@@ -40,12 +43,12 @@ export function useOpenBranch() {
 /** Makes a new branch from `base` in a free worktree, or a new one (always, when asked). */
 export function useCreateWorktree() {
   const create = useAtomCommand(worktreeEnvironment.create);
-  return async (repository: Repository, branch: string, base: string) => {
+  return async (repository: WorktreesTarget, branch: string, base: string) => {
     const result = await create({
       environmentId: repository.environmentId,
-      input: { projectId: repository.projectId, branch, base, newWorktree: newWorktree() },
+      input: { ...worktreeOwner(repository), branch, base, newWorktree: newWorktree() },
     });
-    refreshProjectWorktrees(repository.environmentId, repository.projectId);
+    refreshProjectWorktrees(repository);
     return result._tag === "Success" ? result.value : null;
   };
 }

@@ -24,7 +24,7 @@ import { useProjectPathSearch } from "~/state/queries";
 import { reviewEnvironment } from "~/state/review";
 import { vcsEnvironment } from "~/state/vcs";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { useManyProjectWorktrees } from "~/state/worktrees";
+import { projectWorktrees, useManyProjectWorktrees } from "~/state/worktrees";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
@@ -64,7 +64,7 @@ import {
   parseRepositoryTabKey,
   repositoryTabKey,
   type RepositoryCheckout,
-  type RepositoryTab,
+  type ProjectFileTab,
 } from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
 
@@ -83,9 +83,10 @@ export function RepositorySidebar() {
   const filesShown = repositoryWorktreeFiles.useValue();
   const focusedKey = useWorkspaceFocusedKey();
   const focusedTab = focusedKey === null ? null : parseRepositoryTabKey(focusedKey);
-  const focusedRepository = focusedTab
-    ? repositoryKey({ environmentId: focusedTab.environmentId, id: focusedTab.projectId })
-    : null;
+  const focusedRepository =
+    focusedTab && "projectId" in focusedTab
+      ? repositoryKey({ environmentId: focusedTab.environmentId, id: focusedTab.projectId })
+      : null;
   const kept = filterRepositoryKeys(filter, repositories.map(repositoryKey));
   const candidates = repositories.filter(
     (repository) =>
@@ -94,10 +95,7 @@ export function RepositorySidebar() {
       repositoryKey(repository) === focusedRepository,
   );
   const lists = useManyProjectWorktrees(
-    candidates.map((repository) => ({
-      environmentId: repository.environmentId,
-      projectId: repository.id,
-    })),
+    candidates.map((repository) => projectWorktrees(repository)),
   );
   const read = candidates.map((repository, index) => {
     const key = repositoryKey(repository);
@@ -376,6 +374,7 @@ function WorktreeSections({
   readonly filesShown: ReadonlyArray<string>;
   readonly selectedPath: (worktree: ProjectWorktree) => string | null;
 }) {
+  const owner = projectWorktrees(repository);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
       {worktrees.map(({ worktree, outside }) => {
@@ -386,7 +385,7 @@ function WorktreeSections({
           <Fragment key={worktree.path}>
             <ul role="presentation" className="flex flex-col gap-px">
               <WorktreeHeader
-                repository={repository}
+                repository={owner}
                 worktree={worktree}
                 expanded={open}
                 onToggle={() => onToggle(worktree)}
@@ -412,7 +411,7 @@ function WorktreeSections({
             {open && files ? (
               <WorktreeFiles
                 key={filesKey}
-                owner={repository}
+                owner={owner}
                 worktree={worktree}
                 projectName={`${repository.title} · ${worktree.alias}`}
                 selectedPath={selectedPath(worktree)}
@@ -433,7 +432,7 @@ function WorktreeSections({
       })}
       {setAside ? (
         <ul role="presentation" className="flex flex-col gap-px">
-          <SetAsideRows repository={repository} setAside={setAside} />
+          <SetAsideRows repository={owner} setAside={setAside} />
         </ul>
       ) : (
         <SidebarNote>Reading worktrees…</SidebarNote>
@@ -444,7 +443,7 @@ function WorktreeSections({
 
 const NO_WORKTREES: ReadonlyArray<ProjectWorktree> = [];
 
-type FileTab = Extract<RepositoryTab, { kind: "file" }>;
+type FileTab = ProjectFileTab;
 
 const fileTab = (
   repository: EnvironmentProject,

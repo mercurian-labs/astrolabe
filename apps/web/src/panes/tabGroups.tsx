@@ -69,7 +69,7 @@ function tabGroupLookup(
     // A main-checkout or detached tab is keyed by folder, which names no one effort.
     const repository = parseRepositoryTabKey(tabKey);
     if (repository) {
-      if (!("branch" in repository.checkout)) return NO_GROUPS;
+      if (!("branch" in repository.checkout) || !("projectId" in repository)) return NO_GROUPS;
       const { environmentId, projectId, checkout } = repository;
       return byBranch.get(branchGroupKey(environmentId, projectId, checkout.branch)) ?? NO_GROUPS;
     }

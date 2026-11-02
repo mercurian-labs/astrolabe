@@ -3,7 +3,12 @@ import {
   createWorktreeEnvironmentAtoms,
   type WorktreeWatch,
 } from "@t3tools/client-runtime/state/worktrees";
-import type { EnvironmentId, ProjectId, ProjectWorktreeListResult } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProjectId,
+  ProjectWorktreeListResult,
+  ProjectWorktreeOwner,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { useEffect } from "react";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -18,13 +23,23 @@ const NONE = Atom.make(AsyncResult.initial<ProjectWorktreeListResult, never>()).
   Atom.withLabel("worktrees:none"),
 );
 
-const listAtom = (environmentId: EnvironmentId, projectId: ProjectId) =>
-  worktreeEnvironment.list({ environmentId, input: { projectId } });
+/** Whose worktrees, on which environment: a project's, or a wiki's own folder. */
+export type WorktreesTarget = { readonly environmentId: EnvironmentId } & ProjectWorktreeOwner;
 
-type WorktreesTarget = { readonly environmentId: EnvironmentId; readonly projectId: ProjectId };
+/** A project's worktrees. */
+export const projectWorktrees = (project: {
+  readonly environmentId: EnvironmentId;
+  readonly id: ProjectId;
+}): WorktreesTarget => ({ environmentId: project.environmentId, projectId: project.id });
 
-const atomOf = (target: WorktreesTarget | null) =>
-  target === null ? NONE : listAtom(target.environmentId, target.projectId);
+/** The owner part of a worktree request, without the environment. */
+export const worktreeOwner = (target: WorktreesTarget): ProjectWorktreeOwner =>
+  "wikiId" in target ? { wikiId: target.wikiId } : { projectId: target.projectId };
+
+const listAtom = (target: WorktreesTarget) =>
+  worktreeEnvironment.list({ environmentId: target.environmentId, input: worktreeOwner(target) });
+
+const atomOf = (target: WorktreesTarget | null) => (target === null ? NONE : listAtom(target));
 
 /**
  * A repository's worktrees as last read, for what only labels by them (a tab per file), so the
@@ -67,7 +82,7 @@ export function useManyProjectWorktrees(
   targets: ReadonlyArray<WorktreesTarget>,
 ): ReadonlyArray<ProjectWorktreeListResult | null> {
   const key = JSON.stringify(
-    targets.map(({ environmentId, projectId }) => ({ environmentId, projectId })),
+    targets.map((target) => ({ environmentId: target.environmentId, ...worktreeOwner(target) })),
   );
   // oxlint-disable-next-line t3code/react-effect-budget -- edits outside the app (an editor, an agent) change what the worktrees hold
   useEffect(() => {
@@ -83,33 +98,32 @@ export function useManyProjectWorktrees(
 }
 
 /** Reads a repository's worktrees again, after anything that changed them. */
-export function refreshProjectWorktrees(environmentId: EnvironmentId, projectId: ProjectId) {
-  appAtomRegistry.refresh(listAtom(environmentId, projectId));
+export function refreshProjectWorktrees(target: WorktreesTarget) {
+  appAtomRegistry.refresh(listAtom(target));
 }
 
 const refreshesDue = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Reads a repository's worktrees again shortly, once for however many changes land meanwhile. */
-export function refreshProjectWorktreesSoon(environmentId: EnvironmentId, projectId: ProjectId) {
-  const key = `${environmentId}\u0000${projectId}`;
+export function refreshProjectWorktreesSoon(target: WorktreesTarget) {
+  const key = JSON.stringify({ environmentId: target.environmentId, ...worktreeOwner(target) });
   if (refreshesDue.has(key)) return;
   refreshesDue.set(
     key,
     setTimeout(() => {
       refreshesDue.delete(key);
-      refreshProjectWorktrees(environmentId, projectId);
+      refreshProjectWorktrees(target);
     }, 500),
   );
 }
 
 /** A worktree's watch for changes on disk; null until it reports anything. */
-export function useWorktreeWatch(
-  environmentId: EnvironmentId,
-  projectId: ProjectId,
-  path: string,
-): WorktreeWatch | null {
+export function useWorktreeWatch(target: WorktreesTarget, path: string): WorktreeWatch | null {
   const result = useAtomValue(
-    worktreeEnvironment.changes({ environmentId, input: { projectId, path } }),
+    worktreeEnvironment.changes({
+      environmentId: target.environmentId,
+      input: { ...worktreeOwner(target), path },
+    }),
   );
   return Option.getOrNull(AsyncResult.value(result));
 }

@@ -136,14 +136,16 @@ export function RepositoryFileView({
               : "Saved"}
         </TabHeader.Status>
       )}
-      <TabHeader.Actions>
-        <TabHeader.Action
-          label="Open local graph"
-          onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
-        >
-          <WaypointsIcon />
-        </TabHeader.Action>
-      </TabHeader.Actions>
+      {"projectId" in tab ? (
+        <TabHeader.Actions>
+          <TabHeader.Action
+            label="Open local graph"
+            onClick={() => panes.update((arrangement) => openLocalGraph(arrangement, tab))}
+          >
+            <WaypointsIcon />
+          </TabHeader.Action>
+        </TabHeader.Actions>
+      ) : null}
     </TabHeader.Root>
   );
   if (file.error !== null && contents === null) {
@@ -320,12 +322,16 @@ function readOnlyExtension(readOnly: boolean) {
 
 /** Whether a thread's agent is mid-turn in the tab's checkout. */
 function useAgentWorkingIn(tab: FileTab): boolean {
-  const project = useProject({ environmentId: tab.environmentId, projectId: tab.projectId });
+  // No thread runs in a wiki.
+  const projectId = "projectId" in tab ? tab.projectId : null;
+  const project = useProject(
+    projectId === null ? null : { environmentId: tab.environmentId, projectId },
+  );
   const threads = useThreadShells();
   return threads.some(
     (thread) =>
       thread.environmentId === tab.environmentId &&
-      thread.projectId === tab.projectId &&
+      thread.projectId === projectId &&
       (thread.worktreePath ?? project?.workspaceRoot) === tab.cwd &&
       isTurnRunning(thread.source.status),
   );

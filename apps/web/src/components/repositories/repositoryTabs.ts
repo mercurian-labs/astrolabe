@@ -1,4 +1,4 @@
-import { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, WikiId, type ProjectWorktreeOwner } from "@t3tools/contracts";
 
 /**
  * Where a tab reads: a branch, in whichever worktree holds it now (worktrees are reused, so a
@@ -9,16 +9,16 @@ export type RepositoryCheckout = { readonly branch: string } | { readonly cwd: s
 /**
  * Astrolabe: what a Repositories tab shows, named by its key so any section's panes can hold it
  * and keep it across a reload: a file of a checkout, a checkout's changes (uncommitted, or its
- * branch against its base), or a file's local graph.
+ * branch against its base), or a file's local graph. A file may be a wiki's (a wiki is no
+ * project): one in a wiki's worktree that is not a note.
  */
 export type RepositoryTab =
-  | {
+  | ({
       readonly kind: "file";
       readonly environmentId: EnvironmentId;
-      readonly projectId: ProjectId;
       readonly checkout: RepositoryCheckout;
       readonly path: string;
-    }
+    } & ProjectWorktreeOwner)
   | {
       readonly kind: "diff";
       readonly environmentId: EnvironmentId;
@@ -38,6 +38,8 @@ export type RepositoryTab =
     };
 
 export type RepositoryFileTab = Extract<RepositoryTab, { kind: "file" }>;
+/** A project's file, the only kind with a local graph (the code index is a project's). */
+export type ProjectFileTab = Extract<RepositoryFileTab, { readonly projectId: ProjectId }>;
 export type RepositoryGraphTab = Extract<RepositoryTab, { kind: "graph" }>;
 
 /** A file or changes tab with the folder its checkout is in now, and what that checkout is called. */
@@ -83,6 +85,7 @@ export type RepositoryDiffSource = "working-tree" | "branch-range";
 
 const FILE_PREFIX = "repo-file:";
 const DIFF_PREFIX = "repo-diff:";
+const WIKI_FILE_PREFIX = "wiki-file:";
 // A chosen base rides on the source part; git refuses `~` in a ref name, so it never collides.
 const BASE_SEPARATOR = "~";
 const GRAPH_PREFIX = "repo-graph:";
@@ -96,10 +99,11 @@ const checkoutParts = (checkout: RepositoryCheckout) =>
 export function repositoryTabKey(tab: RepositoryTab): string {
   switch (tab.kind) {
     case "file":
-      return (
-        FILE_PREFIX +
-        encode([tab.environmentId, tab.projectId, ...checkoutParts(tab.checkout), tab.path])
-      );
+      return "wikiId" in tab
+        ? WIKI_FILE_PREFIX +
+            encode([tab.environmentId, tab.wikiId, ...checkoutParts(tab.checkout), tab.path])
+        : FILE_PREFIX +
+            encode([tab.environmentId, tab.projectId, ...checkoutParts(tab.checkout), tab.path]);
     case "diff":
       return (
         DIFF_PREFIX +
@@ -123,7 +127,7 @@ export function repositoryTabKey(tab: RepositoryTab): string {
   }
 }
 
-/** Environment, project, checkout and the parts after them, from a key's parts. */
+/** Environment, owner (a project or a wiki), checkout and the parts after them, from a key's parts. */
 function decode(rest: string): {
   environmentId: string;
   projectId: string;
@@ -165,6 +169,18 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
       path,
     };
   }
+  if (key.startsWith(WIKI_FILE_PREFIX)) {
+    const parts = decodeOne(key.slice(WIKI_FILE_PREFIX.length));
+    if (parts === null) return null;
+    const { environmentId, projectId: wikiId, checkout, last: path } = parts;
+    return {
+      kind: "file",
+      environmentId: EnvironmentId.make(environmentId),
+      wikiId: WikiId.make(wikiId),
+      checkout,
+      path,
+    };
+  }
   if (key.startsWith(DIFF_PREFIX)) {
     const parts = decodeOne(key.slice(DIFF_PREFIX.length));
     if (parts === null) return null;
@@ -198,13 +214,19 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
   return null;
 }
 
-/** Whether two tabs read the same checkout: one environment's project, on one branch or folder. */
-export const sameCheckout = (
-  left: Pick<RepositoryTab, "environmentId" | "projectId" | "checkout">,
-  right: Pick<RepositoryTab, "environmentId" | "projectId" | "checkout">,
-) =>
+/** A tab's owner, as one string to compare. */
+const ownerOf = (tab: ProjectWorktreeOwner) =>
+  "wikiId" in tab ? `wiki:${tab.wikiId}` : `project:${tab.projectId}`;
+
+type CheckoutOf = {
+  readonly environmentId: EnvironmentId;
+  readonly checkout: RepositoryCheckout;
+} & ProjectWorktreeOwner;
+
+/** Whether two tabs read the same checkout: one environment's project or wiki, on one branch or folder. */
+export const sameCheckout = (left: CheckoutOf, right: CheckoutOf) =>
   left.environmentId === right.environmentId &&
-  left.projectId === right.projectId &&
+  ownerOf(left) === ownerOf(right) &&
   ("branch" in left.checkout
     ? "branch" in right.checkout && left.checkout.branch === right.checkout.branch
     : "cwd" in right.checkout && left.checkout.cwd === right.checkout.cwd);

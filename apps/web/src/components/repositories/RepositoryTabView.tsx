@@ -5,7 +5,11 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { reviewEnvironment } from "~/state/review";
 import { useTheme } from "~/hooks/useTheme";
 import type { PaneTabLabel } from "~/panes/panesHost";
-import { useListedProjectWorktrees, useProjectWorktrees } from "~/state/worktrees";
+import {
+  useListedProjectWorktrees,
+  useProjectWorktrees,
+  type WorktreesTarget,
+} from "~/state/worktrees";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { getProjectFileQueryAtom } from "../files/projectFilesQueryState";
 import { Button } from "../ui/button";
@@ -22,6 +26,12 @@ import {
 } from "./repositoryTabs";
 import { useOpenBranch } from "./worktreeActions";
 import { WorktreeNumber } from "./WorktreeNumber";
+
+/** The worktrees a tab's checkout is among: its project's, or its wiki's. */
+const worktreesOf = (tab: RepositoryTab): WorktreesTarget =>
+  "wikiId" in tab
+    ? { environmentId: tab.environmentId, wikiId: tab.wikiId }
+    : { environmentId: tab.environmentId, projectId: tab.projectId };
 
 // The local graph's renderer loads with its first tab, never with Repositories itself.
 const RepositoryGraphView = lazy(() => import("./RepositoryGraphView"));
@@ -62,10 +72,7 @@ function CheckedOut({
   readonly tab: RepositoryTab;
   readonly children: (tab: CheckedOutRepositoryTab) => ReactNode;
 }) {
-  const worktrees = useProjectWorktrees({
-    environmentId: tab.environmentId,
-    projectId: tab.projectId,
-  });
+  const worktrees = useProjectWorktrees(worktreesOf(tab));
   const openBranch = useOpenBranch();
   const [opening, setOpening] = useState(false);
   const { checkout } = tab;
@@ -101,7 +108,7 @@ function CheckedOut({
         disabled={opening}
         onClick={async () => {
           setOpening(true);
-          await openBranch(tab, named);
+          await openBranch(worktreesOf(tab), named);
           setOpening(false);
         }}
       >
@@ -118,9 +125,7 @@ function CheckedOut({
  */
 export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const tab = parseRepositoryTabKey(tabKey);
-  const listed = useListedProjectWorktrees(
-    tab === null ? null : { environmentId: tab.environmentId, projectId: tab.projectId },
-  );
+  const listed = useListedProjectWorktrees(tab === null ? null : worktreesOf(tab));
   const { resolvedTheme } = useTheme();
   if (tab === null) return null;
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;

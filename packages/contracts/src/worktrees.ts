@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { WikiId } from "./wiki.ts";
 
 /**
  * Astrolabe: a repository's worktrees as buckets. A branch is what a person or an agent works on;
@@ -41,7 +42,19 @@ export const ProjectWorktreeSetAside = Schema.Struct({
 });
 export type ProjectWorktreeSetAside = typeof ProjectWorktreeSetAside.Type;
 
-export const ProjectWorktreeListInput = Schema.Struct({ projectId: ProjectId });
+/**
+ * Whose repository the worktrees are in: a project's, or a wiki's own folder (a wiki is no
+ * project). Exactly one is given.
+ */
+const OwnerFields = {
+  projectId: Schema.optionalKey(ProjectId),
+  wikiId: Schema.optionalKey(WikiId),
+};
+
+/** The owner as clients name it, with exactly one of the two. */
+export type ProjectWorktreeOwner = { readonly projectId: ProjectId } | { readonly wikiId: WikiId };
+
+export const ProjectWorktreeListInput = Schema.Struct(OwnerFields);
 export type ProjectWorktreeListInput = typeof ProjectWorktreeListInput.Type;
 
 export const ProjectWorktreeListResult = Schema.Struct({
@@ -51,7 +64,7 @@ export const ProjectWorktreeListResult = Schema.Struct({
 export type ProjectWorktreeListResult = typeof ProjectWorktreeListResult.Type;
 
 export const ProjectWorktreeOpenInput = Schema.Struct({
-  projectId: ProjectId,
+  ...OwnerFields,
   branch: TrimmedNonEmptyString,
   /** A worktree of its own even when one is free; a branch already checked out stays where it is. */
   newWorktree: Schema.optional(Schema.Boolean),
@@ -67,7 +80,7 @@ export type ProjectWorktreeOpenResult = typeof ProjectWorktreeOpenResult.Type;
 
 /** A new branch, from `base`, in a free worktree, or a new one (always with `newWorktree`). */
 export const ProjectWorktreeCreateInput = Schema.Struct({
-  projectId: ProjectId,
+  ...OwnerFields,
   branch: TrimmedNonEmptyString,
   base: TrimmedNonEmptyString,
   newWorktree: Schema.optional(Schema.Boolean),
@@ -75,7 +88,7 @@ export const ProjectWorktreeCreateInput = Schema.Struct({
 export type ProjectWorktreeCreateInput = typeof ProjectWorktreeCreateInput.Type;
 
 export const ProjectWorktreeRemoveInput = Schema.Struct({
-  projectId: ProjectId,
+  ...OwnerFields,
   path: TrimmedNonEmptyString,
   /** False asks first: with warnings nothing is removed, and the person decides. */
   confirmed: Schema.Boolean,
@@ -89,21 +102,21 @@ export const ProjectWorktreeRemoveResult = Schema.Struct({
 export type ProjectWorktreeRemoveResult = typeof ProjectWorktreeRemoveResult.Type;
 
 export const ProjectWorktreeSetKeptInput = Schema.Struct({
-  projectId: ProjectId,
+  ...OwnerFields,
   path: TrimmedNonEmptyString,
   kept: Schema.Boolean,
 });
 export type ProjectWorktreeSetKeptInput = typeof ProjectWorktreeSetKeptInput.Type;
 
 export const ProjectWorktreeDiscardSetAsideInput = Schema.Struct({
-  projectId: ProjectId,
+  ...OwnerFields,
   branch: TrimmedNonEmptyString,
 });
 export type ProjectWorktreeDiscardSetAsideInput = typeof ProjectWorktreeDiscardSetAsideInput.Type;
 
 /** One of a project's worktrees, by its folder, to follow changes on disk in. */
 export const ProjectWorktreeChangesInput = Schema.Struct({
-  projectId: ProjectId,
+  ...OwnerFields,
   path: TrimmedNonEmptyString,
 });
 export type ProjectWorktreeChangesInput = typeof ProjectWorktreeChangesInput.Type;

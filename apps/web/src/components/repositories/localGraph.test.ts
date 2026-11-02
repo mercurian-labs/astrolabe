@@ -13,14 +13,14 @@ import {
   openLocalGraph,
   pinLocalGraph,
 } from "./localGraph";
-import { repositoryTabKey, type RepositoryFileTab } from "./repositoryTabs";
+import { repositoryTabKey, type ProjectFileTab } from "./repositoryTabs";
 
 const checkout = {
   environmentId: EnvironmentId.make("env"),
   projectId: ProjectId.make("project"),
   checkout: { cwd: "/repo" },
 };
-const file = (path: string, cwd = "/repo"): RepositoryFileTab => ({
+const file = (path: string, cwd = "/repo"): ProjectFileTab => ({
   kind: "file",
   ...checkout,
   checkout: { cwd },

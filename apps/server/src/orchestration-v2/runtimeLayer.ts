@@ -286,7 +286,14 @@ const layerChangeGroupServiceProvided = ChangeGroupService.layer.pipe(
 );
 // Astrolabe: a repository's worktrees as buckets for branches.
 const layerProjectWorktreeServiceProvided = ProjectWorktreeService.layer.pipe(
-  Layer.provide(Layer.mergeAll(layerProjectService, ProjectionStore.layer, WorkspaceWatcher.layer)),
+  Layer.provide(
+    Layer.mergeAll(
+      layerProjectService,
+      layerWikiServiceProvided,
+      ProjectionStore.layer,
+      WorkspaceWatcher.layer,
+    ),
+  ),
 );
 const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
   Layer.provide(

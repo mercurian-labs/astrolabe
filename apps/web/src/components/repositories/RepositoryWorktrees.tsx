@@ -11,17 +11,20 @@ import {
   Trash2Icon,
   UndoIcon,
 } from "lucide-react";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
 import {
+  projectWorktrees,
   refreshProjectWorktrees,
   refreshProjectWorktreesSoon,
   useWorktreeWatch,
   worktreeEnvironment,
+  worktreeOwner,
+  type WorktreesTarget,
 } from "~/state/worktrees";
 import FileBrowserPanel, { type FileMenuAction } from "../files/FileBrowserPanel";
 import {
@@ -47,13 +50,8 @@ import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import { WorktreeNumber } from "./WorktreeNumber";
 
-/** What the worktree controls need of a project: a repository's or a wiki's. */
-type WorktreeOwner = Pick<EnvironmentProject, "environmentId" | "id">;
-
-const target = (repository: WorktreeOwner) => ({
-  environmentId: repository.environmentId,
-  projectId: repository.id,
-});
+/** Whose worktrees the controls act on: a project's, or a wiki's own folder. */
+type WorktreeOwner = WorktreesTarget;
 
 /**
  * A worktree's header: its number and branch (or commit), how many files it has uncommitted, what
@@ -86,12 +84,13 @@ export function WorktreeHeader({
   readonly outsideFilter?: boolean;
 }) {
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
-  const watch = useWorktreeWatch(repository.environmentId, repository.id, worktree.path);
+  const watch = useWorktreeWatch(repository, worktree.path);
   const changes = watch?.changes ?? 0;
+  const refreshSoon = useEffectEvent(() => refreshProjectWorktreesSoon(repository));
   // oxlint-disable-next-line t3code/react-effect-budget -- its count and branch follow changes on disk
   useEffect(() => {
-    if (changes > 0) refreshProjectWorktreesSoon(repository.environmentId, repository.id);
-  }, [changes, repository.environmentId, repository.id]);
+    if (changes > 0) refreshSoon();
+  }, [changes]);
   const accessory = (
     <span className="flex shrink-0 items-center gap-1.5 text-3xs text-sidebar-muted-foreground/70">
       {watch?.unwatched ? (
@@ -211,7 +210,7 @@ export function WorktreeFiles({
   readonly onOpenFile: (path: string) => void;
   readonly fileMenuActions?: ReadonlyArray<FileMenuAction>;
 }) {
-  const watch = useWorktreeWatch(owner.environmentId, owner.id, worktree.path);
+  const watch = useWorktreeWatch(owner, worktree.path);
   return (
     <div className="ms-4 border-s border-sidebar-border ps-1">
       <FileBrowserPanel
@@ -265,9 +264,9 @@ function WorktreeMenu({
           onClick={async () => {
             await setKept({
               environmentId: repository.environmentId,
-              input: { projectId: repository.id, path: worktree.path, kept: !worktree.kept },
+              input: { ...worktreeOwner(repository), path: worktree.path, kept: !worktree.kept },
             });
-            refreshProjectWorktrees(repository.environmentId, repository.id);
+            refreshProjectWorktrees(repository);
           }}
         >
           <PinIcon />
@@ -289,7 +288,7 @@ function useRemoveWorktree() {
     const run = (confirmed: boolean) =>
       remove({
         environmentId: repository.environmentId,
-        input: { projectId: repository.id, path: worktree.path, confirmed },
+        input: { ...worktreeOwner(repository), path: worktree.path, confirmed },
       });
     const asked = await run(false);
     if (asked._tag === "Success" && !asked.value.removed) {
@@ -299,7 +298,7 @@ function useRemoveWorktree() {
       );
       if (confirmed === true) await run(true);
     }
-    refreshProjectWorktrees(repository.environmentId, repository.id);
+    refreshProjectWorktrees(repository);
   };
 }
 
@@ -332,7 +331,7 @@ export function SetAsideRows({
           <button
             type="button"
             className="cursor-pointer rounded px-1 hover:text-sidebar-foreground"
-            onClick={() => void openBranch(target(repository), entry.branch)}
+            onClick={() => void openBranch(repository, entry.branch)}
           >
             Open
           </button>
@@ -347,9 +346,9 @@ export function SetAsideRows({
               if (confirmed !== true) return;
               await discard({
                 environmentId: repository.environmentId,
-                input: { projectId: repository.id, branch: entry.branch },
+                input: { ...worktreeOwner(repository), branch: entry.branch },
               });
-              refreshProjectWorktrees(repository.environmentId, repository.id);
+              refreshProjectWorktrees(repository);
             }}
           >
             Discard
@@ -412,7 +411,7 @@ export function OpenBranchPicker({
       onValueChange={async (branch: string | null) => {
         if (!branch) return;
         close();
-        const worktree = await openBranch(target(repository), branch);
+        const worktree = await openBranch(projectWorktrees(repository), branch);
         if (worktree) onOpened(worktree);
       }}
     >
@@ -443,7 +442,7 @@ export function OpenBranchPicker({
               icon={GitBranchPlusIcon}
               onClick={async () => {
                 close();
-                const worktree = await createWorktree(target(repository), name, base);
+                const worktree = await createWorktree(projectWorktrees(repository), name, base);
                 if (worktree) onOpened(worktree);
               }}
             >

@@ -37,7 +37,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   "No documents found".
 - **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a change request in a worktree"`
   beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
-  worktree (shared with Projects: its own, a free one, or a new `t3-<8 hex>`), and
+  worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
   a typed title offers "New change request “<title>” in a worktree". The filter's foot
   toggles **Show the file trees** / **Show as list** (`astrolabe:wiki-view:v1`). Tree
   mode drops the document list and the **Open changes** row for one collapsible section
@@ -48,8 +48,9 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   or modifiers). A change request worktree's menu adds **Save edits to the change
   request** when it has unsaved edits (`wiki.saveWorktree`, one amendment, worktree left
   clean). An amendment landing on a change request moves its worktree's files, and is
-  refused, naming the files, when they overlap unsaved edits there. Worktrees need a project standing in the wiki's folder (wikis no longer make one); without
-  one the picker and the trees are missing.
+  refused, naming the files, when they overlap unsaved edits there. The worktree calls name the wiki (`worktrees.*` with `wikiId`, read in the wiki's own
+  folder), so a wiki needs no project; a non-note file opens as `wiki-file:<env>:<wiki>:…`
+  (no local graph button, never in a change group).
 - **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`). A plain click on a row (or Enter on a focused row)
   replaces what the focused pane's tab in front shows, whatever it is (a file or a pull
   request too); a document already open in another tab comes forward there instead (no
