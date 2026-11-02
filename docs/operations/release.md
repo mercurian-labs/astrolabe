@@ -336,13 +336,20 @@ account EAS Submit uses.
 
 ## Hosted web app release deployment
 
-`deploy_web` in `.github/workflows/release.yml` deploys `app.astrolabe.sh`, the Cloudflare Worker
-`astrolabe-app` in `apps/web/wrangler.jsonc`. It runs on stable releases only, after `publish_cli`:
-it builds the web app with `VITE_HOSTED_APP_URL=https://app.astrolabe.sh`,
-`VITE_HOSTED_APP_CHANNEL=latest` and the release version, applies the production brand assets,
-copies `apps/web/cloudflare/_headers` into `dist/` and runs `wrangler deploy`. There is one hosted
-channel. Nightly and preview releases never replace it, because the hosted app has to stay
-compatible with the server npm's `latest` installs.
+The hosted web app keeps upstream's shape on Cloudflare Workers. `app.astrolabe.sh` is a router
+Worker, `astrolabe-app` (`apps/web/cloudflare/router.ts`, the counterpart of upstream's
+`apps/web/vercel.ts`). It serves each request from `latest.app.astrolabe.sh` (`astrolabe-app-latest`)
+or, with the `t3code_web_channel=nightly` cookie that **Settings → About → Update track** sets
+through `/__t3code/channel`, from `nightly.app.astrolabe.sh` (`astrolabe-app-nightly`). Both channel
+Workers are `apps/web/wrangler.jsonc`, the nightly one as `--env nightly`. The router also answers
+the shortcuts `nightly.astrolabe.sh` and `stable.astrolabe.sh`, redirecting them to
+`/__t3code/channel?channel=nightly` and `?channel=latest`.
+
+`deploy_web` in `.github/workflows/release.yml` runs on stable and nightly releases, after
+`publish_cli`, so a channel's client never runs ahead of the server its npm dist-tag installs. It
+builds the web app with `VITE_HOSTED_APP_URL=https://app.astrolabe.sh`, the channel as
+`VITE_HOSTED_APP_CHANNEL` and the release version, applies that channel's brand assets, copies
+`apps/web/cloudflare/_headers` into `dist/`, deploys the channel Worker, then deploys the router.
 
 The job reads the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets and skips its steps
 when either is missing. Roll back with `wrangler rollback` from `apps/web`.

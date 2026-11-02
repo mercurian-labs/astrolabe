@@ -1,4 +1,4 @@
-import { APP_STORE_URL, GOOGLE_PLAY_URL } from "~/branding";
+import { APP_STORE_URL, GOOGLE_PLAY_URL, HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
@@ -59,6 +59,7 @@ export interface SettingsSearchItem {
   readonly desktopOnly?: boolean;
   readonly macOnly?: boolean;
   readonly windowsOnly?: boolean;
+  readonly releaseChannelOnly?: boolean;
   readonly storeListingOnly?: boolean;
   readonly cloudOnly?: boolean;
   readonly environmentOnly?: boolean;
@@ -720,7 +721,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Update track",
     to: "/settings/about",
     searchTerms: ["release channel stable latest nightly prerelease"],
-    desktopOnly: true,
+    releaseChannelOnly: true,
   },
   {
     id: "cli-command",
@@ -1413,6 +1414,7 @@ export function settingsForThisPlatform(
   return items.filter(
     (item) =>
       (isElectron || item.desktopOnly !== true) &&
+      (!item.releaseChannelOnly || isElectron || HOSTED_APP_CHANNEL !== null) &&
       (!item.storeListingOnly || APP_STORE_URL !== null || GOOGLE_PLAY_URL !== null) &&
       (!item.macOnly || isMacPlatform(platform)) &&
       (!item.windowsOnly || isWindowsPlatform(platform)),

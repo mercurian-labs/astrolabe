@@ -1,17 +1,24 @@
-// Astrolabe · drafting · the desktop releases. The download page reads the latest GitHub release in
+// Astrolabe · drafting · the desktop releases. The download pages read the latest GitHub release in
 // the browser so a new release shows without a rebuild. Links start on the releases page and swap to
 // asset URLs once it arrives; if GitHub is slow, rate-limited (60/hour per visitor) or down, they stay.
 
 /** The one place the repository is named. */
 export const REPO = "mercurian-labs/astrolabe";
-export const RELEASES_URL = `https://github.com/${REPO}/releases`;
+export const REPO_URL = `https://github.com/${REPO}`;
+export const RELEASES_URL = `${REPO_URL}/releases`;
 
 const API = `https://api.github.com/repos/${REPO}`;
 
-// One entry per channel. Only stable ships today; a nightly channel would add its own lookup here
-// (the list endpoint, since `latest` skips prereleases) and a page that asks for it.
+// `latest` skips prereleases, so nightly reads the newest releases and takes the first nightly
+// (previews are prereleases too, and not for installing).
 const CHANNELS = {
-  stable: { url: `${API}/releases/latest`, page: RELEASES_URL },
+  stable: { url: `${API}/releases/latest`, page: RELEASES_URL, pick: (data) => data },
+  nightly: {
+    url: `${API}/releases?per_page=20`,
+    page: RELEASES_URL,
+    pick: (data) =>
+      Array.isArray(data) ? data.find((r) => /-nightly\./.test(r.tag_name)) : undefined,
+  },
 };
 
 /** GitHub has no release on the channel yet (`latest` answers 404, as it does for a private repo). */
@@ -21,7 +28,7 @@ export class NoRelease extends Error {}
  * The channel's latest release, cut down to what the page reads, and kept for the tab's session so
  * moving around the site doesn't spend the visitor's rate limit.
  * @param {keyof typeof CHANNELS} channel
- * @returns {Promise<{ tag: string, url: string, published: string, assets: { name: string, url: string }[] }>}
+ * @returns {Promise<{ tag: string, url: string, published: string, commit: string, assets: { name: string, url: string }[] }>}
  */
 export async function fetchRelease(channel = "stable") {
   const key = `astrolabe-${channel}-release`;
@@ -34,13 +41,15 @@ export async function fetchRelease(channel = "stable") {
   });
   if (response.status === 404) throw new NoRelease();
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
-  const data = await response.json();
-  if (!Array.isArray(data?.assets)) throw new Error("The release has no asset list");
+  const data = CHANNELS[channel].pick(await response.json());
+  if (!data) throw new NoRelease();
+  if (!Array.isArray(data.assets)) throw new Error("The release has no asset list");
 
   const release = {
     tag: data.tag_name,
     url: data.html_url || CHANNELS[channel].page,
     published: data.published_at,
+    commit: data.target_commitish,
     assets: data.assets.map((asset) => ({ name: asset.name, url: asset.browser_download_url })),
   };
   try {

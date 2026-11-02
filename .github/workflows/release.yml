@@ -935,23 +935,25 @@ jobs:
   # Astrolabe: no AUR publish. publish-aur.yml and packaging/aur still package
   # upstream's `t3code-bin` from pingdotgg/t3code's AppImage; see that workflow.
 
-  # Astrolabe: the hosted web app (app.astrolabe.sh) is the Cloudflare Worker
-  # `astrolabe-app` (apps/web/wrangler.jsonc), one channel. Only stable releases
-  # deploy it: they are what npm's `latest` dist-tag and `npx
-  # @mercurian/astrolabe` install, and the hosted app has to stay compatible
-  # with that server, so nightly and preview servers never replace it. It
-  # deploys after npm so the hosted client never runs ahead of the server users
-  # can install. Without CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID it skips
-  # its steps and passes; nothing waits on it.
+  # Astrolabe: the hosted web app has upstream's shape on Cloudflare Workers.
+  # Stable releases deploy the latest channel (latest.app.astrolabe.sh) and
+  # nightlies the nightly one (nightly.app.astrolabe.sh), both from
+  # apps/web/wrangler.jsonc; app.astrolabe.sh is the router Worker that serves
+  # one of them by the Settings cookie (apps/web/cloudflare/router.ts, upstream's
+  # vercel.ts). Previews deploy neither. It deploys after npm so a channel's
+  # client never runs ahead of the server its dist-tag installs. Without
+  # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID it skips its steps and
+  # passes; nothing waits on it.
   deploy_web:
     name: Deploy hosted web app
     needs: [preflight, relay_public_config, release, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 15
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      HOSTED_CHANNEL: ${{ needs.preflight.outputs.release_channel == 'stable' && 'latest' || 'nightly' }}
     steps:
       - id: cloudflare
         name: Check Cloudflare configuration
@@ -1011,16 +1013,22 @@ jobs:
           T3CODE_AUTH_URL: ${{ needs.relay_public_config.outputs.auth_url }}
           T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
           VITE_HOSTED_APP_URL: https://app.astrolabe.sh
-          VITE_HOSTED_APP_CHANNEL: latest
+          VITE_HOSTED_APP_CHANNEL: ${{ env.HOSTED_CHANNEL }}
         run: |
           vp run --filter @t3tools/web build
-          node scripts/apply-web-brand-assets.ts --channel latest
+          node scripts/apply-web-brand-assets.ts --channel "$HOSTED_CHANNEL"
           cp apps/web/cloudflare/_headers apps/web/dist/_headers
 
       - name: Deploy hosted web app
         if: steps.cloudflare.outputs.configured == 'true'
         working-directory: apps/web
-        run: vp dlx wrangler@4.151.3 deploy
+        run: |
+          if [[ "$HOSTED_CHANNEL" == "nightly" ]]; then
+            vp dlx wrangler@4.151.3 deploy --env nightly
+          else
+            vp dlx wrangler@4.151.3 deploy
+          fi
+          vp dlx wrangler@4.151.3 deploy -c cloudflare/router.wrangler.jsonc
 
   # Astrolabe: no marketing jobs. Upstream's build_marketing/deploy_marketing
   # promote apps/marketing (T3 Code's own site, Vercel project

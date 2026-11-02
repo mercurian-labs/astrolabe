@@ -343,6 +343,21 @@ a.dl__file[href]:focus-visible .arw {
   display: none;
 }
 
+/* A quiet line under the builds: the other channel. Shown whatever the release state. */
+.dl__aside {
+  padding: var(--pad);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-3);
+  font-size: 0.9375rem;
+}
+:is(.dl__aside, .dl__sheet) a {
+  text-decoration-color: var(--ink-4);
+  text-underline-offset: 0.2em;
+}
+:is(.dl__aside, .dl__sheet) a[href]:is(:hover, :focus-visible) {
+  text-decoration-color: var(--rust);
+}
+
 @media (max-width: 900px) {
   .dl__lead,
   .dl__block,
