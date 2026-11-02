@@ -387,11 +387,126 @@ function check(expr: Expr, source: string, where: string): void {
   visit(expr);
 }
 
+/** Parses an expression without checking it against the subset, to read it rather than run it. */
+export const parseExpression = (source: string, where: string): Expr =>
+  new Parser(tokenize(source, where), source, where).parse();
+
 /** Parses an expression and checks it against the subset; `where` names it in errors. */
 export function compileExpression(source: string, where: string): Expr {
-  const expression = new Parser(tokenize(source, where), source, where).parse();
+  const expression = parseExpression(source, where);
   check(expression, source, where);
   return expression;
+}
+
+/** A text literal that names a note, and where it sits in the expression, quotes included. */
+export interface NoteReference {
+  readonly name: string;
+  readonly text: string;
+  readonly from: number;
+  readonly to: number;
+}
+
+type TextLiteral = Expr & { readonly kind: "literal"; readonly value: string };
+const isText = (node: Expr | undefined): node is TextLiteral =>
+  node?.kind === "literal" && typeof node.value === "string";
+const isNameField = (node: Expr): boolean =>
+  node.kind === "member" &&
+  (node.name === "name" || node.name === "basename") &&
+  isFileRef(node.object);
+
+/**
+ * The literals that can only mean a note: `[[links]]`, the argument of `link()` and of a file's
+ * `hasLink()`, and text compared with `file.name` or `file.basename`.
+ */
+export function noteReferences(expr: Expr): ReadonlyArray<NoteReference> {
+  const found = new Set<TextLiteral>();
+  const visit = (node: Expr): void => {
+    switch (node.kind) {
+      case "literal":
+        if (isText(node) && WIKILINK.test(node.value.trim())) found.add(node);
+        return;
+      case "list":
+        return node.items.forEach(visit);
+      case "name":
+        return;
+      case "member":
+        return visit(node.object);
+      case "index":
+        visit(node.object);
+        return visit(node.index);
+      case "call": {
+        const { callee } = node;
+        const first = node.args[0];
+        const naming =
+          (callee.kind === "name" && callee.name === "link") ||
+          (callee.kind === "member" && callee.name === "hasLink" && isFileRef(callee.object));
+        if (naming && isText(first)) found.add(first);
+        visit(callee);
+        return node.args.forEach(visit);
+      }
+      case "unary":
+        return visit(node.operand);
+      case "binary":
+        if (node.op === "==" || node.op === "!=") {
+          if (isNameField(node.left) && isText(node.right)) found.add(node.right);
+          if (isNameField(node.right) && isText(node.left)) found.add(node.left);
+        }
+        visit(node.left);
+        return visit(node.right);
+    }
+  };
+  visit(expr);
+  return [...found]
+    .map((node) => ({
+      name: linkTarget(unwrap(node.value)),
+      text: node.value,
+      from: node.from,
+      to: node.to,
+    }))
+    .toSorted((a, b) => a.from - b.from);
+}
+
+/** `text` naming `to` instead, keeping a link's brackets, alias and heading, and any `.md`. */
+function renamedText(text: string, to: string): string {
+  const link = WIKILINK.exec(text.trim());
+  const inner = link?.[1] ?? text.trim();
+  const boundary = link ? inner.search(/[#|]/) : -1;
+  const suffix = boundary < 0 ? "" : inner.slice(boundary);
+  const target = boundary < 0 ? inner : inner.slice(0, boundary);
+  const named = `${to}${/\.md\s*$/i.test(target) ? ".md" : ""}${suffix}`;
+  return link ? `[[${named}]]` : named;
+}
+
+const quoted = (text: string, quote: string): string =>
+  quote +
+  text
+    .replace(/\\/g, "\\\\")
+    .replaceAll(quote, `\\${quote}`)
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t") +
+  quote;
+
+/**
+ * The expression with every literal that names the note `from` naming `to` instead. An
+ * expression that doesn't parse comes back unchanged.
+ */
+export function renameInExpression(source: string, from: string, to: string): string {
+  let expression: Expr;
+  try {
+    expression = parseExpression(source, "a renamed base");
+  } catch {
+    return source;
+  }
+  let output = source;
+  for (const reference of noteReferences(expression).toReversed()) {
+    if (key(reference.name) !== key(from)) continue;
+    output =
+      output.slice(0, reference.from) +
+      quoted(renamedText(reference.text, to), source[reference.from] ?? '"') +
+      output.slice(reference.to);
+  }
+  return output;
 }
 
 const WIKILINK = /^\[\[([^\]]+)\]\]$/;
@@ -548,7 +663,9 @@ const folderOf = (file: string): string => {
 
 export function fileField(doc: BaseDoc, field: string, scope: BaseScope): BaseValue {
   switch (field) {
+    // Obsidian 1.14 names a note without its `.md`.
     case "name":
+      return /\.md$/i.test(doc.file) ? doc.name : doc.file;
     case "path":
       return doc.file;
     case "basename":

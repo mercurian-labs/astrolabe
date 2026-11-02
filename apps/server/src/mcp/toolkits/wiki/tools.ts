@@ -3,7 +3,6 @@ import {
   TrimmedNonEmptyString,
   WikiAmendResult,
   WikiChangeRequestDetail,
-  WikiChangeRequestId,
   WikiIndexError,
   WikiListResult,
   WikiNoteResult,
@@ -30,11 +29,12 @@ const shared = {
 const RULES =
   "A wiki is a git repository of flat markdown notes (Name.md, no folders) linked with [[Name]]; skill maps (*.skillmap.md) arrange notes and teach how to read them.";
 
-const wiki = TrimmedNonEmptyString.annotate({
+// TrimmedNonEmptyString's descriptions never reach the advertised schema; these must.
+const wiki = Schema.NonEmptyString.annotate({
   description: "The wiki's id or name, as astrolabe_wiki_list shows it.",
 });
 const readFrom = Schema.optional(
-  WikiChangeRequestId.annotate({
+  Schema.NonEmptyString.annotate({
     description:
       "Read a change request's head. Omit to read your thread's own open change request on this wiki, or main when it has none.",
   }),
@@ -54,7 +54,7 @@ const WikiReadTool = Tool.make("astrolabe_wiki_read", {
     "Read one note's full markdown and its outgoing and incoming links. A name that is linked to but not written yet returns exists:false. Your own unmerged amendments are visible here.",
   parameters: Schema.Struct({
     wiki,
-    name: TrimmedNonEmptyString.annotate({ description: "The note's name, without .md." }),
+    name: Schema.NonEmptyString.annotate({ description: "The note's name, without .md." }),
     changeRequestId: readFrom,
   }),
   success: WikiNoteResult,
@@ -89,7 +89,7 @@ const WikiOrientTool = Tool.make("astrolabe_wiki_orient", {
     "Orient yourself with a skill map before working in its area: its purpose, its teaching, the walk of its notes, and the prose that holds up each edge. Read the notes you need from there rather than the whole wiki.",
   parameters: Schema.Struct({
     wiki,
-    map: TrimmedNonEmptyString.annotate({ description: "The skill map's name or file." }),
+    map: Schema.NonEmptyString.annotate({ description: "The skill map's name or file." }),
     changeRequestId: readFrom,
   }),
   success: Schema.Struct({
@@ -175,18 +175,18 @@ const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
 
 const writeTarget = {
   wiki,
-  message: TrimmedNonEmptyString.annotate({
+  message: Schema.NonEmptyString.annotate({
     description:
       "The amendment's commit message: a one-line summary, then why. One coherent change per call.",
   }),
   changeRequestId: Schema.optional(
-    WikiChangeRequestId.annotate({
+    Schema.NonEmptyString.annotate({
       description:
         "An open change request to amend. Omit to amend your thread's open change request on this wiki, opening one when it has none.",
     }),
   ),
   title: Schema.optional(
-    TrimmedNonEmptyString.annotate({
+    Schema.NonEmptyString.annotate({
       description:
         "Title for a change request this call opens. Defaults to the message's first line.",
     }),
@@ -198,11 +198,12 @@ const MERGE_RULE =
 
 const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
   ...shared,
-  description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed note is its complete new markdown; null deletes it. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the change request, the commit, and the index errors standing after the amendment.`,
+  description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed file is its complete new content: a note's markdown, or a base's YAML in Obsidian's Bases format (a saved question astrolabe_wiki_query runs); null deletes it. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the change request, the commit, and the index errors standing after the amendment.`,
   parameters: Schema.Struct({
     ...writeTarget,
     changes: Schema.Record(Schema.String, Schema.NullOr(Schema.String)).annotate({
-      description: 'Whole new content per note file, keyed by file name ("Name.md"); null deletes.',
+      description:
+        'Whole new content per file, keyed by file name ("Name.md" for a note, "Name.base" for a base); null deletes.',
     }),
   }),
   success: WikiAmendResult,
@@ -210,7 +211,7 @@ const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
 
 const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
   ...shared,
-  description: `Apply a mechanical wiki change as one amendment: rename a note (rewriting every link to it), add or remove a skill-map edge, fill a red link with a new note placed on a map, or resolve a map warning. ${MERGE_RULE}`,
+  description: `Apply a mechanical wiki change as one amendment: rename a note (rewriting every link to it, in notes and in bases), add or remove a skill-map edge, fill a red link with a new note placed on a map, or resolve a map warning. ${MERGE_RULE}`,
   parameters: Schema.Struct({ ...writeTarget, transform: WikiTransform }),
   success: WikiAmendResult,
 }).annotate(Tool.Destructive, false);
@@ -222,7 +223,7 @@ const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
   parameters: Schema.Struct({
     wiki,
     changeRequestId: Schema.optional(
-      WikiChangeRequestId.annotate({
+      Schema.NonEmptyString.annotate({
         description: "The change request to read. Omit for your thread's open one on this wiki.",
       }),
     ),

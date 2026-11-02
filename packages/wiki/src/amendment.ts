@@ -1,5 +1,7 @@
+import { renameInBase, renameInBaseBlocks } from "./bases.ts";
 import { key, renameLinks } from "./links.ts";
 import {
+  isMapFile,
   sameEdge,
   serializeMap,
   type MapEdge,
@@ -24,7 +26,7 @@ export class AmendmentError extends Error {
   override readonly name = "AmendmentError";
 }
 
-/** A flat, ordinary wiki filename: no directories, no hidden files, no control characters. */
+/** A flat note or base filename: no directories, no hidden files, no control characters. */
 export function checkFileName(file: string): string {
   if (
     !file ||
@@ -32,12 +34,16 @@ export function checkFileName(file: string): string {
     file.includes("\\") ||
     /[\0\r\n]/.test(file) ||
     file.startsWith(".") ||
-    !file.endsWith(".md")
+    !(file.endsWith(".md") || file.endsWith(".base"))
   ) {
-    throw new AmendmentError(`Expected a flat markdown filename: ${file}`);
+    throw new AmendmentError(`Expected a flat .md or .base filename: ${file}`);
   }
   return file;
 }
+
+/** Index errors that make the maps unreadable, which no amendment may leave or build on. */
+const malformedMaps = (errors: ReadonlyArray<WikiIndexError>) =>
+  errors.filter((error) => !error.edge && isMapFile(error.file));
 
 export interface AmendmentStamp {
   /** The amendment's id, recorded on every warning it stamps. */
@@ -85,7 +91,7 @@ export function planAmendment(
   }
   const oldIndex = indexFiles(files);
   const nextIndex = indexFiles(applyChanges(files, changes));
-  const malformed = nextIndex.errors.filter((error) => !error.edge);
+  const malformed = malformedMaps(nextIndex.errors);
   if (malformed.length) throw new AmendmentError(`Malformed maps: ${JSON.stringify(malformed)}`);
 
   const nextChanges: Record<string, string | null> = { ...changes };
@@ -161,7 +167,7 @@ export function planTransform(
   stamp: Pick<AmendmentStamp, "amendment" | "at">,
 ): WikiChanges {
   const index = indexFiles(files);
-  const malformed = index.errors.filter((error) => !error.edge);
+  const malformed = malformedMaps(index.errors);
   if (malformed.length)
     throw new AmendmentError(`Fix malformed maps first: ${JSON.stringify(malformed)}`);
   const changes: Record<string, string | null> = {};
@@ -176,13 +182,21 @@ export function planTransform(
       throw new AmendmentError(`Rename target exists: ${transform.to}`);
     }
     for (const note of index.notes.values()) {
-      const source = renameLinks(note.source, from.name, transform.to);
+      const source = renameInBaseBlocks(
+        renameLinks(note.source, from.name, transform.to),
+        from.name,
+        transform.to,
+      );
       if (note.name === from.name) {
         changes[note.file] = null;
         changes[target] = source;
       } else if (source !== note.source) {
         changes[note.file] = source;
       }
+    }
+    for (const [baseFile, source] of index.bases) {
+      const next = renameInBase(source, from.name, transform.to);
+      if (next !== source) changes[baseFile] = next;
     }
     for (const [mapFile, map] of index.maps) {
       const renamed: SkillMap = {

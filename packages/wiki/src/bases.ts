@@ -4,7 +4,7 @@
  * The language is a documented subset (see `baseExpression.ts`); anything outside it fails with
  * a message naming it, never by matching everything.
  */
-import { parseDocument } from "yaml";
+import { isMap, isScalar, isSeq, parseDocument, type Document, type Scalar } from "yaml";
 
 import {
   BaseError,
@@ -15,6 +15,9 @@ import {
   fileField,
   isEmptyValue,
   noteProperty,
+  noteReferences,
+  parseExpression,
+  renameInExpression,
   sortOrder,
   truthy,
   unsupported,
@@ -86,31 +89,131 @@ export function parseBase(source: string): WikiBase {
   return { filters: data.filters, properties, views: views.length ? views : [DEFAULT_VIEW] };
 }
 
-/** The YAML of each fenced ```` ```base ```` block in a note, in order. */
-export function baseBlocks(source: string): ReadonlyArray<string> {
-  const blocks: string[] = [];
-  // The open fence, and the lines of its block when it is a base.
-  let fence: { readonly run: string; readonly lines: string[] | null } | null = null;
-  for (const line of source.split(/\r?\n/)) {
-    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+/** Where each fenced ```` ```base ```` block's YAML sits in a note, in order. */
+function baseBlockRanges(
+  source: string,
+): ReadonlyArray<{ readonly from: number; readonly to: number }> {
+  const ranges: { from: number; to: number }[] = [];
+  // The open fence, and where its YAML starts when it is a base.
+  let fence: { readonly run: string; readonly start: number | null } | null = null;
+  let at = 0;
+  for (const raw of source.split(/(?<=\n)/)) {
+    const lineStart = at;
+    at += raw.length;
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(raw.replace(/\r?\n$/, ""));
     const run = marker?.[1];
     if (fence === null) {
       if (run === undefined) continue;
       const language = marker?.[2]?.trim().split(/\s/)[0] ?? "";
-      fence = { run, lines: language === "base" ? [] : null };
+      fence = { run, start: language === "base" ? at : null };
     } else if (
       run !== undefined &&
       run[0] === fence.run[0] &&
       run.length >= fence.run.length &&
       !marker?.[2]?.trim()
     ) {
-      if (fence.lines) blocks.push(fence.lines.join("\n"));
+      if (fence.start !== null) ranges.push({ from: fence.start, to: lineStart });
       fence = null;
-    } else fence.lines?.push(line);
+    }
   }
   // An unclosed fence runs to the end of the note.
-  if (fence?.lines) blocks.push(fence.lines.join("\n"));
-  return blocks;
+  if (fence?.start != null) ranges.push({ from: fence.start, to: source.length });
+  return ranges;
+}
+
+/** The YAML of each fenced ```` ```base ```` block in a note, in order. */
+export const baseBlocks = (source: string): ReadonlyArray<string> =>
+  baseBlockRanges(source).map(({ from, to }) =>
+    source
+      .slice(from, to)
+      .replace(/\r?\n$/, "")
+      .replace(/\r\n/g, "\n"),
+  );
+
+/** A base's expressions as YAML text nodes: its filters, at the top and in each view, and its formulas. */
+function expressionNodes(document: Document): ReadonlyArray<Scalar<string>> {
+  const found: Scalar<string>[] = [];
+  const filters = (node: unknown): void => {
+    if (isScalar(node)) {
+      if (typeof node.value === "string") found.push(node as Scalar<string>);
+    } else if (isMap(node)) for (const pair of node.items) filters(pair.value);
+    else if (isSeq(node)) for (const item of node.items) filters(item);
+  };
+  const root = document.contents;
+  if (!isMap(root)) return found;
+  filters(root.get("filters", true));
+  const views = root.get("views", true);
+  if (isSeq(views))
+    for (const view of views.items) if (isMap(view)) filters(view.get("filters", true));
+  const formulas = root.get("formulas", true);
+  if (isMap(formulas)) {
+    for (const pair of formulas.items) {
+      if (isScalar(pair.value) && typeof pair.value.value === "string") {
+        found.push(pair.value as Scalar<string>);
+      }
+    }
+  }
+  return found;
+}
+
+const readBase = (source: string): Document | null => {
+  const document = parseDocument(source, { schema: "core" });
+  return document.errors.length ? null : document;
+};
+
+/** A YAML scalar holding `text`, in the node's own quoting where that still reads back. */
+const yamlScalar = (text: string, type: Scalar["type"]): string =>
+  type === "QUOTE_SINGLE" && !/[\r\n]/.test(text)
+    ? `'${text.replaceAll("'", "''")}'`
+    : type === "PLAIN"
+      ? text
+      : JSON.stringify(text);
+
+/**
+ * A base's YAML with every expression literal that names the note `from` naming `to` (see
+ * `noteReferences`); everything else keeps its bytes. Block scalars are left alone.
+ */
+export function renameInBase(source: string, from: string, to: string): string {
+  const document = readBase(source);
+  if (document === null) return source;
+  const edits = expressionNodes(document).flatMap((node) => {
+    const next = renameInExpression(node.value, from, to);
+    const block = node.type === "BLOCK_LITERAL" || node.type === "BLOCK_FOLDED";
+    return next === node.value || block || !node.range ? [] : [{ node, next }];
+  });
+  if (!edits.length) return source;
+  const expected = expressionNodes(document).map(
+    (node) => edits.find((edit) => edit.node === node)?.next ?? node.value,
+  );
+  const write = (plainAllowed: boolean) => {
+    let output = source;
+    for (const { node, next } of edits.toReversed()) {
+      const type = node.type === "PLAIN" && !plainAllowed ? "QUOTE_DOUBLE" : node.type;
+      const [start, end] = node.range!;
+      output = output.slice(0, start) + yamlScalar(next, type) + output.slice(end);
+    }
+    return output;
+  };
+  // A plain scalar may not survive a new name (a `: ` or `#` in it), so it is checked by reading
+  // it back, and double-quoted instead when it doesn't.
+  for (const plainAllowed of [true, false]) {
+    const output = write(plainAllowed);
+    const reread = readBase(output);
+    const values = reread === null ? null : expressionNodes(reread).map((node) => node.value);
+    if (JSON.stringify(values) === JSON.stringify(expected)) return output;
+  }
+  return source;
+}
+
+/** A note with every ```` ```base ```` block in it renamed as `renameInBase` does. */
+export function renameInBaseBlocks(source: string, from: string, to: string): string {
+  let output = source;
+  for (const { from: start, to: end } of baseBlockRanges(source).toReversed()) {
+    const block = source.slice(start, end);
+    const next = renameInBase(block, from, to);
+    if (next !== block) output = output.slice(0, start) + next + output.slice(end);
+  }
+  return output;
 }
 
 type Filter =
@@ -433,4 +536,44 @@ export function queryBase(
     total: shown.length,
     truncated: shown.length > cap,
   };
+}
+
+const message = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/**
+ * What the index reports about a base: YAML or expressions it can't run, and note names nothing
+ * in the wiki carries, neither a note nor a link to one, as a rename made elsewhere leaves.
+ */
+export function baseProblems(
+  source: string,
+  named: (name: string) => boolean,
+): ReadonlyArray<string> {
+  let base: WikiBase;
+  try {
+    base = parseBase(source);
+  } catch (error) {
+    return [message(error)];
+  }
+  const problems = new Set<string>();
+  for (const spec of base.views) {
+    try {
+      compileView(base, spec);
+    } catch (error) {
+      problems.add(message(error));
+    }
+  }
+  const document = readBase(source);
+  for (const node of document === null ? [] : expressionNodes(document)) {
+    let references: ReadonlyArray<{ readonly name: string }>;
+    try {
+      references = noteReferences(parseExpression(node.value, "a base"));
+    } catch {
+      continue;
+    }
+    for (const { name } of references) {
+      if (!named(name)) problems.add(`Names “${name}”, but no note is called that or links to it.`);
+    }
+  }
+  return [...problems];
 }

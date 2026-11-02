@@ -187,9 +187,10 @@ describe("queries", () => {
     expect(names(filter("file.backlinks.isEmpty()"))).toEqual(["Code", "Delta", "Gamma", "Index"]);
     expect(names(filter('file.hasTag("area")'))).toEqual(["Alpha", "Beta", "Gamma"]);
     expect(names(filter('file.hasTag("notatag") || file.hasProperty("kind")'))).toEqual(["Index"]);
-    expect(
-      names(filter('file.inFolder("/") && file.ext == "md" && file.name == "Beta.md"')),
-    ).toEqual(["Beta"]);
+    expect(names(filter('file.inFolder("/") && file.ext == "md" && file.name == "Beta"'))).toEqual([
+      "Beta",
+    ]);
+    expect(names(filter('file.name == "Beta.md"'))).toEqual([]);
   });
 
   it("runs a block embedded in a note with `this` as that note: the tail after a curated head", () => {
