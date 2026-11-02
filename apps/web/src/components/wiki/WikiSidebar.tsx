@@ -18,6 +18,7 @@ import {
   FolderPlusIcon,
   ListFilterIcon,
   SettingsIcon,
+  TableIcon,
   UsersIcon,
 } from "lucide-react";
 import {
@@ -1322,8 +1323,8 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
     <CardRow
       label={
         changeRequestId === undefined || change === undefined
-          ? `${item.name}, ${item.wiki.name}`
-          : `${item.name}, in ${change.title}`
+          ? `${item.title}${item.base ? ", base" : ""}, ${item.wiki.name}`
+          : `${item.title}${item.base ? ", base" : ""}, in ${change.title}`
       }
       active={active}
       selected={selected}
@@ -1332,9 +1333,13 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       option={option}
       slim
       details={
-        <ThreadHoverCard title={item.name}>
+        <ThreadHoverCard title={item.title}>
           <WikiPlaceDetails item={item} />
-          {item.file.endsWith(".base") ? null : (
+          {item.base ? (
+            <DetailLine icon={<TableIcon className={DETAIL_ICON_CLASS} />}>
+              A base: a saved question over the wiki's notes
+            </DetailLine>
+          ) : (
             <DetailLine icon={<LinkIcon className={DETAIL_ICON_CLASS} />}>
               {linkSummary(item)}
             </DetailLine>
@@ -1352,8 +1357,11 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       onOpen={(event) => onOpen(tab, event)}
     >
       <SlimIcon item={item} active={active} />
-      <SlimTitle active={active}>{item.name}</SlimTitle>
+      <SlimTitle active={active}>{item.title}</SlimTitle>
       {outsideFilter ? <OutsideFilterMark /> : null}
+      {item.base ? (
+        <TableIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+      ) : null}
       {change ? (
         <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
       ) : null}

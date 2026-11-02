@@ -16,6 +16,9 @@ export const noteKey = (name: string): string => name.normalize("NFC").toLowerCa
 
 export const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
 
+/** A document's name as a person reads it: a base without its `.base`, which its icon shows. */
+export const documentTitle = (name: string): string => name.replace(/\.base$/i, "");
+
 /**
  * Where an edit is saved by default: the change request the page reads from when it is open,
  * else a new one.

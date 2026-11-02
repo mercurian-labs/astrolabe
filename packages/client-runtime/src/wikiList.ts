@@ -1,7 +1,7 @@
 import type { EnvironmentId, WikiChangeRequest, WikiId, WikiSummary } from "@t3tools/contracts";
 
 import type { WikiOverview } from "./state/wiki.ts";
-import { noteKey } from "./wikiLogic.ts";
+import { documentTitle, noteKey } from "./wikiLogic.ts";
 
 /**
  * Astrolabe: the Wikis list, as the thread list is one list across projects: every open
@@ -18,6 +18,8 @@ export interface WikiDocumentEntry {
   readonly wiki: WikiSummary;
   /** A base is named, and opened, by its file name (`Projects.base`), as on web. */
   readonly name: string;
+  /** What the list shows: the name, without a base's `.base`. */
+  readonly title: string;
   readonly file: string;
   /** A `.base` file: read only, with no links of its own. */
   readonly base: boolean;
@@ -93,6 +95,7 @@ export function wikiListEntries(
         environmentId,
         wiki,
         name: note.name,
+        title: documentTitle(note.name),
         file: note.file,
         base: note.base,
         links: note.outgoing,
