@@ -41,7 +41,7 @@ on a `vX.Y.Z` tag push or a manual dispatch. There is no nightly schedule.
    Workers Scripts: Edit**, and for the `astrolabe.sh` zone **Workers Routes: Edit**, **DNS: Edit**
    and **Zone: Read** (custom domains write their own DNS records). Both workflows read
    `CLOUDFLARE_ACCOUNT_ID` as a secret. The first deploys replace the proxied records now answering 525 for `astrolabe.sh` and
-   `app.astrolabe.sh`, and create `latest.app.astrolabe.sh`, `nightly.app.astrolabe.sh` and the `nightly.astrolabe.sh` shortcut; if one fails on a conflicting record, delete it under **DNS → Records** and
+   `app.astrolabe.sh`, and create `latest.app.astrolabe.sh`, `nightly.app.astrolabe.sh` and the `nightly.astrolabe.sh` and `stable.astrolabe.sh` shortcuts; if one fails on a conflicting record, delete it under **DNS → Records** and
    rerun. For `www.astrolabe.sh`, add a proxied `AAAA` record to `100::` and a **Rules → Redirect
    Rules** entry (the "Redirect from WWW to root" template, 301, keep the query string).
 

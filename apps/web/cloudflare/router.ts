@@ -7,6 +7,12 @@ const CHANNEL_ORIGINS: Record<"latest" | "nightly", string> = {
   nightly: "https://nightly.app.astrolabe.sh",
 };
 
+// Shortcut hosts that switch this browser's channel, then land on the app.
+const CHANNEL_SHORTCUTS: Record<string, "latest" | "nightly"> = {
+  "nightly.astrolabe.sh": "nightly",
+  "stable.astrolabe.sh": "latest",
+};
+
 function channelCookie(channel: "latest" | "nightly"): string {
   return [
     `${HOSTED_WEB_CHANNEL_COOKIE}=${channel}`,
@@ -28,9 +34,12 @@ function selectedChannel(request: Request): "latest" | "nightly" {
 export default {
   fetch(request: Request): Response | Promise<Response> {
     const url = new URL(request.url);
-    // nightly.astrolabe.sh is a shortcut that switches this browser to the nightly channel.
-    if (url.hostname === "nightly.astrolabe.sh") {
-      return Response.redirect("https://app.astrolabe.sh/__t3code/channel?channel=nightly", 302);
+    const shortcut = CHANNEL_SHORTCUTS[url.hostname];
+    if (shortcut !== undefined) {
+      return Response.redirect(
+        `https://app.astrolabe.sh/__t3code/channel?channel=${shortcut}`,
+        302,
+      );
     }
     if (url.pathname === "/__t3code/channel") {
       const channel = url.searchParams.get("channel") === "nightly" ? "nightly" : "latest";
