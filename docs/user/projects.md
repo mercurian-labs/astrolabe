@@ -27,8 +27,8 @@ branch, not the folder: if a worktree later holds another branch, its old tabs o
 branch again.
 
 Agents' tools leave a worktree per run, so a busy project can have hundreds. The list shows the
-ones that matter: those with a number, a thread, a terminal, a Keep pin, open tabs, uncommitted
-changes you have seen, or activity in the last week. The rest fold under **N more worktrees**,
+ones that matter: those with a number, an agent working, a terminal, a Keep pin, open tabs,
+uncommitted changes you have seen, or activity in the last day. The rest fold under **N more worktrees**,
 grouped by the tool that made them, with a search box.
 
 - **Open a branch**, beside the filter while one project shows, puts a branch in a worktree: the

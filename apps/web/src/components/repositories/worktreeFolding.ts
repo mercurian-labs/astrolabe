@@ -8,10 +8,11 @@ import type { RepositoryCheckout } from "./repositoryTabs";
  * in use, opened, or touched lately.
  */
 
-/** How long a worktree that moved stays listed. */
-const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long a worktree that moved stays listed: a week listed half of one busy repository's 148. */
+const RECENT_MS = 24 * 60 * 60 * 1000;
 
-const HELD = new Set(["kept", "thread", "working", "terminal"]);
+// An idle thread keeps its worktree for its next turn, which is no reason to list it.
+const HELD = new Set(["kept", "working", "terminal"]);
 
 /** A checkout's name among the open tabs: its branch, or its folder. */
 export const checkoutTag = (checkout: RepositoryCheckout) =>
@@ -23,7 +24,7 @@ export interface FoldContext {
   readonly now: number;
 }
 
-/** Whether a worktree is listed: the main one, one in use, opened, changed, or recently moved. */
+/** Whether a worktree is listed: the main one, one in use, opened, changed, or moved today. */
 function listsWorktree(worktree: ProjectWorktree, context: FoldContext): boolean {
   if (worktree.isMain || worktree.number !== null) return true;
   if (worktree.holds.some((hold) => HELD.has(hold.kind))) return true;

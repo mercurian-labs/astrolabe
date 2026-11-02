@@ -29,9 +29,11 @@ describe("which worktrees a project lists", () => {
     const entries = [
       worktree({ alias: "main", isMain: true, madeBy: null }),
       worktree({ alias: "numbered", number: 3 }),
-      worktree({ alias: "thread", holds: [{ kind: "thread", label: "Used by Fix" }] }),
+      worktree({ alias: "working", holds: [{ kind: "working", label: "Fix is working here" }] }),
+      worktree({ alias: "idle", holds: [{ kind: "thread", label: "Used by Fix" }] }),
       worktree({ alias: "tab", branch: "tab", path: "/wt/tab" }),
-      worktree({ alias: "recent", lastActiveAt: new Date(NOW - DAY).toISOString() }),
+      worktree({ alias: "recent", lastActiveAt: new Date(NOW - DAY / 2).toISOString() }),
+      worktree({ alias: "yesterday", lastActiveAt: new Date(NOW - 2 * DAY).toISOString() }),
       worktree({ alias: "changed", changedFiles: 2 }),
       worktree({ alias: "external", holds: [{ kind: "external", label: "Made elsewhere" }] }),
       worktree({ alias: "old", lastActiveAt: null }),
@@ -40,8 +42,8 @@ describe("which worktrees a project lists", () => {
       openCheckouts: new Set(["branch:tab"]),
       now: NOW,
     });
-    expect(names(listed)).toEqual(["main", "numbered", "thread", "tab", "recent", "changed"]);
-    expect(names(rest)).toEqual(["external", "old"]);
+    expect(names(listed)).toEqual(["main", "numbered", "working", "tab", "recent", "changed"]);
+    expect(names(rest)).toEqual(["idle", "yesterday", "external", "old"]);
   });
 
   it("always lists the focused tab's worktree", () => {

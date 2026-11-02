@@ -37,8 +37,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   commit when detached), the main checkout first and marked **main checkout**, with "N
   changed" (`worktrees.status`, counted per shown header, at most four `git status` at once on
   the server, recounted on the watch's changes) and a pin when held (tooltip: the holds).
-  Listed: the main checkout, numbered ones, those held by a thread, terminal or Keep, those
-  with an open tab's checkout, a known change, or `lastActiveAt` within 7 days
+  Listed: the main checkout, numbered ones, those held by a working thread, terminal or Keep,
+  those with an open tab's checkout, a known change, or `lastActiveAt` within 24 hours; only the
+  main checkout and the focused tab's start open
   (`worktreeFolding.ts`). The rest fold under `button "N more worktrees"`: a
   `Find among <project>'s other worktrees` field, then groups by `madeBy` (Astrolabe, Claude
   Code, T3 Code, Codex, Other; newest first), each row folded, unwatched and uncounted until

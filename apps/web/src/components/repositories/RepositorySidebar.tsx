@@ -257,6 +257,7 @@ export function RepositorySidebar() {
       onToggle={(worktree, fallback) => toggle(worktree.path, fallback)}
       onReveal={(worktree) => reveal(worktree.path)}
       filesShown={filesShown}
+      focusedPath={view.focused?.path ?? null}
       selectedPath={(worktree) =>
         worktree.path === focused?.path && focusedTab?.kind === "file" ? focusedTab.path : null
       }
@@ -408,6 +409,7 @@ function WorktreeSections({
   onReveal,
   filesShown,
   selectedPath,
+  focusedPath,
 }: {
   readonly repository: EnvironmentProject;
   readonly worktrees: ReadonlyArray<{
@@ -424,6 +426,8 @@ function WorktreeSections({
   readonly onReveal: (worktree: ProjectWorktree) => void;
   readonly filesShown: ReadonlyArray<string>;
   readonly selectedPath: (worktree: ProjectWorktree) => string | null;
+  /** The worktree of the focused tab, which opens on its own. */
+  readonly focusedPath: string | null;
 }) {
   const owner = projectWorktrees(repository);
   const [now] = useState(() => Date.now());
@@ -436,7 +440,10 @@ function WorktreeSections({
   ) => {
     const filesKey = worktreeFilesKey(repository.environmentId, worktree.path);
     const files = filesShown.includes(filesKey);
-    const open = expanded(worktree, !folded);
+    // Only the main checkout and the focused tab's start open: an open one reads its status and
+    // recent commits.
+    const fallback = !folded && (worktree.isMain || outside || worktree.path === focusedPath);
+    const open = expanded(worktree, fallback);
     return (
       <Fragment key={worktree.path}>
         <ul role="presentation" className="flex flex-col gap-px">
@@ -444,7 +451,7 @@ function WorktreeSections({
             repository={owner}
             worktree={worktree}
             expanded={open}
-            onToggle={() => onToggle(worktree, !folded)}
+            onToggle={() => onToggle(worktree, fallback)}
             outsideFilter={outside}
             folded={folded}
             filesShown={files}
