@@ -130,12 +130,12 @@ export function WikiNoteEditor({
   // The blocks the editor draws, each filled through a portal so the view keeps the app's context.
   const [baseBlocks, setBaseBlocks] = useState<ReadonlyArray<BaseBlock>>([]);
   const [stable] = useState(() => {
-    let next = 0;
+    const ids = { next: 0 };
     return {
       openNote: (name: string) => openNoteRef.current(name),
       codeBlocks: {
         base: (source: string, element: HTMLElement) => {
-          const id = next++;
+          const id = ids.next++;
           setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
           return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
         },

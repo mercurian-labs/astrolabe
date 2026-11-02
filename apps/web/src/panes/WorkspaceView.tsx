@@ -62,13 +62,14 @@ function useRouteThreadRef(target: ThreadRouteTarget | null): ScopedThreadRef | 
  */
 export function WorkspaceView({
   routeTarget,
-  agents = routeTarget !== null,
+  agents: agentsProp,
   background = false,
 }: {
   readonly routeTarget: ThreadRouteTarget | null;
   readonly agents?: boolean;
   readonly background?: boolean;
 }) {
+  const agents = agentsProp ?? routeTarget !== null;
   const [host] = useState(createWorkspaceHost);
   const snapshot = useWorkspaceSnapshot();
   const routeRef = useRouteThreadRef(routeTarget);
