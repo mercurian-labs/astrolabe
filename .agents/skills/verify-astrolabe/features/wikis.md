@@ -189,7 +189,7 @@ preview_act click     role=navigation[name='Sections'] >> role=button[name='Wiki
 preview_act click     role=button[name='<document>, <wiki>']        # replaces the tab in front
 preview_evaluate  dispatch a click with altKey on a row          # new tab
 preview_evaluate  dispatch a click with metaKey on a row         # selects it (data-selected), opens nothing
-preview_act click     [data-tab-history] >> role=button[name='Back']   # the focused tab's history
+preview_act click     [data-focused="true"] >> role=button[name='Back']   # the focused tab's history
 preview_evaluate  dispatch mousedown with metaKey on [data-wikilink='<Note>']
 preview_act click     role=combobox[name=/^Filter documents/]   # rows: role=option; click a
                                                                 # wiki row by its measured x,y,

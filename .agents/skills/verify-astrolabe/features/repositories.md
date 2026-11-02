@@ -145,9 +145,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   server and are faint while it starts or lacks the feature; Cut/Copy are faint with no
   selection. On the web its items are `role=button` by name; on desktop the menu is native.
 - **Project search** (Cmd+Shift+F; `components/search/ProjectContentSearchDialog.tsx`): dialog
-  `Search file contents in <project>` (`Search project contents` only when there is nothing
-  to search), field placeholder `Search in <project>` (a combobox; type into it
-  by `[placeholder=…]`). It searches the checkout of the focused Projects tab, else the thread in
+  `Search project contents` (the palette's name, with or without a project), field
+  placeholder `Search in <project>` (a combobox; type into it by `[placeholder=…]`). It searches the checkout of the focused Projects tab, else the thread in
   front; with neither it reads "Open a project to search its files." Match case / whole word /
   regex, **Filters** (`Files to include`, `Files to exclude`, `Include gitignored files`),
   pages of 500 (**Load more results**, **Keep searching**); unsaved edits in open files are

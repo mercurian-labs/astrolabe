@@ -251,12 +251,12 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 `Pane actions`.
 
 ```
-preview_act click  [data-chat-header] >> [data-new-linked-tab]                # New linked tab
-preview_act click  [data-chat-header] >> [data-right-panel-toggle]            # Hide tabs / Show tabs (N hidden); absent with none
-preview_act click  [data-pane-id] >> role=button[name=/^Diff/]          # launcher; an unavailable surface is a disabled row, not a button
-preview_act click  [data-pane-id] >> role=button[name='New tab']          # + : a New tab, no menu
+preview_act click  role=button[name='New linked tab']                        # in the chat header
+preview_act click  role=button[name=/^(Hide|Show) tabs/]                     # Hide tabs / Show tabs (N hidden); absent with none
+preview_act click  [aria-label='Open a surface'] >> role=button[name=/^Diff/]  # launcher; an unavailable surface is a disabled row, not a button
+preview_act click  role=button[name='New tab'] >> nth=0                      # + : a New tab, no menu
 preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Project file/]
-preview_act click  [data-pane-id] >> role=button[name='Pane actions']
+preview_act click  role=button[name='Pane actions'] >> nth=0
 preview_act click  role=menuitem[name='Split right']
 preview_act click  role=tab[name='<other chat>']                         # its linked tabs take the pane
 ```

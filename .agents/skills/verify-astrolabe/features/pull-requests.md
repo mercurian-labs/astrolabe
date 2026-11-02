@@ -207,11 +207,11 @@ a pull request link in a conversation. Each lands on the last list filters (loca
 ```
 preview_act click     role=navigation[name='Sections'] >> role=button[name='Changes']
 preview_wait_for  [data-pull-request-key] > button
-preview_act click     [data-pull-request-key] > button >> nth=1    # replaces the tab in front
-preview_act click     [data-pull-request-key] > button >> nth=2   button="right"
+preview_act click     role=navigation[name='Changes'] >> role=button[name=/^#\d+ /] >> nth=1    # rows are "#<n> <title>"; replaces the tab in front
+preview_act click     role=navigation[name='Changes'] >> role=button[name=/^#\d+ /] >> nth=2   button="right"
 preview_act click     role=button[name='Open in new tab']          # a second tab
 preview_evaluate  dispatch a click with metaKey / altKey on a row button
-preview_act click     [data-pane-id][data-focused] [data-tab-history] >> role=button[name='Back']   # or mod+[
+preview_act click     [data-focused="true"] >> role=button[name='Back']   # the focused pane's; or mod+[
 preview_evaluate  set the searchbox's value with the native setter, then dispatch input
 preview_navigate  /pull-requests?involvement=authored&state=open   # Filters shows 1
 ```
