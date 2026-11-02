@@ -61,7 +61,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder. Its `switch "Open in
   a new worktree"` (`astrolabe:open-in-new-worktree:v1`, shared with Wikis' picker) skips
   free ones. A linked worktree gets a number (server-kept in `worktree-keep.json`'s `opened`,
-  lowest free, held while the folder exists) the first time something opens in it: a branch
+  lowest free across every project and wiki, held while the folder exists) the first time something opens in it: a branch
   opened or made there, or any of its tabs shown (`worktrees.markOpened`); numbered ones come
   first. Others show a branch icon.
   A name that is no branch offers "New branch <name> from <main's branch>". A free

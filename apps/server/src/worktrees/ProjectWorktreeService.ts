@@ -117,27 +117,68 @@ const KeptStoreJson = fromJsonStringPretty(KeptStore);
 const decodeKeptStore = Schema.decodeEffect(KeptStoreJson);
 const encodeKeptStore = Schema.encodeEffect(KeptStoreJson);
 
-/** A repository's numbers without those of worktrees gone; the same object when none went. */
+/** Worktree numbers by repository folder, then worktree folder; unique across repositories. */
+type OpenedNumbers = Readonly<Record<string, Readonly<Record<string, number>>>>;
+
+const lowestFree = (taken: ReadonlySet<number>) => {
+  let n = 1;
+  while (taken.has(n)) n += 1;
+  return n;
+};
+
+/** Frees the numbers of a repository's worktrees gone; the same object when none went. */
 export function keepNumbers(
-  numbers: Readonly<Record<string, number>>,
+  opened: OpenedNumbers,
+  root: string,
   paths: ReadonlyArray<string>,
-): Readonly<Record<string, number>> {
+): OpenedNumbers {
+  const numbers = opened[root] ?? {};
   const kept = Object.fromEntries(
     Object.entries(numbers).filter(([worktreePath]) => paths.includes(worktreePath)),
   );
-  return Object.keys(kept).length === Object.keys(numbers).length ? numbers : kept;
+  return Object.keys(kept).length === Object.keys(numbers).length
+    ? opened
+    : { ...opened, [root]: kept };
 }
 
-/** Numbers a worktree with the lowest number free from 1; the same object when it has one. */
+/**
+ * Numbers a worktree with the lowest number no repository uses, so tabs from two projects never
+ * share one; the same object when it has one.
+ */
 export function claimNumber(
-  numbers: Readonly<Record<string, number>>,
+  opened: OpenedNumbers,
+  root: string,
   worktreePath: string,
-): Readonly<Record<string, number>> {
-  if (numbers[worktreePath] !== undefined) return numbers;
-  const taken = new Set(Object.values(numbers));
-  let n = 1;
-  while (taken.has(n)) n += 1;
-  return { ...numbers, [worktreePath]: n };
+): OpenedNumbers {
+  const numbers = opened[root] ?? {};
+  if (numbers[worktreePath] !== undefined) return opened;
+  const taken = new Set(Object.values(opened).flatMap((each) => Object.values(each)));
+  return { ...opened, [root]: { ...numbers, [worktreePath]: lowestFree(taken) } };
+}
+
+/**
+ * Renumbers a number shared by several worktrees, as stores from when each repository counted
+ * from 1 have; the first keeps it. The same object when every number is distinct.
+ */
+export function distinctNumbers(opened: OpenedNumbers): OpenedNumbers {
+  const taken = new Set<number>();
+  const repeated: Array<readonly [root: string, worktreePath: string]> = [];
+  for (const [root, numbers] of Object.entries(opened)) {
+    for (const [worktreePath, n] of Object.entries(numbers)) {
+      if (taken.has(n)) repeated.push([root, worktreePath]);
+      else taken.add(n);
+    }
+  }
+  if (repeated.length === 0) return opened;
+  const next = Object.fromEntries(
+    Object.entries(opened).map(([root, numbers]) => [root, { ...numbers }]),
+  );
+  for (const [root, worktreePath] of repeated) {
+    const n = lowestFree(taken);
+    taken.add(n);
+    next[root]![worktreePath] = n;
+  }
+  return next;
 }
 
 /** Which tool made a linked worktree, told by the folder its agents' tools keep worktrees in. */
@@ -243,8 +284,10 @@ const make = Effect.gen(function* () {
             Effect.mapError(failWith("Kept worktrees could not be read")),
           )
       : { version: 1, kept: [], opened: {} };
-    yield* Ref.set(keptCache, store);
-    return store;
+    const opened = distinctNumbers(store.opened);
+    const distinct = opened === store.opened ? store : { ...store, opened };
+    yield* Ref.set(keptCache, distinct);
+    return distinct;
   });
 
   /** Changes the store and saves it; nothing is written when `change` returns it as it was. */
@@ -270,16 +313,14 @@ const make = Effect.gen(function* () {
   /** A repository's worktree numbers, after freeing those of worktrees gone. */
   const numbersFor = (root: string, paths: ReadonlyArray<string>) =>
     updateStore((store) => {
-      const current = store.opened[root] ?? {};
-      const next = keepNumbers(current, paths);
-      return next === current ? store : { ...store, opened: { ...store.opened, [root]: next } };
+      const opened = keepNumbers(store.opened, root, paths);
+      return opened === store.opened ? store : { ...store, opened };
     }).pipe(Effect.map((store) => store.opened[root] ?? {}));
 
   const claim = (root: string, worktreePath: string) =>
     updateStore((store) => {
-      const current = store.opened[root] ?? {};
-      const next = claimNumber(current, worktreePath);
-      return next === current ? store : { ...store, opened: { ...store.opened, [root]: next } };
+      const opened = claimNumber(store.opened, root, worktreePath);
+      return opened === store.opened ? store : { ...store, opened };
     });
 
   /** The folder of the repository the worktrees are in: the project's, or the wiki's. */

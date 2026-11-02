@@ -23,9 +23,9 @@ under its name, open when it holds the tab you're on.
 
 A project lists its worktrees under the branch checked out there, the project's own checkout
 first. A worktree gets a number the first time you open something in it, and keeps it while it
-exists; its files' tabs show the number, so you can tell where each branch is. Tabs follow the
-branch, not the folder: if a worktree later holds another branch, its old tabs offer to open their
-branch again.
+exists. No two worktrees share a number, even in different projects; its files' tabs show the
+number, so you can tell where each branch is. Tabs follow the branch, not the folder: if a
+worktree later holds another branch, its old tabs offer to open their branch again.
 
 Agents' tools leave a worktree per run, so a busy project can have hundreds. The list shows the
 ones that matter: those with a number, an agent working, a terminal, a Keep pin, open tabs,

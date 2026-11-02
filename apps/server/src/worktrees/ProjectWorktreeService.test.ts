@@ -28,6 +28,7 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 import {
   claimNumber,
+  distinctNumbers,
   keepNumbers,
   worktreeMaker,
   ProjectWorktreeService,
@@ -132,12 +133,35 @@ const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof layerBase> |
 
 describe("worktree numbers", () => {
   it("free a gone worktree's number, and give an opened one the lowest free", () => {
-    const numbers = { "/wt/a": 1, "/wt/b": 2, "/wt/c": 3 };
-    const kept = keepNumbers(numbers, ["/wt/a", "/wt/c", "/wt/d"]);
-    expect(kept).toEqual({ "/wt/a": 1, "/wt/c": 3 });
-    expect(claimNumber(kept, "/wt/d")).toEqual({ "/wt/a": 1, "/wt/c": 3, "/wt/d": 2 });
-    expect(keepNumbers(numbers, ["/wt/a", "/wt/b", "/wt/c"])).toBe(numbers);
-    expect(claimNumber(numbers, "/wt/b")).toBe(numbers);
+    const opened = { "/repo": { "/wt/a": 1, "/wt/b": 2, "/wt/c": 3 } };
+    const kept = keepNumbers(opened, "/repo", ["/wt/a", "/wt/c", "/wt/d"]);
+    expect(kept).toEqual({ "/repo": { "/wt/a": 1, "/wt/c": 3 } });
+    expect(claimNumber(kept, "/repo", "/wt/d")).toEqual({
+      "/repo": { "/wt/a": 1, "/wt/c": 3, "/wt/d": 2 },
+    });
+    expect(keepNumbers(opened, "/repo", ["/wt/a", "/wt/b", "/wt/c"])).toBe(opened);
+    expect(claimNumber(opened, "/repo", "/wt/b")).toBe(opened);
+  });
+
+  it("are unique across repositories, so tabs from two projects never share one", () => {
+    const opened = { "/shop": { "/wt/shop-1": 1, "/wt/shop-3": 3 } };
+    expect(claimNumber(opened, "/handbook", "/wt/hb")).toEqual({
+      ...opened,
+      "/handbook": { "/wt/hb": 2 },
+    });
+  });
+
+  it("renumber those an older store gave out once per repository", () => {
+    const opened = {
+      "/shop": { "/wt/shop-1": 1, "/wt/shop-2": 2 },
+      "/handbook": { "/wt/hb-1": 1, "/wt/hb-4": 4 },
+    };
+    expect(distinctNumbers(opened)).toEqual({
+      "/shop": { "/wt/shop-1": 1, "/wt/shop-2": 2 },
+      "/handbook": { "/wt/hb-1": 3, "/wt/hb-4": 4 },
+    });
+    const distinct = { "/shop": { "/wt/a": 1 }, "/handbook": { "/wt/b": 2 } };
+    expect(distinctNumbers(distinct)).toBe(distinct);
   });
 });
 
