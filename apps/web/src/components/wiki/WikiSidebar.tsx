@@ -104,7 +104,7 @@ import {
 } from "../ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { isTurnRunning, noteNameOfFile } from "./wiki.logic";
+import { documentTitle, isTurnRunning, noteNameOfFile } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
@@ -460,11 +460,14 @@ export function WikiSidebar() {
       const onMain = allLists.documents.find(
         (document) => sameWiki(overview, document) && document.file === file,
       );
+      const name = onMain?.name ?? noteNameOfFile(file);
       const item: WikiDocumentItem = {
         key: `${changeRequestId}:${file}`,
         environmentId: overview.environmentId,
         wiki: overview.wiki,
-        name: onMain?.name ?? noteNameOfFile(file),
+        name,
+        title: documentTitle(name),
+        base: file.endsWith(".base"),
         file,
         links: onMain?.links ?? 0,
         backlinks: onMain?.backlinks ?? 0,
@@ -1508,7 +1511,7 @@ function WikiChangeDetails({
       : changeRequest.status === "closed"
         ? "Closed"
         : "Open";
-  const listed = item.files.slice(0, DOCUMENTS_LISTED).map(noteNameOfFile);
+  const listed = item.files.slice(0, DOCUMENTS_LISTED);
   const more = item.files.length - listed.length;
   return (
     <ThreadHoverCard
@@ -1516,9 +1519,18 @@ function WikiChangeDetails({
       footer={
         listed.length > 0 ? (
           <div className="grid gap-1 border-t border-border/60 pt-2 pl-0.5 text-xs text-muted-foreground">
-            {listed.map((name) => (
-              <DetailLine key={name} icon={<FileTextIcon className={DETAIL_ICON_CLASS} />}>
-                {name}
+            {listed.map((file) => (
+              <DetailLine
+                key={file}
+                icon={
+                  file.endsWith(".base") ? (
+                    <TableIcon className={DETAIL_ICON_CLASS} />
+                  ) : (
+                    <FileTextIcon className={DETAIL_ICON_CLASS} />
+                  )
+                }
+              >
+                {documentTitle(noteNameOfFile(file))}
               </DetailLine>
             ))}
             {more > 0 ? <div className="pl-5">{`${more} more`}</div> : null}
