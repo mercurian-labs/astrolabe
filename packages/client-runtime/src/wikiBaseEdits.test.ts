@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isEditableNote, newNoteProperties, withEdit } from "./wikiBaseEdits.logic";
+import { isEditableNote, newNoteProperties, withEdit } from "./wikiBaseEdits.ts";
 
 describe("withEdit", () => {
   it("folds repeated settings of one view into one edit", () => {

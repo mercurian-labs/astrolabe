@@ -1,8 +1,29 @@
 import { useSyncExternalStore } from "react";
 
-import { rowDocument } from "./baseCells";
+import { rowDocument, type BaseCellValue } from "./baseCells";
 import { BaseLayout, type BaseLayoutHost } from "./baseLayout";
 import type { WikiEditorPage } from "./mobilePageController";
+
+const isNoteProperty = (column: string) =>
+  !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
+const isEditableNote = (file: string) =>
+  /^[^/]+\.md$/i.test(file) && !/\.skillmap\.md$/i.test(file);
+
+/** Cells of notes at the top of the wiki edit in place; a board's cards move between groups. */
+function editingHost(
+  groupProperty: string | undefined,
+  onEdit: (file: string, property: string, value: BaseCellValue) => void,
+): Pick<BaseLayoutHost, "canEdit" | "onEdit" | "onMove"> {
+  return {
+    canEdit: (row, column) => isEditableNote(row.file) && isNoteProperty(column),
+    onEdit: (row, column, value) => onEdit(row.file, column, value),
+    onMove: (row, group) => {
+      if (groupProperty !== undefined && isNoteProperty(groupProperty)) {
+        onEdit(row.file, groupProperty, group);
+      }
+    },
+  };
+}
 
 /**
  * A base's view on the phone, a ```base block's or a `.base` file's: the app runs it and keeps
@@ -14,11 +35,14 @@ export function BaseBlock({
   source,
   onOpenNote,
   onOpenUrl,
+  onEdit,
 }: {
   readonly page: WikiEditorPage;
   readonly source: string;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenUrl?: (href: string) => void;
+  /** Sets a note's property, where the base shown alone edits in place. */
+  readonly onEdit?: (file: string, property: string, value: BaseCellValue) => void;
 }) {
   const base = useSyncExternalStore(
     (listener) => page.watchBase(source, listener),
@@ -32,6 +56,9 @@ export function BaseBlock({
     },
     openLink: onOpenNote,
     ...(onOpenUrl ? { openUrl: onOpenUrl } : {}),
+    ...(onEdit && base?.result
+      ? editingHost(base.result.settings?.groupBy?.property ?? base.result.groupBy?.id, onEdit)
+      : {}),
   };
   return (
     <div className="base-view">

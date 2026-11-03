@@ -120,7 +120,12 @@ export type WikiEditorCommand =
    * The page shows one base alone, read only, instead of the note: a `.base` file opened on
    * its own. It asks for `source` with `queryBase` as it would a block's.
    */
-  | { readonly type: "showBase"; readonly source: string }
+  | {
+      readonly type: "showBase";
+      readonly source: string;
+      /** Its notes' cells edit in place, and a board's cards move, as `editBase` events. */
+      readonly editable?: boolean | undefined;
+    }
   /** A ```base block's view, sent again whenever it changes; `error` says why it can't show. */
   | {
       readonly type: "baseResult";
@@ -145,6 +150,13 @@ export type WikiEditorEvent =
   | { readonly type: "text"; readonly requestId: number; readonly text: string }
   /** A ```base block is on screen: the app runs it and keeps its view current. */
   | { readonly type: "queryBase"; readonly source: string }
+  /** A note's property set from the base shown alone: a cell edited, or a card moved. */
+  | {
+      readonly type: "editBase";
+      readonly file: string;
+      readonly property: string;
+      readonly value: BaseCellValue;
+    }
   /** The page failed (see `WIKI_EDITOR_ERROR_HOOK`); it may show nothing. */
   | { readonly type: "error"; readonly message: string };
 
@@ -193,6 +205,12 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
         : null;
     case "queryBase":
       return typeof value.source === "string" ? { type: "queryBase", source: value.source } : null;
+    case "editBase":
+      return typeof value.file === "string" &&
+        typeof value.property === "string" &&
+        isCellValue(value.value)
+        ? { type: "editBase", file: value.file, property: value.property, value: value.value }
+        : null;
     case "error":
       return typeof value.message === "string" ? { type: "error", message: value.message } : null;
     default:
@@ -240,7 +258,9 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         ? { type: "requestText", requestId: value.requestId }
         : null;
     case "showBase":
-      return typeof value.source === "string" ? { type: "showBase", source: value.source } : null;
+      return typeof value.source === "string"
+        ? { type: "showBase", source: value.source, editable: value.editable === true }
+        : null;
     case "baseResult": {
       if (typeof value.source !== "string") return null;
       // The app's own page: the shape is the server's, checked only far enough to draw it.
@@ -287,3 +307,8 @@ export function embeddedBase(
   const [base = "", view] = target.split("#");
   return base.trim() ? { base: base.trim(), view: view?.trim() || undefined } : null;
 }
+
+const isScalar = (value: unknown) =>
+  value === null || ["string", "number", "boolean"].includes(typeof value);
+const isCellValue = (value: unknown): value is BaseCellValue =>
+  isScalar(value) || (Array.isArray(value) && value.every(isScalar));

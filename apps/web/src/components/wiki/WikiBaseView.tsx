@@ -40,7 +40,12 @@ import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { describeWikiFailure, wikiDocumentName } from "./wiki.logic";
-import { isEditableNote, isNoteProperty, newNoteProperties, withEdit } from "./wikiBaseEdits.logic";
+import {
+  isEditableNote,
+  isNoteProperty,
+  newNoteProperties,
+  withEdit,
+} from "@t3tools/client-runtime/wikiBaseEdits";
 import { ColumnMenu, WikiBaseToolbar } from "./WikiBaseToolbar";
 import { useWikiCommand } from "./wikiEnvironment";
 import { SaveToChangeRequestDialog, type SaveTarget } from "./WikiSaveDialog";

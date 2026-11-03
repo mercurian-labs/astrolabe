@@ -4,6 +4,7 @@ import "./mobilePage.css";
 import { useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiNoteEditor } from "./NoteEditor";
@@ -27,7 +28,7 @@ const openNote = (name: string) => post({ type: "openNote", name });
 
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
-  const { mode, base, theme } = useSyncExternalStore(page.subscribe, page.getState);
+  const { mode, base, baseEditable, theme } = useSyncExternalStore(page.subscribe, page.getState);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the app theme's CSS variables and color scheme onto the page's root element
   useEffect(() => {
     if (!theme) return;
@@ -45,6 +46,12 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
         source={base}
         onOpenNote={openNote}
         onOpenUrl={(href) => post({ type: "openUrl", href })}
+        {...(baseEditable
+          ? {
+              onEdit: (file: string, property: string, value: BaseCellValue) =>
+                post({ type: "editBase", file, property, value }),
+            }
+          : {})}
       />
     );
   }

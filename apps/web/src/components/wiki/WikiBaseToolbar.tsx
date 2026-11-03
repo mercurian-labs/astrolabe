@@ -37,7 +37,7 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { orderId } from "./wikiBaseEdits.logic";
+import { orderId } from "@t3tools/client-runtime/wikiBaseEdits";
 
 const VIEW_TYPES: ReadonlyArray<{
   readonly type: WikiBaseViewType;

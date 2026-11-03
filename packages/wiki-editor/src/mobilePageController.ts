@@ -11,6 +11,8 @@ export interface WikiEditorPageState {
   readonly mode: "read" | "edit";
   /** The base the page shows alone, by source, in place of the note; null shows the note. */
   readonly base: string | null;
+  /** Whether that base's notes edit in place. */
+  readonly baseEditable: boolean;
   readonly theme: Extract<WikiEditorCommand, { type: "theme" }>["theme"] | null;
 }
 
@@ -21,7 +23,12 @@ export interface WikiEditorPageState {
  */
 export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
   const buffer = new WikiNoteBuffer();
-  let state: WikiEditorPageState = { mode: "read", base: null, theme: null };
+  let state: WikiEditorPageState = {
+    mode: "read",
+    base: null,
+    baseEditable: false,
+    theme: null,
+  };
   const listeners = new Set<() => void>();
   const setState = (next: Partial<WikiEditorPageState>) => {
     state = { ...state, ...next };
@@ -93,7 +100,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         post({ type: "text", requestId: command.requestId, text: buffer.current() });
         return;
       case "showBase":
-        setState({ base: command.source });
+        setState({ base: command.source, baseEditable: command.editable === true });
         return;
       case "baseResult":
         bases.set(command.source, { result: command.result, error: command.error });

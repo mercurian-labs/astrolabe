@@ -89,10 +89,26 @@ describe("the wiki editor page", () => {
     const { page: editor } = page();
     expect(editor.getState().base).toBeNull();
     const command = parseWikiEditorCommand({ type: "showBase", source: "Projects.base" });
-    expect(command).toEqual({ type: "showBase", source: "Projects.base" });
+    expect(command).toEqual({ type: "showBase", source: "Projects.base", editable: false });
     editor.handle(command!);
     expect(editor.getState().base).toBe("Projects.base");
+    expect(editor.getState().baseEditable).toBe(false);
+    editor.handle({ type: "showBase", source: "Projects.base", editable: true });
+    expect(editor.getState().baseEditable).toBe(true);
     expect(parseWikiEditorCommand({ type: "showBase" })).toBeNull();
+  });
+
+  it("reads a base edit the page sends, dropping one with a value no cell holds", () => {
+    expect(
+      parseWikiEditorEvent(
+        JSON.stringify({ type: "editBase", file: "Alpha.md", property: "tags", value: ["a"] }),
+      ),
+    ).toEqual({ type: "editBase", file: "Alpha.md", property: "tags", value: ["a"] });
+    expect(
+      parseWikiEditorEvent(
+        JSON.stringify({ type: "editBase", file: "Alpha.md", property: "x", value: { a: 1 } }),
+      ),
+    ).toBeNull();
   });
 
   it("switches between reading and editing", () => {
