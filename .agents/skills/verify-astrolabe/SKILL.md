@@ -17,7 +17,9 @@ owner's cwd), so start this one's on its own port from `apps/mobile`
 (`APP_VARIANT=development vp exec expo start --dev-client --scheme astrolabe-dev --lan --port <port>`)
 and open `astrolabe-dev://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A<port>`; and
 the simulator's app may still hold an older environment with real threads, so pair this
-run's server and act only on its rows. The iPhone tab bar's labels come from native Swift
+run's server and act only on its rows. A shut-down simulator can keep a stale agent-device session
+that blocks yours: `agent-device session list` (with the returned `--config`) shows it; close only a
+stale one. The iPhone tab bar's labels come from native Swift
 (`modules/t3-native-controls/ios/T3SidebarTabBarView.swift`), so renaming a tab there needs a
 `vp run mobile:install` rebuild before the walk shows it.
 Everything else walks in the Browser panel. If the tools a walk needs are absent
@@ -157,8 +159,8 @@ only changes the hash and pairs nothing; type the token into
 `[data-pane-tabs]` (the workspace tab strips) before acting. A fresh profile may first
 land on `/welcome` (the first-run gate): finish or skip it. A clean home then lands on a
 "New thread" in the **server** project, and seeded data goes straight to the app; click a
-sidebar row (`role=button[name=/^<title>, /]`; the name is
-`<title>, [<status>, ]<project>`, or `[data-testid=sidebar-row-card] >> nth=N`)
+sidebar row (`role=treeitem[name=/^<title>/]` inside `tree "Agents"`; the name is
+`<title>, [<status>, ]<project group>`, or `[data-testid=sidebar-row-card] >> nth=N`)
 when the feature needs a real thread. Then:
 
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.

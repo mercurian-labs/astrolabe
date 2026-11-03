@@ -10,7 +10,9 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 
 ## Sub-features
 
-- **Thread Graph tab**: right-panel launcher **Graph** (`G`). Header: no Back/Forward
+- **Thread Graph tab**: the chat's **New linked tab** → `Open a surface` → **Graph** (`G`); the
+  pane's `+` New tab does not list it, and **Toggle thread details panel** opens upstream's
+  thread details card, not a launcher. Header: no Back/Forward
   (a thread's surface never navigates in place), the view menu
   (`combobox "Graph view"`, only once an agent has shown a view: **Changes**, then each picture or
   story by title), **Back to the thread's changes** (after a click re-rooted it), **Reset the graph**
@@ -44,10 +46,13 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 ## Walk
 
 1. In a dev-server thread that has changed a few code files (one with none reads "This
-   thread hasn't changed any files yet…"), open **Graph**: the changed files are
+   thread hasn't changed any files yet…"), open **Graph** from **New linked tab**: the changed files are
    the accent dots, links drawn at rest, nothing moving once settled (no frames at rest).
 2. Graph settings › Level: walk Folders → Modules → Files → Definitions → Members; each keeps the
-   picture (nodes grow from where their holder stood) and Definitions draws file discs.
+   picture (nodes grow from where their holder stood) and Definitions draws file discs. Known
+   defect: on a thread with about 12 changed files, Definitions can freeze the page (the render
+   loop in `packages/graph/src/render/scheduler.ts` blocks each frame for ~4.5 s); if the canvas
+   stays blank, switch back to Files.
 3. Double-click a neighbour: its neighbours join one ring out; double-click again: they leave,
    except dots another expansion or the roots still reach. Right-click → **Show contents** on a
    file, then click its disc: it closes.

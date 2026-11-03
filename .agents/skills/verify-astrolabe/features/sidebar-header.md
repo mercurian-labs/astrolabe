@@ -62,6 +62,8 @@ actions at its right end.
   list, the "New thread in…" picker. It is disabled with no projects. Each project row in
   the filter's popup has a gear named only by its title, `[title="Project settings for <name>"]`
   (it is `aria-hidden` with `tabIndex=-1`); right-clicking the row also opens project settings.
+  That is Settings › Projects, where a project is pinned with its "Pin project" switch and
+  archived or brought back with its Archive / Unarchive button.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
   (Agents, Wikis, Projects, Changes when the server supports pull requests),
@@ -115,7 +117,9 @@ actions at its right end.
   line; `AgentRowDetails.tsx` and `SidebarCard.tsx`'s `SidebarAgentRowItem`/
   `SidebarAgentRowContent` draw it. Pinned rows sit under a resting **Pinned** heading
   (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading`) with no pin glyph, and an
-  **Active** one (`sidebar-pinned-divider`) closes them while active rows follow; hovering a pinned
+  **Active** one (`sidebar-pinned-divider`) closes them while active rows follow. With nothing
+  pinned both items still exist but are empty and 0px tall; the heading shows only once a row
+  is pinned. Hovering a pinned
   row offers `button "Unpin thread"` beside Snooze and Settle. Draft-session rows
   (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the
   Pinned heading, outside the sortable rows the drag projection measures. Snoozed and settled

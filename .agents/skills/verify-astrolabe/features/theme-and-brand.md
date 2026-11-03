@@ -130,7 +130,7 @@ sync" in the identity doc; don't copy it here, so there is one place to update.
 ## Mobile
 
 Walk with `test-t3-mobile`. The app defaults to Mercurian (`lib/mobileTheme.ts`); Settings →
-Appearance lists Mercurian, T3 Code, Material You, then the rest (an order that differs from
-web), with no Iris. The composer's Send dot is rust (mobile `ComposerControlIcons.tsx`). The
+Appearance lists Mercurian, T3 Code, Material You (Android only), then the rest (an order that
+differs from web), with no Iris. The composer's Send dot is rust (mobile `ComposerControlIcons.tsx`). The
 home-screen icon's dark mode needs a production-variant build; the dev client uses the dev
 artwork (`app.config.ts`).

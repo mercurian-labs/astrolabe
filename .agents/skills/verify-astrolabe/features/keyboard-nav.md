@@ -24,9 +24,10 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   `mod+F6`/`mod+Shift+F6` for browsers that keep plain F6 (`workspace.focusNext`/`Previous`,
   `lib/workspaceFocus.ts`), cycle the visible `[data-workspace-area]` stops in
   `data-workspace-order` and wrap: the rail (`rail`, `aria-label="Sections"`), the sidebar
-  (`sidebar`, still labelled "Threads"), the conversation and the message input, thread details,
+  (`sidebar`, labelled "Agents"), the conversation and the message input, thread details,
   each pane (`pane`, one stop per pane, keyed `data-workspace-focus-key="pane:<id>"`), panels and the
-  terminal. Each restores its last focused control. Panes `inert` behind a maximized one and a
+  terminal. Each restores its last focused control; the first landing on a chat pane focuses
+  its first tab's close button. Panes `inert` behind a maximized one and a
   collapsed sidebar are skipped; Settings cycles only its section list and content.
 - **Landing**: back on what last had focus in that place, if still there; else the
   composer (`[data-testid=composer-editor]`, a chat tab's pane included), a pane's tab in front
