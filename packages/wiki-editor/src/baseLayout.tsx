@@ -235,8 +235,10 @@ function EditableCell({
   }
   if (draft === null) {
     return (
-      <button
-        type="button"
+      // Not a <button>: a cell's links are buttons, which can't nest in one.
+      <div
+        role="button"
+        tabIndex={0}
         className="bl-editable"
         aria-label={`Edit ${column} of ${row.name}`}
         onClick={(event) => {
@@ -244,9 +246,14 @@ function EditableCell({
           if ((event.target as HTMLElement).closest(".bl-link")) return;
           setDraft(editText(value));
         }}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget && event.key === "Enter") {
+            setDraft(editText(value));
+          }
+        }}
       >
         {shown}
-      </button>
+      </div>
     );
   }
   const commit = () => {
@@ -396,6 +403,7 @@ function TableView({ result, host }: { result: WikiEditorBaseResult; host: BaseL
             {columns.map((column) => (
               <th
                 key={column.id}
+                className={numeric(column) ? "bl-number" : undefined}
                 style={widths[column.id] ? { width: `${widths[column.id]}px` } : undefined}
               >
                 {host.columnHeading ? host.columnHeading(column, column.label) : column.label}
@@ -411,8 +419,10 @@ function TableView({ result, host }: { result: WikiEditorBaseResult; host: BaseL
                 <>
                   <tr className="bl-group-row">
                     <td colSpan={columns.length}>
-                      <span className="bl-group">{groupText(run.value)}</span>
-                      <span className="bl-count">{run.rows.length}</span>
+                      <span className="bl-group">
+                        {groupText(run.value)}
+                        <span className="bl-count">{run.rows.length}</span>
+                      </span>
                     </td>
                   </tr>
                   <SummaryRow columns={columns} summaries={summariesOf(result, run.value)} />
@@ -654,7 +664,11 @@ function BoardView({ result, host }: { result: WikiEditorBaseResult; host: BaseL
 function PlacesList({ result, host }: { result: WikiEditorBaseResult; host: BaseLayoutHost }) {
   const placed = result.rows.filter((row) => row.marker !== undefined);
   if (!result.settings?.coordinates) {
-    return <p className="bl-muted">Choose the property that holds each file's coordinates.</p>;
+    return (
+      <p className="bl-muted">
+        Choose the property that holds each file's coordinates under Layout.
+      </p>
+    );
   }
   if (!placed.length) return <p className="bl-muted">No file here has coordinates.</p>;
   return (

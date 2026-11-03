@@ -274,6 +274,17 @@
   ],
   "packageOverrides": [
     {
+      "name": "murmurhash-js",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/mikolalysenko/murmurhash-js",
+      "generatedNotices": [
+        {
+          "licenseId": "MIT",
+          "copyrights": ["Copyright (c) 2011 Gary Court"]
+        }
+      ]
+    },
+    {
       "name": "heic-to",
       "license": "LGPL-3.0-or-later",
       "sourceUrl": "https://github.com/hoppergee/heic-to/tree/v1.5.2",

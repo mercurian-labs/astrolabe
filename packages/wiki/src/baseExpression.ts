@@ -428,7 +428,10 @@ export function noteReferences(expr: Expr): ReadonlyArray<NoteReference> {
         const naming =
           (callee.kind === "name" && callee.name === "link") ||
           (callee.kind === "member" && callee.name === "hasLink" && isFileRef(callee.object));
-        if (naming && isText(first)) found.add(first);
+        // `link("https://…")` is a web address, not a note.
+        if (naming && isText(first) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(first.value)) {
+          found.add(first);
+        }
         visit(callee);
         return node.args.forEach(visit);
       }

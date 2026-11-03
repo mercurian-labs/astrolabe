@@ -24,7 +24,7 @@ import { ensureLocalApi } from "~/localApi";
 import { TabHeader } from "~/panes/TabHeader";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -70,7 +70,12 @@ interface RowOpeners {
 interface BaseEditing {
   readonly file: string;
   readonly edits: ReadonlyArray<WikiBaseEdit>;
+  /** The view the page shows, null for the base's first. */
+  readonly view: string | null;
+  readonly onPickView: (view: string) => void;
   readonly onEdit: (edit: WikiBaseEdit) => void;
+  /** Drops the latest edit, as when it leaves a base that can't run. */
+  readonly onUndo: () => void;
   /** New, with what the view's filters and the group it was asked from say the note needs. */
   readonly onNew: (
     filters: WikiBaseFilter | undefined,
@@ -273,7 +278,9 @@ export function WikiBase({
   readonly view?: string | undefined;
   readonly editing?: BaseEditing | undefined;
 } & RowOpeners) {
-  const [view, setView] = useState<string | null>(initialView ?? null);
+  const [picked, setPicked] = useState<string | null>(initialView ?? null);
+  const view = editing ? editing.view : picked;
+  const setView = editing ? editing.onPickView : setPicked;
   const edits = editing?.edits ?? [];
   const query = useEnvironmentQuery(
     wikiEnvironment.query({
@@ -290,7 +297,8 @@ export function WikiBase({
   // An edit keeps the last view on screen until the new one lands.
   const [lastResult, setLastResult] = useState(query.data);
   if (query.data !== null && query.data !== lastResult) setLastResult(query.data);
-  const result = query.data ?? (query.error === null ? lastResult : null);
+  // An edit that can't run keeps the toolbar and last view, so it can be undone from there.
+  const result = query.data ?? (query.error === null || editing ? lastResult : null);
   if (result === null) {
     return query.error !== null ? (
       <Alert variant="warning">
@@ -315,29 +323,38 @@ export function WikiBase({
           onNew={() => editing.onNew(result.settings?.filters)}
         />
       ) : result.views.length > 1 ? (
-        <Select
-          value={result.view.name}
-          items={Object.fromEntries(result.views.map((name) => [name, name]))}
-          onValueChange={(value) => {
-            if (typeof value === "string") setView(value);
-          }}
-        >
-          <SelectTrigger size="compact" aria-label="View">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectPopup>
-            {result.views.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
+        <div className="w-fit">
+          <Select
+            value={result.view.name}
+            items={Object.fromEntries(result.views.map((name) => [name, name]))}
+            onValueChange={(value) => {
+              if (typeof value === "string") setView(value);
+            }}
+          >
+            <SelectTrigger size="compact" aria-label="View">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {result.views.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
       ) : null}
       {editing && query.error !== null ? (
         <Alert variant="warning">
           <TriangleAlertIcon />
           <AlertDescription>{describeWikiFailure(query.failure ?? query.error)}</AlertDescription>
+          {edits.length ? (
+            <AlertAction>
+              <Button variant="outline" size="sm" onClick={editing.onUndo}>
+                Undo last change
+              </Button>
+            </AlertAction>
+          ) : null}
         </Alert>
       ) : null}
       <WikiBaseResults
@@ -405,6 +422,12 @@ function NewNoteDialog({
   );
 }
 
+/** The view each base tab shows, so saving, which rekeys the tab, stays on it. */
+const openViews = new Map<string, string>();
+
+const madeView = (edit: WikiBaseEdit) =>
+  edit.kind === "add-view" || (edit.kind === "view" && edit.name !== undefined);
+
 const editCount = (count: number) =>
   count === 1 ? "1 unsaved change" : `${count} unsaved changes`;
 
@@ -436,6 +459,13 @@ export function WikiBasePage({
   readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
 } & RowOpeners) {
   const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
+  const viewKey = `${wikiId}/${file}`;
+  const [view, setView] = useState<string | null>(() => openViews.get(viewKey) ?? null);
+  const pickView = (name: string | null) => {
+    setView(name);
+    if (name === null) openViews.delete(viewKey);
+    else openViews.set(viewKey, name);
+  };
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState<Readonly<Record<string, WikiBaseCell>> | null>(null);
   const canEdit = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
@@ -470,7 +500,10 @@ export function WikiBasePage({
     ? {
         file,
         edits,
+        view,
+        onPickView: pickView,
         onEdit: (edit) => setEdits((current) => withEdit(current, edit)),
+        onUndo: () => setEdits((current) => current.slice(0, -1)),
         onNew: (filters, group) => setCreating(newNoteProperties(filters, group)),
       }
     : undefined;
@@ -485,7 +518,15 @@ export function WikiBasePage({
         {dirty ? (
           <TabHeader.Actions>
             <TabHeader.Status>{editCount(edits.length)}</TabHeader.Status>
-            <Button variant="ghost" size="sm" onClick={() => setEdits([])}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                // A view the edits made or renamed goes with them.
+                if (edits.some(madeView)) pickView(null);
+                setEdits([]);
+              }}
+            >
               Discard
             </Button>
             <Button size="sm" onClick={() => setSaving(true)}>

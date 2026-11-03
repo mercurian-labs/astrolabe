@@ -404,3 +404,8 @@
 .cm-md-properties:focus-visible {
   outline-color: var(--atlas-md-focus-ring);
 }
+
+/* A host's drawing takes the note's width; a wide table scrolls inside it, never widening the note. */
+.cm-md-host-block {
+  contain: inline-size;
+}

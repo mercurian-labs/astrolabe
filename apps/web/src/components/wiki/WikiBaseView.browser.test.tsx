@@ -142,7 +142,15 @@ describe("WikiBaseResults", () => {
         {...at}
         result={result({})}
         onOpenNote={vi.fn()}
-        editing={{ file: "Open.base", edits: [], onEdit, onNew: vi.fn() }}
+        editing={{
+          file: "Open.base",
+          edits: [],
+          view: null,
+          onPickView: vi.fn(),
+          onEdit,
+          onUndo: vi.fn(),
+          onNew: vi.fn(),
+        }}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Edit status of Alpha" }));

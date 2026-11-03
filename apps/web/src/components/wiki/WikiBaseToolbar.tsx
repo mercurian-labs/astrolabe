@@ -20,6 +20,14 @@ import {
 import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
@@ -70,6 +78,58 @@ const SUMMARY_NAMES = [
 const NONE = "__none__";
 
 type Property = { readonly id: string; readonly label: string };
+
+/** Asks for a name. A dialog, since a menu closing takes focus back from any field beside it. */
+function NameDialog({
+  title,
+  label,
+  initial,
+  onClose,
+  onSave,
+}: {
+  readonly title: string;
+  readonly label: string;
+  readonly initial: string;
+  readonly onClose: () => void;
+  readonly onSave: (name: string) => void;
+}) {
+  const id = useId();
+  const [name, setName] = useState(initial);
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogPopup className="sm:max-w-sm">
+        <form
+          className="flex min-h-0 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSave(name.trim());
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={id}>{label}</Label>
+              <Input
+                id={id}
+                autoFocus
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Save</Button>
+          </DialogFooter>
+        </form>
+      </DialogPopup>
+    </Dialog>
+  );
+}
 
 /** One property from the base's, or none. */
 function PropertySelect({
@@ -655,7 +715,7 @@ export function WikiBaseToolbar({
     onEdit({ kind: "view", base: file, view, settings });
   const properties = result.properties ?? result.columns;
   const settings = result.settings ?? {};
-  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const filterCount = (() => {
     const flat = flatFilters(settings.filters);
     return flat === null ? 1 : flat.items.length;
@@ -668,105 +728,97 @@ export function WikiBaseToolbar({
   };
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {renaming === null ? (
-        <Menu>
-          <MenuTrigger render={<Button variant="outline" size="compact" />}>
-            {view}
-            <ChevronDownIcon />
-          </MenuTrigger>
-          <MenuPopup align="start">
-            <MenuRadioGroup
-              value={view}
-              onValueChange={(next) => {
-                if (typeof next === "string") onPickView(next);
-              }}
-            >
-              {result.views.map((name) => (
-                <MenuRadioItem key={name} value={name}>
-                  {name}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-            <MenuSeparator />
-            <MenuSub>
-              <MenuSubTrigger>Layout</MenuSubTrigger>
-              <MenuSubPopup>
-                <MenuRadioGroup
-                  value={result.view.type}
-                  onValueChange={(type) => {
-                    if (typeof type === "string") onEdit({ kind: "view", base: file, view, type });
+      <Menu>
+        <MenuTrigger render={<Button variant="outline" size="compact" />}>
+          {view}
+          <ChevronDownIcon />
+        </MenuTrigger>
+        <MenuPopup align="start">
+          <MenuRadioGroup
+            value={view}
+            onValueChange={(next) => {
+              if (typeof next === "string") onPickView(next);
+            }}
+          >
+            {result.views.map((name) => (
+              <MenuRadioItem key={name} value={name} closeOnClick>
+                {name}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+          <MenuSeparator />
+          <MenuSub>
+            <MenuSubTrigger>Layout</MenuSubTrigger>
+            <MenuSubPopup>
+              <MenuRadioGroup
+                value={result.view.type}
+                onValueChange={(type) => {
+                  if (typeof type === "string") onEdit({ kind: "view", base: file, view, type });
+                }}
+              >
+                {VIEW_TYPES.map((entry) => (
+                  <MenuRadioItem key={entry.type} value={entry.type} closeOnClick>
+                    {entry.label}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger>Add view</MenuSubTrigger>
+            <MenuSubPopup>
+              {VIEW_TYPES.map((entry) => (
+                <MenuItem
+                  key={entry.type}
+                  onClick={() => {
+                    const name = nextName(entry.type);
+                    onEdit({ kind: "add-view", base: file, name, type: entry.type });
+                    onPickView(name);
                   }}
                 >
-                  {VIEW_TYPES.map((entry) => (
-                    <MenuRadioItem key={entry.type} value={entry.type}>
-                      {entry.label}
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
-              </MenuSubPopup>
-            </MenuSub>
-            <MenuSub>
-              <MenuSubTrigger>Add view</MenuSubTrigger>
-              <MenuSubPopup>
-                {VIEW_TYPES.map((entry) => (
-                  <MenuItem
-                    key={entry.type}
-                    onClick={() => {
-                      const name = nextName(entry.type);
-                      onEdit({ kind: "add-view", base: file, name, type: entry.type });
-                      onPickView(name);
-                    }}
-                  >
-                    {entry.label}
-                  </MenuItem>
-                ))}
-              </MenuSubPopup>
-            </MenuSub>
-            <MenuItem onClick={() => setRenaming(view)}>Rename view</MenuItem>
-            <MenuItem
-              onClick={() => {
-                let name = `${view} copy`;
-                for (let count = 2; result.views.includes(name); count += 1) {
-                  name = `${view} copy ${count}`;
-                }
-                onEdit({ kind: "add-view", base: file, name, type: result.view.type, copy: view });
-                onPickView(name);
-              }}
-            >
-              Duplicate view
-            </MenuItem>
-            <MenuItem
-              disabled={result.views.length < 2}
-              onClick={() => {
-                onEdit({ kind: "remove-view", base: file, view });
-                onPickView(result.views.find((name) => name !== view) ?? view);
-              }}
-            >
-              Delete view
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
-      ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const name = renaming.trim();
-            setRenaming(null);
+                  {entry.label}
+                </MenuItem>
+              ))}
+            </MenuSubPopup>
+          </MenuSub>
+          <MenuItem onClick={() => setRenaming(true)}>Rename view</MenuItem>
+          <MenuItem
+            onClick={() => {
+              let name = `${view} copy`;
+              for (let count = 2; result.views.includes(name); count += 1) {
+                name = `${view} copy ${count}`;
+              }
+              onEdit({ kind: "add-view", base: file, name, type: result.view.type, copy: view });
+              onPickView(name);
+            }}
+          >
+            Duplicate view
+          </MenuItem>
+          <MenuItem
+            disabled={result.views.length < 2}
+            onClick={() => {
+              onEdit({ kind: "remove-view", base: file, view });
+              onPickView(result.views.find((name) => name !== view) ?? view);
+            }}
+          >
+            Delete view
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+      {renaming ? (
+        <NameDialog
+          title="Rename view"
+          label="View name"
+          initial={view}
+          onClose={() => setRenaming(false)}
+          onSave={(name) => {
+            setRenaming(false);
             if (!name || name === view) return;
             onEdit({ kind: "view", base: file, view, name });
             onPickView(name);
           }}
-        >
-          <Input
-            size="compact"
-            autoFocus
-            aria-label="View name"
-            value={renaming}
-            onChange={(event) => setRenaming(event.target.value)}
-            onBlur={(event) => event.currentTarget.form?.requestSubmit()}
-          />
-        </form>
-      )}
+        />
+      ) : null}
       <span className="px-1 text-muted-foreground text-xs">
         {result.total === 1 ? "1 result" : `${result.total} results`}
       </span>
@@ -863,86 +915,82 @@ export function ColumnMenu({
         ...(settings.sort ?? []).filter((entry) => orderId(entry.property) !== orderId(column.id)),
       ],
     });
-  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const canonical = column.id.includes(".") ? column.id : `note.${column.id}`;
-  if (renaming !== null) {
-    return (
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          setRenaming(null);
-          onEdit({
-            kind: "display-name",
-            base: file,
-            property: canonical,
-            displayName: renaming.trim() || null,
-          });
-        }}
-      >
-        <Input
-          size="compact"
-          autoFocus
-          aria-label="Column name"
-          value={renaming}
-          onChange={(event) => setRenaming(event.target.value)}
-          onBlur={(event) => event.currentTarget.form?.requestSubmit()}
-        />
-      </form>
-    );
-  }
   return (
-    <Menu>
-      <MenuTrigger
-        render={<button type="button" className="cursor-pointer text-left font-medium" />}
-      >
-        {label}
-      </MenuTrigger>
-      <MenuPopup align="start">
-        <MenuItem onClick={() => sortBy("ASC")}>
-          <ArrowUpIcon />
-          Sort ascending
-        </MenuItem>
-        <MenuItem onClick={() => sortBy("DESC")}>
-          <ArrowDownIcon />
-          Sort descending
-        </MenuItem>
-        <MenuSub>
-          <MenuSubTrigger>Summarize</MenuSubTrigger>
-          <MenuSubPopup>
-            <MenuRadioGroup
-              value={summary ?? NONE}
-              onValueChange={(name) => {
-                if (typeof name !== "string") return;
-                const rest = Object.fromEntries(
-                  Object.entries(settings.summaries ?? {}).filter(([id]) => id !== column.id),
-                );
-                const next = name === NONE ? rest : { ...rest, [column.id]: name };
-                onSettings({ summaries: Object.keys(next).length ? next : null });
-              }}
-            >
-              <MenuRadioItem value={NONE}>None</MenuRadioItem>
-              {SUMMARY_NAMES.map((name) => (
-                <MenuRadioItem key={name} value={name}>
-                  {name}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </MenuSubPopup>
-        </MenuSub>
-        <MenuSeparator />
-        <MenuItem onClick={() => setRenaming(column.label)}>Rename</MenuItem>
-        <MenuItem
-          onClick={() =>
-            onSettings({
-              order: (settings.order ?? result.columns.map((entry) => entry.id)).filter(
-                (entry) => orderId(entry) !== orderId(column.id),
-              ),
-            })
-          }
+    <>
+      <Menu>
+        <MenuTrigger
+          render={<button type="button" className="cursor-pointer text-left font-medium" />}
         >
-          Hide
-        </MenuItem>
-      </MenuPopup>
-    </Menu>
+          {label}
+        </MenuTrigger>
+        <MenuPopup align="start">
+          <MenuItem onClick={() => sortBy("ASC")}>
+            <ArrowUpIcon />
+            Sort ascending
+          </MenuItem>
+          <MenuItem onClick={() => sortBy("DESC")}>
+            <ArrowDownIcon />
+            Sort descending
+          </MenuItem>
+          <MenuSub>
+            <MenuSubTrigger>Summarize</MenuSubTrigger>
+            <MenuSubPopup>
+              <MenuRadioGroup
+                value={summary ?? NONE}
+                onValueChange={(name) => {
+                  if (typeof name !== "string") return;
+                  const rest = Object.fromEntries(
+                    Object.entries(settings.summaries ?? {}).filter(([id]) => id !== column.id),
+                  );
+                  const next = name === NONE ? rest : { ...rest, [column.id]: name };
+                  onSettings({ summaries: Object.keys(next).length ? next : null });
+                }}
+              >
+                <MenuRadioItem value={NONE} closeOnClick>
+                  None
+                </MenuRadioItem>
+                {SUMMARY_NAMES.map((name) => (
+                  <MenuRadioItem key={name} value={name} closeOnClick>
+                    {name}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+          <MenuSeparator />
+          <MenuItem onClick={() => setRenaming(true)}>Rename</MenuItem>
+          <MenuItem
+            onClick={() =>
+              onSettings({
+                order: (settings.order ?? result.columns.map((entry) => entry.id)).filter(
+                  (entry) => orderId(entry) !== orderId(column.id),
+                ),
+              })
+            }
+          >
+            Hide
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+      {renaming ? (
+        <NameDialog
+          title="Rename column"
+          label="Column name"
+          initial={column.label}
+          onClose={() => setRenaming(false)}
+          onSave={(name) => {
+            setRenaming(false);
+            onEdit({
+              kind: "display-name",
+              base: file,
+              property: canonical,
+              displayName: name || null,
+            });
+          }}
+        />
+      ) : null}
+    </>
   );
 }

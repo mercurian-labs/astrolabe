@@ -1,8 +1,18 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type { WikiQueryResult } from "@t3tools/contracts";
-import { LngLatBounds, Map as MapLibreMap, Marker, type StyleSpecification } from "maplibre-gl";
+import {
+  LngLatBounds,
+  Map as MapLibreMap,
+  Marker,
+  setWorkerUrl,
+  type StyleSpecification,
+} from "maplibre-gl";
+import mapWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+
+// MapLibre looks for its worker beside its own module, which the bundler moves; tiles need it.
+setWorkerUrl(mapWorkerUrl);
 
 type Row = WikiQueryResult["rows"][number];
 
@@ -109,7 +119,7 @@ export default function WikiBaseMap({
       />
       {!settings.coordinates ? (
         <p className="text-muted-foreground text-sm">
-          Choose the property that holds each file's coordinates in the view's settings.
+          Choose the property that holds each file's coordinates under Layout.
         </p>
       ) : missing > 0 ? (
         <p className="text-muted-foreground text-xs">

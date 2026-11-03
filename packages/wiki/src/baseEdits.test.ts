@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyBaseEdits,
+  baseProblems,
   baseCorpus,
   BaseError,
   corpusWithChanges,
@@ -274,4 +275,11 @@ describe("what a view draws", () => {
     expect(ids).toContain("file.name");
     expect(ids).not.toContain("file.properties");
   });
+});
+
+it("reads a link to a web address as no note's name", () => {
+  const source = 'formulas:\n  site: link("https://obsidian.md")\n  note: link("Missing")\n';
+  expect(baseProblems(source, () => false)).toEqual([
+    "Names “Missing”, but no note is called that or links to it.",
+  ]);
 });

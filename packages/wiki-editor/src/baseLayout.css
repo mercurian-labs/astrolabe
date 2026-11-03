@@ -186,7 +186,7 @@
   white-space: normal;
 }
 
-.bl-table td.bl-number {
+.bl-table .bl-number {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -275,6 +275,11 @@
 .bl-list {
   margin: 0;
   padding-left: 1.25em;
+  list-style: disc;
+}
+
+ol.bl-list {
+  list-style: decimal;
 }
 
 .bl-list li {
