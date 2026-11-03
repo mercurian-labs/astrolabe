@@ -6,6 +6,7 @@ import {
   EyeOffIcon,
   FilePenLineIcon,
   FolderGit2Icon,
+  FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
   ListFilterIcon,
@@ -78,10 +79,11 @@ const worktreeValue = (key: string) => `worktree:${key}`;
 
 const worktreeName = (worktree: ProjectWorktree) => worktree.branch ?? worktree.alias;
 
-/** A worktree's mark in a filter row: its number, else a branch icon. */
+/** A worktree's mark in a filter row: its number, else a branch icon, or a plain folder's. */
 export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
+  const Icon = worktree.isRepository ? GitBranchIcon : FolderIcon;
   return worktree.number === null ? (
-    <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+    <Icon className="size-4 shrink-0 text-muted-foreground" />
   ) : (
     <span className="flex size-4 shrink-0 items-center justify-center">
       <WorktreeNumber number={worktree.number} />
@@ -197,7 +199,7 @@ export function RepositoryFilterMenu({
   const lists = useManyProjectWorktrees(listedRepositories.map(projectWorktrees));
   const worktreeGroups = listedRepositories.map((repository, index) => ({
     key: `${repository.environmentId}:${repository.id}`,
-    all: lists[index]?.worktrees ?? NO_WORKTREES,
+    all: lists[index]?.data?.worktrees ?? NO_WORKTREES,
     worktreeKey: (worktree: ProjectWorktree) =>
       worktreeFilesKey(repository.environmentId, worktree.path),
   }));

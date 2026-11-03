@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
@@ -36,6 +37,11 @@ export const ProjectWorktree = Schema.Struct({
   path: TrimmedNonEmptyString,
   /** The repository's own checkout, never reused or deleted here. */
   isMain: Schema.Boolean,
+  /**
+   * False for a project whose folder is no git repository, listed as its one checkout with no
+   * branch or commit. Older servers can't list one, so what they send is a repository.
+   */
+  isRepository: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   head: Schema.NullOr(TrimmedNonEmptyString),
   /** What to call it: its branch, or its commit when detached. */

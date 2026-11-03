@@ -761,7 +761,7 @@ function WikiFilterMenu({
   );
   const lists = useManyProjectWorktrees(listedWikis.map(worktreesOfWiki));
   const worktreeRows = listedWikis.flatMap((overview, index) =>
-    (lists[index]?.worktrees ?? []).map((worktree) => ({
+    (lists[index]?.data?.worktrees ?? []).map((worktree) => ({
       value: `${WORKTREE_PREFIX}${worktreeFilesKey(overview.environmentId, worktree.path)}`,
       wikiKey: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
       overview,
@@ -985,7 +985,7 @@ function WikiFilterPills({
     filter.hidden.length === 0 ? [] : overviews.map(worktreesOfWiki),
   );
   const hiddenNames = overviews.flatMap((overview, index) =>
-    (lists[index]?.worktrees ?? [])
+    (lists[index]?.data?.worktrees ?? [])
       .filter((worktree) =>
         filter.hidden.includes(worktreeFilesKey(overview.environmentId, worktree.path)),
       )

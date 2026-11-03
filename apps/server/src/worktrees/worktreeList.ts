@@ -3,6 +3,8 @@ export interface ListedWorktree {
   readonly isMain: boolean;
   readonly branch: string | null;
   readonly head: string | null;
+  /** A folder git knows nothing about, listed as its own checkout. */
+  readonly plainFolder?: true;
 }
 
 /** `git worktree list --porcelain -z`: the first record is the repository's own checkout. */

@@ -16,6 +16,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { queryAnswer, type QueryAnswer } from "./query";
 
 /** Astrolabe: a repository's worktrees and the work its branches set aside. */
 export const worktreeEnvironment = createWorktreeEnvironmentAtoms(connectionAtomRuntime);
@@ -59,10 +60,10 @@ export function useListedProjectWorktrees(
   return Option.getOrNull(AsyncResult.value(useAtomValue(atomOf(target))));
 }
 
-/** A repository's worktrees, read again when the window comes back; null until the first answer. */
+/** A repository's worktrees or why they can't be read, read again when the window comes back. */
 export function useProjectWorktrees(
   target: WorktreesTarget | null,
-): ProjectWorktreeListResult | null {
+): QueryAnswer<ProjectWorktreeListResult> {
   const atom = atomOf(target);
   const result = useAtomValue(atom);
   const refresh = useAtomRefresh(atom);
@@ -71,24 +72,22 @@ export function useProjectWorktrees(
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [refresh]);
-  return Option.getOrNull(AsyncResult.value(result));
+  return queryAnswer(result);
 }
 
 const manyAtom = Atom.family((key: string) =>
-  Atom.make((get): ReadonlyArray<ProjectWorktreeListResult | null> =>
-    (JSON.parse(key) as WorktreesTarget[]).map((target) =>
-      Option.getOrNull(AsyncResult.value(get(atomOf(target)))),
-    ),
+  Atom.make((get): ReadonlyArray<QueryAnswer<ProjectWorktreeListResult>> =>
+    (JSON.parse(key) as WorktreesTarget[]).map((target) => queryAnswer(get(atomOf(target)))),
   ).pipe(Atom.withLabel(`worktrees:many:${key}`)),
 );
 
 /**
- * Several repositories' worktrees, in `targets`' order, each null until its first answer; read
- * again, once each, when the window comes back.
+ * Several repositories' worktrees or why they can't be read, in `targets`' order; read again,
+ * once each, when the window comes back.
  */
 export function useManyProjectWorktrees(
   targets: ReadonlyArray<WorktreesTarget>,
-): ReadonlyArray<ProjectWorktreeListResult | null> {
+): ReadonlyArray<QueryAnswer<ProjectWorktreeListResult>> {
   const key = JSON.stringify(
     targets.map((target) => ({ environmentId: target.environmentId, ...worktreeOwner(target) })),
   );
@@ -156,14 +155,15 @@ interface CountedWorktree {
 
 const manyCountsAtom = Atom.family((key: string) =>
   Atom.make((get): ReadonlyArray<number | null> =>
-    (JSON.parse(key) as CountedWorktree[]).map(
-      ({ target, path }) =>
-        Option.getOrNull(AsyncResult.value(get(statusAtom(target, path))))?.changedFiles ?? null,
-    ),
+    (JSON.parse(key) as CountedWorktree[]).map(({ target, path }) => {
+      const { data, error } = queryAnswer(get(statusAtom(target, path)));
+      // Has changes waits on every null, and a failed count is no longer being counted.
+      return data?.changedFiles ?? (error === null ? null : 0);
+    }),
   ).pipe(Atom.withLabel(`worktrees:counts:${key}`)),
 );
 
-/** Several worktrees' uncommitted files, in `worktrees`' order, each null until counted. */
+/** Several worktrees' uncommitted files, in `worktrees`' order, each null while being counted. */
 export function useManyWorktreeChangedFiles(
   worktrees: ReadonlyArray<CountedWorktree>,
 ): ReadonlyArray<number | null> {

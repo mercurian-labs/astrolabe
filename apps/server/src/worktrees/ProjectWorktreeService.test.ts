@@ -12,6 +12,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
@@ -88,10 +89,14 @@ const fixture = Effect.gen(function* () {
   yield* command(repo, ["branch", "alpha"]);
   yield* command(repo, ["branch", "beta"]);
 
-  const state = { threads: [] as OrchestrationV2ThreadShell[], watched: [] as string[] };
+  const state = {
+    threads: [] as OrchestrationV2ThreadShell[],
+    watched: [] as string[],
+    workspaceRoot: repo,
+  };
   const context = yield* Layer.build(projectWorktreeLayer).pipe(
     Effect.provideService(ProjectService.ProjectService, {
-      getById: () => Effect.succeedSome({ workspaceRoot: repo }),
+      getById: () => Effect.sync(() => Option.some({ workspaceRoot: state.workspaceRoot })),
     } as unknown as ProjectService.ProjectService["Service"]),
     Effect.provideService(WikiService.WikiService, {
       root: (wikiId: WikiId) =>
@@ -202,11 +207,54 @@ describe("ProjectWorktreeService", () => {
         expect(alpha.worktree.path.startsWith(worktreesDir)).toBe(true);
         const listed = yield* service.list({ wikiId: wikiIdOfRepo });
         expect(listed.worktrees.map((worktree) => worktree.branch)).toEqual(["main", "alpha"]);
+        expect(listed.worktrees.every((worktree) => worktree.isRepository)).toBe(true);
 
         const unknown = yield* Effect.flip(service.list({ wikiId: WikiId.make("wiki-2") }));
         expect(unknown.message).toBe("No wiki has this id or name.");
         const neither = yield* Effect.flip(service.list({}));
         expect(neither.message).toBe("Name a project or a wiki.");
+      }),
+    ),
+  );
+
+  it.live("lists a folder that is no repository as its one checkout, and follows it", () =>
+    run(
+      Effect.gen(function* () {
+        const { service, fs, state } = yield* fixture;
+        const folder = yield* fs.realPath(
+          yield* fs.makeTempDirectoryScoped({ prefix: "worktrees-plain-" }),
+        );
+        yield* fs.writeFileString(`${folder}/init.lua`, "-- no git here\n");
+        state.workspaceRoot = folder;
+
+        const listed = yield* service.list({ projectId });
+        expect(listed.setAside).toEqual([]);
+        expect(listed.worktrees).toHaveLength(1);
+        expect(listed.worktrees[0]).toMatchObject({
+          path: folder,
+          isMain: true,
+          isRepository: false,
+          branch: null,
+          head: null,
+          alias: folder.slice(folder.lastIndexOf("/") + 1),
+        });
+        // Has changes waits for every count, so a folder git can't count must still answer.
+        expect(yield* service.status({ projectId, path: folder })).toEqual({ changedFiles: 0 });
+        yield* service.markOpened({ projectId, path: folder });
+        yield* Stream.runDrain(service.changes({ projectId, path: folder }));
+        expect(state.watched).toEqual([folder]);
+      }),
+    ),
+  );
+
+  it.live("reports a project folder it can't read, rather than listing it as a plain one", () =>
+    run(
+      Effect.gen(function* () {
+        const { service, fs, state } = yield* fixture;
+        const folder = yield* fs.makeTempDirectoryScoped({ prefix: "worktrees-gone-" });
+        state.workspaceRoot = `${folder}/gone`;
+        const failed = yield* Effect.flip(service.list({ projectId }));
+        expect(failed._tag).toBe("ProjectWorktreeError");
       }),
     ),
   );
