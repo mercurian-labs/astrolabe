@@ -23,7 +23,12 @@
     "./protocol": {
       "types": "./src/protocol.ts",
       "default": "./src/protocol.ts"
-    }
+    },
+    "./base-layout": {
+      "types": "./src/baseLayout.tsx",
+      "default": "./src/baseLayout.tsx"
+    },
+    "./base-layout.css": "./src/baseLayout.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

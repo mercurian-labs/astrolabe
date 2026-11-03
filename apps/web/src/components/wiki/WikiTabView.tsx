@@ -120,7 +120,19 @@ function NoteTab({
         parent={
           tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request")
         }
-        onOpenNote={(name) => nav.replace(tabKey, wikiTabKey({ ...tab, name }))}
+        openChangeRequests={openChangeRequests}
+        registerUnsaved={registerUnsaved}
+        onSaved={(savedTo: WikiChangeRequestId) => {
+          // Saved from main, the base now reads inside the change request it was saved to.
+          if (savedTo !== tab.changeRequestId) {
+            nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), { rekey: true });
+          }
+        }}
+        onOpenNote={(name) => {
+          const next = wikiTabKey({ ...tab, name });
+          if (hasUnsavedEdits(tabKey)) nav.open(next);
+          else nav.replace(tabKey, next);
+        }}
         onOpenFile={
           branch === undefined
             ? undefined

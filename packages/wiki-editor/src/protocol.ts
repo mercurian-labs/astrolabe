@@ -13,25 +13,72 @@ export interface WikiEditorBaseSummary {
   readonly value: string;
 }
 
+/** An image a card or cell shows: a file in the wiki's repository, a web address, or a colour. */
+export type WikiEditorBaseImage =
+  | { readonly kind: "file"; readonly path: string }
+  | { readonly kind: "url"; readonly url: string }
+  | { readonly kind: "color"; readonly color: string };
+
+/** How a cell shows when it isn't text. */
+export type WikiEditorBaseDisplay =
+  | { readonly kind: "date"; readonly date: string }
+  | { readonly kind: "url"; readonly href: string; readonly text: string }
+  | { readonly kind: "html"; readonly html: string }
+  | { readonly kind: "icon"; readonly name: string }
+  | { readonly kind: "image"; readonly image: WikiEditorBaseImage }
+  | { readonly kind: "error"; readonly message: string };
+
+/** The settings a view is drawn with, as Obsidian keys them (see the server's `viewSettings`). */
+export interface WikiEditorBaseSettings {
+  readonly groupBy?: { readonly property: string; readonly direction: "ASC" | "DESC" } | undefined;
+  readonly columnSize?: Readonly<Record<string, number>> | undefined;
+  readonly rowHeight?: string | undefined;
+  readonly cardSize?: number | undefined;
+  readonly image?: string | undefined;
+  readonly imageFit?: string | undefined;
+  readonly imageAspectRatio?: number | undefined;
+  readonly markers?: string | undefined;
+  readonly indentProperties?: boolean | undefined;
+  readonly separator?: string | undefined;
+  readonly coordinates?: string | undefined;
+  readonly mapHeight?: number | undefined;
+}
+
+export interface WikiEditorBaseRow {
+  readonly name: string;
+  readonly file: string;
+  readonly values: Readonly<Record<string, BaseCellValue>>;
+  readonly group?: BaseCellValue | undefined;
+  readonly display?: Readonly<Record<string, WikiEditorBaseDisplay>> | undefined;
+  readonly cover?: WikiEditorBaseImage | undefined;
+  readonly marker?:
+    | {
+        readonly lat: number;
+        readonly lng: number;
+        readonly icon?: string | undefined;
+        readonly color?: string | undefined;
+      }
+    | undefined;
+}
+
 /** One view of a ```base block, run by the app on the server (`wiki.query`). */
 export interface WikiEditorBaseResult {
   readonly view: {
     readonly name: string;
     readonly type: "table" | "cards" | "list" | "kanban" | "map";
   };
+  readonly settings?: WikiEditorBaseSettings | undefined;
   readonly columns: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly groupBy: { readonly id: string; readonly label: string } | null;
-  readonly rows: ReadonlyArray<{
-    readonly name: string;
-    readonly file: string;
-    readonly values: Readonly<Record<string, BaseCellValue>>;
-    readonly group?: BaseCellValue;
-  }>;
-  readonly groups?: ReadonlyArray<{
-    readonly value: BaseCellValue;
-    readonly summaries: ReadonlyArray<WikiEditorBaseSummary>;
-  }>;
-  readonly summaries?: ReadonlyArray<WikiEditorBaseSummary>;
+  readonly rows: ReadonlyArray<WikiEditorBaseRow>;
+  readonly groups?:
+    | ReadonlyArray<{
+        readonly value: BaseCellValue;
+        readonly count?: number | undefined;
+        readonly summaries: ReadonlyArray<WikiEditorBaseSummary>;
+      }>
+    | undefined;
+  readonly summaries?: ReadonlyArray<WikiEditorBaseSummary> | undefined;
   readonly total: number;
   readonly truncated: boolean;
 }
@@ -226,4 +273,17 @@ function readAuthor(value: unknown): WikiEditorAuthor | null {
   return typeof name === "string" && typeof color === "string" && typeof turnId === "string"
     ? { name, color, turnId }
     : null;
+}
+
+/**
+ * The base an embed names, when a base's `source` is an embed such as `![[Open.base#Table]]`
+ * rather than a block's YAML: its file and view.
+ */
+export function embeddedBase(
+  source: string,
+): { readonly base: string; readonly view: string | undefined } | null {
+  const target = /^!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/.exec(source.trim())?.[1];
+  if (target === undefined) return null;
+  const [base = "", view] = target.split("#");
+  return base.trim() ? { base: base.trim(), view: view?.trim() || undefined } : null;
 }

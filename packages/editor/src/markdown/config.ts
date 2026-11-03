@@ -41,6 +41,12 @@ export interface LivePreviewOptions {
    * in for them; editing the block shows its source. Keep the record and its functions stable.
    */
   codeBlocks?: Readonly<Record<string, CodeBlockRenderer>>;
+  /**
+   * Embeds the host draws as blocks, by the embedded file's extension (`base`), where a
+   * `![[…]]` stands alone on its line, as Obsidian draws an embedded base. The renderer gets the
+   * embed's target (`Open.base#Table`) as its source. Keep the record and its functions stable.
+   */
+  embedBlocks?: Readonly<Record<string, CodeBlockRenderer>>;
 }
 
 /**
@@ -57,6 +63,7 @@ export interface ResolvedConfig {
   linksOpenOnClick: boolean;
   tabIndentsProse: boolean;
   codeBlocks: Readonly<Record<string, CodeBlockRenderer>>;
+  embedBlocks: Readonly<Record<string, CodeBlockRenderer>>;
 }
 
 export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
@@ -70,6 +77,7 @@ export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
       linksOpenOnClick: options.linksOpenOnClick ?? false,
       tabIndentsProse: options.tabIndentsProse ?? true,
       codeBlocks: options.codeBlocks ?? {},
+      embedBlocks: options.embedBlocks ?? {},
     };
   },
 });

@@ -63,7 +63,10 @@ export function WikiNoteEditor({
   readonly onOpenNote: (name: string) => void;
   /** Opens an external link; the editor opens a new window when omitted. */
   readonly onOpenUrl?: (href: string) => void;
-  /** A ```base block's view, from its YAML; it shows until the block is edited. */
+  /**
+   * A ```base block's view, from its YAML, or an embedded base's, from its embed
+   * (`![[Open.base#Table]]`); it shows until the block is edited.
+   */
   readonly renderBase?: (source: string) => ReactNode;
 }) {
   // Read through refs, so the preview options stay one object and never remount the editor.
@@ -79,13 +82,18 @@ export function WikiNoteEditor({
   const [baseBlocks, setBaseBlocks] = useState<
     ReadonlyArray<{ readonly id: number; readonly source: string; readonly element: HTMLElement }>
   >([]);
-  const [codeBlocks] = useState(() => {
+  const [{ codeBlocks, embedBlocks }] = useState(() => {
     let next = 0;
+    const draw = (source: string, element: HTMLElement) => {
+      const id = next++;
+      setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
+      return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
+    };
     return {
-      base: (source: string, element: HTMLElement) => {
-        const id = next++;
-        setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
-        return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
+      codeBlocks: { base: draw },
+      // An embedded base is asked for by its embed, `![[Open.base#Table]]` (see `embeddedBase`).
+      embedBlocks: {
+        base: (target: string, element: HTMLElement) => draw(`![[${target}]]`, element),
       },
     };
   });
@@ -100,9 +108,9 @@ export function WikiNoteEditor({
       linksOpenOnClick: true,
       // Embeds name wiki files, which the page cannot serve as images yet.
       resolveEmbed: () => null,
-      ...(drawsBases ? { codeBlocks } : {}),
+      ...(drawsBases ? { codeBlocks, embedBlocks } : {}),
     }),
-    [hasOpenUrl, drawsBases, codeBlocks],
+    [hasOpenUrl, drawsBases, codeBlocks, embedBlocks],
   );
   return (
     <div

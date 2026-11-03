@@ -1,3 +1,4 @@
+import "./baseLayout.css";
 import "./mobilePage.css";
 
 import { useEffect, useSyncExternalStore } from "react";
@@ -38,7 +39,14 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
     root.dataset.appearance = theme.appearance;
   }, [theme]);
   if (base !== null) {
-    return <BaseBlock page={page} source={base} onOpenNote={openNote} />;
+    return (
+      <BaseBlock
+        page={page}
+        source={base}
+        onOpenNote={openNote}
+        onOpenUrl={(href) => post({ type: "openUrl", href })}
+      />
+    );
   }
   if (!session) return null;
   return (
@@ -48,7 +56,14 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
       readOnly={mode === "read"}
       onOpenNote={openNote}
       onOpenUrl={(href) => post({ type: "openUrl", href })}
-      renderBase={(source) => <BaseBlock page={page} source={source} onOpenNote={openNote} />}
+      renderBase={(source) => (
+        <BaseBlock
+          page={page}
+          source={source}
+          onOpenNote={openNote}
+          onOpenUrl={(href) => post({ type: "openUrl", href })}
+        />
+      )}
     />
   );
 }
