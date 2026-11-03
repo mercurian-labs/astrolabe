@@ -62,7 +62,8 @@ export interface PlannedAmendment {
   readonly errors: ReadonlyArray<WikiIndexError>;
 }
 
-const applyChanges = (files: WikiFiles, changes: WikiChanges): Record<string, string> => {
+/** `files` with `changes` applied. */
+export const applyChanges = (files: WikiFiles, changes: WikiChanges): Record<string, string> => {
   const next: Record<string, string> = { ...files };
   for (const [file, content] of Object.entries(changes)) {
     if (content === null) delete next[file];

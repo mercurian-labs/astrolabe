@@ -24,7 +24,7 @@ export type BasePropertyValue =
 
 /** A view setting's new value; `null` removes it from the view. */
 export type BaseViewSettingsEdit = {
-  readonly [Key in keyof BaseViewSettings]?: BaseViewSettings[Key] | null;
+  readonly [Key in keyof BaseViewSettings]?: BaseViewSettings[Key] | null | undefined;
 };
 
 export type BaseEdit =
@@ -33,9 +33,9 @@ export type BaseEdit =
       readonly kind: "view";
       readonly base: string;
       readonly view: string;
-      readonly name?: string;
-      readonly type?: string;
-      readonly settings?: BaseViewSettingsEdit;
+      readonly name?: string | undefined;
+      readonly type?: string | undefined;
+      readonly settings?: BaseViewSettingsEdit | undefined;
     }
   /** Adds a view after the others, its settings copied from `copy` when named. */
   | {
@@ -43,7 +43,7 @@ export type BaseEdit =
       readonly base: string;
       readonly name: string;
       readonly type: string;
-      readonly copy?: string;
+      readonly copy?: string | undefined;
     }
   | { readonly kind: "remove-view"; readonly base: string; readonly view: string }
   /** Sets a formula; `null` removes it. */
@@ -146,7 +146,8 @@ function editBase(document: Document, edit: BaseEdit & { readonly base: string }
       if (edit.type !== undefined) view.set("type", edit.type);
       for (const [setting, value] of Object.entries(edit.settings ?? {})) {
         if (!SETTING_KEYS.has(setting)) throw new BaseError(`Views have no setting “${setting}”.`);
-        if (value === null || value === undefined) view.delete(setting);
+        if (value === undefined) continue;
+        if (value === null) view.delete(setting);
         else view.set(setting, document.createNode(value));
       }
       return;

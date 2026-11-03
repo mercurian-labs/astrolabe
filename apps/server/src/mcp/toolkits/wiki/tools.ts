@@ -7,7 +7,7 @@ import {
   WikiListResult,
   WikiNoteResult,
   WikiQueryResult,
-  WikiTransform,
+  WikiAgentTransform,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
@@ -212,7 +212,7 @@ const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
 const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
   ...shared,
   description: `Apply a mechanical wiki change as one amendment: rename a note (rewriting every link to it, in notes and in bases), add or remove a skill-map edge, fill a red link with a new note placed on a map, or resolve a map warning. ${MERGE_RULE}`,
-  parameters: Schema.Struct({ ...writeTarget, transform: WikiTransform }),
+  parameters: Schema.Struct({ ...writeTarget, transform: WikiAgentTransform }),
   success: WikiAmendResult,
 }).annotate(Tool.Destructive, false);
 

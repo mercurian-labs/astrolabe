@@ -687,6 +687,66 @@ it.effect("closes and reopens a change request, keeping its history", () =>
   ),
 );
 
+it.effect("previews a view's unsaved edits, then saves them to a change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "Alpha.md": "---\nstatus: open\n---\n# Alpha\n",
+        "Beta.md": "---\nstatus: done\n---\n# Beta\n",
+        "Open.base": "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Statuses"]);
+      const names = (result: { readonly rows: ReadonlyArray<{ readonly name: string }> }) =>
+        result.rows.map((row) => row.name);
+      const edits = [
+        { kind: "property", file: "Beta.md", property: "status", value: "open" },
+        { kind: "create", file: "Gamma.md", properties: { status: "open" } },
+        {
+          kind: "view",
+          base: "Open.base",
+          view: "Open",
+          settings: { sort: [{ property: "file.name", direction: "DESC" }] },
+        },
+      ] as const;
+
+      const preview = yield* wikis.query({ wikiId, base: "Open", edits });
+      assert.deepEqual(names(preview), ["Gamma", "Beta", "Alpha"]);
+      assert.deepEqual(preview.settings?.sort, [{ property: "file.name", direction: "DESC" }]);
+      // Nothing is written until the edits are saved.
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open" })), ["Alpha"]);
+
+      const saved = yield* wikis.transform(
+        {
+          wikiId,
+          title: "Reopen Beta",
+          message: "Reopen Beta",
+          transform: { kind: "base-edits", edits },
+        },
+        agent("thread-base-edits"),
+      );
+      const changeRequestId = saved.changeRequest.changeRequestId;
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open", changeRequestId })), [
+        "Gamma",
+        "Beta",
+        "Alpha",
+      ]);
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open" })), ["Alpha"]);
+
+      const refused = yield* failure(
+        wikis.query({
+          wikiId,
+          base: "Open",
+          edits: [{ kind: "property", file: "Nope.md", property: "status", value: "open" }],
+        }),
+      );
+      assert.equal(refused.reason, "invalid");
+      assert.equal(refused.message, "No note Nope.md to edit.");
+    }),
+  ),
+);
+
 it.effect("renames a note through a transform, rewriting its links and map edges", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

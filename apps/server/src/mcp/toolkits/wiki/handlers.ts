@@ -96,12 +96,15 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   ),
   astrolabe_wiki_query: McpToolAccess.reads(({ base, view, ...input }) =>
     read((wikis, threadId) =>
-      wikis.query({
-        ...target(input),
-        base: base.trim(),
-        ...(view === undefined ? {} : { view: view.trim() }),
-        threadId,
-      }),
+      wikis
+        .query({
+          ...target(input),
+          base: base.trim(),
+          ...(view === undefined ? {} : { view: view.trim() }),
+          threadId,
+        })
+        // The property picker's list is for the app; an agent reads the base's YAML instead.
+        .pipe(Effect.map(({ properties: _properties, ...result }) => result)),
     ),
   ),
   astrolabe_wiki_change_request: McpToolAccess.reads((input) =>

@@ -25,6 +25,9 @@ import {
   parseBase,
   queryBase,
   baseCorpus,
+  applyBaseEdits,
+  applyChanges,
+  corpusWithChanges,
   isHidden,
   type BaseCorpus,
 } from "@mercurian/wiki";
@@ -1731,11 +1734,24 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const commit = yield* readCommit(wiki, input);
           const snapshot = yield* snapshotAt(wiki, commit);
-          const located = locateBase(snapshot.index, input);
+          // Unsaved edits from the view are read as if they had landed.
+          const changes = yield* Effect.try({
+            try: () => (input.edits?.length ? applyBaseEdits(snapshot.files, input.edits) : {}),
+            catch: (cause) =>
+              new WikiError({
+                reason: "invalid",
+                message: cause instanceof BaseError ? cause.message : "The edits could not apply.",
+                cause,
+              }),
+          });
+          const edited = Object.keys(changes).length > 0;
+          const index = edited ? indexFiles(applyChanges(snapshot.files, changes)) : snapshot.index;
+          const located = locateBase(index, input);
           if ("problem" in located) {
             return yield* new WikiError({ reason: located.problem, message: located.message });
           }
-          const corpus = yield* corpusAt(wiki, commit);
+          const committed = yield* corpusAt(wiki, commit);
+          const corpus = edited ? corpusWithChanges(committed, changes) : committed;
           const now = yield* Clock.currentTimeMillis;
           const result = yield* Effect.try({
             try: () =>

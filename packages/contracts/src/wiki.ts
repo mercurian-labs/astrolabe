@@ -198,6 +198,10 @@ export const WikiQueryInput = Schema.Struct({
   note: Schema.optional(TrimmedNonEmptyString),
   /** The view's name; the base's first view when omitted. */
   view: Schema.optional(TrimmedNonEmptyString),
+  /** Edits not yet saved, applied over the read to preview them. */
+  edits: Schema.optional(
+    Schema.suspend((): Schema.Codec<WikiBaseEdit> => WikiBaseEdit).pipe(Schema.Array),
+  ),
 });
 export type WikiQueryInput = typeof WikiQueryInput.Type;
 
@@ -205,6 +209,153 @@ const WikiBaseScalar = Schema.Union([Schema.Null, Schema.Boolean, Schema.Number,
 /** A property's value in a row: links read `[[Name]]`, dates ISO text, lists flat. */
 export const WikiBaseCell = Schema.Union([WikiBaseScalar, Schema.Array(WikiBaseScalar)]);
 export type WikiBaseCell = typeof WikiBaseCell.Type;
+
+/** A view's filter as its YAML holds it: a statement, or a group of them. */
+export type WikiBaseFilter =
+  | string
+  | { readonly and: ReadonlyArray<WikiBaseFilter> }
+  | { readonly or: ReadonlyArray<WikiBaseFilter> }
+  | { readonly not: ReadonlyArray<WikiBaseFilter> };
+const WikiBaseFilterRef = Schema.suspend((): Schema.Codec<WikiBaseFilter> => WikiBaseFilter);
+export const WikiBaseFilter = Schema.Union([
+  Schema.String,
+  Schema.Struct({ and: Schema.Array(WikiBaseFilterRef) }),
+  Schema.Struct({ or: Schema.Array(WikiBaseFilterRef) }),
+  Schema.Struct({ not: Schema.Array(WikiBaseFilterRef) }),
+]);
+
+const WikiBaseDirection = Schema.Literals(["ASC", "DESC"]);
+const WikiBasePropertyOrder = Schema.Struct({
+  property: Schema.String,
+  direction: WikiBaseDirection,
+});
+
+/**
+ * A view's settings, keyed as Obsidian writes them: shared ones, then the table's, the cards',
+ * the list's and the Maps plugin's.
+ */
+const WikiBaseViewSettingsFields = {
+  filters: WikiBaseFilter,
+  order: Schema.Array(Schema.String),
+  sort: Schema.Array(WikiBasePropertyOrder),
+  groupBy: WikiBasePropertyOrder,
+  groupOrder: Schema.Array(Schema.NullOr(Schema.String)),
+  limit: Schema.Number,
+  summaries: Schema.Record(Schema.String, Schema.String),
+  columnSize: Schema.Record(Schema.String, Schema.Number),
+  rowHeight: Schema.String,
+  cardSize: Schema.Number,
+  image: Schema.String,
+  imageFit: Schema.String,
+  imageAspectRatio: Schema.Number,
+  markers: Schema.String,
+  indentProperties: Schema.Boolean,
+  separator: Schema.String,
+  coordinates: Schema.String,
+  markerIcon: Schema.String,
+  markerColor: Schema.String,
+  mapHeight: Schema.Number,
+  center: Schema.String,
+  defaultZoom: Schema.Number,
+  minZoom: Schema.Number,
+  maxZoom: Schema.Number,
+  mapTiles: Schema.Array(Schema.String),
+  mapTilesDark: Schema.Array(Schema.String),
+};
+type SettingsFields = typeof WikiBaseViewSettingsFields;
+export const WikiBaseViewSettings = Schema.Struct(
+  Object.fromEntries(
+    Object.entries(WikiBaseViewSettingsFields).map(([name, field]) => [
+      name,
+      Schema.optional(field),
+    ]),
+  ) as { [Key in keyof SettingsFields]: Schema.optional<SettingsFields[Key]> },
+);
+export type WikiBaseViewSettings = typeof WikiBaseViewSettings.Type;
+
+/** New values for a view's settings; `null` removes one. */
+export const WikiBaseViewSettingsEdit = Schema.Struct(
+  Object.fromEntries(
+    Object.entries(WikiBaseViewSettingsFields).map(([name, field]) => [
+      name,
+      Schema.optional(Schema.NullOr(field)),
+    ]),
+  ) as { [Key in keyof SettingsFields]: Schema.optional<Schema.NullOr<SettingsFields[Key]>> },
+);
+export type WikiBaseViewSettingsEdit = typeof WikiBaseViewSettingsEdit.Type;
+
+/** An image a card or cell shows: a file in the wiki's repository, a web address, or a colour. */
+export const WikiBaseImage = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("file"), path: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("url"), url: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("color"), color: Schema.String }),
+]);
+export type WikiBaseImage = typeof WikiBaseImage.Type;
+
+/** How a cell shows when it isn't text. */
+export const WikiBaseDisplay = Schema.Union([
+  /** A date property written without a time, shown as a local date. */
+  Schema.Struct({ kind: Schema.Literal("date"), date: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("url"), href: Schema.String, text: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("html"), html: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("icon"), name: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("image"), image: WikiBaseImage }),
+  Schema.Struct({ kind: Schema.Literal("error"), message: Schema.String }),
+]);
+export type WikiBaseDisplay = typeof WikiBaseDisplay.Type;
+
+/**
+ * An edit made from a base's view, applied by the server over whatever it reads or saves to: a
+ * `.base` file's views, formulas and display names, a note's frontmatter property, or a new note.
+ * Only files at the top of the wiki can be edited.
+ */
+export const WikiBaseEdit = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("view"),
+    base: TrimmedNonEmptyString,
+    view: TrimmedNonEmptyString,
+    name: Schema.optional(TrimmedNonEmptyString),
+    type: Schema.optional(TrimmedNonEmptyString),
+    settings: Schema.optional(WikiBaseViewSettingsEdit),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("add-view"),
+    base: TrimmedNonEmptyString,
+    name: TrimmedNonEmptyString,
+    type: TrimmedNonEmptyString,
+    /** A view whose settings the new one starts with. */
+    copy: Schema.optional(TrimmedNonEmptyString),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("remove-view"),
+    base: TrimmedNonEmptyString,
+    view: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("formula"),
+    base: TrimmedNonEmptyString,
+    name: TrimmedNonEmptyString,
+    expression: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("display-name"),
+    base: TrimmedNonEmptyString,
+    property: TrimmedNonEmptyString,
+    displayName: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("property"),
+    file: TrimmedNonEmptyString,
+    property: TrimmedNonEmptyString,
+    value: WikiBaseCell,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create"),
+    file: TrimmedNonEmptyString,
+    properties: Schema.Record(Schema.String, WikiBaseCell),
+  }),
+]);
+export type WikiBaseEdit = typeof WikiBaseEdit.Type;
 
 const WikiBaseProperty = Schema.Struct({ id: Schema.String, label: Schema.String });
 
@@ -222,6 +373,12 @@ export const WikiQueryResult = Schema.Struct({
   commit: Schema.String,
   view: Schema.Struct({ name: Schema.String, type: WikiBaseViewType }),
   views: Schema.Array(Schema.String),
+  /** The view's settings, for drawing and editing it. Optional: older servers send none. */
+  settings: Schema.optional(WikiBaseViewSettings),
+  /** Every property a view of the base could show. */
+  properties: Schema.optional(Schema.Array(WikiBaseProperty)),
+  /** The base's formulas, by name. */
+  formulas: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   columns: Schema.Array(WikiBaseProperty),
   groupBy: Schema.NullOr(WikiBaseProperty),
   rows: Schema.Array(
@@ -231,6 +388,19 @@ export const WikiQueryResult = Schema.Struct({
       /** Keyed by column id. */
       values: Schema.Record(Schema.String, WikiBaseCell),
       group: Schema.optional(WikiBaseCell),
+      /** How cells that aren't plain text show, keyed by column id. */
+      display: Schema.optional(Schema.Record(Schema.String, WikiBaseDisplay)),
+      /** A card's cover, from the view's `image` property. */
+      cover: Schema.optional(WikiBaseImage),
+      /** Where a map view puts the row. */
+      marker: Schema.optional(
+        Schema.Struct({
+          lat: Schema.Number,
+          lng: Schema.Number,
+          icon: Schema.optional(Schema.String),
+          color: Schema.optional(Schema.String),
+        }),
+      ),
     }),
   ),
   /** Each group in order, with its own summaries. Optional: older servers send none. */
@@ -348,7 +518,7 @@ export const WikiAmendInput = Schema.Struct({
 });
 export type WikiAmendInput = typeof WikiAmendInput.Type;
 
-export const WikiTransform = Schema.Union([
+const WikiMechanicalTransforms = [
   Schema.Struct({
     kind: Schema.Literal("rename"),
     from: TrimmedNonEmptyString,
@@ -379,6 +549,15 @@ export const WikiTransform = Schema.Union([
     id: TrimmedNonEmptyString,
     text: TrimmedNonEmptyString,
   }),
+] as const;
+
+/** The transforms an agent applies; it writes a base's YAML whole instead of editing its view. */
+export const WikiAgentTransform = Schema.Union(WikiMechanicalTransforms);
+
+export const WikiTransform = Schema.Union([
+  ...WikiMechanicalTransforms,
+  /** Edits made from a base's view, landed on the change request's head as one amendment. */
+  Schema.Struct({ kind: Schema.Literal("base-edits"), edits: Schema.Array(WikiBaseEdit) }),
 ]);
 export type WikiTransform = typeof WikiTransform.Type;
 
