@@ -38,6 +38,11 @@ it("re-enables Save when a When editor closes on an expression it could not pars
       <KeybindingsSettingsPanel />
     </RegistryProvider>,
   );
+  // Astrolabe: a row's When control appears once its shortcut is being edited.
+  await screen
+    .getByRole("button", { name: /^Edit shortcut for Terminal: Toggle:/ })
+    .first()
+    .click();
   const whenTrigger = screen.getByRole("button", { name: "Edit when clause for Terminal: Toggle" });
   const expression = screen.getByRole("textbox", { name: "When expression" });
 
