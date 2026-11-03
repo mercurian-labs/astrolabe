@@ -2450,7 +2450,7 @@ export default function ChatView(props: ChatViewProps) {
     closeRightPanelSurface,
   });
   const pullRequestSurfaceAvailable = supportsPullRequests && pullRequestPanelTarget !== null;
-  const graphSurfaceAvailable = activeThreadRef !== null;
+  const graphSurfaceAvailable = activeThreadRef !== null && isServerThread;
   const lineageSurfaceAvailable = activeThreadRef !== null && isServerThread;
   const {
     acknowledgeActiveThreadWoke,
