@@ -332,19 +332,28 @@ This Turn** in the Command Palette, switches too.
 
 ## Problems in a code file
 
-TypeScript and JavaScript files show the problems TypeScript's language server finds: a wavy
-underline, a mark beside the line number, and the message on hover. The messages of the line the
+Code files show the problems their language server finds: a wavy underline, a mark beside the
+line number, and the message on hover. Astrolabe has language servers for TypeScript and
+JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer), Go (gopls), and C and C++
+(clangd). The messages of the line the
 cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
 `.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
 
 The header names the language server and says when it is starting. It runs the project's own
-TypeScript when it has one. Without one, the first time an environment needs a language server
-it asks to download it: click **Download**. If a server keeps stopping, or was paused because
-several ran at once, click **Restart** in the header.
+server when it has one (its TypeScript, or basedpyright in its `.venv`), then one installed on the
+machine, such as rustup's rust-analyzer or Xcode's clangd. Without either, the first time an
+environment needs a language server it asks to download it: click **Download**. gopls is built
+with the machine's Go, so Go files need Go installed. If a server keeps stopping, or was paused
+because several ran at once, click **Restart** in the header.
+
+**Settings → Projects → Language servers** shows what each server would run for a project and
+what is missing, without starting any. clangd reads each file's compiler flags from a
+`compile_commands.json`; without one it guesses, so have your build tool write one (CMake:
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`).
 
 ## Language features in a code file
 
-TypeScript and JavaScript files also take these from their language server. Each is in the
+Code files also take these from their language server. Each is in the
 Command Palette, and you can rebind it under **Editors**.
 
 | Key                          | Does                       | Keyboard menu | Vim     |

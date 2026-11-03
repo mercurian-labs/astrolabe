@@ -41,6 +41,16 @@ positions land on the wrong text.
 Each editor opens its own gateway session (`languageServers.session`), so two views of one file
 are two LSP clients of the gateway; the server still sees one.
 
+## Where a server comes from
+
+[`registry.ts`](../../apps/server/src/languageServers/registry.ts) is data: per server, launches
+tried in order. The project's own binary wins, then one installed on the machine, then our cache,
+then a download, because the machine's copy matches the project's toolchain (rustup's
+rust-analyzer, Xcode's clangd) where ours may not. A machine binary must pass its `probe`:
+rustup installs a `rust-analyzer` proxy that fails without the component. Downloads are pinned:
+npm by its registry integrity, release builds by the size and SHA-256 written in the registry,
+gopls by Go's checksum database. Bumping a release means updating its hashes there.
+
 ## Files outside the documents
 
 A server reads every file it has no document for from disk, and hears of their changes only
