@@ -59,7 +59,7 @@ host and this device are on the same Tailscale network, add the host's
 Tailscale address as a direct route. See
 [Reach one machine several ways](./remote-access.md#reach-one-machine-several-ways).
 
-## The tunnel works, but Astrolabe does not answer
+## The tunnel works, but T3 Code does not answer
 
 The host's tunnel is up, but it cannot reach Astrolabe on the host. Common causes:
 
@@ -72,7 +72,7 @@ The host's tunnel is up, but it cannot reach Astrolabe on the host. Common cause
 Fix: restart Astrolabe on the host. For the background service, run
 `astrolabe service restart`. Then run `astrolabe connect status` on the host.
 
-## The remote access address does not resolve or answer
+## The T3 Connect address does not resolve or answer
 
 The host's remote access address did not resolve, refused the connection, failed a
 secure (TLS) connection, or did not answer in time.
@@ -83,7 +83,7 @@ Fix:
 2. On the host, run `astrolabe connect status`.
 3. If the check fails only on the host, check the host's DNS, VPN, or proxy.
 
-## This device can't reach remote access
+## This device can't reach T3 Connect
 
 The problem is on this device's network, not on the host. This device could
 not reach the remote access service, or it reached the service but not the
@@ -125,12 +125,12 @@ Remote access signs requests with short-lived proofs and rejects them when the
 clock on this device or the host is a few minutes wrong. Turn on
 automatic date and time on both devices, then retry.
 
-## The host runs an older version of Astrolabe
+## The host runs an older T3 Code
 
 This app needs a newer version of Astrolabe on the host. Update Astrolabe on the host. See
 [Updating Astrolabe](./updating.md).
 
-## Remote access returned an error
+## T3 Connect returned an error
 
 | Error                                                     | Fix                                                                                                                                                              |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |

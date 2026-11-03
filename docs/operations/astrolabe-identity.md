@@ -345,7 +345,9 @@ through one of these values in the merge commit.
 - **Remote-access troubleshooting.** The "More info" links in the CLI's reachability diagnosis,
   server logs, **Settings → Sharing & access** and the client's connection diagnosis pointed at
   upstream's copy of `docs/user/t3-connect-troubleshooting.md`, which describes T3 Connect. They
-  are left out until Astrolabe publishes its own. The GNOME extension's `metadata.json` names no
+  are left out until Astrolabe publishes its own. That guide's section headings stay in upstream's
+  spelling: their anchors are wire values in `environmentHttp.ts`, and `ConnectReachability.test.ts`
+  checks them. The GNOME extension's `metadata.json` names no
   homepage, since upstream's linked to its repository.
 - **Maintainer infrastructure.** Upstream's shared task cache (`.task-cache.json`,
   `infra/task-cache`) and relay preview stages run on T3 Tools' accounts. Astrolabe's
