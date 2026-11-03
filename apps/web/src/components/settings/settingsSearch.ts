@@ -1123,6 +1123,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["index symbols definitions imports skipped paths rebuild local graph repository"],
   },
   {
+    id: "project-language-servers",
+    title: "Language servers",
+    to: "/settings/projects",
+    searchTerms: [
+      "lsp language server python rust go c c++ cpp clangd gopls rust-analyzer basedpyright pyright typescript diagnostics completion compile_commands virtualenv venv",
+    ],
+  },
+  {
     id: "project-actions",
     title: "Actions",
     to: "/settings/projects",

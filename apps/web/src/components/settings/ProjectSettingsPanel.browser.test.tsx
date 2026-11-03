@@ -130,6 +130,10 @@ vi.mock(import("./CodeIndexSettings"), async (original) => ({
   ...(await original()),
   CodeIndexProjectSettings: (() => null) as never,
 }));
+vi.mock(import("./LanguageServerSettings"), async (original) => ({
+  ...(await original()),
+  LanguageServerProjectSettings: (() => null) as never,
+}));
 
 vi.mock(import("../files/projectFilesQueryState"), async (original) => ({
   ...(await original()),
