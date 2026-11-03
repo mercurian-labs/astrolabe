@@ -31,6 +31,10 @@ const HULL_LABEL_SCALE = 0.85;
 /** Labels are rasterised for the scale they are drawn at, in steps, so they stay crisp. */
 const resolutionStep = (scale: number) => (scale > 2 ? 4 : scale > 1 ? 2 : 1);
 
+// `destroy(true)` also empties Pixi's global pools, which still list the batches of any graph that
+// is alive: its next frame takes a dead batch and throws, and a throw stops the frame loop.
+const KEEP_GLOBAL_POOLS = { removeView: true };
+
 class PixiFileDrawer implements FileGraphDrawer {
   readonly #host: HTMLElement;
   readonly #pixelRatio: number;
@@ -78,7 +82,7 @@ class PixiFileDrawer implements FileGraphDrawer {
       eventFeatures: { move: false, globalMove: false, click: false, wheel: false },
     });
     if (this.#disposed) {
-      app.destroy(true, { children: true });
+      app.destroy(KEEP_GLOBAL_POOLS, { children: true });
       return;
     }
     app.renderer.resize(this.#width, this.#height);
@@ -286,7 +290,7 @@ class PixiFileDrawer implements FileGraphDrawer {
     this.#hullTexts.clear();
     for (const text of this.#texts.values()) text.destroy();
     this.#texts.clear();
-    this.#app?.destroy(true, { children: true });
+    this.#app?.destroy(KEEP_GLOBAL_POOLS, { children: true });
     this.#app = null;
   }
 }
