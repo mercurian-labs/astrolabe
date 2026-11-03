@@ -7,6 +7,8 @@ import {
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -68,9 +70,22 @@ function session(client: WsRpcProtocolClient): RpcSession.RpcSession {
 const makePersistenceHarness = Effect.fn("test.makeShellPersistenceHarness")(function* (
   saveShell: Persistence.EnvironmentCacheStore["Service"]["saveShell"],
 ) {
-  const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem>();
+  const events = yield* Queue.unbounded<OrchestrationV2ShellStreamItem | Cause.Cause<never>>();
+  const subscribedAt = yield* Queue.unbounded<number>();
   const client = {
-    [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () => Stream.fromQueue(events),
+    [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () =>
+      Stream.unwrap(
+        Clock.currentTimeMillis.pipe(
+          Effect.flatMap((at) => Queue.offer(subscribedAt, at)),
+          Effect.as(
+            Stream.fromQueue(events).pipe(
+              Stream.mapEffect((input) =>
+                Cause.isCause(input) ? Effect.failCause(input) : Effect.succeed(input),
+              ),
+            ),
+          ),
+        ),
+      ),
   } as unknown as WsRpcProtocolClient;
   const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
     target: TARGET,
@@ -119,10 +134,59 @@ const makePersistenceHarness = Effect.fn("test.makeShellPersistenceHarness")(fun
     );
   });
   yield* send({ kind: "snapshot", snapshot: LIVE_SHELL_SNAPSHOT }, () => true);
-  return { state, send };
+  return { state, send, events, subscribedAt };
 });
 
 describe("environment shell synchronization", () => {
+  it.effect.each([
+    ["stream", Cause.die(new Error("shell stream defect"))],
+    [
+      "apply",
+      { kind: "thread.updated", sequence: 20, location: "active", thread: undefined as never },
+    ],
+  ] satisfies ReadonlyArray<
+    readonly [string, OrchestrationV2ShellStreamItem | Cause.Cause<never>]
+  >)("resubscribes with backoff after a %s defect ends the shell subscription", ([, defect]) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* makePersistenceHarness(() => Effect.void);
+        let previous = yield* Queue.take(h.subscribedAt);
+        const retryDelayAfterDefect = Effect.fn("test.retryDelayAfterShellDefect")(function* (
+          delay: number,
+        ) {
+          yield* Queue.offer(h.events, defect);
+          yield* SubscriptionRef.changes(h.state).pipe(
+            Stream.filter((state) => Option.isSome(state.error)),
+            Stream.runHead,
+          );
+          yield* TestClock.adjust(delay);
+          const next = yield* Queue.take(h.subscribedAt);
+          const elapsed = next - previous;
+          previous = next;
+          return elapsed;
+        });
+
+        expect(yield* retryDelayAfterDefect(250)).toBe(250);
+        expect(yield* retryDelayAfterDefect(500)).toBe(500);
+
+        yield* h.send(
+          { kind: "thread.updated", sequence: 11, location: "active", thread: v2ThreadShell },
+          (snapshot) => snapshot.snapshotSequence === 11,
+        );
+        expect(yield* retryDelayAfterDefect(250)).toBe(250);
+
+        yield* Queue.offer(h.events, { kind: "synchronized" });
+        const recovered = yield* SubscriptionRef.changes(h.state).pipe(
+          Stream.filter((state) => state.status === "live"),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+        expect(Option.isNone(recovered.error)).toBe(true);
+        expect(Option.getOrThrow(recovered.snapshot).snapshotSequence).toBe(11);
+      }),
+    ),
+  );
+
   it.effect("skips unchanged shell writes, persists resets and flushes changed rows", () =>
     Effect.gen(function* () {
       const saved = yield* SubscriptionRef.make<ReadonlyArray<OrchestrationV2ShellSnapshot>>([]);
