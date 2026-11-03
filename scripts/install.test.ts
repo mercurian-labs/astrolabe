@@ -156,7 +156,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chec
                     ...process.env,
                     PATH: tools,
                     T3CODE_VERSION: version,
-                    T3CODE_HOME: home,
+                    ASTROLABE_HOME: home,
                     T3CODE_INSTALL_BIN_DIR: NodePath.join(root, "bin"),
                     T3CODE_RELEASE_BASE_URL: `http://127.0.0.1:${address.port}`,
                   },
