@@ -6,8 +6,8 @@
  * which builds what `alchemy dev` would, runs this file, and cleans the stage up.
  */
 import * as Alchemy from "alchemy";
-import * as AWS from "alchemy/AWS";
-import * as Docker from "alchemy/Docker";
+import * as AWS from "@alchemy.run/aws";
+import * as Docker from "@alchemy.run/docker";
 import * as Test from "alchemy/Test/Vitest";
 import { PgClient } from "@effect/sql-pg";
 import * as Effect from "effect/Effect";

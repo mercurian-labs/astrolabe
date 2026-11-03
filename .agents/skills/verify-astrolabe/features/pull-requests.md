@@ -209,7 +209,7 @@ preview_act click     role=navigation[name='Sections'] >> role=button[name='Chan
 preview_wait_for  [data-pull-request-key] > button
 preview_act click     role=navigation[name='Changes'] >> role=button[name=/^#\d+ /] >> nth=1    # rows are "#<n> <title>"; replaces the tab in front
 preview_act click     role=navigation[name='Changes'] >> role=button[name=/^#\d+ /] >> nth=2   button="right"
-preview_act click     role=button[name='Open in new tab']          # a second tab
+preview_act click     role=button[name='Open in new tab']          # a second tab; may time out, then click its measured x,y
 preview_evaluate  dispatch a click with metaKey / altKey on a row button
 preview_act click     [data-focused="true"] >> role=button[name='Back']   # the focused pane's; or mod+[
 preview_evaluate  set the searchbox's value with the native setter, then dispatch input
@@ -247,7 +247,8 @@ Save a screenshot of the section.
 - A reload brings every tab back: a pull request's tab key names it in full
   (`pullRequestTargetOfKey`). The default profile shares this localStorage with any
   other tab on the same origin, so two walks at once overwrite each other's layout.
-- The row's right-click menu renders as plain buttons, not menuitems. Filters'
+- The row's right-click menu renders as plain buttons, not menuitems, and a role locator on
+  **Open in new tab** may time out: click it by its measured centre. Filters'
   submenus open on hover and often lag in the Browser panel; read their options from
   `PullRequestListFilters.tsx` when a hover times out.
 - The row's checks badge counts skipped checks as passing, so it can say "All checks

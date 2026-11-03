@@ -57,6 +57,7 @@ import {
   type RepositoryFilter,
 } from "./repositoryFilter";
 import { worktreeFilesKey } from "./repositoryScope";
+import { ArchivedMark } from "./RepositoryWorktrees";
 import { WorktreeNumber } from "./WorktreeNumber";
 
 const NO_WORKTREES: ReadonlyArray<ProjectWorktree> = [];
@@ -367,11 +368,16 @@ export function RepositoryFilterMenu({
                           main checkout
                         </span>
                       ) : repositoryKey !== null && !searching ? (
-                        <WorktreeFoldButton
-                          open={open}
-                          ownerTitle={repository?.title ?? ""}
-                          onToggle={() => toggleUnfolded(repositoryKey)}
-                        />
+                        <>
+                          {repository?.archivedAt != null ? <ArchivedMark /> : null}
+                          <WorktreeFoldButton
+                            open={open}
+                            ownerTitle={repository?.title ?? ""}
+                            onToggle={() => toggleUnfolded(repositoryKey)}
+                          />
+                        </>
+                      ) : repository?.archivedAt != null ? (
+                        <ArchivedMark />
                       ) : null}
                     </ComboboxItem>
                   );

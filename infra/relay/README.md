@@ -1,7 +1,7 @@
 # Remote access relay
 
 > [!NOTE]
-> Sign in for remote access from the app under Settings > Connections.
+> Sign in for remote access from the app under Settings > Sharing & access.
 
 The relay is the hosted control plane for remote access. It helps clients discover and connect to
 remote environments, manages the cloud-side records needed for those connections, and delivers

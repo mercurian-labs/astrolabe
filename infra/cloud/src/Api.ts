@@ -7,8 +7,8 @@
  */
 import page from "@mercurian/auth/page";
 import { makeCloudApp } from "@mercurian/cloud/app";
-import * as AWS from "alchemy/AWS";
-import * as Drizzle from "alchemy/Drizzle/Postgres";
+import * as AWS from "@alchemy.run/aws";
+import * as Drizzle from "@alchemy.run/drizzle/Postgres";
 import * as Output from "alchemy/Output";
 import { ALCHEMY_PHASE } from "alchemy/Phase";
 import * as Config from "effect/Config";

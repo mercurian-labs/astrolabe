@@ -27,7 +27,7 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { replyLine } from "~/threadTurns";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
-import { lineageChangeKey, lineageInput, threadActivity } from "./lineageFamily";
+import { lineageChangeKey, lineageInput, threadActivity, withoutSideChats } from "./lineageFamily";
 import {
   foldLineage,
   lineageLayout,
@@ -79,13 +79,13 @@ const lineageAtom = Atom.family((key: string) => {
     const result = get(lineageQueryAtom({ environmentId: ref.environmentId, input: ref.threadId }));
     const lineage = Option.getOrNull(AsyncResult.value(result));
     if (lineage === null) return result._tag === "Failure" ? null : "loading";
-    const activity = threadActivity(
-      lineage,
-      get(environmentThreadShells.environmentThreadIndexAtom(ref.environmentId)),
-    );
+    const shells = get(environmentThreadShells.environmentThreadIndexAtom(ref.environmentId));
+    const activity = threadActivity(lineage, shells);
     const activityKey = [...activity].join("\n");
     if (drawn?.lineage === lineage && drawn.activity === activityKey) return drawn.layout;
-    const layout = lineageLayout(lineageInput(lineage, ref.threadId, activity));
+    const layout = lineageLayout(
+      lineageInput(withoutSideChats(lineage, shells, ref.threadId), ref.threadId, activity),
+    );
     drawn = { lineage, activity: activityKey, layout };
     return layout;
   }).pipe(Atom.withLabel(`web-lineage:${key}`));
@@ -158,6 +158,7 @@ export default function LineagePanel({
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const ready = layout !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules the first frame that starts the drawing's reveal
   useEffect(() => {
     if (drawn || !ready) return;
     const frame = requestAnimationFrame(() => setDrawn(true));
@@ -179,6 +180,7 @@ export default function LineagePanel({
       : { column: readingFold.column, lane: readingFold.lanes[0]?.lane ?? 0 });
   const focusKey = readingPoint !== undefined || readingFold !== undefined ? reading : "here";
   const followed = useRef<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the drawing's DOM scroller to the turn being read
   useLayoutEffect(() => {
     const element = scroller.current;
     if (element === null || focus === undefined) return;
@@ -202,6 +204,7 @@ export default function LineagePanel({
   // The minimap shows only when the drawing is wider than the panel, and stands in for its
   // scrollbars. Measured against the box with any scrollbar in it, so hiding them cannot tip it.
   const [overflows, setOverflows] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- observes the scroller's size to show the minimap only when it overflows
   useEffect(() => {
     const element = scroller.current;
     if (!ready || !element) return;

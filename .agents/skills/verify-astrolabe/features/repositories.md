@@ -16,7 +16,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   projects the list reads "No projects yet" with its own **Add a project**.
 - **Filter** (`RepositoryFilterMenu.tsx`, `repositoryFilter.ts`, localStorage
   `astrolabe:repository-filter:v1` `{repositories, hidden, changed}`), as Agents' and Wikis':
-  `button "Filter projects"` (` (filtered)` appended and a dot while on) opens a multi-select
+  `role=combobox[name=/^Filter projects/]` (` (filtered)` appended and a dot while on) opens a multi-select
   list with a `Search filters` field: **Status** (**Has changes**, with its count of worktrees
   with uncommitted files once it is on and has counted them all; meanwhile
   `role=status` "Counting changes… N of M" sits under the pills, and an empty list reads
@@ -26,14 +26,20 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `aria-expanded`; clicking it never ticks the row; gone while the search has text),
   folded by default; unfolded, its worktrees follow it indented, ticked unless hidden. A search
   reads every project's worktrees and shows the matches under their project. Picking keeps the
-  list open; its foot holds **Manage projects** and **Add a project**. Pills under the title
+  list open; its foot holds **Manage projects** and **Add a project**, and can cover the lower
+  rows. The popup also shifts while it opens, so scroll a row into view before clicking it by
+  position. Pills under the title
   (`[aria-label="Project filters"]`): **Has changes** one tap (only while on), the picked projects,
   `Hiding <worktrees>`; × clears a pill, **Clear** shows with two. The focused tab's repository
   and worktree show whatever the filter says, its header marked **hidden** (tooltip), and drop out
   when another tab comes to the front; nothing clears the filter for it. A repository left with
   no worktree drops out once read.
 - **List** (default): with several repositories shown, one collapsible header each (favicon,
-  name), open by default only for the focused tab's repository; every shown repository's worktree
+  name; its role name is the bare name, without the favicon's initials), open by default only
+  for the focused tab's repository. An archived project is marked **Archived**, and its main
+  checkout's actions menu adds `menuitem "Unarchive project"`. A folder that is not a git
+  repository stays on "Reading worktrees…" (known, older than the v0.1.6 merge), so unarchive
+  those from Settings › Projects. Every shown repository's worktree
   list is read (`worktrees.list`, no `git status`: `changedFiles` is null in a list), but a
   folded one mounts no rows. With one repository, its worktrees bare: one collapsible section
   per listed git worktree (`ProjectWorktreeService`), headed by its branch (or short
@@ -50,7 +56,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   **Review uncommitted changes →** and each changed file (`+a −d`), then the 20 files its
   commits changed most recently, with no heading (`review.getRecentFiles`,
   `git log --name-only`). Each header's `button "<label> worktree actions"` menu (the main checkout's too,
-  holding only this) has `menuitem "Changes against its base"`, opening `repo-diff:…:branch-range`. A
+  holding only this unless archived) has `menuitem "Changes against its base"`, opening `repo-diff:…:branch-range`. A
   section's rows sit indented under its header along a guide line. File rows are `button "<path>"` by role (a
   `div[role=button][draggable]`, so use role locators, not a CSS `button`): name, folder,
   age; tooltip adds the commit's subject. A click shows the file in the focused pane's tab
@@ -143,7 +149,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   Implementation / Find All References | Rename Symbol… / Code Actions… / Format Document |
   Cut / Copy / Paste | Copy Relative Path / Open Local Graph. Language rows show only with a
   server and are faint while it starts or lacks the feature; Cut/Copy are faint with no
-  selection. On the web its items are `role=button` by name; on desktop the menu is native.
+  selection. On the web its items are `role=menuitem` by name; on desktop the menu is native.
 - **Project search** (Cmd+Shift+F; `components/search/ProjectContentSearchDialog.tsx`): dialog
   `Search project contents` (the palette's name, with or without a project), field
   placeholder `Search in <project>` (a combobox; type into it by `[placeholder=…]`). It searches the checkout of the focused Projects tab, else the thread in
@@ -216,7 +222,8 @@ now**. With the **server** project that makes two projects.
 
 1. Click `button "Projects"`; with no project picked the list shows one header per
    project.
-2. Pick only the scratch project in **Filter projects** (untick the others). The main
+2. Pick only the scratch project in **Filter projects** (`role=combobox[name=/^Filter projects/]`;
+   untick the others). The main
    checkout opens on its file tree (`button "Show its changes"`, `aria-pressed=true`); click
    that button. Expect **Uncommitted · 1**; **Review uncommitted changes** opens the diff;
    **Open** opens the file in a new tab after the diff. Click `button "Show its files"` to

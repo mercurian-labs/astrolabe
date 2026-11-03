@@ -40,6 +40,7 @@ Environment variables get both treatments: people set `ASTROLABE_*`, and the cod
 | Electron profile folder              | `t3code-v2`, `t3code-dev`                      | `astrolabe`, `astrolabe-dev`                           |
 | macOS keychain item                  | `t3code Safe Storage`                          | `astrolabe Safe Storage`                               |
 | Background service                   | `t3code.service`, `com.t3tools.t3code.service` | `astrolabe.service`, `com.mercurian.astrolabe.service` |
+| systemd protect drop-in              | `90-t3code-protect.conf`                       | `90-astrolabe-protect.conf`                            |
 | Home folder                          | `~/.t3`                                        | `~/.astrolabe`                                         |
 | CLI command                          | `t3`                                           | `astrolabe`                                            |
 | npm launcher                         | `t3`                                           | `@mercurian/astrolabe`                                 |
@@ -98,7 +99,10 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
   desktop schemes in auth return URLs.
 - `packages/shared/src/promptLinks.ts`: `APP_SCHEME`, the scheme of the prompt and thread links
   the desktop app opens, and the `promptLinkDeepLink` default the hosted landing hands to the app.
+- `packages/shared/src/remote.ts`: the `astrolabe://pair` pairing link the desktop app opens and
+  the mobile app scans.
 - `apps/server/src/cloud/bootService.ts`: background service unit name and launchd label.
+- `apps/server/src/cloud/serviceProtection.ts`: the systemd drop-in `astrolabe service protect` writes.
 
 ### Astrolabe features in upstream's shell
 
@@ -154,7 +158,7 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
 - `astrolabe <subcommand>` and `npx @mercurian/astrolabe` text in `apps/server/src/cli/*`,
   `apps/server/src/cloud/*`, `apps/web/src/versionSkew.ts`, `ServerUpdateAction.tsx`, the Connect
   and onboarding surfaces, `packages/client-runtime`, the mobile pairing screen, and the docs.
-  `.github/triage/PLAYBOOK.md` must stay byte-identical to `apps/server/src/cli/triagePrompt.ts`.
+  `.github/triage/PLAYBOOK.md` must stay byte-identical to `apps/server/src/triage/triagePrompt.ts`.
 - Release archives keep upstream's `t3-<version>-<platform>` names but contain `astrolabe`.
   Where they are downloaded from is in [Upstream services](#upstream-services).
 
@@ -269,6 +273,7 @@ Deletion still leaves:
 - unsent drafts and per-thread panel state on other devices, and a cached transcript on a device
   that reconnects through a full snapshot, until the thread is opened there;
 - the agent's own session files, such as `~/.codex` and `~/.claude`;
+- work delegated to a linked environment, which is a thread on that machine;
 - ids, statuses and timestamps in effect and receipt rows;
 - the pre-0.1.0 `state.sqlite`, until `astrolabe doctor` removes it.
 
@@ -289,8 +294,9 @@ through one of these values in the merge commit.
 | App Store Connect app               | `submit.production.ios.ascAppId` in `apps/mobile/eas.json`                                                             | `6826105166`                    |
 | Store listings                      | `APP_STORE_URL`, `GOOGLE_PLAY_URL` in `apps/web/src/branding.ts`                                                       | unset: links hidden             |
 | Desktop download page               | `DESKTOP_DOWNLOAD_URL` in `apps/web/src/branding.ts`                                                                   | `https://astrolabe.sh/download` |
-| Triage repository                   | `TRIAGE_REPOSITORY` in `apps/server/src/cli/triagePrompt.ts`                                                           | unset: triage off               |
+| Triage repository                   | `TRIAGE_REPOSITORY` in `apps/server/src/triage/triagePrompt.ts`                                                        | unset: triage off               |
 | Remote-access troubleshooting guide | `REMOTE_ACCESS_TROUBLESHOOTING_URL` in `packages/contracts/src/environmentHttp.ts`                                     | unset: "More info" links hidden |
+| GitHub App sign-in                  | `T3CODE_GITHUB_APP_CLIENT_ID`, read in `packages/source-control-github/src/server/GitHubAppSignIn.ts`                  | unset: app sign-in off          |
 
 - **Hosted web app.** Prompt links and hosted pairing links are built on it, and
   `providerAuthReturnUrl.ts` trusts it as a sign-in return destination. `apps/web/wrangler.jsonc` and the
@@ -327,14 +333,21 @@ through one of these values in the merge commit.
   site, store links and legal pages included. Astrolabe never deploys it: `release.yml` has no
   marketing jobs, and Astrolabe's site is `apps/landing`. When a sync brings upstream's
   `build_marketing` and `deploy_marketing` back, drop them again.
-- **Triage.** `astrolabe triage` fetched and followed upstream's live playbook, cloned upstream's
-  source and filed issues on `pingdotgg/t3code`. It is unlisted and refuses to run while
-  `TRIAGE_REPOSITORY` is unset. The playbook text (both copies) still names upstream's repository
-  and T3 Code; turning triage on means pointing it at Astrolabe's first.
+- **Triage.** `astrolabe triage` and the in-app triage fetched and followed upstream's live
+  playbook, cloned upstream's source and filed issues on `pingdotgg/t3code`. While
+  `TRIAGE_REPOSITORY` is unset the command is unlisted and refuses to run, and the server reports
+  triage off, so clients hide it. The playbook and triage prompt text (both copies) still name
+  upstream's repository and T3 Code; turning triage on means pointing them at Astrolabe's first.
+- **GitHub App sign-in.** Upstream signs GitHub in through its own app, named with its install
+  link in `APP_SIGN_IN` (`packages/source-control-github/src/shared/definition.ts`). With no client
+  ID the server offers no app sign-in and clients show none of it. Turning it on with an Astrolabe
+  app means changing that name and link to the new app's.
 - **Remote-access troubleshooting.** The "More info" links in the CLI's reachability diagnosis,
   server logs, **Settings → Sharing & access** and the client's connection diagnosis pointed at
   upstream's copy of `docs/user/t3-connect-troubleshooting.md`, which describes T3 Connect. They
-  are left out until Astrolabe publishes its own. The GNOME extension's `metadata.json` names no
+  are left out until Astrolabe publishes its own. That guide's section headings stay in upstream's
+  spelling: their anchors are wire values in `environmentHttp.ts`, and `ConnectReachability.test.ts`
+  checks them. The GNOME extension's `metadata.json` names no
   homepage, since upstream's linked to its repository.
 - **Maintainer infrastructure.** Upstream's shared task cache (`.task-cache.json`,
   `infra/task-cache`) and relay preview stages run on T3 Tools' accounts. Astrolabe's

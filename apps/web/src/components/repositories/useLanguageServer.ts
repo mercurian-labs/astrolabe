@@ -92,7 +92,7 @@ export function useLanguageServer(
     };
   });
   useAtomMount((enabled ? binding?.follow : null) ?? NO_SESSION);
-  // oxlint-disable-next-line t3code/react-effect-budget -- ends the editor's LSP client with the view that holds it
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ends the editor's LSP client with the view that holds it
   useEffect(() => () => binding?.lsp.destroy(), [binding]);
   const status = useSyncExternalStore(
     binding?.status.subscribe ?? noSubscribe,

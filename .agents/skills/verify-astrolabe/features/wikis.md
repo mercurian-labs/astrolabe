@@ -167,12 +167,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   changes · N" but is named `button "N open changes"` ("1 open change"); it narrows Change
   requests to wikis and this filter's wiki, then switches there. Documents follow as
   `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
-  view; its header has `Edit the document`/`Stop editing` (not on read-only skill maps), and
+  view; its header has `Edit the document`/`Stop editing` (iOS exposes them as `button "Edit"`/`"Done"`;
+  not on read-only skill maps), and
   once edited `Save to a change request` and `Document actions` › Discard edits. Save opens
   the "Save to change request" sheet: New change request or an open one, `Change request
-  title`, `What changed`, then Save (`Save when the turn ends` while the agent works). A
+  title` (captioned "Title" on iOS), `What changed`, then Save (`Save when the turn ends` while the agent works). A
   change request (route `WikiChangeRequest`, from the Changes tab) has `Change
-  request actions` (Merge into main, Close/Reopen, Open thread), "Amendments (N)" with
+  request actions` (on iOS the ⋯ button is named after the change request; Merge into main,
+  Close/Reopen, and Open thread when it has one), "Amendments (N)" with
   `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
   stays on the computer. Walk it on an iPhone with test-t3-mobile.
 
@@ -232,6 +234,8 @@ a screenshot of the section.
 - The settings gear in the filter is `aria-hidden`; reach it by
   `[title="Settings for <wiki>"]`.
 - `data-wikilink` holds the raw target (with any `#Heading`).
+- A click on a numbered change request worktree's header by role (`role=button[name='1 …']`)
+  may time out; click it by its measured centre instead.
 - Hot-reloading across a deleted route component can wedge the preview tab
   (evaluate times out). Open a fresh tab.
 - Screenshots of a tab the user is not viewing can come back soft; set a freeform

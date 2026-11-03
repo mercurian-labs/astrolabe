@@ -12,9 +12,10 @@ import type { ReactNode } from "react";
 
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { isElectron } from "~/env";
-import { useIsMobile } from "~/hooks/useMediaQuery";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
+import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
 import { MorphIcon } from "../MorphIcon";
@@ -135,7 +136,7 @@ export function useAppSections(): readonly AppSection[] {
  * where the sidebar is a sheet, have no rail. It is the leftmost focus place (`keyboardNav/`).
  */
 export function AppIconRail() {
-  const isMobile = useIsMobile();
+  const isMobile = useMediaQuery("max-md");
   const sidebarOpen = useSidebarVisibility();
   const sections = useAppSections();
   if (isMobile) return null;
@@ -190,7 +191,9 @@ export function AppIconRail() {
         />
       )}
       <nav
-        aria-label="Sections"
+        // Astrolabe: F6 stops at the rail before the sidebar.
+        {...workspaceAreaProps("rail", -1, "Sections")}
+        role="navigation"
         data-app-rail=""
         className="fixed top-[calc(var(--workspace-topbar-height)-1px)] bottom-0 left-0 z-20 flex w-11 flex-col items-center border-r border-border bg-sidebar py-2"
       >

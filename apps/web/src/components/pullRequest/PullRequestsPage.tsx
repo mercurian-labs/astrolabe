@@ -743,6 +743,7 @@ export function PullRequestsPage() {
     statsByRow,
     pending: statsQuery.isPending,
   }));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- queues eager stats batches for the rows, reading known stats and visible keys held outside render
   useEffect(() => {
     if (statsPolicy !== "eager") return;
     const { statsByRow: known } = readStatsProgress();
@@ -762,6 +763,7 @@ export function PullRequestsPage() {
   }, [filterKey, entriesByStatsKey, statsPolicy]);
   // The observer outlives the rows it watches, so it reads the rows held at the time it fires.
   const readStatsRows = useEffectEvent(() => entriesByStatsKey);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- IntersectionObserver on rows requests stats for rows that scroll into view
   useEffect(() => {
     if (statsPolicy !== "visible" || typeof IntersectionObserver === "undefined") return;
     visibleStatsKeys.current = { key: filterKey, values: new Set() };
@@ -811,6 +813,7 @@ export function PullRequestsPage() {
       if (statsObserver.current === observer) statsObserver.current = null;
     };
   }, [filterKey, statsPolicy]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- prunes stats batches to the observer's visible rows once a stats request settles
   useEffect(() => {
     if (statsPolicy !== "visible" || statsQuery.isPending) return;
     const visible = visibleStatsKeys.current;
@@ -890,6 +893,7 @@ export function PullRequestsPage() {
     closeBatch,
     hostActionsOf,
   }));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels the pointer close-sweep sensor when the list changes or on unmount
   useEffect(
     () => () => closeSensorRef.current?.cancel(),
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- The pointer sensor lives outside React; a new list under a sweep in progress must end it.
@@ -980,6 +984,7 @@ export function PullRequestsPage() {
   // Astrolabe: a pull request the URL names (a link, a notification) opens as a tab, or comes to
   // the front where it is open. Keyed by its tab, so a re-render never pulls it forward again.
   const linkedKey = linkedSelection === null ? null : pullRequestTabKey(linkedSelection);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the URL-linked pull request as a pane tab
   useEffect(() => {
     if (!pullRequestsSupported || linkedKey === null) return;
     showChangeRequestTab(linkedKey, "new-tab");
@@ -1012,6 +1017,7 @@ export function PullRequestsPage() {
       selectedEnvironmentId: environmentId as EnvironmentId,
     });
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the focused pane's pull request into the URL
   useEffect(() => {
     if (focusedPullRequestKey !== null) selectFocusedInUrl();
   }, [focusedPullRequestKey]);
@@ -1349,6 +1355,7 @@ export function PullRequestsPage() {
     sidebarFoldedForGuide.current = true;
     void setSidebarOpen(false);
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- forgets the guide's fold once the sidebar is opened again
   useEffect(() => {
     if (sidebarOpen) sidebarFoldedForGuide.current = false;
   }, [sidebarOpen]);
@@ -1389,6 +1396,7 @@ export function PullRequestsPage() {
     },
   );
   const foldForGuide = useStableCallback(foldSidebarForGuide);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lends the list's handlers to pull request tabs in the shared panes
   useEffect(() => {
     const detach = attachChangesList({ acted: actedInTab, foldForGuide });
     return () => {
@@ -1403,6 +1411,7 @@ export function PullRequestsPage() {
     else if (!sidebarOpen) void setSidebarOpen(true);
     setSearchFocusPending(true);
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- document keydown listener for the right panel and copy-reference shortcuts
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isCommandPaletteOpen()) return;

@@ -133,6 +133,16 @@ and clients keep their bindings. Every mutation on an allocation bumps its
 `generation`, and deletion locks the row at the generation it claimed, so a
 host that reconnects mid-sweep wins.
 
+## T3 Chat plan caps stay off
+
+Upstream raises the tunnel cap for accounts linked to a paid T3 Chat plan. Astrolabe links no
+T3 Chat account, since the link sends the account's email to t3.chat. It keeps upstream's
+`T3ChatAccounts` service as a never-available stub
+([source](../../infra/relay/src/t3chat/T3ChatAccounts.ts)) so the tunnel limits and the client
+API merge from upstream unchanged. Every account gets the normal cap; a manual override row
+replaces it for new environments
+([limits](../../infra/relay/src/environments/ManagedTunnelLimits.ts)).
+
 ## The relay client follows the server's pin
 
 The host runs `cloudflared` pinned by `CLOUDFLARED_VERSION` in

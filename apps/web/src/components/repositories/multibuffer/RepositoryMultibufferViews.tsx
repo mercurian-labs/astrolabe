@@ -125,7 +125,7 @@ export function RepositorySearchView({
   });
 
   // Every page of the search, gathered once per run; the excerpts then stay live by themselves.
-  // oxlint-disable-next-line t3code/react-effect-budget -- runs the project search the tab names, again on refresh
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- runs the project search the tab names, again on refresh
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -324,7 +324,7 @@ export function RepositoryProblemsView({
   );
   useAtomMount(follow);
   const inputs = problemFiles(files.values());
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands each problems update to the excerpts' model, outside render
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands each problems update to the excerpts' model, outside render
   useEffect(() => multibuffer.set(problemFiles(files.values())), [multibuffer, files]);
   // A new function per update, so each excerpt redraws its file's problems.
   const marks = (file: MultibufferFile) => problemMarks(files.get(file.path)?.diagnostics ?? []);

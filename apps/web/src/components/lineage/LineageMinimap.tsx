@@ -60,6 +60,7 @@ export function LineageMinimap({
   const strip = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scroll listener and resize observers that place the minimap's viewport box over the scroller
   useEffect(() => {
     const area = scroller.current;
     const element = strip.current;

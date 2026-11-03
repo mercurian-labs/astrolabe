@@ -51,6 +51,11 @@ export function createReviewEnvironmentAtoms<R, E>(
     });
   });
   return {
+    branchCommits: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:review:branch-commits",
+      tag: WS_METHODS.reviewGetBranchCommits,
+      staleTimeMs: 5_000,
+    }),
     diffPreview,
     // Astrolabe: the files a checkout's recent commits changed, for the Repositories list.
     recentFiles: createEnvironmentRpcQueryAtomFamily(runtime, {

@@ -475,6 +475,7 @@ function VimKeysInput({
   const [mac] = useState(() => isMacPlatform(navigator.platform));
   const input = useRef<HTMLInputElement>(null);
   const caret = useRef<number | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- restores the input's caret after a recorded key rewrites its value
   useLayoutEffect(() => {
     if (caret.current === null) return;
     input.current?.setSelectionRange(caret.current, caret.current);

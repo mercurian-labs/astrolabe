@@ -45,6 +45,7 @@ export function PaneTree({
   const root = useRef<HTMLDivElement>(null);
   // Not while the thread sits inert under Settings or Usage.
   const background = useContext(BackgroundThreadContext);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this pane tree with the keyboard menu's panes slot while it is in front
   useEffect(() => {
     if (background) return;
     return panesSlot.register({
@@ -63,6 +64,7 @@ export function PaneTree({
     leaves(arrangement.root).length > 1
       ? maximizedId
       : null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the maximized-pane store once the maximized pane is gone or the last one left
   useEffect(() => {
     if (maximizedId !== null && maximized === null) useMaximizedPaneStore.getState().restore();
   }, [maximized, maximizedId]);

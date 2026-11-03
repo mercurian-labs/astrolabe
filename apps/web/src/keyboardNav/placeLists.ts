@@ -42,8 +42,9 @@ const SIDEBAR_LIST: PlaceList = {
     "[data-testid='wiki-sidebar-row']:not([role='option'])",
     "[data-testid='wiki-sidebar-row-slim']:not([role='option'])",
     "[data-pull-request-key] > button",
-    // The legacy sidebar's thread rows (Settings › Legacy sidebar).
-    "[data-testid^='thread-row-'][role='button']",
+    // Project folders: each folder's toggle, then its thread rows.
+    "[data-testid='sidebar-project-folder'] > [data-sidebar-row]",
+    "[data-testid='sidebar-row-folder']",
   ].join(", "),
   search: openSidebarSearch,
 };

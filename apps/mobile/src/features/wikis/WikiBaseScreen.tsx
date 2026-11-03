@@ -61,7 +61,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
     [result, query.error],
   );
   const shown = useRef({ theme, answer });
-  // oxlint-disable-next-line t3code/react-effect-budget -- a reloaded web view reads the latest theme and view
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a reloaded web view reads the latest theme and view
   useLayoutEffect(() => {
     shown.current = { theme, answer };
   });
@@ -73,11 +73,11 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       ...(current.answer ? [{ type: "baseResult" as const, source: file, ...current.answer }] : []),
     ];
   }, [file]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- the theme crosses into the web view, outside React
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the theme crosses into the web view, outside React
   useEffect(() => {
     editor.current?.send({ type: "theme", theme });
   }, [theme]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- each answer crosses into the web view, outside React
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each answer crosses into the web view, outside React
   useEffect(() => {
     if (answer) editor.current?.send({ type: "baseResult", source: file, ...answer });
   }, [answer, file]);

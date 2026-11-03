@@ -209,11 +209,13 @@ function scheduleTabGroupRelease() {
  */
 export function useTabGroupRelease(store: PaneArrangementStore | null, tabs: readonly string[]) {
   const held = useRef(tabs);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules a tab group number release when this strip loses tabs
   useEffect(() => {
     const before = held.current;
     held.current = tabs;
     if (before.some((key) => !tabs.includes(key))) scheduleTabGroupRelease();
   }, [tabs]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- counts this strip's store as shown in the module registry until unmount
   useEffect(() => {
     if (store === null) return scheduleTabGroupRelease;
     shown.set(store, (shown.get(store) ?? 0) + 1);

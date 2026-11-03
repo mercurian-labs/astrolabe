@@ -21,7 +21,7 @@ import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { cn } from "~/lib/utils";
-import { basenameOfPath } from "~/pierre-icons";
+import { basenameOfPath, documentChipKindForFileName } from "~/pierre-icons";
 import { AssistantCitationChip } from "../chat/AssistantCitationChip";
 import { FileTagChipContent } from "../chat/FileTagChip";
 import { getTimelinePageScrollKey } from "../chat/pageScrollController";
@@ -49,7 +49,7 @@ type OpenCitationComment = {
 };
 
 const EDITOR_CLASS_NAME =
-  "-m-1 max-h-52 min-h-19.5 overflow-y-auto p-1 whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none";
+  "-m-1 max-h-52 min-h-[calc(2lh+--spacing(2))] overflow-y-auto p-1 whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none";
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 const COMPOSER_EDITOR = { composer: true };
@@ -134,6 +134,7 @@ function ComposerPromptEditorCodeMirrorInner(
 
   // The editor reads its callbacks through this, so they can change between renders.
   const propsRef = useRef(props);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest callbacks for the CodeMirror editor host to read
   useLayoutEffect(() => {
     propsRef.current = props;
   });
@@ -166,12 +167,14 @@ function ComposerPromptEditorCodeMirrorInner(
   // The latest state to create the editor from; a remount (Strict Mode) must not start
   // from the first render's draft.
   const creation = useRef({ value, cursor, disabled, presentation, vim, skills });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest draft and settings for the next CodeMirror editor to start from
   useLayoutEffect(() => {
     creation.current = { value, cursor, disabled, presentation, vim, skills };
   });
 
   // Created in a layout effect so the composer's own layout effects, which measure the
   // prompt, run against a mounted editor with its classes applied.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- creates the CodeMirror editor in the host DOM node before the composer measures it, handing its draft off on teardown
   useLayoutEffect(() => {
     const parent = hostRef.current;
     if (!parent) return;
@@ -228,23 +231,28 @@ function ComposerPromptEditorCodeMirrorInner(
     };
   }, [mode, registry, markdownKeys, handoffRef]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes the provider skill list into the imperative CodeMirror editor
   useLayoutEffect(() => {
     editorInstance.current?.setSkills(skills);
   }, [skills]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes the disabled prop into the imperative CodeMirror editor
   useLayoutEffect(() => {
     editorInstance.current?.setDisabled(disabled);
   }, [disabled]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes class names and DOM attributes into the CodeMirror view before layout measurements read them
   useLayoutEffect(() => {
     editorInstance.current?.setPresentation(presentation);
   }, [presentation]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- turns Vim mode on or off in the imperative CodeMirror editor
   useLayoutEffect(() => {
     editorInstance.current?.setVim(vim);
   }, [vim]);
 
   // Controlled value and cursor from the store (history recall, chip insertion…).
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the controlled value and cursor into the CodeMirror document before paint
   useLayoutEffect(() => {
     editorInstance.current?.syncControlled(value, cursor);
   }, [value, cursor]);
@@ -384,7 +392,7 @@ function MentionChip({ path }: { path: string }) {
   const actions = use(ComposerContextActionsContext);
   const chip = (
     <ContextChip
-      kind="mention"
+      kind={documentChipKindForFileName(path) ?? "mention"}
       render={<button type="button" />}
       onClick={() => actions.openMention(path)}
       aria-label={`Preview ${path}`}

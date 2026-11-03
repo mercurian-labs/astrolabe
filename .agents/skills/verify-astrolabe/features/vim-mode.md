@@ -22,7 +22,8 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
 - **Composer**: a new or cleared draft is in insert mode, and a send returns it there
   (a draft restored after a reload can open in normal mode). Insert mode
   keeps every composer key (Enter sends, Shift+Enter, ArrowUp history, and every menu
-  trigger: `/`, `@`, `$`, `#` and the `[[` wiki-note menu). Escape closes an open menu first,
+  trigger: `/`, `@`, `$`, `#` and `[[`, whose "Wiki notes" menu opens only when a wiki exists, so
+  add a scratch wiki before walking it). Escape closes an open menu first,
   then enters normal mode with focus kept in the composer; normal mode opens no menus. In an
   empty draft the insert caret shows at the left edge (`.cm-cursorLayer:not(.cm-vimCursorLayer)
   .cm-cursor`, `margin-left: 0`, inside `.cm-scroller`), only while the composer has focus. Outside insert mode the draft switches to the code font (the
@@ -87,9 +88,10 @@ type `:q` and Enter.
 
 ## Driving it with the Browser panel
 
-The composer is CodeMirror: `preview_act type` cannot target it. Insert text with
+The composer is CodeMirror, with Vim off too: `preview_act type` cannot target it. Insert text with
 `preview_evaluate` (`ed.focus(); document.execCommand('insertText', false, '…')`
-on `[data-testid=composer-editor]`). Vim keys go through `preview_act press`, one key
+on `[data-testid=composer-editor]`). That element is itself the `.cm-content` inside the
+`.cm-editor`, so a check on the editor uses `ed.closest('.cm-editor')`. Vim keys go through `preview_act press`, one key
 per call (`Escape`, `b`, `d`, `w`, `:`, `Enter`, `Space`).
 
 ```
@@ -162,7 +164,7 @@ Walk these end to end; each crosses into another feature.
 **Proof:** each flow's reads above, plus saved screenshots of the gate, the
 composer in normal mode (code font) and the ex palette. A `[data-vim-mode]` value is
 not proof the editor paints: `document.elementFromPoint` at the centre of the gate's
-and the composer's `.cm-editor` must land inside it, and `.cm-fat-cursor` must have a
+and the composer's `.cm-editor` (`ed.closest('.cm-editor')`) must land inside it, and `.cm-fat-cursor` must have a
 non-zero rect. In an empty, focused Vim draft the insert caret must have a non-zero width
 with `margin-left: 0px` and sit inside `.cm-scroller` (it blinks: take two screenshots if the
 first misses it). The visual-mode selection needs the screenshot, since its layer draws

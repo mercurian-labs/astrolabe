@@ -166,6 +166,7 @@ export function WikisScreen() {
   );
 
   const previousSearchMode = useRef(tab.searchMode);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the native list back to the saved offset when search returns to resting
   useEffect(() => {
     const restoringSearch =
       previousSearchMode.current !== "resting" && tab.searchMode === "resting";

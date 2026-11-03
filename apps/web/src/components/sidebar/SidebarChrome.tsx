@@ -56,7 +56,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
-    environmentIdentificationMode === "artwork",
+    environmentIdentificationMode,
   );
   const pillLabel =
     environmentIdentificationMode === "pill"
@@ -199,8 +199,14 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   };
 
   // Astrolabe: on desktop the icon rail holds the sections, Agents among them as the way back,
-  // and the update control above Settings, so the footer has no utility row.
-  if (!isMobile) return null;
+  // and the update control above Settings, so the footer's row holds only the undo notice.
+  if (!isMobile) {
+    return (
+      <SidebarMenu className="flex-row items-center empty:hidden">
+        <SidebarThreadUndoNotice />
+      </SidebarMenu>
+    );
+  }
 
   // Where sign-in is set up, Settings is the account menu, and it stays beside Back so
   // signing in or out is reachable from the utility pages too.
@@ -273,19 +279,15 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
         </>
       )}
+      <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter({
-  showUndoNotice = false,
-}: {
-  showUndoNotice?: boolean;
-}) {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
     <SidebarFooter>
-      {showUndoNotice ? <SidebarThreadUndoNotice /> : null}
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
       <SidebarUtilityMenu />

@@ -21,7 +21,8 @@ export const T3_CONNECT_ACCOUNT_PAGES = [
   },
 ] as const;
 
-export type CloudAccountPage = "account" | (typeof T3_CONNECT_ACCOUNT_PAGES)[number]["url"];
+export type T3ConnectAccountPageUrl = (typeof T3_CONNECT_ACCOUNT_PAGES)[number]["url"];
+export type CloudAccountPage = "account" | T3ConnectAccountPageUrl;
 
 let openPage: CloudAccountPage | null = null;
 const pageListeners = new Set<() => void>();
@@ -42,14 +43,16 @@ export function useOpenCloudAccountPage(): CloudAccountPage | null {
   );
 }
 
-/** Opens the account dialog on the T3 Connect page from outside the sidebar avatar. */
+/** Opens the account dialog on a page (Remote access by default) from outside the sidebar avatar. */
 export function useT3ConnectAccountPage(): {
-  readonly open: (() => void) | null;
+  readonly open: ((page?: T3ConnectAccountPageUrl) => void) | null;
   readonly portals: null;
 } {
   const { isSignedIn } = useCloudAccount();
   return {
-    open: isSignedIn ? () => setOpenCloudAccountPage("t3-connect") : null,
+    open: isSignedIn
+      ? (page: T3ConnectAccountPageUrl = "t3-connect") => setOpenCloudAccountPage(page)
+      : null,
     portals: null,
   };
 }

@@ -55,6 +55,7 @@ const managedRelayAccountService = createCloudAccountService<MercurianAccountSou
 });
 
 export function ManagedRelayAuthProvider({ children }: { readonly children: ReactNode }) {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- attaches the Mercurian account source to the managed relay account service for the provider's lifetime
   useEffect(() => {
     const source = cloudAccountSource();
     return source ? managedRelayAccountService.attach(source) : undefined;
@@ -62,6 +63,7 @@ export function ManagedRelayAuthProvider({ children }: { readonly children: Reac
 
   // Picks up sign-ins and sign-outs from other tabs and devices. A failed
   // read (offline at launch) leaves the account loading, so retry it.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to window focus to re-read the session cookie
   useEffect(() => {
     let retry: number | undefined;
     const refresh = () => {

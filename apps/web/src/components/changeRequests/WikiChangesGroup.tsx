@@ -71,6 +71,7 @@ export function WikiChangesGroup({
     ...(openExpanded ? open : []),
     ...(settledExpanded || searching ? settled : []),
   ];
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shown row keys for range selection in the row handlers
   useLayoutEffect(() => {
     shown.current = shownItems.map((item) => item.key);
   });
@@ -78,6 +79,7 @@ export function WikiChangesGroup({
     store.selection.section === SELECTION_SECTION ? store.selection.keys : NO_KEYS,
   );
   const selecting = selectedKeys.length > 0;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window Escape listener that clears the row selection while rows are selected
   useEffect(() => {
     if (!selecting) return;
     const onKeyDown = (event: KeyboardEvent) => {

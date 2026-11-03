@@ -34,6 +34,10 @@ const runtimeVersionPolicy =
 const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
+// Compiled into the native project. Astrolabe ships crash reports off (observe.ts), and without an
+// endpoint Observe's native side could dispatch to Expo's own ingest; `.invalid` never resolves (RFC 6761).
+const observeEndpointUrl = "https://observe.invalid";
+
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
 // Android layers are rendered by scripts/export-android-icons.ts from the Icon Composer sources.
 // The monogram sits inside the adaptive safe zone; the channel's ground is a full-bleed background.
@@ -119,8 +123,10 @@ function resolveAppVariant(value: string | undefined): AppVariant {
     case "preview":
     case "production":
       return value;
-    default:
+    case undefined:
       return "production";
+    default:
+      throw new Error("APP_VARIANT must be development, preview, or production.");
   }
 }
 
@@ -237,7 +243,7 @@ const config: ExpoConfig = {
   slug: EAS_PROJECT?.slug ?? "astrolabe",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
-  version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.1.0",
+  version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.2.0",
   runtimeVersion: {
     // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
     policy: runtimeVersionPolicy,
@@ -430,7 +436,7 @@ const config: ExpoConfig = {
     ["expo-sensors", { motionPermission: false }],
     // Mods run in reverse order; expo-widgets must create and wipe the target before assets are added.
     ...(!isIosPersonalTeamBuild ? ["./plugins/withWidgetLogoAsset.cjs", widgetsPlugin] : []),
-    "./plugins/withAndroidCleartextTraffic.cjs",
+    "./plugins/withAndroidNetworkSecurityConfig.cjs",
     "./plugins/withAndroidGradleHeap.cjs",
     "./plugins/withAndroidInputBackground.cjs",
     "./plugins/withAndroidModernPopupMenu.cjs",
@@ -454,7 +460,10 @@ const config: ExpoConfig = {
       tracesDataset: repoEnv.EXPO_PUBLIC_OTLP_TRACES_DATASET ?? null,
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
-    ...(EAS_PROJECT === null ? {} : { eas: { projectId: EAS_PROJECT.projectId } }),
+    eas: {
+      ...(EAS_PROJECT === null ? {} : { projectId: EAS_PROJECT.projectId }),
+      observe: { endpointUrl: observeEndpointUrl },
+    },
   },
   ...(EAS_PROJECT === null ? {} : { owner: EAS_PROJECT.owner }),
   experiments: {

@@ -967,14 +967,14 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
 
   yield* forkParked(
     Effect.gen(function* () {
-      const policy = yield* backgroundPolicy.subscribe;
       const settingsChanges = yield* serverSettings.subscribeChanges;
       let settings = yield* serverSettings.getSettings.pipe(Effect.orDie);
-      yield* applyPolicy(settings, policy.latest.shouldRunOpportunisticWork);
-      yield* policy.changes.pipe(
-        Stream.runForEach((snapshot) => applyPolicy(settings, snapshot.shouldRunOpportunisticWork)),
-        Effect.forkScoped,
-      );
+      yield* applyPolicy(settings, yield* backgroundPolicy.shouldRunOpportunisticWork);
+      // BackgroundPolicy has no change stream, so the head check re-reads it on its schedule.
+      const followPolicy = Effect.gen(function* () {
+        const run = yield* backgroundPolicy.shouldRunOpportunisticWork;
+        if (run === paused) yield* applyPolicy(settings, run);
+      });
       yield* settingsChanges.pipe(
         Stream.runForEach((next) =>
           Effect.gen(function* () {
@@ -1005,7 +1005,8 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         Effect.forkScoped,
       );
       yield* reconcileQuietly;
-      yield* checkHeads.pipe(
+      yield* followPolicy.pipe(
+        Effect.andThen(checkHeads),
         Effect.repeat(Schedule.spaced(HEAD_CHECK_INTERVAL)),
         Effect.forkScoped,
       );

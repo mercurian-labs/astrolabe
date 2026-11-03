@@ -9,7 +9,7 @@ A remote access connection goes through four parts, in this order:
 1. **This device** reaches the remote access service over the internet.
 2. **Remote access** checks your sign-in and the host's link.
 3. **The host's tunnel** (cloudflared on the host) carries the request to the host.
-4. **T3 Code on the host** answers.
+4. **Astrolabe on the host** answers.
 
 When a connection fails, open **Settings > Environments**, find the environment,
 and select **Details**. The first part marked as failed is the cause. Find its
@@ -26,16 +26,16 @@ problem on one device, use **Details** on that device.
 Remote access could not reach the host's tunnel. This means one of these:
 
 - The host is asleep, turned off, or offline.
-- T3 Code is not running on the host.
+- Astrolabe is not running on the host.
 - The host's network blocks the tunnel. See
   [Port 7844 is blocked on the host](#port-7844-is-blocked-on-the-host).
 
 Fix:
 
-1. Make sure the host is awake and T3 Code runs on it.
+1. Make sure the host is awake and Astrolabe runs on it.
 2. On the host, run `astrolabe connect status`. It names the problem on the host's side.
 3. If the host was offline for a long time, remote access removes its tunnel. Start
-   T3 Code on the host and update it to the latest version. It gets a new tunnel.
+   Astrolabe on the host and update it to the latest version. It gets a new tunnel.
 
 ## Port 7844 is blocked on the host
 
@@ -61,15 +61,15 @@ Tailscale address as a direct route. See
 
 ## The tunnel works, but T3 Code does not answer
 
-The host's tunnel is up, but it cannot reach T3 Code on the host. Common causes:
+The host's tunnel is up, but it cannot reach Astrolabe on the host. Common causes:
 
-- T3 Code on the host stopped, crashed, or is still starting.
-- T3 Code restarted on a different port, for example after an update, and the
+- Astrolabe on the host stopped, crashed, or is still starting.
+- Astrolabe restarted on a different port, for example after an update, and the
   tunnel still points at the old port.
 - The server binds only one network address with `ASTROLABE_HOST`. The tunnel
   sends requests to `127.0.0.1`, so the server must also listen there.
 
-Fix: restart T3 Code on the host. For the background service, run
+Fix: restart Astrolabe on the host. For the background service, run
 `astrolabe service restart`. Then run `astrolabe connect status` on the host.
 
 ## The T3 Connect address does not resolve or answer
@@ -117,7 +117,7 @@ the host.
 - **This device's sign-in expired, or the host no longer accepts this
   device.** Sign out of your Astrolabe account and sign in again.
 - **Your account reached its tunnel limit.** Remove an environment you do not
-  use from your account menu's **Remote access** page, then restart T3 Code on the host.
+  use from your account menu's **Remote access** page, then restart Astrolabe on the host.
 
 ## The clock is off
 
@@ -127,23 +127,23 @@ automatic date and time on both devices, then retry.
 
 ## The host runs an older T3 Code
 
-This app needs a newer T3 Code on the host. Update T3 Code on the host. See
-[Updating T3 Code](./updating.md).
+This app needs a newer version of Astrolabe on the host. Update Astrolabe on the host. See
+[Updating Astrolabe](./updating.md).
 
 ## T3 Connect returned an error
 
 | Error                                                     | Fix                                                                                                                                                              |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart T3 Code on the host.                                                                                                  |
+| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart Astrolabe on the host.                                                                                                |
 | `auth_invalid` or `invalid_bearer`                        | Run `astrolabe connect login`. If credentials were revoked, run `astrolabe connect logout`, then `astrolabe connect` again. Restart the server after signing in. |
-| Expired or invalid link proof                             | Check the host's date and time, update T3 Code, then restart it.                                                                                                 |
+| Expired or invalid link proof                             | Check the host's date and time, update Astrolabe, then restart it.                                                                                               |
 | HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                                    |
-| HTTP 408, 429, or 5xx                                     | Wait a few minutes. T3 Code retries temporary failures on its own.                                                                                               |
+| HTTP 408, 429, or 5xx                                     | Wait a few minutes. Astrolabe retries temporary failures on its own.                                                                                             |
 
 After you fix a permanent rejection, restart the host's server with
 `astrolabe service restart`. For a foreground server, stop it and run `astrolabe serve` again.
 
-If T3 Code on the host disappears when SSH closes, see
+If Astrolabe on the host disappears when SSH closes, see
 [background-service troubleshooting](./background-service.md#troubleshooting).
 
 ## Report a problem

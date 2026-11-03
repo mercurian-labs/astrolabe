@@ -178,6 +178,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   const fromDisk =
     state.status === "failed" && state.failure !== null && READ_FROM_DISK.has(state.failure.reason);
   const file = useProjectFileQuery(environmentId, cwd, path, fromDisk);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this tab's unsaved-edits check until unmount
   useEffect(() => registerUnsavedCheck(tabKey, () => session.getState().unsent), [tabKey, session]);
 
   const contents = fromDisk ? (file.data?.contents ?? null) : session.text();
@@ -592,6 +593,7 @@ function FileEditor({
     save,
   }));
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- creates the CodeMirror file editor in the host DOM node and destroys it on unmount
   useLayoutEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -663,6 +665,7 @@ function FileEditor({
     };
   }, [compartments, initial]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- turns Vim mode on or off in the CodeMirror view
   useEffect(() => {
     const view = viewRef.current;
     const vimExtension = vimRef.current;
@@ -672,7 +675,7 @@ function FileEditor({
 
   // The find bar's, change, editing and save keys follow the keybindings; wrapping, folds, the find bar
   // and shown changes stay.
-  // oxlint-disable-next-line t3code/react-effect-budget -- carries rebound keys into the CodeMirror view
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- carries rebound keys into the CodeMirror view
   useLayoutEffect(() => {
     const view = viewRef.current;
     if (!view) return;
@@ -701,18 +704,19 @@ function FileEditor({
     });
   }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys, saveKeys]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the read-only state to the CodeMirror view
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: compartments.readOnly.reconfigure(readOnlyExtension(readOnly)),
     });
   }, [compartments, readOnly]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the server's base text to CodeMirror
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the server's base text to CodeMirror
   useEffect(() => {
     if (baseText !== undefined) viewRef.current?.dispatch({ effects: setGitBase(baseText) });
   }, [baseText]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- moves the CodeMirror view to the line project search asked for
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves the CodeMirror view to the line project search asked for
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !revealHere) return;
@@ -721,7 +725,7 @@ function FileEditor({
     repositoryFileReveal.done(revealHere.id);
   }, [revealHere]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- carries the word wrap setting into the CodeMirror view
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- carries the word wrap setting into the CodeMirror view
   useEffect(() => {
     const view = viewRef.current;
     if (view && !isMarkdownPath(initial.path)) setSoftWrap(view, wordWrap);

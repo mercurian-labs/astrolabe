@@ -14,12 +14,12 @@ import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings"
 export function LabsSettingsPanel() {
   return (
     <SettingsPageContainer>
-      {/* Guest links need remote access, so builds without it have no Beta rows. */}
-      {hasCloudPublicConfig() ? (
-        <SettingsSection id="beta" title="Beta">
-          <GuestLinksRowWithSignIn />
-        </SettingsSection>
-      ) : null}
+      <SettingsSection id="beta" title="Beta">
+        {/* Guest links need remote access, so builds without it have no guest links row. */}
+        {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : null}
+        <LinkedEnvironmentsRow />
+        <SimlockHostsRow />
+      </SettingsSection>
       <LegacyFeaturesSection />
     </SettingsPageContainer>
   );
@@ -67,6 +67,78 @@ function GuestLinksRow() {
           checked={settings.guestSharingEnabled}
           onCheckedChange={(checked) => updateSettings({ guestSharingEnabled: Boolean(checked) })}
           aria-label="Guest links"
+        />
+      }
+    />
+  );
+}
+
+function LinkedEnvironmentsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      serverScoped
+      {...searchableSetting("linked-environments-beta")}
+      settingKeys={["linkedEnvironmentsEnabled"]}
+      description={
+        <>
+          Let agents here work on your other machines, and theirs here. Turn it on for each machine,
+          then link them in{" "}
+          <Link to="/settings/connections" className="underline underline-offset-2">
+            Connections
+          </Link>
+          . While it is off, nothing new starts over a link; tasks already running finish.
+        </>
+      }
+      control={
+        <ScopedSwitch
+          settingKeys={["linkedEnvironmentsEnabled"]}
+          checked={settings.linkedEnvironmentsEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ linkedEnvironmentsEnabled: Boolean(checked) })
+          }
+          aria-label="Linked environments"
+        />
+      }
+    />
+  );
+}
+
+function SimlockHostsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      serverScoped
+      {...searchableSetting("simlock-hosts")}
+      settingKeys={["simlockDeviceHostsEnabled"]}
+      description={
+        <>
+          Let the Device panel lease simulators and emulators from your own{" "}
+          <a
+            href="https://incubator.callstack.com/simlock/"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2"
+          >
+            Simlock
+          </a>{" "}
+          pool, added in{" "}
+          <Link to="/settings/devices" className="underline underline-offset-2">
+            Devices
+          </Link>
+          . An alpha that may change or break. Astrolabe never installs Simlock.
+        </>
+      }
+      control={
+        <ScopedSwitch
+          settingKeys={["simlockDeviceHostsEnabled"]}
+          checked={settings.simlockDeviceHostsEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ simlockDeviceHostsEnabled: Boolean(checked) })
+          }
+          aria-label="Simlock device hosts"
         />
       }
     />

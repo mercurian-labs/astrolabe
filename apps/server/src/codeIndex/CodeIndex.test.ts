@@ -3,7 +3,6 @@ import { assert, it } from "@effect/vitest";
 import {
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
-  type BackgroundPolicySnapshot,
   type CodeIndexState,
   type CodeLocalGraph,
   type CodeLocalGraphInput,
@@ -21,6 +20,7 @@ import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../config.ts";
@@ -98,9 +98,6 @@ interface Harness {
   }>;
 }
 
-const policySnapshot = (run: boolean) =>
-  ({ shouldRunOpportunisticWork: run }) as unknown as BackgroundPolicySnapshot;
-
 /** The index over a real repository, real git and the real worker, with its data in a temp dir. */
 const withIndex = <A, E>(
   options: {
@@ -130,7 +127,7 @@ const withIndex = <A, E>(
 
     const settings = yield* Ref.make(options.settings ?? DEFAULT_SERVER_SETTINGS);
     const settingsChanges = yield* PubSub.unbounded<ServerSettings>();
-    const policyChanges = yield* PubSub.unbounded<BackgroundPolicySnapshot>();
+    const policy = yield* Ref.make(options.run ?? true);
     const jobs: Array<WorkerJob> = [];
 
     let hold: {
@@ -159,10 +156,7 @@ const withIndex = <A, E>(
           subscribeChanges: Effect.succeed(Stream.fromPubSub(settingsChanges)),
         }),
         Layer.mock(BackgroundPolicy.BackgroundPolicy)({
-          subscribe: Effect.succeed({
-            latest: policySnapshot(options.run ?? true),
-            changes: Stream.fromPubSub(policyChanges),
-          }),
+          shouldRunOpportunisticWork: Ref.get(policy),
         }),
         // The index registers its repositories after reading this.
         Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({
@@ -205,7 +199,8 @@ const withIndex = <A, E>(
       jobs,
       setSettings: (next) =>
         Ref.set(settings, next).pipe(Effect.andThen(PubSub.publish(settingsChanges, next))),
-      setPolicy: (run) => PubSub.publish(policyChanges, policySnapshot(run)).pipe(Effect.asVoid),
+      // The index re-reads the policy on its one-minute head check.
+      setPolicy: (run) => Ref.set(policy, run).pipe(Effect.andThen(TestClock.adjust("1 minute"))),
       restart: (registering) =>
         Effect.gen(function* () {
           yield* Scope.close(running, Exit.void);

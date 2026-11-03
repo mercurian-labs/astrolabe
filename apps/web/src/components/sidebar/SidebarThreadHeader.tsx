@@ -79,6 +79,7 @@ export function SidebarThreadHeader({
   const [searchFocusRequest, setSearchFocusRequest] = useState(0);
   const fieldShown = searchOpen || isSearching;
   const collapsed = !isMobile && !open;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the search input DOM node after the field mounts
   useEffect(() => {
     if (searchFocusRequest === 0) return;
     // The sidebar may still be sliding in; focusing must not scroll it.
@@ -93,10 +94,12 @@ export function SidebarThreadHeader({
   // Astrolabe: the keyboard menu's `n` is this row's new button, and the list's `/` its search.
   const newItem = useRef(onNewThread);
   const search = useRef(openSearch);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the keyboard menu's handlers current without re-registering
   useLayoutEffect(() => {
     newItem.current = onNewThread;
     search.current = openSearch;
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lends this row's new and search actions to the keyboard menu
   useEffect(
     () =>
       sidebarSectionSlot.register({
@@ -121,7 +124,7 @@ export function SidebarThreadHeader({
       <div
         ref={fieldShown ? searchFieldRef : undefined}
         className={cn(
-          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground redesign:focus-within:bg-sidebar-row-hover redesign:focus-within:text-sidebar-foreground redesign:focus-within:ring-1 redesign:focus-within:ring-inset redesign:focus-within:ring-ring/70",
+          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70",
           !fieldShown && "hidden",
         )}
       >

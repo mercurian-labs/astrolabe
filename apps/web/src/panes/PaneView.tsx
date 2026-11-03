@@ -21,6 +21,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { isElectron } from "~/env";
 import { observeResize } from "~/lib/observeResize";
 import { cn, isMacPlatform } from "~/lib/utils";
+import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { readLocalApi } from "~/localApi";
 import {
   activateTab,
@@ -386,6 +387,7 @@ function TabStrip({
   // Astrolabe: the strip in runs, a change group's tabs together behind its marker (`tabGroups`).
   const runs = tabGroupRuns(leaf.tabs, groupsOf, tabGroupId);
   // The groups shown here take their numbers before the strip paints (`tabGroupNumbers`).
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- numbers the tab groups in the shared group store before the strip paints
   useLayoutEffect(() => {
     noteTabGroupRuns(
       runs.flatMap(({ group, keys }) => (group ? [{ id: tabGroupId(group), keys }] : [])),
@@ -398,6 +400,7 @@ function TabStrip({
     const snapshot = controller.getSnapshot();
     return snapshot === null || leaves(snapshot.arrangement.root).length === 1;
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the active tab scrolled into view in the strip's DOM as it resizes
   useEffect(() => {
     const element = strip.current;
     if (!element) return;
@@ -722,12 +725,14 @@ export const PaneView = memo(function PaneView({
   const slot = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- places the pane's surfaces into this slot's DOM node
   useLayoutEffect(() => {
     if (slot.current) tabs.place(slot.current, leaf, hosting);
   }, [tabs, leaf, hosting]);
 
   // A drag that ends anywhere else, or is cancelled, clears the highlight.
   const dragging = target !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the drop target when a window dragend ends the drag
   useEffect(() => {
     if (!dragging) return;
     const clear = () => setTarget(null);
@@ -744,11 +749,13 @@ export const PaneView = memo(function PaneView({
   // DOM, and capturing it here keeps a dragged tab from reaching a surface's own drop handling.
   const section = useRef<HTMLElement>(null);
   const latest = useRef({ leaf, target, focused });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest pane state for the native listeners below
   useLayoutEffect(() => {
     latest.current = { leaf, target, focused };
   });
   // Pressing or focusing anything in the pane focuses it. Native listeners for the same reason
   // as the drag's: content portaled into the pane sends React's events elsewhere.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- native pointer and focus listeners focus the pane, for content portaled into it
   useEffect(() => {
     const pane = section.current;
     if (!pane) return;
@@ -763,6 +770,7 @@ export const PaneView = memo(function PaneView({
       pane.removeEventListener("focusin", take, true);
     };
   }, [controller]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- native drag listeners on the pane's DOM node, for content portaled into it
   useEffect(() => {
     const pane = section.current;
     if (!pane) return;
@@ -841,6 +849,9 @@ export const PaneView = memo(function PaneView({
       )}
       style={maximized ? undefined : { minWidth }}
       inert={maximized === false}
+      // Astrolabe: each pane is one F6 stop; a chat in it keeps its own conversation and composer.
+      {...workspaceAreaProps("pane", 4, "Pane")}
+      data-workspace-focus-key={`pane:${leaf.id}`}
       data-pane-id={leaf.id}
       data-focused={focused || undefined}
     >

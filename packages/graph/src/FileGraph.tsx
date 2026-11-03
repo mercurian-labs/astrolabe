@@ -62,7 +62,7 @@ export function FileGraph({
   const clusterClicked = useEffectEvent((id: string) => onClusterClick?.(id));
   const menu = useEffectEvent((at: FileGraphContextMenu) => onContextMenu?.(at));
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- owns the Pixi renderer for the mount
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- owns the Pixi renderer for the mount
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) return;
@@ -85,13 +85,13 @@ export function FileGraph({
   }, []);
 
   // Settings land before the first graph, so it lays out with the forces the host keeps.
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the theme
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the renderer the theme
   useEffect(() => renderer?.setTheme(themeKey), [renderer, themeKey]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer the settings
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the renderer the settings
   useEffect(() => renderer?.setSettings(settings), [renderer, settings]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer each new graph
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the renderer each new graph
   useEffect(() => renderer?.setGraph(graph), [renderer, graph]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the renderer a story's step
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the renderer a story's step
   useEffect(() => renderer?.setFocus(focus), [renderer, focus]);
 
   useImperativeHandle(

@@ -63,7 +63,7 @@ export default function RepositoryGraphView({
   // The link marker ties a following graph to the file it shows (`linkMarks`).
   const followedKey =
     tab.path === null && path !== null ? repositoryTabKey({ ...tab, kind: "file", path }) : null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- reports the followed file to the panes' link marks
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reports the followed file to the panes' link marks
   useEffect(() => {
     followedGraphFiles.set(tabKey, followedKey);
     return () => followedGraphFiles.set(tabKey, null);

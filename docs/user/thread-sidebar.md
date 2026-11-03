@@ -10,6 +10,12 @@ and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
 an existing worktree, use **New thread in this worktree** from the branch toolbar.
 
+On mobile, **New thread** starts in the current thread's project, or else in the
+last project you opened or chose on that device. If neither is available, the
+project picker opens. Turn off **Settings → General → Use last project** to
+choose a project every time. When you pick a project that is on more than one
+machine, the thread starts on a connected one if any is connected.
+
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
@@ -30,6 +36,12 @@ of its first message, and a short id, like
 folder, so the files the agent wrote stay until you delete them. Branch, worktree, and diff controls stay hidden because
 these folders are not Git repositories. This is unavailable when the data
 directory itself sits inside a Git checkout.
+
+When the work grows into something real, pick **Turn into project** from the
+thread's menu. The thread's folder becomes a project where it is, so nothing
+moves and the agent keeps working in the same place. Other threads in that folder
+move with it. Rename the project in its settings, and use **Initialize Git** to
+get branch and diff controls.
 
 ### Start in the background
 
@@ -257,7 +269,9 @@ remove it; see [Reclaim database space](./background-service.md#reclaim-database
 The thread's folder or worktree stays, and so do the files the agent changed. To remove
 worktrees with their threads, see [Storage cleanup](./project-settings.md#storage-cleanup).
 Your agent's own session history, such as Codex's in `~/.codex` or Claude's in `~/.claude`,
-is kept by the agent, not by T3 Code, and deleting a thread doesn't touch it.
+is kept by the agent, not by Astrolabe, and deleting a thread doesn't touch it. Work delegated to a
+[linked environment](./remote-access.md#link-another-environment) stays on that machine; delete its
+thread there.
 
 ## Link a pull request
 
@@ -291,8 +305,11 @@ palette.
 
 Use **Settings → Keybindings** to find or customize shortcuts for searching files
 and copying a thread reference. A copied reference uses the thread's pull request
-link when available, otherwise its thread ID. See [keybindings](./keybindings.md)
-for custom configuration.
+link when available, otherwise the thread itself, which pastes into a composer as
+a thread chip. To copy the thread even when it has a PR, choose **Copy → Thread**
+from its context menu, or **Copy thread** from its long-press menu on mobile.
+**Thread ID** copies the bare ID for scripts and the `astrolabe` CLI. See
+[keybindings](./keybindings.md) for custom configuration.
 
 ## Inspect agent work
 
@@ -332,6 +349,19 @@ Expand a tool call in the conversation to see its full command and output.
 Summaries shorten shell wrappers and can still describe the latest call after it
 finishes; the call's own result shows its status.
 
+On web and desktop, the thread details card lists the local servers that the
+thread's terminals or its Claude agent started, with their ports. Not every one
+serves a web page. A server the agent started stays listed after the agent's
+turn ends.
+Select a server to open it in the browser panel. **Stop** ends the server's job
+and keeps the agent, the terminal, and Astrolabe running. Stop needs terminal
+access to the environment and is not available on Windows.
+
+To choose what the thread details card shows, right-click the card or open
+**Settings → Appearance → Thread details**. Hidden rows keep their keyboard
+shortcuts, such as Open in editor and project scripts. **Reset to default** brings
+back the standard rows.
+
 ## See a thread's forks
 
 On web and desktop, the **Lineage** tab in a thread's right panel, also opened by **Show lineage**
@@ -345,7 +375,37 @@ or use **Show every turn**. When the drawing is wider than the panel, the strip 
 shows all of it: click or drag there to move along. Each fork's label says whether it's running, waiting on you, idle or
 merged back, and how many turns its parent has taken since it forked.
 
+## Side chats
+
+A side chat lets you ask a question about a thread without adding to it. It starts
+with what the thread knows, and the thread keeps working while you ask.
+
+On web and desktop, start a message with `/side` or `/btw`, then your question.
+You can also choose **Side chat** from the **+** menu in the right panel. The side
+chat opens as a tab there, with its own composer. Side chats do not show in the
+sidebar. Find one again under **Side chats** in thread details.
+
+A side chat works in the same folder as the thread. Its first reply asks before it
+edits files or runs commands. After that, it uses the permission mode you choose
+in its composer.
+
+To use what you learned, choose **Bring back**. The thread gets the side chat with
+your next message there. Bring back is available while the thread is idle.
+
+Closing a side chat you never sent a message in deletes it. To delete one you used,
+choose **Delete** at the top of the side chat. Deleting a thread also deletes its
+side chats.
+
+On mobile, a thread lists its side chats above the composer. Tap one to open it and
+answer its questions.
+
 ## Snooze until later
+
+To change the choices in the snooze menu, open **Settings → Threads → Snooze options**.
+Each option is a duration, such as 3 hours, or a time on a day, such as 9:00 PM
+tomorrow. A weekday means the next one after today. Menus list the options soonest
+first and hide a today option after its time passes. Saved with **All environments**
+selected, the options apply to every connected environment, and the mobile app uses them too.
 
 Choose **Snooze → Custom…** from a thread's menu to pick a date and time in your
 local time zone, or a duration in minutes, hours, or days. Durations start when

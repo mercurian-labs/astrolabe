@@ -9,7 +9,6 @@ import {
   type RelayClientInstallProgressStage,
 } from "@t3tools/contracts";
 import { RelayOkResponse } from "@t3tools/contracts/relay";
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Cause from "effect/Cause";
@@ -25,6 +24,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Path from "effect/Path";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Terminal from "effect/Terminal";
@@ -63,8 +63,10 @@ const jsonFlag = Flag.Boolean("json").pipe(
 
 const isCloudCliTokenManagerError = Schema.is(CliTokenManager.CloudCliTokenManagerError);
 
-const headlessFlag = Flag.Boolean("headless").pipe(
-  Flag.withDescription("Authorize without opening a browser on this machine."),
+export const headlessFlag = Flag.Boolean("headless").pipe(
+  Flag.withDescription(
+    "Sign in with a URL and code on any device, without opening a browser here. Automatic over SSH.",
+  ),
   Flag.withDefault(false),
 );
 
@@ -368,7 +370,7 @@ const CLOUD_CLI_REACHABILITY_TIMEOUT = Duration.seconds(30);
 const CLOUD_CLI_REACHABILITY_WAIT = Duration.seconds(60);
 const CLOUD_CLI_REACHABILITY_RETRY = Duration.seconds(5);
 
-/** Asks the running server to check T3 Connect now. `null` when no server answers. */
+/** Asks the running server to check remote access now. `null` when no server answers. */
 const checkLiveReachability = Effect.fn("cloud.cli.check_live_reachability")(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const runtimeState = yield* readPersistedServerRuntimeState(config.serverRuntimeStatePath);
@@ -399,20 +401,18 @@ function formatAlertBox(text: string): string {
 }
 
 /**
- * Waits for the server that `t3 connect` just started to prove other devices
+ * Waits for the server that `astrolabe connect` just started to prove other devices
  * can reach it, so a broken tunnel fails setup instead of looking green.
  */
-const waitForReachability = Effect.fn("cloud.cli.wait_for_reachability")(function* () {
-  yield* Console.log("\nChecking that other devices can reach this machine...");
+export const waitForReachability = Effect.fn("cloud.cli.wait_for_reachability")(function* () {
+  yield* Console.log("Checking remote access...");
   const deadline =
     (yield* Clock.currentTimeMillis) + Duration.toMillis(CLOUD_CLI_REACHABILITY_WAIT);
   let last: EnvironmentConnectReachability | null = null;
   while (true) {
     last = (yield* checkLiveReachability()) ?? last;
     if (last?.status === "reachable") {
-      yield* Console.log(
-        `✓ Other devices can reach this machine · ${formatConnectReachable(last)}`,
-      );
+      yield* Console.log("✓ Remote access is reachable.");
       return;
     }
     if ((yield* Clock.currentTimeMillis) >= deadline) break;
@@ -478,7 +478,7 @@ const unlinkRelayEnvironment = Effect.fn("cloud.cli.unlink_relay_environment")(f
 /**
  * Prints the local disconnect outcome, then whether the relay record was revoked.
  * A missing CLI login or a failed relay DELETE leaves that record registered, so
- * those outcomes warn to deregister it from the T3 Connect account page.
+ * those outcomes warn to remove it from the Remote access page of the account.
  */
 const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_results")(
   function* (input: {
@@ -520,7 +520,7 @@ const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_resu
   },
 );
 
-const disconnectCloud = Effect.fn("cloud.cli.disconnect")(function* (options: {
+export const disconnectCloud = Effect.fn("cloud.cli.disconnect")(function* (options: {
   readonly clearAuthorization: boolean;
 }) {
   yield* CliState.setCliDesiredCloudLink(false);
@@ -544,9 +544,10 @@ const disconnectCloud = Effect.fn("cloud.cli.disconnect")(function* (options: {
       "Signed out locally.\nThe background service is managed separately with `astrolabe service`.",
     );
   }
+  return liveResult;
 });
 
-const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E>(
+export const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E>(
   flags: { readonly baseDir: Option.Option<string> },
   run: Effect.Effect<
     A,
@@ -559,6 +560,7 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
     | BootService.BootService
     | Crypto.Crypto
     | FileSystem.FileSystem
+    | Path.Path
     | HttpClient.HttpClient
     | Prompt.Environment
     | ServerConfig.ServerConfig
@@ -569,7 +571,7 @@ const runCloudCommand = Effect.fn("cloud.cli.run_cloud_command")(function* <A, E
   },
 ) {
   const logLevel = yield* GlobalFlag.LogLevel;
-  const config = yield* resolveCliAuthConfig(flags, logLevel);
+  const config = yield* resolveCliAuthConfig(flags, logLevel, options);
   const minimumLogLevel = options?.quietLogs ? "Error" : config.logLevel;
   const layerRuntime = Layer.mergeAll(
     ServerSecretStore.layer,
@@ -596,14 +598,21 @@ function formatRelayClientReady(version: string): string {
 const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(function* (options: {
   readonly headless: boolean;
   readonly publishOnly?: boolean;
+  /** For `astrolabe up`, where the user already chose remote access: install it quietly, without asking. */
+  readonly installRelayClient?: boolean;
 }) {
   const publishOnly = options.publishOnly ?? false;
   if (!publishOnly) {
     const relayClient = yield* RelayClient.RelayClient;
     const installed = yield* acquireRelayClientForLink(
       relayClient,
-      confirmRelayClientInstall,
-      reportRelayClientInstallProgress,
+      options.installRelayClient === true ? () => Effect.succeed(true) : confirmRelayClientInstall,
+      options.installRelayClient === true
+        ? (event) =>
+            event.type === "progress" && event.stage === "downloading"
+              ? Console.log("Installing the remote access client...")
+              : Effect.void
+        : reportRelayClientInstallProgress,
     );
     if (Option.isNone(installed)) {
       yield* Console.log(
@@ -611,7 +620,9 @@ const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(functi
       );
       return null;
     }
-    yield* Console.log(formatRelayClientReady(installed.value.version));
+    if (options.installRelayClient !== true) {
+      yield* Console.log(formatRelayClientReady(installed.value.version));
+    }
   }
 
   const identity = yield* authorizeCli(options);
@@ -627,6 +638,7 @@ const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(functi
   }
   return { identity } as const;
 });
+export { linkEnvironmentForConnect };
 
 const connectLoginCommand = Command.make("login", {
   ...projectLocationFlags,
@@ -816,62 +828,12 @@ const connectLogoutCommand = Command.make("logout", {
   ),
 );
 
-const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding")(function* (
-  outcome: CliService.ServiceOnboardingOutcome,
-) {
-  if (outcome === "pending") {
-    yield* Console.log(
-      "\nBackground service restarting\n\nThe server establishes the remote access link once it is back. Check the log above if it does not come back.",
-    );
-    return;
-  }
-  if (outcome === "ready") {
-    const platform = yield* HostProcess.Platform;
-    yield* Console.log(
-      platform === "darwin"
-        ? "\n✓ Background service ready\n\nAstrolabe is set to run while you are logged in to this Mac. The server establishes the remote access link on startup."
-        : "\n✓ Background service ready\n\nAstrolabe is set to keep running after you log out. The server establishes the remote access link on startup.",
-    );
-    return;
-  }
-  const serveCommand = yield* resolveCliCommand("serve");
-  yield* Console.log(
-    `\nNext\n  Start the server with \`${serveCommand}\` to make this machine reachable.\n  It checks that other devices can reach this machine when it starts.`,
-  );
-});
-
-export const connectCommand = Command.make("connect", {
-  ...projectLocationFlags,
-  headless: headlessFlag,
-}).pipe(
-  Command.withDescription("Set up remote access for this machine."),
-  Command.withHandler((flags) =>
-    runCloudCommand(
-      flags,
-      Effect.gen(function* () {
-        yield* Console.log("Remote access\n");
-        const linked = yield* linkEnvironmentForConnect(flags);
-        if (!linked) {
-          return;
-        }
-        yield* Console.log(`✓ Authorized${connectedAs(linked.identity)}`);
-
-        const outcome = yield* CliService.recoverServiceOnboardingOffer(
-          CliService.offerServiceDuringOnboarding,
-        );
-        yield* reportServiceOnboarding(outcome);
-        if (outcome !== "skipped") {
-          yield* waitForReachability();
-        }
-      }),
-    ),
-  ),
-  Command.withSubcommands([
-    connectLoginCommand,
-    connectLinkCommand,
-    connectPublishCommand,
-    connectStatusCommand,
-    connectUnlinkCommand,
-    connectLogoutCommand,
-  ]),
-);
+// `astrolabe connect` itself is `astrolabe up --connect`, in up.ts.
+export const connectSubcommands = [
+  connectLoginCommand,
+  connectLinkCommand,
+  connectPublishCommand,
+  connectStatusCommand,
+  connectUnlinkCommand,
+  connectLogoutCommand,
+] as const;

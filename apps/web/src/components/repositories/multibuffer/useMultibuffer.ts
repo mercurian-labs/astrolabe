@@ -107,9 +107,9 @@ export function useMultibuffer(options: {
       },
     };
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- closes the view's documents with the tab
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the view's documents with the tab
   useEffect(() => () => binding.multibuffer.release(), [binding]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- tells closing the tab whether edits are still on their way
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells closing the tab whether edits are still on their way
   useEffect(
     () =>
       registerUnsavedCheck(options.tabKey, () =>

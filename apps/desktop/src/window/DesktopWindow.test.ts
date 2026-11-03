@@ -45,7 +45,7 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
-import { SNAP_SHOT_EVENT_CHANNEL } from "../ipc/channels.ts";
+import { MENU_ACTION_CHANNEL, SNAP_SHOT_EVENT_CHANNEL } from "../ipc/channels.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -78,6 +78,12 @@ function makeFakeBrowserWindow() {
       zoomLevel = level;
     }),
     isLoadingMainFrame: vi.fn(() => false),
+    navigationHistory: {
+      canGoBack: vi.fn(() => true),
+      canGoForward: vi.fn(() => true),
+      goBack: vi.fn(),
+      goForward: vi.fn(),
+    },
     on: vi.fn((eventName: string, listener: (...args: readonly unknown[]) => void) => {
       webContentsListeners.set(eventName, listener);
     }),
@@ -136,6 +142,7 @@ function makeFakeBrowserWindow() {
     reload: webContents.reload,
     reloadIgnoringCache: webContents.reloadIgnoringCache,
     toggleDevTools: webContents.toggleDevTools,
+    navigationHistory: webContents.navigationHistory,
     send: webContents.send,
     setZoomLevel: webContents.setZoomLevel,
     setWindowButtonPosition: window.setWindowButtonPosition,
@@ -469,6 +476,45 @@ describe("DesktopWindow", () => {
     assert.deepEqual(
       DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, [displays[0]!]),
       DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
+    );
+  });
+
+  it("rejects renderer navigations whose origin only serializes as null", () => {
+    for (const applicationUrl of ["astrolabe://app/", "astrolabe-dev://app/"]) {
+      assert.isTrue(
+        DesktopWindow.isSameOriginRendererNavigation({
+          applicationUrl,
+          navigationUrl: `${applicationUrl}threads?id=1#latest`,
+        }),
+        applicationUrl,
+      );
+    }
+    for (const navigationUrl of [
+      "astrolabe://other/",
+      "astrolabe://app.example/",
+      "astrolabe://app:8080/",
+      "astrolabe://user@other/",
+      "astrolabe:app",
+      "astrolabe-dev://app/",
+      "file:///etc/passwd",
+      "data:text/html,<p>hi</p>",
+      "javascript:alert(1)",
+      "about:blank",
+      "blob:astrolabe://app/0b5e2c4a",
+    ]) {
+      assert.isFalse(
+        DesktopWindow.isSameOriginRendererNavigation({
+          applicationUrl: "astrolabe://app/",
+          navigationUrl,
+        }),
+        navigationUrl,
+      );
+    }
+    assert.isFalse(
+      DesktopWindow.isSameOriginRendererNavigation({
+        applicationUrl: "data:text/html,app",
+        navigationUrl: "data:text/html,other",
+      }),
     );
   });
 
@@ -895,6 +941,35 @@ describe("DesktopWindow", () => {
     }),
   );
 
+  it.effect("sends macOS horizontal swipes to the renderer's back and forward commands", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = layerTest({ window: fakeWindow.window, createCount, mainWindow });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        const swipe = fakeWindow.windowListeners.get("swipe");
+        assert.isDefined(swipe);
+        if (!swipe) return;
+        fakeWindow.send.mockClear();
+
+        swipe({}, "left");
+        swipe({}, "up");
+        swipe({}, "down");
+        swipe({}, "right");
+        assert.deepEqual(fakeWindow.send.mock.calls, [
+          [MENU_ACTION_CHANNEL, "navigation.back"],
+          [MENU_ACTION_CHANNEL, "navigation.forward"],
+        ]);
+        assert.equal(fakeWindow.navigationHistory.goBack.mock.calls.length, 0);
+        assert.equal(fakeWindow.navigationHistory.goForward.mock.calls.length, 0);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it.effect("persists the current main window bounds before the window closes", () =>
     Effect.gen(function* () {
       const fakeWindow = makeFakeBrowserWindow();
@@ -973,6 +1048,17 @@ describe("DesktopWindow", () => {
         if (!willNavigate) {
           return yield* Effect.die("will-navigate listener was not registered");
         }
+        for (const [url, expectedPrevented] of [
+          ["astrolabe-dev://app/threads?id=1#latest", false],
+          ["astrolabe-dev://other/", true],
+          ["astrolabe://app/", true],
+        ] as const) {
+          const preventDefault = vi.fn();
+          willNavigate({ preventDefault }, url);
+          assert.equal(preventDefault.mock.calls.length, expectedPrevented ? 1 : 0, url);
+        }
+        assert.deepEqual(openedExternalUrls, []);
+
         let prevented = false;
         willNavigate(
           {

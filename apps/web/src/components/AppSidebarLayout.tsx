@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
 
+import { moveWorkspaceFocus, workspaceAreaProps } from "../lib/workspaceFocus";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isElectron } from "../env";
 import {
@@ -30,15 +31,15 @@ import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
-import { useIsMobile } from "../hooks/useMediaQuery";
+import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
-import LegacyThreadSidebar from "./LegacySidebar";
+import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
 import ThreadSidebar from "./Sidebar";
 import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
@@ -75,6 +76,7 @@ import {
 } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { navigateHistory } from "../navigationHistory";
 import { registerCommands, registerMenuAction } from "../shortcuts/dispatcher";
 import { resolveThreadRouteRef } from "../threadRoutes";
 
@@ -180,27 +182,62 @@ function goInTabHistory(event: KeyboardEvent, direction: "back" | "forward") {
 }
 
 export function registerNavigationHistoryCommands(router: AnyRouter): () => void {
-  return registerCommands(
-    {
-      "navigation.back": (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!goInTabHistory(event, "back")) window.history.back();
+  const disposers = [
+    // The desktop sends a trackpad swipe as a menu action.
+    registerMenuAction("navigation.back", () => navigateHistory("back")),
+    registerMenuAction("navigation.forward", () => navigateHistory("forward")),
+    registerCommands(
+      {
+        "navigation.back": (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!goInTabHistory(event, "back")) window.history.back();
+        },
+        "navigation.forward": (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!goInTabHistory(event, "forward")) window.history.forward();
+        },
       },
-      "navigation.forward": (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!goInTabHistory(event, "forward")) window.history.forward();
+      {
+        when: (event) => !isKeybindingCaptureTarget(event),
+        context: () => ({
+          ...readRoutePanelsOpen(router),
+          usagePageOpen: readUsagePageOpen(router),
+        }),
       },
-    },
-    {
-      when: (event) => !isKeybindingCaptureTarget(event),
-      context: () => ({
-        ...readRoutePanelsOpen(router),
-        usagePageOpen: readUsagePageOpen(router),
-      }),
-    },
-  );
+    ),
+  ];
+  return () => {
+    for (const dispose of disposers) dispose();
+  };
+}
+
+// Capture phase, so F6 also leaves widgets that swallow keys, such as the terminal.
+function registerWorkspaceFocusCommands(router: AnyRouter): () => void {
+  const move = (direction: 1 | -1) => (event: KeyboardEvent) => {
+    if (event.isComposing) return false;
+    // Inside a dialog the move is refused, but the key is still consumed.
+    event.preventDefault();
+    event.stopPropagation();
+    moveWorkspaceFocus(direction);
+  };
+  const disposers = [
+    registerCommands(
+      { "workspace.focusNext": move(1), "workspace.focusPrevious": move(-1) },
+      {
+        capture: true,
+        when: (event) => !isKeybindingCaptureTarget(event),
+        context: () => readRoutePanelsOpen(router),
+      },
+    ),
+    // A focused desktop browser forwards the keys; its renderer focus is stale.
+    registerMenuAction("workspace.focusNext", () => moveWorkspaceFocus(1, "panel")),
+    registerMenuAction("workspace.focusPrevious", () => moveWorkspaceFocus(-1, "panel")),
+  ];
+  return () => {
+    for (const dispose of disposers) dispose();
+  };
 }
 
 // Escape leaves the pull requests page when no scope (a selection, a dialog,
@@ -314,6 +351,7 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
   const disposers = [
     registerThreadUndoCommands(router, readSidebarVisible),
     registerNavigationHistoryCommands(router),
+    registerWorkspaceFocusCommands(router),
     registerPullRequestsEscapeCommand(router),
     registerMenuAction("open-settings", () => {
       if (!/^\/settings(\/|$)/.test(router.state.location.pathname))
@@ -332,13 +370,12 @@ function SidebarControl() {
   const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
-  const stageBackdropVariant = useSidebarStageBackdropVariant(
-    environmentIdentificationMode === "artwork",
-  );
+  const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle", {
     context: { usagePageOpen },
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window keydown listener that toggles the sidebar on its shortcut
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -428,7 +465,7 @@ function SidebarControl() {
 }
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
-  const legacySidebarEnabled = useLegacySidebarEnabled();
+  const sidebarArea = workspaceAreaProps("sidebar", 0, "Agents");
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
     pendingKey: null,
@@ -445,7 +482,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const isOnRepositories = isRepositoriesPath(sectionPathname);
   const isOnPullRequests = isPullRequestsPath(sectionPathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
-  const hasIconRail = !useIsMobile();
+  const hasIconRail = !useMediaQuery("max-md");
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // A clamped drag may not change width, so viewport changes need a separate subscription.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
@@ -514,6 +551,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           side="left"
           collapsible="offcanvas"
           data-app-sidebar=""
+          {...sidebarArea}
           role="navigation"
           aria-label={
             isOnWikis
@@ -545,8 +583,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             <RepositorySidebar />
           ) : isOnPullRequests ? (
             <PullRequestsSidebar />
-          ) : legacySidebarEnabled ? (
-            <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
           ) : (
             <ThreadSidebar routeReveal={sidebarRouteReveal} />
           )}
@@ -565,6 +601,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             between the sidebar and the panes, and through the sidebar's list. */}
         <WhichKey />
         <KeyboardNavigation />
+        {isElectron ? <HistorySwipeNavigation /> : null}
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );

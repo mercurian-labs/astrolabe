@@ -24,6 +24,7 @@ line to add. Set `ASTROLABE_VERSION` to pin an exact version.
 | ------------------------------------------------ | ------------------------------------------------------------------------------ |
 | Start the server and open the web app            | `astrolabe`                                                                    |
 | Start the server without a browser               | `astrolabe serve`                                                              |
+| Use it from your other devices                   | `astrolabe up` ([details](./remote-access.md))                                 |
 | Keep it running in the background (macOS, Linux) | `astrolabe service install` ([details](./background-service.md))               |
 | Move to the newest release                       | `astrolabe update`                                                             |
 | Reclaim database space                           | `astrolabe doctor` ([details](./background-service.md#reclaim-database-space)) |

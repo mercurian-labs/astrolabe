@@ -20,6 +20,7 @@ import {
   type ProjectWorktreeSetKeptInput,
   type ProjectWorktreeStatusResult,
   type ProjectWorktreeTargetInput,
+  type ServerSettings as ServerSettingsShape,
   type TerminalSummary,
   type WikiId,
 } from "@t3tools/contracts";
@@ -377,6 +378,7 @@ const make = Effect.gen(function* () {
       readonly kept: boolean;
       readonly managed: boolean;
       readonly now: number;
+      readonly settings: ServerSettingsShape;
     },
   ): ReadonlyArray<ProjectWorktreeHold> => {
     const holds: ProjectWorktreeHold[] = [];
@@ -388,7 +390,7 @@ const make = Effect.gen(function* () {
       if (thread.worktreePath === null || path.resolve(thread.worktreePath) !== listed.path)
         continue;
       holds.push(
-        storageCleanupThreadIdle(thread, context.now)
+        storageCleanupThreadIdle(thread, context.now, context.settings)
           ? { kind: "thread", label: `Used by ${thread.title}` }
           : { kind: "working", label: `${thread.title} is working here` },
       );
@@ -462,6 +464,9 @@ const make = Effect.gen(function* () {
       (thread) => thread.archivedAt === null && thread.deletedAt === null,
     );
     const now = yield* Clock.currentTimeMillis;
+    const settings = yield* settingsService.getSettings.pipe(
+      Effect.mapError(failWith("Settings could not be read")),
+    );
     const home = yield* HostProcess.HomeDirectory;
     // The main checkout first, then the numbered by number, then the rest as git lists them.
     const ordered = listed.toSorted(
@@ -484,7 +489,13 @@ const make = Effect.gen(function* () {
             madeBy: entry.isMain ? null : worktreeMaker(entry.path, { managed, home }),
             lastActiveAt: yield* lastActiveAt(entry.path),
             kept: kept.includes(entry.path),
-            holds: holdsFor(entry, { threads, kept: kept.includes(entry.path), managed, now }),
+            holds: holdsFor(entry, {
+              threads,
+              kept: kept.includes(entry.path),
+              managed,
+              now,
+              settings,
+            }),
             changedFiles: null,
           };
           return worktree;

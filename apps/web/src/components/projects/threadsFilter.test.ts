@@ -87,6 +87,7 @@ describe("the threads the filter lists", () => {
   const list = (openKey: string | null) =>
     listFilteredThreads(threads, {
       scopedProjectKeys: new Set(["environment-test:shown"]),
+      delegatedUnderParent: new Set(),
       statuses: [],
       openKey,
       keyOf: (each) => each.id,

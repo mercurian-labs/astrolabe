@@ -29,13 +29,14 @@ does the same. Change these shortcuts in **Settings → Keybindings** under
 or **Composer: Send and Start New Thread**. These bindings take priority over the
 send shortcut. Click the send button to use the configured follow-up behavior.
 
-When an active turn has queued messages, `mod+Shift+Enter` sends the first as a
-steer. Change it under **Queue: Send First Queued Message as Steer** in Keybindings.
+When a thread has queued messages, `mod+Shift+Enter` sends the first one as a steer
+while a turn is running, or as a new turn when the thread is stopped. Change it under
+**Queue: Send First Queued Message** in Keybindings.
 
 Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
 To step a new thread to the next machine instead of opening the menu, bind
 **Composer: Cycle Host** in Keybindings. It has no default shortcut.
-Use `mod+shift+e` for effort, `mod+shift+a` for access mode, `mod+shift+x` for the
+Use `mod+shift+e` for effort, `mod+shift+a` for permissions, `mod+shift+x` for the
 workspace, and `mod+shift+g` for the Git branch. The workspace menu includes the
 current checkout, a new worktree, and the previous worktree when available.
 Use `mod+shift+l` to reuse the previous worktree directly.
@@ -47,7 +48,8 @@ lowest, and decrease wraps from the lowest level to the highest.
 
 In the model picker, press Left in an empty search field or Shift+Tab to reach
 the provider list. Use Up/Down to move and Enter to choose. Right returns to
-model search. `mod+shift+up` and `mod+shift+down` switch providers directly and clear the
+model search. Right at the end of the search moves to the highlighted model's effort
+levels, and Left comes back. Choosing a model keeps the picker open on its effort. `mod+shift+up` and `mod+shift+down` switch providers directly and clear the
 search. These provider shortcuts can also be changed in Settings.
 
 These shortcuts run inside the focused web or desktop client. `mod` uses Command
@@ -229,8 +231,10 @@ commands such as `s/old/new/` run in that editor.
 With a PR open beside a chat, or focused on Changes, use `mod+shift+c`
 to copy its URL and `mod+shift+k` (outside the composer and notes) to copy its
 number with a `#` prefix.
-Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
+Both shortcuts can be changed in Settings. Search for “Copy Link or Thread”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
+Without a PR, `mod+shift+c` copies the thread itself, which pastes into a
+composer as a thread chip.
 
 ## Find in a file or note
 
@@ -480,9 +484,10 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 ## When conditions
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
-`previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
+`previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `draftThreadRoute`,
 `turnRunning`, `editableFocus`, `editorFocus`, `codeEditorFocus`, `outlineFocus`, `isWeb`, and
-`isDesktop`.
+`isDesktop`. `draftThreadRoute` is true on a draft thread, including a restored draft, until it is
+first sent.
 `editableFocus` is true while a text field, the composer, or another editor has
 the keyboard. `editorFocus` is true while the composer, a wiki note, or a repository file has
 it, `codeEditorFocus` only while a repository file's text has it, and `outlineFocus` while a
@@ -547,7 +552,7 @@ its tabs button does; Space `t` `n` opens a new linked tab for the focused chat,
 ## Reserved shortcuts
 
 In the desktop app, `mod+w` closes the focused terminal or the active right-panel
-tab. When nothing remains to close, it closes the window. In a browser, `mod+w`
+tab. When nothing remains to close, it does nothing; it never closes the window. In a browser, `mod+w`
 closes the browser tab; rebind `rightPanel.close` and `terminal.close` to an available
 shortcut such as `alt+w`.
 

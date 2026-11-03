@@ -14,6 +14,11 @@ environment before starting it. Relay tracing also stops when `ASTROLABE_OTEL_SD
 The desktop app reads `ASTROLABE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 
+## Mobile app crash reports
+
+The iOS and Android apps include crash reporting through the remote access relay, but Astrolabe's
+builds ship with it switched off, so the apps send no crash reports.
+
 ## Export diagnostics to your own receiver
 
 To send traces, metrics, or logs to an OpenTelemetry receiver, open

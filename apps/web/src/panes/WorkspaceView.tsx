@@ -80,19 +80,19 @@ export function WorkspaceView({
   const routed = useRef(routeChatKey);
   // The chat (or null, the start page) the route was last asked to follow, until it arrives.
   const asked = useRef<string | null | undefined>(undefined);
-  // oxlint-disable-next-line t3code/react-effect-budget -- the route is outside the panes' store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the route is outside the panes' store
   useLayoutEffect(() => {
     routed.current = routeChatKey;
     asked.current = undefined;
     if (routeChatKey !== null && !background) workspace.openChat(routeChatKey);
   }, [background, routeChatKey]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- follows T3 Code's right-panel store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows T3 Code's right-panel store
   useLayoutEffect(() => workspace.follow(), []);
 
   // In Agents, the route follows the focused tab's chat, or leaves for the start page when focus
   // is on anything else; the panes stay as they are.
   const onStartPage = routeTarget === null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- the router follows the panes' store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the router follows the panes' store
   useEffect(() => {
     if (!agents || background) return;
     const follow = () => {
@@ -115,7 +115,7 @@ export function WorkspaceView({
   const { canGoBack, canGoForward } = useWorkspaceTabHistory();
   const arrangement = useWorkspaceArrangement();
   const focused = focusedPane(arrangement);
-  // oxlint-disable-next-line t3code/react-effect-budget -- lends handles to the keyboard menu while mounted
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lends handles to the keyboard menu while mounted
   useEffect(() => {
     if (background) return;
     const stopHistory = tabHistorySlot.register({ canGoBack, canGoForward, go: workspace.step });
@@ -134,7 +134,7 @@ export function WorkspaceView({
   // Escape clears a selection of tabs, leaving the page saves the panes, and threads dragged
   // from the sidebar open as tabs in the pane they are dropped on.
   const root = useRef<HTMLDivElement>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- window and sidebar-drag listeners
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window and sidebar-drag listeners
   useEffect(() => {
     useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
     const clear = (event: KeyboardEvent) => {
@@ -249,7 +249,7 @@ function WorkspaceTabContents() {
   const kept = recentChats(recent, onScreen, new Set(keys));
   if (kept !== recent) setRecent(kept);
   // Containers of closed tabs go.
-  // oxlint-disable-next-line t3code/react-effect-budget -- drops DOM nodes the panes render into
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops DOM nodes the panes render into
   useLayoutEffect(() => {
     host.prune(new Set(keys));
   }, [host, keys]);
@@ -331,7 +331,7 @@ function useHost() {
  */
 function GroupsSync() {
   const groups = useChangeGroups();
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the groups to the panes' store
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the groups to the panes' store
   useEffect(() => {
     const members = new Map<string, ReadonlySet<string>>();
     for (const group of groups) {

@@ -4,14 +4,16 @@
  * resources when yielded, so the stack and the API's props can both yield
  * them and get the same instances.
  */
+import * as ec2 from "@distilled.cloud/aws/ec2";
 import * as ecs from "@distilled.cloud/aws/ecs";
 import * as Alchemy from "alchemy";
-import * as AWS from "alchemy/AWS";
+import * as AWS from "@alchemy.run/aws";
 import * as Command from "alchemy/Command";
-import * as Docker from "alchemy/Docker";
+import * as Docker from "@alchemy.run/docker";
 import * as Output from "alchemy/Output";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 
 const ELECTRIC_IMAGE = "electricsql/electric:1.8.1";
 // Graviton: matches Apple Silicon locally and is the cheaper Fargate platform.
@@ -109,11 +111,21 @@ const RunMigrations = Alchemy.Action(
   "RunMigrations",
   (input: { cluster: string; taskDefinition: string }) =>
     Effect.gen(function* () {
+      // Fargate tasks run in awsvpc mode, which needs subnets; the default VPC's will do.
+      const subnets = yield* ec2.describeSubnets
+        .items({ Filters: [{ Name: "default-for-az", Values: ["true"] }] })
+        .pipe(
+          Stream.map((subnet) => subnet.SubnetId),
+          Stream.filter((id): id is string => id !== undefined),
+          Stream.runCollect,
+          Effect.map((ids) => Array.from(ids)),
+        );
       const started = yield* ecs.runTask({
         cluster: input.cluster,
         taskDefinition: input.taskDefinition,
         count: 1,
         launchType: "FARGATE",
+        networkConfiguration: { awsvpcConfiguration: { subnets, assignPublicIp: "ENABLED" } },
       });
       const taskArn = started.tasks?.[0]?.taskArn;
       if (!taskArn) {

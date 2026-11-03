@@ -33,7 +33,7 @@ function WikiBaseQuery({ source, ...scope }: Scope & { readonly source: string }
       },
     }),
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- each answer crosses into the editor's web view, outside React
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each answer crosses into the editor's web view, outside React
   useEffect(() => {
     if (data !== null) onAnswer(source, { result: data, error: null });
     else if (error !== null) onAnswer(source, { result: null, error });

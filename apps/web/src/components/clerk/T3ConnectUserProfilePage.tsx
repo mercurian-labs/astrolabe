@@ -11,8 +11,11 @@ import { useRef, useState } from "react";
 import {
   deregisterManagedRelayEnvironmentCommand,
   useManagedRelayEnvironments,
+  useManagedTunnelUsage,
 } from "../../cloud/managedRelayState";
+import { relayEnvironmentDiscovery } from "../../state/relay";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { TunnelUsageMeter } from "../cloud/TunnelUsage";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
@@ -110,9 +113,22 @@ function T3ConnectEnvironmentRow(props: {
   );
 }
 
+function T3ConnectTunnelUsage() {
+  const usage = useManagedTunnelUsage();
+  if (usage.used === null || usage.limit === null) return null;
+  return (
+    <div className="border-t py-4">
+      <TunnelUsageMeter used={usage.used} limit={usage.limit} />
+    </div>
+  );
+}
+
 export function T3ConnectUserProfilePage() {
   const environmentsState = useManagedRelayEnvironments();
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
+    reportFailure: false,
+  });
+  const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refreshAfterMutation, {
     reportFailure: false,
   });
   const [deregisteringEnvironmentId, setDeregisteringEnvironmentId] =
@@ -147,6 +163,7 @@ export function T3ConnectUserProfilePage() {
         return { accountId, linkedAtById };
       });
       environmentsState.refresh();
+      void refreshRelayEnvironments();
       toastManager.add({
         type: "success",
         title: "Server deregistered",
@@ -188,6 +205,8 @@ export function T3ConnectUserProfilePage() {
     (environment) =>
       removedEnvironmentLinkedAt.get(environment.environmentId) !== environment.linkedAt,
   );
+  const usage = useManagedTunnelUsage();
+  const refreshAll = usage.refresh;
   const isInitialLoad =
     !environmentsState.accountId || (environmentsState.data === null && !environmentsState.error);
 
@@ -199,11 +218,12 @@ export function T3ConnectUserProfilePage() {
         <ClerkUserProfileRefreshButton
           disabled={deregisteringEnvironmentId !== null}
           isPending={environmentsState.isPending}
-          onClick={environmentsState.refresh}
+          onClick={refreshAll}
         />
       }
     >
       <div>
+        <T3ConnectTunnelUsage />
         {environmentsState.error ? (
           <div className="mb-4 border-t border-destructive/35 py-3 text-xs" role="alert">
             <p className="font-medium text-destructive-foreground">

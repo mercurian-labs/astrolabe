@@ -70,6 +70,7 @@ export function refreshCloudAccount(): Promise<void> {
  * retry it.
  */
 export function useCloudAccountRefresh(): void {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes the cloud session on mount and on each return to the foreground, retrying on a timer after a failure
   useEffect(() => {
     let retry: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {

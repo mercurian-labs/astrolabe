@@ -247,5 +247,5 @@ if ($interactive) { [Console]::Error.Write("`r$esc[2K") }
 if (($env:PATH -split ";") -notcontains $binDir) {
   Write-Host "  Add $binDir to your PATH, then run ${bold}astrolabe$reset.`n"
 } else {
-  Write-Host "  Run ${bold}astrolabe$reset to get started.`n"
+  Write-Host "  Run ${bold}astrolabe$reset to use Astrolabe here, or ${bold}astrolabe up$reset to use it from your other devices.`n"
 }

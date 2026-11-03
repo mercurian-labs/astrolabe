@@ -30,7 +30,7 @@ export function projectMonogram(projectName: string): string {
   return Array.from(`${first}${second}`.toUpperCase()).slice(0, 2).join("");
 }
 
-export function projectMonogramColor(projectName: string): ProjectIconColor {
+function projectMonogramColor(projectName: string): ProjectIconColor {
   const seed = projectName.normalize("NFKC").trim().toLocaleLowerCase("en-US") || "project";
   let index = 0;
   for (const glyph of seed) {

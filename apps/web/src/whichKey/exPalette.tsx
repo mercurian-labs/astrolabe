@@ -266,6 +266,7 @@ export function useExLine(
   setQuery: (query: string) => void,
 ): CommandPaletteGroup[] | null {
   const [origin] = useState(pendingExOrigin);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the pending ex origin and refocuses its editor view after the palette closes
   useEffect(() => {
     releaseExOrigin(origin);
     const view = origin?.view;

@@ -35,6 +35,7 @@ import {
   SidebarPickerAction,
   SidebarPickerFooter,
 } from "../sidebar/SidebarThreadHeader";
+import { Badge } from "../ui/badge";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import {
   Combobox,
@@ -74,6 +75,7 @@ export function WorktreeHeader({
   onToggleFiles,
   rowsLabel = "changes",
   outsideFilter = false,
+  archived = false,
   folded = false,
   onCompare,
 }: {
@@ -92,6 +94,8 @@ export function WorktreeHeader({
   readonly rowsLabel?: string;
   /** Whether the filter hides it, so it shows only while the focused tab is in it. */
   readonly outsideFilter?: boolean;
+  /** Whether it carries its archived project's mark. */
+  readonly archived?: boolean;
   /** Listed under a project's other worktrees: neither watched nor counted until opened. */
   readonly folded?: boolean;
   /** Opens its branch's changes against its base. */
@@ -108,12 +112,12 @@ export function WorktreeHeader({
     refreshProjectWorktreesSoon(repository);
     refreshWorktreeChangedFilesSoon(repository, worktree.path);
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- its count and branch follow changes on disk
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- its count and branch follow changes on disk
   useEffect(() => {
     if (changes > 0) refreshSoon();
   }, [changes]);
   const unwatched = live && watch?.unwatched != null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- with no watch, coming back to the window is the cue to count again
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- with no watch, coming back to the window is the cue to count again
   useEffect(() => {
     if (!unwatched) return;
     window.addEventListener("focus", refreshSoon);
@@ -135,6 +139,7 @@ export function WorktreeHeader({
         </Tooltip>
       ) : null}
       {outsideFilter ? <OutsideFilterMark /> : null}
+      {archived ? <ArchivedMark /> : null}
       {worktree.isMain ? <span>main checkout</span> : null}
       {changedFiles !== null && changedFiles > 0 ? (
         <span className="tabular-nums">{`${changedFiles} changed`}</span>
@@ -204,6 +209,15 @@ export function WorktreeHeader({
         </WorktreeMenu>
       )}
     </li>
+  );
+}
+
+/** An archived project's mark: it stays in Projects, out of the filters and New thread. */
+export function ArchivedMark() {
+  return (
+    <Badge size="sm" variant="secondary">
+      Archived
+    </Badge>
   );
 }
 

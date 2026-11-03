@@ -935,7 +935,10 @@ function samePanelDrawing(before: PanelProps, next: PanelProps) {
     before.pullRequestsAvailable === next.pullRequestsAvailable &&
     before.deviceAvailable === next.deviceAvailable &&
     before.graphAvailable === next.graphAvailable &&
-    before.lineageAvailable === next.lineageAvailable
+    before.lineageAvailable === next.lineageAvailable &&
+    before.sideChatAvailable === next.sideChatAvailable &&
+    before.sideChatDisabledReason === next.sideChatDisabledReason &&
+    (before.onAddSideChat === undefined) === (next.onAddSideChat === undefined)
   );
 }
 
