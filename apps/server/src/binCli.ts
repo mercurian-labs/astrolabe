@@ -10,9 +10,9 @@ import * as NetService from "@t3tools/shared/Net";
 import packageJson from "../package.json" with { type: "json" };
 import { acpMcpBridgeCommand, acpMcpCallCommand } from "./cli/acpMcpBridge.ts";
 import { authCommand } from "./cli/auth.ts";
+import { environmentCommand } from "./cli/environment.ts";
 import { appCommand } from "./cli/app.ts";
 import { browserCommand } from "./cli/browser.ts";
-import { connectCommand } from "./cli/connect.ts";
 import { CLI_COMMAND } from "./cli/invocation.ts";
 import { pairCommand } from "./cli/pair.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
@@ -31,6 +31,7 @@ import { servicePreflightCommand } from "./cli/servicePreflight.ts";
 import { themeCommand } from "./cli/theme.ts";
 import { traceCommand } from "./cli/trace.ts";
 import { triageCommand } from "./cli/triage.ts";
+import { connectCommand, statusCommand, upCommand } from "./cli/up.ts";
 
 const layerCliRuntime = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
@@ -60,7 +61,9 @@ const connectUnavailableCommand = Command.make("connect", {
 
 export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
   Command.make(CLI_COMMAND, { ...sharedServerCommandFlags }).pipe(
-    Command.withDescription("Run the Astrolabe server."),
+    Command.withDescription(
+      `Run Astrolabe in this terminal and open it in your browser. To use it from your other devices, run \`${CLI_COMMAND} up\`.`,
+    ),
     Command.withHandler(runDefaultServerCommand),
     Command.withSubcommands([
       Command.make("help").pipe(
@@ -76,9 +79,12 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       appCommand,
       pairCommand,
       authCommand,
+      environmentCommand,
       browserCommand,
       projectCommand,
       threadCommand,
+      upCommand,
+      statusCommand,
       serviceCommand,
       updateCommand,
       uninstallCommand,

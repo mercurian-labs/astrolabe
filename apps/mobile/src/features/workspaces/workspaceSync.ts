@@ -121,6 +121,7 @@ function follow(userId: string | null) {
 export function useWorkspaceDataCleanup(): void {
   const account = useCloudAccountState();
   const userId = account.status === "signedIn" ? account.user.id : null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ends a module-level session held for another account and forgets saved data that is not the signed-in person's
   useEffect(() => {
     if (account.status === "loading") return;
     if (session !== null && session.userId !== userId) {
@@ -162,6 +163,7 @@ const subscribe = (listener: () => void) => {
 export function useWorkspaceSync(): WorkspaceSync | null {
   const account = useCloudAccountState();
   const userId = account.status === "signedIn" ? account.user.id : null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens or ends the module-level workspace session to follow the signed-in account
   useEffect(() => {
     // Loading isn't signed out: keep the saved data until the session is known.
     if (account.status !== "loading") follow(userId);

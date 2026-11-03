@@ -16,7 +16,7 @@ import {
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useWorkspaceTabs } from "./WorkspaceTabsContext";
-import { useCompactWorkspaceTabs, useSidebarWorkspaceTabs } from "./useSystemWorkspaceTabBar";
+import { useFloatingWorkspaceTabs, useSidebarWorkspaceTabs } from "./useSystemWorkspaceTabBar";
 import { WorkspaceTabToolbarButtons } from "./WorkspaceSectionToolbar";
 import { WORKSPACE_SEARCH_LABELS } from "./workspace-tabs-state";
 
@@ -28,7 +28,7 @@ export function WorkspaceToolbar(props: {
   const activeNewTask = useActiveNewTask();
   const deviceType = useDeviceType();
   const sidebarTabs = useSidebarWorkspaceTabs();
-  const compactTabs = useCompactWorkspaceTabs();
+  const floatingTabs = useFloatingWorkspaceTabs();
   const duoSearch = NATIVE_LIQUID_GLASS_SUPPORTED && isDuoDevice(deviceType);
   const bottomSearch = duoSearch && sidebarTabs !== "picker";
   // On the Duo, compose belongs to the threads tab, in the detail column's bar when unfolded.
@@ -40,18 +40,16 @@ export function WorkspaceToolbar(props: {
     activeNewTask === null;
   const tabActive = use(NativeWorkspaceTabActivityContext)?.active ?? true;
   const focused = useIsFocused();
-  const { panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
+  const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
   const searchRef = useRef<SearchBarCommands>(null);
   // The Settings list takes the selected tab's place, so search follows it.
   const selectedTab = workspace.settingsOpen ? "settings" : workspace.state.selectedTab;
   const tab = workspace.state.tabs[selectedTab];
   const searchLabel = WORKSPACE_SEARCH_LABELS[selectedTab];
   const { isTabActive: isListTabActive } = workspace;
-  const isTabActive = useCallback(
-    // A retained tab slot stays mounted while another is shown.
-    (tab: typeof selectedTab) => (tab === "settings" ? tabActive : isListTabActive(tab)),
-    [tabActive, isListTabActive],
-  );
+  // A retained tab slot stays mounted while another is shown.
+  const isTabActive = (tab: typeof selectedTab) =>
+    tab === "settings" ? tabActive : isListTabActive(tab);
   const foldedSearch = deviceType === "duo-folded";
   const primaryColumn = use(NativePrimaryColumnContext);
   // UIKit hosts integrated search outside the sidebar's sliding content.
@@ -68,27 +66,24 @@ export function WorkspaceToolbar(props: {
     workspace.dispatch({ type: "search", tab: selectedTab });
     if (props.sidebar && !panes.primarySidebarVisible) togglePrimarySidebar();
   }, [workspace, selectedTab, props.sidebar, panes.primarySidebarVisible, togglePrimarySidebar]);
-  const focusSearch = useCallback(() => {
+  const focusSearch = () => {
     if (!isTabActive(selectedTab)) return false;
     if (duoSearch || !NATIVE_LIQUID_GLASS_SUPPORTED) enterSearch();
     searchRef.current?.focus();
     return true;
-  }, [isTabActive, selectedTab, enterSearch, duoSearch]);
-  const cancelSearch = useCallback(() => {
+  };
+  const cancelSearch = () => {
     workspace.recordScrollOffset(selectedTab, tab.searchEntryOffset);
     workspace.dispatch({ type: "cancel", tab: selectedTab });
-  }, [workspace, selectedTab, tab.searchEntryOffset]);
-  const searchFocused = useCallback(
-    () =>
-      tab.searchMode === "resting"
-        ? enterSearch()
-        : workspace.dispatch({ type: "search", tab: selectedTab }),
-    [tab.searchMode, enterSearch, workspace, selectedTab],
-  );
+  };
+  const searchFocused = () =>
+    tab.searchMode === "resting"
+      ? enterSearch()
+      : workspace.dispatch({ type: "search", tab: selectedTab });
   useHardwareKeyboardCommand("focusSearch", focusSearch);
   // The sidebar remains visible while its detail owns navigation focus.
   const searchHostVisible = focused || primaryColumn?.presented === true;
-  const restoreSearch = useCallback(() => {
+  const restoreSearch = () => {
     if (
       searchHostVisible &&
       searchVisible &&
@@ -103,13 +98,14 @@ export function WorkspaceToolbar(props: {
         if (tab.searchMode === "active") searchRef.current?.focus();
       }
     }
-  }, [searchHostVisible, isTabActive, selectedTab, tab.searchMode, tab.query, searchVisible]);
+  };
   useFocusEffect(
     useCallback(() => {
       const frame = requestAnimationFrame(restoreSearch);
       return () => cancelAnimationFrame(frame);
     }, [restoreSearch]),
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules a frame to restore the native search bar's text and focus when its tab becomes active
   useEffect(() => {
     if (!tabActive) return;
     const frame = requestAnimationFrame(restoreSearch);
@@ -188,9 +184,9 @@ export function WorkspaceToolbar(props: {
           {composeButton}
           {selectedTab !== "threads" ||
           isDuoDevice(deviceType) ||
-          deviceType === "pad" ||
+          (deviceType === "pad" && layout.usesSplitView) ||
           sidebarTabs === "picker" ||
-          compactTabs ? null : (
+          floatingTabs ? null : (
             <Toolbar.Button
               accessibilityLabel="New chat"
               icon="square.and.pencil"

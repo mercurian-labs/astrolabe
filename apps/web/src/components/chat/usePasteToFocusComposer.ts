@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { isMacPlatform } from "../../lib/utils";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
+import { isInSideChatPane } from "../../lib/sideChatPane";
 import type { ThreadId } from "@t3tools/contracts";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import { useChatOwner } from "../../panes/PaneSurfaceHost";
@@ -19,7 +20,9 @@ export function usePasteToFocusComposer(
 ) {
   const owner = useChatOwner();
   const pasteAsTextShortcutUntilRef = useRef(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- attaches window keydown and paste capture listeners that route stray pastes into the composer
   useEffect(() => {
+    if (!activeThreadId) return;
     const keyHandler = (event: KeyboardEvent) => {
       if (
         shouldRedirectInputToComposer(event) &&
@@ -30,7 +33,9 @@ export function usePasteToFocusComposer(
     };
     const handler = (event: ClipboardEvent) => {
       // Astrolabe: with chats side by side, a paste goes to the focused one only.
-      if (!activeThreadId || isCommandPaletteOpen() || !isFocusedChatTab(owner)) return;
+      if (isCommandPaletteOpen() || isInSideChatPane(event.target) || !isFocusedChatTab(owner)) {
+        return;
+      }
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
       const text = pasteTextToFocusComposer(event);

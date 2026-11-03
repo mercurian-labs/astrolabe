@@ -1,10 +1,10 @@
 ---
 title: Privacy Policy
 description: What Astrolabe keeps on your machine, what it sends and to whom, and what our websites see.
-updated: October 27, 2026
+updated: November 3, 2026
 ---
 
-**Effective date:** October 27, 2026
+**Effective date:** November 3, 2026
 
 ## The short version
 
@@ -50,6 +50,7 @@ Mercurian doesn't receive any of this. It leaves your machine only in the ways s
 - other devices keep unsent drafts and cached content until you open Astrolabe there;
 - old pages of the database stay on disk until the database reuses that space;
 - checkpoints made by earlier versions of Astrolabe stay in your repository;
+- work delegated to a linked environment stays on that machine until you delete it there;
 - your provider's own tool keeps its own copy: Claude Code and Codex, for example, keep session files in your home folder.
 
 Uninstalling Astrolabe doesn't delete your data. To erase all of it, delete the `~/.astrolabe` folder.
@@ -96,12 +97,12 @@ A few provider requests happen without you starting a turn:
 These happen without a specific action from you. None of them include your prompts or code. Each service sees your IP address.
 
 - **Desktop update checks.** The desktop app checks Astrolabe's releases on GitHub 15 seconds after it opens and then every 4 minutes. Each check carries a random ID the updater creates for your installation. Setting the environment variable `ASTROLABE_DISABLE_AUTO_UPDATE` turns this off.
-- **Server update checks.** When a server you connect to is older than your client and wasn't installed by the desktop app, the client asks npm every 5 minutes whether the newer `@mercurian/astrolabe` is published.
+- **Server update checks.** When you switch the update track (stable or nightly) in Settings, the app asks a connected server which version of `@mercurian/astrolabe` that track offers. The server asks npm, through your own npm settings, or the public npm registry if npm isn't installed.
 - **Downloads.** The `@mercurian/astrolabe` launcher downloads Astrolabe's server from Astrolabe's GitHub Releases the first time you run each version. `astrolabe update` and installing Astrolabe on a remote machine over SSH download it the same way. On first use, Astrolabe also downloads tools it needs: a headless Chrome from Google, Codex from GitHub, Antigravity's agent server from Google, and device tools from npm.
 - **Provider lists.** To keep provider versions, model lists and prices current, the server fetches lists from GitHub (including a model list from T3 Code's public repository), npm, the Agent Client Protocol registry and Meta. These requests carry only package and list names. You can turn them off in Settings → Maintenance → Provider update checks.
 - **Link icons.** When a chat or a preview tab shows a link to a public website, Astrolabe asks Google's favicon service for that site's icon, so Google learns the site's name. Some tool activity loads a site's icon from the site itself. Images in messages load straight from the websites that host them. There's no setting to turn these off yet.
 - **Spell-check dictionaries (Linux desktop).** The desktop app's spell checker downloads its dictionaries from Google the first time it needs them. On macOS it uses the system's.
-- **Your server's public description.** Anyone who can reach your Astrolabe server can read its ID, machine name, operating system and Astrolabe version without signing in. By default the server only accepts connections from your own computer. The exception is the optional background service (`astrolabe service install`), which also accepts connections from devices on your private network, such as your local network or your tailnet. When it runs, or if you open a server to your network or your tailnet, anyone who can reach it there can read this too.
+- **Your server's public description.** Anyone who can reach your Astrolabe server can read its ID, machine name, operating system and Astrolabe version without signing in. By default the server only accepts connections from your own computer. A new background service (`astrolabe service install`) does too, until you pick the local network with `astrolabe up --lan`. A background service installed before that option existed keeps accepting connections from devices on your private network, such as your local network or your tailnet. When a server accepts them, or if you open a server to your network or your tailnet, anyone who can reach it there can read this too.
 
 ### 3.5 Links you share
 
@@ -112,7 +113,7 @@ These happen without a specific action from you. None of them include your promp
 
 You can reach your machine from a browser on another device by pairing it with your server:
 
-- **Local network.** The background service accepts connections from your local network and your tailnet by default. Setting `T3CODE_HOST=127.0.0.1` in its `service.env` file keeps it on your computer only. Other servers do only if you open them to your network. Each device still has to pair first. Pairing over your local network uses plain HTTP unless you set up HTTPS yourself, so anyone on that network could read the traffic.
+- **Local network.** A new background service answers only on your computer until you pick the local network with `astrolabe up --lan`. Then it accepts connections from your local network and your tailnet. A service installed before that option existed keeps accepting them, and `astrolabe up --no-lan` keeps it on your computer only. Other servers do only if you open them to your network. Each device still has to pair first. Pairing over your local network uses plain HTTP unless you set up HTTPS yourself, so anyone on that network could read the traffic.
 - **Tailscale and SSH.** These connect through your own tailnet or SSH host. No Mercurian server is involved.
 
 Once paired, your server sets a sign-in cookie in that browser for its own address.
@@ -126,7 +127,7 @@ The server contains an analytics client that stays off unless whoever builds or 
 ## 4. Our websites
 
 - **astrolabe.sh** sets no cookies and runs no analytics or third-party scripts. Its fonts are served from the site itself. It reads your time zone in your browser to set the page's light, and that never leaves your browser. The download page asks GitHub for the latest release from your browser, so GitHub sees your IP address, and keeps the answer in your browser until you close the tab.
-- **app.astrolabe.sh** is the web app, served as static files. It has no accounts. It sets one cookie that remembers whether the sidebar is open. Everything else it keeps, such as your saved servers, their credentials, drafts and settings, stays in your browser's storage, and it talks to the Astrolabe servers you connect it to, straight from your browser. It makes the automatic requests in section 3.4 that happen in the client: link icons from Google and the npm update check.
+- **app.astrolabe.sh** is the web app, served as static files. It has no accounts. It sets one cookie that remembers whether the sidebar is open. Everything else it keeps, such as your saved servers, their credentials, drafts and settings, stays in your browser's storage, and it talks to the Astrolabe servers you connect it to, straight from your browser. It makes the automatic request in section 3.4 that happens in the client: link icons from Google.
 - **Hosting.** Our web host, Cloudflare, serves both sites. Like any web host, it receives your IP address, browser details and the addresses you request, including the text of any prompt link you open, and may keep request logs to run and protect the sites.
 
 ## 5. How we use and share data

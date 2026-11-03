@@ -4,6 +4,7 @@ import {
   DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE,
   DEFAULT_UNIFIED_SETTINGS,
   type ChatWidth,
+  type EffortDisplay,
   type EnvironmentIdentificationMode,
   MAX_APPEARANCE_CONTRAST,
   MAX_GLASS_OPACITY,
@@ -32,10 +33,11 @@ import { searchableSetting } from "./settingsSearch";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { TypographySection } from "./TypographySettings";
+import { ThreadDetailsItemsRow } from "./ThreadDetailsItemsRow";
 
-// Astrolabe offers no artwork; the schema's "artwork" (its default) shows as the pill.
+// Astrolabe offers no artwork; every artwork mode, the default included, shows as the pill.
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<
-  Exclude<EnvironmentIdentificationMode, "artwork">,
+  Exclude<EnvironmentIdentificationMode, "artwork" | "nightly-artwork" | "dev-artwork">,
   string
 > = {
   pill: "Version pill",
@@ -46,6 +48,11 @@ const CHAT_WIDTH_LABELS: Record<ChatWidth, string> = {
   comfortable: "Comfortable",
   wide: "Wide",
   full: "Full",
+};
+
+const EFFORT_DISPLAY_LABELS: Record<EffortDisplay, string> = {
+  label: "Word",
+  bars: "Bars",
 };
 
 export function AppearanceSettingsPanel() {
@@ -66,6 +73,8 @@ export function AppearanceSettingsPanel() {
   const environmentStageLabel = useEnvironmentStageLabel();
   const showEnvironmentIdentification =
     resolveEnvironmentIdentificationPillLabel(environmentStageLabel) !== null;
+  const environmentIdentificationMode =
+    settings.environmentIdentificationMode === "none" ? "none" : "pill";
   const glassOpacityRatio =
     (settings.glassOpacity - MIN_GLASS_OPACITY) / (MAX_GLASS_OPACITY - MIN_GLASS_OPACITY);
   const glassOpacitySliderStyle = {
@@ -108,27 +117,6 @@ export function AppearanceSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="appearance-interface" title="Interface">
-        <SettingsRow
-          {...searchableSetting("new-design")}
-          description="A true black dark mode, dimmer read threads, and simpler composer controls. Turn it off for the classic look."
-          resetAction={
-            settings.redesignEnabled !== DEFAULT_UNIFIED_SETTINGS.redesignEnabled ? (
-              <SettingResetButton
-                label="new design"
-                onClick={() =>
-                  updateSettings({ redesignEnabled: DEFAULT_UNIFIED_SETTINGS.redesignEnabled })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.redesignEnabled}
-              onCheckedChange={(checked) => updateSettings({ redesignEnabled: Boolean(checked) })}
-              aria-label="New design"
-            />
-          }
-        />
         <SettingsRow
           {...searchableSetting("setting-appearance-contrast")}
           description="Adjust the contrast of colors and borders across the interface."
@@ -255,6 +243,40 @@ export function AppearanceSettingsPanel() {
             </div>
           }
         />
+        <ThreadDetailsItemsRow />
+        <SettingsRow
+          {...searchableSetting("effort-display")}
+          description="Show reasoning effort in the composer as its name, such as High, or as bars."
+          resetAction={
+            settings.effortDisplay !== DEFAULT_UNIFIED_SETTINGS.effortDisplay ? (
+              <SettingResetButton
+                label="effort display"
+                onClick={() =>
+                  updateSettings({ effortDisplay: DEFAULT_UNIFIED_SETTINGS.effortDisplay })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={settings.effortDisplay}
+                onValueChange={(value) => {
+                  if (value === "bars" || value === "label")
+                    updateSettings({ effortDisplay: value });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Effort display">
+                  <SelectValue>{EFFORT_DISPLAY_LABELS[settings.effortDisplay]}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="label">Word (default)</SelectItem>
+                  <SelectItem value="bars">Bars</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
         <SettingsRow
           {...searchableSetting("math-rendering")}
           description="Typeset LaTeX math, such as $x^2$ or \[x^2\], in messages and Markdown previews. The composer keeps TeX source editable."
@@ -358,11 +380,7 @@ export function AppearanceSettingsPanel() {
               }
               control={
                 <Select
-                  value={
-                    settings.environmentIdentificationMode === "artwork"
-                      ? "pill"
-                      : settings.environmentIdentificationMode
-                  }
+                  value={environmentIdentificationMode}
                   onValueChange={(value) => {
                     if (value === "pill" || value === "none") {
                       updateSettings({ environmentIdentificationMode: value });
@@ -375,13 +393,7 @@ export function AppearanceSettingsPanel() {
                     aria-label="Environment identification"
                   >
                     <SelectValue>
-                      {
-                        ENVIRONMENT_IDENTIFICATION_LABELS[
-                          settings.environmentIdentificationMode === "artwork"
-                            ? "pill"
-                            : settings.environmentIdentificationMode
-                        ]
-                      }
+                      {ENVIRONMENT_IDENTIFICATION_LABELS[environmentIdentificationMode]}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectPopup align="end" alignItemWithTrigger={false}>

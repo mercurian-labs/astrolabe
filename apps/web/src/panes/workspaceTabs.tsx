@@ -492,6 +492,16 @@ function addActions(panel: PanelProps | null): AddAction[] {
       singleton: "lineage",
       invoke: (current) => current.onAddLineage(),
     },
+    ...(panel.onAddSideChat
+      ? [
+          {
+            label: "Side chat",
+            available: panel.sideChatAvailable === true && !panel.sideChatDisabledReason,
+            singleton: null,
+            invoke: (current: PanelProps) => current.onAddSideChat?.(),
+          },
+        ]
+      : []),
   ];
 }
 
@@ -555,7 +565,7 @@ function NewTabButton({ paneId }: { paneId: string }) {
     event.stopPropagation();
     if (!event.repeat) open();
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- Mod+T is a window shortcut each pane's + answers while focused
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Mod+T is a window shortcut each pane's + answers while focused
   useEffect(() => {
     document.addEventListener("keydown", onNewTabShortcut, true);
     return () => document.removeEventListener("keydown", onNewTabShortcut, true);
@@ -634,6 +644,7 @@ function EmptyLauncher({
       onAddDevice={run("Device")}
       onAddGraph={run("Graph")}
       onAddLineage={run("Lineage")}
+      onAddSideChat={panel.onAddSideChat ? run("Side chat") : undefined}
       browserAvailable={available("Browser")}
       terminalAvailable={available("Terminal")}
       diffAvailable={available("Diff")}
@@ -643,6 +654,8 @@ function EmptyLauncher({
       deviceAvailable={available("Device")}
       graphAvailable={available("Graph")}
       lineageAvailable={available("Lineage")}
+      sideChatAvailable={panel.sideChatAvailable === true}
+      sideChatDisabledReason={panel.sideChatDisabledReason ?? null}
     />
   );
 }

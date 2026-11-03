@@ -390,9 +390,9 @@ export function resolveEnvironmentIdentificationMode(input: {
   paletteThemeAllowsArtwork?: boolean;
 }): EnvironmentIdentificationMode {
   if (!input.settingsHydrated) return "none";
-  // Astrolabe has no sidebar artwork: the schema's "artwork" (its default) shows the pill, which
-  // is theme-aware, so a T3 server's stored choice still reads.
-  return input.mode === "artwork" ? "pill" : input.mode;
+  // Astrolabe has no sidebar artwork: every artwork mode (the schema default is "artwork") shows
+  // the pill, which is theme-aware, so a T3 server's stored choice still reads.
+  return input.mode === "none" ? "none" : "pill";
 }
 
 export function useEnvironmentIdentificationMode(): EnvironmentIdentificationMode {
@@ -414,11 +414,12 @@ export function useEnvironmentIdentificationMode(): EnvironmentIdentificationMod
   });
 }
 
-/** Wait for hydration: swapping sidebar implementations after mount remounts the whole tree. */
-export function useLegacySidebarEnabled(): boolean {
-  const settingsHydrated = useClientSettingsHydrated();
-  const legacySidebarEnabled = useClientSettings((settings) => settings.legacySidebarEnabled);
-  return settingsHydrated && legacySidebarEnabled;
+/** Its Labs toggle is hidden in Astrolabe, so a legacy-sidebar opt-in no longer lands here. */
+export const selectBoringSidebarEnabled = (settings: ClientSettings): boolean =>
+  settings.boringSidebarEnabled;
+
+export function useBoringSidebarEnabled(): boolean {
+  return useClientSettings(selectBoringSidebarEnabled);
 }
 
 export async function prepareModelPreferencesPatch(
@@ -573,7 +574,7 @@ function useSharedSettingsSyncTargetIds(includePending = false): ReadonlyArray<E
     if (includePending && result._tag === "Initial") {
       return [environmentId];
     }
-    const session = result._tag === "Failure" ? null : Option.getOrNull(AsyncResult.value(result));
+    const session = result._tag === "Failure" ? null : AsyncResult.getOrElse(result, () => null);
     return session !== null && sessionGrantsScope(session, AuthSettingsWriteScope)
       ? [environmentId]
       : [];
@@ -650,7 +651,6 @@ function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
           const target = environments.find((candidate) => candidate.environmentId === targetId);
           const targetPatch = filterSharedServerPatch(
             sharedPatch,
-            target?.serverConfig?.environment.capabilities,
             target?.serverConfig?.settings,
             sourceSettings,
             targetId === environmentId,

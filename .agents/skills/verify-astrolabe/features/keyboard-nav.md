@@ -20,6 +20,14 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   (width 0), panes `inert` behind a maximized pane. With focus on the page (nothing
   focused), it acts from the place last clicked, else a chat column outside the panes, else
   the focused pane.
+- **F6 areas** (upstream's, separate from the places above): `F6`/`Shift+F6`, and
+  `mod+F6`/`mod+Shift+F6` for browsers that keep plain F6 (`workspace.focusNext`/`Previous`,
+  `lib/workspaceFocus.ts`), cycle the visible `[data-workspace-area]` stops in
+  `data-workspace-order` and wrap: the rail (`rail`, `aria-label="Sections"`), the sidebar
+  (`sidebar`, still labelled "Threads"), the conversation and the message input, thread details,
+  each pane (`pane`, one stop per pane, keyed `data-workspace-focus-key="pane:<id>"`), panels and the
+  terminal. Each restores its last focused control. Panes `inert` behind a maximized one and a
+  collapsed sidebar are skipped; Settings cycles only its section list and content.
 - **Landing**: back on what last had focus in that place, if still there; else the
   composer (`[data-testid=composer-editor]`, a chat tab's pane included), a pane's tab in front
   (`[data-pane-tab][aria-selected=true]`), the sidebar's or the rail's last focused,
@@ -59,7 +67,7 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   button's light ring shows where focus is.
 - **Sidebar list** (focus on a row: `sidebar-row-card`, `sidebar-row-slim`,
   `sidebar-draft-row`, `wiki-sidebar-row[-slim]` outside search results, a PR row's
-  button under `[data-pull-request-key]`, the legacy sidebar's `thread-row-*`):
+  button under `[data-pull-request-key]`):
   `j`/`k`/ArrowDown/ArrowUp step, `gg`/`G`/ Home/End jump, folded and hidden rows
   skipped; Enter clicks the row, showing it in the tab in front, and keeps focus on it
   (Agents: the opened thread's composer does not take focus, `keepsListFocus`; a click

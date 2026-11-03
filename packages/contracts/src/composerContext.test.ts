@@ -120,6 +120,12 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     wikiName: "Plans",
     name: "Login flow",
   },
+  environment: {
+    ...base,
+    kind: "environment",
+    label: "vps",
+    environmentId: "environment-vps",
+  },
 };
 
 describe("ComposerContextRecord", () => {

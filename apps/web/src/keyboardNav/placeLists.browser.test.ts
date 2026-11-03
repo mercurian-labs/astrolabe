@@ -135,11 +135,14 @@ describe("which keys a sidebar row keeps from the page", () => {
     expect(takesListKey(byId("pill"), "g")).toBe(false);
   });
 
-  it("covers the legacy sidebar's thread rows too", () => {
+  it("covers project folders' toggles and thread rows too", () => {
     using _cleanup = cleanup();
-    document.body.innerHTML =
-      '<div data-app-sidebar><div role="button" tabindex="0" data-testid="thread-row-t1"></div></div>';
-    expect(isListRow(document.querySelector("[data-testid='thread-row-t1']")!)).toBe(true);
+    document.body.innerHTML = `<div data-app-sidebar><ul>
+      <li data-testid="sidebar-project-folder"><button data-sidebar-row="folder:p" id="folder">p</button></li>
+      <li><div role="treeitem" data-testid="sidebar-row-folder" id="row">t1</div></li>
+    </ul></div>`;
+    expect(isListRow(document.getElementById("folder")!)).toBe(true);
+    expect(isListRow(document.getElementById("row")!)).toBe(true);
   });
 });
 

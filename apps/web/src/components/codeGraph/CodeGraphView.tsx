@@ -123,14 +123,14 @@ export function CodeGraphView({
   const indexVersion = status === null ? null : `${status.state}|${status.updatedAt ?? ""}`;
   const refresh = query.refresh;
   const readAtVersion = useRef(indexVersion);
-  // oxlint-disable-next-line t3code/react-effect-budget -- reads the graph again when the index finishes or updates
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the graph again when the index finishes or updates
   useEffect(() => {
     const previous = readAtVersion.current;
     if (previous === indexVersion) return;
     readAtVersion.current = indexVersion;
     if (previous !== null) refresh();
   }, [indexVersion, refresh]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- a closed graph lets go of the line it lit
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a closed graph lets go of the line it lit
   useEffect(() => () => importLineHighlight.set(null), []);
 
   const [hover, setHover] = useState<GraphHover | null>(null);

@@ -69,6 +69,7 @@ export function WikiNoteEditor({
   // Read through refs, so the preview options stay one object and never remount the editor.
   const openNoteRef = useRef(onOpenNote);
   const openUrlRef = useRef(onOpenUrl);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest note and URL open handlers for the editor's link callbacks
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
     openUrlRef.current = onOpenUrl;

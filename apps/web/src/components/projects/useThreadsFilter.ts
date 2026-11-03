@@ -1,3 +1,5 @@
+import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
+
 import type { SidebarThreadSummary } from "../../types";
 import { filterSidebarV2VisibleThreads } from "../Sidebar.logic";
 import { projectFilterOptions, type ProjectFilterOption } from "./projectFilter";
@@ -18,6 +20,8 @@ import {
 interface ProjectGroup {
   readonly projectKey: string;
   readonly displayName: string;
+  readonly pinned: boolean;
+  readonly archived: boolean;
   readonly memberProjectRefs: ReadonlyArray<{
     readonly environmentId: string;
     readonly projectId: string;
@@ -44,19 +48,23 @@ const statusValue = (status: ThreadStatusFilter) => `status:${status}`;
 
 /**
  * Astrolabe: the thread list's filter (`threadsFilter`) as the sidebar offers it: statuses, then
- * All projects and each project.
+ * All projects and each project, pinned ones first. Archived projects are not offered, and a
+ * filter on one reads as every project.
  */
 export function useThreadsFilter<Group extends ProjectGroup>({
-  groups,
+  groups: allGroups,
   threads,
+  delegatedUnderParent,
   onChange,
 }: {
   readonly groups: ReadonlyArray<Group>;
   readonly threads: ReadonlyArray<SidebarThreadSummary>;
+  readonly delegatedUnderParent: ReadonlySet<string>;
   /** Called before the filter changes, as a selection made under one filter may hide under the next. */
   readonly onChange: () => void;
 }) {
   const filter = useStoredThreadsFilter();
+  const groups = pickableProjectGroups(allGroups);
   const groupKeys = groups.map((group) => group.projectKey);
 
   const projectItems = projectFilterOptions({
@@ -84,7 +92,11 @@ export function useThreadsFilter<Group extends ProjectGroup>({
 
   const statusCounts = (() => {
     const counts: Record<ThreadStatusFilter, number> = { "needs-you": 0, working: 0, errored: 0 };
-    for (const thread of filterSidebarV2VisibleThreads(threads, scopedProjectKeys)) {
+    for (const thread of filterSidebarV2VisibleThreads(
+      threads,
+      scopedProjectKeys,
+      delegatedUnderParent,
+    )) {
       for (const status of THREAD_STATUS_FILTERS) {
         if (threadMatchesStatuses(thread, [status])) counts[status] += 1;
       }
@@ -130,6 +142,13 @@ export function useThreadsFilter<Group extends ProjectGroup>({
     selectedValues: items.filter(isChecked).map((item) => item.value),
     isChecked,
     toggle,
+    /** The projects offered, in the order the filter lists them. */
+    groups,
+    /** The picked projects, or none for every project. */
+    scopedGroups:
+      scopedGroupKeys === null
+        ? []
+        : groups.filter((group) => scopedGroupKeys.has(group.projectKey)),
     scopedProjectKeys,
     statuses: filter.statuses,
     statusCounts,

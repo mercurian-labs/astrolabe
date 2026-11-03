@@ -14,6 +14,7 @@ const TAB_BUTTONS = "[data-pane-tab]";
  * `commands.ts`.
  */
 export function KeyboardNavigation() {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window keydown, focusin and pointerdown listeners that drive keyboard navigation across panes and lists
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // A focus move lands on a pane's tab in front, a button that would take Space as a press:

@@ -8,13 +8,15 @@ to keep a terminal open.
 Install the `astrolabe` CLI first ([Install T3 Code](./install.md#command-line)), then
 run these commands on the machine that will host T3 Code:
 
-| Task                            | Command                       |
-| ------------------------------- | ----------------------------- |
-| Install and start               | `astrolabe service install`   |
-| Inspect status and log location | `astrolabe service status`    |
-| Move to a newer release         | `astrolabe update`            |
-| Restart                         | `astrolabe service restart`   |
-| Stop and remove from startup    | `astrolabe service uninstall` |
+| Task                                  | Command                       |
+| ------------------------------------- | ----------------------------- |
+| Set up access from your other devices | `astrolabe up`                |
+| See how your other devices reach it   | `astrolabe status`            |
+| Install and start                     | `astrolabe service install`   |
+| Inspect status and log location       | `astrolabe service status`    |
+| Move to a newer release               | `astrolabe update`            |
+| Restart                               | `astrolabe service restart`   |
+| Stop and remove from startup          | `astrolabe service uninstall` |
 
 Uninstalling the service leaves your projects, threads, and settings intact.
 Running `astrolabe service install` again repairs a service that `astrolabe service status`
@@ -42,14 +44,21 @@ under T3 home. Pass `--yes` from a script.
 
 ## Local network access
 
-By default the service accepts connections from your private network (your local
-network and your tailnet), so the desktop and mobile apps on the same network
-connect to it directly. The hosted web app can't use these addresses, because
-browsers block plain HTTP from an HTTPS page. The service does not answer on
-public addresses, and every device still needs to pair. To keep the service reachable from this machine only, set
-`T3CODE_HOST=127.0.0.1` in `service.env` (below). Any `T3CODE_HOST` value
-replaces this default. `service.env` takes the `T3CODE_*` spellings, so
-`ASTROLABE_HOST` has no effect there.
+A new service answers only on this machine. Other devices reach it through
+remote access, or directly once you choose the local network in `astrolabe up`
+(or run `astrolabe up --lan`, which sets `T3CODE_LAN=true` in `service.env`). It
+then listens on your local network and Tailscale addresses, so the desktop and
+mobile apps on the same network connect directly instead of through the relay.
+It still does not answer on public addresses. Anyone on the same network can
+reach the port, so a pairing code is all that keeps them out. The hosted web app
+at app.astrolabe.sh stays on remote access, because browsers block plain HTTP
+from an HTTPS page.
+
+A service installed before `T3CODE_LAN` existed keeps listening on the local
+network. `astrolabe status` says so, and `astrolabe up --no-lan` turns it off.
+Any `T3CODE_HOST` value replaces this setting. `service.env` takes the
+`T3CODE_*` spellings, so `ASTROLABE_HOST` and `ASTROLABE_LAN` have no effect
+there.
 
 ## Configure the service environment
 
@@ -88,8 +97,27 @@ service is still installed and will start at the next login.
 
 Windows background services are not supported.
 
-Remote access setup can offer to install the service, but the two are managed
-separately. Signing out of your Astrolabe account does not stop or uninstall the service.
+`astrolabe up` installs the service when you set up remote access, but the two
+are managed separately. Signing out of your Astrolabe account does not stop or
+uninstall the service.
+
+## Keep the server responsive when agents use all memory
+
+On Linux, agents already run with lower priority than the server. When they
+fill the machine's memory, though, the kernel may still slow down or stop the
+server, because only an administrator can reserve memory for it. Run, as your
+normal user:
+
+```sh
+astrolabe service protect
+```
+
+It shows the system settings it will change, asks before applying them, and
+then asks for your sudo password. If the machine runs Tailscale or SSH, it
+also offers to protect them, so you can still reach the machine. Memory
+protection takes effect at once. The server's protection from the kernel's
+out-of-memory killer takes effect after `astrolabe service restart`. `astrolabe service status` reports whether
+the protection is in place, and `astrolabe service protect --undo` removes it.
 
 ## Troubleshooting
 

@@ -277,6 +277,12 @@ describe("resolveEnvironmentIdentificationMode", () => {
     expect(resolveEnvironmentIdentificationMode({ mode: "artwork", settingsHydrated: true })).toBe(
       "pill",
     );
+    for (const mode of ["nightly-artwork", "dev-artwork"] as const) {
+      expect(resolveEnvironmentIdentificationMode({ mode, settingsHydrated: true })).toBe("pill");
+    }
+    expect(resolveEnvironmentIdentificationMode({ mode: "none", settingsHydrated: true })).toBe(
+      "none",
+    );
   });
 });
 

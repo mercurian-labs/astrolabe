@@ -152,12 +152,15 @@ export function WhichKey() {
 
   // The Command Palette runs commands through this registry too, as the latest render has it.
   const latest = useRef({ context, leaderLabel });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest context and leader label for the command palette's registry entry
   useLayoutEffect(() => {
     latest.current = { context, leaderLabel };
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the menu's commands with the command palette slot until unmount
   useEffect(() => appCommandsSlot.register(latestAppCommands(latest)), []);
 
   // The server's vimrc, in place of the last one, for every Vim editor on the page.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the server's vimrc to the shared Vim configuration every editor on the page uses
   useEffect(() => {
     applyVimrc(vimrc);
   }, [vimrc]);
@@ -236,6 +239,7 @@ export function WhichKey() {
   });
   const currentLeaderKey = useEffectEvent(() => leaderKey);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window keydown listeners and leader requests that open and drive the keyboard menu
   useEffect(() => {
     const capture = (event: KeyboardEvent) => onOpenKeyDown(event);
     const bubble = (event: KeyboardEvent) => onDoorKeyDown(event);
@@ -257,6 +261,7 @@ export function WhichKey() {
   // It closes as it loses focus: a click outside it, or the window losing focus. Either ends a
   // repeat window too.
   const listening = state !== null || armed;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- outside pointerdown and window blur listeners that close the menu while it is open or armed
   useEffect(() => {
     if (!listening) return;
     const onPointerDown = (event: PointerEvent) => {

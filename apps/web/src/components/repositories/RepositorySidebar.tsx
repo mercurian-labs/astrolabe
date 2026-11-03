@@ -1,6 +1,6 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
-import { ArrowRightIcon, FileDiffIcon, FileIcon, FolderPlusIcon } from "lucide-react";
+import { ArchiveXIcon, ArrowRightIcon, FileDiffIcon, FileIcon, FolderPlusIcon } from "lucide-react";
 import {
   Fragment,
   useEffect,
@@ -15,6 +15,7 @@ import {
 import { openCommandPalette } from "~/commandPaletteBus";
 import { readLocalApi } from "~/localApi";
 import { isElectron } from "~/env";
+import { useProjectGroupUpdate } from "~/hooks/useProjectGroupUpdate";
 import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -39,6 +40,7 @@ import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../sidebar/
 import { SidebarChromeFooter, SidebarChromeHeader } from "../sidebar/SidebarChrome";
 import { SidebarThreadHeader } from "../sidebar/SidebarThreadHeader";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
+import { MenuItem } from "../ui/menu";
 import { SidebarContent, SidebarGroup } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useWorkspaceFocusedKey, useWorkspaceOpenKeys, workspace } from "~/panes/workspace";
@@ -46,6 +48,7 @@ import { checkoutTag, foldWorktrees } from "./worktreeFolding";
 import { showLocalGraph } from "./repositoryPanes";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
 import {
+  ArchivedMark,
   FoldedWorktrees,
   OpenBranchPicker,
   SetAsideRows,
@@ -259,6 +262,7 @@ export function RepositorySidebar() {
   const worktreeSections = (view: (typeof views)[number]) => (
     <WorktreeSections
       repository={view.repository}
+      markArchived={view === single}
       worktrees={view.worktrees}
       openCheckouts={view.openCheckouts}
       setAside={view.listed?.setAside ?? null}
@@ -387,7 +391,14 @@ export function RepositorySidebar() {
                             onClick={() => toggle(view.key, fallback)}
                             expanded={expanded}
                             tone="muted"
-                            accessory={view.outside ? <OutsideFilterMark /> : null}
+                            accessory={
+                              view.outside || isArchived(view.repository) ? (
+                                <>
+                                  {isArchived(view.repository) ? <ArchivedMark /> : null}
+                                  {view.outside ? <OutsideFilterMark /> : null}
+                                </>
+                              ) : null
+                            }
                           >
                             <span className="flex items-center gap-1.5">
                               <ProjectFavicon project={view.repository} className="size-3.5" />
@@ -416,6 +427,7 @@ export function RepositorySidebar() {
  */
 function WorktreeSections({
   repository,
+  markArchived,
   worktrees,
   openCheckouts,
   setAside,
@@ -427,6 +439,8 @@ function WorktreeSections({
   focusedPath,
 }: {
   readonly repository: EnvironmentProject;
+  /** Whether its main checkout carries the archived mark, with no project header above it. */
+  readonly markArchived: boolean;
   readonly worktrees: ReadonlyArray<{
     readonly worktree: ProjectWorktree;
     readonly outside: boolean;
@@ -446,6 +460,25 @@ function WorktreeSections({
 }) {
   const owner = projectWorktrees(repository);
   const [now] = useState(() => Date.now());
+  const { updateProjectGroup, canOrganizeProjectGroup } = useProjectGroupUpdate();
+  const member = {
+    environmentId: repository.environmentId,
+    id: repository.id,
+    environmentLabel: null,
+  };
+  const archived = isArchived(repository);
+  // Archived projects leave the filters and New thread, so this is their way back.
+  const unarchive =
+    archived && canOrganizeProjectGroup([member]) ? (
+      <MenuItem
+        onClick={() =>
+          void updateProjectGroup([member], { archived: false }, "Failed to unarchive project")
+        }
+      >
+        <ArchiveXIcon />
+        Unarchive project
+      </MenuItem>
+    ) : null;
   const { listed, rest } = foldWorktrees(worktrees, { openCheckouts, now });
   const worktreeSection = (
     { worktree, outside }: { readonly worktree: ProjectWorktree; readonly outside: boolean },
@@ -467,6 +500,12 @@ function WorktreeSections({
             onToggle={() => onToggle(worktree, fallback)}
             outsideFilter={outside}
             folded={folded}
+            {...(worktree.isMain
+              ? {
+                  archived: archived && markArchived,
+                  renderMenuItems: () => unarchive,
+                }
+              : {})}
             filesShown={files}
             onToggleFiles={() => {
               showWorktreeFiles(filesKey, !files);
@@ -535,6 +574,8 @@ function WorktreeSections({
 }
 
 const NO_WORKTREES: ReadonlyArray<ProjectWorktree> = [];
+
+const isArchived = (repository: EnvironmentProject) => repository.archivedAt != null;
 
 type FileTab = ProjectFileTab;
 
@@ -612,7 +653,7 @@ function RepositoryList({
     });
     recent.refresh();
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- the server's cached status misses edits made outside the app and branch switches; reread when the worktree list sees either
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the server's cached status misses edits made outside the app and branch switches; reread when the worktree list sees either
   useEffect(() => {
     reread(revision);
   }, [revision, reread]);

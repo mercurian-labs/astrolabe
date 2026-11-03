@@ -31,6 +31,7 @@ export const WikiEditorWebView = forwardRef<
   const ready = useRef(false);
   const queued = useRef<WikiEditorCommand[]>([]);
   const latest = useRef(props);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest props for the web view's load and message callbacks
   useLayoutEffect(() => {
     latest.current = props;
   });

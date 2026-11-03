@@ -129,6 +129,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     [incoming, live, file, viewing, viewingTurn.runId, viewingTurn.running],
   );
   const shown = useRef({ receive, theme, mode });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest command, theme and mode for the initial commands a reloaded web view reads
   useLayoutEffect(() => {
     shown.current = { receive, theme, mode };
   });
@@ -140,12 +141,15 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
       ...(current.receive ? [current.receive] : []),
     ];
   }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends each incoming command into the editor web view
   useEffect(() => {
     if (receive) editor.current?.send(receive);
   }, [receive]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends the theme into the editor web view as it changes
   useEffect(() => {
     editor.current?.send({ type: "theme", theme });
   }, [theme]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends the editing mode into the editor web view as it changes
   useEffect(() => {
     editor.current?.send({ type: "mode", mode });
   }, [mode]);
@@ -237,6 +241,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   );
   const queuedTurn = useChangeRequestTurn(environmentId, queuedChange?.threadId);
   const committing = useRef(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- commits the queued save through the server once the change request's turn stops running
   useEffect(() => {
     const step = queuedSaveStep({
       queued,

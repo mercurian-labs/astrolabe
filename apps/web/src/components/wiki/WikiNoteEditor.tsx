@@ -116,10 +116,12 @@ export function WikiNoteEditor({
 }) {
   // Read through a ref, so the preview options never change with it.
   const openNoteRef = useRef(onOpenNote);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest note-open handler for the editor's preview options
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
   }, [onOpenNote]);
   const writeRef = useRef(onWrite);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest write handler for the editor's Vim save key
   useLayoutEffect(() => {
     writeRef.current = onWrite;
   }, [onWrite]);

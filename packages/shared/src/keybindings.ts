@@ -221,6 +221,11 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+d", command: "scroll.down", when: "!editableFocus && !terminalFocus" },
   { key: "ctrl+u", command: "scroll.up", when: "!editableFocus && !terminalFocus" },
   { key: "mod+b", command: "sidebar.toggle" },
+  { key: "f6", command: "workspace.focusNext" },
+  { key: "shift+f6", command: "workspace.focusPrevious" },
+  // Some browsers keep plain F6 for their own toolbars; mod+F6 reaches the page in all of them.
+  { key: "mod+f6", command: "workspace.focusNext" },
+  { key: "mod+shift+f6", command: "workspace.focusPrevious" },
   { key: "mod+[", command: "navigation.back", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+]", command: "navigation.forward", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+j", command: "terminal.toggle" },

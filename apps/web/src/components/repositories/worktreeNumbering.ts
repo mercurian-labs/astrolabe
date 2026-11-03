@@ -25,7 +25,7 @@ export function useNumberWhenOpened(
 ) {
   const markOpened = useAtomCommand(worktreeEnvironment.markOpened, { reportFailure: false });
   const path = holder !== null && !holder.isMain && holder.number === null ? holder.path : null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- a worktree is numbered the first time something of it opens, which the server keeps
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a worktree is numbered the first time something of it opens, which the server keeps
   useEffect(() => {
     if (target === null || path === null || numbering.has(path)) return;
     numbering.add(path);

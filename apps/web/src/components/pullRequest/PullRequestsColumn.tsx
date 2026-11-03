@@ -50,6 +50,7 @@ export function PullRequestsSidebarList({
   const kind = useChangeRequestKind();
   const wikisOnly = kind === "wikis";
   const controlsRef = useRef<HTMLDivElement | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the search input DOM node when a shortcut asks for it
   useEffect(() => {
     if (!searchFocusPending) return;
     const input = controlsRef.current?.querySelector<HTMLInputElement>("input[type='search']");

@@ -122,7 +122,7 @@ export function MultibufferView({
   useAtomMount(vcsStatusRevalidation({ environmentId, cwd }));
 
   // A caret move to an excerpt scrolled out of view: scroll it in; its editor takes the caret.
-  // oxlint-disable-next-line t3code/react-effect-budget -- scrolls the virtual list to the excerpt the caret moved to
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the virtual list to the excerpt the caret moved to
   useEffect(
     () =>
       multibuffer.onFocusRequest(() => {
@@ -309,10 +309,10 @@ function ExcerptRow({
   const { compartments } = setup;
   const [initial] = useState(() => ({ vim, readOnly, extensions }));
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- opens the file's live document once an excerpt of it is on screen
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the file's live document once an excerpt of it is on screen
   useEffect(() => multibuffer.need(file), [multibuffer, file]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- builds the excerpt's CodeMirror view once its document is open
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- builds the excerpt's CodeMirror view once its document is open
   useLayoutEffect(() => {
     const element = host.current;
     if (!open || liveDocument === null || element === null) return;
@@ -358,7 +358,7 @@ function ExcerptRow({
   }, [multibuffer, item, file, open, liveDocument, setup, compartments, initial]);
 
   // Settings and keys apply to every excerpt, also one whose state was made under older ones.
-  // oxlint-disable-next-line t3code/react-effect-budget -- carries settings and rebound keys into the CodeMirror view
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- carries settings and rebound keys into the CodeMirror view
   useLayoutEffect(() => {
     const view = viewRef.current;
     // Runs again right after the view is built, which happens when the document opens.
@@ -395,7 +395,7 @@ function ExcerptRow({
     extensions,
   ]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- hands the file's committed text to the excerpt's change markers
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the file's committed text to the excerpt's change markers
   useEffect(() => {
     if (open && baseText !== undefined) {
       viewRef.current?.dispatch({ effects: setGitBase(baseText) });

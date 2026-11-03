@@ -21,10 +21,24 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:server:source-control-discovery",
       tag: WS_METHODS.serverDiscoverSourceControl,
     }),
+    appAccess: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:source-control:app-access",
+      tag: WS_METHODS.sourceControlAppAccess,
+    }),
+    // One check, as after cloning, where no view keeps the query mounted.
+    checkAppAccess: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:check-app-access",
+      tag: WS_METHODS.sourceControlAppAccess,
+    }),
+    checkStarred: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:check-starred",
+      tag: WS_METHODS.sourceControlStarred,
+    }),
     repository: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:source-control:repository",
       tag: WS_METHODS.sourceControlLookupRepository,
     }),
+    // Astrolabe: a wiki is registered once its clone is on disk, so adding one waits for it.
     cloneRepository: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:source-control:clone-repository",
       tag: WS_METHODS.sourceControlCloneRepository,
@@ -64,6 +78,19 @@ export function createSourceControlEnvironmentAtoms<R, E>(
         mode: "serial",
         key: ({ environmentId }) => environmentId,
       },
+    }),
+    // Unscheduled: a pending sign-in waits on the user for minutes and must not hold up clones.
+    startSignIn: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:sign-in-start",
+      tag: WS_METHODS.sourceControlSignInStart,
+    }),
+    waitForSignIn: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:sign-in-wait",
+      tag: WS_METHODS.sourceControlSignInWait,
+    }),
+    cancelSignIn: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:sign-in-cancel",
+      tag: WS_METHODS.sourceControlSignInCancel,
     }),
     projectClones: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:source-control:project-clones",

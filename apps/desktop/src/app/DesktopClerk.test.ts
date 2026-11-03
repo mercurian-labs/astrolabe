@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetchInEffect:off - Hosted handoff test uses a real localhost listener without an OpenAI account.
 import * as NodeHttp from "node:http";
-import * as NodePath from "@effect/platform-node/NodePath";
+import * as NodePathLayer from "@effect/platform-node/NodePath";
 import { codexAuthHandoffUrl, readCodexAuthDelivery } from "@t3tools/shared/codexAuthHandoff";
 import { EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -80,7 +80,7 @@ const layerDesktopClerk = (
   return DesktopClerk.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        NodePath.layerPosix,
+        NodePathLayer.layerPosix,
         Layer.succeed(DesktopEnvironment.DesktopEnvironment, environment),
         Layer.succeed(ElectronApp.ElectronApp, electronApp),
         Layer.succeed(ElectronShell.ElectronShell, shell),
@@ -137,6 +137,7 @@ describe("DesktopClerk", () => {
         `setPath:userData:${userData}`,
         "requestSingleInstanceLock",
         "on:second-instance",
+        "on:open-url",
         `setAsDefaultProtocolClient:${isDevelopment ? "astrolabe-dev" : "astrolabe"}`,
       ]);
     },
@@ -179,12 +180,13 @@ describe("DesktopClerk", () => {
     },
   );
 
-  it.effect("delivers queued startup links and later links once in arrival order", () => {
+  it.effect("delivers each queued startup link once, before later links", () => {
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const received: string[] = [];
     const first = "astrolabe://new?prompt=first";
     const second = "astrolabe://threads/env-1/thread-1";
     const later = "astrolabe://new?prompt=later";
+    const launchPair = "astrolabe://pair?pairingUrl=https%3A%2F%2Fvps.example.com%2F%23token%3Dabc";
     const delivered = Promise.withResolvers<void>();
     const electronApp = {
       on: (name: string, listener: (...args: unknown[]) => void) =>
@@ -197,13 +199,14 @@ describe("DesktopClerk", () => {
       const clerk = yield* DesktopClerk.DesktopClerk;
       listeners.get("second-instance")?.({}, ["t3", first]);
       listeners.get("second-instance")?.({}, ["t3", second]);
+      listeners.get("open-url")?.({ preventDefault: () => undefined }, launchPair);
       assert.deepEqual(received, []);
 
       yield* clerk.configure;
       listeners.get("second-instance")!({}, ["t3", later]);
       yield* Effect.promise(() => delivered.promise);
 
-      assert.deepEqual(received, [first, second, later]);
+      assert.deepEqual(received, [launchPair, first, second, later]);
     }).pipe(
       Effect.scoped,
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
@@ -393,6 +396,7 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
         }),
     } as unknown as ElectronApp.ElectronApp["Service"];
     const received: Array<string> = [];
+    const pairLink = "astrolabe://pair?pairingUrl=https%3A%2F%2Fvps.example.com%2F%23token%3Dabc";
     yield* Effect.gen(function* () {
       const clerk = yield* DesktopClerk.DesktopClerk;
       yield* clerk.configure;
@@ -405,6 +409,8 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
       assert.strictEqual(open("http://localhost:3000/"), 1);
       assert.strictEqual(open("astrolabe://new?prompt=hi"), 1);
       assert.strictEqual(open("astrolabe://threads/env-1/thread-1"), 1);
+      assert.strictEqual(open(pairLink), 1);
+      assert.strictEqual(open("astrolabe://pair"), 0);
       assert.strictEqual(open("mailto:hello@example.com"), 0);
       assert.strictEqual(open("astrolabe://somewhere-else"), 0);
       yield* Effect.yieldNow;
@@ -413,6 +419,7 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
         "http://localhost:3000/",
         "astrolabe://new?prompt=hi",
         "astrolabe://threads/env-1/thread-1",
+        pairLink,
       ]);
     }).pipe(
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),

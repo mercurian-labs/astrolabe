@@ -17,9 +17,7 @@ export interface T3CodePublicConfig {
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
-const REPO_ROOT = NodePath.dirname(
-  NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url))),
-);
+const REPO_ROOT = NodePath.resolve(NodeURL.fileURLToPath(import.meta.url), "../../..");
 
 export function loadRepoEnv({
   baseEnv = process.env,
@@ -87,7 +85,7 @@ export function loadRepoEnv({
   };
 }
 
-export function resolvePublicConfig(...sources: readonly Environment[]): T3CodePublicConfig {
+function resolvePublicConfig(...sources: readonly Environment[]): T3CodePublicConfig {
   return {
     authUrl: firstNonEmpty(sources, "T3CODE_AUTH_URL", "VITE_T3CODE_AUTH_URL"),
     relayUrl: firstNonEmpty(sources, "T3CODE_RELAY_URL", "VITE_T3CODE_RELAY_URL"),

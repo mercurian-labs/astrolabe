@@ -614,19 +614,6 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
   ]);
 });
 
-const logManualMacOsExportInstructions = Effect.fn("iconExport.logManualMacOsExportInstructions")(
-  function* () {
-    yield* Console.warn(
-      [
-        "macOS icons were not changed: Icon Composer cannot export the classic 824×824 tile.",
-        "Copy each channel's macos-1024.png from the branding package's identity/astrolabe/icons/:",
-        ...ICON_VARIANTS.map((variant) => `- ${variant.outputs.macos}`),
-        "See assets/README.md for the complete workflow.",
-      ].join("\n"),
-    );
-  },
-);
-
 const writeAtomically = Effect.fn("iconExport.writeAtomically")(function* (
   repositoryRoot: string,
   relativePath: string,
@@ -776,7 +763,6 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
       });
     }
     yield* Console.log(`All ${generated.size} generated icon assets are current.`);
-    yield* logManualMacOsExportInstructions();
     return;
   }
 
@@ -786,7 +772,6 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
     { concurrency: 1, discard: true },
   );
   yield* Console.log(`Updated ${generated.size} generated icon assets.`);
-  yield* logManualMacOsExportInstructions();
 });
 
 export const exportBrandIconsCommand = Command.make(

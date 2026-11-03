@@ -27,6 +27,7 @@ const openNote = (name: string) => post({ type: "openNote", name });
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
   const { mode, base, theme } = useSyncExternalStore(page.subscribe, page.getState);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the app theme's CSS variables and color scheme onto the page's root element
   useEffect(() => {
     if (!theme) return;
     const root = document.documentElement;

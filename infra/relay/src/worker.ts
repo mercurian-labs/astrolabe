@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
-import * as Axiom from "alchemy/Axiom";
-import * as Cloudflare from "alchemy/Cloudflare";
-import * as Drizzle from "alchemy/Drizzle/Postgres";
+import * as Axiom from "@alchemy.run/axiom";
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Drizzle from "@alchemy.run/drizzle/Postgres";
 import { ALCHEMY_DEV } from "alchemy/Phase";
 import * as Config from "effect/Config";
 import * as Cause from "effect/Cause";
@@ -66,11 +66,13 @@ import * as EnvironmentPublishSignatures from "./environments/EnvironmentPublish
 import * as ManagedEndpointProvider from "./environments/ManagedEndpointProvider.ts";
 import * as ManagedEndpointReaper from "./environments/ManagedEndpointReaper.ts";
 import * as ManagedTunnelLimits from "./environments/ManagedTunnelLimits.ts";
+import * as T3ChatAccounts from "./t3chat/T3ChatAccounts.ts";
 import * as MobileRegistrations from "./agentActivity/MobileRegistrations.ts";
 import * as HookForwarder from "./hooks/HookForwarder.ts";
 import * as HeldHooks from "./hooks/HeldHooks.ts";
 import * as HookInbox from "./hooks/HookInbox.ts";
 import * as HookInboxObject from "./hooks/HookInboxObject.ts";
+import * as MobileTelemetry from "./mobileTelemetry/MobileTelemetry.ts";
 
 const layerWebcrypto = Layer.succeed(
   Crypto.Crypto,
@@ -147,7 +149,7 @@ export const layer = Api.make(
     const cloudMintKeyPair = yield* CloudMintKeyPair;
     const randomApnsDeliveryJobSigningSecret = yield* ApnsDeliveryJobSigningSecret;
     const alchemyRuntimeContext: Alchemy.BaseRuntimeContext = yield* Cloudflare.Worker;
-    if (!local) yield* RelayObservability;
+    const observability = local ? undefined : yield* RelayObservability;
 
     const apnsEnabled = yield* Config.Boolean("APNS_ENABLED").pipe(Config.withDefault(true));
     const apnsCredentials = apnsEnabled
@@ -177,8 +179,8 @@ export const layer = Api.make(
       yield* local ? Local.LocalHyperdrive : RelayDb.RelayHyperdrive,
     );
     // Named statements collide behind Hyperdrive transaction pooling (Effect-TS/effect#8320); use unnamed statements.
-    const db = yield* Drizzle.Postgres(hyperdrive.connectionString, undefined, {
-      prepare: false,
+    const db = yield* Drizzle.Postgres(hyperdrive.connectionString, {
+      client: { prepare: false },
     });
 
     const managedEndpoints = local
@@ -221,7 +223,6 @@ export const layer = Api.make(
       },
     });
     const hookInboxes = yield* HookInboxObject.HookInboxObject;
-
     const loadSettings = Effect.gen(function* () {
       return RelayConfiguration.RelayConfiguration.of({
         relayIssuer: local ? Local.RELAY_LOCAL_ORIGIN : deployedOrigin,
@@ -324,7 +325,7 @@ export const layer = Api.make(
           ManagedTunnelLimits.layer,
         ),
       ),
-      Layer.provideMerge(LiveActivities.layer),
+      Layer.provideMerge(Layer.mergeAll(LiveActivities.layer, T3ChatAccounts.layer)),
       Layer.provideMerge(DeliveryAttempts.layer),
       Layer.provideMerge(RelayTokens.layer),
       Layer.provideMerge(
@@ -336,18 +337,19 @@ export const layer = Api.make(
       Layer.provideMerge(layerWebcrypto),
     );
 
-    // Fails open: a limiter outage must not drop webhooks the environment would accept.
+    // Fails open: a limiter outage must not drop webhooks or app telemetry.
     const allowWith =
-      (limiter: typeof hookRateLimit) =>
+      (
+        limiter: typeof hookRateLimit,
+        failedOpenAttribute = "relay.hook.rate_limiter_failed_open",
+      ) =>
       (key: string): Effect.Effect<boolean> =>
         limiter.limit({ key }).pipe(
           Effect.map((result) => result.success),
           Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext),
           Effect.catch((error) =>
-            Effect.logWarning("Hook rate limiter unavailable", { error: error.message }).pipe(
-              Effect.andThen(
-                Effect.annotateCurrentSpan({ "relay.hook.rate_limiter_failed_open": true }),
-              ),
+            Effect.logWarning("Rate limiter unavailable", { error: error.message }).pipe(
+              Effect.andThen(Effect.annotateCurrentSpan({ [failedOpenAttribute]: true })),
               Effect.as(true),
             ),
           ),
@@ -357,12 +359,98 @@ export const layer = Api.make(
       allowEndpoint: allowWith(hookEndpointRateLimit),
     });
 
-    const layerApp = Layer.merge(
+    // Axiom datasets and the source maps bucket are cloud-only, so local dev answers no telemetry.
+    const layerMobileTelemetry =
+      observability === undefined
+        ? MobileTelemetry.layerDisabled
+        : yield* Effect.gen(function* () {
+            const mobileTelemetryRateLimit = yield* Cloudflare.RateLimit(
+              "MOBILE_TELEMETRY_RATE_LIMIT",
+              {
+                namespaceId: 1003,
+                simple: {
+                  limit: MobileTelemetry.MOBILE_TELEMETRY_RATE_LIMIT.limit,
+                  period: MobileTelemetry.MOBILE_TELEMETRY_RATE_LIMIT.periodSeconds,
+                },
+              },
+            );
+            const mobileSourceMaps = yield* Cloudflare.R2.ReadBucket(
+              observability.mobileSourceMaps,
+            );
+            const mobileTelemetryToken = yield* observability.mobileTelemetryIngestToken.token;
+            const mobileTracesUrl = yield* observability.traces.otelTracesEndpoint;
+            const mobileTracesDataset = yield* observability.traces.name;
+            const mobileLogsUrl = yield* observability.mobileLogs.otelLogsEndpoint;
+            const mobileLogsDataset = yield* observability.mobileLogs.name;
+            const mobileMetricsUrl = yield* observability.mobileMetrics.otelMetricsEndpoint;
+            const mobileMetricsDataset = yield* observability.mobileMetrics.name;
+            // `fetch` rebuilds its layers per request; the source map cache must outlive one.
+            const mobileSourceMapLookups = yield* MobileTelemetry.SourceMaps.pipe(
+              Effect.provide(MobileTelemetry.layerSourceMaps),
+              Effect.provideService(MobileTelemetry.SourceMapObjects, {
+                get: (key) =>
+                  mobileSourceMaps.get(key).pipe(
+                    Effect.map((object) =>
+                      object === null
+                        ? undefined
+                        : {
+                            size: object.size,
+                            text: object.text().pipe(
+                              Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext),
+                              Effect.mapError(
+                                (cause) => new MobileTelemetry.SourceMapObjectError({ key, cause }),
+                              ),
+                            ),
+                          },
+                    ),
+                    Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext),
+                    Effect.mapError(
+                      (cause) => new MobileTelemetry.SourceMapObjectError({ key, cause }),
+                    ),
+                  ),
+              }),
+            );
+            return MobileTelemetry.layer.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.effect(
+                    MobileTelemetry.MobileTelemetrySettings,
+                    Effect.gen(function* () {
+                      return MobileTelemetry.MobileTelemetrySettings.of({
+                        axiomToken: yield* mobileTelemetryToken,
+                        destinations: {
+                          traces: {
+                            url: yield* mobileTracesUrl,
+                            dataset: yield* mobileTracesDataset,
+                          },
+                          logs: { url: yield* mobileLogsUrl, dataset: yield* mobileLogsDataset },
+                          metrics: {
+                            url: yield* mobileMetricsUrl,
+                            dataset: yield* mobileMetricsDataset,
+                          },
+                        },
+                      });
+                    }),
+                  ),
+                  Layer.succeed(MobileTelemetry.MobileTelemetryRateLimiter, {
+                    allow: allowWith(
+                      mobileTelemetryRateLimit,
+                      "relay.mobile_telemetry.rate_limiter_failed_open",
+                    ),
+                  }),
+                  Layer.succeed(MobileTelemetry.SourceMaps, mobileSourceMapLookups),
+                ),
+              ),
+            );
+          });
+
+    const layerApp = Layer.mergeAll(
       layerRelayApi,
       HookForwarder.layerApi.pipe(
         Layer.provide(HookForwarder.layer),
         Layer.provide(layerHookRateLimiter),
       ),
+      MobileTelemetry.layerApi.pipe(Layer.provide(layerMobileTelemetry)),
     ).pipe(
       Layer.provideMerge(RelayHttpApi.layerClientAuth),
       Layer.provideMerge(RelayHttpApi.layerDpopClientAuth),
@@ -421,6 +509,11 @@ export const layer = Api.make(
                     updatedBefore: DateTime.formatIso(DateTime.subtract(now, { minutes: 30 })),
                   }),
                 ),
+              ),
+            ),
+            Effect.andThen(
+              DeliveryAttempts.DeliveryAttempts.pipe(
+                Effect.flatMap((attempts) => attempts.pruneExpired),
               ),
             ),
             Effect.catchCause((cause) =>
@@ -492,6 +585,7 @@ export const layer = Api.make(
         Layer.provideMerge(Cloudflare.Tunnel.ReadWriteTunnelBinding),
         Layer.provideMerge(Cloudflare.DNS.ReadWriteDnsHttp),
         Layer.provideMerge(Cloudflare.Workers.RateLimitBinding),
+        Layer.provideMerge(Cloudflare.R2.ReadBucketBinding),
         Layer.provideMerge(HookInboxObject.layer),
         // Disable the duplicate runtime span; ours applies route/header/token redaction and rejects sender traceparent.
         Layer.provideMerge(

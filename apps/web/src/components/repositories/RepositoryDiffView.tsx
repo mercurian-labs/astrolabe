@@ -56,6 +56,7 @@ export function RepositoryDiffView({
     previewInput ? reviewEnvironment.diffPreview({ environmentId, input: previewInput }) : null,
   );
   const refresh = preview.refresh;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener that refreshes the diff preview
   useEffect(() => {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);

@@ -9,5 +9,6 @@ import { useClientSettings } from "./hooks/useSettings";
  */
 export function useVimScreenLines() {
   const on = useClientSettings((settings) => settings.vimScreenLinesEnabled);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sets the Vim module's screen-line motion flag from the client setting
   useEffect(() => setVimScreenLineMotion(on), [on]);
 }

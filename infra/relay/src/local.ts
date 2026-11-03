@@ -4,7 +4,7 @@
  * without managed endpoints or tracing, against the cloud stack's local
  * Postgres (infra/cloud), which also applies the relay's migrations.
  */
-import * as Cloudflare from "alchemy/Cloudflare";
+import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

@@ -79,7 +79,7 @@ export function clientPresentationMetadata(input: {
     return {
       label: "Astrolabe Desktop",
       deviceType: "desktop",
-      os: clientOsFromElectronPlatform(input.desktopBridge.getClientPlatform?.()),
+      os: clientOsFromElectronPlatform(input.desktopBridge.getClientPlatform()),
       surface: "desktop",
       ...(input.appVersion === "0.0.0" ? {} : { appVersion: input.appVersion }),
     };

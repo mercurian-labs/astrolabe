@@ -1,7 +1,7 @@
 // @effect-diagnostics anyUnknownInErrorContext:off layerMergeAllWithDependencies:off - Alchemy provider helpers expose framework-owned any requirements.
 import * as Alchemy from "alchemy";
-import * as AWS from "alchemy/AWS";
-import * as Docker from "alchemy/Docker";
+import * as AWS from "@alchemy.run/aws";
+import * as Docker from "@alchemy.run/docker";
 import { ALCHEMY_DEV } from "alchemy/Phase";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

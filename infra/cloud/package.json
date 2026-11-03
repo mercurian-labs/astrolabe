@@ -12,13 +12,16 @@
     "test:integration": "test/integration.sh"
   },
   "dependencies": {
-    "@distilled.cloud/aws": "1.0.0-rc.13",
+    "@alchemy.run/aws": "catalog:",
+    "@alchemy.run/docker": "catalog:",
+    "@alchemy.run/drizzle": "catalog:",
+    "@distilled.cloud/aws": "catalog:",
     "@effect/platform-bun": "4.0.2",
     "@effect/platform-node": "catalog:",
     "@effect/sql-pg": "catalog:",
     "@mercurian/auth": "workspace:*",
     "@mercurian/cloud": "workspace:*",
-    "alchemy": "2.0.0-beta.80",
+    "alchemy": "catalog:",
     "drizzle-orm": "1.0.0-rc.5-ab785fc",
     "effect": "catalog:"
   },

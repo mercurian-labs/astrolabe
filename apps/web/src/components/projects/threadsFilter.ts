@@ -68,25 +68,30 @@ export function listFilteredThreads<Thread extends ListableThread>(
   threads: ReadonlyArray<Thread>,
   {
     scopedProjectKeys,
+    delegatedUnderParent,
     statuses,
     openKey,
     keyOf,
   }: {
     readonly scopedProjectKeys: ReadonlySet<string> | null;
+    readonly delegatedUnderParent: ReadonlySet<string>;
     readonly statuses: ReadonlyArray<ThreadStatusFilter>;
     readonly openKey: string | null;
     readonly keyOf: (thread: Thread) => string;
   },
 ): { readonly listed: ReadonlyArray<Thread>; readonly outsideKey: string | null } {
-  const listed = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter((thread) =>
-    threadMatchesStatuses(thread, statuses),
-  );
+  const listed = filterSidebarV2VisibleThreads(
+    threads,
+    scopedProjectKeys,
+    delegatedUnderParent,
+  ).filter((thread) => threadMatchesStatuses(thread, statuses));
   if (openKey === null || listed.some((thread) => keyOf(thread) === openKey)) {
     return { listed, outsideKey: null };
   }
   const open = threads.find(
     (thread) =>
-      keyOf(thread) === openKey && filterSidebarV2VisibleThreads([thread], null).length === 1,
+      keyOf(thread) === openKey &&
+      filterSidebarV2VisibleThreads([thread], null, delegatedUnderParent).length === 1,
   );
   return open === undefined
     ? { listed, outsideKey: null }

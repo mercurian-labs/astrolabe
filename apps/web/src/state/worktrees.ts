@@ -66,7 +66,7 @@ export function useProjectWorktrees(
   const atom = atomOf(target);
   const result = useAtomValue(atom);
   const refresh = useAtomRefresh(atom);
-  // oxlint-disable-next-line t3code/react-effect-budget -- edits outside the app (an editor, an agent) change what the worktrees hold
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- edits outside the app (an editor, an agent) change what the worktrees hold
   useEffect(() => {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
@@ -92,7 +92,7 @@ export function useManyProjectWorktrees(
   const key = JSON.stringify(
     targets.map((target) => ({ environmentId: target.environmentId, ...worktreeOwner(target) })),
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- edits outside the app (an editor, an agent) change what the worktrees hold
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- edits outside the app (an editor, an agent) change what the worktrees hold
   useEffect(() => {
     const refresh = () => {
       for (const target of JSON.parse(key) as WorktreesTarget[]) {

@@ -127,7 +127,7 @@ function CheckedOut({
   const revision = holder?.head ?? null;
   useNumberWhenOpened(worktreesOf(tab), holder);
   const seen = useRef({ cwd, revision });
-  // oxlint-disable-next-line t3code/react-effect-budget -- a reused worktree changes files under the same folder; its new commit re-reads what this tab shows
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a reused worktree changes files under the same folder; its new commit re-reads what this tab shows
   useEffect(() => {
     const before = seen.current;
     seen.current = { cwd, revision };

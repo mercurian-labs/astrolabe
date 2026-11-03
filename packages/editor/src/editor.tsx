@@ -133,12 +133,14 @@ export function AtlasEditor({
   // Read when the editor mounts; later changes reconfigure it (below).
   const vimRef = useRef(vim);
   const readOnlyRef = useRef(readOnly);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest vim and read-only props for the CodeMirror view created on mount
   useEffect(() => {
     vimRef.current = vim;
     readOnlyRef.current = readOnly;
   }, [vim, readOnly]);
   const vimPanelRef = useRef(vimPanel);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- creates the CodeMirror view and Yjs undo manager in the host DOM node and destroys them on unmount
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -193,6 +195,7 @@ export function AtlasEditor({
   }, [text, awareness, extensions, livePreviewOptions, locked, findKeys]);
 
   // Vim on or off without remounting: the compartment is reconfigured in place.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- turns Vim mode on or off in the CodeMirror view without remounting
   useEffect(() => {
     const editor = mounted.current;
     if (!editor || editor.vimOn === vim) return;
@@ -204,6 +207,7 @@ export function AtlasEditor({
     });
   }, [vim]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the read-only state to the CodeMirror view without remounting
   useEffect(() => {
     const editor = mounted.current;
     if (!editor || editor.readOnlyOn === readOnly) return;

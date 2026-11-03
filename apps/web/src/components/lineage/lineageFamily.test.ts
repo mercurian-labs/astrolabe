@@ -10,6 +10,7 @@ import {
   lineageChangeKey,
   lineageInput,
   threadActivity,
+  withoutSideChats,
   type LineageShell,
 } from "./lineageFamily";
 
@@ -17,7 +18,11 @@ const at = (seconds: number) => DateTime.makeUnsafe(seconds * 1000);
 
 const shell = (
   id: string,
-  lineage: { parentThreadId?: string; relationshipToParent?: "fork" | "subagent" } = {},
+  lineage: {
+    parentThreadId?: string;
+    relationshipToParent?: "fork" | "subagent";
+    sideChat?: boolean;
+  } = {},
   extra: Record<string, unknown> = {},
 ) =>
   ({
@@ -54,6 +59,18 @@ describe("forkFamily", () => {
     ]);
     expect(forkFamily(shells, "other").map((entry) => entry.id)).toEqual(["other"]);
     expect(forkFamily(shells, "agent").map((entry) => entry.id)).toEqual(["agent"]);
+  });
+
+  it("leaves side chats out of the family", () => {
+    const withSideChat = [
+      ...shells,
+      shell("side", { parentThreadId: "root", relationshipToParent: "fork", sideChat: true }),
+    ];
+    expect(forkFamily(withSideChat, "fork").map((entry) => entry.id)).toEqual([
+      "root",
+      "fork",
+      "forkOfFork",
+    ]);
   });
 });
 
@@ -154,6 +171,20 @@ describe("lineageInput", () => {
       },
     ],
   } as unknown as OrchestrationV2ThreadLineage;
+
+  it("leaves out side chats and what was forked from them, unless one is viewed", () => {
+    const sideChat = shell("fork", {
+      parentThreadId: "root",
+      relationshipToParent: "fork",
+      sideChat: true,
+    });
+    const shells = new Map([["fork", sideChat]]);
+    const shown = withoutSideChats(lineage, shells, "root");
+    expect(shown.threads.map((thread) => thread.id)).toEqual(["root"]);
+    expect(shown.mergeBacks).toEqual([]);
+    expect(withoutSideChats(lineage, shells, "fork")).toBe(lineage);
+    expect(withoutSideChats(lineage, new Map(), "root")).toBe(lineage);
+  });
 
   it("takes what a thread is doing from its shell, or from its runs when it has none", () => {
     const of = (root: LineageShell) => [...threadActivity(lineage, new Map([["root", root]]))];

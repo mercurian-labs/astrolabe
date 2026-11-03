@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useMemo } from "react";
 import { Platform } from "react-native";
 import {
   NAVIGATION_TAB_LABELS,
@@ -32,15 +31,25 @@ const REGISTERED_TABS = registeredWorkspaceTabs(
 const UNREGISTERED_TABS = NAVIGATION_TAB_ORDER.filter((tab) => !REGISTERED_TABS.includes(tab));
 export const NAVIGATION_CUSTOMIZABLE = navigationCustomizationAvailable(REGISTERED_TABS.length);
 
+/** The saved order, limited to the sections this device registers. */
+export function registeredNavigationTabOrder(saved: readonly unknown[] | undefined) {
+  return resolveWorkspaceTabOrder(saved).filter((tab) => REGISTERED_TABS.includes(tab));
+}
+
+/** The saved hidden sections, plus the ones this device never registers. */
+export function hiddenNavigationTabs(saved: readonly unknown[] | undefined) {
+  return [
+    ...(NAVIGATION_CUSTOMIZABLE ? resolveHiddenNavigationTabs(saved) : []),
+    ...UNREGISTERED_TABS,
+  ];
+}
+
 export function useNavigationTabOrder() {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const saved = AsyncResult.isSuccess(preferences)
     ? preferences.value.navigationTabOrder
     : undefined;
-  return useMemo(
-    () => resolveWorkspaceTabOrder(saved).filter((tab) => REGISTERED_TABS.includes(tab)),
-    [saved],
-  );
+  return registeredNavigationTabOrder(saved);
 }
 
 export function useHiddenNavigationTabs() {
@@ -48,17 +57,11 @@ export function useHiddenNavigationTabs() {
   const saved = AsyncResult.isSuccess(preferences)
     ? preferences.value.hiddenNavigationTabs
     : undefined;
-  return useMemo(
-    () => [
-      ...(NAVIGATION_CUSTOMIZABLE ? resolveHiddenNavigationTabs(saved) : []),
-      ...UNREGISTERED_TABS,
-    ],
-    [saved],
-  );
+  return hiddenNavigationTabs(saved);
 }
 
 export function useEnabledNavigationTabs() {
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
-  return useMemo(() => enabledNavigationTabs(order, hidden), [order, hidden]);
+  return enabledNavigationTabs(order, hidden);
 }

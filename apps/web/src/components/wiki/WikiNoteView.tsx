@@ -110,9 +110,11 @@ export function WikiNoteView({
     viewingTurn.runId !== null ? `run:${viewingTurn.runId}` : `amendment:${latest?.commit ?? ""}`;
 
   const [buffer] = useState(() => new WikiNoteBuffer());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the note buffer on unmount
   useEffect(() => () => buffer.release(), [buffer]);
   const incoming = note.data?.source ?? null;
   const live = changeRequestId !== undefined;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- feeds the fetched note source and its author into the note buffer
   useEffect(() => {
     if (incoming === null) return;
     const author: WikiNoteAuthor | null = live
@@ -123,6 +125,7 @@ export function WikiNoteView({
     if (!viewingTurn.running) buffer.endTurn();
   }, [buffer, incoming, live, authorName, turnId, viewingTurn.running]);
   const snapshot = useSyncExternalStore(buffer.subscribe, buffer.getSnapshot);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this note's unsaved-edits check with its tab until unmount
   useEffect(() => registerUnsaved?.(() => buffer.getSnapshot().dirty), [buffer, registerUnsaved]);
 
   // Leaving the note, for another note or another page, would drop unsaved edits.
@@ -161,6 +164,7 @@ export function WikiNoteView({
     (changeRequest) => changeRequest.changeRequestId === queued?.changeRequestId,
   );
   const queuedTurn = useChangeRequestTurn(environmentId, queuedChange?.threadId);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- commits the queued save through the server once the change request's turn stops running
   useEffect(() => {
     const step = queuedSaveStep({
       queued,

@@ -303,6 +303,7 @@ export function WikiSidebar() {
   };
   // Escape lets go of the selection.
   const selecting = selectedKeys.length > 0;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window Escape listener that clears the row selection while rows are selected
   useEffect(() => {
     if (!selecting) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -320,6 +321,7 @@ export function WikiSidebar() {
   const results = searchWikiSidebarItems(lists, searchQuery);
   // The lists refresh under a query, so the highlight holds within whatever matches now.
   const activeIndex = Math.min(activeResultIndex, Math.max(results.length - 1, 0));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the highlighted search result's DOM row into view
   useEffect(() => {
     if (!isSearching) return;
     document
@@ -340,6 +342,7 @@ export function WikiSidebar() {
   const shownEntries: readonly WikiSidebarEntry[] = isSearching
     ? results
     : documents.map((item) => ({ kind: "document" as const, item }));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shown entries' keys and tabs for range selection in the row handlers
   useLayoutEffect(() => {
     shown.current = {
       keys: shownEntries.map(entryKey),

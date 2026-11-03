@@ -23,7 +23,7 @@ const chatComposers = new Map<string | null, ComposerHandleRef>();
 export function useChatComposerRef(): ComposerHandleRef {
   const owner = useChatOwner();
   const ref = useRef<ChatComposerHandle | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- lists the composer while the chat shows
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lists the composer while the chat shows
   useEffect(() => {
     chatComposers.set(owner, ref);
     return () => {

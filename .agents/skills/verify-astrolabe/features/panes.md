@@ -5,7 +5,7 @@ Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`
 the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
 pull requests, change requests, change groups, files, diffs, local graphs, project search results,
 problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), wiki notes and a thread's right-panel surfaces
-(Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage) are
+(Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage, Side chat) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
@@ -31,7 +31,9 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 
 - **Linked New tab** (the chat header's **New linked tab** `[data-new-linked-tab]`, `t` `n` `tab.newLinked`, or `rightPanel.toggle` with no linked tabs): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
   Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Linked pull requests `L`, Device `M`,
-  Graph `G`, Lineage `I`). Rows without a source are disabled `div`s whose hover says why.
+  Graph `G`, Lineage `I`, and upstream's Side chat `S` where the chat offers side chats; it is
+  disabled with "Side chats start after the first message." on a chat with none yet, and a side
+  chat cannot start another). Rows without a source are disabled `div`s whose hover says why.
   The surface picked takes the New tab's place (same pane and index), linked
   (`workspace.targetPane(pane, blank)`, placed by `arriveAtTarget` as the record gains it).
 - **New tab** (`+` at the end of every strip, `button[name='New tab']`; `mod+t`,
@@ -96,7 +98,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   thread's record: a file (from chat or Files) becomes `repo-file:` on the thread's checkout
   (its branch when it has a worktree and a branch, else its folder),
   Diff becomes `repo-diff:…:working-tree`, the thread's pull request a full-key pull request
-  tab (only when its host is known). Terminal, browser, device, Files, Graph, Lineage and
+  tab (only when its host is known). Terminal, browser, device, Files, Graph, Lineage, side chat and
   Linked pull requests have no counterpart and do not offer it. **Unlink tab** remains for a
   tab still linked (a change group's, or one linked before). `t` `k` (`tab.toggleLink`) does
   the focused tab's link item: a local graph's follow/pin (repositories.md) or Unlink tab, and
@@ -218,14 +220,19 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   and `step`/`canStep` refuse them (`navigatesInPlace`): a chat never shows anything else in its
   place, so its linked tabs are never left without their chat. Tabs with no header row have
   none either: the New tab launcher and the thread's other surfaces (terminal, preview, diff,
-  files, pull requests, device, lineage). `mod+[`/`mod+]`, Space `t h`/`t l` and the palette's
-  Back/Forward still act on the focused pane's tab in front, and do nothing on a chat. Proof: two panes, click Back in the unfocused one's header; only its tab
+  files, pull requests, device, lineage). `mod+[`/`mod+]`, Space `t h`/`t l`, the palette's
+  Back/Forward and upstream's two-finger trackpad swipe (`HistorySwipeNavigation.tsx` through
+  `navigationHistory.ts`) still act on the focused pane's tab in front, and do nothing on a chat.
+  The swipe falls back to browser history only with no tab history slot registered, and skips
+  canvases, code editors and anything that scrolls sideways. Proof: two panes, click Back in the unfocused one's header; only its tab
   changes. What scrolls beneath a header fades out under it (`topbar-scroll-fade`, static).
 - **Drag a tab** to another strip or a pane edge. Cmd/Ctrl-click and
   Shift-click select several tabs, which drag together. The page draws the drag's
   preview, a pill under the pointer (`body > [aria-hidden=true].fixed`, with a count
   for several), in place of the browser's snapshot; the insertion line is 20px tall,
   centred on the strip, midway between the two tabs either side.
+- **F6 stop**: each pane is one stop in upstream's F6 cycle (`workspaceAreaProps("pane", …)` in
+  `PaneView.tsx`, keyboard-nav.md), after the chat's own areas.
 - **One live surface**: only the record's active surface renders. Another
   pane's shown tab reads "Click to show" until its pane takes focus.
 - **Persistence**: the one arrangement, its links and parked tabs survive a reload, per

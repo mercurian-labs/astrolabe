@@ -10,6 +10,7 @@ import * as ServerConfig from "../config.ts";
 import { awaitLauncherLoss } from "../launcherWatch.ts";
 import { runServer } from "../server.ts";
 import { type CliServerFlags, resolveServerConfig, sharedServerCommandFlags } from "./config.ts";
+import { CLI_COMMAND } from "./invocation.ts";
 
 const encodeCommand = Schema.encodeEffect(Schema.fromJsonString(Schema.String));
 
@@ -69,13 +70,15 @@ export const runDefaultServerCommand = Effect.fn("server.runDefaultServerCommand
 });
 
 export const startCommand = Command.make("start", { ...sharedServerCommandFlags }).pipe(
-  Command.withDescription("Run the Astrolabe server."),
+  Command.withDescription(`Same as \`${CLI_COMMAND}\`.`),
+  Command.unlisted,
   Command.withHandler((flags) => runServerCommand(flags, { rejectRunningServer: true })),
 );
 
 export const serveCommand = Command.make("serve", { ...sharedServerCommandFlags }).pipe(
+  Command.withShortDescription("Run Astrolabe in this terminal, with no browser."),
   Command.withDescription(
-    "Run the Astrolabe server without opening a browser and print headless pairing details.",
+    `Run Astrolabe in this terminal without opening a browser, and print pairing details. The background service runs this. To set up access from your other devices, run \`${CLI_COMMAND} up\`.`,
   ),
   Command.withHandler((flags) =>
     runServerCommand(flags, {

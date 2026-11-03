@@ -69,7 +69,8 @@ actions at its right end.
   (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a link (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
-  Rail mark).
+  Rail mark). The rail is the first stop of upstream's F6 cycle and the sidebar the next
+  (keyboard-nav.md).
   Usage and Settings open as full-screen modals (`dialog "Usage"`, `dialog "Settings"`) over
   the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
   hidden, but `mod+b` still toggles the sidebar behind the modal. While one is open, two rail
@@ -119,6 +120,10 @@ actions at its right end.
   (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the
   Pinned heading, outside the sortable rows the drag projection measures. Snoozed and settled
   rows stay slim (`sidebar-row-slim`, with their pin glyph), and mobile rows are upstream's.
+- **No folder mode**: upstream's boring sidebar (project folders, `SidebarProjectFolderHeader`,
+  `boringSidebarEnabled`) is merged with its Labs toggles hidden, so Settings → Labs has no
+  "Boring sidebar" rows and the Agents list never shows project folder headers. One on screen
+  is a regression.
 
 ## How to get to it (user POV)
 

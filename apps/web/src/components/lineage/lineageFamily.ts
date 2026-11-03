@@ -64,8 +64,42 @@ export function forkFamily<Shell extends LineageShell>(
   return family;
 }
 
+// A side chat is a fork kept out of every list, so the family leaves it out too.
 function forkParentId(shell: LineageShell): string | null {
-  return shell.lineage.relationshipToParent === "fork" ? shell.lineage.parentThreadId : null;
+  return shell.lineage.relationshipToParent === "fork" && shell.lineage.sideChat !== true
+    ? shell.lineage.parentThreadId
+    : null;
+}
+
+/**
+ * The fetched lineage without side chats and anything forked from one, unless it is the viewed
+ * thread. Thread details' Side chats row is the way back to one.
+ */
+export function withoutSideChats(
+  lineage: OrchestrationV2ThreadLineage,
+  shells: ReadonlyMap<string, LineageShell>,
+  viewedThreadId: string,
+): OrchestrationV2ThreadLineage {
+  const dropped = new Set<string>();
+  // Root first, so a parent is decided before its forks.
+  for (const thread of lineage.threads) {
+    if (thread.id === viewedThreadId) continue;
+    if (
+      shells.get(thread.id)?.lineage.sideChat === true ||
+      (thread.parentId !== null && dropped.has(thread.parentId))
+    ) {
+      dropped.add(thread.id);
+    }
+  }
+  if (dropped.size === 0) return lineage;
+  return {
+    ...lineage,
+    threads: lineage.threads.filter((thread) => !dropped.has(thread.id)),
+    mergeBacks: lineage.mergeBacks.filter(
+      (mergeBack) =>
+        !dropped.has(mergeBack.sourceThreadId) && !dropped.has(mergeBack.targetThreadId),
+    ),
+  };
 }
 
 /**

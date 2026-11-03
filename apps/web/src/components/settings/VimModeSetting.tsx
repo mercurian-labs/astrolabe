@@ -32,6 +32,7 @@ export function VimModeSettingsRow() {
 
   // The gate takes focus while it is open and gives it back to the switch as it closes.
   const wasConfirming = useRef(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- returns DOM focus to the switch as the quit gate closes
   useEffect(() => {
     if (wasConfirming.current && !confirming) switchRef.current?.focus();
     wasConfirming.current = confirming;
@@ -71,6 +72,7 @@ export function VimModeSettingsRow() {
 /** The `:q` prompt. `onConfirm` and `onCancel` keep their identity: a new one starts over. */
 function VimQuitGate({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   const editorRef = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mounts the quit gate's CodeMirror view in its DOM node and focuses it
   useEffect(() => {
     const parent = editorRef.current;
     if (!parent) return;

@@ -15,7 +15,7 @@ export function useCodeGraphViewOpener(threadRef: ScopedThreadRef | null) {
   const views = useAtomValue(threadRef === null ? NO_CODE_GRAPH_VIEWS : codeGraphViewsAtom(key));
   const latest = views === null ? null : (views.at(-1)?.id ?? "");
   const seen = useRef<{ readonly key: string; readonly latest: string } | null>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- opens a right-panel surface when a tool call lands
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens a right-panel surface when a tool call lands
   useEffect(() => {
     if (threadRef === null || latest === null) return;
     const before = seen.current;

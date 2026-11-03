@@ -120,7 +120,7 @@ export function TabLauncher({ paneId, tabKey }: { paneId: string; tabKey: string
     event.stopPropagation();
     item.run();
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- the launcher's letters are window keys, as the surface launcher's are
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the launcher's letters are window keys, as the surface launcher's are
   useEffect(() => {
     const handler = (event: KeyboardEvent) => onShortcut(event);
     window.addEventListener("keydown", handler, true);

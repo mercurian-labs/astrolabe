@@ -1,4 +1,5 @@
 import type {
+  EnvironmentContextRecord,
   PreviewAnnotationPayload,
   ThreadContextRecord,
   WikiNoteContextRecord,
@@ -25,6 +26,7 @@ export interface RetainedContextPayloads extends RetainedAttachmentContextPayloa
   reviewComments: Map<string, ReviewCommentContext>;
   threads: Map<string, ThreadContextRecord>;
   wikiNotes: Map<string, WikiNoteContextRecord>;
+  environments: Map<string, EnvironmentContextRecord>;
 }
 
 function createRetainedContextPayloads(): RetainedContextPayloads {
@@ -33,6 +35,7 @@ function createRetainedContextPayloads(): RetainedContextPayloads {
     reviewComments: new Map(),
     threads: new Map(),
     wikiNotes: new Map(),
+    environments: new Map(),
     files: new Map(),
     previewAnnotations: new Map(),
   };
@@ -48,6 +51,7 @@ export function useRetainedContextPayloads(draftTargetKey: string): RetainedCont
     setDraft({ targetKey: draftTargetKey, payloads: createRetainedContextPayloads() });
   }
   const retained = draft.payloads;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the retained payload maps when the draft target changes or the composer unmounts
   useEffect(
     () => () => {
       for (const payloads of Object.values(retained)) payloads.clear();
