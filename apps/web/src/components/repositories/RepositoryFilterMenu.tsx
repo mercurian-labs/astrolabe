@@ -54,6 +54,7 @@ import {
   EMPTY_REPOSITORY_FILTER,
   setWorktreeHidden,
   storeRepositoryFilter,
+  toggleFilterAllRepositories,
   toggleFilterRepository,
   type RepositoryFilter,
 } from "./repositoryFilter";
@@ -274,8 +275,9 @@ export function RepositoryFilterMenu({
   const selected = values.filter(checked);
   const toggle = (value: string) => {
     if (value === CHANGED_VALUE) storeRepositoryFilter({ ...filter, changed: !filter.changed });
-    else if (value === ALL_VALUE) storeRepositoryFilter({ ...filter, repositories: [] });
-    else if (value.startsWith("repository:")) {
+    else if (value === ALL_VALUE) {
+      storeRepositoryFilter(toggleFilterAllRepositories(filter, repositoryKeys));
+    } else if (value.startsWith("repository:")) {
       storeRepositoryFilter(
         toggleFilterRepository(filter, value.slice("repository:".length), repositoryKeys),
       );
@@ -437,8 +439,7 @@ export function RepositoryFilterPills({
   const hidden = hiddenWorktrees(filter, worktreeGroups);
   // Counting every worktree runs git status in each, so Has changes shows only while it is on.
   const showChanged = filter.changed;
-  const count =
-    (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0) + (hidden.length > 0 ? 1 : 0);
+  const count = (filter.changed ? 1 : 0) + (kept !== null ? 1 : 0) + (hidden.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills
@@ -455,7 +456,7 @@ export function RepositoryFilterPills({
           onToggle={() => storeRepositoryFilter({ ...filter, changed: !filter.changed })}
         />
       ) : null}
-      {picked.length > 0 ? (
+      {kept !== null ? (
         <FilterPill
           label={namesOrCount(
             picked.map((repository) => repository.title),
