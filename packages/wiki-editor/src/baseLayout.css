@@ -71,6 +71,10 @@
   color: var(--primary);
 }
 
+.bl-date {
+  white-space: nowrap;
+}
+
 .bl-date::before {
   content: "▦ ";
   color: var(--muted-foreground);
@@ -80,7 +84,7 @@
 /* Clipped to its cell; the whole message shows while the pointer is on it. */
 .bl-error {
   display: inline-block;
-  max-width: 100%;
+  max-width: 16rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
