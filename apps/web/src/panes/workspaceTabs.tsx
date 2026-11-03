@@ -41,6 +41,7 @@ import { followedGraphFiles, linkMarkKeyOf, linkMarkOf } from "./linkMarks";
 import { closeTab, focusedPane, isEmptyTab, newTab } from "./arrangement";
 import type { PanelProps } from "./panesController";
 import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
+import { keptFromPane } from "./linkedTabs";
 import type { WorkspaceHost } from "./PaneSurfaceHost";
 import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
@@ -80,6 +81,13 @@ export function createWorkspaceHost(): WorkspaceHost {
     Marker: LinkMarker,
     menuItems: tabMenuItems,
     link: linkAction,
+    keptFromPane: (keys, paneTabs) =>
+      keptFromPane(
+        workspace.linked().owners,
+        keys,
+        paneTabs,
+        (key) => parseChatTabKey(key) !== null,
+      ),
     close: closeWorkspaceTab,
     NewTab: NewTabButton,
     place: (slot, leaf, hosting) => {

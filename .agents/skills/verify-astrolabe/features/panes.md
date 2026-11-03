@@ -86,7 +86,9 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   thread's surface is `chat-surface:<env>:<thread>:<surface id>`, owned by `chat:<env>:<thread>`.
   Switching chats parks the old chat's owned tabs and brings the new chat's back where they
   stood, else into the pane the old ones vacated, else a new pane right of the chat (0.45 of
-  its room). Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
+  its room). A chat's linked tab never shares its chat's pane: dragging it onto that strip shows no
+  drop line (the pane's edges still split), and `settleLinks` moves one that lands there anyway, or
+  whose chat is dragged in, to the chat's other linked tabs, else a new pane beside it. Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
   come back next time). Hiding (the chat's panel closing) parks its linked tabs, except an empty
   one, which closes; closing a tab (its ✕, `:q`, the tab menu, Close pane, `t` `c`,
   `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An

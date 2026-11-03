@@ -62,11 +62,7 @@ function frontOwner(
 ): string | null {
   const focused = focusedPane(arrangement).active;
   if (isOwner(focused)) return focused;
-  // A linked tab in front in its owner's own pane keeps that owner in front.
-  const fronts = leaves(arrangement.root).map((leaf) => {
-    const owner = owners[leaf.active];
-    return owner !== undefined && leaf.tabs.includes(owner) ? owner : leaf.active;
-  });
+  const fronts = leaves(arrangement.root).map((leaf) => leaf.active);
   const ownerOfFocused = owners[focused];
   if (
     ownerOfFocused !== undefined &&
@@ -148,13 +144,13 @@ export function openLinked(
 }
 
 /**
- * Brings the arrangement in line with its links after any change: a closed chat's tabs close, the
- * front owner is worked out again, tabs whose owner does not show are set aside, and returning
- * ones go back where they stood, else where the last owner's stood, else beside the owner. Panes
- * left empty close. The same object when nothing changed.
+ * Brings the arrangement in line with its links after any change: a chat's tabs leave its pane, a
+ * closed chat's tabs close, the front owner is worked out again, tabs whose owner does not show
+ * are set aside, and returning ones go back where they stood, else where the last owner's stood,
+ * else beside the owner. Panes left empty close. The same object when nothing changed.
  */
 export function settleLinks(state: LinkedArrangement, context: LinkContext): LinkedArrangement {
-  let { arrangement } = state;
+  let arrangement = keepLinkedTabsOutOfChatPanes(state.arrangement, state.owners, context.isOwner);
   const open = new Set(allTabs(arrangement));
   let owners: Record<string, string> = { ...state.owners };
   let parked: Record<string, ParkedTab> = { ...state.parked };
@@ -236,7 +232,11 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
   for (const [key, place] of returning) {
     delete parked[key];
     changed = true;
-    const target = findLeaf(arrangement.root, place.pane) ? place.pane : home;
+    const standing = findLeaf(arrangement.root, place.pane);
+    const owner = owners[key];
+    const ownPane =
+      owner !== undefined && context.isOwner(owner) && standing?.tabs.includes(owner) === true;
+    const target = standing && !ownPane ? place.pane : home;
     if (target === null) {
       const beside =
         (front === null ? undefined : leafWithTab(arrangement.root, front)?.id) ??
@@ -270,6 +270,66 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
       )?.id ?? null
     );
   }
+}
+
+/**
+ * A chat's linked tabs show with the chat, so they never share its pane, where picking one would
+ * hide the chat. However they met, they go to the pane of its other linked tabs, else a new one
+ * beside it, and the chat shows in their place. A change group's tabs stay with it.
+ */
+function keepLinkedTabsOutOfChatPanes(
+  start: Arrangement,
+  owners: LinkedArrangement["owners"],
+  isOwner: LinkContext["isOwner"],
+): Arrangement {
+  let arrangement = start;
+  for (const leaf of leaves(start.root)) {
+    for (const key of leaf.tabs) {
+      const owner = owners[key];
+      if (owner === undefined || !isOwner(owner) || !leaf.tabs.includes(owner)) continue;
+      const shown = findLeaf(arrangement.root, leaf.id)?.active === key;
+      arrangement = removeTabs(arrangement, new Set([key])).arrangement;
+      if (shown) {
+        arrangement = {
+          ...arrangement,
+          root: mapLeaf(arrangement.root, leaf.id, (pane) => ({ ...pane, active: owner })),
+        };
+      }
+      const linkedPane = leaves(arrangement.root).find(
+        (pane) => !pane.tabs.includes(owner) && pane.tabs.some((other) => owners[other] === owner),
+      );
+      arrangement = linkedPane
+        ? {
+            ...arrangement,
+            root: mapLeaf(arrangement.root, linkedPane.id, (pane) => ({
+              ...pane,
+              tabs: [...pane.tabs, key],
+              active: shown ? key : pane.active,
+            })),
+          }
+        : openBeside(arrangement, key, leaf.id, "right", {
+            focus: false,
+            weight: LINKED_PANE_WEIGHT,
+          });
+    }
+  }
+  return arrangement;
+}
+
+/** Whether dragged `keys` are all linked tabs of a chat in this pane, so none may join its tabs. */
+export function keptFromPane(
+  owners: LinkedArrangement["owners"],
+  keys: readonly string[],
+  paneTabs: readonly string[],
+  isOwner: LinkContext["isOwner"],
+): boolean {
+  return (
+    keys.length > 0 &&
+    keys.every((key) => {
+      const owner = owners[key];
+      return owner !== undefined && isOwner(owner) && paneTabs.includes(owner);
+    })
+  );
 }
 
 /**

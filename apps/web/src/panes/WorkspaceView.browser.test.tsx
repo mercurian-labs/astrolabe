@@ -217,7 +217,6 @@ import {
   activateTab,
   allTabs,
   focusPane,
-  moveTabs,
   openTab,
   splitTab,
   startingArrangement,
@@ -531,23 +530,30 @@ describe("WorkspaceView chat tabs", () => {
     );
   });
 
-  it("keeps a linked tab showing once it stands in front of its chat in the chat's own pane", async () => {
+  it("keeps a linked tab showing with focus on it while a file covers its chat", async () => {
     setup();
     useRightPanelStore.getState().openTerminal(refOf("A"), "t1");
     workspace.update(() => openTab(startingArrangement(), chatOf("A")));
     await using _screen = await mount("A");
     const terminal = chatSurfaceKey(chatOf("A"), "terminal:t1");
+    const file = repositoryTabKey({
+      kind: "file",
+      environmentId: env,
+      projectId: ProjectId.make("project-1"),
+      checkout: { cwd: "/repo" },
+      path: "README.md",
+    });
     const paneOf = (key: string) =>
       leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))!.id;
     expect(paneOf(terminal)).not.toBe(paneOf(chatOf("A")));
-    expect(document.querySelector("[data-fake-surface=A]")?.checkVisibility()).toBe(true);
 
     await change(() =>
-      workspace.update((a) => activateTab(moveTabs(a, [terminal], paneOf(chatOf("A"))), terminal)),
+      workspace.update((a) =>
+        focusPane(openTab(a, file, paneOf(chatOf("A")), false), paneOf(terminal)),
+      ),
     );
 
-    expect(paneOf(terminal)).toBe(paneOf(chatOf("A")));
-    expect(document.body.textContent).not.toContain("Click to show");
+    expect(workspace.linked().front).toBe(chatOf("A"));
     expect(document.querySelector("[data-fake-surface=A]")?.checkVisibility()).toBe(true);
   });
 
