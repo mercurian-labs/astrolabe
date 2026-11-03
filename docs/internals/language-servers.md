@@ -51,6 +51,21 @@ rustup installs a `rust-analyzer` proxy that fails without the component. Downlo
 npm by its registry integrity, release builds by the size and SHA-256 written in the registry,
 gopls by Go's checksum database. Bumping a release means updating its hashes there.
 
+## When a file's diagnostics are final
+
+LSP doesn't say when a server has finished. Editors don't care: a later result replaces an early
+one. An agent gets one answer, so the gateway must not hand it a result that is merely early.
+
+- A server may publish nothing just before a file's real problems (basedpyright with several
+  files opening), so an agent's answer waits for publishes to stop for `diagnosticsQuiet`.
+- rust-analyzer answers pulls with nothing while it loads, and a pull after that is the only way
+  to get its own diagnostics back: in push mode it clears them when loading ends and says nothing
+  more until `cargo check` finishes. Its `experimental/serverStatus` reports when it has finished,
+  so the gateway pulls again then and holds agents until that answer is in.
+- Pushed and pulled diagnostics are separate sources, and each replaces only its own: rust-analyzer
+  pulls its analysis and pushes `cargo check`. An agent is not held for `cargo check`, which can
+  take minutes, so errors only it finds reach editors but may miss an agent's first answer.
+
 ## Files outside the documents
 
 A server reads every file it has no document for from disk, and hears of their changes only

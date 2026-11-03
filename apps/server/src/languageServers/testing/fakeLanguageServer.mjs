@@ -1,7 +1,7 @@
-// A language server for tests, configured by `fake-server.json` in its working directory:
-// `crashTimes` exits at `initialize` on that many starts (counted in `starts.log`), `waitFor`
-// answers `initialize` once that file exists, `watch` registers those file watchers (a base uri
-// of "." is its working directory), `save` asks for `didSave`. Every "bad" is an error diagnostic.
+// A language server for tests, configured by `fake-server.json` in its working directory, as
+// each option's use says. `pushes` publishes instead of answering pulls, nothing at first and the
+// real ones `pushes.after` ms later; `quiescentOn` answers pulls with nothing until that file
+// exists, then reports it finished. Every "bad" is an error diagnostic.
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 
@@ -68,6 +68,31 @@ const occurrences = (text, word) => {
   return found;
 };
 
+const diagnosticsOf = (text) =>
+  occurrences(text, "bad").map((offset) => ({
+    range: rangeOf(text, offset, offset + 3),
+    severity: 1,
+    message: "bad is not allowed",
+    code: 7,
+    source: "fake",
+  }));
+
+const publish = (uri, version, diagnostics) =>
+  write({ method: "textDocument/publishDiagnostics", params: { uri, version, diagnostics } });
+
+const pushDiagnostics = (uri, version) => {
+  publish(uri, version, []);
+  setTimeout(() => publish(uri, version, diagnosticsOf(docs.get(uri).text)), config.pushes.after);
+};
+
+if (config.quiescentOn) {
+  const watcher = NodeFS.watch(".", () => {
+    if (!NodeFS.existsSync(config.quiescentOn)) return;
+    watcher.close();
+    write({ method: "experimental/serverStatus", params: { health: "ok", quiescent: true } });
+  });
+}
+
 const handle = (message) => {
   received.push(message.method ?? `response:${message.id}`);
   const { id, method, params } = message;
@@ -87,7 +112,11 @@ const handle = (message) => {
         reply({
           capabilities: {
             textDocumentSync: config.save ? { openClose: true, change: 2, save: true } : 2,
-            diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
+            ...(config.pushes
+              ? {}
+              : {
+                  diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
+                }),
             hoverProvider: true,
             renameProvider: true,
             definitionProvider: true,
@@ -147,6 +176,9 @@ const handle = (message) => {
     case "textDocument/didSave":
       saved.push(params.textDocument.uri);
       return answerSaved();
+    case "test/push":
+      publish(params.uri, params.version, params.diagnostics);
+      return reply(null);
     case "test/saved":
       savedWaiting.push({ id, count: params.count });
       return answerSaved();
@@ -166,6 +198,7 @@ const handle = (message) => {
         version: params.textDocument.version,
         text: params.textDocument.text,
       });
+      if (config.pushes) pushDiagnostics(params.textDocument.uri, params.textDocument.version);
       return;
     case "textDocument/didChange": {
       const doc = docs.get(params.textDocument.uri);
@@ -182,16 +215,8 @@ const handle = (message) => {
       return;
     case "textDocument/diagnostic": {
       const { text } = docs.get(params.textDocument.uri);
-      return reply({
-        kind: "full",
-        items: occurrences(text, "bad").map((offset) => ({
-          range: rangeOf(text, offset, offset + 3),
-          severity: 1,
-          message: "bad is not allowed",
-          code: 7,
-          source: "fake",
-        })),
-      });
+      const loading = config.quiescentOn && !NodeFS.existsSync(config.quiescentOn);
+      return reply({ kind: "full", items: loading ? [] : diagnosticsOf(text) });
     }
     case "textDocument/hover": {
       const { text } = docs.get(params.textDocument.uri);

@@ -344,7 +344,8 @@ server when it has one (its TypeScript, or basedpyright in its `.venv`), then on
 machine, such as rustup's rust-analyzer or Xcode's clangd. Without either, the first time an
 environment needs a language server it asks to download it: click **Download**. gopls is built
 with the machine's Go, so Go files need Go installed. jdtls is never downloaded: install it
-(`brew install jdtls`, with Java 21 or newer) for Java files. If a server keeps stopping, or was paused
+(`brew install jdtls`, with Java 21 or newer) for Java files. When a server isn't installed the
+header says so: hover it for what to install, then click **Try again**. If a server keeps stopping, or was paused
 because several ran at once, click **Restart** in the header.
 
 **Settings → Projects → Language servers** shows what each server would run for a project and

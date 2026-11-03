@@ -47,6 +47,7 @@ export interface ResolvedServer {
   readonly initializationOptions: unknown;
   /** Answers to `workspace/configuration`, by section. */
   readonly settings: Readonly<Record<string, unknown>>;
+  readonly reportsQuiescence: boolean;
 }
 
 /** Something the launch that applies needs, which isn't cached yet. */
@@ -347,6 +348,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           source,
           initializationOptions: fill(launch.initializationOptions ?? {}, { toolchain }),
           settings: fill(launch.settings ?? {}, { python }) as Record<string, unknown>,
+          reportsQuiescence: listed.reportsQuiescence === true,
         },
       });
       if (launch.projectBinary !== undefined) {

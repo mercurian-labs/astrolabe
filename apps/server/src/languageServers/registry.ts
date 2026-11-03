@@ -86,6 +86,11 @@ export interface Launch {
    * checkout's virtual environment interpreter; a value naming one the checkout lacks is left out.
    */
   readonly settings?: Readonly<Record<string, unknown>>;
+  /**
+   * rust-analyzer's own protocol: it answers a pull with nothing while it loads, and its
+   * `experimental/serverStatus` says when it has finished, so its files are pulled again then.
+   */
+  readonly reportsQuiescence?: boolean;
   /** Runs no repository code (plugins, build scripts), so restricted repositories may use it. */
   readonly restrictedSafe: boolean;
 }
@@ -253,6 +258,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
           },
         },
         args: [],
+        reportsQuiescence: true,
         // Runs build scripts and procedural macros, and `cargo check` on save.
         restrictedSafe: false,
       },

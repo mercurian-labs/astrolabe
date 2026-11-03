@@ -160,6 +160,11 @@ export interface LanguageServersOptions {
   readonly restartDelays: ReadonlyArray<Duration.Input>;
   readonly initializeTimeout: Duration.Input;
   readonly diagnosticsTimeout: Duration.Input;
+  /**
+   * How long a file's diagnostics must stand before an agent is told them: a server may publish
+   * nothing for a file and its real results a moment later.
+   */
+  readonly diagnosticsQuiet: Duration.Input;
   /** How long a server's file changes wait for more before it hears of them. */
   readonly fileChangeQuiet: Duration.Input;
   /** How long a save waits for its formatter. */
@@ -223,6 +228,11 @@ interface GatewayDoc {
   /** The process generation the document is open on. */
   openOn: number | null;
   latest: PublishedDiagnostics | null;
+  /** A server may do both (rust-analyzer pushes `cargo check`), each replacing only its own. */
+  pulled: ReadonlyArray<Json>;
+  pushed: ReadonlyArray<Json>;
+  /** Bumped by each publish, to tell when they have stopped. */
+  published: number;
   pulling: boolean;
   dirty: boolean;
   readonly waiters: Set<() => void>;
@@ -299,6 +309,8 @@ interface Instance {
   /** Documents waiting for a diagnostics pull. */
   readonly pulls: Queue.Queue<GatewayDoc>;
   running: Running | null;
+  /** Still loading the project, for a server that says when it has finished. */
+  loading: boolean;
   /** The resolved launch's answers to `workspace/configuration`, by section. */
   settings: Readonly<Record<string, unknown>>;
   /** The server's `workspace/applyEdit` requests, applied one at a time. */
@@ -387,6 +399,11 @@ const CLIENT_CAPABILITIES = {
     didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
   },
   window: { workDoneProgress: false, showMessage: {} },
+};
+
+const QUIESCENCE_CAPABILITIES = {
+  ...CLIENT_CAPABILITIES,
+  experimental: { serverStatusNotification: true },
 };
 
 /** A `workspace/configuration` item's answer: its dotted section, or every setting without one. */
@@ -625,6 +642,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   };
 
   const setDiagnostics = (instance: Instance, doc: GatewayDoc, published: PublishedDiagnostics) => {
+    doc.published += 1;
     if (doc.latest !== null && doc.latest.version > published.version) return;
     doc.latest = published;
     fanOutDiagnostics(instance, doc);
@@ -636,6 +654,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     for (const doc of instance.docs.values()) {
       if (doc.latest === null) continue;
       doc.latest = { version: doc.version, diagnostics: [] };
+      doc.pulled = [];
+      doc.pushed = [];
       fanOutDiagnostics(instance, doc);
     }
   };
@@ -681,13 +701,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           continue;
         }
         if (result.report?.kind === "full" && Array.isArray(result.report.items)) {
-          setDiagnostics(instance, doc, { version, diagnostics: result.report.items });
+          doc.pulled = result.report.items;
+          setDiagnostics(instance, doc, { version, diagnostics: [...doc.pulled, ...doc.pushed] });
         }
       } while (doc.dirty);
     }).pipe(
       Effect.ensuring(
         Effect.sync(() => {
           doc.pulling = false;
+          for (const wake of doc.waiters) wake();
         }),
       ),
     );
@@ -736,6 +758,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       doc.texts.set(item.version, Text.of(String(item.text).split("\n")));
       doc.updates = [];
       doc.latest = null;
+      doc.pulled = [];
+      doc.pushed = [];
       openOnServer(instance, doc);
     } else if (item.type === "updates") {
       const running = instance.running;
@@ -801,6 +825,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         updates: [],
         openOn: null,
         latest: null,
+        pulled: [],
+        pushed: [],
+        published: 0,
         pulling: false,
         dirty: false,
         waiters: new Set(),
@@ -881,11 +908,21 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   };
 
   const onNotificationFromServer = (instance: Instance) => (method: string, params: Json) => {
+    if (method === "experimental/serverStatus") {
+      instance.loading = params?.quiescent !== true;
+      for (const doc of instance.docs.values()) {
+        // What it answered while loading was nothing; now it can say.
+        if (!instance.loading) schedulePull(instance, doc);
+        for (const wake of doc.waiters) wake();
+      }
+      return;
+    }
     if (method !== "textDocument/publishDiagnostics" || typeof params?.uri !== "string") return;
     const doc = [...instance.docs.values()].find((candidate) => candidate.uri === params.uri);
     if (doc === undefined || !Array.isArray(params.diagnostics)) return;
     const version = typeof params.version === "number" ? params.version : doc.version;
-    setDiagnostics(instance, doc, { version, diagnostics: params.diagnostics });
+    doc.pushed = params.diagnostics;
+    setDiagnostics(instance, doc, { version, diagnostics: [...doc.pulled, ...doc.pushed] });
   };
 
   /** Ends the process if one runs; `generation` moves on so its exit isn't taken as a crash. */
@@ -968,6 +1005,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const processScope = yield* Scope.fork(instance.scope);
     instance.processScope = processScope;
     instance.settings = server.settings;
+    instance.loading = server.reportsQuiescence;
     instance.watchers.clear();
     const connection = yield* connect(
       { executable: server.executable, args: server.args, cwd: instance.cwd, env: server.env },
@@ -994,7 +1032,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         rootUri,
         rootPath: instance.cwd,
         workspaceFolders: [{ uri: rootUri, name: path.basename(instance.cwd) }],
-        capabilities: CLIENT_CAPABILITIES,
+        capabilities: server.reportsQuiescence ? QUIESCENCE_CAPABILITIES : CLIENT_CAPABILITIES,
         initializationOptions: server.initializationOptions,
       })
       .response.pipe(Effect.timeoutOption(options.initializeTimeout), Effect.option);
@@ -1170,6 +1208,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       changes: new Map(),
       changesGeneration: 0,
       running: null,
+      loading: false,
       settings: {},
       ready: Deferred.makeUnsafe(),
       processScope: null,
@@ -1978,10 +2017,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           doc,
           () =>
             doc.loadId !== synced.loadId ||
-            (doc.version >= synced.version &&
+            (!instance.loading &&
+              !doc.pulling &&
+              doc.version >= synced.version &&
               doc.latest !== null &&
               doc.latest.version >= synced.version),
         );
+        for (let seen = -1; seen !== doc.published;) {
+          seen = doc.published;
+          yield* Effect.sleep(options.diagnosticsQuiet);
+        }
         return listedDiagnostics(doc);
       }),
     ).pipe(
@@ -2267,6 +2312,7 @@ export const defaultOptions: LanguageServersOptions = {
   restartDelays: [Duration.seconds(1), Duration.seconds(2), Duration.seconds(4)],
   initializeTimeout: Duration.minutes(1),
   diagnosticsTimeout: Duration.minutes(1),
+  diagnosticsQuiet: Duration.millis(300),
   fileChangeQuiet: Duration.millis(200),
   formatTimeout: Duration.seconds(2),
   registry: DEFAULT_REGISTRY,

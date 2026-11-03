@@ -1036,6 +1036,74 @@ describe("LanguageServers", () => {
     ),
   );
 
+  it.live("waits out a server that publishes nothing just before a file's real problems", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(`${SOURCE}const bad = label;\n`, {
+        pushes: { after: 200 },
+      });
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      expect((yield* session.diagnostics()).params.diagnostics).toEqual([]);
+      const file = yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      expect(file.diagnostics.map((item) => item.message)).toEqual(["bad is not allowed"]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("pulls again when a server finishes loading, and holds an agent until then", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(`${SOURCE}const bad = label;\n`, {
+        quiescentOn: "loaded",
+      });
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      // What it answered while loading: without waiting, an agent would be told this.
+      expect((yield* session.diagnostics()).params.diagnostics).toEqual([]);
+      const asked = yield* service
+        .diagnostics({ cwd: checkout.cwd, relativePath: FILE })
+        .pipe(Effect.forkScoped);
+      yield* checkout.write("loaded", "");
+      const file = yield* Fiber.join(asked);
+      expect(file.diagnostics.map((item) => item.message)).toEqual(["bad is not allowed"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          diagnosticsQuiet: 0,
+          specs: { typescript: fakeSpec({ ...fakeLaunch, reportsQuiescence: true }) },
+        }),
+      ),
+    ),
+  );
+
+  it.live("keeps what a server pushes beside what it answers to pulls", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(`${SOURCE}const bad = label;\n`);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics((message) => message.params.diagnostics.length === 1);
+      const pushed = {
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+        severity: 1,
+        message: "from the build",
+      };
+      yield* session.send({
+        id: 1,
+        method: "test/push",
+        params: { uri: checkout.uri, version: 0, diagnostics: [pushed] },
+      });
+      const both = yield* session.diagnostics((message) => message.params.diagnostics.length === 2);
+      expect(both.params.diagnostics.map((item: any) => item.message)).toEqual([
+        "bad is not allowed",
+        "from the build",
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("lists a checkout's problems, keeps a closed file's until its server stops", () =>
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;
