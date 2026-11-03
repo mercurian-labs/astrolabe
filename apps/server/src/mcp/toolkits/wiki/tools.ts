@@ -148,7 +148,7 @@ const WikiLinksTool = Tool.make("astrolabe_wiki_links", {
 const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
   ...shared,
   description:
-    "Run a base, a saved question over a wiki's notes in Obsidian's Bases format: one view's matching notes as rows of that view's properties (frontmatter values; links read [[Name]]). Name a .base file, or a note to run its first ```base block.",
+    "Run a base, a saved question over every file in a wiki's repository in Obsidian's Bases format: one view's matching files as rows of that view's properties (frontmatter values and formulas; links read [[Name]]), with its summaries. Name a .base file, or a note to run its first ```base block.",
   parameters: Schema.Struct({
     wiki: Schema.NonEmptyString.annotate({
       description: "The wiki's id or name, as astrolabe_wiki_list shows it.",

@@ -1,0 +1,28 @@
+filters:
+  and:
+    - file.hasProperty("priority")
+    - formula.weight > 2
+formulas:
+  weight: 'priority * 2 + (if(done, 0, 1))'
+  label: 'file.basename + " (" + formula.weight + ")"'
+  bucket: 'if(formula.weight >= 6, "heavy", "light")'
+views:
+  - type: table
+    name: Weighted
+    order:
+      - file.name
+      - formula.weight
+      - formula.label
+      - formula.bucket
+    sort:
+      - property: formula.weight
+        direction: DESC
+  - type: table
+    name: By bucket
+    groupBy:
+      property: formula.bucket
+      direction: ASC
+    filters: formula.bucket != "nothing"
+    order:
+      - file.name
+      - formula.bucket

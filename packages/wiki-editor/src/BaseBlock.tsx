@@ -1,8 +1,8 @@
 import { Fragment, useSyncExternalStore } from "react";
 
-import { cellParts, isNameColumn, type BaseCellValue } from "./baseCells";
+import { cellParts, isNameColumn, rowDocument, type BaseCellValue } from "./baseCells";
 import type { WikiEditorPage } from "./mobilePageController";
-import type { WikiEditorBaseResult } from "./protocol";
+import type { WikiEditorBaseResult, WikiEditorBaseSummary } from "./protocol";
 
 type Row = WikiEditorBaseResult["rows"][number];
 
@@ -48,15 +48,38 @@ function Results({
   readonly result: WikiEditorBaseResult;
   readonly onOpenNote: (name: string) => void;
 }) {
-  if (result.rows.length === 0) return <p className="base-muted">No notes match this view.</p>;
+  if (result.rows.length === 0) return <p className="base-muted">Nothing matches this view.</p>;
   const properties = result.columns.filter((column) => !isNameColumn(column.id));
-  const name = (row: Row) => (
-    <button type="button" className="base-link base-name" onClick={() => onOpenNote(row.name)}>
-      {row.name}
-    </button>
-  );
+  const name = (row: Row) => {
+    const document = rowDocument(row);
+    return document === null ? (
+      <span className="base-name">{row.name}</span>
+    ) : (
+      <button type="button" className="base-link base-name" onClick={() => onOpenNote(document)}>
+        {row.name}
+      </button>
+    );
+  };
+  const summaryRow = (summaries: ReadonlyArray<WikiEditorBaseSummary> | undefined) =>
+    summaries?.length ? (
+      <tr>
+        <td className="base-muted">Summary</td>
+        {properties.map((column) => {
+          const summary = summaries.find((entry) => entry.column === column.id);
+          return (
+            <td key={column.id} className="base-muted">
+              {summary ? `${summary.name} ${summary.value}` : null}
+            </td>
+          );
+        })}
+      </tr>
+    ) : null;
+  const groupSummaries = (row: Row) =>
+    result.groups?.find(
+      (group) => JSON.stringify(group.value) === JSON.stringify(row.group ?? null),
+    )?.summaries;
   const footer = result.truncated ? (
-    <p className="base-muted">{`Showing ${result.rows.length} of ${result.total} notes.`}</p>
+    <p className="base-muted">{`Showing ${result.rows.length} of ${result.total} results.`}</p>
   ) : null;
   if (result.view.type === "cards") {
     return (
@@ -97,11 +120,14 @@ function Results({
             {result.rows.map((row, position) => (
               <Fragment key={row.file}>
                 {opensGroup(result, position) ? (
-                  <tr>
-                    <td className="base-group" colSpan={properties.length + 1}>
-                      {groupText(result, row.group)}
-                    </td>
-                  </tr>
+                  <>
+                    <tr>
+                      <td className="base-group" colSpan={properties.length + 1}>
+                        {groupText(result, row.group)}
+                      </td>
+                    </tr>
+                    {summaryRow(groupSummaries(row))}
+                  </>
                 ) : null}
                 <tr>
                   <td>{name(row)}</td>
@@ -113,6 +139,7 @@ function Results({
                 </tr>
               </Fragment>
             ))}
+            {summaryRow(result.summaries)}
           </tbody>
         </table>
       </div>

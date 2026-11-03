@@ -8,7 +8,8 @@ export type BaseCellPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "link"; readonly name: string; readonly text: string };
 
-const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+// A date with a time, local unless it names a zone, as bases write them.
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?$/;
 const WIKILINK = /\[\[([^\]\n]+)\]\]/g;
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -45,3 +46,18 @@ export function cellParts(cell: BaseCellValue): ReadonlyArray<BaseCellPart> {
 /** Whether a column shows the row's own note: its name or path. */
 export const isNameColumn = (id: string): boolean =>
   id === "file.name" || id === "file.basename" || id === "file.path";
+
+const NOT_NOTES = new Set(["readme.md", "agents.md", "claude.md"]);
+
+/**
+ * The name a row opens by in the wiki: a top-level note's, or a base's file name. Null for any
+ * other file (in a folder, a skill map, an attachment), which only the desktop opens, as a file.
+ */
+export function rowDocument(row: { readonly name: string; readonly file: string }): string | null {
+  if (/^[^/]+\.base$/i.test(row.file)) return row.file;
+  return /^[^/]+\.md$/i.test(row.file) &&
+    !NOT_NOTES.has(row.file.toLowerCase()) &&
+    !/\.skillmap\.md$/i.test(row.file)
+    ? row.name
+    : null;
+}

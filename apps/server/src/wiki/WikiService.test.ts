@@ -112,7 +112,9 @@ const write = (root: string, files: Readonly<Record<string, string>>) =>
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     for (const [file, content] of Object.entries(files)) {
-      yield* fileSystem.writeFileString(path.join(root, file), content).pipe(Effect.orDie);
+      const target = path.join(root, file);
+      yield* fileSystem.makeDirectory(path.dirname(target), { recursive: true }).pipe(Effect.orDie);
+      yield* fileSystem.writeFileString(target, content).pipe(Effect.orDie);
     }
   });
 
@@ -304,6 +306,7 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
           "filters: 'status == \"open\"'\nviews:\n  - type: cards\n    name: Open\n    order: [file.basename, status]\n",
         "Index.md":
           "# Index\n\nStart at [[Alpha]].\n\n```base\nfilters: '!this.file.links.contains(file) && file.name != this.file.name'\n```\n",
+        "attachments/pic.png": "png",
       });
       yield* git(root, ["add", "."]);
       yield* git(root, ["commit", "--quiet", "-m", "Statuses and bases"]);
@@ -319,7 +322,22 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
       assert.deepEqual(byFile.rows, [
         { name: "Alpha", file: "Alpha.md", values: { "file.basename": "Alpha", status: "open" } },
       ]);
-      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Index" })), ["Beta"]);
+      // A base lists every file in the repository, as an Obsidian vault does.
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Index" })), [
+        "Beta",
+        "Open.base",
+        "pic.png",
+        "Product.skillmap",
+      ]);
+      const attachments = yield* wikis.query({
+        wikiId,
+        source:
+          'filters: file.inFolder("attachments")\nviews:\n  - type: table\n    order: [file.path, file.size]\n',
+      });
+      assert.deepEqual(
+        attachments.rows.map((row) => row.values),
+        [{ "file.path": "attachments/pic.png", "file.size": 3 }],
+      );
       // A block as the editor holds it, unsaved: `this` is the note it sits in.
       assert.deepEqual(
         names(yield* wikis.query({ wikiId, source: "filters: file.hasLink(this)", note: "Beta" })),
@@ -349,10 +367,8 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
         wikis.query({ wikiId, source: "views:\n  - type: table\n    order: [formula.ppu]\n" }),
       );
       assert.equal(outside.reason, "invalid");
-      assert.equal(
-        outside.message,
-        "Not supported: formula.ppu (formulas) in view “Table”'s order.",
-      );
+      // A base's own error names what to fix.
+      assert.equal(outside.message, "No formula named “ppu” in view “Table”'s order.");
     }),
   ),
 );

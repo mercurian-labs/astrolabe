@@ -15,7 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { describeWikiFailure } from "./wiki.logic";
+import { describeWikiFailure, wikiDocumentName } from "./wiki.logic";
 import { WikiPart } from "./WikiParts";
 
 /** A base by name (a `.base` file, or a note's first block), or a block's source in `note`. */
@@ -25,6 +25,14 @@ export type WikiBaseSource =
 
 type Row = WikiQueryResult["rows"][number];
 type Column = WikiQueryResult["columns"][number];
+type Summary = NonNullable<WikiQueryResult["summaries"]>[number];
+
+/** How a row's own name opens: a wiki document by name, any other file as a file. */
+interface RowOpeners {
+  readonly onOpenNote: (name: string) => void;
+  /** Absent where files can't open; such rows show their name as text. */
+  readonly onOpenFile?: ((file: string) => void) | undefined;
+}
 
 const NAME_COLUMN: Column = { id: "file.basename", label: "Name" };
 
@@ -50,21 +58,61 @@ function CellValue({
   });
 }
 
-/** The row's own note, under a name or path column. */
+/** The row's own file, under a name or path column, opening as a document or a file. */
 function RowName({
   row,
   column,
-  onOpenNote,
+  openers,
+  className,
 }: {
   readonly row: Row;
-  readonly column: Column;
-  readonly onOpenNote: (name: string) => void;
+  readonly column?: Column;
+  readonly openers: RowOpeners;
+  readonly className?: string;
 }) {
-  const path = row.values[column.id];
+  const path = column === undefined ? undefined : row.values[column.id];
+  const text = column?.id === "file.path" && typeof path === "string" ? path : row.name;
+  const document = wikiDocumentName(row.file);
+  const { onOpenFile } = openers;
+  if (document === null && onOpenFile === undefined)
+    return <span className={className}>{text}</span>;
   return (
-    <WikiPart.NoteLink onClick={() => onOpenNote(row.name)}>
-      {column.id === "file.path" && typeof path === "string" ? path : row.name}
+    <WikiPart.NoteLink
+      className={className}
+      onClick={() => (document === null ? onOpenFile?.(row.file) : openers.onOpenNote(document))}
+    >
+      {text}
     </WikiPart.NoteLink>
+  );
+}
+
+/** A summary row: each summarized column's value under it, as Obsidian shows one. */
+function SummaryRow({
+  columns,
+  summaries,
+}: {
+  readonly columns: ReadonlyArray<Column>;
+  readonly summaries: ReadonlyArray<Summary>;
+}) {
+  if (summaries.length === 0) return null;
+  return (
+    <TableRow>
+      {columns.map((column, position) => {
+        const summary = summaries.find((entry) => entry.column === column.id);
+        return (
+          <TableCell key={column.id}>
+            {summary ? (
+              <span className="text-xs text-muted-foreground">
+                {`${summary.name} `}
+                <span className="font-medium text-foreground">{summary.value}</span>
+              </span>
+            ) : position === 0 ? (
+              <span className="text-xs text-muted-foreground">Summary</span>
+            ) : null}
+          </TableCell>
+        );
+      })}
+    </TableRow>
   );
 }
 
@@ -87,23 +135,24 @@ const startsGroup = (result: WikiQueryResult, position: number) =>
       JSON.stringify(result.rows[position - 1]?.group ?? null));
 
 /**
- * A base's view: a table, or cards. Every row leads with its note's name, which opens the
- * note; a view that shows no name column gets one.
+ * A base's view: a table, or cards. Every row leads with its file's name, which opens it; a
+ * view that shows no name column gets one. List, kanban and map views show as a table for now.
  */
 export function WikiBaseResults({
   result,
   onOpenNote,
+  onOpenFile,
 }: {
   readonly result: WikiQueryResult;
-  readonly onOpenNote: (name: string) => void;
-}) {
+} & RowOpeners) {
+  const openers: RowOpeners = { onOpenNote, onOpenFile };
   const columns = result.columns.some((column) => isNameColumn(column.id))
     ? result.columns
     : [NAME_COLUMN, ...result.columns];
   const footer = result.truncated ? (
-    <WikiPart.Muted>{`Showing ${result.rows.length} of ${result.total} notes.`}</WikiPart.Muted>
+    <WikiPart.Muted>{`Showing ${result.rows.length} of ${result.total} results.`}</WikiPart.Muted>
   ) : null;
-  if (result.rows.length === 0) return <WikiPart.Muted>No notes match this view.</WikiPart.Muted>;
+  if (result.rows.length === 0) return <WikiPart.Muted>Nothing matches this view.</WikiPart.Muted>;
 
   if (result.view.type === "cards") {
     const properties = columns.filter((column) => !isNameColumn(column.id));
@@ -127,9 +176,7 @@ export function WikiBaseResults({
                   key={row.file}
                   className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3"
                 >
-                  <WikiPart.NoteLink className="font-medium" onClick={() => onOpenNote(row.name)}>
-                    {row.name}
-                  </WikiPart.NoteLink>
+                  <RowName row={row} openers={openers} className="font-medium" />
                   {properties.length ? (
                     <dl className="flex flex-col gap-1.5">
                       {properties.map((column) => (
@@ -149,6 +196,10 @@ export function WikiBaseResults({
     );
   }
 
+  const groupSummaries = (row: Row) =>
+    result.groups?.find(
+      (group) => JSON.stringify(group.value) === JSON.stringify(row.group ?? null),
+    )?.summaries ?? [];
   return (
     <div className="flex flex-col gap-2">
       <Table>
@@ -163,19 +214,22 @@ export function WikiBaseResults({
           {result.rows.map((row, position) => (
             <Fragment key={row.file}>
               {startsGroup(result, position) ? (
-                <TableRow>
-                  <TableCell colSpan={columns.length}>
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {groupLabel(result, row.group)}
-                    </span>
-                  </TableCell>
-                </TableRow>
+                <>
+                  <TableRow>
+                    <TableCell colSpan={columns.length}>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {groupLabel(result, row.group)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                  <SummaryRow columns={columns} summaries={groupSummaries(row)} />
+                </>
               ) : null}
               <TableRow>
                 {columns.map((column) => (
                   <TableCell key={column.id}>
                     {isNameColumn(column.id) ? (
-                      <RowName row={row} column={column} onOpenNote={onOpenNote} />
+                      <RowName row={row} column={column} openers={openers} />
                     ) : (
                       <CellValue value={row.values[column.id]} onOpenNote={onOpenNote} />
                     )}
@@ -184,6 +238,7 @@ export function WikiBaseResults({
               </TableRow>
             </Fragment>
           ))}
+          <SummaryRow columns={columns} summaries={result.summaries ?? []} />
         </TableBody>
       </Table>
       {footer}
@@ -201,13 +256,13 @@ export function WikiBase({
   changeRequestId,
   from,
   onOpenNote,
+  onOpenFile,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly from: WikiBaseSource;
-  readonly onOpenNote: (name: string) => void;
-}) {
+} & RowOpeners) {
   const [view, setView] = useState<string | null>(null);
   const query = useEnvironmentQuery(
     wikiEnvironment.query({
@@ -256,7 +311,7 @@ export function WikiBase({
           </SelectPopup>
         </Select>
       ) : null}
-      <WikiBaseResults result={result} onOpenNote={onOpenNote} />
+      <WikiBaseResults result={result} onOpenNote={onOpenNote} onOpenFile={onOpenFile} />
     </div>
   );
 }
@@ -269,6 +324,7 @@ export function WikiBasePage({
   changeRequestId,
   parent,
   onOpenNote,
+  onOpenFile,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
@@ -276,8 +332,7 @@ export function WikiBasePage({
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** Where the base is read from, as the tab header names it. */
   readonly parent: string;
-  readonly onOpenNote: (name: string) => void;
-}) {
+} & RowOpeners) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
@@ -294,6 +349,7 @@ export function WikiBasePage({
             changeRequestId={changeRequestId}
             from={{ base: file }}
             onOpenNote={onOpenNote}
+            onOpenFile={onOpenFile}
           />
         </div>
       </div>

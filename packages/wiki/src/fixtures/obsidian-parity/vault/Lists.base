@@ -1,0 +1,59 @@
+filters: file.hasProperty("nums")
+formulas:
+  sorted: 'nums.sort()'
+  unique: 'nums.unique()'
+  reversed: 'nums.reverse()'
+  joined: 'nums.join("-")'
+  sliced: 'nums.slice(1, 3)'
+  filtered: 'nums.filter(value > 1)'
+  mapped: 'nums.map(value * 10)'
+  indexed: 'nums.map(index)'
+  summed: 'nums.reduce(acc + value, 0)'
+  largest: 'nums.reduce(if(acc == null || value > acc, value, acc), null)'
+  flattened: '[1, [2, 3], [[4]]].flat()'
+  has_two: 'nums.contains(2)'
+  has_all: 'nums.containsAll(1, 2)'
+  has_any: 'nums.containsAny(9, 3)'
+  count: 'nums.length'
+  first: 'nums[0]'
+  wrapped: 'list(status)'
+  listed: 'list(nums)'
+  empty_list: '[].isEmpty()'
+  sorted_words: '["pear", "Apple", "banana"].sort()'
+  tag_count: 'file.tags.length'
+  keys: 'file.properties.keys()'
+  property_values: 'file.properties.values().length'
+  empty_object: 'file.properties.isEmpty()'
+views:
+  - type: table
+    name: Lists
+    order:
+      - file.name
+      - nums
+      - formula.sorted
+      - formula.unique
+      - formula.reversed
+      - formula.joined
+      - formula.sliced
+      - formula.filtered
+      - formula.mapped
+      - formula.indexed
+      - formula.summed
+      - formula.largest
+      - formula.flattened
+      - formula.has_two
+      - formula.has_all
+      - formula.has_any
+      - formula.count
+      - formula.first
+      - formula.wrapped
+      - formula.listed
+      - formula.empty_list
+      - formula.sorted_words
+      - formula.tag_count
+      - formula.keys
+      - formula.property_values
+      - formula.empty_object
+    sort:
+      - property: file.name
+        direction: ASC

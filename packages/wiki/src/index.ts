@@ -6,3 +6,4 @@ export * from "./trailers.ts";
 export * from "./merge.ts";
 export * from "./properties.ts";
 export * from "./bases.ts";
+export * from "./baseCorpus.ts";

@@ -1,96 +1,24 @@
-// @effect-diagnostics globalDate:off - an Effect-free package; months and local midnight need Date.
 /**
- * The part of Obsidian's Bases expression language this wiki evaluates: filter statements and
- * the properties a view shows. Every expression is checked against the subset before it runs,
- * so an unsupported one fails loudly even in a branch no note reaches.
+ * Obsidian's Bases expression language: parsing, checking every name against the functions it
+ * knows, and evaluating. An unknown function or field fails loudly, even in a branch no file
+ * reaches; a function given the wrong type makes an error cell, as Obsidian shows one.
  */
+import {
+  arithmetic,
+  callGlobal,
+  callMethod,
+  FILE_FIELDS,
+  GLOBALS,
+  index as indexValue,
+  member,
+  METHODS,
+  noteProperty,
+  type BaseScope,
+} from "./baseFunctions.ts";
+import { BaseError, equals, order, tagged, truthy, isList, type BaseValue } from "./baseValues.ts";
 import { key, noteName } from "./links.ts";
-import { hasTag } from "./properties.ts";
 
-export class BaseError extends Error {
-  override readonly name = "BaseError";
-}
-
-/** What an expression sees of one wiki file. */
-export interface BaseDoc {
-  readonly name: string;
-  readonly file: string;
-  readonly source: string;
-  readonly properties: Readonly<Record<string, unknown>>;
-  /** `#`-prefixed, as written. */
-  readonly tags: ReadonlyArray<string>;
-  /** Distinct link targets, as first written. */
-  readonly links: ReadonlyArray<string>;
-  /** ISO time of the last commit that changed the file, when known. */
-  readonly mtime: string | undefined;
-}
-
-interface DateValue {
-  readonly kind: "date";
-  readonly time: number;
-}
-interface LinkValue {
-  readonly kind: "link";
-  readonly target: string;
-}
-interface FileValue {
-  readonly kind: "file";
-  readonly doc: BaseDoc;
-}
-/** `this`: the file the base is shown in. Its members are that note's properties and `file`. */
-interface ThisValue {
-  readonly kind: "this";
-  readonly doc: BaseDoc;
-}
-interface ObjectValue {
-  readonly kind: "object";
-  readonly entries: Readonly<Record<string, unknown>>;
-}
-export type BaseValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ReadonlyArray<BaseValue>
-  | DateValue
-  | LinkValue
-  | FileValue
-  | ThisValue
-  | ObjectValue;
-
-type Tagged = Exclude<BaseValue, null | boolean | number | string | ReadonlyArray<BaseValue>>;
-const tagged = <K extends Tagged["kind"]>(
-  value: BaseValue,
-  kind: K,
-): value is Extract<Tagged, { kind: K }> =>
-  typeof value === "object" && value !== null && !Array.isArray(value) && "kind" in value
-    ? value.kind === kind
-    : false;
-
-export const FILE_FIELDS: ReadonlyMap<string, string> = new Map([
-  ["name", "Name"],
-  ["basename", "Name"],
-  ["path", "Path"],
-  ["folder", "Folder"],
-  ["ext", "Extension"],
-  ["size", "Size"],
-  ["mtime", "Modified"],
-  ["tags", "Tags"],
-  ["links", "Links"],
-  ["backlinks", "Backlinks"],
-  ["properties", "Properties"],
-]);
-const FILE_METHODS = new Set(["hasLink", "hasTag", "hasProperty", "inFolder", "asLink"]);
-const METHODS = new Set([
-  "contains",
-  "containsAll",
-  "containsAny",
-  "startsWith",
-  "endsWith",
-  "isEmpty",
-  "lower",
-]);
-const GLOBALS = new Set(["date", "now", "today", "link", "list"]);
+export { BaseError } from "./baseValues.ts";
 
 export const unsupported = (what: string, where: string, why?: string): BaseError =>
   new BaseError(`Not supported: ${what}${why ? ` (${why})` : ""} in ${where}.`);
@@ -100,6 +28,13 @@ type Token =
   | { readonly kind: "string"; readonly value: string; readonly at: number; readonly end: number }
   | { readonly kind: "name"; readonly value: string; readonly at: number; readonly end: number }
   | { readonly kind: "op"; readonly value: string; readonly at: number; readonly end: number }
+  | {
+      readonly kind: "regex";
+      readonly source: string;
+      readonly flags: string;
+      readonly at: number;
+      readonly end: number;
+    }
   | { readonly kind: "end"; readonly at: number; readonly end: number };
 
 const OPERATORS = [
@@ -126,7 +61,17 @@ const OPERATORS = [
 ];
 const NAME = /[\p{L}_$][\p{L}\p{N}_$]*/uy;
 const NUMBER = /\d+(?:\.\d+)?/y;
+const FLAGS = /[a-z]*/y;
 const ESCAPES: Readonly<Record<string, string>> = { n: "\n", t: "\t", r: "\r" };
+
+/** Whether a `/` here divides, rather than opening a regular expression. */
+const divides = (previous: Token | undefined): boolean =>
+  previous !== undefined &&
+  (previous.kind === "number" ||
+    previous.kind === "string" ||
+    previous.kind === "name" ||
+    previous.kind === "regex" ||
+    (previous.kind === "op" && (previous.value === ")" || previous.value === "]")));
 
 function tokenize(source: string, where: string): Token[] {
   const tokens: Token[] = [];
@@ -151,6 +96,34 @@ function tokenize(source: string, where: string): Token[] {
       if (end >= source.length) throw new BaseError(`Unclosed text in ${where}.`);
       tokens.push({ kind: "string", value, at, end: end + 1 });
       at = end + 1;
+      continue;
+    }
+    if (char === "/" && !divides(tokens.at(-1))) {
+      let end = at + 1;
+      let inClass = false;
+      for (; end < source.length; end++) {
+        const next = source[end];
+        if (next === "\\") end++;
+        else if (next === "[") inClass = true;
+        else if (next === "]") inClass = false;
+        else if (next === "/" && !inClass) break;
+      }
+      if (end >= source.length) throw new BaseError(`Unclosed regular expression in ${where}.`);
+      FLAGS.lastIndex = end + 1;
+      const flags = FLAGS.exec(source)?.[0] ?? "";
+      try {
+        RegExp(source.slice(at + 1, end), flags);
+      } catch {
+        throw new BaseError(`Invalid regular expression in ${where}.`);
+      }
+      tokens.push({
+        kind: "regex",
+        source: source.slice(at + 1, end),
+        flags,
+        at,
+        end: FLAGS.lastIndex,
+      });
+      at = FLAGS.lastIndex;
       continue;
     }
     NUMBER.lastIndex = at;
@@ -185,6 +158,7 @@ interface Span {
 export type Expr = Span &
   (
     | { readonly kind: "literal"; readonly value: null | boolean | number | string }
+    | { readonly kind: "regex"; readonly source: string; readonly flags: string }
     | { readonly kind: "list"; readonly items: ReadonlyArray<Expr> }
     | { readonly kind: "name"; readonly name: string }
     | { readonly kind: "member"; readonly object: Expr; readonly name: string }
@@ -306,6 +280,8 @@ class Parser {
       case "number":
       case "string":
         return { kind: "literal", value: token.value, ...span };
+      case "regex":
+        return { kind: "regex", source: token.source, flags: token.flags, ...span };
       case "name":
         if (token.value === "true" || token.value === "false") {
           return { kind: "literal", value: token.value === "true", ...span };
@@ -326,7 +302,6 @@ class Parser {
           const operand = this.expression(UNARY);
           return { kind: "unary", op: token.value, operand, from: token.at, to: operand.to };
         }
-        if (token.value === "/") throw unsupported("regular expressions", this.where);
         return this.fail(token, "an expression");
       case "end":
         return this.fail(token, "an expression");
@@ -341,21 +316,30 @@ const isFileRef = (expr: Expr): boolean =>
     expr.object.kind === "name" &&
     expr.object.name === "this");
 
-/** Throws for anything outside the subset, naming it. */
-function check(expr: Expr, source: string, where: string): void {
+export interface CompileContext {
+  /** The base's formulas, by name; `formula.x` must name one of them. */
+  readonly formulas: ReadonlySet<string>;
+}
+
+/** Throws for a function, method, field or formula the language doesn't have, naming it. */
+function check(expr: Expr, source: string, where: string, context: CompileContext): void {
   const text = (node: Expr) => source.slice(node.from, node.to);
   const visit = (node: Expr): void => {
     switch (node.kind) {
       case "literal":
+      case "regex":
         return;
       case "list":
         return node.items.forEach(visit);
       case "name":
-        if (node.name === "formula") throw unsupported("formula", where, "formulas");
+        if (node.name === "formula") throw new BaseError(`\`formula\` needs a name in ${where}.`);
         return;
       case "member":
         if (node.object.kind === "name" && node.object.name === "formula") {
-          throw unsupported(text(node), where, "formulas");
+          if (!context.formulas.has(node.name)) {
+            throw new BaseError(`No formula named “${node.name}” in ${where}.`);
+          }
+          return;
         }
         if (isFileRef(node.object) && !FILE_FIELDS.has(node.name)) {
           throw unsupported(text(node), where);
@@ -369,8 +353,7 @@ function check(expr: Expr, source: string, where: string): void {
         if (callee.kind === "name") {
           if (!GLOBALS.has(callee.name)) throw unsupported(`${callee.name}()`, where);
         } else if (callee.kind === "member") {
-          const allowed = isFileRef(callee.object) ? FILE_METHODS : METHODS;
-          if (!allowed.has(callee.name)) throw unsupported(`${text(callee)}()`, where);
+          if (!METHODS.has(callee.name)) throw unsupported(`${text(callee)}()`, where);
           visit(callee.object);
         } else {
           throw unsupported(text(node), where);
@@ -387,14 +370,18 @@ function check(expr: Expr, source: string, where: string): void {
   visit(expr);
 }
 
-/** Parses an expression without checking it against the subset, to read it rather than run it. */
+/** Parses an expression without checking it, to read it rather than run it. */
 export const parseExpression = (source: string, where: string): Expr =>
   new Parser(tokenize(source, where), source, where).parse();
 
-/** Parses an expression and checks it against the subset; `where` names it in errors. */
-export function compileExpression(source: string, where: string): Expr {
+/** Parses an expression and checks every name in it; `where` names it in errors. */
+export function compileExpression(
+  source: string,
+  where: string,
+  context: CompileContext = { formulas: new Set() },
+): Expr {
   const expression = parseExpression(source, where);
-  check(expression, source, where);
+  check(expression, source, where, context);
   return expression;
 }
 
@@ -425,10 +412,11 @@ export function noteReferences(expr: Expr): ReadonlyArray<NoteReference> {
       case "literal":
         if (isText(node) && WIKILINK.test(node.value.trim())) found.add(node);
         return;
-      case "list":
-        return node.items.forEach(visit);
+      case "regex":
       case "name":
         return;
+      case "list":
+        return node.items.forEach(visit);
       case "member":
         return visit(node.object);
       case "index":
@@ -512,367 +500,86 @@ export function renameInExpression(source: string, from: string, to: string): st
 const WIKILINK = /^\[\[([^\]]+)\]\]$/;
 const linkTarget = (text: string): string =>
   noteName((text.split("|")[0] ?? "").split("#")[0]?.trim() ?? "");
-
-/** A frontmatter value as the language sees it; a lone `[[wikilink]]` is a link, as in Obsidian. */
-export function fromProperty(raw: unknown): BaseValue {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "boolean" || typeof raw === "number") return raw;
-  if (typeof raw === "string") {
-    const link = WIKILINK.exec(raw.trim());
-    return link ? { kind: "link", target: linkTarget(link[1] ?? "") } : raw;
-  }
-  if (raw instanceof Date) return { kind: "date", time: raw.getTime() };
-  if (Array.isArray(raw)) return raw.map(fromProperty);
-  if (typeof raw === "object") return { kind: "object", entries: raw as Record<string, unknown> };
-  return String(raw);
-}
-
-const DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
-
-/** A date written as `YYYY-MM-DD`, optionally with a time; local time unless it names a zone. */
-function parseDate(text: string): number | undefined {
-  const trimmed = text.trim();
-  if (!DATE.test(trimmed)) return undefined;
-  const iso = trimmed.length === 10 ? `${trimmed}T00:00:00` : trimmed.replace(" ", "T");
-  const time = Date.parse(iso);
-  return Number.isNaN(time) ? undefined : time;
-}
-
-const timeOf = (value: BaseValue): number | undefined =>
-  tagged(value, "date") ? value.time : typeof value === "string" ? parseDate(value) : undefined;
-
-const DURATION =
-  /^\s*(-?\d+(?:\.\d+)?)\s*(y|years?|M|months?|d|days?|w|weeks?|h|hours?|m|minutes?|s|seconds?)\s*$/;
-const UNIT_MS: Readonly<Record<string, number>> = {
-  d: 86_400_000,
-  w: 604_800_000,
-  h: 3_600_000,
-  m: 60_000,
-  s: 1000,
-};
-
-/** `time` moved by a duration such as `"1M"` or `"2 days"`; undefined for anything else. */
-function shift(time: number, duration: string, sign: 1 | -1): number | undefined {
-  const match = DURATION.exec(duration);
-  if (!match) return undefined;
-  const amount = Number(match[1]) * sign;
-  const word = match[2] ?? "";
-  const unit = word === "M" || word.startsWith("month") ? "M" : word === "m" ? "m" : word[0]!;
-  const date = new Date(time);
-  if (unit === "y") date.setFullYear(date.getFullYear() + amount);
-  else if (unit === "M") date.setMonth(date.getMonth() + amount);
-  else return time + amount * (UNIT_MS[unit] ?? 0);
-  return date.getTime();
-}
-
-/** The note a value names, as links compare: by name, ignoring case. */
-function noteRef(value: BaseValue): string | undefined {
-  if (tagged(value, "link")) return key(value.target);
-  if (tagged(value, "file") || tagged(value, "this")) return key(value.doc.name);
-  if (typeof value === "string") {
-    const link = WIKILINK.exec(value.trim());
-    return key(link ? linkTarget(link[1] ?? "") : noteName(value.trim()));
-  }
-  return undefined;
-}
-
-const isNoteLike = (value: BaseValue): value is LinkValue | FileValue | ThisValue =>
-  tagged(value, "link") || tagged(value, "file") || tagged(value, "this");
-
-export function equals(a: BaseValue, b: BaseValue): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (isNoteLike(a) || isNoteLike(b)) {
-    const left = noteRef(a);
-    return left !== undefined && left === noteRef(b);
-  }
-  if (tagged(a, "date") || tagged(b, "date")) {
-    const left = timeOf(a);
-    return left !== undefined && left === timeOf(b);
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, index) => equals(item, b[index] ?? null));
-  }
-  return false;
-}
-
-/** How two values order for `<` and friends; undefined when they don't compare. */
-function order(a: BaseValue, b: BaseValue): number | undefined {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  if (tagged(a, "date") || tagged(b, "date")) {
-    const left = timeOf(a);
-    const right = timeOf(b);
-    return left === undefined || right === undefined ? undefined : left - right;
-  }
-  if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
-  return undefined;
-}
-
-export function truthy(value: BaseValue): boolean {
-  if (value === null) return false;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0 && !Number.isNaN(value);
-  if (typeof value === "string") return value.length > 0;
-  if (Array.isArray(value)) return value.length > 0;
-  return true;
-}
-
-/** A value as text: what `+` joins and what a view shows. */
-export function display(value: BaseValue): string {
-  if (value === null) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.map(display).join(", ");
-  if (tagged(value, "date")) return new Date(value.time).toISOString();
-  if (tagged(value, "link")) return `[[${value.target}]]`;
-  if (tagged(value, "file") || tagged(value, "this")) return `[[${value.doc.name}]]`;
-  if (tagged(value, "object")) return JSON.stringify(value.entries);
-  return "";
-}
-
-export const isEmptyValue = (value: BaseValue): boolean =>
-  value === null || value === "" || (Array.isArray(value) && value.length === 0);
-
-/** How values sort in a view: by kind, then within it; empty values last. */
-export function sortOrder(a: BaseValue, b: BaseValue): number {
-  if (isEmptyValue(a) || isEmptyValue(b)) return Number(isEmptyValue(a)) - Number(isEmptyValue(b));
-  const compared = order(a, b);
-  if (compared !== undefined) {
-    return typeof a === "string" && typeof b === "string"
-      ? a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
-      : compared;
-  }
-  if (typeof a === "boolean" && typeof b === "boolean") return Number(a) - Number(b);
-  return display(a).localeCompare(display(b), undefined, { numeric: true, sensitivity: "base" });
-}
-
-export interface BaseScope {
-  readonly row: BaseDoc;
-  /** The file `this` names; undefined where the query runs in none. */
-  readonly self: BaseDoc | undefined;
-  readonly backlinks: (doc: BaseDoc) => ReadonlyArray<string>;
-  readonly now: number;
-}
-
-const encoder = new TextEncoder();
-
-const folderOf = (file: string): string => {
-  const slash = file.lastIndexOf("/");
-  return slash < 0 ? "/" : file.slice(0, slash);
-};
-
-export function fileField(doc: BaseDoc, field: string, scope: BaseScope): BaseValue {
-  switch (field) {
-    // Obsidian 1.14 names a note without its `.md`.
-    case "name":
-      return /\.md$/i.test(doc.file) ? doc.name : doc.file;
-    case "path":
-      return doc.file;
-    case "basename":
-      return doc.name;
-    case "folder":
-      return folderOf(doc.file);
-    case "ext":
-      return doc.file.slice(doc.file.lastIndexOf(".") + 1);
-    case "size":
-      return encoder.encode(doc.source).length;
-    case "mtime": {
-      const time = doc.mtime === undefined ? Number.NaN : Date.parse(doc.mtime);
-      return Number.isNaN(time) ? null : { kind: "date", time };
-    }
-    case "tags":
-      return doc.tags;
-    case "links":
-      return doc.links.map((target): BaseValue => ({ kind: "link", target }));
-    case "backlinks":
-      return scope.backlinks(doc).map((target): BaseValue => ({ kind: "link", target }));
-    case "properties":
-      return { kind: "object", entries: doc.properties };
-    default:
-      return null;
-  }
-}
-
-export const noteProperty = (doc: BaseDoc, name: string): BaseValue =>
-  fromProperty(doc.properties[name]);
-
-function member(object: BaseValue, name: string, scope: BaseScope): BaseValue {
-  if (tagged(object, "file")) return fileField(object.doc, name, scope);
-  if (tagged(object, "this")) {
-    return name === "file" ? { kind: "file", doc: object.doc } : noteProperty(object.doc, name);
-  }
-  if (tagged(object, "object")) return fromProperty(object.entries[name]);
-  if (name === "length" && (typeof object === "string" || Array.isArray(object))) {
-    return object.length;
-  }
-  return null;
-}
-
-function fileMethod(doc: BaseDoc, name: string, args: ReadonlyArray<BaseValue>): BaseValue {
-  switch (name) {
-    case "hasLink": {
-      const wanted = noteRef(args[0] ?? null);
-      return wanted !== undefined && doc.links.some((target) => key(target) === wanted);
-    }
-    case "hasTag":
-      return args.some((tag) => typeof tag === "string" && hasTag(doc.tags, tag));
-    case "hasProperty":
-      return typeof args[0] === "string" && Object.hasOwn(doc.properties, args[0]);
-    case "inFolder": {
-      const folder = typeof args[0] === "string" ? args[0].replace(/^\/+|\/+$/g, "") : null;
-      if (folder === null) return false;
-      const own = folderOf(doc.file);
-      return folder === "" || own === folder || own.startsWith(`${folder}/`);
-    }
-    case "asLink":
-      return { kind: "link", target: doc.name };
-    default:
-      return null;
-  }
-}
-
-function method(object: BaseValue, name: string, args: ReadonlyArray<BaseValue>): BaseValue {
-  if (tagged(object, "file")) return fileMethod(object.doc, name, args);
-  const holds = (needle: BaseValue): boolean => {
-    if (typeof object === "string") return object.includes(display(needle));
-    if (Array.isArray(object)) return object.some((item) => equals(item, needle));
-    return false;
-  };
-  switch (name) {
-    case "contains":
-      return holds(args[0] ?? null);
-    case "containsAll":
-      return args.every(holds);
-    case "containsAny":
-      return args.some(holds);
-    case "startsWith":
-      return typeof object === "string" && object.startsWith(display(args[0] ?? null));
-    case "endsWith":
-      return typeof object === "string" && object.endsWith(display(args[0] ?? null));
-    case "isEmpty":
-      return (
-        object === null ||
-        object === "" ||
-        (Array.isArray(object) && object.length === 0) ||
-        (tagged(object, "object") && Object.keys(object.entries).length === 0)
-      );
-    case "lower":
-      return typeof object === "string" ? object.toLowerCase() : null;
-    default:
-      return null;
-  }
-}
-
-function global(name: string, args: ReadonlyArray<BaseValue>, scope: BaseScope): BaseValue {
-  const first = args[0] ?? null;
-  switch (name) {
-    case "date": {
-      const time = timeOf(first);
-      return time === undefined ? null : { kind: "date", time };
-    }
-    case "now":
-      return { kind: "date", time: scope.now };
-    case "today": {
-      const day = new Date(scope.now);
-      day.setHours(0, 0, 0, 0);
-      return { kind: "date", time: day.getTime() };
-    }
-    case "link": {
-      if (isNoteLike(first)) return { kind: "link", target: noteNameOf(first) };
-      return typeof first === "string" ? { kind: "link", target: linkTarget(unwrap(first)) } : null;
-    }
-    case "list":
-      return first === null ? [] : Array.isArray(first) ? first : [first];
-    default:
-      return null;
-  }
-}
-
 const unwrap = (text: string) => WIKILINK.exec(text.trim())?.[1] ?? text;
-const noteNameOf = (value: LinkValue | FileValue | ThisValue) =>
-  value.kind === "link" ? value.target : value.doc.name;
 
-function arithmetic(op: string, a: BaseValue, b: BaseValue): BaseValue {
-  if (a === null || b === null) return null;
-  if (typeof a === "number" && typeof b === "number") {
-    switch (op) {
-      case "+":
-        return a + b;
-      case "-":
-        return a - b;
-      case "*":
-        return a * b;
-      case "/":
-        return a / b;
-      default:
-        return a % b;
-    }
-  }
-  if (tagged(a, "date") && typeof b === "string" && (op === "+" || op === "-")) {
-    const time = shift(a.time, b, op === "+" ? 1 : -1);
-    return time === undefined ? null : { kind: "date", time };
-  }
-  if (op === "+" && (typeof a === "string" || typeof b === "string")) {
-    return display(a) + display(b);
-  }
-  return null;
-}
+const LAZY_METHODS = new Set(["filter", "map", "reduce"]);
 
 export function evaluate(expr: Expr, scope: BaseScope, source: string): BaseValue {
-  const run = (node: Expr): BaseValue => {
+  const run = (node: Expr, here: BaseScope): BaseValue => {
     switch (node.kind) {
       case "literal":
         return node.value;
+      case "regex":
+        return { kind: "regex", pattern: new RegExp(node.source, node.flags) };
       case "list":
-        return node.items.map(run);
-      case "name":
+        return node.items.map((item) => run(item, here));
+      case "name": {
+        const local = here.locals?.[node.name];
+        if (local !== undefined) return local;
         switch (node.name) {
           case "file":
-            return { kind: "file", doc: scope.row };
+            return { kind: "file", doc: here.row };
           case "note":
-            return { kind: "object", entries: scope.row.properties };
+            return { kind: "object", entries: here.row.properties };
           case "this":
-            if (!scope.self) {
+            if (!here.self) {
               throw new BaseError(
                 `\`this\` needs the note or base the query runs in: \`${source}\`.`,
               );
             }
-            return { kind: "this", doc: scope.self };
+            return { kind: "this", doc: here.self };
           default:
-            return noteProperty(scope.row, node.name);
+            return noteProperty(here.row, node.name);
         }
-      case "member":
-        return member(run(node.object), node.name, scope);
-      case "index": {
-        const object = run(node.object);
-        const index = run(node.index);
-        if (Array.isArray(object) && typeof index === "number") return object[index] ?? null;
-        if (typeof index !== "string") return null;
-        if (tagged(object, "this")) return noteProperty(object.doc, index);
-        return tagged(object, "object") ? fromProperty(object.entries[index]) : null;
       }
+      case "member":
+        if (node.object.kind === "name" && node.object.name === "formula") {
+          return here.formula(node.name);
+        }
+        return member(run(node.object, here), node.name, here);
+      case "index":
+        return indexValue(run(node.object, here), run(node.index, here));
       case "call": {
-        const args = node.args.map(run);
         const { callee } = node;
-        if (callee.kind === "name") return global(callee.name, args, scope);
-        if (callee.kind === "member") return method(run(callee.object), callee.name, args);
-        return null;
+        if (callee.kind === "name") {
+          if (callee.name === "if") {
+            const condition = run(node.args[0] ?? literalNull, here);
+            if (tagged(condition, "error")) return condition;
+            const branch = truthy(condition) ? node.args[1] : node.args[2];
+            return branch === undefined ? null : run(branch, here);
+          }
+          return callGlobal(
+            callee.name,
+            node.args.map((arg) => run(arg, here)),
+            here,
+          );
+        }
+        if (callee.kind !== "member") return null;
+        const object = run(callee.object, here);
+        if (LAZY_METHODS.has(callee.name)) return lazyMethod(object, callee.name, node.args, here);
+        return callMethod(
+          object,
+          callee.name,
+          node.args.map((arg) => run(arg, here)),
+          here,
+        );
       }
       case "unary": {
-        const operand = run(node.operand);
+        const operand = run(node.operand, here);
+        if (tagged(operand, "error")) return operand;
         if (node.op === "!") return !truthy(operand);
         return typeof operand === "number" ? -operand : null;
       }
       case "binary": {
-        if (node.op === "&&") return truthy(run(node.left)) && truthy(run(node.right));
-        if (node.op === "||") return truthy(run(node.left)) || truthy(run(node.right));
-        const left = run(node.left);
-        const right = run(node.right);
+        if (node.op === "&&") return truthy(run(node.left, here)) && truthy(run(node.right, here));
+        if (node.op === "||") return truthy(run(node.left, here)) || truthy(run(node.right, here));
+        const left = run(node.left, here);
+        const right = run(node.right, here);
         switch (node.op) {
           case "==":
-            return equals(left, right);
+            return equals(left, right, here.corpus.resolve);
           case "!=":
-            return !equals(left, right);
+            return !equals(left, right, here.corpus.resolve);
           case "<":
           case ">":
           case "<=":
@@ -889,5 +596,34 @@ export function evaluate(expr: Expr, scope: BaseScope, source: string): BaseValu
       }
     }
   };
-  return run(expr);
+
+  /** `filter`, `map` and `reduce`, whose arguments run once per item with `value` and `index`. */
+  const lazyMethod = (
+    object: BaseValue,
+    name: string,
+    args: ReadonlyArray<Expr>,
+    here: BaseScope,
+  ): BaseValue => {
+    if (tagged(object, "error")) return object;
+    if (!isList(object)) return null;
+    const body = args[0];
+    if (body === undefined) return null;
+    const within = (locals: Record<string, BaseValue>): BaseScope => ({
+      ...here,
+      locals: { ...here.locals, ...locals },
+    });
+    if (name === "reduce") {
+      let acc = args[1] === undefined ? null : run(args[1], here);
+      object.forEach((value, index) => {
+        acc = run(body, within({ value, index, acc }));
+      });
+      return acc;
+    }
+    const results = object.map((value, index) => run(body, within({ value, index })));
+    return name === "map" ? results : object.filter((_, index) => truthy(results[index] ?? null));
+  };
+
+  return run(expr, scope);
 }
+
+const literalNull: Expr = { kind: "literal", value: null, from: 0, to: 0 };

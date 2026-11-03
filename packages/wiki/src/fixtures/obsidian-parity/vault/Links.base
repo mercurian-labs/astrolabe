@@ -1,0 +1,52 @@
+filters: file.ext == "md"
+formulas:
+  owner_name: 'owner.asFile().basename'
+  owner_links_alpha: 'owner.linksTo(link("Alpha"))'
+  as_link: 'file.asLink()'
+  as_link_named: 'file.asLink("Open " + file.basename)'
+  link_plain: 'link("Alpha")'
+  link_display: 'link("Alpha", "the alpha note")'
+  link_url: 'link("https://obsidian.md")'
+  file_of_owner: 'file(owner).basename'
+  owner_is_priya: 'owner == link("Priya")'
+  links_beta: 'file.hasLink("Beta")'
+  links_beta_file: 'file.hasLink(file("Beta.md"))'
+  area_tag: 'file.hasTag("area")'
+  urgent_tag: 'file.hasTag("urgent", "nothing")'
+  has_owner: 'file.hasProperty("owner")'
+  people_names: 'people.map(value.asFile().basename)'
+  note_status: 'note.status'
+  bracket_status: 'note["status"]'
+  html_out: 'html("<b>" + file.basename + "</b>")'
+  icon_out: 'icon("arrow-right")'
+  image_out: 'image("attachments/diagram.png")'
+views:
+  - type: table
+    name: Links
+    order:
+      - file.name
+      - owner
+      - people
+      - formula.owner_name
+      - formula.owner_links_alpha
+      - formula.as_link
+      - formula.as_link_named
+      - formula.link_plain
+      - formula.link_display
+      - formula.link_url
+      - formula.file_of_owner
+      - formula.owner_is_priya
+      - formula.links_beta
+      - formula.links_beta_file
+      - formula.area_tag
+      - formula.urgent_tag
+      - formula.has_owner
+      - formula.people_names
+      - formula.note_status
+      - formula.bracket_status
+      - formula.html_out
+      - formula.icon_out
+      - formula.image_out
+    sort:
+      - property: file.name
+        direction: ASC

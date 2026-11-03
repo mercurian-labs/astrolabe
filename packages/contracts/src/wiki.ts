@@ -208,9 +208,19 @@ export type WikiBaseCell = typeof WikiBaseCell.Type;
 
 const WikiBaseProperty = Schema.Struct({ id: Schema.String, label: Schema.String });
 
+/** A column's summary, such as `Sum` or a base's own, as Obsidian displays its value. */
+const WikiBaseColumnSummary = Schema.Struct({
+  column: Schema.String,
+  name: Schema.String,
+  value: Schema.String,
+});
+
+export const WikiBaseViewType = Schema.Literals(["table", "cards", "list", "kanban", "map"]);
+export type WikiBaseViewType = typeof WikiBaseViewType.Type;
+
 export const WikiQueryResult = Schema.Struct({
   commit: Schema.String,
-  view: Schema.Struct({ name: Schema.String, type: Schema.Literals(["table", "cards"]) }),
+  view: Schema.Struct({ name: Schema.String, type: WikiBaseViewType }),
   views: Schema.Array(Schema.String),
   columns: Schema.Array(WikiBaseProperty),
   groupBy: Schema.NullOr(WikiBaseProperty),
@@ -223,7 +233,19 @@ export const WikiQueryResult = Schema.Struct({
       group: Schema.optional(WikiBaseCell),
     }),
   ),
-  /** How many notes the view shows; `rows` stops short of it when `truncated`. */
+  /** Each group in order, with its own summaries. Optional: older servers send none. */
+  groups: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        value: WikiBaseCell,
+        count: NonNegativeInt,
+        summaries: Schema.Array(WikiBaseColumnSummary),
+      }),
+    ),
+  ),
+  /** The view's summaries over all its rows. Optional: older servers send none. */
+  summaries: Schema.optional(Schema.Array(WikiBaseColumnSummary)),
+  /** How many files the view shows; `rows` stops short of it when `truncated`. */
   total: NonNegativeInt,
   truncated: Schema.Boolean,
 });

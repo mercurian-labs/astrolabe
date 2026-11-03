@@ -1,0 +1,65 @@
+filters: file.ext == "md"
+views:
+  - type: table
+    name: By status
+    groupBy:
+      property: status
+      direction: DESC
+    order:
+      - file.name
+      - status
+      - priority
+    sort:
+      - property: priority
+        direction: ASC
+  - type: table
+    name: Only open and closed
+    groupBy:
+      property: status
+      direction: ASC
+    groupOrder:
+      - closed
+      - open
+    order:
+      - file.name
+      - status
+  - type: table
+    name: With ungrouped
+    groupBy:
+      property: status
+      direction: ASC
+    groupOrder:
+      - open
+      - null
+    order:
+      - file.name
+      - status
+  - type: table
+    name: By folder
+    groupBy:
+      property: file.folder
+      direction: ASC
+    order:
+      - file.name
+    limit: 4
+  - type: list
+    name: As a list
+    filters: file.hasProperty("status")
+    order:
+      - file.name
+      - status
+  - type: kanban
+    name: As a board
+    filters: file.hasProperty("status")
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - priority
+  - type: cards
+    name: As cards
+    filters: file.hasProperty("status")
+    order:
+      - file.name
+      - status

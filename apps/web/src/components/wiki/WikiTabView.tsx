@@ -6,6 +6,7 @@ import type {
   WikiId,
 } from "@t3tools/contracts";
 import { FilePenLineIcon, FileTextIcon, SquareDashed, TableIcon } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
 import { ensureLocalApi } from "~/localApi";
 import type { PaneTabLabel } from "~/panes/panesHost";
 import { useListedProjectWorktrees } from "~/state/worktrees";
@@ -15,6 +16,7 @@ import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { useNumberWhenOpened } from "../repositories/worktreeNumbering";
 import { WorktreeNumber } from "../repositories/WorktreeNumber";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
+import { repositoryTabKey } from "../repositories/repositoryTabs";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import { WikiNoteView } from "./WikiNoteView";
@@ -96,6 +98,7 @@ function NoteTab({
   readonly nav: WikiTabNav;
 }) {
   const all = useChangeRequests(tab.environmentId, tab.wikiId);
+  const overviews = useAtomValue(wikiEnvironment.overview(tab.environmentId));
   const { target, holder } = useChangeRequestWorktree(tab);
   // A change request's document is something opened in its worktree.
   useNumberWhenOpened(target, holder);
@@ -103,6 +106,11 @@ function NoteTab({
   const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
   if (isBaseTab(tab)) {
     const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
+    // A row that is no wiki document opens as a file, on the line the base reads.
+    const branch =
+      tab.changeRequestId === undefined
+        ? overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki.mainBranch
+        : changeRequestBranch(tab.changeRequestId);
     return (
       <WikiBasePage
         environmentId={tab.environmentId}
@@ -113,6 +121,20 @@ function NoteTab({
           tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request")
         }
         onOpenNote={(name) => nav.replace(tabKey, wikiTabKey({ ...tab, name }))}
+        onOpenFile={
+          branch === undefined
+            ? undefined
+            : (path) =>
+                nav.open(
+                  repositoryTabKey({
+                    kind: "file",
+                    environmentId: tab.environmentId,
+                    wikiId: tab.wikiId,
+                    checkout: { branch },
+                    path,
+                  }),
+                )
+        }
       />
     );
   }

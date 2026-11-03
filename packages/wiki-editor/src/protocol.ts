@@ -6,9 +6,19 @@
 
 import type { BaseCellValue } from "./baseCells";
 
+/** A column's summary, as Obsidian displays its value. */
+export interface WikiEditorBaseSummary {
+  readonly column: string;
+  readonly name: string;
+  readonly value: string;
+}
+
 /** One view of a ```base block, run by the app on the server (`wiki.query`). */
 export interface WikiEditorBaseResult {
-  readonly view: { readonly name: string; readonly type: "table" | "cards" };
+  readonly view: {
+    readonly name: string;
+    readonly type: "table" | "cards" | "list" | "kanban" | "map";
+  };
   readonly columns: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly groupBy: { readonly id: string; readonly label: string } | null;
   readonly rows: ReadonlyArray<{
@@ -17,6 +27,11 @@ export interface WikiEditorBaseResult {
     readonly values: Readonly<Record<string, BaseCellValue>>;
     readonly group?: BaseCellValue;
   }>;
+  readonly groups?: ReadonlyArray<{
+    readonly value: BaseCellValue;
+    readonly summaries: ReadonlyArray<WikiEditorBaseSummary>;
+  }>;
+  readonly summaries?: ReadonlyArray<WikiEditorBaseSummary>;
   readonly total: number;
   readonly truncated: boolean;
 }

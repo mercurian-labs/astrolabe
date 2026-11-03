@@ -254,7 +254,8 @@ describe("amendments", () => {
     expect(planned.errors).toEqual([
       {
         file: "Open.base",
-        error: "Not supported: the board view (table and cards are) in view “Board”.",
+        error:
+          "Not supported: the board view (table, cards, list, kanban and map are) in view “Board”.",
       },
     ]);
   });

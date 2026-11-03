@@ -37,6 +37,31 @@ describe("WikiBaseResults", () => {
     expect(onOpenNote.mock.calls).toEqual([["Beta"], ["Venkat"]]);
   });
 
+  it("opens a file that is no wiki document as a file, and shows the view's summaries", async () => {
+    const onOpenNote = vi.fn();
+    const onOpenFile = vi.fn();
+    const files = result({
+      columns: [
+        { id: "file.name", label: "file name" },
+        { id: "file.size", label: "file size" },
+      ],
+      rows: [
+        { name: "pic.png", file: "attachments/pic.png", values: { "file.size": 70 } },
+        { name: "Open.base", file: "Open.base", values: { "file.size": 30 } },
+      ],
+      summaries: [{ column: "file.size", name: "Sum", value: "100" }],
+    });
+    await using screen = await render(
+      <WikiBaseResults result={files} onOpenNote={onOpenNote} onOpenFile={onOpenFile} />,
+    );
+    await expect.element(screen.getByText("Summary", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("100", { exact: true })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "pic.png" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open.base" }));
+    expect(onOpenFile.mock.calls).toEqual([["attachments/pic.png"]]);
+    expect(onOpenNote.mock.calls).toEqual([["Open.base"]]);
+  });
+
   it("heads each group of a grouped view, and opens notes from cards", async () => {
     const onOpenNote = vi.fn();
     const grouped = result({
@@ -54,7 +79,7 @@ describe("WikiBaseResults", () => {
     for (const heading of ["Status: done", "Status: open", "Status: None"]) {
       await expect.element(screen.getByText(heading)).toBeVisible();
     }
-    await expect.element(screen.getByText("Showing 3 of 40 notes.")).toBeVisible();
+    await expect.element(screen.getByText("Showing 3 of 40 results.")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Gamma" }));
     expect(onOpenNote).toHaveBeenCalledWith("Gamma");
   });

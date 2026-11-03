@@ -1,0 +1,6 @@
+file name,title_cased,trimmed,replaced,regex_first,regex_all,regex_groups,split_three,split_regex,sliced,sliced_open,repeated,reversed,lowered,length
+Alpha,,hi,0pen,Alph4,Alph4,"Smith, John","x, y","x, y",lp,pha,openopen,ahplA,alpha,5
+Beta,Hello World,hi,cl0sed,Bet4,Bet4,"Smith, John","a, b, c","a, b, c, d",et,ta,closedclosed,ateB,beta,4
+Delta,,hi,0pen,Delt4,Delt4,"Smith, John",,,el,lta,openopen,atleD,delta,5
+Epsilon,,hi,archived,Epsilon,Epsilon,"Smith, John",,,ps,silon,archivedarchived,nolispE,epsilon,7
+Gamma,,hi,0pen,G4mma,G4mm4,"Smith, John",one two,"one, two",am,mma,openopen,ammaG,gamma,5
