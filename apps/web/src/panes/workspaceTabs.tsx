@@ -22,6 +22,7 @@ import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs"
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { closeAskingFirst } from "~/components/wiki/WikiTabView";
+import { useClosedViewStore } from "~/closedViewStore";
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
 import { resolveShortcutCommand } from "~/keybindings";
@@ -240,13 +241,17 @@ function surfaceMenuItems(tabKey: string): PaneTabMenuItem[] {
 
 /**
  * Closes a tab: a thread's surface through its ChatView's own close, which may ask first; a tab
- * with unsaved edits asks first too.
+ * with unsaved edits asks first too. A chat closed this way can be reopened (`view.reopenClosed`).
  */
 export function closeWorkspaceTab(tabKey: string) {
   const parsed = parseChatSurfaceKey(tabKey);
   const ref = parsed ? parseChatTabKey(parsed.chatKey) : null;
   if (parsed === null || ref === null) {
-    closeAskingFirst(tabKey, () => workspace.close(tabKey));
+    closeAskingFirst(tabKey, () => {
+      const chat = parseChatTabKey(tabKey);
+      if (chat) useClosedViewStore.getState().remember({ kind: "chat-tab", threadRef: chat });
+      workspace.close(tabKey);
+    });
     return;
   }
   const surface = surfaceOfKey(tabKey);

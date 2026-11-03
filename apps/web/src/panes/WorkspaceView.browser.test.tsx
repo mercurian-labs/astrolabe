@@ -42,6 +42,7 @@ const probe = vi.hoisted(() => ({
 function setup() {
   workspace.update(() => startingArrangement());
   useRightPanelStore.setState({ byThreadKey: {} });
+  useClosedViewStore.setState({ entries: [] });
   probe.renders.clear();
   probe.instances.clear();
   probe.heard = [];
@@ -151,6 +152,14 @@ vi.mock(import("~/components/ChatView"), async () => {
           if (store.byThreadKey[scopedThreadKey(ref)]?.isOpen) store.close(ref);
           else store.toggleVisibility(ref);
         },
+        // As T3 Code's close does: the panel's surface in front, else the key goes on.
+        "rightPanel.close": () => {
+          const ref = scopeThreadRef(env, ThreadId.make(threadId));
+          const store = useRightPanelStore.getState();
+          const panel = store.byThreadKey[scopedThreadKey(ref)];
+          if (!panel?.isOpen || panel.activeSurfaceId === null) return false;
+          store.closeSurface(ref, panel.activeSurfaceId);
+        },
       },
       fallback: () => undefined,
     });
@@ -187,19 +196,31 @@ vi.mock(import("~/components/ChatView"), async () => {
     previewRuntimeTabId: (tabId: string) => tabId,
     terminalLabelsById: new Map(),
     onActivate: () => {},
+    onCloseSurface: (surface: { id: string }) =>
+      useRightPanelStore
+        .getState()
+        .closeSurface(scopeThreadRef(env, ThreadId.make(threadId)), surface.id),
     threadId,
   });
   return { default: FakeChatView as never };
 });
 
 import { chatRouteOf } from "../chatTabs/chatTabLabel";
+import { useClosedViewStore } from "../closedViewStore";
 import { ComposerHandleContext, focusedChatComposerRef } from "../composerHandleContext";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
 import { Route as ChatLayoutRoute } from "../routes/_chat";
 import { agentsRoute } from "./agentsRoute";
-import { activateTab, focusPane, openTab, splitTab, startingArrangement } from "./arrangement";
+import {
+  activateTab,
+  allTabs,
+  focusPane,
+  openTab,
+  splitTab,
+  startingArrangement,
+} from "./arrangement";
 import type { PanelProps } from "./panesController";
 import { KEPT_CHATS } from "./recentChats";
 import { leaves } from "./tree";
@@ -507,6 +528,50 @@ describe("WorkspaceView chat tabs", () => {
     expect(useRightPanelStore.getState().byThreadKey[scopedThreadKey(refOf("B"))]?.isOpen).toBe(
       true,
     );
+  });
+
+  it("closes the focused tab from mod+w, a chat or its linked tab, and leaves a lone New tab open", async () => {
+    setup();
+    useRightPanelStore.getState().open(refOf("A"), "diff");
+    useRightPanelStore.getState().open(refOf("A"), "graph");
+    workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
+    probe.shortcuts = true;
+    await using _screen = await mount("A");
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const pressModW = async () => {
+      const event = new KeyboardEvent("keydown", {
+        key: "w",
+        metaKey: mac,
+        ctrlKey: !mac,
+        cancelable: true,
+      });
+      await act(() => {
+        window.dispatchEvent(event);
+      });
+      return event;
+    };
+    const paneOf = (key: string) =>
+      leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))?.id;
+    const graphA = chatSurfaceKey(chatOf("A"), "graph");
+    const diffA = chatSurfaceKey(chatOf("A"), "diff");
+
+    await change(() => workspace.update((a) => activateTab(focusPane(a, paneOf(graphA)!), graphA)));
+    expect((await pressModW()).defaultPrevented).toBe(true);
+    expect(paneOf(graphA)).toBeUndefined();
+    expect(paneOf(diffA)).toBeDefined();
+
+    // The chat in focus closes itself, not the linked tab its panel has in front.
+    await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A"))!)));
+    expect(focusedKey()).toBe(chatOf("A"));
+    expect((await pressModW()).defaultPrevented).toBe(true);
+    expect(allTabs(workspace.arrangement())).not.toContain(chatOf("A"));
+    expect(useClosedViewStore.getState().entries).toMatchObject([
+      { kind: "chat-tab", threadRef: refOf("A") },
+      { kind: "panel-tab", surface: { id: "graph" } },
+    ]);
+
+    await change(() => workspace.update(() => startingArrangement()));
+    expect((await pressModW()).defaultPrevented).toBe(false);
   });
 
   it(`keeps the ${KEPT_CHATS} chats shown most recently mounted and lets go of the rest`, async () => {

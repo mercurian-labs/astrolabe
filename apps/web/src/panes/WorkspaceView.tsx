@@ -5,6 +5,7 @@ import { Activity, memo, useContext, useEffect, useLayoutEffect, useRef, useStat
 import { createPortal } from "react-dom";
 
 import { chatRouteOf, ChatTabWatch } from "~/chatTabs/chatTabLabel";
+import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { registerThreadTabDrop } from "~/chatTabs/threadTabDrop";
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
@@ -13,6 +14,7 @@ import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs"
 import { SidebarInset } from "~/components/ui/sidebar";
 import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { PaneChat, SectionTabContent } from "~/sectionTabs/SectionTabContent";
+import { registerCommands } from "~/shortcuts/dispatcher";
 import { useSidebarPendingFileDropStore } from "~/sidebarPendingFileDropStore";
 import { chatTabKey, parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { useChangeGroups } from "~/state/changeGroups";
@@ -131,6 +133,21 @@ export function WorkspaceView({
     };
   }, [background, canGoBack, canGoForward, focused.active, focused.tabs]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the mod+w window shortcut while not inert
+  useEffect(() => {
+    if (background) return;
+    return registerCommands(
+      { "rightPanel.close": closeFocusedTab },
+      {
+        when: (event) =>
+          !isCommandPaletteOpen() &&
+          !(
+            event.target instanceof HTMLElement && event.target.closest("[data-keybinding-capture]")
+          ),
+      },
+    );
+  }, [background]);
+
   // Escape clears a selection of tabs, leaving the page saves the panes, and threads dragged
   // from the sidebar open as tabs in the pane they are dropped on.
   const root = useRef<HTMLDivElement>(null);
@@ -179,6 +196,21 @@ export function WorkspaceView({
       </SidebarInset>
     </BackgroundThreadContext>
   );
+}
+
+/**
+ * T3 Code's `rightPanel.close` (mod+w) closes the focused pane's tab, whatever it is. A lone
+ * New tab stays; the desktop menu no longer closes the window on mod+w.
+ */
+function closeFocusedTab(event: KeyboardEvent) {
+  const arrangement = workspace.arrangement();
+  const { tabs, active } = focusedPane(arrangement);
+  if (leaves(arrangement.root).length === 1 && tabs.length === 1 && isEmptyTab(active)) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (!event.repeat) closeWorkspaceTab(active);
 }
 
 /**
