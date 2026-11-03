@@ -17,9 +17,9 @@ export interface BaseFile {
 }
 
 export interface BaseFileTimes {
-  /** ISO times of the last and first commit that touched each file. */
-  readonly modified?: ReadonlyMap<string, string>;
-  readonly created?: ReadonlyMap<string, string>;
+  /** Times of the last and first commit that touched each file: ISO text or epoch milliseconds. */
+  readonly modified?: ReadonlyMap<string, string | number>;
+  readonly created?: ReadonlyMap<string, string | number>;
 }
 
 export interface BaseCorpus {
@@ -80,9 +80,9 @@ function canvasLinks(source: string): LinkValue[] {
   return [...fromText, ...fromFiles];
 }
 
-const timeOf = (times: ReadonlyMap<string, string> | undefined, file: string) => {
+const timeOf = (times: ReadonlyMap<string, string | number> | undefined, file: string) => {
   const at = times?.get(file);
-  const time = at === undefined ? Number.NaN : Date.parse(at);
+  const time = at === undefined ? Number.NaN : typeof at === "number" ? at : Date.parse(at);
   return Number.isNaN(time) ? undefined : time;
 };
 
@@ -164,4 +164,32 @@ export function baseCorpus(files: Iterable<BaseFile>, times: BaseFileTimes = {})
     resolve,
     backlinks: (doc) => [...(backlinkMap.get(doc) ?? [])],
   };
+}
+
+/**
+ * The corpus with whole-file `changes` applied, as a read of them would see it: changed files
+ * keep the times they had, new files have none.
+ */
+export function corpusWithChanges(
+  corpus: BaseCorpus,
+  changes: Readonly<Record<string, string | null>>,
+): BaseCorpus {
+  const modified = new Map<string, number>();
+  const created = new Map<string, number>();
+  const files: BaseFile[] = [];
+  for (const doc of corpus.docs) {
+    if (doc.mtime !== undefined) modified.set(doc.file, doc.mtime);
+    if (doc.ctime !== undefined) created.set(doc.file, doc.ctime);
+    if (doc.file in changes) continue;
+    // Only notes and canvases carry text; any other file is its size.
+    files.push(
+      /\.(md|canvas)$/i.test(doc.file)
+        ? { file: doc.file, source: doc.source }
+        : { file: doc.file, size: doc.size },
+    );
+  }
+  for (const [file, content] of Object.entries(changes)) {
+    if (content !== null) files.push({ file, source: content });
+  }
+  return baseCorpus(files, { modified, created });
 }

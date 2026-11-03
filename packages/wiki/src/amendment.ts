@@ -1,3 +1,4 @@
+import { applyBaseEdits, type BaseEdit } from "./baseEdits.ts";
 import { renameInBase, renameInBaseBlocks } from "./bases.ts";
 import { key, renameLinks } from "./links.ts";
 import {
@@ -159,13 +160,22 @@ export type WikiTransform =
       readonly map: string;
       readonly id: string;
       readonly text: string;
-    };
+    }
+  /** Edits made from a base's view (see `applyBaseEdits`). */
+  | { readonly kind: "base-edits"; readonly edits: ReadonlyArray<BaseEdit> };
 
 export function planTransform(
   files: WikiFiles,
   transform: WikiTransform,
   stamp: Pick<AmendmentStamp, "amendment" | "at">,
 ): WikiChanges {
+  if (transform.kind === "base-edits") {
+    try {
+      return applyBaseEdits(files, transform.edits);
+    } catch (error) {
+      throw new AmendmentError(error instanceof Error ? error.message : String(error));
+    }
+  }
   const index = indexFiles(files);
   const malformed = malformedMaps(index.errors);
   if (malformed.length)
