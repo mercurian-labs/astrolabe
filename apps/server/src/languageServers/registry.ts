@@ -346,6 +346,36 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
       },
     ],
   },
+  jdtls: {
+    id: "jdtls",
+    name: "jdtls",
+    languages: "Java",
+    // Eclipse's server is EPL-2.0, outside the licences we download: it has to be installed.
+    missing:
+      "jdtls isn't installed: run `brew install jdtls`, or put Eclipse's `jdtls` on PATH (it needs Java 21 or newer), then restart the server.",
+    hint: {
+      unless: [
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "settings.gradle",
+        "settings.gradle.kts",
+      ],
+      message:
+        "No Maven or Gradle build here: jdtls reads each Java file on its own, without dependencies.",
+    },
+    launches: [
+      {
+        name: "jdtls",
+        // Its launcher keeps a data folder per checkout and refuses a Java older than 21 itself.
+        knownPaths: ["/opt/homebrew/bin/jdtls", "/usr/local/bin/jdtls"],
+        pathCommand: "jdtls",
+        args: [],
+        // Imports Maven and Gradle builds, which run their plugins and build scripts.
+        restrictedSafe: false,
+      },
+    ],
+  },
 };
 
 /**

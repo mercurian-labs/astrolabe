@@ -334,8 +334,8 @@ This Turn** in the Command Palette, switches too.
 
 Code files show the problems their language server finds: a wavy underline, a mark beside the
 line number, and the message on hover. Astrolabe has language servers for TypeScript and
-JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer), Go (gopls), and C and C++
-(clangd). The messages of the line the
+JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer), Go (gopls), C and C++
+(clangd), and Java (jdtls). The messages of the line the
 cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
 `.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
 
@@ -343,7 +343,8 @@ The header names the language server and says when it is starting. It runs the p
 server when it has one (its TypeScript, or basedpyright in its `.venv`), then one installed on the
 machine, such as rustup's rust-analyzer or Xcode's clangd. Without either, the first time an
 environment needs a language server it asks to download it: click **Download**. gopls is built
-with the machine's Go, so Go files need Go installed. If a server keeps stopping, or was paused
+with the machine's Go, so Go files need Go installed. jdtls is never downloaded: install it
+(`brew install jdtls`, with Java 21 or newer) for Java files. If a server keeps stopping, or was paused
 because several ran at once, click **Restart** in the header.
 
 **Settings → Projects → Language servers** shows what each server would run for a project and

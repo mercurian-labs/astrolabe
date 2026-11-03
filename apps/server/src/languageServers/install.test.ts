@@ -204,6 +204,11 @@ describe("servers installed on the machine", () => {
         type: "unavailable",
         message: LANGUAGE_SERVERS.gopls.missing,
       });
+      // jdtls is never downloaded: its licence isn't one we download.
+      expect(yield* env.installer.resolve(env.cwd, LANGUAGE_SERVERS.jdtls, true)).toEqual({
+        type: "unavailable",
+        message: LANGUAGE_SERVERS.jdtls.missing,
+      });
       // No rust-analyzer build for FreeBSD.
       const freebsd = yield* setup(null).pipe(
         Effect.provideService(HostProcess.Platform, "freebsd"),

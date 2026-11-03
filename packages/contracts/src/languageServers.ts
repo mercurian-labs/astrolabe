@@ -15,6 +15,7 @@ export const LanguageServerId = Schema.Literals([
   "rust-analyzer",
   "gopls",
   "clangd",
+  "jdtls",
 ]);
 export type LanguageServerId = typeof LanguageServerId.Type;
 
@@ -50,6 +51,7 @@ const LANGUAGE_IDS: Readonly<Record<LanguageServerId, Readonly<Record<string, st
     m: "objective-c",
     mm: "objective-cpp",
   },
+  jdtls: { java: "java" },
 };
 
 const SERVER_FOR_EXTENSION: ReadonlyMap<
