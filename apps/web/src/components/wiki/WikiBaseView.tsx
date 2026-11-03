@@ -107,7 +107,7 @@ function BaseIcon({ name }: { readonly name: string }) {
   const [icon, setIcon] = useState<{ readonly name: string; readonly Icon: LucideIcon } | null>(
     null,
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- the icon set is a lazily loaded module
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the icon set is a lazily loaded module
   useEffect(() => {
     let live = true;
     void loadIcons().then((lookup) => {
@@ -442,7 +442,7 @@ export function WikiBasePage({
   const transform = useWikiCommand(wikiEnvironment.transform, "Couldn't save the base");
   const editable = canEdit && /^[^/]+\.base$/.test(file);
   const dirty = edits.length > 0;
-  // oxlint-disable-next-line t3code/react-effect-budget -- closing the tab asks whether edits are unsaved
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are unsaved
   useEffect(() => registerUnsaved?.(() => dirty), [registerUnsaved, dirty]);
   useBlocker({
     disabled: !dirty,

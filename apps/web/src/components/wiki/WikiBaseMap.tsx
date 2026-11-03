@@ -55,7 +55,7 @@ export default function WikiBaseMap({
   const tiles = dark && settings.mapTilesDark?.length ? settings.mapTilesDark : settings.mapTiles;
   const style = JSON.stringify(mapStyle(tiles, dark));
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- the map is a WebGL canvas outside React
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the map is a WebGL canvas outside React
   useEffect(() => {
     if (!container.current) return;
     const center = centerOf(settings.center);
@@ -75,7 +75,7 @@ export default function WikiBaseMap({
     };
   }, [style, settings.center, settings.defaultZoom, settings.minZoom, settings.maxZoom]);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- markers live on the map, outside React
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- markers live on the map, outside React
   useEffect(() => {
     const current = map;
     if (!current) return;
