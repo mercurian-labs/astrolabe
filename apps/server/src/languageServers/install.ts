@@ -293,7 +293,14 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     trusted: boolean,
   ) {
     const python = yield* pythonOf(cwd);
-    for (const launch of spec.launches) {
+    const data = path.join(
+      options.cacheDir,
+      "data",
+      spec.id,
+      NodeCrypto.createHash("sha256").update(cwd).digest("hex").slice(0, 16),
+    );
+    for (const listed of spec.launches) {
+      const launch = { ...listed, args: fill(listed.args, { data }) as ReadonlyArray<string> };
       if (!trusted && !launch.restrictedSafe) continue;
       let toolchain: string | null = null;
       let version: string | null = null;

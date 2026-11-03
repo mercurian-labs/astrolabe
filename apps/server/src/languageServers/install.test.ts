@@ -172,6 +172,30 @@ describe("servers installed on the machine", () => {
     }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("gives a server a data folder of its own for each checkout", () =>
+    Effect.gen(function* () {
+      const bin = yield* FileSystem.FileSystem.use((fs) =>
+        fs.makeTempDirectoryScoped({ prefix: "t3-lsp-bin-" }),
+      );
+      const jdtls = yield* script(bin, "jdtls", "");
+      const env = yield* setup(null).pipe(
+        Effect.provideService(HostProcess.Environment, { PATH: bin }),
+      );
+      const argsFor = (cwd: string) =>
+        env.installer.resolve(cwd, LANGUAGE_SERVERS.jdtls, true).pipe(
+          Effect.map((resolution) => {
+            if (resolution.type !== "ready") return expect.unreachable();
+            expect(resolution.server.executable).toBe(jdtls);
+            return resolution.server.args;
+          }),
+        );
+      const data = (yield* argsFor("/repos/one/app")).at(-1);
+      expect(data).toContain(`${env.cache}/data/jdtls/`);
+      expect((yield* argsFor("/repos/two/app")).at(-1)).not.toBe(data);
+      expect((yield* argsFor("/repos/one/app")).at(-1)).toBe(data);
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect(
     "passes over a binary that fails its probe, as rustup's proxy does without the component",
     () =>

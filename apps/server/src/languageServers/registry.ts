@@ -77,6 +77,7 @@ export interface Launch {
   readonly npm?: NpmSource;
   readonly release?: ReleaseSource;
   readonly go?: GoSource;
+  /** `{data}` is a folder of the server's own for this checkout, under the cache. */
   readonly args: ReadonlyArray<string>;
   /** `{toolchain}` is replaced by the toolchain's folder. */
   readonly initializationOptions?: unknown;
@@ -367,10 +368,18 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     launches: [
       {
         name: "jdtls",
-        // Its launcher keeps a data folder per checkout and refuses a Java older than 21 itself.
+        // Its launcher refuses a Java older than 21 itself.
         knownPaths: ["/opt/homebrew/bin/jdtls", "/usr/local/bin/jdtls"],
         pathCommand: "jdtls",
-        args: [],
+        // Its default data folder is named after the checkout's folder alone, so two checkouts
+        // of the same name would fight over it.
+        // The property keeps Eclipse's .project, .classpath and .settings out of the checkout; as
+        // an LSP setting it has no effect.
+        args: [
+          "--jvm-arg=-Djava.import.generatesMetadataFilesAtProjectRoot=false",
+          "-data",
+          "{data}",
+        ],
         // Imports Maven and Gradle builds, which run their plugins and build scripts.
         restrictedSafe: false,
       },
