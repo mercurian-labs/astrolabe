@@ -20,6 +20,7 @@ const TYPE_TO_FOCUS_INTERACTIVE_SELECTOR = [
   '[role="radio"]',
   '[role="switch"]',
   '[role="tab"]',
+  '[role="treeitem"]',
 ].join(",");
 // Closed popups can stay mounted; match only open or closing layers.
 export const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
