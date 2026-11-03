@@ -181,7 +181,12 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
           runWith: "node",
         },
         args: ["--stdio"],
-        settings: { python: { pythonPath: "{python}" } },
+        // "standard" checking, not basedpyright's strict-like default; a project's own
+        // pyrightconfig.json or pyproject.toml settings still win.
+        settings: {
+          python: { pythonPath: "{python}" },
+          basedpyright: { analysis: { typeCheckingMode: "standard" } },
+        },
         // Type checking reads the code; it never runs it.
         restrictedSafe: true,
       },

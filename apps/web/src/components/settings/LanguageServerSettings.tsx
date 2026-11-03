@@ -34,7 +34,7 @@ const describe = (check: LanguageServerCheck) => {
     case "found":
       return `${check.name}, ${SOURCES[check.source ?? "path"]}: ${check.executable}`;
     case "download":
-      return `Downloads the first time a ${check.languages} file opens.`;
+      return "Downloads the first time one of its files opens.";
     case "missing":
       return "Not available.";
   }
