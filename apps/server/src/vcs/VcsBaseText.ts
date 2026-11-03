@@ -179,13 +179,15 @@ const make = Effect.gen(function* () {
       readonly scope_id: string;
       readonly ordinal: number;
     }>`
-      SELECT run.thread_id, node.checkpoint_scope_id AS scope_id, run.ordinal
+      SELECT run.thread_id, json_extract(node.payload_json, '$.checkpointScopeId') AS scope_id,
+        run.ordinal
       FROM orchestration_v2_projection_runs AS run
       JOIN orchestration_v2_projection_nodes AS node
         ON node.node_id = json_extract(run.payload_json, '$.rootNodeId')
       WHERE run.thread_id IN ${sql.in([...threads])}
         AND run.status IN ${sql.in(UNSETTLED_RUN_STATUSES)}
-        AND node.checkpoint_scope_id IN ${sql.in(scopeIds)}
+        -- Upstream no longer fills the node's checkpoint_scope_id column.
+        AND json_extract(node.payload_json, '$.checkpointScopeId') IN ${sql.in(scopeIds)}
       ORDER BY json_extract(run.payload_json, '$.startedAt') DESC, run.requested_at DESC
     `.pipe(Effect.mapError(queryFailure));
     if (running.length > 0) {
