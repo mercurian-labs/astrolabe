@@ -948,11 +948,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           ),
         );
     }
+    if (resolution.type === "unavailable") {
+      return yield* setStatus(instance, {
+        state: "missing",
+        message: resolution.message,
+        memoryBytes: null,
+      });
+    }
     if (resolution.type !== "ready") {
-      return yield* failWith(
-        instance,
-        resolution.type === "unavailable" ? resolution.message : "The download did not install.",
-      );
+      return yield* failWith(instance, "The download did not install.");
     }
     const server = resolution.server;
     yield* setStatus(instance, {
@@ -1954,7 +1958,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         "The language server needs a download the user has to allow in Astrolabe first.",
       );
     }
-    if (state === "failed")
+    if (state === "failed" || state === "missing")
       return yield* failure("failed", instance.status.message ?? "The language server failed.");
     return yield* Effect.scoped(
       Effect.gen(function* () {
@@ -2014,7 +2018,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           "The language server needs a download the user has to allow in Astrolabe first.",
         );
       }
-      if (state === "failed") {
+      if (state === "failed" || state === "missing") {
         return yield* failure("failed", instance.status.message ?? "The language server failed.");
       }
       const { method, capability } = LOCATE_METHODS[input.kind];

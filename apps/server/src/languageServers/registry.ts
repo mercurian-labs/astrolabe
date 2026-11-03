@@ -198,7 +198,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     name: "rust-analyzer",
     languages: "Rust",
     missing:
-      "rust-analyzer has no download for this machine: run `rustup component add rust-analyzer`.",
+      "rust-analyzer has no download for this machine: run `rustup component add rust-analyzer`, then try again.",
     launches: [
       {
         name: "rust-analyzer",
@@ -262,7 +262,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     id: "gopls",
     name: "gopls",
     languages: "Go",
-    missing: "gopls needs Go: install it from go.dev/dl, then restart the server.",
+    missing: "gopls needs Go: install it from go.dev/dl, then try again.",
     launches: [
       {
         name: "gopls",
@@ -291,8 +291,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
       message:
         "No compile_commands.json: clangd guesses each file's flags, so includes and macros may be wrong. Have your build tool write one (CMake: -DCMAKE_EXPORT_COMPILE_COMMANDS=ON).",
     },
-    missing:
-      "clangd has no download for this machine: install clangd (LLVM) and restart the server.",
+    missing: "clangd has no download for this machine: install clangd (LLVM), then try again.",
     launches: [
       {
         name: "clangd",
@@ -353,7 +352,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     languages: "Java",
     // Eclipse's server is EPL-2.0, outside the licences we download: it has to be installed.
     missing:
-      "jdtls isn't installed: run `brew install jdtls`, or put Eclipse's `jdtls` on PATH (it needs Java 21 or newer), then restart the server.",
+      "jdtls isn't installed: run `brew install jdtls`, or put Eclipse's `jdtls` on PATH (it needs Java 21 or newer), then try again.",
     hint: {
       unless: [
         "pom.xml",

@@ -1204,6 +1204,26 @@ const releaseSpecs = (
 /** A native executable that runs the fake server with the Node on PATH. */
 const nativeFakeServer = `#!/usr/bin/env node\nimport(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`;
 
+describe("LanguageServers with nothing to run", () => {
+  it.live("says what to install, to editors and agents, and finds it on the next try", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.rename(`${checkout.cwd}/fake-server.mjs`, `${checkout.cwd}/later.mjs`);
+      const session = yield* openSession(checkout);
+      expect((yield* session.state("missing")).message).toBe("No fake server here.");
+      const asked = yield* service
+        .diagnostics({ cwd: checkout.cwd, relativePath: FILE })
+        .pipe(Effect.flip);
+      expect(asked.message).toBe("No fake server here.");
+      yield* fileSystem.rename(`${checkout.cwd}/later.mjs`, `${checkout.cwd}/fake-server.mjs`);
+      yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      yield* session.state("ready");
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+});
+
 describe("LanguageServers downloads", () => {
   const archive = tarball({
     "server.mjs": `await import(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`,

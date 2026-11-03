@@ -83,6 +83,7 @@ const CONSENT = "download-consent.json";
 const PROBE_TIMEOUT = Duration.seconds(10);
 const GO_INSTALL_TIMEOUT = Duration.minutes(10);
 const VERSION = /\d+\.\d+(?:\.\d+)?/;
+const GO_INSTALLS = ["/usr/local/go/bin/go", "/opt/homebrew/bin/go"];
 /** Where a checkout's virtual environment keeps its interpreter, tried in order. */
 const PYTHON_INTERPRETERS = [
   ".venv/bin/python",
@@ -266,11 +267,16 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
       if (asset !== undefined) return { kind: "release", release: launch.release, asset } as const;
     }
     if (launch.go !== undefined) {
-      const go = yield* resolveCommandPath("go", { env: environment }).pipe(
+      const onPath = yield* resolveCommandPath("go", { env: environment }).pipe(
         Effect.provideService(CommandResolutionCache, new Map()),
         Effect.orElseSucceed(() => null),
       );
-      if (go !== null) return { kind: "go", go: launch.go, goCommand: go } as const;
+      // Our PATH dates from when we started; Go installed since is in one of its usual places.
+      for (const go of [onPath, ...GO_INSTALLS]) {
+        if (go !== null && (yield* exists(go))) {
+          return { kind: "go", go: launch.go, goCommand: go } as const;
+        }
+      }
     }
     return null;
   });

@@ -85,6 +85,8 @@ export const LanguageServerState = Schema.Literals([
   "ready",
   /** Gave up after crashing too often, or could not start; `message` says why. */
   "failed",
+  /** Not on this machine, and nothing here can install it; `message` says what to install. */
+  "missing",
   /** Stopped on request; opening files does not start it again until it is restarted. */
   "stopped",
   /** Stopped to keep the environment inside its language-server memory budget. */

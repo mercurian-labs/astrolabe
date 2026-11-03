@@ -12,6 +12,7 @@ const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = 
   starting: (name) => `${name} starting…`,
   ready: (name) => name,
   failed: (name) => `${name} failed`,
+  missing: (name) => `${name} isn't installed`,
   stopped: (name) => `${name} stopped`,
   capped: (name) => `${name} paused to save memory`,
 };
@@ -48,7 +49,7 @@ export function LanguageServerStatusEntry({
         : status.state === "downloading"
           ? null
           : {
-              label: "Restart",
+              label: status.state === "missing" ? "Try again" : "Restart",
               run: () =>
                 void restart({ environmentId, input: { cwd: status.cwd, server: status.server } }),
             };
