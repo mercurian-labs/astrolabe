@@ -145,10 +145,10 @@ export function useThreadsFilter<Group extends ProjectGroup>({
     toggle,
     /** The projects offered, in the order the filter lists them. */
     groups,
-    /** The picked projects, or none for every project. */
+    /** The picked projects, or null for every project. Empty when the filter picks none. */
     scopedGroups:
       scopedGroupKeys === null
-        ? []
+        ? null
         : groups.filter((group) => scopedGroupKeys.has(group.projectKey)),
     scopedProjectKeys,
     statuses: filter.statuses,
