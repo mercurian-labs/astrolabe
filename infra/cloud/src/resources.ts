@@ -64,6 +64,12 @@ export const DatabaseUrl = Effect.gen(function* () {
 export const Cluster = AWS.ECS.Cluster("Cluster", {});
 
 /**
+ * Better Auth's secret. It encrypts TOTP secrets and the JWKS private keys, so
+ * a new logical id (and with it a new value) breaks every stage's 2FA and keys.
+ */
+export const BetterAuthSecret = Alchemy.Random("BetterAuthSecret");
+
+/**
  * The API's load balancer, declared before the API so its address can be the
  * API's own public URL (`AUTH_URL`): Better Auth needs a fixed origin, and the
  * emulator's load balancer rewrites `Host`, so it can't infer one.
