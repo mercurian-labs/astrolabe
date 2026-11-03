@@ -32,6 +32,7 @@ import { findLeaf, leaves } from "./tree";
 import {
   focusedChatOf,
   useWorkspaceArrangement,
+  useWorkspaceFront,
   useWorkspaceSnapshot,
   useWorkspaceTabHistory,
   workspace,
@@ -273,7 +274,10 @@ function WorkspaceTabContents() {
   const keys = allTabs(arrangement);
   const panes = leaves(arrangement.root);
   const focusedFront = focusedPane(arrangement).active;
+  // A chat behind its own linked tab is not any pane's front, but it renders that tab.
+  const frontOwner = useWorkspaceFront();
   const fronts = new Set(panes.map((leaf) => leaf.active));
+  if (frontOwner !== null) fronts.add(frontOwner);
   const onScreen = [...new Set([focusedFront, ...fronts])].filter(
     (key) => parseChatTabKey(key) !== null,
   );

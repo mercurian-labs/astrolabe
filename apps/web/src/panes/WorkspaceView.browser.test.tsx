@@ -217,6 +217,7 @@ import {
   activateTab,
   allTabs,
   focusPane,
+  moveTabs,
   openTab,
   splitTab,
   startingArrangement,
@@ -528,6 +529,26 @@ describe("WorkspaceView chat tabs", () => {
     expect(useRightPanelStore.getState().byThreadKey[scopedThreadKey(refOf("B"))]?.isOpen).toBe(
       true,
     );
+  });
+
+  it("keeps a linked tab showing once it stands in front of its chat in the chat's own pane", async () => {
+    setup();
+    useRightPanelStore.getState().openTerminal(refOf("A"), "t1");
+    workspace.update(() => openTab(startingArrangement(), chatOf("A")));
+    await using _screen = await mount("A");
+    const terminal = chatSurfaceKey(chatOf("A"), "terminal:t1");
+    const paneOf = (key: string) =>
+      leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))!.id;
+    expect(paneOf(terminal)).not.toBe(paneOf(chatOf("A")));
+    expect(document.querySelector("[data-fake-surface=A]")?.checkVisibility()).toBe(true);
+
+    await change(() =>
+      workspace.update((a) => activateTab(moveTabs(a, [terminal], paneOf(chatOf("A"))), terminal)),
+    );
+
+    expect(paneOf(terminal)).toBe(paneOf(chatOf("A")));
+    expect(document.body.textContent).not.toContain("Click to show");
+    expect(document.querySelector("[data-fake-surface=A]")?.checkVisibility()).toBe(true);
   });
 
   it("closes the focused tab from mod+w, a chat or its linked tab, and leaves a lone New tab open", async () => {
