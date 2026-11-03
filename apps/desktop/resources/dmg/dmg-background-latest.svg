@@ -11,6 +11,6 @@
   <path d="M396.00 214L379.00 207.40L382.40 214L379.00 220.60Z" fill="#a0492a"/>
   <circle cx="246" cy="214" r="5.20" fill="#fbf9f4" stroke="#292724" stroke-width=".9"/>
   <circle cx="246" cy="214" r="1.5" fill="#292724"/>
-  <rect x="106.00" y="303" width="120.00" height="36" fill="#fbf9f4"/>
-  <rect x="399.50" y="303" width="149.00" height="36" fill="#fbf9f4"/>
+  <rect x="106.00" y="274" width="120.00" height="36" fill="#fbf9f4"/>
+  <rect x="399.50" y="274" width="149.00" height="36" fill="#fbf9f4"/>
 </svg>
