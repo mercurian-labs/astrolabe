@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/dialog";
+import { CLOSING_BACKDROP_CLASS } from "~/components/ui/dialog-styles";
 
 function Sheet<Payload>(props: SheetPrimitive.Root.Props<Payload>) {
   return (
@@ -20,6 +21,7 @@ function SheetBackdrop({ className, ...props }: SheetPrimitive.Backdrop.Props) {
     <SheetPrimitive.Backdrop
       className={cn(
         "fixed inset-0 z-(--z-sheet) bg-background/60 backdrop-blur-xs transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0",
+        CLOSING_BACKDROP_CLASS,
         className,
       )}
       data-slot="sheet-backdrop"

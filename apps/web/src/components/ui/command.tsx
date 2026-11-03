@@ -67,7 +67,7 @@ function CommandDialogPopup({
           ref={popupRef}
           className={cn(
             DIALOG_POPUP_CLASS,
-            "pointer-events-auto max-h-105 max-w-xl text-foreground",
+            "pointer-events-auto max-h-105 max-w-xl text-foreground data-closed:pointer-events-none",
             className,
           )}
           data-slot="command-dialog-popup"
