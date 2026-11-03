@@ -232,7 +232,8 @@ dark: only one pill carries the bar.
 5. **Not while typing.** In the composer (Vim off) Ctrl+H → caret behaviour only, place
    stays the chat's pane. In a terminal tab Ctrl+L → the terminal's (place unchanged). With Vim
    on: Escape, Ctrl+W `l` → the right panel's pane, then plain `h` → no move (Vim's
-   keys never arm); Ctrl+H in normal mode → stays in the composer.
+   keys never arm); Ctrl+H in normal mode → stays in the composer, the caret one
+   character left and the draft unchanged.
 6. **Mouse marks too.** Click inside the right pane's content → the bar on its active
    pill; click the composer → the bar on the chat tab; Cmd+K `h` to a sidebar row → no bar.
 7. **Sidebar list.** Focus a thread row → `j` `j` → two rows down, the light ring on it,

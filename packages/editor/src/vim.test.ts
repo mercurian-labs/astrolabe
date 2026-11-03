@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
+import { defaultKeymap } from "@codemirror/commands";
 import {
   CodeMirror,
   Vim,
@@ -47,6 +48,12 @@ const yjsClock = vi.hoisted(() => {
 });
 afterAll(yjsClock.restore);
 
+// CodeMirror reads the platform once as it loads, and its Emacs keys exist only on macOS, so this
+// file runs as macOS on every host (happy-dom reports none) to reach them.
+vi.hoisted(() => {
+  Object.defineProperty(navigator, "platform", { value: "MacIntel" });
+});
+
 const mounted: { root: Root; host: HTMLElement }[] = [];
 afterEach(async () => {
   destroyViews();
@@ -79,6 +86,7 @@ function press(view: EditorView, binding: string) {
     cancelable: true,
   });
   view.contentDOM.dispatchEvent(event);
+  return event;
 }
 
 function keys(view: EditorView, sequence: string) {
@@ -284,6 +292,13 @@ describe("Vim mode", () => {
     expect(indent.state.doc.toString()).toBe("- one\n  - two\n");
   });
 
+  it("Enter after an operator never continues a list", () => {
+    const list = vimEditor("- one\n", "- on".length);
+    press(list, "d");
+    press(list, "Enter");
+    expect(list.state.doc.toString()).toBe("- one\n");
+  });
+
   it("A120. in a table cell, Escape goes to normal mode in the cell, a second leaves it; j moves to the row below", async () => {
     const doc = "| Name | Note |\n| --- | --- |\n| one | x |\n| two | y |\n\nafter";
     const view = vimEditor(doc, doc.length);
@@ -314,6 +329,8 @@ describe("Vim mode", () => {
     await Promise.resolve();
     expect(mode(second)).toBe("normal");
     expect(cell()).toBe(second);
+    press(second, "Ctrl-k");
+    expect(second.state.doc.toString()).toBe("two");
 
     press(second, "Escape");
     await Promise.resolve();
@@ -332,6 +349,10 @@ describe("Vim mode", () => {
     press(view, "i");
     // No Vim: the key is not taken, so the editor would type it.
     expect(mode(view)).toBeNull();
+    view.dispatch({ selection: { anchor: 5 } });
+    press(view, "Ctrl-h");
+    expect(text.toString()).toBe("hell\n");
+    view.dispatch({ selection: { anchor: 4 } });
 
     await render(true);
     expect(EditorView.findFromDOM(view.dom)).toBe(view);
@@ -906,6 +927,64 @@ describe("Vim for other hosts", () => {
     press(plain, "l");
     expect(vimAtRest(plain)).toBe(true);
     expect(plain.state.selection.main.head).toBe(0);
+  });
+
+  it("moves left on Ctrl-h as on h, in normal and visual mode and after an operator", () => {
+    const view = plainVim("bye world", keymap.of(defaultKeymap));
+    press(view, "$");
+    press(view, "Ctrl-h");
+    expect(view.state.selection.main.head).toBe(7);
+    press(view, "2");
+    press(view, "Ctrl-h");
+    expect(view.state.selection.main.head).toBe(5);
+    press(view, "v");
+    press(view, "Ctrl-h");
+    expect(view.state.selection.main).toMatchObject({ anchor: 6, head: 4 });
+    press(view, "Escape");
+    expect(view.state.doc.toString()).toBe("bye world");
+    keys(view, "$d");
+    press(view, "Ctrl-h");
+    expect(view.state.doc.toString()).toBe("bye word");
+  });
+
+  it.each([
+    ["Ctrl-k", ""],
+    ["Ctrl-k", "v"],
+    ["Ctrl-k", "d"],
+    ["Ctrl-t", ""],
+    ["Ctrl-t", "d"],
+    ["Ctrl-o", "d"],
+    ["Ctrl-Alt-h", ""],
+    ["Ctrl-Alt-h", "v"],
+    ["Alt-Backspace", ""],
+    ["Alt-Delete", ""],
+    ["Mod-Backspace", ""],
+    ["Mod-Delete", ""],
+    ["Shift-Enter", ""],
+    ["Enter", "v"],
+    ["Enter", "d"],
+  ])("takes %s after %j from the editor's keymaps and the browser", (key, prefix) => {
+    const view = plainVim("bye world", keymap.of(defaultKeymap));
+    view.dispatch({ selection: { anchor: 4 } });
+    keys(view, prefix);
+    const event = press(view, key);
+    expect(view.state.doc.toString()).toBe("bye world");
+    // Unconsumed, macOS's own text system runs its Emacs keys on the content.
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it.each([
+    ["Ctrl-h", "byeworld"],
+    ["Ctrl-k", "bye "],
+    ["Ctrl-Alt-h", "world"],
+    ["Alt-Backspace", "world"],
+    ["Shift-Enter", "bye \nworld"],
+  ])("leaves %s to the editor in insert mode", (key, doc) => {
+    const view = plainVim("bye world", keymap.of(defaultKeymap));
+    view.dispatch({ selection: { anchor: 4 } });
+    enterInsertMode(view);
+    press(view, key);
+    expect(view.state.doc.toString()).toBe(doc);
   });
 
   it("lets a vimrc map onto the window keys and over them, and undoing it keeps them", async () => {
