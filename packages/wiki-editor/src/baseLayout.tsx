@@ -36,6 +36,8 @@ export interface BaseLayoutHost {
   readonly canEdit?: (row: Row, column: string) => boolean;
   readonly onEdit?: (row: Row, column: string, value: BaseCellValue) => void;
   readonly onMove?: (row: Row, group: BaseCellValue) => void;
+  /** A touch screen can't drag a card, so each gets a picker of the board's groups instead. */
+  readonly moveByPicker?: boolean;
   readonly onNew?: (group: BaseCellValue | undefined) => void;
   /** Wraps a column's heading, as a menu's trigger. */
   readonly columnHeading?: (column: Column, label: ReactNode) => ReactNode;
@@ -456,12 +458,14 @@ function Card({
   result,
   host,
   draggable,
+  mover,
 }: {
   row: Row;
   properties: ReadonlyArray<Column>;
   result: WikiEditorBaseResult;
   host: BaseLayoutHost;
   draggable?: boolean;
+  mover?: ReactNode;
 }) {
   const settings = result.settings ?? {};
   const fit = settings.imageFit === "contain" ? "bl-fit-contain" : "bl-fit-cover";
@@ -495,6 +499,7 @@ function Card({
             </span>
           </div>
         ))}
+        {mover}
       </div>
     </article>
   );
@@ -646,7 +651,26 @@ function BoardView({ result, host }: { result: WikiEditorBaseResult; host: BaseL
                 properties={properties}
                 result={result}
                 host={host}
-                draggable={movable(row)}
+                draggable={movable(row) && !host.moveByPicker}
+                mover={
+                  movable(row) && host.moveByPicker ? (
+                    <select
+                      className="bl-move"
+                      aria-label={`Move ${row.name}`}
+                      value={run.key}
+                      onChange={(event) => {
+                        const target = runs[Number(event.target.value)];
+                        if (target) host.onMove?.(row, target.value ?? null);
+                      }}
+                    >
+                      {runs.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {groupText(option.value)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : undefined
+                }
               />
             ))}
           </div>

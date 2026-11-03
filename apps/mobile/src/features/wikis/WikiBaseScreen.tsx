@@ -27,7 +27,7 @@ import type { WikiDocumentParams } from "./wikiRoutes";
 /**
  * A `.base` file on its own: the editor page draws its view as it draws a ```base block in a
  * note, and the header's View menu picks among the base's views. A row's note opens on top, read
- * from the same place. A note's cell edits in place, and a board's card moves between groups;
+ * from the same place. A note's cell edits in place, and a board's card moves with its picker;
  * the edits show at once and stay unsaved until saved to a change request.
  */
 export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams }) {

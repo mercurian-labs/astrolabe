@@ -13,8 +13,9 @@ const isEditableNote = (file: string) =>
 function editingHost(
   groupProperty: string | undefined,
   onEdit: (file: string, property: string, value: BaseCellValue) => void,
-): Pick<BaseLayoutHost, "canEdit" | "onEdit" | "onMove"> {
+): Pick<BaseLayoutHost, "canEdit" | "onEdit" | "onMove" | "moveByPicker"> {
   return {
+    moveByPicker: true,
     canEdit: (row, column) => isEditableNote(row.file) && isNoteProperty(column),
     onEdit: (row, column, value) => onEdit(row.file, column, value),
     onMove: (row, group) => {

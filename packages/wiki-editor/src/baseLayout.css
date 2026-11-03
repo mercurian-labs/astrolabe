@@ -344,3 +344,13 @@ ol.bl-list {
 .bl-new:hover {
   color: var(--foreground);
 }
+
+.bl-move {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+}
