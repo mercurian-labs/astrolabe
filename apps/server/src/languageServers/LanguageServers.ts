@@ -11,6 +11,7 @@ import {
   type FileDiagnostic,
   type FileDiagnostics,
   type LanguageServerAppliedEdit,
+  type LanguageServerCheck,
   type LanguageServerUndoEditInput,
   type LanguageServerUndoEditResult,
   languageServerForPath,
@@ -56,7 +57,7 @@ import {
   type ResponseError,
   ServerCancelled,
 } from "./connection.ts";
-import { DEFAULT_REGISTRY, makeInstaller } from "./install.ts";
+import { DEFAULT_REGISTRY, describeDownload, makeInstaller } from "./install.ts";
 import { parseJson, stringifyJson } from "./json.ts";
 import { makeMemoryReader, type MemoryReader } from "./memory.ts";
 import {
@@ -94,6 +95,10 @@ export class LanguageServers extends Context.Service<
   {
     /** Every server now, then the whole list on each change. */
     readonly subscribe: Stream.Stream<ReadonlyArray<LanguageServerStatus>>;
+    /** What each server would run for a checkout, starting and downloading none. */
+    readonly check: (
+      cwd: string,
+    ) => Effect.Effect<ReadonlyArray<LanguageServerCheck>, LanguageServerError>;
     readonly restart: (input: LanguageServerTarget) => Effect.Effect<void, LanguageServerError>;
     readonly stop: (input: LanguageServerTarget) => Effect.Effect<void, LanguageServerError>;
     readonly confirmDownload: Effect.Effect<void, LanguageServerError>;
@@ -145,7 +150,7 @@ export interface FilesChangedInput {
 }
 
 export interface LanguageServersOptions {
-  readonly specs: Readonly<Record<LanguageServerId, LanguageServerSpec>>;
+  readonly specs: Readonly<Partial<Record<LanguageServerId, LanguageServerSpec>>>;
   /** No documents and no sessions for this long stops a server. */
   readonly idleTimeout: Duration.Input;
   /** Resident memory every server may use together; past it the least recently used stop. */
@@ -294,6 +299,8 @@ interface Instance {
   /** Documents waiting for a diagnostics pull. */
   readonly pulls: Queue.Queue<GatewayDoc>;
   running: Running | null;
+  /** The resolved launch's answers to `workspace/configuration`, by section. */
+  settings: Readonly<Record<string, unknown>>;
   /** The server's `workspace/applyEdit` requests, applied one at a time. */
   readonly serverEdits: Queue.Queue<ServerEdit>;
   /** While a command runs for a code action: the edits the server applied meanwhile. */
@@ -380,6 +387,16 @@ const CLIENT_CAPABILITIES = {
     didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
   },
   window: { workDoneProgress: false, showMessage: {} },
+};
+
+/** A `workspace/configuration` item's answer: its dotted section, or every setting without one. */
+const settingsSection = (settings: Readonly<Record<string, unknown>>, section: unknown) => {
+  if (typeof section !== "string" || section === "") return settings;
+  let value: Json = settings;
+  for (const key of section.split(".")) {
+    value = typeof value === "object" && value !== null ? value[key] : undefined;
+  }
+  return value ?? null;
 };
 
 const severityName = (severity: unknown): FileDiagnostic["severity"] =>
@@ -825,7 +842,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const onRequestFromServer = (instance: Instance) => (method: string, params: Json) => {
     switch (method) {
       case "workspace/configuration":
-        return Array.isArray(params?.items) ? params.items.map(() => null) : [];
+        return Array.isArray(params?.items)
+          ? params.items.map((item: Json) => settingsSection(instance.settings, item?.section))
+          : [];
       case "workspace/workspaceFolders":
         return [
           { uri: NodeURL.pathToFileURL(instance.cwd).href, name: path.basename(instance.cwd) },
@@ -906,17 +925,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         ),
       );
     if (resolution.type === "download") {
-      const npm = resolution.npm;
       if (!(yield* installer.consented)) {
         return yield* setStatus(instance, {
           state: "download-needed",
           name: resolution.name,
-          message: `${npm.name} ${npm.version} (${npm.licence}) needs downloading from npm.`,
+          message: describeDownload(resolution.download),
           restricted: !trusted,
         });
       }
       yield* setStatus(instance, { state: "downloading", name: resolution.name, message: null });
-      const downloaded = yield* installer.download(npm).pipe(
+      const downloaded = yield* installer.download(resolution.download).pipe(
         Effect.as(null),
         Effect.catch((error) => Effect.succeed(error.message)),
       );
@@ -945,6 +963,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
     const processScope = yield* Scope.fork(instance.scope);
     instance.processScope = processScope;
+    instance.settings = server.settings;
     instance.watchers.clear();
     const connection = yield* connect(
       { executable: server.executable, args: server.args, cwd: instance.cwd, env: server.env },
@@ -1105,6 +1124,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const key = `${target.cwd}\0${target.server}`;
     const existing = instances.get(key);
     if (existing !== undefined) return existing;
+    const spec = options.specs[target.server];
+    if (spec === undefined) {
+      return yield* failure("unsupported", "That language server is not available here.");
+    }
     yield* knownWorkspaces
       .assertContains(target.cwd)
       .pipe(
@@ -1121,13 +1144,13 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       key,
       cwd: target.cwd,
       realCwd,
-      spec: options.specs[target.server],
+      spec,
       lock: yield* Semaphore.make(1),
       scope: yield* Scope.fork(serviceScope),
       status: {
         cwd: target.cwd,
         server: target.server,
-        name: "TypeScript",
+        name: spec.name,
         state: "starting",
         source: null,
         restricted: false,
@@ -1143,6 +1166,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       changes: new Map(),
       changesGeneration: 0,
       running: null,
+      settings: {},
       ready: Deferred.makeUnsafe(),
       processScope: null,
       generation: 0,
@@ -1226,6 +1250,75 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       );
     },
   );
+
+  const check: LanguageServers["Service"]["check"] = Effect.fn("LanguageServers.check")(function* (
+    cwd,
+  ) {
+    yield* knownWorkspaces
+      .assertContains(cwd)
+      .pipe(
+        Effect.mapError((cause) =>
+          failure("unsupported", "That folder is not a project here.", cause),
+        ),
+      );
+    const trusted = yield* options.trusted(cwd);
+    const specs = Object.values(options.specs).filter((spec) => spec !== undefined);
+    return yield* Effect.forEach(
+      specs,
+      Effect.fnUntraced(function* (spec): Effect.fn.Return<
+        LanguageServerCheck,
+        never,
+        FileSystem.FileSystem | Path.Path
+      > {
+        const resolution = yield* installer
+          .resolve(cwd, spec, trusted)
+          .pipe(
+            Effect.catch((error) =>
+              Effect.succeed({ type: "unavailable" as const, message: error.message }),
+            ),
+          );
+        const hinted = spec.hint;
+        const hint =
+          hinted === undefined ||
+          (yield* Effect.forEach(hinted.unless, (file) =>
+            fileSystem.exists(path.join(cwd, file)).pipe(Effect.orElseSucceed(() => false)),
+          )).some(Boolean)
+            ? null
+            : hinted.message;
+        const base = { server: spec.id, languages: spec.languages };
+        switch (resolution.type) {
+          case "ready":
+            return {
+              ...base,
+              name: resolution.server.name,
+              state: "found",
+              source: resolution.server.source,
+              executable: resolution.server.binary,
+              message: hint,
+            };
+          case "download":
+            return {
+              ...base,
+              name: resolution.name,
+              state: "download",
+              source: null,
+              executable: null,
+              message: [describeDownload(resolution.download), hint].filter(Boolean).join(" "),
+            };
+          case "unavailable":
+            return {
+              ...base,
+              name: spec.name,
+              state: "missing",
+              source: null,
+              executable: null,
+              message: resolution.message,
+            };
+        }
+      }),
+      { concurrency: "unbounded" },
+    );
+  }, Effect.provideContext(processServices));
 
   const confirmDownload: LanguageServers["Service"]["confirmDownload"] = Effect.gen(function* () {
     yield* installer.consent.pipe(
@@ -2011,8 +2104,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     instance.changes.clear();
     if (running === null) return;
     const watchers = [...instance.watchers.values()].flat();
+    // Some servers check only saved files (rust-analyzer's `cargo check`).
+    const save = running.capabilities?.textDocumentSync?.save;
     const events = changes.flatMap(([relativePath, type]) => {
-      if (instance.docs.get(relativePath)?.openOn === running.generation) return [];
+      const doc = instance.docs.get(relativePath);
+      if (doc?.openOn === running.generation) {
+        if (save && type !== "deleted") {
+          running.connection.notify("textDocument/didSave", { textDocument: { uri: doc.uri } });
+        }
+        return [];
+      }
       const absolute = [instance.cwd, instance.realCwd].map((root) =>
         path.join(root, relativePath),
       );
@@ -2143,6 +2244,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     locate,
     undoEdit,
     subscribe: SubscriptionRef.changes(statuses),
+    check,
     restart,
     stop,
     confirmDownload,

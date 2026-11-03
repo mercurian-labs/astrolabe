@@ -1,7 +1,7 @@
 // A language server for tests, configured by `fake-server.json` in its working directory:
 // `crashTimes` exits at `initialize` on that many starts (counted in `starts.log`), `waitFor`
 // answers `initialize` once that file exists, `watch` registers those file watchers (a base uri
-// of "." is its working directory). Every "bad" is an error diagnostic.
+// of "." is its working directory), `save` asks for `didSave`. Every "bad" is an error diagnostic.
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 
@@ -20,6 +20,15 @@ let askedCount = 0;
 // Each `workspace/didChangeWatchedFiles`'s changes, and `test/watched` requests waiting for more.
 const watched = [];
 const watchedWaiting = [];
+// Each `textDocument/didSave`'s uri, and `test/saved` requests waiting for more.
+const saved = [];
+const savedWaiting = [];
+const answerSaved = () => {
+  for (const waiting of savedWaiting.filter(({ count }) => saved.length >= count)) {
+    savedWaiting.splice(savedWaiting.indexOf(waiting), 1);
+    write({ id: waiting.id, result: saved });
+  }
+};
 const answerWatched = () => {
   for (const waiting of watchedWaiting.filter(({ count }) => watched.length >= count)) {
     watchedWaiting.splice(watchedWaiting.indexOf(waiting), 1);
@@ -77,7 +86,7 @@ const handle = (message) => {
       const answer = () => {
         reply({
           capabilities: {
-            textDocumentSync: 2,
+            textDocumentSync: config.save ? { openClose: true, change: 2, save: true } : 2,
             diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
             hoverProvider: true,
             renameProvider: true,
@@ -135,6 +144,19 @@ const handle = (message) => {
       // Answers once `count` notifications have come, with all of them.
       watchedWaiting.push({ id, count: params.count });
       return answerWatched();
+    case "textDocument/didSave":
+      saved.push(params.textDocument.uri);
+      return answerSaved();
+    case "test/saved":
+      savedWaiting.push({ id, count: params.count });
+      return answerSaved();
+    case "test/configuration": {
+      // Asks the client for these sections, and answers with what it said.
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, (result) => reply(result));
+      write({ id: askId, method: "workspace/configuration", params: { items: params.items } });
+      return;
+    }
     case "shutdown":
       return reply(null);
     case "exit":

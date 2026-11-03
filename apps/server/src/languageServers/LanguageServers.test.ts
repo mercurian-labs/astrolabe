@@ -55,9 +55,14 @@ const fakeLaunch = {
   args: [],
   restrictedSafe: true,
 };
-const fakeSpecs: Record<"typescript", LanguageServerSpec> = {
-  typescript: { id: "typescript", launches: [fakeLaunch] },
-};
+const fakeSpec = (launch: LanguageServerSpec["launches"][number]): LanguageServerSpec => ({
+  id: "typescript",
+  name: "Fake",
+  languages: "TypeScript",
+  missing: "No fake server here.",
+  launches: [launch],
+});
+const fakeSpecs = { typescript: fakeSpec(fakeLaunch) };
 
 const layerKnownWorkspaces = Layer.mock(KnownWorkspaces.KnownWorkspaces)({
   assertContains: () => Effect.void,
@@ -132,7 +137,9 @@ const makeCheckout = Effect.fn("makeCheckout")(function* (
       Effect.orElseSucceed(() => 0),
     ),
     write: (name: string, contents: string) =>
-      fileSystem.writeFileString(path.join(cwd, name), contents),
+      fileSystem
+        .makeDirectory(path.dirname(path.join(cwd, name)), { recursive: true })
+        .pipe(Effect.andThen(fileSystem.writeFileString(path.join(cwd, name), contents))),
   };
 });
 
@@ -942,6 +949,93 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
   );
 
+  it.live("checks what each server would run for a checkout, and what the checkout lacks", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      expect(yield* service.check(checkout.cwd)).toEqual([
+        {
+          server: "typescript",
+          languages: "TypeScript",
+          name: "Fake",
+          state: "found",
+          source: "project",
+          executable: `${checkout.cwd}/fake-server.mjs`,
+          message: "No compile_commands.json.",
+        },
+      ]);
+      yield* checkout.write("build/compile_commands.json", "[]");
+      expect((yield* service.check(checkout.cwd))[0]?.message).toBeNull();
+      // Checking starts nothing.
+      expect(yield* checkout.starts).toBe(0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: {
+            typescript: {
+              ...fakeSpec(fakeLaunch),
+              hint: {
+                unless: ["compile_commands.json", "build/compile_commands.json"],
+                message: "No compile_commands.json.",
+              },
+            },
+          },
+        }),
+      ),
+    ),
+  );
+
+  it.live("tells a server that checks saved files when one it has open is saved", () =>
+    Effect.gen(function* () {
+      const documents = yield* Documents.Documents;
+      const checkout = yield* makeCheckout(SOURCE, { save: true });
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics();
+      const editor = yield* openEditor(checkout, "editor");
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// x\n" }));
+      yield* documents.save({ cwd: checkout.cwd, relativePath: FILE, loadId: editor.loadId });
+      const saved = yield* session.request(1, "test/saved", { count: 1 });
+      expect(saved.result).toEqual([checkout.uri]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
+  );
+
+  it.live("answers a server's settings by section, with the checkout's virtual environment", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      yield* checkout.write(".venv/bin/python", "");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      const answer = yield* session.request(1, "test/configuration", {
+        items: [{ section: "python" }, { section: "fake.level" }, { section: "missing" }, {}],
+      });
+      const python = `${checkout.cwd}/.venv/bin/python`;
+      expect(answer.result).toEqual([
+        { pythonPath: python },
+        "strict",
+        null,
+        { python: { pythonPath: python }, fake: { level: "strict" } },
+      ]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: {
+            typescript: fakeSpec({
+              ...fakeLaunch,
+              settings: {
+                python: { pythonPath: "{python}" },
+                fake: { level: "strict" },
+              },
+            }),
+          },
+        }),
+      ),
+    ),
+  );
+
   it.live("lists a checkout's problems, keeps a closed file's until its server stops", () =>
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;
@@ -1012,25 +1106,103 @@ const registryServing = (licence: string, bytes: Uint8Array) => {
   );
 };
 
-const downloadSpecs = (licence: string): Record<"typescript", LanguageServerSpec> => ({
-  typescript: {
-    id: "typescript",
-    launches: [
-      {
-        name: "Fake",
-        npm: {
-          name: "fake-server",
-          version: "1.0.0",
-          licence,
-          entry: "server.mjs",
-          runWith: "node",
-        },
-        args: [],
-        restrictedSafe: true,
-      },
-    ],
-  },
+const downloadSpecs = (licence: string) => ({
+  typescript: fakeSpec({
+    name: "Fake",
+    npm: { name: "fake-server", version: "1.0.0", licence, entry: "server.mjs", runWith: "node" },
+    args: [],
+    restrictedSafe: true,
+  }),
 });
+
+/** A zip storing `files` uncompressed, each with its Unix mode. */
+const zipOf = (files: Record<string, { readonly text: string; readonly mode: number }>) => {
+  const locals: Array<Uint8Array> = [];
+  const centrals: Array<Uint8Array> = [];
+  let offset = 0;
+  for (const [name, { text, mode }] of Object.entries(files)) {
+    const nameBytes = new TextEncoder().encode(name);
+    const data = new TextEncoder().encode(text);
+    const crc = NodeZlib.crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    // Made by Unix (3), so the external attributes' high half is a Unix mode.
+    central.writeUInt16LE((3 << 8) | 20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(((0o100000 | mode) << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBytes, data);
+    centrals.push(central, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const directory = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return new Uint8Array(Buffer.concat([...locals, directory, end]));
+};
+
+const RELEASE_URL = "https://releases.test/fake-server";
+
+const releaseServing = (bytes: Uint8Array) =>
+  HttpClient.make((request) =>
+    Effect.succeed(
+      HttpClientResponse.fromWeb(
+        request,
+        request.url === RELEASE_URL ? new Response(bytes) : new Response(null, { status: 404 }),
+      ),
+    ),
+  );
+
+/** A release whose build for this machine is `bytes`, pinned as `pinned` (its own by default). */
+const releaseSpecs = (
+  bytes: Uint8Array,
+  format: "gz" | "zip",
+  pinned: Uint8Array = bytes,
+  entry?: string,
+) => ({
+  typescript: fakeSpec({
+    name: "Fake",
+    release: {
+      name: "fake-server",
+      version: "1.0.0",
+      licence: "Apache-2.0 WITH LLVM-exception",
+      host: "Releases",
+      // The same build for every machine the tests run on.
+      assets: Object.fromEntries(
+        ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].map((machine) => [
+          machine,
+          {
+            url: RELEASE_URL,
+            bytes: pinned.length,
+            sha256: NodeCrypto.createHash("sha256").update(pinned).digest("hex"),
+            format,
+            ...(entry === undefined ? {} : { entry }),
+          },
+        ]),
+      ),
+    },
+    args: [],
+    restrictedSafe: true,
+  }),
+});
+
+/** A native executable that runs the fake server with the Node on PATH. */
+const nativeFakeServer = `#!/usr/bin/env node\nimport(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`;
 
 describe("LanguageServers downloads", () => {
   const archive = tarball({
@@ -1072,6 +1244,87 @@ describe("LanguageServers downloads", () => {
       Effect.scoped,
       Effect.provide(
         layerFor({ specs: downloadSpecs("MIT") }, registryServing("MPL-2.0", archive)),
+      ),
+    ),
+  );
+
+  it.live("installs a gzipped release build after checking its pinned checksum", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      const waiting = yield* session.state("download-needed");
+      expect(waiting.message).toBe(
+        "fake-server 1.0.0 (Apache-2.0 WITH LLVM-exception) needs downloading from Releases.",
+      );
+      yield* service.confirmDownload;
+      expect((yield* session.state("ready")).source).toBe("cache");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: releaseSpecs(NodeZlib.gzipSync(nativeFakeServer), "gz") },
+          releaseServing(NodeZlib.gzipSync(nativeFakeServer)),
+        ),
+      ),
+    ),
+  );
+
+  const zipped = zipOf({
+    "fake_1.0.0/bin/fake-server": { text: nativeFakeServer, mode: 0o755 },
+    "fake_1.0.0/lib/README": { text: "notes", mode: 0o644 },
+  });
+
+  it.live("unpacks a zipped release build whole, keeping its executable bit", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("download-needed");
+      yield* service.confirmDownload;
+      expect((yield* session.state("ready")).source).toBe("cache");
+      const [check] = yield* service.check(checkout.cwd);
+      const fileSystem = yield* FileSystem.FileSystem;
+      expect(check?.executable).toMatch(/fake-server@1\.0\.0\/fake_1\.0\.0\/bin\/fake-server$/);
+      expect(
+        yield* fileSystem.readFileString(
+          check!.executable!.replace("bin/fake-server", "lib/README"),
+        ),
+      ).toBe("notes");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: releaseSpecs(zipped, "zip", zipped, "fake_1.0.0/bin/fake-server") },
+          releaseServing(zipped),
+        ),
+      ),
+    ),
+  );
+
+  it.live("refuses a release build that doesn't match its pinned checksum", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("download-needed");
+      yield* service.confirmDownload;
+      expect((yield* session.state("failed")).message).toBe(
+        "fake-server failed its integrity check.",
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          {
+            specs: releaseSpecs(
+              zipped,
+              "zip",
+              zipped.map((byte, index) => (index === 0 ? byte ^ 1 : byte)),
+            ),
+          },
+          releaseServing(zipped),
+        ),
       ),
     ),
   );

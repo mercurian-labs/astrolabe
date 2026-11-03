@@ -492,6 +492,8 @@ import {
   DocumentUndoReplaceAllResult,
 } from "./documents.ts";
 import {
+  LanguageServerCheck,
+  LanguageServerCheckInput,
   LanguageServerError,
   LanguageServerProblemsInput,
   LanguageServerProblemsItem,
@@ -697,6 +699,7 @@ export const WS_METHODS = {
   codeIndexClear: "codeIndex.clear",
   // Astrolabe: language servers in the environment, and the gateway browsers reach them through.
   languageServersSubscribe: "languageServers.subscribe",
+  languageServersCheck: "languageServers.check",
   languageServersRestart: "languageServers.restart",
   languageServersStop: "languageServers.stop",
   languageServersConfirmDownload: "languageServers.confirmDownload",
@@ -2322,6 +2325,13 @@ const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscri
   stream: true,
 });
 
+/** What every language server would run for a checkout, and what's missing; starts none. */
+const WsLanguageServersCheckRpc = Rpc.make(WS_METHODS.languageServersCheck, {
+  payload: LanguageServerCheckInput,
+  success: Schema.Array(LanguageServerCheck),
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 /** Starts it again, also after a stop, a cap or giving up. */
 const WsLanguageServersRestartRpc = Rpc.make(WS_METHODS.languageServersRestart, {
   payload: LanguageServerTarget,
@@ -2764,6 +2774,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsCodeIndexPruneRpc,
   WsCodeIndexClearRpc,
   WsLanguageServersSubscribeRpc,
+  WsLanguageServersCheckRpc,
   WsLanguageServersRestartRpc,
   WsLanguageServersUndoEditRpc,
   WsLanguageServersStopRpc,

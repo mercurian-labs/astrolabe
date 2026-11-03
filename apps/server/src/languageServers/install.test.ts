@@ -66,7 +66,10 @@ describe("language server resolution", () => {
         expect(yield* resolve(env)).toMatchObject({
           type: "download",
           name: "TypeScript 6.0.3",
-          npm: { name: "typescript-language-server", version: "6.0.2", licence: "Apache-2.0" },
+          download: {
+            kind: "npm",
+            npm: { name: "typescript-language-server", version: "6.0.2", licence: "Apache-2.0" },
+          },
         });
         yield* env.put("node_modules/typescript-language-server/lib/cli.mjs");
         const resolution = yield* resolve(env);
@@ -86,13 +89,13 @@ describe("language server resolution", () => {
         const bare = yield* setup(null);
         expect(yield* resolve(bare)).toMatchObject({
           type: "download",
-          npm: { name: "@typescript/typescript-darwin-arm64", version: "7.0.2" },
+          download: { npm: { name: "@typescript/typescript-darwin-arm64", version: "7.0.2" } },
         });
         const project = yield* setup("7.0.2");
         yield* project.put("node_modules/@typescript/typescript-darwin-arm64/lib/tsc");
         expect(yield* resolve(project, false)).toMatchObject({
           type: "download",
-          npm: { name: "@typescript/typescript-darwin-arm64" },
+          download: { npm: { name: "@typescript/typescript-darwin-arm64" } },
         });
         const fileSystem = yield* FileSystem.FileSystem;
         const cached = `${project.cache}/@typescript+typescript-darwin-arm64@7.0.2`;
@@ -111,7 +114,7 @@ describe("language server resolution", () => {
       const env = yield* setup("0.8.0", "@tsc-rs/typescript");
       expect(yield* resolve(env)).toMatchObject({
         type: "download",
-        npm: { name: "@typescript/typescript-darwin-arm64", version: "7.0.2" },
+        download: { npm: { name: "@typescript/typescript-darwin-arm64", version: "7.0.2" } },
       });
     }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
   );
@@ -135,6 +138,84 @@ describe("language server resolution", () => {
   );
 });
 
+/** An executable script in a temporary folder that prints `output` and exits with `code`. */
+const script = Effect.fn("script")(function* (
+  folder: string,
+  name: string,
+  output: string,
+  code = 0,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(folder, name);
+  yield* fileSystem.makeDirectory(folder, { recursive: true });
+  yield* fileSystem.writeFileString(file, `#!/bin/sh\necho "${output}"\nexit ${code}\n`);
+  yield* fileSystem.chmod(file, 0o755);
+  return file;
+});
+
+describe("servers installed on the machine", () => {
+  it.effect("takes a known install path off PATH, named by its version", () =>
+    Effect.gen(function* () {
+      const home = yield* FileSystem.FileSystem.use((fs) =>
+        fs.makeTempDirectoryScoped({ prefix: "t3-lsp-home-" }),
+      );
+      const gopls = yield* script(`${home}/go/bin`, "gopls", "golang.org/x/tools/gopls v0.21.1");
+      const env = yield* setup(null).pipe(
+        Effect.provideService(HostProcess.Environment, { HOME: home }),
+      );
+      const resolution = yield* env.installer.resolve(env.cwd, LANGUAGE_SERVERS.gopls, true);
+      expect(resolution).toMatchObject({
+        type: "ready",
+        server: { name: "gopls 0.21.1", source: "path", executable: gopls },
+      });
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "passes over a binary that fails its probe, as rustup's proxy does without the component",
+    () =>
+      Effect.gen(function* () {
+        const bin = yield* FileSystem.FileSystem.use((fs) =>
+          fs.makeTempDirectoryScoped({ prefix: "t3-lsp-bin-" }),
+        );
+        yield* script(bin, "rust-analyzer", "error: Unknown binary 'rust-analyzer'", 1);
+        const env = yield* setup(null).pipe(
+          Effect.provideService(HostProcess.Environment, { PATH: bin }),
+        );
+        const resolution = yield* env.installer.resolve(
+          env.cwd,
+          LANGUAGE_SERVERS["rust-analyzer"],
+          true,
+        );
+        expect(resolution).toMatchObject({
+          type: "download",
+          name: "rust-analyzer 2026-11-02",
+          download: { kind: "release", asset: { format: "gz" } },
+        });
+      }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("says what to do where nothing is installed and nothing downloads", () =>
+    Effect.gen(function* () {
+      const env = yield* setup(null);
+      // No Go to build gopls with.
+      expect(yield* env.installer.resolve(env.cwd, LANGUAGE_SERVERS.gopls, true)).toEqual({
+        type: "unavailable",
+        message: LANGUAGE_SERVERS.gopls.missing,
+      });
+      // No rust-analyzer build for FreeBSD.
+      const freebsd = yield* setup(null).pipe(
+        Effect.provideService(HostProcess.Platform, "freebsd"),
+        Effect.provideService(HostProcess.Architecture, "x64"),
+      );
+      expect(
+        yield* freebsd.installer.resolve(freebsd.cwd, LANGUAGE_SERVERS["rust-analyzer"], true),
+      ).toEqual({ type: "unavailable", message: LANGUAGE_SERVERS["rust-analyzer"].missing });
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+});
+
 describe("download checks", () => {
   it("allows only the licences on the allowlist", () => {
     expect(licenceAllowed("MIT")).toBe(true);
@@ -143,6 +224,9 @@ describe("download checks", () => {
     expect(licenceAllowed("MPL-2.0 OR MIT")).toBe(true);
     expect(licenceAllowed("MPL-2.0")).toBe(false);
     expect(licenceAllowed("MIT AND MPL-2.0")).toBe(false);
+    expect(licenceAllowed("Apache-2.0 WITH LLVM-exception")).toBe(true);
+    expect(licenceAllowed("GPL-2.0 WITH Classpath-exception-2.0")).toBe(false);
+    expect(licenceAllowed("MIT WITH Some-exception")).toBe(false);
     expect(licenceAllowed(undefined)).toBe(false);
   });
 

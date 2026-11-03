@@ -1304,6 +1304,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.documentsReplaceAll]: (input) => documents.replaceAll(input),
       [WS_METHODS.documentsUndoReplaceAll]: (input) => documents.undoReplaceAll(input),
       [WS_METHODS.languageServersSubscribe]: (_input) => languageServers.subscribe,
+      [WS_METHODS.languageServersCheck]: (input) => languageServers.check(input.cwd),
       [WS_METHODS.languageServersRestart]: (input) => languageServers.restart(input),
       [WS_METHODS.languageServersStop]: (input) => languageServers.stop(input),
       [WS_METHODS.languageServersConfirmDownload]: (_input) => languageServers.confirmDownload,

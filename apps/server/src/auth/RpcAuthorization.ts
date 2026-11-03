@@ -122,6 +122,7 @@ export const RPC_REQUIRED_SCOPES = {
   // Astrolabe: language-server reads are file reads; a send that lands edits, and restarting,
   // stopping or downloading servers, come from clientRpcRequiredScopes.
   [WS_METHODS.languageServersSubscribe]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersCheck]: AuthFilesystemReadScope,
   [WS_METHODS.languageServersSession]: AuthFilesystemReadScope,
   [WS_METHODS.languageServersSend]: AuthFilesystemReadScope,
   [WS_METHODS.languageServersProblems]: AuthFilesystemReadScope,

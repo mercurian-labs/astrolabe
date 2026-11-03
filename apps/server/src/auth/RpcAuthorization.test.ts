@@ -88,6 +88,7 @@ describe("RPC authorization scopes", () => {
   it("lets file readers use language servers, file writers land edits, and maintainers manage them", () => {
     for (const method of [
       WS_METHODS.languageServersSubscribe,
+      WS_METHODS.languageServersCheck,
       WS_METHODS.languageServersSession,
       WS_METHODS.languageServersSend,
       WS_METHODS.languageServersProblems,

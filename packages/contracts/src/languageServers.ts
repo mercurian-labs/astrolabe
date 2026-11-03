@@ -9,19 +9,60 @@ import { DocumentChangeSetJson, DocumentClientId, DocumentLoadId } from "./docum
  * its gateway over `languageServers.session` and `languageServers.send`.
  */
 
-export const LanguageServerId = Schema.Literals(["typescript"]);
+export const LanguageServerId = Schema.Literals([
+  "typescript",
+  "basedpyright",
+  "rust-analyzer",
+  "gopls",
+  "clangd",
+]);
 export type LanguageServerId = typeof LanguageServerId.Type;
 
-const TYPESCRIPT_LANGUAGE_IDS: Readonly<Record<string, string>> = {
-  ts: "typescript",
-  mts: "typescript",
-  cts: "typescript",
-  tsx: "typescriptreact",
-  js: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  jsx: "javascriptreact",
+/** Each server's file extensions, and the LSP language id it opens each with. */
+const LANGUAGE_IDS: Readonly<Record<LanguageServerId, Readonly<Record<string, string>>>> = {
+  typescript: {
+    ts: "typescript",
+    mts: "typescript",
+    cts: "typescript",
+    tsx: "typescriptreact",
+    js: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    jsx: "javascriptreact",
+  },
+  basedpyright: { py: "python", pyi: "python" },
+  "rust-analyzer": { rs: "rust" },
+  gopls: { go: "go" },
+  clangd: {
+    c: "c",
+    // clangd reads a header's language from the compile commands, not this id.
+    h: "cpp",
+    cc: "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    "c++": "cpp",
+    hh: "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
+    "h++": "cpp",
+    ipp: "cpp",
+    tpp: "cpp",
+    m: "objective-c",
+    mm: "objective-cpp",
+  },
 };
+
+const SERVER_FOR_EXTENSION: ReadonlyMap<
+  string,
+  { readonly server: LanguageServerId; readonly languageId: string }
+> = new Map(
+  Object.entries(LANGUAGE_IDS).flatMap(([server, extensions]) =>
+    Object.entries(extensions).map(
+      ([extension, languageId]) =>
+        [extension, { server: server as LanguageServerId, languageId }] as const,
+    ),
+  ),
+);
 
 /** The server that serves a file, and the LSP language id it opens it with; null for none. */
 export function languageServerForPath(
@@ -31,8 +72,7 @@ export function languageServerForPath(
   const dot = name.lastIndexOf(".");
   if (dot <= 0) return null;
   // `.d.ts` files are part of the project the server already loads.
-  const languageId = TYPESCRIPT_LANGUAGE_IDS[name.slice(dot + 1).toLowerCase()];
-  return languageId === undefined ? null : { server: "typescript", languageId };
+  return SERVER_FOR_EXTENSION.get(name.slice(dot + 1).toLowerCase()) ?? null;
 }
 
 export const LanguageServerState = Schema.Literals([
@@ -72,6 +112,26 @@ export const LanguageServerTarget = Schema.Struct({
   server: LanguageServerId,
 });
 export type LanguageServerTarget = typeof LanguageServerTarget.Type;
+
+/** What each language server would run for a checkout, without starting or downloading it. */
+export const LanguageServerCheckInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
+export type LanguageServerCheckInput = typeof LanguageServerCheckInput.Type;
+
+export const LanguageServerCheck = Schema.Struct({
+  server: LanguageServerId,
+  /** The languages it serves: "C and C++". */
+  languages: Schema.String,
+  /** "rust-analyzer 1.99.0", or the bare name before a version is known. */
+  name: Schema.String,
+  /** `download`: the first file of its language downloads it, after the environment's yes. */
+  state: Schema.Literals(["found", "download", "missing"]),
+  source: Schema.NullOr(LanguageServerSource),
+  /** The binary that runs, when found. */
+  executable: Schema.NullOr(Schema.String),
+  /** Why it's missing, what downloading fetches, or what the checkout lacks for it. */
+  message: Schema.NullOr(Schema.String),
+});
+export type LanguageServerCheck = typeof LanguageServerCheck.Type;
 
 /** Chosen by the client, unique per connection. */
 export const LanguageServerSessionId = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
