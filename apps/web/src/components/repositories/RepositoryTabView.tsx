@@ -118,7 +118,7 @@ function CheckedOut({
   readonly tab: CheckoutRepositoryTab;
   readonly children: (tab: CheckedOutRepositoryTab) => ReactNode;
 }) {
-  const worktrees = useProjectWorktrees(worktreesOf(tab));
+  const { data: worktrees, error: worktreesError } = useProjectWorktrees(worktreesOf(tab));
   const openBranch = useOpenBranch();
   const [opening, setOpening] = useState(false);
   const { checkout } = tab;
@@ -144,6 +144,15 @@ function CheckedOut({
     }
   }, [cwd, revision, seen, tab]);
   if (cwd !== null) return children({ ...tab, cwd, checkoutName: checkoutName(checkout, holder) });
+  if (worktreesError !== null) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
+        <p role="alert" className="max-w-full wrap-break-word">
+          {`Couldn't read the worktrees. ${worktreesError}`}
+        </p>
+      </div>
+    );
+  }
   if (worktrees === null || "cwd" in checkout) return null;
   const named = checkout.branch;
   return (
@@ -222,9 +231,11 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
       ? listed === null
         ? null
         : "not in a worktree"
-      : holder.number === null
-        ? "main checkout"
-        : `worktree ${holder.number}`;
+      : !holder.isRepository
+        ? null
+        : holder.number === null
+          ? "main checkout"
+          : `worktree ${holder.number}`;
   return {
     ...label,
     ...(holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {}),

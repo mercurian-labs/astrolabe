@@ -17,6 +17,8 @@ import { isEditableFocused } from "../lib/editableFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
+import { allTabs } from "../panes/arrangement";
+import { workspace } from "../panes/workspace";
 import {
   planNextReopen,
   pullRequestsSearchForRestore,
@@ -30,6 +32,7 @@ import {
   useRightPanelStore,
 } from "../rightPanelStore";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { chatTabKey } from "../sectionTabs/sectionTabs";
 import { readProject, readThreadShell } from "../state/entities";
 import { previewEnvironment } from "../state/preview";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -83,6 +86,7 @@ export function ReopenClosedViewShortcut() {
     const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
     const drafts = useComposerDraftStore.getState();
     const panelsByThread = useRightPanelStore.getState().byThreadKey;
+    const openTabs = new Set(allTabs(workspace.arrangement()));
     const { drop, restore } = planNextReopen(useClosedViewStore.getState().entries, (entry) => {
       const ref = entry.threadRef;
       const panel = selectThreadRightPanelState(panelsByThread, ref);
@@ -94,6 +98,7 @@ export function ReopenClosedViewShortcut() {
           sideChatExists: true,
           shellLive: true,
           panel,
+          chatOpen: false,
         };
       }
       return {
@@ -107,6 +112,7 @@ export function ReopenClosedViewShortcut() {
         shellLive:
           appAtomRegistry.get(environmentShell.stateValueAtom(ref.environmentId)).status === "live",
         panel,
+        chatOpen: openTabs.has(chatTabKey(ref)),
       };
     });
     for (const entry of drop) useClosedViewStore.getState().remove(entry.id);

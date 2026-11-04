@@ -9,6 +9,7 @@ import {
   listFilteredThreads,
   parseThreadsFilter,
   threadStatusFilterOf,
+  toggleFilterAllProjects,
   toggleFilterProject,
   toggleFilterStatus,
   type ThreadsFilter,
@@ -36,19 +37,17 @@ describe("the threads filter", () => {
     expect(filterHasProject(next, "r2", groupKeys)).toBe(false);
   });
 
-  it("reads ticking every project, or unticking the last, as All projects", () => {
+  it("reads ticking every project as All projects, and unticking the last as none", () => {
     const allButR2 = project(EMPTY_THREADS_FILTER, "r2");
     expect(project(allButR2, "r2").projects).toEqual([]);
     const onlyR1 = { ...EMPTY_THREADS_FILTER, projects: ["r1"] };
-    expect(project(onlyR1, "r1").projects).toEqual([]);
+    expect(filterProjectGroupKeys(project(onlyR1, "r1"), groupKeys)).toEqual(new Set());
   });
 
-  it("reads picks whose projects are gone as every project", () => {
-    const gone = { ...EMPTY_THREADS_FILTER, projects: ["gone"] };
-    expect(filterProjectGroupKeys(gone, groupKeys)).toBeNull();
-    expect(filterProjectGroupKeys({ ...gone, projects: ["gone", "r2"] }, groupKeys)).toEqual(
-      new Set(["r2"]),
-    );
+  it("unticks every project from All projects, and ticks them all back", () => {
+    const none = toggleFilterAllProjects(EMPTY_THREADS_FILTER, groupKeys);
+    expect(groupKeys.some((key) => filterHasProject(none, key, groupKeys))).toBe(false);
+    expect(toggleFilterAllProjects(none, groupKeys)).toEqual(EMPTY_THREADS_FILTER);
   });
 
   it("files each row status under the filter its dot reads as", () => {
@@ -68,6 +67,10 @@ describe("the threads filter", () => {
     expect(
       parseThreadsFilter('{"projects":["r1",4],"kinds":["wikis"],"statuses":["asleep"]}'),
     ).toEqual({ projects: ["r1"], statuses: [] });
+    expect(parseThreadsFilter('{"projects":null,"statuses":[]}')).toEqual({
+      projects: null,
+      statuses: [],
+    });
     expect(parseThreadsFilter("not json")).toBeNull();
   });
 });

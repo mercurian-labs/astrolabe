@@ -94,8 +94,8 @@ document or any other tab in focus it does nothing, even with a chat showing in 
 A thread's terminals, browsers, diff, files, pull request, Graph and Lineage are linked to its
 chat, and show only while that chat is in front: bring another chat to the front and the pane beside it shows
 that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
-the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
-and browsers for the next time you open it.
+the one you clicked last. Linked tabs stay in their own pane beside the chat, so you can't drop
+one into the chat's tab bar. Closing a chat closes its linked tabs; the thread keeps its terminals and browsers for the next time you open it.
 
 Linked tabs are added from **New linked tab** at the end of the chat's header, or Space `t` `n`.
 It opens a linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull

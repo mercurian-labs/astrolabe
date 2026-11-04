@@ -734,25 +734,20 @@ export const layer: Layer.Layer<
         const checkpointCaptureCommandId = CommandId.make(
           `command:effect:checkpoint.capture:${input.run.id}`,
         );
-        // Stopped runs capture rollback points for the next message; enqueue before later starts on this effect lane.
+        // Every terminal run captures the next message's rollback point; enqueue before later starts on this effect lane.
         const finalization = {
-          effects:
-            input.terminal.status === "completed" ||
-            input.terminal.status === "interrupted" ||
-            input.terminal.status === "cancelled"
-              ? [
-                  {
-                    id: `effect:checkpoint.capture:${input.run.id}`,
-                    commandId: checkpointCaptureCommandId,
-                    threadId: input.run.threadId,
-                    request: {
-                      type: "checkpoint.capture" as const,
-                      runId: input.run.id,
-                      scopeId: input.checkpointScope.id,
-                    },
-                  },
-                ]
-              : [],
+          effects: [
+            {
+              id: `effect:checkpoint.capture:${input.run.id}`,
+              commandId: checkpointCaptureCommandId,
+              threadId: input.run.threadId,
+              request: {
+                type: "checkpoint.capture" as const,
+                runId: input.run.id,
+                scopeId: input.checkpointScope.id,
+              },
+            },
+          ],
           events: [
             ...cascadedSubagentEvents,
             ...(input.abandonedProviderTurn === undefined

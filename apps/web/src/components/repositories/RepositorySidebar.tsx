@@ -55,6 +55,7 @@ import {
   WorktreeFiles,
   WorktreeHeader,
   WorktreeRows,
+  WorktreesUnread,
 } from "./RepositoryWorktrees";
 import { RepositoryFilterMenu, RepositoryFilterPills } from "./RepositoryFilterMenu";
 import {
@@ -116,7 +117,7 @@ export function RepositorySidebar() {
     ? candidates.flatMap((repository, index) =>
         kept !== null && !kept.has(repositoryKey(repository))
           ? []
-          : (lists[index]?.worktrees ?? NO_WORKTREES).map((worktree) => ({
+          : (lists[index]?.data?.worktrees ?? NO_WORKTREES).map((worktree) => ({
               target: projectWorktrees(repository),
               path: worktree.path,
             })),
@@ -134,7 +135,7 @@ export function RepositorySidebar() {
   const openKeys = useWorkspaceOpenKeys();
   const read = candidates.map((repository, index) => {
     const key = repositoryKey(repository);
-    const listed = lists[index] ?? null;
+    const listed = lists[index]?.data ?? null;
     const all = (listed?.worktrees ?? NO_WORKTREES).map((worktree) => {
       const count = countOf.get(worktreeFilesKey(repository.environmentId, worktree.path));
       return count === undefined ? worktree : { ...worktree, changedFiles: count };
@@ -147,6 +148,7 @@ export function RepositorySidebar() {
       repository,
       key,
       listed,
+      readError: lists[index]?.error ?? null,
       all,
       focused,
       outside: kept !== null && !kept.has(key),
@@ -266,6 +268,7 @@ export function RepositorySidebar() {
       worktrees={view.worktrees}
       openCheckouts={view.openCheckouts}
       setAside={view.listed?.setAside ?? null}
+      readError={view.readError}
       expanded={(worktree, fallback) => open(worktree.path, fallback)}
       onToggle={(worktree, fallback) => toggle(worktree.path, fallback)}
       onReveal={(worktree) => reveal(worktree.path)}
@@ -290,7 +293,7 @@ export function RepositorySidebar() {
               hasProjects
               projectScope={
                 <>
-                  {single ? (
+                  {single?.all.every((worktree) => worktree.isRepository) ? (
                     <OpenBranchPicker
                       repository={single.repository}
                       worktrees={single.all}
@@ -362,6 +365,7 @@ export function RepositorySidebar() {
                       tab={fileTab(searched, checkoutOf(searchedIn), entry.path)}
                       highlighted={index === activeIndex}
                       detail={folderOf(entry.path)}
+                      localGraph={searchedIn.isRepository}
                       onOpened={clearSearch}
                     />
                   ))}
@@ -431,6 +435,7 @@ function WorktreeSections({
   worktrees,
   openCheckouts,
   setAside,
+  readError,
   expanded,
   onToggle,
   onReveal,
@@ -447,8 +452,10 @@ function WorktreeSections({
   }>;
   /** The checkouts of the project's open tabs, whose worktrees stay listed. */
   readonly openCheckouts: ReadonlySet<string>;
-  /** Null while the worktrees are being read. */
+  /** Null until the worktrees are read. */
   readonly setAside: ProjectWorktreeListResult["setAside"] | null;
+  /** Why the worktrees can't be read; null while they are being read, and once they are. */
+  readonly readError: string | null;
   /** Whether a worktree is open; `fallback` until someone opens or closes it. */
   readonly expanded: (worktree: ProjectWorktree, fallback: boolean) => boolean;
   readonly onToggle: (worktree: ProjectWorktree, fallback: boolean) => void;
@@ -468,24 +475,24 @@ function WorktreeSections({
   };
   const archived = isArchived(repository);
   // Archived projects leave the filters and New thread, so this is their way back.
-  const unarchive =
-    archived && canOrganizeProjectGroup([member]) ? (
-      <MenuItem
-        onClick={() =>
-          void updateProjectGroup([member], { archived: false }, "Failed to unarchive project")
-        }
-      >
-        <ArchiveXIcon />
-        Unarchive project
-      </MenuItem>
-    ) : null;
+  const canUnarchive = archived && canOrganizeProjectGroup([member]);
+  const unarchiveProject = () =>
+    void updateProjectGroup([member], { archived: false }, "Failed to unarchive project");
+  const unarchive = canUnarchive ? (
+    <MenuItem onClick={unarchiveProject}>
+      <ArchiveXIcon />
+      Unarchive project
+    </MenuItem>
+  ) : null;
   const { listed, rest } = foldWorktrees(worktrees, { openCheckouts, now });
   const worktreeSection = (
     { worktree, outside }: { readonly worktree: ProjectWorktree; readonly outside: boolean },
     folded: boolean,
   ) => {
     const filesKey = worktreeFilesKey(repository.environmentId, worktree.path);
-    const files = worktreeFilesShown(filesShown, filesKey, worktree.isMain);
+    // A plain folder has no changes to show in place of its files.
+    const files =
+      !worktree.isRepository || worktreeFilesShown(filesShown, filesKey, worktree.isMain);
     // Only the main checkout and the focused tab's start open: an open one reads its status and
     // recent commits.
     const fallback = !folded && (worktree.isMain || outside || worktree.path === focusedPath);
@@ -507,21 +514,24 @@ function WorktreeSections({
                 }
               : {})}
             filesShown={files}
-            onToggleFiles={() => {
-              showWorktreeFiles(filesKey, !files);
-              onReveal(worktree);
-            }}
-            onCompare={() =>
-              workspace.show(
-                repositoryTabKey({
-                  kind: "diff",
-                  environmentId: repository.environmentId,
-                  projectId: repository.id,
-                  checkout: checkoutOf(worktree),
-                  source: "branch-range",
-                }),
-              )
-            }
+            {...(worktree.isRepository
+              ? {
+                  onToggleFiles: () => {
+                    showWorktreeFiles(filesKey, !files);
+                    onReveal(worktree);
+                  },
+                  onCompare: () =>
+                    workspace.show(
+                      repositoryTabKey({
+                        kind: "diff",
+                        environmentId: repository.environmentId,
+                        projectId: repository.id,
+                        checkout: checkoutOf(worktree),
+                        source: "branch-range",
+                      }),
+                    ),
+                }
+              : {})}
           />
           {open && !files ? (
             <WorktreeRows>
@@ -542,13 +552,18 @@ function WorktreeSections({
             projectName={`${repository.title} · ${worktree.alias}`}
             selectedPath={selectedPath(worktree)}
             onOpenFile={(path) => workspace.show(fileKey(repository, checkoutOf(worktree), path))}
-            fileMenuActions={[
-              {
-                id: "local-graph",
-                label: "Open local graph",
-                run: (path) => showLocalGraph(fileTab(repository, checkoutOf(worktree), path)),
-              },
-            ]}
+            {...(worktree.isRepository
+              ? {
+                  fileMenuActions: [
+                    {
+                      id: "local-graph",
+                      label: "Open local graph",
+                      run: (path: string) =>
+                        showLocalGraph(fileTab(repository, checkoutOf(worktree), path)),
+                    },
+                  ],
+                }
+              : {})}
           />
         ) : null}
       </Fragment>
@@ -566,6 +581,12 @@ function WorktreeSections({
         <ul role="presentation" className="flex flex-col gap-px">
           <SetAsideRows repository={owner} setAside={setAside} />
         </ul>
+      ) : readError !== null ? (
+        <WorktreesUnread
+          owner={owner}
+          error={readError}
+          {...(canUnarchive ? { onUnarchive: unarchiveProject } : {})}
+        />
       ) : (
         <SidebarNote>Reading worktrees…</SidebarNote>
       )}
@@ -755,6 +776,7 @@ function FileRow({
   note,
   trailing,
   highlighted = false,
+  localGraph = true,
   onOpened,
 }: {
   readonly tab: FileTab;
@@ -763,6 +785,8 @@ function FileRow({
   readonly note?: string;
   readonly trailing?: string;
   readonly highlighted?: boolean;
+  /** Whether its context menu offers the local graph, which needs a git repository's index. */
+  readonly localGraph?: boolean;
   readonly onOpened?: () => void;
 }) {
   const key = repositoryTabKey(tab);
@@ -777,7 +801,7 @@ function FileRow({
   };
   const showMenu = (event: MouseEvent<HTMLElement>) => {
     const api = readLocalApi();
-    if (!api) return;
+    if (!api || !localGraph) return;
     event.preventDefault();
     void api.contextMenu
       .show([{ id: "local-graph", label: "Open local graph" }], {

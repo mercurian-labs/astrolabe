@@ -228,14 +228,16 @@ function RepositoryList({
               })
             }
           />
-          <LinkRow
-            icon={PullRequestGlyph.pullRequest}
-            label="Changes"
-            onPress={() => {
-              setChangeRequestKind("repositories");
-              workspace.dispatch({ type: "select", tab: "pullRequests" });
-            }}
-          />
+          {status.data?.isRepo === false ? null : (
+            <LinkRow
+              icon={PullRequestGlyph.pullRequest}
+              label="Changes"
+              onPress={() => {
+                setChangeRequestKind("repositories");
+                workspace.dispatch({ type: "select", tab: "pullRequests" });
+              }}
+            />
+          )}
         </>
       ) : null}
       {uncommitted.length > 0 ? (

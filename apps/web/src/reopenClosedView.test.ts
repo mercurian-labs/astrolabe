@@ -153,6 +153,7 @@ describe("planNextReopen", () => {
     sideChatExists: true,
     shellLive: true,
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
+    chatOpen: false,
   };
   const openDiff: ThreadRightPanelState = {
     isOpen: true,
@@ -212,5 +213,20 @@ describe("planNextReopen", () => {
     );
     expect(plan.drop.map((e) => e.id)).toEqual(dropped);
     expect(plan.restore?.id ?? null).toBe(restored);
+  });
+
+  it("restores a closed chat tab, or drops it while the panes hold it", () => {
+    const chats: ClosedViewEntry[] = [
+      { id: "a", kind: "chat-tab", threadRef },
+      {
+        id: "b",
+        kind: "chat-tab",
+        threadRef: { ...threadRef, threadId: "thread-2" as ScopedThreadRef["threadId"] },
+      },
+    ];
+    expect(planNextReopen(chats, () => known).restore?.id).toBe("a");
+    const plan = planNextReopen(chats, (entry) => ({ ...known, chatOpen: entry.id === "a" }));
+    expect(plan.drop.map((entry) => entry.id)).toEqual(["a"]);
+    expect(plan.restore?.id).toBe("b");
   });
 });

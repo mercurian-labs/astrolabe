@@ -4,6 +4,7 @@ import {
   activateTab,
   closeTab,
   focusPane,
+  moveTabs,
   openBeside,
   openTab,
   resizePanes,
@@ -12,6 +13,7 @@ import {
 } from "./arrangement";
 import {
   hiddenLinkedTabs,
+  keptFromPane,
   linkedArrangement,
   linkedToggle,
   linkTab,
@@ -97,14 +99,64 @@ describe("a chat's linked tabs", () => {
     expect(panes(state)).toEqual([[chatA, file], [diffA]]);
   });
 
-  it("stay in front in their chat's own pane, the chat still counting as in front", () => {
+  it("leave their chat's pane for a new one beside it, the chat showing in their place", () => {
     const solo = settle(
       openLinked(settle(linkedArrangement(openTab(startingArrangement(), chatA))), diffA),
     );
     const state = change(solo, (arrangement) => focusPane(openTab(arrangement, diffA, "p0"), "p0"));
-    expect(panes(state)).toEqual([[chatA, diffA]]);
+    expect(panes(state)).toEqual([[chatA], [diffA]]);
+    expect(leaves(state.arrangement.root)[0]?.active).toBe(chatA);
     expect(state.front).toBe(chatA);
     expect(state.parked).toEqual({});
+  });
+
+  it("join the chat's other linked tabs when one lands in the chat's pane", () => {
+    const state = change(withPanel(), (arrangement) => moveTabs(arrangement, [terminalA], "p0"));
+    expect(panes(state)).toEqual([
+      [chatB, chatA],
+      [diffA, terminalA],
+    ]);
+    expect(leaves(state.arrangement.root)[0]?.active).toBe(chatA);
+    expect(state.front).toBe(chatA);
+  });
+
+  it("step out beside a chat dragged into their pane", () => {
+    const start = withPanel();
+    const linkedPane = leaves(start.arrangement.root)[1]?.id ?? "";
+    const state = change(start, (arrangement) => moveTabs(arrangement, [chatA], linkedPane));
+    expect(panes(state)).toEqual([[chatB], [chatA], [terminalA, diffA]]);
+    expect(state.front).toBe(chatA);
+  });
+
+  it("come back beside a chat that took the pane they were set aside from", () => {
+    const state = settle({
+      ...linkedArrangement(openTab(startingArrangement(), chatA)),
+      owners: { [diffA]: chatA },
+      parked: { [diffA]: { pane: "p0", index: 1, active: true } },
+    });
+    expect(panes(state)).toEqual([[chatA], [diffA]]);
+    expect(state.parked).toEqual({});
+  });
+
+  it("are the only ones kept out of their owner's pane: a change group's stay", () => {
+    const beside = openBeside(
+      openTab(openTab(startingArrangement(), group), file),
+      chatA,
+      "p0",
+      "right",
+      { focus: true },
+    );
+    const state = settle(linkTab(linkedArrangement(beside), file, group));
+    expect(panes(state)).toEqual([[group, file], [chatA]]);
+  });
+
+  it("keep a drag of only linked tabs off their chat's own pane, and no one else's", () => {
+    const { owners } = withPanel();
+    const chats = [chatB, chatA];
+    expect(keptFromPane(owners, [terminalA, diffA], chats, context.isOwner)).toBe(true);
+    expect(keptFromPane(owners, [terminalA, file], chats, context.isOwner)).toBe(false);
+    expect(keptFromPane(owners, [terminalA], [chatB], context.isOwner)).toBe(false);
+    expect(keptFromPane({ [file]: group }, [file], [group], context.isOwner)).toBe(false);
   });
 
   it("follow the chat focused most recently when two chats are in front", () => {

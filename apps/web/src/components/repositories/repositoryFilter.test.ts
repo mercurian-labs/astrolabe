@@ -6,6 +6,7 @@ import {
   filterWorktrees,
   parseRepositoryFilter,
   setWorktreeHidden,
+  toggleFilterAllRepositories,
   toggleFilterRepository,
 } from "./repositoryFilter";
 
@@ -24,6 +25,12 @@ describe("the repositories filter", () => {
     const next = toggleFilterRepository(EMPTY_REPOSITORY_FILTER, "env:docs", keys);
     expect(filterRepositoryKeys(next, keys)).toEqual(new Set(["env:shop", "env:api"]));
     expect(filterRepositoryKeys(toggleFilterRepository(next, "env:docs", keys), keys)).toBeNull();
+  });
+
+  it("unticks every repository from All projects, and ticks them all back", () => {
+    const none = toggleFilterAllRepositories(EMPTY_REPOSITORY_FILTER, keys);
+    expect(filterRepositoryKeys(none, keys)).toEqual(new Set());
+    expect(toggleFilterAllRepositories(none, keys)).toEqual(EMPTY_REPOSITORY_FILTER);
   });
 
   it("drops hidden worktrees and, asked for changes, clean ones", () => {

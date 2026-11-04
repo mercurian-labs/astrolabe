@@ -4,11 +4,13 @@ import type { OpenPreviewMutation } from "./browser/openFileInPreview";
 import type { ClosedView, ClosedViewEntry } from "./closedViewStore";
 import type { PullRequestListPreferences } from "./components/pullRequest/pullRequestListPreferences";
 import { openPreviewSession } from "./components/preview/openPreviewSession";
+import { workspace } from "./panes/workspace";
 import {
   type RightPanelSurface,
   type ThreadRightPanelState,
   useRightPanelStore,
 } from "./rightPanelStore";
+import { chatTabKey } from "./sectionTabs/sectionTabs";
 
 export interface ReopenOwnerState {
   environmentKnown: boolean;
@@ -18,6 +20,8 @@ export interface ReopenOwnerState {
   sideChatExists: boolean;
   shellLive: boolean;
   panel: ThreadRightPanelState;
+  /** Whether the shared panes hold the thread's chat tab. */
+  chatOpen: boolean;
 }
 
 export function planNextReopen(
@@ -37,11 +41,13 @@ export function planNextReopen(
       break;
     }
     const alreadyOpen =
-      entry.kind === "panel-tab"
-        ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
-        : owner.panel.surfaces.some(
-            (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
-          );
+      entry.kind === "chat-tab"
+        ? owner.chatOpen
+        : entry.kind === "panel-tab"
+          ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
+          : owner.panel.surfaces.some(
+              (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
+            );
     if (alreadyOpen) {
       drop.push(entry);
       continue;
@@ -99,6 +105,10 @@ export async function reopenClosedView(
   const panels = useRightPanelStore.getState();
   const ref = view.threadRef;
 
+  if (view.kind === "chat-tab") {
+    workspace.openChat(chatTabKey(ref));
+    return true;
+  }
   if (view.kind === "browser") {
     const url = view.snapshot.navStatus._tag === "Idle" ? undefined : view.snapshot.navStatus.url;
     const result = await openPreviewSession({

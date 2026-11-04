@@ -3,6 +3,7 @@ import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contra
 import {
   EllipsisIcon,
   EyeOffIcon,
+  FolderIcon,
   GitBranchIcon,
   GitBranchPlusIcon,
   GitCompareArrowsIcon,
@@ -62,7 +63,8 @@ type WorktreeOwner = WorktreesTarget;
 /**
  * A worktree's header: its number and branch (or commit), how many files it has uncommitted, what
  * holds it, whether it shows its changes or its files, and a menu (compare, Keep, Delete; the
- * main checkout has only compare). Its contents collapse under it.
+ * main checkout has only compare, and a plain folder only what `renderMenuItems` gives). Its
+ * contents collapse under it.
  */
 export function WorktreeHeader({
   repository,
@@ -123,6 +125,7 @@ export function WorktreeHeader({
     window.addEventListener("focus", refreshSoon);
     return () => window.removeEventListener("focus", refreshSoon);
   }, [unwatched]);
+  const menuItems = renderMenuItems?.(changedFiles) ?? null;
   const accessory = (
     <span className="flex shrink-0 items-center gap-1.5 text-3xs text-sidebar-muted-foreground/70">
       {watch?.unwatched ? (
@@ -140,7 +143,7 @@ export function WorktreeHeader({
       ) : null}
       {outsideFilter ? <OutsideFilterMark /> : null}
       {archived ? <ArchivedMark /> : null}
-      {worktree.isMain ? <span>main checkout</span> : null}
+      {worktree.isMain && worktree.isRepository ? <span>main checkout</span> : null}
       {changedFiles !== null && changedFiles > 0 ? (
         <span className="tabular-nums">{`${changedFiles} changed`}</span>
       ) : null}
@@ -169,7 +172,9 @@ export function WorktreeHeader({
         accessory={accessory}
       >
         <span className="flex items-center gap-1.5">
-          {worktree.number === null ? (
+          {!worktree.isRepository ? (
+            <FolderIcon aria-hidden className="size-3.5 shrink-0" />
+          ) : worktree.number === null ? (
             <GitBranchIcon aria-hidden className="size-3.5 shrink-0" />
           ) : (
             <WorktreeNumber number={worktree.number} />
@@ -197,7 +202,7 @@ export function WorktreeHeader({
           </TooltipPopup>
         </Tooltip>
       ) : null}
-      {worktree.isMain && !onCompare ? null : (
+      {worktree.isMain && !onCompare && menuItems === null ? null : (
         <WorktreeMenu repository={repository} worktree={worktree} label={label}>
           {onCompare ? (
             <MenuItem onClick={onCompare}>
@@ -205,10 +210,42 @@ export function WorktreeHeader({
               Changes against its base
             </MenuItem>
           ) : null}
-          {renderMenuItems?.(changedFiles)}
+          {menuItems}
         </WorktreeMenu>
       )}
     </li>
+  );
+}
+
+/** Why a repository's worktrees can't be read, with a way to read them again. */
+export function WorktreesUnread({
+  owner,
+  error,
+  onUnarchive,
+}: {
+  readonly owner: WorktreeOwner;
+  readonly error: string;
+  /** An archived project's way back, as it has no main checkout's menu to hold it. */
+  readonly onUnarchive?: () => void;
+}) {
+  const action = "cursor-pointer rounded px-1 font-medium hover:text-sidebar-foreground";
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-1.5 px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
+    >
+      <p className="max-w-full wrap-break-word">{`Couldn't read the worktrees. ${error}`}</p>
+      <div className="flex items-center gap-2">
+        <button type="button" className={action} onClick={() => refreshProjectWorktrees(owner)}>
+          Try again
+        </button>
+        {onUnarchive ? (
+          <button type="button" className={action} onClick={onUnarchive}>
+            Unarchive project
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

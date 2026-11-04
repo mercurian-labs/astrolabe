@@ -400,6 +400,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "section.repositories": "Section: Projects",
   "section.pullRequests": "Section: Changes",
   "tab.close": "Close Tab or Pane Tab",
+  "rightPanel.close": "Close Focused Tab",
   "draft.write": "Send Draft or Save Note",
   "buffer.open": "Switch to Thread",
   "document.open": "Open Document",

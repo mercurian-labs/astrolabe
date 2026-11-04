@@ -81,13 +81,18 @@ describe("WorkspaceWatcher", () => {
       yield* fs.makeDirectory(`${repo}/node_modules/dep`, { recursive: true });
       yield* fs.writeFileString(`${repo}/node_modules/dep/index.js`, "ignored\n");
       yield* fs.makeDirectory(`${repo}/src`);
+      // inotify only watches a new folder once it hears of it: a file written sooner goes unseen.
+      const before = yield* changes.pipe(
+        Stream.takeUntil((change) => named(change).includes("")),
+        Stream.runCollect,
+      );
       yield* fs.writeFileString(`${repo}/src/new.ts`, "export {};\n");
 
-      const reports = yield* changes.pipe(
+      const after = yield* changes.pipe(
         Stream.takeUntil((change) => named(change).includes("src")),
         Stream.runCollect,
       );
-      const seen = reports.flatMap(named);
+      const seen = [...before, ...after].flatMap(named);
       expect(seen).toContain("");
       expect(seen.filter((folder) => /dist|node_modules/.test(folder))).toEqual([]);
       expect(yield* Queue.take(statusRefreshes)).toBe(repo);

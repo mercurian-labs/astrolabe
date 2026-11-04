@@ -128,6 +128,7 @@ import {
   filterWikiKeys,
   setWikiWorktreeHidden,
   storeWikiFilter,
+  toggleFilterAllWikis,
   toggleFilterWiki,
   useStoredWikiFilter,
   wikiFilterKeepsDocument,
@@ -761,7 +762,7 @@ function WikiFilterMenu({
   );
   const lists = useManyProjectWorktrees(listedWikis.map(worktreesOfWiki));
   const worktreeRows = listedWikis.flatMap((overview, index) =>
-    (lists[index]?.worktrees ?? []).map((worktree) => ({
+    (lists[index]?.data?.worktrees ?? []).map((worktree) => ({
       value: `${WORKTREE_PREFIX}${worktreeFilesKey(overview.environmentId, worktree.path)}`,
       wikiKey: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
       overview,
@@ -819,7 +820,7 @@ function WikiFilterMenu({
   const selected = values.filter(checked);
   const toggle = (value: string) => {
     if (value === CHANGED_VALUE) onFilter({ ...filter, changed: !filter.changed });
-    else if (value === ALL_WIKIS_VALUE) onFilter({ ...filter, wikis: [] });
+    else if (value === ALL_WIKIS_VALUE) onFilter(toggleFilterAllWikis(filter, wikiKeys));
     else if (value.startsWith(WORKTREE_PREFIX)) {
       const key = value.slice(WORKTREE_PREFIX.length);
       onFilter(setWikiWorktreeHidden(filter, key, !filter.hidden.includes(key)));
@@ -985,7 +986,7 @@ function WikiFilterPills({
     filter.hidden.length === 0 ? [] : overviews.map(worktreesOfWiki),
   );
   const hiddenNames = overviews.flatMap((overview, index) =>
-    (lists[index]?.worktrees ?? [])
+    (lists[index]?.data?.worktrees ?? [])
       .filter((worktree) =>
         filter.hidden.includes(worktreeFilesKey(overview.environmentId, worktree.path)),
       )
@@ -993,7 +994,7 @@ function WikiFilterPills({
   );
   const showChanged = filter.changed || changedCount > 0;
   const count =
-    (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0) + (hiddenNames.length > 0 ? 1 : 0);
+    (filter.changed ? 1 : 0) + (kept !== null ? 1 : 0) + (hiddenNames.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills label="Document filters" count={count} onClear={() => onFilter(EMPTY_WIKI_FILTER)}>
@@ -1006,7 +1007,7 @@ function WikiFilterPills({
           onToggle={() => onFilter({ ...filter, changed: !filter.changed })}
         />
       ) : null}
-      {picked.length > 0 ? (
+      {kept !== null ? (
         <FilterPill
           label={namesOrCount(
             picked.map((overview) => overview.wiki.name),

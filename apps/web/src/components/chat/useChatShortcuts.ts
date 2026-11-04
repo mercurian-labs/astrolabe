@@ -105,6 +105,8 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     // Astrolabe: in the shared panes only the focused chat tab toggles its drawer.
     if (command === "terminal.toggle" && !takesTerminalToggle(owner)) return;
     if (PANEL_COMMANDS.has(command) && !takesPanelShortcut(owner)) return;
+    // Astrolabe: in the shared panes, the panes close the focused tab, the chat's own included.
+    if (command === "rightPanel.close" && owner !== null) return;
     const run =
       input.commands[command] ??
       composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??

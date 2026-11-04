@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { FileGraphData, FileGraphNode } from "../model/fileGraph.ts";
 import { DEFAULT_FILE_GRAPH_SETTINGS } from "../model/fileGraphSettings.ts";
-import { FileForces, type Point } from "./fileForces.ts";
+import { FileForces, seededPoint, type Point } from "./fileForces.ts";
 
 const node = (id: string): FileGraphNode => ({
   id,
@@ -27,6 +27,45 @@ const GRAPH: FileGraphData = {
     { from: "n1", to: "n2", guessed: false },
   ],
 };
+
+/**
+ * `count` open clusters as a definitions graph has them: hubs that use each other, each spoke used
+ * from the next cluster's hub, and a loose file.
+ */
+function clusters(count: number, size: number): FileGraphData {
+  const ids = Array.from({ length: count }, (_, at) => `c${at}`);
+  return {
+    roots: [],
+    nodes: [
+      node("loose"),
+      ...ids.flatMap((cluster) =>
+        Array.from({ length: size }, (_, at) => ({ ...node(`${cluster}#${at}`), cluster })),
+      ),
+    ],
+    links: ids.flatMap((cluster, at) => [
+      { from: "loose", to: `${cluster}#0`, guessed: false },
+      { from: `${cluster}#0`, to: `c${(at + 7) % count}#0`, guessed: false },
+      ...Array.from({ length: size - 1 }, (_, spoke) => ({
+        from: `c${(at + 1) % count}#0`,
+        to: `${cluster}#${spoke + 1}`,
+        guessed: false,
+      })),
+    ]),
+    clusters: ids.map((id) => ({ id, name: id, parent: null, root: false })),
+  };
+}
+
+/** Each cluster's middle and the reach of its nodes. */
+function discs(graph: FileGraphData, forces: FileForces) {
+  return (graph.clusters ?? []).map((cluster) => {
+    const held = graph.nodes.flatMap((each) =>
+      each.cluster === cluster.id ? (forces.positionOf(each.id) ?? []) : [],
+    );
+    const x = held.reduce((sum, at) => sum + at.x, 0) / held.length;
+    const y = held.reduce((sum, at) => sum + at.y, 0) / held.length;
+    return { x, y, radius: Math.max(...held.map((at) => distance(at, { x, y }))) };
+  });
+}
 
 const settled = () => {
   const forces = new FileForces(GRAPH, DEFAULT_FILE_GRAPH_SETTINGS);
@@ -87,6 +126,36 @@ describe("a file graph's forces", () => {
     expect(distance(after.positionOf("n9"), before.positionOf("n3"))).toBeLessThan(
       DEFAULT_FILE_GRAPH_SETTINGS.linkDistance,
     );
+  });
+
+  it("hold open clusters to their size however many there are, shown whole or grown in place", () => {
+    for (const count of [12, 37, 78]) {
+      const graph = clusters(count, 6);
+      const whole = new FileForces(graph, DEFAULT_FILE_GRAPH_SETTINGS);
+      whole.settle();
+      // A new level's nodes all start around where their files stood.
+      const grown = new FileForces(graph, DEFAULT_FILE_GRAPH_SETTINGS, (id) => {
+        const [x, y] = seededPoint(id, 24);
+        return { x, y };
+      });
+      grown.reheat(0.5);
+      let ticks = 0;
+      while (grown.step() && ticks < 1000) ticks += 1;
+      expect(grown.moving).toBe(false);
+      for (const forces of [whole, grown]) {
+        const reach = forces.positions().map((at) => Math.max(Math.abs(at.x), Math.abs(at.y)));
+        expect(Math.max(...reach)).toBeLessThan(200 * Math.sqrt(count));
+        expect(Math.max(...discs(graph, forces).map((disc) => disc.radius))).toBeLessThan(250);
+        // No disc rests on another, and the loose file rests outside them all.
+        const placed = discs(graph, forces);
+        for (const [at, disc] of placed.entries()) {
+          for (const other of placed.slice(at + 1)) {
+            expect(distance(disc, other)).toBeGreaterThan(disc.radius + other.radius);
+          }
+          expect(distance(forces.positionOf("loose"), disc)).toBeGreaterThan(disc.radius);
+        }
+      }
+    }
   });
 
   it("spread wider with a longer link distance", () => {

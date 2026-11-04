@@ -1,3 +1,10 @@
+import {
+  keptFilterKeys,
+  parseFilterPicks,
+  toggleFilterAll,
+  toggleFilterPick,
+  type FilterPicks,
+} from "../projects/filterPicks";
 import { storedChoice } from "../projects/storedChoice";
 
 /**
@@ -6,8 +13,8 @@ import { storedChoice } from "../projects/storedChoice";
  * files. What the focused tab is in shows whatever the filter says.
  */
 export interface RepositoryFilter {
-  /** Repository keys (`environmentId:projectId`). */
-  readonly repositories: ReadonlyArray<string>;
+  /** Repository keys (`environmentId:projectId`), as `FilterPicks` reads them. */
+  readonly repositories: FilterPicks;
   /** Worktree keys (`environmentId:path`), so a new worktree shows until it is hidden. */
   readonly hidden: ReadonlyArray<string>;
   readonly changed: boolean;
@@ -19,33 +26,25 @@ export const EMPTY_REPOSITORY_FILTER: RepositoryFilter = {
   changed: false,
 };
 
-/**
- * The repositories the filter keeps, or null for every one. Picks whose repository is gone are
- * ignored, and picking every repository reads as every repository.
- */
-export function filterRepositoryKeys(
+/** The repositories the filter keeps, or null for every one. */
+export const filterRepositoryKeys = (
   filter: RepositoryFilter,
   keys: ReadonlyArray<string>,
-): ReadonlySet<string> | null {
-  const kept = keys.filter((key) => filter.repositories.includes(key));
-  return kept.length === 0 || kept.length === keys.length ? null : new Set(kept);
-}
+): ReadonlySet<string> | null => keptFilterKeys(filter.repositories, keys);
 
-/**
- * Ticks or unticks a repository from the boxes as shown, every one ticked while none is picked,
- * so unticking one keeps the rest. Unticking the last, or ticking every one, is every repository.
- */
-export function toggleFilterRepository(
+export const toggleFilterRepository = (
   filter: RepositoryFilter,
   key: string,
   keys: ReadonlyArray<string>,
-): RepositoryFilter {
-  const shown = filterRepositoryKeys(filter, keys) ?? new Set(keys);
-  const next = shown.has(key)
-    ? keys.filter((each) => each !== key && shown.has(each))
-    : keys.filter((each) => each === key || shown.has(each));
-  return { ...filter, repositories: next.length === keys.length ? [] : next };
-}
+): RepositoryFilter => ({
+  ...filter,
+  repositories: toggleFilterPick(filter.repositories, key, keys),
+});
+
+export const toggleFilterAllRepositories = (
+  filter: RepositoryFilter,
+  keys: ReadonlyArray<string>,
+): RepositoryFilter => ({ ...filter, repositories: toggleFilterAll(filter.repositories, keys) });
 
 /** Hides a worktree, or shows it again. */
 export const setWorktreeHidden = (
@@ -88,7 +87,7 @@ export function parseRepositoryFilter(stored: string): RepositoryFilter | null {
   const strings = (value: unknown) =>
     Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
   return {
-    repositories: strings(record.repositories),
+    repositories: parseFilterPicks(record.repositories),
     hidden: strings(record.hidden),
     changed: record.changed === true,
   };
@@ -105,7 +104,7 @@ export const useStoredRepositoryFilter = repositoryFilterStore.useValue;
 
 export const storeRepositoryFilter = (filter: RepositoryFilter) =>
   repositoryFilterStore.set(
-    filter.repositories.length === 0 && filter.hidden.length === 0 && !filter.changed
+    filter.repositories?.length === 0 && filter.hidden.length === 0 && !filter.changed
       ? EMPTY_REPOSITORY_FILTER
       : filter,
   );
@@ -120,9 +119,11 @@ export function revealInRepositoryFilter(repositoryKey: string, worktreeKey: str
   storeRepositoryFilter({
     ...filter,
     repositories:
-      filter.repositories.length === 0 || filter.repositories.includes(repositoryKey)
-        ? filter.repositories
-        : [...filter.repositories, repositoryKey],
+      filter.repositories === null
+        ? [repositoryKey]
+        : filter.repositories.length === 0 || filter.repositories.includes(repositoryKey)
+          ? filter.repositories
+          : [...filter.repositories, repositoryKey],
     hidden: filter.hidden.filter((key) => key !== worktreeKey),
   });
 }

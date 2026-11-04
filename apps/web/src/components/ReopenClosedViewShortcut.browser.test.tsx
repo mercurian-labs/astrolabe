@@ -75,7 +75,10 @@ vi.mock(import("./ui/toast"), async (original) => {
 });
 
 import { useClosedViewStore } from "../closedViewStore";
+import { allTabs, startingArrangement } from "../panes/arrangement";
+import { workspace } from "../panes/workspace";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
+import { chatTabKey } from "../sectionTabs/sectionTabs";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { ReopenClosedViewShortcut } from "./ReopenClosedViewShortcut";
 
@@ -101,6 +104,7 @@ function setup() {
   state.openPreview.mockReset();
   useClosedViewStore.setState({ entries: [] });
   useRightPanelStore.setState({ byThreadKey: {}, userActionRevisionByThreadKey: {} });
+  workspace.update(() => startingArrangement());
   useTerminalUiStateStore.setState({
     terminalUiStateByThreadKey: {},
     suppressedTerminalIdsByThreadKey: {},
@@ -171,6 +175,23 @@ describe("root reopen shortcut", () => {
       finish(AsyncResult.success({ tabId: "new-tab" }));
     });
     expect(state.navigate).toHaveBeenCalledTimes(2);
+    expect(useClosedViewStore.getState().entries).toEqual([]);
+  });
+
+  it("reopens a closed chat tab and goes to its thread", async () => {
+    setup();
+    useClosedViewStore.getState().remember({ kind: "chat-tab", threadRef: ref });
+    await using _view = await renderShortcut();
+    let event!: KeyboardEvent;
+    await act(() => {
+      event = press();
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(allTabs(workspace.arrangement())).toContain(chatTabKey(ref));
+    expect(state.navigate).toHaveBeenCalledWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ref.environmentId, threadId: ref.threadId },
+    });
     expect(useClosedViewStore.getState().entries).toEqual([]);
   });
 

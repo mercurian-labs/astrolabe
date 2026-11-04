@@ -26,7 +26,7 @@ import * as ConnectionWakeups from "../connection/wakeups.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { runCachePersistence } from "./cachePersistence.ts";
-import { subscribeDynamic } from "../rpc/client.ts";
+import { subscribeDynamic, subscriptionRetryDelay } from "../rpc/client.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import * as ShellSnapshotLoader from "./shellSnapshotHttp.ts";
 import type { DeferredShellSnapshot } from "./shellPullRequests.ts";
@@ -55,6 +55,7 @@ export interface EnvironmentShellState {
   readonly removedAt: ReadonlyMap<ThreadId, number>;
 }
 
+const SHELL_SUBSCRIPTION_RETRY_DELAY = "250 millis";
 const EMPTY_REMOVALS: ReadonlyMap<ThreadId, number> = new Map();
 // Shared by every shell state, so a rebuilt one never reuses a generation another already used.
 let lastShellGeneration = 0;
@@ -378,7 +379,8 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
   });
 
   yield* setSynchronizing;
-  yield* Effect.forkScoped(
+  let defectRetries = 0;
+  const followShell = (): Effect.Effect<void, never, EnvironmentSupervisor.EnvironmentSupervisor> =>
     subscribeDynamic(
       ORCHESTRATION_V2_WS_METHODS.subscribeShell,
       Effect.fn("EnvironmentShellState.makeSubscribeInput")(function* (session) {
@@ -456,11 +458,36 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
       }),
       {
         onExpectedFailure: (cause) => setStreamError(Cause.squash(cause)),
-        retryExpectedFailureAfter: "250 millis",
+        retryExpectedFailureAfter: SHELL_SUBSCRIPTION_RETRY_DELAY,
         resubscribe: foregroundResubscriptions,
       },
-    ).pipe(Stream.runForEachArray((items) => applyItems(items))),
-  );
+    ).pipe(
+      Stream.runForEachArray((items) =>
+        applyItems(items).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              defectRetries = 0;
+            }),
+          ),
+        ),
+      ),
+      // A defect (a server stream defect, or one applyItems cannot handle) ends the
+      // subscription for good; resubscribe so the sidebar does not freeze.
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterrupts(cause)) return Effect.interrupt;
+        const retryDelay = subscriptionRetryDelay(SHELL_SUBSCRIPTION_RETRY_DELAY, defectRetries);
+        defectRetries += 1;
+        return Effect.logWarning("Shell subscription failed; resubscribing.", {
+          cause: Cause.pretty(cause),
+          environmentId,
+        }).pipe(
+          Effect.andThen(setStreamError(Cause.squash(cause))),
+          Effect.andThen(Effect.sleep(retryDelay)),
+          Effect.andThen(Effect.suspend(followShell)),
+        );
+      }),
+    );
+  yield* Effect.forkScoped(followShell());
   yield* SubscriptionRef.changes(supervisor.state).pipe(
     Stream.runForEach((connectionState) => {
       switch (connectionProjectionPhase(connectionState)) {

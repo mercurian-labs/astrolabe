@@ -63,6 +63,8 @@ export interface PaneTabs {
    * menu and the keyboard menu offer; null for a tab that cannot change its link.
    */
   readonly link?: (tabKey: string) => PaneTabMenuItem | null;
+  /** Astrolabe: whether dragged tabs may not join a pane's tabs, as a chat's own linked tabs. */
+  readonly keptFromPane?: (keys: readonly string[], paneTabs: readonly string[]) => boolean;
   /** What a tab's menu offers of its own, ahead of closing and splitting it, as a file's Copy path. */
   readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */

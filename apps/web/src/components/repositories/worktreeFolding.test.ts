@@ -9,6 +9,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const worktree = (overrides: Partial<ProjectWorktree>): ProjectWorktree => ({
   path: "/wt/x",
   isMain: false,
+  isRepository: true,
   branch: "x",
   head: "abc",
   alias: "x",

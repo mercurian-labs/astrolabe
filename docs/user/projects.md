@@ -42,6 +42,8 @@ grouped by the tool that made them, with a search box.
   comes back when you open that branch again. If the branch has new commits by then, the work is
   kept under **Set-aside work** for you to open or discard.
 - **Delete worktree…**, in a worktree's menu, says first what you would lose. Its branch stays.
+- A project whose folder isn't a git repository lists that folder with its files. It has no
+  branches, worktrees or changes to show.
 
 ## Search the code
 

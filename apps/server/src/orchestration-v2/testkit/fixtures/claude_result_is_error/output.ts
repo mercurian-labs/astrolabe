@@ -40,6 +40,14 @@ export function assertClaudeResultIsErrorOutput(
     (turn) => turn.status !== "completed" && turn.status !== "running",
   );
   assert.equal(failedTurn?.status, "failed");
+  // The failed run's checkpoint is the rollback point for editing the next message, and its
+  // capture projects the thread start that editing the failed message itself rolls back to.
+  const failedRunCheckpoint = projection.checkpoints.find(
+    (checkpoint) => checkpoint.runId === failedRun?.id,
+  );
+  assert.equal(failedRunCheckpoint?.status, "ready");
+  assert.equal(failedRunCheckpoint?.appRunOrdinal, 1);
+  assert.equal(failedRun?.checkpointId, failedRunCheckpoint?.id);
 
   const errorItem = projection.turnItems.find(
     (item) => item.runId === failedRun?.id && item.type === "error",

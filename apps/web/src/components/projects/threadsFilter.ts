@@ -3,6 +3,13 @@ import {
   resolveSidebarThreadStatus,
   type SidebarThreadStatus,
 } from "../Sidebar.logic";
+import {
+  keptFilterKeys,
+  parseFilterPicks,
+  toggleFilterAll,
+  toggleFilterPick,
+  type FilterPicks,
+} from "./filterPicks";
 import { storedChoice } from "./storedChoice";
 
 /**
@@ -10,8 +17,8 @@ import { storedChoice } from "./storedChoice";
  * (any of them), dimensions narrow (all of them), and an empty dimension filters nothing.
  */
 export interface ThreadsFilter {
-  /** Project group keys. */
-  readonly projects: ReadonlyArray<string>;
+  /** Project group keys, as `FilterPicks` reads them. */
+  readonly projects: FilterPicks;
   readonly statuses: ReadonlyArray<ThreadStatusFilter>;
 }
 
@@ -55,7 +62,7 @@ export function threadMatchesStatuses(
 }
 
 const threadsFilterIsEmpty = (filter: ThreadsFilter): boolean =>
-  filter.projects.length === 0 && filter.statuses.length === 0;
+  filter.projects !== null && filter.projects.length === 0 && filter.statuses.length === 0;
 
 type ListableThread = Parameters<typeof filterSidebarV2VisibleThreads>[0][number] &
   Parameters<typeof threadMatchesStatuses>[0];
@@ -98,27 +105,19 @@ export function listFilteredThreads<Thread extends ListableThread>(
     : { listed: [...listed, open], outsideKey: openKey };
 }
 
-const without = <T>(values: ReadonlyArray<T>, removed: ReadonlyArray<T>) =>
-  values.filter((value) => !removed.includes(value));
 const toggled = <T>(values: ReadonlyArray<T>, value: T) =>
-  values.includes(value) ? without(values, [value]) : [...values, value];
+  values.includes(value) ? values.filter((each) => each !== value) : [...values, value];
 
 export const toggleFilterStatus = (
   filter: ThreadsFilter,
   status: ThreadStatusFilter,
 ): ThreadsFilter => ({ ...filter, statuses: toggled(filter.statuses, status) });
 
-/**
- * The project groups the filter keeps, or null for every project. Picks whose project is gone are
- * ignored, so a filter of only those reads as every project and returns with them.
- */
-export function filterProjectGroupKeys(
+/** The project groups the filter keeps, or null for every project. */
+export const filterProjectGroupKeys = (
   filter: ThreadsFilter,
   groupKeys: ReadonlyArray<string>,
-): ReadonlySet<string> | null {
-  const kept = groupKeys.filter((key) => filter.projects.includes(key));
-  return kept.length === 0 ? null : new Set(kept);
-}
+): ReadonlySet<string> | null => keptFilterKeys(filter.projects, groupKeys);
 
 /** A project's checkbox. Every project is in while none is picked, so All projects ticks them all. */
 export const filterHasProject = (
@@ -127,23 +126,16 @@ export const filterHasProject = (
   groupKeys: ReadonlyArray<string>,
 ): boolean => filterProjectGroupKeys(filter, groupKeys)?.has(key) ?? true;
 
-/**
- * Ticks or unticks a project from the boxes as shown, so unticking one under All projects keeps
- * the rest. Ticking every project, or unticking the last, is All projects again.
- */
-export function toggleFilterProject(
+export const toggleFilterProject = (
   filter: ThreadsFilter,
   key: string,
   groupKeys: ReadonlyArray<string>,
-): ThreadsFilter {
-  const projects =
-    filterProjectGroupKeys(filter, groupKeys) === null
-      ? without(groupKeys, [key])
-      : toggled(filter.projects, key);
-  const kept = filterProjectGroupKeys({ ...filter, projects }, groupKeys);
-  const everyProject = kept === null || groupKeys.every((each) => kept.has(each));
-  return { ...filter, projects: everyProject ? [] : projects };
-}
+): ThreadsFilter => ({ ...filter, projects: toggleFilterPick(filter.projects, key, groupKeys) });
+
+export const toggleFilterAllProjects = (
+  filter: ThreadsFilter,
+  groupKeys: ReadonlyArray<string>,
+): ThreadsFilter => ({ ...filter, projects: toggleFilterAll(filter.projects, groupKeys) });
 
 /** A filter read back from storage, keeping only what it still understands. */
 export function parseThreadsFilter(stored: string): ThreadsFilter | null {
@@ -158,7 +150,7 @@ export function parseThreadsFilter(stored: string): ThreadsFilter | null {
   const strings = (value: unknown) =>
     Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
   return {
-    projects: strings(record.projects),
+    projects: parseFilterPicks(record.projects),
     statuses: strings(record.statuses).filter((status): status is ThreadStatusFilter =>
       (THREAD_STATUS_FILTERS as ReadonlyArray<string>).includes(status),
     ),

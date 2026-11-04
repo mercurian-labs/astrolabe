@@ -21,6 +21,7 @@ import {
   WorktreeFiles,
   WorktreeHeader,
   WorktreeRows,
+  WorktreesUnread,
 } from "../repositories/RepositoryWorktrees";
 import {
   storedWorktreeFiles,
@@ -100,7 +101,7 @@ export function WikiWorktreeSections({
   ) => ReactNode;
 }) {
   const owner = worktreesOfWiki(overview);
-  const listed = useProjectWorktrees(owner);
+  const { data: listed, error: readError } = useProjectWorktrees(owner);
   const filesChoices = wikiWorktreeFiles.useValue();
   const saveWorktree = useAtomCommand(wikiEnvironment.saveWorktree);
   const [now] = useState(() => Date.now());
@@ -108,7 +109,13 @@ export function WikiWorktreeSections({
   // Sections someone opened or closed; a worktree that takes the focus opens again.
   const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
-  if (listed === null) return <Note>Reading worktrees…</Note>;
+  if (listed === null) {
+    return readError === null ? (
+      <Note>Reading worktrees…</Note>
+    ) : (
+      <WorktreesUnread owner={owner} error={readError} />
+    );
+  }
   const { wiki } = overview;
   const titleOf = (branch: string) => {
     const changeRequestId = changeRequestOf(branch);

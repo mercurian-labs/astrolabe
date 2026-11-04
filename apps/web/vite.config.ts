@@ -327,6 +327,7 @@ export default defineConfig(() => {
         // keeps the first open from stalling on a dependency re-optimization.
         "@mercurian/graph > d3-force-3d",
         "@mercurian/graph > pixi.js",
+        "@mercurian/graph > pixi.js/unsafe-eval",
       ],
     },
     define: {

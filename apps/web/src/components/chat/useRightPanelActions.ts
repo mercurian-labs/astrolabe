@@ -154,7 +154,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   };
   const addPullRequestsSurfaceStable = useStableCallback(addPullRequestsSurface);
   const addGraphSurface = () => {
-    if (!activeThreadRef) return;
+    if (!activeThreadRef || !isServerThread) return;
     useRightPanelStore.getState().open(activeThreadRef, "graph");
   };
   const addGraphSurfaceStable = useStableCallback(addGraphSurface);

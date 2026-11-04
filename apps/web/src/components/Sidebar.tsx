@@ -1310,13 +1310,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     delegatedUnderParent,
     routeRowThreadKey,
     folderGroups: boringSidebarEnabled
-      ? scopedProjectGroups.length === 0
+      ? scopedProjectGroups === null
         ? // An archived project keeps a folder for its active threads, below the rest.
           [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
         : scopedProjectGroups
       : null,
-    keepEmptyFolders: (group) =>
-      scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
+    keepEmptyFolders: (group) => scopedProjectGroups !== null || (group.pinned && !group.archived),
   });
 
   // Ranked across environments as the palette ranks them, so one

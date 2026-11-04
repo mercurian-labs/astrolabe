@@ -150,7 +150,8 @@ export function ThreadsFilterPills({
   onClearOtherStatuses,
   onClear,
 }: {
-  readonly pickedProjects: ReadonlyArray<ProjectFilterOption<ProjectFaviconProject>>;
+  /** Null while every project shows; empty while none does. */
+  readonly pickedProjects: ReadonlyArray<ProjectFilterOption<ProjectFaviconProject>> | null;
   readonly otherStatuses: ReadonlyArray<ThreadStatusFilter>;
   readonly needsYou: { readonly on: boolean; readonly count: number };
   readonly onToggleNeedsYou: () => void;
@@ -161,9 +162,7 @@ export function ThreadsFilterPills({
 }) {
   const showNeedsYou = needsYou.on || needsYou.count > 0;
   const pillCount =
-    (needsYou.on ? 1 : 0) +
-    (pickedProjects.length > 0 ? 1 : 0) +
-    (otherStatuses.length > 0 ? 1 : 0);
+    (needsYou.on ? 1 : 0) + (pickedProjects !== null ? 1 : 0) + (otherStatuses.length > 0 ? 1 : 0);
   if (!showNeedsYou && pillCount === 0) return null;
   return (
     <FilterPills label="Thread filters" count={pillCount} onClear={onClear}>
@@ -176,7 +175,7 @@ export function ThreadsFilterPills({
           onToggle={onToggleNeedsYou}
         />
       ) : null}
-      {pickedProjects.length > 0 ? (
+      {pickedProjects !== null ? (
         <FilterPill
           label={namesOrCount(
             pickedProjects.map((item) => item.label),
@@ -211,7 +210,11 @@ export function ThreadsFilterPills({
 
 /** The picks' names, or how many past two. */
 export const namesOrCount = (names: ReadonlyArray<string>, noun: string) =>
-  names.length <= 2 ? names.join(", ") : `${names.length} ${noun}`;
+  names.length === 0
+    ? `No ${noun}`
+    : names.length <= 2
+      ? names.join(", ")
+      : `${names.length} ${noun}`;
 
 /** Up to three picks' icons, overlapping. */
 export function PillIcons({ children }: { readonly children: ReactNode }) {

@@ -599,7 +599,7 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null) {
 /**
  * Where the tabs of `item` dragged over `pane` at (clientX, clientY) would land: over the strip
  * they join the pane's tabs at the insertion line, over the content they divide the pane on the
- * nearest half. Null for every tab of a pane over its own pane.
+ * nearest half. Null for every tab of a pane over its own pane, and over a strip they are kept from.
  */
 function dropTargetAt(
   pane: HTMLElement,
@@ -607,6 +607,7 @@ function dropTargetAt(
   item: DragItem,
   clientX: number,
   clientY: number,
+  keptFromPane: PaneTabs["keptFromPane"],
 ): DropTarget | null {
   // Every tab of a pane dragged over that pane has nowhere to go.
   if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
@@ -619,7 +620,11 @@ function dropTargetAt(
     rect.height,
     stripSize,
   );
-  if (zone === "center") return stripTargetAt(pane, rect, leaf, item, clientX);
+  if (zone === "center") {
+    return keptFromPane?.(item.keys, leaf.tabs)
+      ? null
+      : stripTargetAt(pane, rect, leaf, item, clientX);
+  }
   const halfWidth = Math.round(rect.width / 2);
   const content = rect.height - stripSize;
   const halfHeight = Math.round(content / 2);
@@ -781,7 +786,14 @@ export const PaneView = memo(function PaneView({
       const item = currentDrag();
       if (!item) return;
       event.stopPropagation();
-      const next = dropTargetAt(pane, latest.current.leaf, item, event.clientX, event.clientY);
+      const next = dropTargetAt(
+        pane,
+        latest.current.leaf,
+        item,
+        event.clientX,
+        event.clientY,
+        tabs.keptFromPane,
+      );
       if (!next) {
         if (latest.current.target) setTarget(null);
         return;
@@ -798,7 +810,14 @@ export const PaneView = memo(function PaneView({
       if (!item) return;
       event.stopPropagation();
       const { leaf: current } = latest.current;
-      const drop = dropTargetAt(pane, current, item, event.clientX, event.clientY);
+      const drop = dropTargetAt(
+        pane,
+        current,
+        item,
+        event.clientX,
+        event.clientY,
+        tabs.keptFromPane,
+      );
       setTarget(null);
       if (!drop) return;
       event.preventDefault();
@@ -838,7 +857,7 @@ export const PaneView = memo(function PaneView({
       pane.removeEventListener("dragleave", onDragLeave);
       pane.removeEventListener("drop", onDrop, true);
     };
-  }, [controller]);
+  }, [controller, tabs]);
 
   return (
     <section

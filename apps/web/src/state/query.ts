@@ -25,6 +25,21 @@ export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string
     : "The environment request failed.";
 }
 
+/** A query's answer, else why it has none; both null only while the first read runs. */
+export interface QueryAnswer<A> {
+  readonly data: A | null;
+  readonly error: string | null;
+}
+
+export function queryAnswer<A, E>(result: AsyncResult.AsyncResult<A, E>): QueryAnswer<A> {
+  const data = Option.getOrNull(AsyncResult.value(result));
+  return {
+    data,
+    error:
+      data === null && result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null,
+  };
+}
+
 function queryUpdatedAt(result: AsyncResult.AsyncResult<unknown, unknown>): number {
   return result._tag === "Success"
     ? result.timestamp
