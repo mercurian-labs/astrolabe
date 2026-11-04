@@ -11,6 +11,10 @@
     "./links": {
       "types": "./src/links.ts",
       "import": "./src/links.ts"
+    },
+    "./canvas": {
+      "types": "./src/canvas.ts",
+      "import": "./src/canvas.ts"
     }
   },
   "scripts": {
