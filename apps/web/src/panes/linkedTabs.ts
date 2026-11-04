@@ -27,6 +27,14 @@ export interface ParkedTab {
   readonly pane: string;
   readonly index: number;
   readonly active: boolean;
+  /** Hidden from the chat's linked tabs filter: it stays aside while its owner shows the rest. */
+  readonly hidden?: boolean;
+}
+
+/** One of a chat's linked tabs, and whether it shows when the chat is in front. */
+export interface LinkedTab {
+  readonly key: string;
+  readonly shown: boolean;
 }
 
 export interface LinkContext {
@@ -143,6 +151,67 @@ export function openLinked(
   };
 }
 
+/** `tabs` of the pane `pane` with what was set aside from it back, as `settleLinks` returns it. */
+function withParked(
+  tabs: readonly string[],
+  pane: string,
+  parked: LinkedArrangement["parked"],
+): string[] {
+  const order = [...tabs];
+  for (const [key, place] of parkedInOrder(parked)) {
+    if (place.pane === pane) order.splice(Math.min(place.index, order.length), 0, key);
+  }
+  return order;
+}
+
+const parkedInOrder = (parked: LinkedArrangement["parked"]) =>
+  Object.entries(parked).toSorted(([, a], [, b]) => a.index - b.index);
+
+/**
+ * Sets one of `owner`'s linked tabs aside on its own: it stays hidden while the rest show. Its
+ * index counts the tabs hidden before it, so tabs hidden one by one come back in order.
+ */
+export function hideLinkedTab(
+  state: LinkedArrangement,
+  key: string,
+  owner: string,
+): LinkedArrangement {
+  const place = state.parked[key];
+  if (place) return { ...state, parked: { ...state.parked, [key]: { ...place, hidden: true } } };
+  const leaf = leafWithTab(state.arrangement.root, key);
+  const linked = linkTab(state, key, owner);
+  return {
+    ...linked,
+    arrangement: removeTabs(state.arrangement, new Set([key])).arrangement,
+    parked: {
+      ...state.parked,
+      [key]: leaf
+        ? {
+            pane: leaf.id,
+            index: withParked(leaf.tabs, leaf.id, state.parked).indexOf(key),
+            active: false,
+            hidden: true,
+          }
+        : { pane: "", index: Number.MAX_SAFE_INTEGER, active: false, hidden: true },
+    },
+  };
+}
+
+/** Lets `keys` hidden on their own come back with the rest of their owner's tabs. */
+export function showLinkedTabs(
+  state: LinkedArrangement,
+  keys: readonly string[],
+): LinkedArrangement {
+  const parked = { ...state.parked };
+  for (const key of keys) {
+    const place = parked[key];
+    if (!place?.hidden) continue;
+    const { hidden: _hidden, ...rest } = place;
+    parked[key] = rest;
+  }
+  return { ...state, parked };
+}
+
 /**
  * Brings the arrangement in line with its links after any change: a chat's tabs leave its pane, a
  * closed chat's tabs close, the front owner is worked out again, tabs whose owner does not show
@@ -169,8 +238,9 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
       changed = true;
     }
   }
+  // A tab opened again by name while set aside is no longer aside.
   for (const key of Object.keys(parked)) {
-    if (key in owners) continue;
+    if (key in owners && !open.has(key)) continue;
     delete parked[key];
     changed = true;
   }
@@ -222,9 +292,9 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
 
   // Bring back what shows, where it stood, else where the last owner's tabs stood.
   const returning = Object.entries(parked)
-    .filter(([key]) => {
+    .filter(([key, place]) => {
       const owner = owners[key];
-      return owner !== undefined && shown(owner) && !hiding.has(key);
+      return owner !== undefined && shown(owner) && !hiding.has(key) && !place.hidden;
     })
     .toSorted(([, a], [, b]) => a.index - b.index);
   let home: string | null =
@@ -333,46 +403,42 @@ export function keptFromPane(
 }
 
 /**
- * `owner`'s linked tabs set aside, which its panel opening brings back: its own and those of any
- * owner it shows (a change group it works in), as they stood, then its thread's surfaces no pane
- * has held yet. Empty tabs are never set aside.
+ * `owner`'s linked tabs, its own and those of any owner it shows (a change group it works in), as
+ * they stand or stood, then its thread's surfaces no pane has held yet. With its panel closed none
+ * show, and an empty tab, which a closed panel drops, is not among them.
  */
-export function hiddenLinkedTabs(
+export function linkedTabsOf(
   state: LinkedArrangement,
   owner: string,
   context: LinkContext,
-): string[] {
+): LinkedTab[] {
+  const { root } = state.arrangement;
+  const panelOpen = context.open(owner);
   const open = new Set(allTabs(state.arrangement));
-  const parked = Object.entries(state.parked)
-    .filter(([key]) => {
-      const by = state.owners[key];
-      return by !== undefined && context.shows(by, owner) && !isEmptyTab(key);
-    })
-    .toSorted(([, a], [, b]) => a.index - b.index)
-    .map(([key]) => key);
+  const isLinked = (key: string) => {
+    const by = state.owners[key];
+    return by !== undefined && context.shows(by, owner);
+  };
+  // What stood in a pane since closed returns to the pane holding the rest, so it lists there.
+  const home = leaves(root).find((leaf) => leaf.tabs.some(isLinked))?.id ?? "";
+  const parked = Object.fromEntries(
+    Object.entries(state.parked).map(([key, place]) => [
+      key,
+      findLeaf(root, place.pane) ? place : { ...place, pane: home },
+    ]),
+  );
+  const held = leaves(root).flatMap((leaf) => withParked(leaf.tabs, leaf.id, parked));
+  const away = home === "" ? withParked([], "", parked) : [];
   const arriving = (context.arriving?.(owner) ?? []).filter(
     (key) => !open.has(key) && !(key in state.parked),
   );
-  return [...parked, ...arriving];
-}
-
-/**
- * What a chat's linked-tabs toggle offers: to hide its tabs while its panel is open, to bring
- * back the ones set aside, or with none, a new tab.
- */
-export type LinkedToggle =
-  | { readonly kind: "showing" }
-  | { readonly kind: "hidden"; readonly tabs: readonly string[] }
-  | { readonly kind: "none" };
-
-export function linkedToggle(
-  state: LinkedArrangement,
-  owner: string,
-  context: LinkContext,
-): LinkedToggle {
-  if (context.open(owner)) return { kind: "showing" };
-  const tabs = hiddenLinkedTabs(state, owner, context);
-  return tabs.length > 0 ? { kind: "hidden", tabs } : { kind: "none" };
+  const linked = [...held, ...away].filter(
+    (key) => isLinked(key) && (panelOpen || !isEmptyTab(key)),
+  );
+  return [...linked, ...arriving].map((key) => ({
+    key,
+    shown: panelOpen && !state.parked[key]?.hidden,
+  }));
 }
 
 /**

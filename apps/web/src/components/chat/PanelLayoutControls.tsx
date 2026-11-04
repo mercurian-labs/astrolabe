@@ -4,7 +4,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { memo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { LinkedTabsToggle } from "~/panes/LinkedTabsToggle";
+import { LinkedTabsFilter } from "~/panes/LinkedTabsFilter";
 import { useChatOwner } from "~/panes/PaneSurfaceHost";
 
 import type { ThreadPanelPresentation } from "../../rightPanelLayout";
@@ -110,7 +110,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
         </Tooltip>
       ) : null}
       {showRightPanelControl && chatOwner !== null ? (
-        <LinkedTabsToggle
+        <LinkedTabsFilter
           owner={chatOwner}
           available={rightPanelAvailable}
           shortcutLabel={rightPanelShortcutLabel}

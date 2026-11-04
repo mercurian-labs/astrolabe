@@ -12,16 +12,17 @@ import {
   type Arrangement,
 } from "./arrangement";
 import {
-  hiddenLinkedTabs,
+  hideLinkedTab,
   keptFromPane,
   linkedArrangement,
-  linkedToggle,
+  linkedTabsOf,
   linkTab,
   openLinked,
   settleLinks,
   unlinkTab,
   type LinkContext,
   type LinkedArrangement,
+  showLinkedTabs,
 } from "./linkedTabs";
 import { followRecord, type PanelRecord } from "./surfaceMirror";
 import { leaves, type Branch } from "./tree";
@@ -238,9 +239,7 @@ describe("hiding a chat's linked tabs", () => {
     expect(panes(hidden)).toEqual([[chatA]]);
     expect(hidden.parked).toEqual({});
     expect(hidden.owners).toEqual({});
-    expect(withClosed([chatA], () => linkedToggle(hidden, chatA, context))).toEqual({
-      kind: "none",
-    });
+    expect(withClosed([chatA], () => linkedTabsOf(hidden, chatA, context))).toEqual([]);
   });
 
   it("sets aside an empty tab whose chat only went behind another, as any other", () => {
@@ -278,45 +277,94 @@ describe("showing and hiding a chat's linked tabs", () => {
   });
 });
 
-describe("a chat's linked-tabs toggle", () => {
-  it("hides while the chat's panel is open, whether its tabs are on screen or not", () => {
+describe("a chat's linked tabs", () => {
+  const keysOf = (tabs: readonly { readonly key: string }[]) => tabs.map((tab) => tab.key);
+
+  it("all show while the chat's panel is open, whether on screen or not", () => {
     const state = withPanel();
-    expect(linkedToggle(state, chatA, context)).toEqual({ kind: "showing" });
-    expect(linkedToggle(state, chatB, context)).toEqual({ kind: "showing" });
+    expect(linkedTabsOf(state, chatA, context).every((tab) => tab.shown)).toBe(true);
+    expect(linkedTabsOf(state, chatB, context).every((tab) => tab.shown)).toBe(true);
   });
 
-  it("lists the tabs set aside with the chat's panel, in the order they stood", () => {
+  it("are listed as they stood, none showing, with the chat's panel closed", () => {
     const state = withClosed([chatA], () => settle(withPanel()));
-    expect(withClosed([chatA], () => linkedToggle(state, chatA, context))).toEqual({
-      kind: "hidden",
-      tabs: [terminalA, diffA],
-    });
+    expect(withClosed([chatA], () => linkedTabsOf(state, chatA, context))).toEqual([
+      { key: terminalA, shown: false },
+      { key: diffA, shown: false },
+    ]);
   });
 
-  it("counts only the chat's own hidden tabs and its group's, not another chat's", () => {
+  it("count the chat's own and its group's, not another chat's", () => {
     const changeRequest = "wiki-change:e:w:cr1";
     let state = change(withPanel(), (arrangement) => openTab(arrangement, changeRequest, "p1"));
     state = settle(linkTab(state, changeRequest, group));
     state = withClosed([chatA, chatB], () => settle(state));
     withClosed([chatA, chatB], () => {
-      expect(hiddenLinkedTabs(state, chatA, context)).toEqual([terminalA, diffA, changeRequest]);
+      expect(keysOf(linkedTabsOf(state, chatA, context))).toEqual([
+        terminalA,
+        diffA,
+        changeRequest,
+      ]);
       // B's Files surface is in its thread's record, though no pane has held it yet.
-      expect(hiddenLinkedTabs(state, chatB, context)).toEqual([filesB]);
+      expect(keysOf(linkedTabsOf(state, chatB, context))).toEqual([filesB]);
     });
   });
 
-  it("has nothing to toggle with nothing set aside", () => {
+  it("are none with nothing linked", () => {
     const state = settle(linkedArrangement(openTab(startingArrangement(), chatA)));
-    expect(withClosed([chatA], () => linkedToggle(state, chatA, context))).toEqual({
-      kind: "none",
-    });
+    expect(withClosed([chatA], () => linkedTabsOf(state, chatA, context))).toEqual([]);
   });
 
-  it("no longer lists a tab closed for good, nor brings it back", () => {
+  it("no longer list a tab closed for good, nor bring it back", () => {
     let state = change(withPanel(), (arrangement) => closeTab(arrangement, diffA));
     state = withClosed([chatA], () => settle(state));
-    expect(withClosed([chatA], () => hiddenLinkedTabs(state, chatA, context))).toEqual([terminalA]);
+    expect(withClosed([chatA], () => keysOf(linkedTabsOf(state, chatA, context)))).toEqual([
+      terminalA,
+    ]);
     expect(panes(settle(state))).toEqual([[chatB, chatA], [terminalA]]);
+  });
+
+  it("can hide one, which stays aside while the rest show and returns where it stood", () => {
+    const state = settle(hideLinkedTab(withPanel(), terminalA, chatA));
+    expect(panes(state)).toEqual([[chatB, chatA], [diffA]]);
+    expect(linkedTabsOf(state, chatA, context)).toEqual([
+      { key: terminalA, shown: false },
+      { key: diffA, shown: true },
+    ]);
+
+    // Going behind another chat and back leaves it hidden.
+    const behind = change(state, (arrangement) => activateTab(arrangement, chatB));
+    const back = change(behind, (arrangement) => activateTab(arrangement, chatA));
+    expect(panes(back)).toEqual([[chatB, chatA], [diffA]]);
+
+    expect(panes(settle(showLinkedTabs(back, [terminalA])))).toEqual([
+      [chatB, chatA],
+      [terminalA, diffA],
+    ]);
+  });
+
+  it("keep their order when hidden one by one from the left, listed and returning", () => {
+    const third = "chat-surface:e:a:files";
+    const three = settle(openLinked(withPanel(), third));
+    expect(panes(three)).toEqual([
+      [chatB, chatA],
+      [terminalA, diffA, third],
+    ]);
+    const state = settle(
+      hideLinkedTab(settle(hideLinkedTab(three, terminalA, chatA)), diffA, chatA),
+    );
+    expect(keysOf(linkedTabsOf(state, chatA, context))).toEqual([terminalA, diffA, third]);
+    expect(panes(settle(showLinkedTabs(state, [diffA, terminalA])))).toEqual([
+      [chatB, chatA],
+      [terminalA, diffA, third],
+    ]);
+  });
+
+  it("stop being aside when opened again by name", () => {
+    const hidden = settle(hideLinkedTab(withPanel(), terminalA, chatA));
+    const opened = change(hidden, (arrangement) => openTab(arrangement, terminalA, "p1"));
+    expect(opened.parked[terminalA]).toBeUndefined();
+    expect(opened.owners[terminalA]).toBe(chatA);
   });
 });
 

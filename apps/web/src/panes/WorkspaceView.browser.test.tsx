@@ -500,7 +500,7 @@ describe("WorkspaceView chat tabs", () => {
     await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A"))!)));
     await change(() => useRightPanelStore.getState().close(refOf("A")));
     const terminalA = chatSurfaceKey(chatOf("A"), "terminal:t1");
-    expect(workspace.toggleOf(chatOf("A"))).toEqual({ kind: "hidden", tabs: [terminalA] });
+    expect(workspace.linkedTabsOf(chatOf("A"))).toEqual([{ key: terminalA, shown: false }]);
     expect(shows("B")).toBe(true);
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     const pressModAltB = () =>
@@ -519,12 +519,12 @@ describe("WorkspaceView chat tabs", () => {
 
     await pressModAltB();
     expect(probe.panelToggles).toEqual(["A"]);
-    expect(workspace.toggleOf(chatOf("A")).kind).toBe("showing");
+    expect(workspace.linkedTabsOf(chatOf("A"))[0]?.shown).toBe(true);
     expect(paneOf(terminalA)).toBeDefined();
 
     await pressModAltB();
     expect(probe.panelToggles).toEqual(["A", "A"]);
-    expect(workspace.toggleOf(chatOf("A")).kind).toBe("hidden");
+    expect(workspace.linkedTabsOf(chatOf("A"))[0]?.shown).toBe(false);
     expect(useRightPanelStore.getState().byThreadKey[scopedThreadKey(refOf("B"))]?.isOpen).toBe(
       true,
     );

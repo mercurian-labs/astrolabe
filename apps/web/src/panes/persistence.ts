@@ -177,7 +177,12 @@ export function parseLinkedArrangement(
       const { pane, index, active } = place;
       if (typeof pane !== "string" || typeof index !== "number" || !Number.isFinite(index))
         continue;
-      parked[key] = { pane, index: Math.max(0, index), active: active === true };
+      parked[key] = {
+        pane,
+        index: Math.max(0, index),
+        active: active === true,
+        ...(place.hidden === true ? { hidden: true } : {}),
+      };
     }
   }
   const owners: Record<string, string> = {};
