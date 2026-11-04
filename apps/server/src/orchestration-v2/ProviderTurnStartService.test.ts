@@ -269,6 +269,7 @@ it.each([
 function makeLocalCommandHarness(input: {
   readonly text: string;
   readonly wikiNote?: string;
+  readonly newlyLinkedWikiNote?: string;
   readonly worktreePath?: string;
   readonly worktreesDir?: string;
   readonly workspaceRoot?: string;
@@ -955,7 +956,12 @@ function makeLocalCommandHarness(input: {
         input.wikiNote === undefined
           ? Layer.empty
           : Layer.mock(WikiService.WikiService)({
-              agentNote: () => Effect.succeed(input.wikiNote ?? null),
+              agentNote: (_projectId, linkedSince) =>
+                Effect.succeed(
+                  linkedSince === undefined
+                    ? (input.wikiNote ?? null)
+                    : (input.newlyLinkedWikiNote ?? null),
+                ),
             }),
       ),
     ),
@@ -1298,17 +1304,49 @@ effectIt.effect.each([
   }),
 );
 
-effectIt.effect.each([
-  { label: "a new native conversation", text: "Plan the importer", noted: true },
-  { label: "a native conversation with turns", text: "Plan the importer", noted: false },
-  { label: "a slash command", text: "/review", noted: false },
-] as const)("tells $label about the repository's linked wikis: $noted", (scenario) =>
+const CONTINUING_WIKI_NOTE_SCENARIOS = [
+  { label: "a new native conversation", text: "Plan the importer", expected: "every link" },
+  {
+    label: "a native conversation with turns, with no new links",
+    text: "Plan the importer",
+    continues: true,
+    expected: "nothing",
+  },
+  {
+    label: "a native conversation with turns, after a wiki was linked",
+    text: "Plan the importer",
+    continues: true,
+    newLink: true,
+    expected: "the new link",
+  },
+  {
+    label: "a native conversation that has only had a slash command",
+    text: "Plan the importer",
+    continues: true,
+    previousMessage: "/review",
+    expected: "every link",
+  },
+  { label: "a slash command", text: "/review", expected: "nothing" },
+] as const satisfies ReadonlyArray<{
+  readonly label: string;
+  readonly text: string;
+  readonly continues?: boolean;
+  readonly newLink?: boolean;
+  readonly previousMessage?: string;
+  readonly expected: "every link" | "the new link" | "nothing";
+}>;
+
+effectIt.effect.each(CONTINUING_WIKI_NOTE_SCENARIOS)("tells $label about $expected", (scenario) =>
   Effect.gen(function* () {
     const wikiNote = '<astrolabe_wikis>linked to the wiki "Plans"</astrolabe_wikis>';
-    const continues = scenario.label === "a native conversation with turns";
+    const newlyLinkedWikiNote = '<astrolabe_wikis>linked to the wiki "New"</astrolabe_wikis>';
+    const continues = "continues" in scenario;
+    const previousMessage = "previousMessage" in scenario ? scenario.previousMessage : undefined;
     const harness = makeLocalCommandHarness({
       text: scenario.text,
       wikiNote,
+      ...("newLink" in scenario ? { newlyLinkedWikiNote } : {}),
+      ...(previousMessage === undefined ? {} : { previousMessages: [previousMessage] }),
       ...(continues
         ? { previousTurn: { runStatus: "completed", turnStatus: "completed" } as const }
         : { failReadsAfterRunning: true }),
@@ -1320,6 +1358,13 @@ effectIt.effect.each([
       const previous = projection.runs[0]!;
       harness.setProjection({
         ...projection,
+        runs: [
+          {
+            ...previous,
+            ...(previousMessage === undefined ? {} : { userMessageId: projection.messages[0]!.id }),
+          },
+          ...projection.runs.slice(1),
+        ],
         attempts: [
           {
             ...projection.attempts[0]!,
@@ -1335,9 +1380,12 @@ effectIt.effect.each([
 
     yield* harness.start;
 
-    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(
-      scenario.noted ? `${scenario.text}\n\n${wikiNote}` : scenario.text,
-    );
+    const told = {
+      "every link": `${scenario.text}\n\n${wikiNote}`,
+      "the new link": `${scenario.text}\n\n${newlyLinkedWikiNote}`,
+      nothing: scenario.text,
+    }[scenario.expected];
+    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(told);
   }),
 );
 

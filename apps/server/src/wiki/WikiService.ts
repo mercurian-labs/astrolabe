@@ -57,6 +57,7 @@ import {
   type WikiSummary,
   type WikiTarget,
   type WikiTransformInput,
+  wikiAgentGuidance,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { newProjectFolderName } from "@t3tools/shared/path";
@@ -70,6 +71,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Record from "effect/Record";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -132,19 +134,12 @@ export interface WikiAuthor {
 /** The person at the keyboard, for changes made from the app. */
 export const person: WikiAuthor = { actor: "You", threadId: null };
 
-const quoteList = (names: ReadonlyArray<string>) => {
-  const quoted = names.map((name) => `"${name}"`);
-  return quoted.length < 2
-    ? quoted.join("")
-    : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
-};
-
 /** What a thread's agent is told about the wikis its repository is linked to. */
 const linkedWikiNote = (names: ReadonlyArray<string>): string | null =>
   names.length === 0
     ? null
     : `<astrolabe_wikis>
-This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${quoteList(names)}, where its research and plans live. When a task involves research, planning, or building a feature, first search it with the astrolabe_wiki_* tools for what it already says. Write findings and plans there with astrolabe_wiki_amend, not as files in this repository.
+${wikiAgentGuidance(names)}
 </astrolabe_wikis>`;
 
 /**
@@ -171,8 +166,14 @@ export class WikiService extends Context.Service<
     readonly setProjectLink: (
       input: WikiSetProjectLinkInput,
     ) => Effect.Effect<WikiSummary, WikiError>;
-    /** The note a thread in this repository starts with, or null when no wiki is linked to it. */
-    readonly agentNote: (projectId: ProjectId) => Effect.Effect<string | null, WikiError>;
+    /**
+     * The note for a thread in this repository, or null when there is nothing to tell: every
+     * linked wiki, or with `linkedSince` only those linked after it.
+     */
+    readonly agentNote: (
+      projectId: ProjectId,
+      linkedSince?: DateTime.Utc,
+    ) => Effect.Effect<string | null, WikiError>;
     /** The folder holding a wiki's main line, the repository its worktrees belong to. */
     readonly root: (wikiId: WikiId) => Effect.Effect<string, WikiError>;
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
@@ -1921,6 +1922,7 @@ const make = Effect.gen(function* () {
       root,
       mainBranch,
       projectIds: [],
+      projectLinkedAt: {},
       mirror: null,
       createdAt,
     };
@@ -2099,32 +2101,49 @@ const make = Effect.gen(function* () {
     withWiki(input.wikiId, (wiki) =>
       locked(
         wiki,
-        updateRegistry((registry) => {
-          const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId) ?? wiki;
-          const others = current.projectIds.filter((id) => id !== input.projectId);
-          const next = {
-            ...current,
-            projectIds: input.linked ? [...others, input.projectId] : others,
-          };
-          return Effect.succeed([
-            {
-              ...registry,
-              wikis: registry.wikis.map((entry) => (entry.wikiId === next.wikiId ? next : entry)),
-            },
-            next,
-          ] as const);
-        }),
+        updateRegistry((registry) =>
+          Effect.map(nowIso, (at) => {
+            const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId) ?? wiki;
+            const others = current.projectIds.filter((id) => id !== input.projectId);
+            const otherLinkTimes = Record.remove(current.projectLinkedAt, input.projectId);
+            const next = {
+              ...current,
+              projectIds: input.linked ? [...others, input.projectId] : others,
+              projectLinkedAt: !input.linked
+                ? otherLinkTimes
+                : current.projectIds.includes(input.projectId)
+                  ? current.projectLinkedAt
+                  : { ...otherLinkTimes, [input.projectId]: at },
+            };
+            return [
+              {
+                ...registry,
+                wikis: registry.wikis.map((entry) => (entry.wikiId === next.wikiId ? next : entry)),
+              },
+              next,
+            ] as const;
+          }),
+        ),
       ).pipe(
         Effect.tap(() => publish("linked", wiki.wikiId, null)),
         Effect.flatMap(summary),
       ),
     );
 
-  const agentNote: WikiService["Service"]["agentNote"] = (projectId) =>
+  const agentNote: WikiService["Service"]["agentNote"] = (projectId, linkedSince) =>
     loadRegistry.pipe(
       Effect.map((registry) =>
         linkedWikiNote(
-          registry.wikis.filter((wiki) => wiki.projectIds.includes(projectId)).map((w) => w.name),
+          registry.wikis
+            .filter((wiki) => {
+              if (!wiki.projectIds.includes(projectId)) return false;
+              if (linkedSince === undefined) return true;
+              const linkedAt = wiki.projectLinkedAt[projectId];
+              return (
+                linkedAt !== undefined && Date.parse(linkedAt) > DateTime.toEpochMillis(linkedSince)
+              );
+            })
+            .map((wiki) => wiki.name),
         ),
       ),
     );

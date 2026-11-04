@@ -858,25 +858,48 @@ export const layer: Layer.Layer<
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );
-      // Astrolabe: a new native conversation learns its repository's linked wikis. Slash commands
-      // (and /goal) stay verbatim, since providers parse everything after them as arguments.
-      const linkedWikiNote = yield* Effect.cached(
-        userText.trimStart().startsWith("/") || Option.isNone(wikis)
+      // Astrolabe: a new native conversation learns its repository's linked wikis, and one with
+      // turns learns those linked since its last prompt. Slash commands (and /goal) stay verbatim,
+      // since providers parse everything after them as arguments, so they tell it nothing.
+      const isVerbatimPrompt = (text: string) => text.trimStart().startsWith("/");
+      const deliveredRunIds = new Set(
+        projection.attempts
+          .filter((attempt) =>
+            projection.providerTurns.some((turn) => turn.runAttemptId === attempt.id),
+          )
+          .map((attempt) => attempt.runId),
+      );
+      const lastPrompt = projection.runs.findLast(
+        (source) =>
+          source.ordinal < run.ordinal &&
+          source.providerThreadId === providerThread.id &&
+          deliveredRunIds.has(source.id) &&
+          !isVerbatimPrompt(
+            projection.messages.find((candidate) => candidate.id === source.userMessageId)?.text ??
+              "",
+          ),
+      );
+      const wikiNoteLinkedSince = (linkedSince?: DateTime.Utc) =>
+        isVerbatimPrompt(userText) || Option.isNone(wikis)
           ? Effect.succeed<string | null>(null)
-          : wikis.value.agentNote(projection.thread.projectId).pipe(
+          : wikis.value.agentNote(projection.thread.projectId, linkedSince).pipe(
               Effect.catch((cause) =>
                 Effect.logWarning("Could not read the wikis linked to this project.", {
                   cause,
                 }).pipe(Effect.as(null)),
               ),
-            ),
-      );
-      const providerTextFor = (nativeThreadHasTurns: boolean) =>
-        nativeThreadHasTurns
-          ? Effect.succeed(userText)
-          : linkedWikiNote.pipe(
-              Effect.map((note) => (note === null ? userText : `${userText}\n\n${note}`)),
             );
+      const everyLinkedWiki = yield* Effect.cached(wikiNoteLinkedSince());
+      const newlyLinkedWikis =
+        lastPrompt === undefined
+          ? everyLinkedWiki
+          : yield* Effect.cached(
+              wikiNoteLinkedSince(lastPrompt.startedAt ?? lastPrompt.requestedAt),
+            );
+      const providerTextFor = (nativeThreadHasTurns: boolean) =>
+        (nativeThreadHasTurns ? newlyLinkedWikis : everyLinkedWiki).pipe(
+          Effect.map((note) => (note === null ? userText : `${userText}\n\n${note}`)),
+        );
       const handoffContextForThread = (loadedProviderThread: OrchestrationV2ProviderThread) => {
         const measuredContext = latestNativeContextUsage(projection, providerThread);
         const previousSelection =
