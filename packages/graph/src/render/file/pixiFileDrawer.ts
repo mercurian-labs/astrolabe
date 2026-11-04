@@ -3,6 +3,8 @@
  * background shows, with links and nodes as two Graphics and a Text per label. Pixi never runs
  * its own loop: the ticker never starts, and a frame is rendered only when one is handed over.
  */
+// The desktop app's CSP blocks eval, which Pixi needs unless this module replaces it.
+import "pixi.js/unsafe-eval";
 import {
   AccessibilitySystem,
   Application,
