@@ -4,15 +4,17 @@ A wiki is a folder of linked notes that you and your agents keep together: plain
 
 ## Add a wiki
 
-Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a wiki**, which works like adding a project: start a new wiki, choose a git repository you already have, or clone one. **Add wiki** in the command palette does the same. A wiki's settings (its folder, mirror, and removing it) open from the gear on its row in the filter.
+Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a wiki**, which works like adding a project: start a new wiki, choose a git repository you already have, or clone one. **Add wiki** in the command palette and **Add a wiki** in **Settings → Wikis** do the same. **Settings → Wikis** lists every wiki; the gear on a wiki's row in the filter opens its page there, with its folder, linked projects, mirror, and removing it.
 
 Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them, and `.base` files are [bases](#bases). A wiki is not a project: no thread works in its folder. Agents reach it from threads in your projects, and every change they make goes to a change request.
 
 ## Link a wiki to a project
 
-Link a wiki to the projects it plans, so their agents know where research and plans live. After you add a wiki or a project, the command palette offers to link it to one on the same computer; **Not now** skips it. Change links any time with **Projects** in a wiki's settings, or **Wikis** in a project's settings (**Settings → Projects**). A wiki can plan several projects, and a project can have several wikis.
+Link a wiki to the projects it plans, so their agents know where research and plans live. After you add a wiki or a project, the command palette offers to link it to one on the same computer; **Not now** skips it. Change links any time under **Projects** on a wiki's page in **Settings → Wikis**, or **Wikis** in a project's settings (**Settings → Projects**). A wiki can plan several projects, and a project can have several wikis.
 
-When a conversation starts in a linked project, its agent is told which wikis hold that project's research and plans: to look there first when it researches, plans, or builds a feature, and to write what it learns back to the wiki.
+A linked project's chats show each of its wikis in the header; click one to open it.
+
+When a conversation starts in a linked project, its agent is told which wikis hold that project's research and plans: to look there first when it researches, plans, or builds a feature, and to write what it learns back to the wiki. A thread that already exists hears about a new link with its next message, never during a turn. Unlinking stops new threads hearing about the wiki; a thread that already heard keeps what it knows. **What agents are told** on a wiki's page shows the exact words.
 
 ## Read and edit notes
 
@@ -73,6 +75,6 @@ When an agent amends a note you have open in that change request, its changes ap
 
 ## Keep a copy elsewhere
 
-In a wiki's menu, **Mirror** sets a git remote, such as a repository you own on GitHub. After every merge, Astrolabe pushes the wiki's main line and its full history there, so you always have a complete copy. The mirror is a copy only: changes made to it directly are replaced by the next push, and the wiki tells you when that happens.
+Under **Mirror** on a wiki's page in **Settings → Wikis**, set a git remote, such as a repository you own on GitHub. After every merge, Astrolabe pushes the wiki's main line and its full history there, so you always have a complete copy. The mirror is a copy only: changes made to it directly are replaced by the next push, and the wiki tells you when that happens.
 
 Removing a wiki from Astrolabe leaves its folder and files untouched.

@@ -117,7 +117,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
-- **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinkMenus.tsx`): a wiki is not
+- **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinks.tsx`): a wiki is not
   a project. Adding a wiki or a project in the palette ends on a link step, a group headed
   "Link <wiki> to the project it plans" or "Link <project> to a wiki, where its research and
   plans live", with the candidates and **Not now** ("Link it later in its settings"). The
@@ -252,9 +252,11 @@ Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
 `projects/ThreadsFilterParts.tsx` (the pills, shared with Agents), the Wikis branches in `AppSidebarLayout.tsx` and
 `sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
 `WikiChangesSection.tsx` is pull-requests.md's). Linking and the agent note: `wikiLinkStep.tsx`
-and the palette's link step in `CommandPalette.tsx`, the Wikis row in
+and the palette's link step in `CommandPalette.tsx`, the Wikis section in
 `settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
-`orchestration-v2/ProviderTurnStartService.ts`. `[[`: `composer-logic.ts`
+`orchestration-v2/ProviderTurnStartService.ts`. Settings → Wikis:
+`settings/WikisSettings.tsx`, `routes/_chat.settings.wikis.tsx`. The chat header's chips:
+`wiki/LinkedWikiChips.tsx`. `[[`: `composer-logic.ts`
 (`detectWikiNoteTrigger`), `chat/composerWikiNoteItems.ts`, `WikiNoteContextChip.tsx`, and
 mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseView.tsx`,
 `packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,
