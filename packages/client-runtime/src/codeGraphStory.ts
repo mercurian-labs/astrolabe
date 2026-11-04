@@ -15,7 +15,7 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     : null;
 
 /** A tool's input as an object: parsed from JSON text, out of Cursor's args envelope, or as given. */
-function argumentsOf(input: unknown): unknown {
+export function argumentsOf(input: unknown): unknown {
   if (typeof input === "string") {
     try {
       return argumentsOf(JSON.parse(input));

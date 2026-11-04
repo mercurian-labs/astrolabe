@@ -476,6 +476,9 @@ export function summarizeT3ToolCalls(
       );
       break;
     }
+    case "canvas":
+      label = phrase("Drew", "draw", quantity(selected.length, "canvas", "canvases"));
+      break;
   }
   return { label, failedCount };
 }

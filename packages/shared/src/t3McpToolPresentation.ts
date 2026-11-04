@@ -72,7 +72,8 @@ export type T3McpToolSummaryAction =
   | "wiki-read"
   | "wiki-amend"
   | "code-read"
-  | "code-graph";
+  | "code-graph"
+  | "canvas";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -394,6 +395,7 @@ const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   astrolabe_code_definition: tool(["Find", "Finding", "Found", "a definition"], "code-read"),
   astrolabe_code_references: tool(["Find", "Finding", "Found", "references"], "code-read"),
   astrolabe_code_graph_show: tool(["Show", "Showing", "Showed", "a code graph"], "code-graph"),
+  astrolabe_canvas_show: tool(["Draw", "Drawing", "Drew", "a canvas"], "canvas"),
 };
 
 // Astrolabe's wiki and change-group tools were `t3_*` until 2026-10-30; older threads still say so.

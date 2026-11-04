@@ -306,6 +306,51 @@ const sides = (from: CanvasBounds, to: CanvasBounds): readonly [CanvasSide, Canv
   return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
 };
 
+/** Why a drawing can't be drawn, each said so its author can fix it; empty when it can. */
+export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  const unique = (id: string) => {
+    if (seen.has(id)) problems.push(`The id "${id}" is used twice.`);
+    seen.add(id);
+  };
+  for (const group of drawing.groups ?? []) unique(group.id);
+  for (const card of drawing.cards) unique(card.id);
+  const groups = new Set((drawing.groups ?? []).map((group) => group.id));
+  for (const card of drawing.cards) {
+    if (card.text === undefined && card.url === undefined && card.path === undefined) {
+      problems.push(`Card "${card.id}" needs text, url or path.`);
+    }
+    if (card.url !== undefined && card.path !== undefined) {
+      problems.push(`Card "${card.id}" has both url and path; it can only be one.`);
+    }
+    if (card.group !== undefined && !groups.has(card.group)) {
+      problems.push(`Card "${card.id}" names a group that isn't in \`groups\`: "${card.group}".`);
+    }
+    if (
+      card.path !== undefined &&
+      (/^([/\\]|[a-z]:)/i.test(card.path) || /(^|[/\\])\.\.([/\\]|$)/.test(card.path))
+    ) {
+      problems.push(`Card "${card.id}" needs a path relative to the repository root.`);
+    }
+    if (card.line === undefined && card.endLine !== undefined) {
+      problems.push(`Card "${card.id}" has endLine without line.`);
+    }
+    if (card.line !== undefined && card.line < 1) {
+      problems.push(`Card "${card.id}" has a line before the first.`);
+    }
+    if (card.line !== undefined && card.endLine !== undefined && card.endLine < card.line) {
+      problems.push(`Card "${card.id}" ends before it starts.`);
+    }
+  }
+  for (const { from, to } of drawing.arrows ?? []) {
+    for (const id of [from, to]) {
+      if (!seen.has(id)) problems.push(`An arrow names a card or group that isn't here: "${id}".`);
+    }
+  }
+  return problems;
+}
+
 /**
  * Lays a drawing out as a canvas. Pure and deterministic: every client draws the same board from
  * the same drawing. Groups are laid out first, then placed with the loose cards as single boxes.

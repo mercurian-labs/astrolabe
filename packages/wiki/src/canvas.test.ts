@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { canvasBounds, placeCanvas, type CanvasBounds, type CanvasDrawing } from "./canvas.ts";
+import {
+  canvasBounds,
+  canvasDrawingProblems,
+  placeCanvas,
+  type CanvasBounds,
+  type CanvasDrawing,
+} from "./canvas.ts";
 
 const overlap = (a: CanvasBounds, b: CanvasBounds) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -145,5 +151,49 @@ describe("placeCanvas", () => {
       }),
     );
     expect(height).toBeGreaterThan(width);
+  });
+});
+
+describe("canvasDrawingProblems", () => {
+  it("accepts a drawing whose references all hold", () => {
+    expect(
+      canvasDrawingProblems({
+        cards: [
+          { id: "a", text: "A", group: "g" },
+          { id: "b", path: "src/a.ts", line: 3, endLine: 9 },
+          { id: "c", url: "https://example.com" },
+        ],
+        groups: [{ id: "g" }],
+        arrows: [{ from: "a", to: "g" }],
+      }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["a repeated id", { cards: [...cards("a"), ...cards("a")] }, "used twice"],
+    ["a group sharing a card's id", { cards: cards("a"), groups: [{ id: "a" }] }, "used twice"],
+    ["an empty card", { cards: [{ id: "a" }] }, "needs text, url or path"],
+    ["a link that is also code", { cards: [{ id: "a", url: "x", path: "y" }] }, "only be one"],
+    ["an unknown group", { cards: [{ id: "a", text: "A", group: "g" }] }, "isn't in `groups`"],
+    ["an absolute path", { cards: [{ id: "a", path: "/etc/passwd" }] }, "relative"],
+    ["a Windows path", { cards: [{ id: "a", path: "C:\\x" }] }, "relative"],
+    ["a path out of the repository", { cards: [{ id: "a", path: "src/../../x" }] }, "relative"],
+    ["endLine alone", { cards: [{ id: "a", path: "x", endLine: 3 }] }, "without line"],
+    ["a line zero", { cards: [{ id: "a", path: "x", line: 0 }] }, "before the first"],
+    [
+      "lines backwards",
+      { cards: [{ id: "a", path: "x", line: 9, endLine: 3 }] },
+      "before it starts",
+    ],
+    ["an unknown arrow end", { cards: cards("a"), arrows: [{ from: "a", to: "b" }] }, "isn't here"],
+  ] satisfies ReadonlyArray<readonly [string, CanvasDrawing, string]>)(
+    "refuses %s",
+    (_name, drawing, problem) => {
+      expect(canvasDrawingProblems(drawing).join(" ")).toContain(problem);
+    },
+  );
+
+  it("doesn't mistake a double dot in a name for leaving the repository", () => {
+    expect(canvasDrawingProblems({ cards: [{ id: "a", path: "src/a..b.ts" }] })).toEqual([]);
   });
 });

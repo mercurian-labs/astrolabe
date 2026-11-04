@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 
 /** Astrolabe: what an agent sends to draw a canvas in its thread. It never sends coordinates. */
 
+export const CANVAS_SHOW_TOOL_NAME = "astrolabe_canvas_show";
 const CANVAS_SHOW_MAX_CARDS = 200;
 
 export const CanvasShowColor = Schema.Literals([

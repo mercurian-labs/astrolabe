@@ -70,7 +70,9 @@ import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
 import * as WikiHandlers from "./toolkits/wiki/handlers.ts";
 import * as ChangeGroupHandlers from "./toolkits/changeGroups/handlers.ts";
+import * as CanvasHandlers from "./toolkits/canvas/handlers.ts";
 import * as CodeHandlers from "./toolkits/code/handlers.ts";
+import { CanvasToolkit } from "./toolkits/canvas/tools.ts";
 import { CodeToolkit } from "./toolkits/code/tools.ts";
 import { ChangeGroupToolkit } from "./toolkits/changeGroups/tools.ts";
 import { WikiToolkit } from "./toolkits/wiki/tools.ts";
@@ -1134,6 +1136,7 @@ export const layerPullRequestsToolkit = toolkitRegistration(
 export const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
 const layerChangeGroupToolkit = toolkitRegistration(ChangeGroupToolkit, ChangeGroupHandlers.layer);
 export const layerCodeToolkit = toolkitRegistration(CodeToolkit, CodeHandlers.layer);
+export const layerCanvasToolkit = toolkitRegistration(CanvasToolkit, CanvasHandlers.layer);
 
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,
@@ -1172,6 +1175,7 @@ export const layerTools = Layer.mergeAll(
   layerWikiToolkit,
   layerChangeGroupToolkit,
   layerCodeToolkit,
+  layerCanvasToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
 );

@@ -1724,6 +1724,9 @@ importers:
       '@electric-sql/client':
         specifier: 1.5.28
         version: 1.5.28
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../wiki
       '@pierre/diffs':
         specifier: 1.6.1
         version: 1.6.1(patch_hash=4645364ddf113e48e8827f3b4966b3b1ff745317011e5a3d904e2d8672dee7dc)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
