@@ -1232,6 +1232,9 @@ importers:
       '@mercurian/graph':
         specifier: workspace:*
         version: link:../../packages/graph
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../../packages/wiki
       '@mercurian/wiki-editor':
         specifier: workspace:*
         version: link:../../packages/wiki-editor

@@ -1,3 +1,4 @@
+import { CanvasPanel } from "../canvas/CanvasPanel";
 import type {
   EditorId,
   EnvironmentId,
@@ -187,6 +188,8 @@ export function RightPanelSurfaceContent(props: {
           <GraphPanel threadRef={threadRef} />
         </Suspense>
       );
+    case "canvas":
+      return <CanvasPanel threadRef={threadRef} />;
     case "lineage":
       return (
         <Suspense fallback={null}>

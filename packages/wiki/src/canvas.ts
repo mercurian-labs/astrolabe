@@ -381,17 +381,19 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
       return [group.id, arrange(boxes, links)] as const;
     }),
   );
-  const blocks: Box[] = [
-    ...groups.map((group) => {
-      const layout = inner.get(group.id);
-      return {
-        id: group.id,
-        width: snap((layout?.width ?? 0) + GROUP_PADDING * 2),
-        height: snap((layout?.height ?? 0) + GROUP_PADDING * 2 + GROUP_LABEL),
-      };
-    }),
-    ...cards.flatMap((card) => (groupOf.has(card.id) ? [] : (boxOf.get(card.id) ?? []))),
-  ];
+  // Blocks keep the order the agent wrote their cards in: a cycle starts where it started.
+  const blockIds = [...new Set([...cards.map((card) => blockOf(card.id)), ...groupIds])];
+  const blocks = blockIds.flatMap((id): Box[] => {
+    const layout = inner.get(id);
+    if (layout === undefined) return boxOf.get(id) ?? [];
+    return [
+      {
+        id,
+        width: snap(layout.width + GROUP_PADDING * 2),
+        height: snap(layout.height + GROUP_PADDING * 2 + GROUP_LABEL),
+      },
+    ];
+  });
   const blockLinks = arrows.flatMap((arrow) => {
     const from = blockOf(arrow.from);
     const to = blockOf(arrow.to);

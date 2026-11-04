@@ -41,3 +41,14 @@ export function canvasViewFromToolItem(item: CanvasToolItem): CanvasView | undef
   viewsByItem.set(item, view);
   return view ?? undefined;
 }
+
+/** The thread's finished canvases, oldest first, each with its tool call's item id. */
+export function canvasViews(
+  items: ReadonlyArray<CanvasToolItem & { readonly id: string; readonly type: string }>,
+): ReadonlyArray<CanvasView & { readonly id: string }> {
+  return items.flatMap((item) => {
+    if (item.type !== "dynamic_tool") return [];
+    const view = canvasViewFromToolItem(item);
+    return view === undefined ? [] : [{ ...view, id: item.id }];
+  });
+}

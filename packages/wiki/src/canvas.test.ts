@@ -53,6 +53,32 @@ describe("placeCanvas", () => {
     expect(middle.x + middle.y).toBeLessThan(end.x + end.y);
   });
 
+  it("starts a cycle at the first card written, even when a later one is in a group", () => {
+    const drawing: CanvasDrawing = {
+      cards: [
+        { id: "client", text: "Client" },
+        { id: "service", text: "Service", group: "server" },
+        { id: "git", text: "Git" },
+      ],
+      groups: [{ id: "server" }],
+      arrows: [
+        { from: "client", to: "service" },
+        { from: "service", to: "git" },
+        { from: "git", to: "client" },
+      ],
+    };
+    const client = positionOf(drawing, "client");
+    const server = positionOf(drawing, "server");
+    const git = positionOf(drawing, "git");
+    expect(client.x + client.y).toBeLessThan(server.x + server.y);
+    expect(server.x + server.y).toBeLessThan(git.x + git.y);
+  });
+
+  it("draws an empty group rather than dropping what the agent named", () => {
+    const { nodes } = placeCanvas({ cards: cards("a"), groups: [{ id: "empty", label: "Empty" }] });
+    expect(nodes.map((node) => node.id).toSorted()).toEqual(["a", "empty"]);
+  });
+
   it("never overlaps cards, in flows, cycles, fans and loose grids", () => {
     const ids = Array.from({ length: 60 }, (_, index) => `c${index}`);
     const drawing: CanvasDrawing = {

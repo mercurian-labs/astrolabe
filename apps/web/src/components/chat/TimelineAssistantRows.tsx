@@ -1,3 +1,4 @@
+import { CanvasFrame } from "../canvas/CanvasFrame";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { type RunId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -266,6 +267,15 @@ export function HtmlRenderTimelineRow({
         threadRef={ctx.threadRef ?? undefined}
         onFullscreenChange={onFullscreenChange}
       />
+    </div>
+  );
+}
+
+export function CanvasTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "canvas" }> }) {
+  const { threadRef } = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1">
+      <CanvasFrame id={row.id} view={row.canvas} threadRef={threadRef ?? null} />
     </div>
   );
 }
