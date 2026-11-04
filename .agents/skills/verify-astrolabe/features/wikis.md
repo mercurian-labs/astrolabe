@@ -117,20 +117,22 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
   that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
   with `note=` reads the note inside it.
-- **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinkMenus.tsx`): a wiki is not
+- **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinks.tsx`): a wiki is not
   a project. Adding a wiki or a project in the palette ends on a link step, a group headed
   "Link <wiki> to the project it plans" or "Link <project> to a wiki, where its research and
   plans live", with the candidates and **Not now** ("Link it later in its settings"). The
   step shows only with source-control write access and something on the same server to link
-  to; otherwise the palette closes. Links change from the wiki's settings dialog (named after
-  the wiki; `button "Projects this wiki is linked to"`) and Settings → Projects → a project
-  (`button "Wikis this project is linked to"`, or **Add a wiki…** when its servers have no
-  wikis). Both menus hold `menuitemcheckbox` rows, and the trigger reads the linked names, or
-  "None", "No projects" or "No wikis".
+  to; otherwise the palette closes. Links change on a wiki's page in Settings → Wikis
+  (`/settings/wikis?wiki=<environmentId>:<wikiId>`, the filter's gear opens it) and in
+  Settings → a project's **Wikis** section (**Add a wiki** when its servers have no wikis).
+  Both are lists with **Unlink** and a searchable **Link a project** or **Link a wiki** picker,
+  and a chat in a linked project shows a chip per wiki in its header, hidden below `sm`.
 - **Agent note**: the first prompt of every new native conversation in a linked project,
   including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming the
   wikis and the `astrolabe_wiki_*` tools (`WikiService.agentNote`,
-  `ProviderTurnStartService.ts`); a prompt that starts with `/` never does. Only the provider
+  `ProviderTurnStartService.ts`); a conversation with turns gets it on its next prompt for wikis
+  linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
+  starts with `/` never does and doesn't count as its last. Only the provider
   sees it, not the user's bubble. Prove it with a real turn that never names the wiki. The
   host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
 - **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
@@ -252,9 +254,11 @@ Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
 `projects/ThreadsFilterParts.tsx` (the pills, shared with Agents), the Wikis branches in `AppSidebarLayout.tsx` and
 `sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
 `WikiChangesSection.tsx` is pull-requests.md's). Linking and the agent note: `wikiLinkStep.tsx`
-and the palette's link step in `CommandPalette.tsx`, the Wikis row in
+and the palette's link step in `CommandPalette.tsx`, the Wikis section in
 `settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
-`orchestration-v2/ProviderTurnStartService.ts`. `[[`: `composer-logic.ts`
+`orchestration-v2/ProviderTurnStartService.ts`. Settings → Wikis:
+`settings/WikisSettings.tsx`, `routes/_chat.settings.wikis.tsx`. The chat header's chips:
+`wiki/LinkedWikiChips.tsx`. `[[`: `composer-logic.ts`
 (`detectWikiNoteTrigger`), `chat/composerWikiNoteItems.ts`, `WikiNoteContextChip.tsx`, and
 mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseView.tsx`,
 `packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,

@@ -45,6 +45,14 @@ export const WikiMirrorStatus = Schema.Struct({
 });
 export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
+/** What a linked project's agents are told, for one or several wikis. */
+export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
+  const quoted = names.map((name) => `"${name}"`);
+  const list =
+    quoted.length < 2 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
+  return `This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${list}, where its research and plans live. When a task involves research, planning, or building a feature, first search it with the astrolabe_wiki_* tools for what it already says. Write findings and plans there with astrolabe_wiki_amend, not as files in this repository.`;
+};
+
 const WikiSummaryFields = {
   wikiId: WikiId,
   name: TrimmedNonEmptyString,

@@ -122,7 +122,6 @@ import {
 } from "../repositories/RepositoryFilterMenu";
 import { worktreeFilesKey } from "../repositories/repositoryScope";
 import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
-import { WikiSettingsDialog } from "./WikiSettingsDialog";
 import {
   EMPTY_WIKI_FILTER,
   filterWikiKeys,
@@ -183,7 +182,6 @@ export function WikiSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const [foldedWikis, setFoldedWikis] = useState<ReadonlySet<string>>(() => new Set());
   const [finding, setFinding] = useState(false);
-  const [settingsFor, setSettingsFor] = useState<WikiOverview | null>(null);
   const navigate = useNavigate();
   const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
     open: false,
@@ -524,7 +522,14 @@ export function WikiSidebar() {
                     menu={menu}
                     dispatchMenu={dispatchMenu}
                     onFilter={setFilter}
-                    onSettings={setSettingsFor}
+                    onSettings={(overview) =>
+                      void navigate({
+                        to: "/settings/wikis",
+                        search: {
+                          wiki: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
+                        },
+                      })
+                    }
                   />
                 </>
               }
@@ -679,13 +684,6 @@ export function WikiSidebar() {
         scope={scope}
         mode="new"
       />
-      {settingsFor ? (
-        <WikiSettingsDialog
-          environmentId={settingsFor.environmentId}
-          wiki={settingsFor.wiki}
-          onClose={() => setSettingsFor(null)}
-        />
-      ) : null}
     </>
   );
 }

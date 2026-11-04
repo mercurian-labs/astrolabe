@@ -1,12 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProjectId, ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import type * as Scope from "effect/Scope";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
@@ -213,6 +215,32 @@ it.effect("links repositories, and tells their threads which wikis hold their pl
       yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: false });
       assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, []);
       assert.isNull(yield* wikis.agentNote(repository));
+    }),
+  ),
+);
+
+it.effect("tells a conversation with turns only about wikis linked since its last message", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, summary, wikis } = yield* registeredWiki(harness);
+      const repository = ProjectId.make("project-app");
+      const beforeTheLink = yield* DateTime.now;
+      yield* TestClock.adjust("1 minute");
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      yield* TestClock.adjust("1 minute");
+      const afterTheLink = yield* DateTime.now;
+
+      assert.include(yield* wikis.agentNote(repository, beforeTheLink), `wiki "${summary.name}"`);
+      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+
+      // Saving an existing link again is not a new link.
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
+      yield* TestClock.adjust("1 minute");
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      assert.include(yield* wikis.agentNote(repository, afterTheLink), `wiki "${summary.name}"`);
     }),
   ),
 );

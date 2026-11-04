@@ -45,7 +45,7 @@ import {
 } from "./ProjectFaviconPickerDialog";
 import { CodeIndexProjectSettings } from "./CodeIndexSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
-import { RepositoryWikisMenu } from "../wiki/WikiLinkMenus";
+import { ProjectWikiLinks } from "../wiki/WikiLinks";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import {
   defaultProjectIcon,
@@ -517,11 +517,6 @@ function ProjectDetail({
               </div>
             }
           />
-          <SettingsRow
-            title="Wikis"
-            description="Where this project's research and plans live. Its threads are told to read and write them there."
-            control={<RepositoryWikisMenu checkouts={group.memberProjects} />}
-          />
           {canOrganize ? (
             <>
               <SettingsRow
@@ -569,6 +564,7 @@ function ProjectDetail({
             </>
           ) : null}
         </SettingsSection>
+        <ProjectWikiLinks checkouts={group.memberProjects} />
         <ProjectDefaultsSettings category="project" />
         <CodeIndexProjectSettings members={group.memberProjects} />
         <ProjectActionsSettings />

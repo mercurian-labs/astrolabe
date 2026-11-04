@@ -27,6 +27,10 @@ export const WikiRecord = Schema.Struct({
   root: TrimmedNonEmptyString,
   mainBranch: TrimmedNonEmptyString,
   projectIds: Schema.Array(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /** When each link was made, so a running conversation hears of it once. Older links have none. */
+  projectLinkedAt: Schema.Record(ProjectId, IsoDateTime).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   mirror: Schema.NullOr(WikiMirrorStatus),
   createdAt: IsoDateTime,
 });
