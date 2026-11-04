@@ -196,7 +196,10 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
       >
         <SettingsRow title="Folder" description={<span className="break-all">{wiki.root}</span>} />
         <FactRow title="Main line" value={wiki.mainBranch} />
-        <FactRow title="Documents" value={index === null ? "…" : index.notes.length} />
+        <FactRow
+          title="Documents"
+          value={index === null ? "…" : index.notes.length + index.bases.length}
+        />
         <FactRow title="Open change requests" value={wiki.openChangeRequests} />
       </SettingsSection>
       <WikiProjectLinks environmentId={environmentId} wiki={wiki} />
