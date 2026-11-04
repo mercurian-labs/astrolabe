@@ -685,6 +685,9 @@ function LayoutSettings({
             (tiles) => onSettings({ mapTiles: tiles === null ? null : [tiles] }),
             "https://tiles.openfreemap.org/styles/liberty",
           )}
+          <p className="text-muted-foreground text-xs">
+            Saved in this file. Tiles that need a key belong in Settings → Wikis.
+          </p>
         </>
       ) : null}
       {number("Limit", settings.limit, (limit) => onSettings({ limit }))}

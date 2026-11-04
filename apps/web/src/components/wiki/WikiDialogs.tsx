@@ -86,7 +86,7 @@ function WikiFormDialog({
   );
 }
 
-function Field({
+export function Field({
   label,
   hint,
   children,

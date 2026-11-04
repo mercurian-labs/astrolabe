@@ -79,7 +79,16 @@ const written = <I extends { readonly message: string; readonly title?: string |
 });
 
 export const layer = McpToolAccess.toLayer(WikiToolkit, {
-  astrolabe_wiki_list: McpToolAccess.reads(() => read((wikis) => wikis.list)),
+  astrolabe_wiki_list: McpToolAccess.reads(() =>
+    read((wikis) =>
+      wikis.list.pipe(
+        // Tile addresses can hold access tokens, and agents have no use for them.
+        Effect.map(({ wikis }) => ({
+          wikis: wikis.map(({ mapBackgrounds: _, ...wiki }) => wiki),
+        })),
+      ),
+    ),
+  ),
   astrolabe_wiki_read: McpToolAccess.reads((input) =>
     read((wikis, threadId) =>
       wikis.readNote({ ...target(input), name: input.name.trim(), threadId }),

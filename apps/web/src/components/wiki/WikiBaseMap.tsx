@@ -1,6 +1,6 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 
-import type { WikiQueryResult } from "@t3tools/contracts";
+import type { WikiMapBackground, WikiQueryResult } from "@t3tools/contracts";
 import {
   LngLatBounds,
   Map as MapLibreMap,
@@ -10,6 +10,9 @@ import {
 } from "maplibre-gl";
 import mapWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { mapTilesFor } from "./wiki.logic";
 
 // MapLibre looks for its worker beside its own module, which the bundler moves; tiles need it.
 setWorkerUrl(mapWorkerUrl);
@@ -50,10 +53,12 @@ const centerOf = (text: string | undefined): [number, number] | undefined => {
  */
 export default function WikiBaseMap({
   result,
+  backgrounds,
   dark,
   openRow,
 }: {
   readonly result: WikiQueryResult;
+  readonly backgrounds: ReadonlyArray<WikiMapBackground>;
   readonly dark: boolean;
   readonly openRow: (row: Row) => void;
 }) {
@@ -62,8 +67,11 @@ export default function WikiBaseMap({
   const markers = useRef<Marker[]>([]);
   const open = useEffectEvent((row: Row) => openRow(row));
   const settings = result.settings ?? {};
-  const tiles = dark && settings.mapTilesDark?.length ? settings.mapTilesDark : settings.mapTiles;
-  const style = JSON.stringify(mapStyle(tiles, dark));
+  const [picked, setPicked] = useState<string | null>(null);
+  const style = JSON.stringify(mapStyle(mapTilesFor(settings, backgrounds, picked, dark), dark));
+  const firstStyle = useEffectEvent(() => style);
+  const drawnStyle = useRef(style);
+  const shownBackground = backgrounds.find(({ name }) => name === picked) ?? backgrounds[0];
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the map is a WebGL canvas outside React
   useEffect(() => {
@@ -71,7 +79,7 @@ export default function WikiBaseMap({
     const center = centerOf(settings.center);
     const created = new MapLibreMap({
       container: container.current,
-      style: JSON.parse(style) as string | StyleSpecification,
+      style: JSON.parse(firstStyle()) as string | StyleSpecification,
       center: center ?? [0, 0],
       zoom: settings.defaultZoom ?? DEFAULT_ZOOM,
       ...(settings.minZoom === undefined ? {} : { minZoom: settings.minZoom }),
@@ -83,7 +91,14 @@ export default function WikiBaseMap({
       created.remove();
       setMap(null);
     };
-  }, [style, settings.center, settings.defaultZoom, settings.minZoom, settings.maxZoom]);
+  }, [settings.center, settings.defaultZoom, settings.minZoom, settings.maxZoom]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- swapping tiles keeps the map where it is
+  useEffect(() => {
+    if (!map || drawnStyle.current === style) return;
+    drawnStyle.current = style;
+    map.setStyle(JSON.parse(style) as string | StyleSpecification);
+  }, [map, style]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- markers live on the map, outside React
   useEffect(() => {
@@ -112,11 +127,35 @@ export default function WikiBaseMap({
   const missing = result.rows.length - result.rows.filter((row) => row.marker).length;
   return (
     <div className="flex flex-col gap-2">
-      <div
-        ref={container}
-        className="w-full overflow-hidden rounded-lg border border-border"
-        style={{ height: settings.mapHeight ?? DEFAULT_HEIGHT }}
-      />
+      <div className="relative">
+        <div
+          ref={container}
+          className="w-full overflow-hidden rounded-lg border border-border"
+          style={{ height: settings.mapHeight ?? DEFAULT_HEIGHT }}
+        />
+        {backgrounds.length > 1 && !settings.mapTiles?.length ? (
+          <div className="absolute top-2 left-2 z-10">
+            <Select
+              value={shownBackground?.name ?? null}
+              items={Object.fromEntries(backgrounds.map(({ name }) => [name, name]))}
+              onValueChange={(name) => {
+                if (typeof name === "string") setPicked(name);
+              }}
+            >
+              <SelectTrigger size="compact" aria-label="Map background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup>
+                {backgrounds.map(({ name }) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </div>
+        ) : null}
+      </div>
       {!settings.coordinates ? (
         <p className="text-muted-foreground text-sm">
           Choose the property that holds each file's coordinates under Layout.

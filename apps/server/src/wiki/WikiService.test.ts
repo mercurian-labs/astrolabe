@@ -7,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -23,6 +24,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as WikiService from "./WikiService.ts";
+import { WikiRegistryJson } from "./wikiStorage.ts";
 
 const layerEnrichment = ProjectEnrichmentService.layer.pipe(
   Layer.provide(
@@ -769,6 +771,62 @@ it.effect("renames a note through a transform, rewriting its links and map edges
       const oriented = yield* wikis.orient({ wikiId, map: "Product", changeRequestId: id });
       assert.equal(oriented.edges[0]?.to, "Base");
       assert.equal(oriented.edges[0]?.supportingProse?.note, "Alpha");
+    }),
+  ),
+);
+
+const decodeRegistry = Schema.decodeSync(WikiRegistryJson);
+
+it("reads a registry saved before wikis had map backgrounds", () => {
+  const registry = decodeRegistry(
+    JSON.stringify({
+      version: 1,
+      wikis: [
+        {
+          wikiId: "plans",
+          name: "Plans",
+          root: "/wikis/plans",
+          mainBranch: "main",
+          mirror: null,
+          createdAt: "2026-11-04T00:00:00.000Z",
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(registry.wikis[0]?.mapBackgrounds, []);
+});
+
+it.effect("keeps map backgrounds on the server, in order, and out of the wiki's repository", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const backgrounds = [
+        {
+          name: "Paid",
+          lightTiles: "https://tiles.test/{z}/{x}/{y}.png?key=secret",
+          darkTiles: null,
+        },
+        { name: "Free", lightTiles: "https://free.test/style", darkTiles: "http://free.test/dark" },
+      ];
+      yield* wikis.setMapBackgrounds({ wikiId, backgrounds });
+      assert.deepEqual((yield* wikis.list).wikis[0]?.mapBackgrounds, backgrounds);
+      assert.equal(yield* git(root, ["status", "--porcelain"]), "");
+
+      const twice = yield* wikis
+        .setMapBackgrounds({
+          wikiId,
+          backgrounds: [...backgrounds, { ...backgrounds[1]!, name: "paid" }],
+        })
+        .pipe(Effect.flip);
+      assert.equal(twice.message, "Two map backgrounds can't share a name.");
+      const script = yield* wikis
+        .setMapBackgrounds({
+          wikiId,
+          backgrounds: [{ name: "Bad", lightTiles: "javascript:alert(1)", darkTiles: null }],
+        })
+        .pipe(Effect.flip);
+      assert.equal(script.message, "A map background's address starts with http:// or https://.");
+      assert.deepEqual((yield* wikis.list).wikis[0]?.mapBackgrounds, backgrounds);
     }),
   ),
 );

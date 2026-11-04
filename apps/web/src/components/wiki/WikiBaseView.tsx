@@ -10,6 +10,7 @@ import type {
   WikiChangeRequest,
   WikiChangeRequestId,
   WikiId,
+  WikiMapBackground,
   WikiQueryResult,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
@@ -137,6 +138,7 @@ function BaseHtml({ html }: { readonly html: string }) {
 function webHost({
   environmentId,
   root,
+  backgrounds,
   result,
   dark,
   openRow,
@@ -146,6 +148,7 @@ function webHost({
 }: {
   readonly environmentId: EnvironmentId;
   readonly root: string | null;
+  readonly backgrounds: ReadonlyArray<WikiMapBackground>;
   readonly result: WikiQueryResult;
   readonly dark: boolean;
   readonly openRow: (row: Row) => void;
@@ -171,7 +174,12 @@ function webHost({
     renderHtml: (html) => <BaseHtml html={html} />,
     renderMap: (shown) => (
       <Suspense fallback={<Spinner size="md" tone="muted" />}>
-        <WikiBaseMap result={shown as WikiQueryResult} dark={dark} openRow={openRow} />
+        <WikiBaseMap
+          result={shown as WikiQueryResult}
+          backgrounds={backgrounds}
+          dark={dark}
+          openRow={openRow}
+        />
       </Suspense>
     ),
     ...(editing === undefined
@@ -235,7 +243,7 @@ export function WikiBaseResults({
   readonly editing?: BaseEditing | undefined;
 } & RowOpeners) {
   const overviews = useAtomValue(wikiEnvironment.overview(environmentId));
-  const root = overviews?.find((overview) => overview.wiki.wikiId === wikiId)?.wiki.root ?? null;
+  const wiki = overviews?.find((overview) => overview.wiki.wikiId === wikiId)?.wiki;
   const { resolvedTheme } = useTheme();
   const openRow = (row: Row) => {
     const document = wikiDocumentName(row.file);
@@ -244,7 +252,8 @@ export function WikiBaseResults({
   };
   const host = webHost({
     environmentId,
-    root,
+    root: wiki?.root ?? null,
+    backgrounds: wiki?.mapBackgrounds ?? [],
     result,
     dark: resolvedTheme === "dark",
     openRow,

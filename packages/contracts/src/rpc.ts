@@ -433,6 +433,7 @@ import {
   WikiRevertInput,
   WikiSaveWorktreeInput,
   WikiSetChangeRequestStatusInput,
+  WikiSetMapBackgroundsInput,
   WikiSetMirrorInput,
   WikiSetProjectLinkInput,
   WikiSummary,
@@ -677,6 +678,7 @@ export const WS_METHODS = {
   wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
   wikiSetMirror: "wiki.setMirror",
+  wikiSetMapBackgrounds: "wiki.setMapBackgrounds",
   wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
 
@@ -2259,6 +2261,12 @@ const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiSetMapBackgroundsRpc = Rpc.make(WS_METHODS.wikiSetMapBackgrounds, {
+  payload: WikiSetMapBackgroundsInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiSetProjectLinkRpc = Rpc.make(WS_METHODS.wikiSetProjectLink, {
   payload: WikiSetProjectLinkInput,
   success: WikiSummary,
@@ -2748,6 +2756,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
   WsWikiSetMirrorRpc,
+  WsWikiSetMapBackgroundsRpc,
   WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
   WsDocumentsSubscribeRpc,

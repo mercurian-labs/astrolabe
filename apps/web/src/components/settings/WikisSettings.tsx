@@ -25,6 +25,7 @@ import { wikiScopeKey } from "../wiki/wikiTabs";
 import { useRepositories } from "../repositories/useRepositories";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { WikiMapBackgrounds } from "./WikiMapBackgrounds";
 
 const MIRROR_BADGE: Record<MirrorTone, "outline" | "success" | "warning" | "error" | "secondary"> =
   {
@@ -259,6 +260,7 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
           </AlertDescription>
         </Alert>
       ) : null}
+      <WikiMapBackgrounds environmentId={environmentId} wiki={wiki} />
       <SettingsSection title="Danger">
         <SettingsRow
           title="Remove wiki"

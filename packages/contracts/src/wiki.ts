@@ -45,6 +45,19 @@ export const WikiMirrorStatus = Schema.Struct({
 });
 export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
+/**
+ * Tiles a wiki's maps can draw on. Their addresses can carry access tokens, so they stay on the
+ * server: never in the wiki's files, its mirror, or what agents read.
+ */
+export const WikiMapBackground = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  /** A style URL or a raster tile template. */
+  lightTiles: TrimmedNonEmptyString,
+  /** Dark mode's tiles; `lightTiles` when null. */
+  darkTiles: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type WikiMapBackground = typeof WikiMapBackground.Type;
+
 /** What a linked project's agents are told, for one or several wikis. */
 export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
   const quoted = names.map((name) => `"${name}"`);
@@ -62,6 +75,8 @@ const WikiSummaryFields = {
   /** The repositories this wiki is linked to; their threads are told it holds their plans. */
   projectIds: Schema.Array(ProjectId),
   mirror: Schema.NullOr(WikiMirrorStatus),
+  /** The first is what maps draw on. Absent from an older server and from agents' list. */
+  mapBackgrounds: Schema.optionalKey(Schema.Array(WikiMapBackground)),
   openChangeRequests: NonNegativeInt,
   createdAt: IsoDateTime,
 };
@@ -608,6 +623,13 @@ export const WikiSetMirrorInput = Schema.Struct({
   url: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type WikiSetMirrorInput = typeof WikiSetMirrorInput.Type;
+
+export const WikiSetMapBackgroundsInput = Schema.Struct({
+  wikiId: WikiId,
+  /** The whole list, in order. */
+  backgrounds: Schema.Array(WikiMapBackground),
+});
+export type WikiSetMapBackgroundsInput = typeof WikiSetMapBackgroundsInput.Type;
 
 export const WikiSetProjectLinkInput = Schema.Struct({
   wikiId: WikiId,

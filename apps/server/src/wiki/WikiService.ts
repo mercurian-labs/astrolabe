@@ -58,6 +58,7 @@ import {
   type WikiRevertInput,
   type WikiSaveWorktreeInput,
   type WikiSetChangeRequestStatusInput,
+  type WikiSetMapBackgroundsInput,
   type WikiSetMirrorInput,
   type WikiSetProjectLinkInput,
   type WikiSummary,
@@ -171,6 +172,9 @@ export class WikiService extends Context.Service<
     /** Forgets the wiki; its folder and history stay as they are. */
     readonly remove: (input: WikiTarget) => Effect.Effect<void, WikiError>;
     readonly setMirror: (input: WikiSetMirrorInput) => Effect.Effect<WikiSummary, WikiError>;
+    readonly setMapBackgrounds: (
+      input: WikiSetMapBackgroundsInput,
+    ) => Effect.Effect<WikiSummary, WikiError>;
     readonly setProjectLink: (
       input: WikiSetProjectLinkInput,
     ) => Effect.Effect<WikiSummary, WikiError>;
@@ -1639,6 +1643,7 @@ const make = Effect.gen(function* () {
         mainBranch: wiki.mainBranch,
         projectIds: wiki.projectIds,
         mirror: wiki.mirror,
+        mapBackgrounds: wiki.mapBackgrounds,
         openChangeRequests,
         createdAt: wiki.createdAt,
       })),
@@ -1971,6 +1976,7 @@ const make = Effect.gen(function* () {
       projectIds: [],
       projectLinkedAt: {},
       mirror: null,
+      mapBackgrounds: [],
       createdAt,
     };
     yield* updateRegistry((registry) =>
@@ -2144,6 +2150,35 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const setMapBackgrounds: WikiService["Service"]["setMapBackgrounds"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const names = new Set(input.backgrounds.map(({ name }) => name.toLowerCase()));
+        if (names.size !== input.backgrounds.length) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: "Two map backgrounds can't share a name.",
+          });
+        }
+        const addresses = input.backgrounds.flatMap(({ lightTiles, darkTiles }) =>
+          darkTiles === null ? [lightTiles] : [lightTiles, darkTiles],
+        );
+        if (addresses.some((address) => !/^https?:\/\//i.test(address))) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: "A map background's address starts with http:// or https://.",
+          });
+        }
+        const next = yield* locked(
+          wiki,
+          replaceWiki({ ...wiki, mapBackgrounds: input.backgrounds }),
+        );
+        // A kind older clients decode; every kind only tells them to read again.
+        yield* publish("mirror", wiki.wikiId, null);
+        return yield* summary(next);
+      }),
+    );
+
   const setProjectLink: WikiService["Service"]["setProjectLink"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       locked(
@@ -2214,6 +2249,7 @@ const make = Effect.gen(function* () {
     create,
     remove,
     setMirror,
+    setMapBackgrounds,
     setProjectLink,
     agentNote,
     pushMirror,

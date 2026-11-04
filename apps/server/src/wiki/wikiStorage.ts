@@ -15,6 +15,7 @@ import {
   WikiChangeRequestId,
   WikiChangeRequestStatus,
   WikiId,
+  WikiMapBackground,
   WikiMirrorStatus,
 } from "@t3tools/contracts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
@@ -32,6 +33,9 @@ export const WikiRecord = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   mirror: Schema.NullOr(WikiMirrorStatus),
+  mapBackgrounds: Schema.Array(WikiMapBackground).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   createdAt: IsoDateTime,
 });
 export type WikiRecord = typeof WikiRecord.Type;
