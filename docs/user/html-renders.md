@@ -1,12 +1,20 @@
 # Visual replies
 
-Agents can answer with a page instead of only text: a chart, table, diagram, image collage, or mockup. Ask for one ("show this as a chart", "make a collage of these screenshots") and the agent builds a self-contained HTML page, which appears in the thread above its written reply. It works with every provider, on web, desktop, and mobile.
+Agents can answer with a page instead of only text: a chart, table, image collage, or mockup. Diagrams of boxes and arrows are drawn as [canvases](#canvases). Ask for one ("show this as a chart", "make a collage of these screenshots") and the agent builds a self-contained HTML page, which appears in the thread above its written reply. It works with every provider, on web, desktop, and mobile.
 
 Pages use your current theme, including custom themes, and follow light and dark mode as you switch. Scripts run inside the page, but it is sandboxed away from T3 Code and your session. Links you click in a page open in your browser. Use the expand button to open a page full screen. On web and desktop, use the zoom controls to see more detail.
 
 Agents can place local images in a page by file path. T3 Code embeds them when the page is published, so the page keeps working after the original files move or are deleted. Deleting the thread deletes its pages.
 
 Before publishing, agents check their work with screenshots from a small headless browser that T3 Code keeps for itself; it never uses a browser you installed. The first preview on a machine downloads it once (about 120 MB) into T3 Code's data folder, so that preview can take a minute. Browser tabs on a remote environment use the same browser, so whichever comes first downloads it. Some Linux hosts need [setup](remote-access.md#browser-host-setup) before it can start. Pages publish without it.
+
+## Canvases
+
+When a flow, an architecture, or a set of dependencies is easier to see than to read, an agent draws it as a canvas in the thread, with or without being asked: cards, arrows and groups, laid out for it. A card can hold text, a link, or a place in your code. Click a code card to open the file at that line.
+
+The expand button opens the canvas in the right panel, where you can drag and scroll to pan, pinch or Ctrl-scroll to zoom, and use **Fit** to see the whole board. On the phone, tap a canvas to do the same.
+
+A canvas stays in its thread and is deleted with it. Canvases use the open JSON Canvas format.
 
 ## MCP apps
 
