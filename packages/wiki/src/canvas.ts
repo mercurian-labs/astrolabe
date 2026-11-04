@@ -222,12 +222,13 @@ function ranks(boxes: ReadonlyArray<Box>, links: ReadonlyArray<Link>): Box[][] {
       : around.reduce((sum, at) => sum + at, 0) / around.length;
   };
   for (let sweep = 0; sweep < 4; sweep++) {
-    const order = sweep % 2 === 0 ? dense : dense.toReversed();
+    // Not toSorted or toReversed: this runs on the phone, and Hermes has neither.
+    const order = sweep % 2 === 0 ? dense : [...dense].reverse();
     for (const column of order) {
-      // toSorted is stable: boxes that tie keep the order the agent wrote them in.
+      // A stable sort: boxes that tie keep the order the agent wrote them in.
       const sorted = column
         .map((box) => ({ box, at: centre(box) }))
-        .toSorted((a, b) => a.at - b.at)
+        .sort((a, b) => a.at - b.at)
         .map(({ box }) => box);
       column.splice(0, column.length, ...sorted);
       record();

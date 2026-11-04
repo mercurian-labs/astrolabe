@@ -53,6 +53,26 @@ describe("placeCanvas", () => {
     expect(middle.x + middle.y).toBeLessThan(end.x + end.y);
   });
 
+  it("runs on Hermes, the phone's engine, which has no toSorted or toReversed", () => {
+    const { toSorted, toReversed } = Array.prototype;
+    const prototype = Array.prototype as unknown as Record<string, unknown>;
+    delete prototype.toSorted;
+    delete prototype.toReversed;
+    try {
+      const { nodes } = placeCanvas({
+        cards: cards("a", "b", "c"),
+        arrows: [
+          { from: "a", to: "b" },
+          { from: "a", to: "c" },
+        ],
+      });
+      expect(nodes).toHaveLength(3);
+    } finally {
+      prototype.toSorted = toSorted;
+      prototype.toReversed = toReversed;
+    }
+  });
+
   it("starts a cycle at the first card written, even when a later one is in a group", () => {
     const drawing: CanvasDrawing = {
       cards: [
