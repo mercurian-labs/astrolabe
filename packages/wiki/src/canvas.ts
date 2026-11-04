@@ -116,10 +116,10 @@ const PRESETS: Readonly<Record<string, string>> = {
 };
 
 const GRID = 20;
-const RANK_GAP = 140;
-const CROSS_GAP = 40;
-const GROUP_PADDING = 40;
-const GROUP_LABEL = 40;
+const RANK_GAP = 100;
+const CROSS_GAP = 32;
+const GROUP_PADDING = 24;
+const GROUP_LABEL = 28;
 /** Boards are read in a chat column, so the layout that lands nearest this shape wins. */
 const TARGET_ASPECT = 1.6;
 
@@ -155,10 +155,10 @@ function textHeight(text: string, width: number): number {
 function cardBox(card: CanvasDrawing["cards"][number]): Box {
   const text = card.text ?? "";
   if (card.path !== undefined || card.url !== undefined) {
-    const width = 300;
+    const width = 280;
     return { id: card.id, width, height: snap(60 + (text ? textHeight(text, width) : 0)) };
   }
-  const width = text.length <= 40 ? 200 : text.length <= 160 ? 280 : 360;
+  const width = text.length <= 40 ? 180 : text.length <= 200 ? 240 : 320;
   return { id: card.id, width, height: snap(40 + textHeight(text, width)) };
 }
 
