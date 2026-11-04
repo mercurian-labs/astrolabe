@@ -122,15 +122,17 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   "Link <wiki> to the project it plans" or "Link <project> to a wiki, where its research and
   plans live", with the candidates and **Not now** ("Link it later in its settings"). The
   step shows only with source-control write access and something on the same server to link
-  to; otherwise the palette closes. Links change from the wiki's settings dialog (named after
-  the wiki; `button "Projects this wiki is linked to"`) and Settings → Projects → a project
-  (`button "Wikis this project is linked to"`, or **Add a wiki…** when its servers have no
-  wikis). Both menus hold `menuitemcheckbox` rows, and the trigger reads the linked names, or
-  "None", "No projects" or "No wikis".
+  to; otherwise the palette closes. Links change on a wiki's page in Settings → Wikis
+  (`/settings/wikis?wiki=<environmentId>:<wikiId>`, the filter's gear opens it) and in
+  Settings → a project's **Wikis** section (**Add a wiki** when its servers have no wikis).
+  Both are lists with **Unlink** and a searchable **Link a project** or **Link a wiki** picker,
+  and a chat in a linked project shows a chip per wiki in its header, hidden below `sm`.
 - **Agent note**: the first prompt of every new native conversation in a linked project,
   including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming the
   wikis and the `astrolabe_wiki_*` tools (`WikiService.agentNote`,
-  `ProviderTurnStartService.ts`); a prompt that starts with `/` never does. Only the provider
+  `ProviderTurnStartService.ts`); a conversation with turns gets it on its next prompt for wikis
+  linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
+  starts with `/` never does and doesn't count as its last. Only the provider
   sees it, not the user's bubble. Prove it with a real turn that never names the wiki. The
   host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
 - **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
