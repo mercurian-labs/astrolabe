@@ -1,6 +1,7 @@
 import type { Input } from "@lezer/common";
 import {
   GFM,
+  parser,
   type BlockContext,
   type Element,
   type InlineContext,
@@ -480,3 +481,6 @@ export const markdownSyntax = [
   frontmatter,
   tasks,
 ];
+
+/** For Markdown read without an editor, in the same syntax. */
+export const markdownParser = parser.configure(markdownSyntax);

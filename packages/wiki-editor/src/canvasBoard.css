@@ -1,0 +1,247 @@
+/*
+ * A JSON Canvas board, for the web app and the phone's page alike: only tokens both define.
+ * No transitions: everything here is moved by the camera, frame by frame.
+ */
+.cv-board {
+  --cv-tint: var(--muted-foreground);
+  --cv-line: color-mix(in srgb, var(--foreground) 45%, transparent);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--foreground);
+  contain: strict;
+}
+.cv-board[data-mode="free"] {
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cv-board[data-mode="free"]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring, var(--primary));
+}
+.cv-board.cv-moving {
+  cursor: grabbing;
+}
+.cv-board.cv-moving .cv-world {
+  will-change: transform;
+}
+.cv-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+.cv-card,
+.cv-group {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 8px;
+}
+[data-color="1"] {
+  --cv-tint: #e5484d;
+}
+[data-color="2"] {
+  --cv-tint: #f76b15;
+}
+[data-color="3"] {
+  --cv-tint: #d6a100;
+}
+[data-color="4"] {
+  --cv-tint: #30a46c;
+}
+[data-color="5"] {
+  --cv-tint: #00a2c7;
+}
+[data-color="6"] {
+  --cv-tint: #8e4ec6;
+}
+.cv-card {
+  overflow: hidden;
+  background: var(--background);
+  border: 1px solid var(--border);
+}
+.cv-card[data-color],
+.cv-card[style*="--cv-tint"] {
+  background: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
+  border-color: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-board[data-mode="free"] .cv-card {
+  overflow: auto;
+}
+.cv-card-body {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+.cv-card-open {
+  cursor: pointer;
+}
+.cv-card-open:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.cv-card-open:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -2px;
+}
+.cv-code-path,
+.cv-link-url {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+.cv-code-folder,
+.cv-link-url {
+  color: var(--muted-foreground);
+}
+.cv-code-file {
+  font-weight: 600;
+}
+
+.cv-card-body > :first-child,
+.cv-card-body li > :first-child {
+  margin-top: 0;
+}
+.cv-card-body > :last-child,
+.cv-card-body li > :last-child {
+  margin-bottom: 0;
+}
+.cv-card-body p,
+.cv-card-body ul,
+.cv-card-body ol,
+.cv-card-body pre,
+.cv-card-body blockquote {
+  margin: 0 0 6px;
+}
+.cv-card-body ul,
+.cv-card-body ol {
+  padding-left: 18px;
+}
+.cv-card-body code,
+.cv-card-body pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.cv-card-body code {
+  padding: 1px 4px;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  border-radius: 4px;
+}
+.cv-card-body pre {
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+.cv-card-body blockquote {
+  padding-left: 8px;
+  color: var(--muted-foreground);
+  border-left: 2px solid var(--border);
+}
+.cv-card-body a {
+  color: var(--primary);
+}
+.cv-card-body hr {
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.cv-card-body mark {
+  color: inherit;
+  background: color-mix(in srgb, #d6a100 35%, transparent);
+}
+.cv-md-heading {
+  font-size: 16px;
+  font-weight: 600;
+}
+.cv-md-heading[data-level="1"] {
+  font-size: 18px;
+}
+
+.cv-group {
+  background: color-mix(in srgb, var(--cv-tint) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cv-tint) 40%, transparent);
+}
+.cv-group-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  right: 12px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.cv-edge {
+  color: var(--cv-line);
+}
+.cv-edge[data-color],
+.cv-edge[style*="--cv-tint"] {
+  color: var(--cv-tint);
+}
+.cv-edge-line {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.5;
+}
+.cv-edge-head {
+  fill: currentcolor;
+}
+.cv-edge-label {
+  position: absolute;
+  max-width: 180px;
+  padding: 0 6px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--background);
+  border-radius: 4px;
+  transform: translate(-50%, -50%);
+}
+
+.cv-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+}
+.cv-controls button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--foreground);
+  cursor: pointer;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}

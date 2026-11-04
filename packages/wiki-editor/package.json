@@ -32,7 +32,11 @@
       "types": "./src/baseLayout.tsx",
       "default": "./src/baseLayout.tsx"
     },
-    "./base-layout.css": "./src/baseLayout.css"
+    "./base-layout.css": "./src/baseLayout.css",
+    "./canvas-board": {
+      "types": "./src/CanvasBoard.tsx",
+      "default": "./src/CanvasBoard.tsx"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
