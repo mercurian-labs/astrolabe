@@ -38,7 +38,7 @@ import { useSectionTabLabel } from "~/sectionTabs/SectionTabContent";
 import { parseChatSurfaceKey, parseChatTabKey, chatSurfaceKey } from "~/sectionTabs/sectionTabs";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { followedGraphFiles, linkMarkKeyOf, linkMarkOf } from "./linkMarks";
-import { closeTab, focusedPane, isEmptyTab, newTab } from "./arrangement";
+import { focusedPane, isEmptyTab, newTab } from "./arrangement";
 import type { PanelProps } from "./panesController";
 import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import { keptFromPane } from "./linkedTabs";
@@ -264,7 +264,7 @@ export function closeWorkspaceTab(tabKey: string) {
   }
   const surface = surfaceOfKey(tabKey);
   if (!surface) {
-    workspace.update((arrangement) => closeTab(arrangement, tabKey));
+    workspace.close(tabKey);
     return;
   }
   const panel = panelOf(parsed.chatKey);
