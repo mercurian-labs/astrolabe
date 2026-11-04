@@ -1,3 +1,5 @@
+import type { CanvasData } from "@mercurian/wiki/canvas";
+
 import { WikiNoteBuffer } from "./noteBuffer";
 import type { WikiEditorBaseResult, WikiEditorCommand, WikiEditorEvent } from "./protocol";
 
@@ -13,6 +15,8 @@ export interface WikiEditorPageState {
   readonly base: string | null;
   /** Whether that base's notes edit in place. */
   readonly baseEditable: boolean;
+  /** The canvas the page shows alone, in place of the note and any base. */
+  readonly canvas: CanvasData | null;
   readonly theme: Extract<WikiEditorCommand, { type: "theme" }>["theme"] | null;
   /** The `@` types the wiki uses, which the editor suggests. */
   readonly linkTypes: ReadonlyArray<string>;
@@ -29,6 +33,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     mode: "read",
     base: null,
     baseEditable: false,
+    canvas: null,
     theme: null,
     linkTypes: [],
   };
@@ -126,6 +131,9 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
       case "noteRead":
         notes.set(command.name, command.source);
         for (const listener of noteListeners) listener();
+        return;
+      case "showCanvas":
+        setState({ canvas: command.data });
         return;
       case "baseResult":
         bases.set(command.source, { result: command.result, error: command.error });

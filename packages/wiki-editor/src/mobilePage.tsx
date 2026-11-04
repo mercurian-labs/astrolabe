@@ -1,11 +1,13 @@
 import "./baseLayout.css";
 import "./mobilePage.css";
 
+import type { CanvasCodeReference } from "@mercurian/wiki/canvas";
 import { useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
+import { CanvasBoard } from "./CanvasBoard";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiLinkPreview, type WikiLinkPeek } from "./linkTools";
 import { WikiNoteEditor } from "./NoteEditor";
@@ -26,6 +28,10 @@ declare global {
 const post = (event: WikiEditorEvent) =>
   window.ReactNativeWebView?.postMessage(JSON.stringify(event));
 const openNote = (name: string) => post({ type: "openNote", name });
+const canvasHost = {
+  onOpenUrl: (href: string) => post({ type: "openUrl", href }),
+  onOpenCode: (code: CanvasCodeReference) => post({ type: "openCode", code }),
+};
 
 function LinkPreview({
   page,
@@ -43,7 +49,7 @@ function LinkPreview({
 
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
-  const { mode, base, baseEditable, theme, linkTypes } = useSyncExternalStore(
+  const { mode, base, baseEditable, canvas, theme, linkTypes } = useSyncExternalStore(
     page.subscribe,
     page.getState,
   );
@@ -57,6 +63,13 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
     root.style.colorScheme = theme.appearance;
     root.dataset.appearance = theme.appearance;
   }, [theme]);
+  if (canvas !== null) {
+    return (
+      <div className="canvas-page">
+        <CanvasBoard data={canvas} mode="free" host={canvasHost} label="Canvas" />
+      </div>
+    );
+  }
   if (base !== null) {
     return (
       <BaseBlock

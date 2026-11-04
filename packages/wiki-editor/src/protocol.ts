@@ -4,6 +4,8 @@
  * page edits it and says what the person did. Plain data both ways, as JSON.
  */
 
+import type { CanvasCodeReference, CanvasData } from "@mercurian/wiki/canvas";
+
 import type { BaseCellValue } from "./baseCells";
 
 /** A column's summary, as Obsidian displays its value. */
@@ -126,6 +128,8 @@ export type WikiEditorCommand =
       /** Its notes' cells edit in place, and a board's cards move, as `editBase` events. */
       readonly editable?: boolean | undefined;
     }
+  /** Shows a canvas alone, in place of the note, to pan and zoom. */
+  | { readonly type: "showCanvas"; readonly data: CanvasData }
   /** The `@` types the wiki's links use, which the editor suggests. */
   | { readonly type: "linkTypes"; readonly types: ReadonlyArray<string> }
   /** A note a link preview asked for, sent again if it changes; null when it isn't written. */
@@ -151,6 +155,7 @@ export type WikiEditorEvent =
     }
   | { readonly type: "openNote"; readonly name: string }
   | { readonly type: "openUrl"; readonly href: string }
+  | { readonly type: "openCode"; readonly code: CanvasCodeReference }
   | { readonly type: "text"; readonly requestId: number; readonly text: string }
   /** A ```base block is on screen: the app runs it and keeps its view current. */
   | { readonly type: "queryBase"; readonly source: string }
@@ -205,6 +210,10 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
         : null;
     case "openUrl":
       return typeof value.href === "string" ? { type: "openUrl", href: value.href } : null;
+    case "openCode":
+      return isRecord(value.code) && typeof value.code.path === "string"
+        ? { type: "openCode", code: value.code as unknown as CanvasCodeReference }
+        : null;
     case "text":
       return typeof value.requestId === "number" && typeof value.text === "string"
         ? { type: "text", requestId: value.requestId, text: value.text }
@@ -271,6 +280,13 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
       return typeof value.source === "string"
         ? { type: "showBase", source: value.source, editable: value.editable === true }
         : null;
+    case "showCanvas": {
+      // The app's own page: the board is placed by the app, and checked only far enough to draw.
+      const { data } = value;
+      return isRecord(data) && Array.isArray(data.nodes) && Array.isArray(data.edges)
+        ? { type: "showCanvas", data: data as unknown as CanvasData }
+        : null;
+    }
     case "linkTypes":
       return Array.isArray(value.types)
         ? {

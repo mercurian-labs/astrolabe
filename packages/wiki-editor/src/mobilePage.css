@@ -39,6 +39,12 @@ body {
   color: var(--foreground);
 }
 
+/* A canvas fills the web view, past the root's padding: it pans, the page doesn't scroll. */
+.canvas-page {
+  position: fixed;
+  inset: 0;
+}
+
 /* A ```base block's view (see `BaseBlock.tsx`). */
 .base-view {
   display: flex;

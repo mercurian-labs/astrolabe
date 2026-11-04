@@ -36,6 +36,10 @@
     "./canvas-board": {
       "types": "./src/CanvasBoard.tsx",
       "default": "./src/CanvasBoard.tsx"
+    },
+    "./canvas-geometry": {
+      "types": "./src/canvasGeometry.ts",
+      "default": "./src/canvasGeometry.ts"
     }
   },
   "scripts": {

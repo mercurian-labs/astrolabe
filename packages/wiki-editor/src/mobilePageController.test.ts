@@ -111,6 +111,16 @@ describe("the wiki editor page", () => {
   it("shows a base file alone once told to, and drops a malformed show", () => {
     const { page: editor } = page();
     expect(editor.getState().base).toBeNull();
+    const data = { nodes: [], edges: [] };
+    expect(parseWikiEditorCommand({ type: "showCanvas", data })).toEqual({
+      type: "showCanvas",
+      data,
+    });
+    const code = { path: "src/a.ts", lines: [1, 2] };
+    expect(parseWikiEditorEvent(JSON.stringify({ type: "openCode", code }))).toEqual({
+      type: "openCode",
+      code,
+    });
     const command = parseWikiEditorCommand({ type: "showBase", source: "Projects.base" });
     expect(command).toEqual({ type: "showBase", source: "Projects.base", editable: false });
     editor.handle(command!);
@@ -119,6 +129,8 @@ describe("the wiki editor page", () => {
     editor.handle({ type: "showBase", source: "Projects.base", editable: true });
     expect(editor.getState().baseEditable).toBe(true);
     expect(parseWikiEditorCommand({ type: "showBase" })).toBeNull();
+    expect(parseWikiEditorCommand({ type: "showCanvas", data: { nodes: [] } })).toBeNull();
+    expect(parseWikiEditorEvent(JSON.stringify({ type: "openCode", code: {} }))).toBeNull();
   });
 
   it("reads a base edit the page sends, dropping one with a value no cell holds", () => {

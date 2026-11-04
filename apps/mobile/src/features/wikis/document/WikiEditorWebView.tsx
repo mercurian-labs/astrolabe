@@ -25,6 +25,8 @@ export const WikiEditorWebView = forwardRef<
     readonly onEvent: (event: WikiEditorEvent) => void;
     /** Sent before anything else once the page loads (and again after a reload). */
     readonly initialCommands: () => ReadonlyArray<WikiEditorCommand>;
+    /** The page handles its own pans and pinches: the web view itself must not scroll. */
+    readonly fixed?: boolean;
   }
 >(function WikiEditorWebView(props, ref) {
   const webView = useRef<WebView<object>>(null);
@@ -88,6 +90,8 @@ export const WikiEditorWebView = forwardRef<
         webView.current?.reload();
       }}
       keyboardDisplayRequiresUserAction={false}
+      scrollEnabled={props.fixed !== true}
+      bounces={props.fixed !== true}
       hideKeyboardAccessoryView
       allowsLinkPreview={false}
       // The page pads itself by `env(safe-area-inset-*)` (mobilePage.css). An automatic inset

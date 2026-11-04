@@ -693,6 +693,9 @@ importers:
       '@material/material-color-utilities':
         specifier: 0.3.0
         version: 0.3.0
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../../packages/wiki
       '@mercurian/wiki-editor':
         specifier: workspace:*
         version: link:../../packages/wiki-editor

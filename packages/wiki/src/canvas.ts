@@ -385,7 +385,10 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
   const blockIds = [...new Set([...cards.map((card) => blockOf(card.id)), ...groupIds])];
   const blocks = blockIds.flatMap((id): Box[] => {
     const layout = inner.get(id);
-    if (layout === undefined) return boxOf.get(id) ?? [];
+    if (layout === undefined) {
+      const box = boxOf.get(id);
+      return box === undefined ? [] : [box];
+    }
     return [
       {
         id,
