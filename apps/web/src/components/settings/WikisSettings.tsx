@@ -25,6 +25,7 @@ import { wikiScopeKey } from "../wiki/wikiTabs";
 import { useRepositories } from "../repositories/useRepositories";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { WikiMapBackgrounds } from "./WikiMapBackgrounds";
 
 const MIRROR_BADGE: Record<MirrorTone, "outline" | "success" | "warning" | "error" | "secondary"> =
   {
@@ -196,7 +197,10 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
       >
         <SettingsRow title="Folder" description={<span className="break-all">{wiki.root}</span>} />
         <FactRow title="Main line" value={wiki.mainBranch} />
-        <FactRow title="Documents" value={index === null ? "…" : index.notes.length} />
+        <FactRow
+          title="Documents"
+          value={index === null ? "…" : index.notes.length + index.bases.length}
+        />
         <FactRow title="Open change requests" value={wiki.openChangeRequests} />
       </SettingsSection>
       <WikiProjectLinks environmentId={environmentId} wiki={wiki} />
@@ -256,6 +260,7 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
           </AlertDescription>
         </Alert>
       ) : null}
+      <WikiMapBackgrounds environmentId={environmentId} wiki={wiki} />
       <SettingsSection title="Danger">
         <SettingsRow
           title="Remove wiki"

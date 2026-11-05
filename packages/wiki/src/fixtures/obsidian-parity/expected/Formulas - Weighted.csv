@@ -1,0 +1,4 @@
+file name,weight,label,bucket
+Delta,11,Delta (11),heavy
+Alpha,7,Alpha (7),heavy
+Gamma,5,Gamma (5),light

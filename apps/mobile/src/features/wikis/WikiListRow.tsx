@@ -114,7 +114,7 @@ function WikiRowFrame(props: {
 
 /**
  * A document: its wiki and when it last changed, its name, and its links or open change. A base
- * reads `<name>.base`, as on web, over a table icon.
+ * reads its name without `.base`, over a table icon.
  */
 export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
   readonly entry: WikiDocumentEntry;
@@ -130,8 +130,8 @@ export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
       wiki={entry.wiki}
       timestamp={entry.editedAt}
       working={working}
-      title={entry.name}
-      accessibilityLabel={`${entry.name}, ${entry.wiki.name}`}
+      title={entry.title}
+      accessibilityLabel={`${entry.title}${entry.base ? ", base" : ""}, ${entry.wiki.name}`}
       accessibilityHint={entry.base ? "Opens the base" : "Opens the document"}
       showTrailingDivider={props.showTrailingDivider}
       onPress={() => onSelect(entry)}

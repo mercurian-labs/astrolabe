@@ -4,9 +4,9 @@ A wiki is a folder of linked notes that you and your agents keep together: plain
 
 ## Add a wiki
 
-Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a wiki**, which works like adding a project: start a new wiki, choose a git repository you already have, or clone one. **Add wiki** in the command palette and **Add a wiki** in **Settings → Wikis** do the same. **Settings → Wikis** lists every wiki; the gear on a wiki's row in the filter opens its page there, with its folder, linked projects, mirror, and removing it.
+Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a wiki**, which works like adding a project: start a new wiki, choose a git repository you already have, or clone one. **Add wiki** in the command palette and **Add a wiki** in **Settings → Wikis** do the same. **Settings → Wikis** lists every wiki; the gear on a wiki's row in the filter opens its page there, with its folder, linked projects, mirror, map backgrounds, and removing it.
 
-Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them, and `.base` files are [bases](#bases). A wiki is not a project: no thread works in its folder. Agents reach it from threads in your projects, and every change they make goes to a change request.
+Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them, and `.base` files are [bases](#bases), which can list every file in the repository. A wiki is not a project: no thread works in its folder. Agents reach it from threads in your projects, and every change they make goes to a change request.
 
 ## Link a wiki to a project
 
@@ -26,22 +26,31 @@ When you change a note, **Save to change request** keeps your edit in a change r
 
 ## Bases
 
-A base is a saved question over a wiki's notes: which notes, filtered and sorted by their properties and links, shown as a table or as cards. It uses Obsidian's Bases format, so a base written in Obsidian works here and the other way round. Its results are worked out each time you look, never stored, so a base keeps up as the wiki grows. A useful shape for an index note is a hand-ordered list of the notes to read first, then a base listing everything else in the area.
+A base is a saved question over every file in a wiki's repository: which files, filtered, sorted and grouped by their properties, links and formulas, with summaries such as a column's sum or earliest date. It uses Obsidian's Bases format, and gives the same results as Obsidian 1.14: a base written in Obsidian works here and the other way round. Its results are worked out each time you look, never stored, so a base keeps up as the wiki grows. A useful shape for an index note is a hand-ordered list of the notes to read first, then a base listing everything else in the area.
 
-To make one, write a `base` code block in a note and save it to a change request. The block shows its view while you read, and its YAML while you edit it. A `.base` file made in Obsidian and committed to the wiki's repository lists among its documents and opens as its view. Click a row's name to open that note. Give notes properties with YAML frontmatter at the top (`status: open`), which bases can filter, sort and show. On the phone, a note's base blocks show their first view, and a `.base` file lists among the documents and opens as its view, with a View menu at the top when it has several. Agents read a base's rows too.
+To make one, write a `base` code block in a note, or embed a `.base` file with `![[Name.base]]` (or `![[Name.base#View]]` for one view) on a line of its own, and save it to a change request. A `.base` file made in Obsidian and committed to the wiki's repository lists among its documents and opens as its view. Click a row's name to open it: a note or base at the wiki's top level opens as a document, and any other file, such as an image or a note in a folder, opens as a file. Give notes properties with YAML frontmatter at the top (`status: open`), which bases can filter, sort and show. Agents read a base's rows, and can write bases into a change request like any note.
 
-Bases here support part of Obsidian's syntax:
+A view shows as a table, cards (with a cover image from a property), a list, a board with a column per group, or a map. A map places each file at the coordinates in the property you choose (`"48.85837, 2.294481"`, or a two-item list), as Obsidian's Maps plugin does, on OpenFreeMap's tiles unless the wiki or the view names others; it needs the internet to draw. **Map backgrounds** on a wiki's page in **Settings → Wikis** holds the tiles its maps use: the first is the default, and a map can switch between several. Backgrounds stay on the server, so an address with an access key never reaches the wiki's files or its mirror. A view that names its own tiles keeps them, and those are saved in the `.base` file. On the phone, a map lists its places instead.
 
-- **Filters**: `and`, `or` and `not` groups, for the whole base and per view.
-- **Statements**: `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!` and arithmetic over text, numbers, `true`, `false`, `null` and lists.
-- **Properties**: `status`, `note.status`, `note["due date"]`.
-- **File**: `file.name`, `basename`, `path`, `folder`, `ext`, `size`, `mtime` (the last commit that changed it), `tags`, `links`, `backlinks` and `properties`, and `file.hasLink()`, `hasTag()`, `hasProperty()`, `inFolder()` and `asLink()`.
-- **`this`**: the note a block sits in, or the base file itself, as in `file.hasLink(this.file)`.
-- **Functions**: `date()`, `now()`, `today()`, `link()` and `list()`; a date plus or minus a duration such as `"1 week"`.
-- **Methods**: `contains`, `containsAll`, `containsAny`, `startsWith`, `endsWith`, `isEmpty`, `lower` and `.length`.
-- **Views**: table and cards, with `order`, `sort`, `limit`, `groupBy`, and each property's `displayName`.
+A `.base` file's tab edits in place, as in Obsidian: switch, add, rename and delete views, change a view's layout, sort, filter, group and shown properties, add formulas, rename and summarize columns from their headings, edit a note's property in its cell, drag a board's card to another column, and add notes with New, which fills in what the view's filters and column ask for. Changes show at once and stay unsaved until you save them to a change request; main changes only when it merges. Only notes at the wiki's top level edit this way. On the phone, a `.base` file's cells edit the same way, a board's card moves with the column picker on it, and its view settings are read only.
 
-Formulas, summaries, `groupOrder`, other view types (list, kanban, map), regular expressions, `file.ctime` and other functions are not supported yet. A base that uses one names it instead of showing results. A base's rows are the wiki's notes; skill maps and other bases are left out.
+When an agent renames a note, names in bases that link to it or compare a file's name with it follow the new name. Obsidian's own rename leaves bases alone, so a base whose names no longer match any note, or any link, is listed as a problem in the wiki's settings and in change requests.
+
+As in Obsidian, a base with no filters lists every file: notes in every folder, other bases, canvases and attachments. Folders starting with a dot, such as `.git` and `.obsidian`, are left out. Add a filter such as `file.ext == "md"` or `file.inFolder("projects")` to narrow it. A file's created and modified times are those of the first and last commit that changed it.
+
+Bases support Obsidian's whole language: filters, formulas, every function, regular expressions, summaries, `groupBy` and `groupOrder`. Two details catch people out, in Obsidian too. A property's `displayName` is keyed by its full id (`note.status`, `formula.total`), and a bare `status` is ignored. And `Average` divides by every row, a missing value counting as nothing. A base that names a function or property that doesn't exist says so instead of showing results.
+
+## Link types
+
+A link can say what it means. Add an `@` word to its display text, as in `[[Auth|the login flow @depends_on]]`. Types can be anything, a link can have several, and they read one way, from this note to the linked one. Every mention of a note in a note adds to the same link, so `[[Auth|@depends_on]]` and `[[Auth#Login|@blocks]]` give that link both types. Typing `@` inside a link suggests the types your wiki already uses.
+
+When reading, the word stays where you wrote it, marked and without its `@`. A link with nothing but types, like `[[Auth|@blocks]]`, shows the note's name beside them. Only links in a note's body have types, not those in frontmatter, embeds or code. Every `@` word at the start of the display text or after a space is a type; write `\@sam` to keep it as text.
+
+Hover over a link to preview its note and types. On a phone, press and hold a link while reading.
+
+In a base, `file.linksOfType("depends_on")` lists the links a file makes with that type, and `file.backlinksOfType("depends_on")` the files linking to it with that type. A base embedded in Auth can show what depends on it with the filter `file.linksOfType("depends_on").contains(this.file)`.
+
+Obsidian keeps these links working and shows the `@` word as you wrote it, including the backslash in `\@sam`. Its Bases can't read types, so a filter using these functions shows nothing there.
 
 ## Documents beside your work
 

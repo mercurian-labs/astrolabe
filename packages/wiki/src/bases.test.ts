@@ -3,10 +3,11 @@ import * as NodeFS from "node:fs";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { formatDate } from "./baseValues.ts";
 import {
   BaseError,
   baseBlocks,
-  indexFiles,
+  baseCorpus,
   noteProperties,
   noteTags,
   parseBase,
@@ -17,7 +18,7 @@ import {
 const fixture = (name: string) =>
   NodeFS.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 
-const WIKI = indexFiles({
+const FILES: Readonly<Record<string, string>> = {
   "Index.md": [
     "---",
     "kind: index",
@@ -52,20 +53,22 @@ const WIKI = indexFiles({
   "Textbook.md": "# Textbook\n",
   "Code.md": "```\n#notatag [[Alpha]]\n```\n\n## Heading, not a tag\n",
   "Open decisions.base": "views:\n  - type: table\n",
-});
+};
 
 const EDITED = new Map([
   ["Alpha.md", "2026-10-30T12:00:00.000Z"],
   ["Beta.md", "2026-09-01T12:00:00.000Z"],
 ]);
+const WIKI = baseCorpus(
+  Object.entries(FILES).map(([file, source]) => ({ file, source })),
+  { modified: EDITED },
+);
 const NOW = Date.parse("2026-11-01T12:00:00.000Z");
 
 type Options = Partial<BaseQueryOptions>;
 
 const names = (source: string, options: Options = {}) =>
-  queryBase(WIKI, parseBase(source), { editTimes: EDITED, now: NOW, ...options }).rows.map(
-    (row) => row.name,
-  );
+  queryBase(WIKI, parseBase(source), { now: NOW, ...options }).rows.map((row) => row.name);
 const failure = (source: string, options: Options = {}) => {
   try {
     queryBase(WIKI, parseBase(source), { now: NOW, ...options });
@@ -92,7 +95,7 @@ describe("note properties", () => {
 
   it("tags from the tags property and the prose, never from code or headings", () => {
     const source = "---\ntags: [Project, '#area/sub']\n---\n# Title\n#inline `#code` 2024 #2024\n";
-    expect(noteTags(source, noteProperties(source))).toEqual(["#Project", "#area/sub", "#inline"]);
+    expect(noteTags(source, noteProperties(source))).toEqual(["#inline", "#Project", "#area/sub"]);
   });
 });
 
@@ -119,8 +122,48 @@ describe("base blocks", () => {
   });
 });
 
+describe("link types", () => {
+  const typed = baseCorpus(
+    Object.entries({
+      "Beta.md": "# Beta\n",
+      "Gamma.md": "# Gamma\n",
+      "Typed.md": "Uses [[Beta|the flow @depends_on]] and [[Gamma#Top|@blocks]].\n",
+      "Other.md":
+        '---\nfor: "[[Beta|@depends_on]]"\n---\nSee [[Beta|@blocks]] and ![[Gamma|@depends_on]].\n',
+    }).map(([file, source]) => ({ file, source })),
+  );
+  const matching = (statement: string, self?: string) =>
+    queryBase(typed, parseBase(filter(statement)), { now: NOW, self }).rows.map((row) => row.name);
+
+  it("asks which notes link with a type, from either end", () => {
+    expect(matching('file.linksOfType("depends_on").contains(link("Beta"))')).toEqual(["Typed"]);
+    expect(matching('file.linksOfType("blocks").contains(link("Gamma"))')).toEqual(["Typed"]);
+    expect(matching('file.backlinksOfType("depends_on").contains(link("Typed"))')).toEqual([
+      "Beta",
+    ]);
+    expect(matching('file.backlinksOfType("blocks").length > 0')).toEqual(["Beta", "Gamma"]);
+  });
+
+  it("follows `this` for a base embedded in a note", () => {
+    expect(matching('file.linksOfType("depends_on").contains(this.file)', "Beta.md")).toEqual([
+      "Typed",
+    ]);
+  });
+
+  it("reports a type that isn't text", () => {
+    const { rows } = queryBase(
+      typed,
+      parseBase(
+        "formulas:\n  t: 'file.linksOfType(1)'\nviews:\n  - type: table\n    order: [formula.t]\n",
+      ),
+      { now: NOW },
+    );
+    expect(rows[0]?.values["formula.t"]).toContain("Expected String, given Number");
+  });
+});
+
 describe("queries", () => {
-  it("runs Obsidian's own example filter, copied verbatim, over the wiki's notes", () => {
+  it("runs Obsidian's own examples, copied verbatim, over every file in the wiki", () => {
     // Alpha is a book that links the Textbook; Delta is a book that does not.
     expect(names(fixture("obsidian-complex-filter.base"))).toEqual([
       "Alpha",
@@ -128,34 +171,36 @@ describe("queries", () => {
       "Code",
       "Gamma",
       "Index",
+      "Open decisions.base",
       "Textbook",
     ]);
     const embedded = queryBase(WIKI, parseBase(fixture("obsidian-embedded.base")), { now: NOW });
     expect(embedded.view).toEqual({ name: "Table", type: "table" });
     expect(embedded.rows).toEqual([]);
+    const full = queryBase(WIKI, parseBase(fixture("obsidian-syntax-example.base")), { now: NOW });
+    expect(full.columns).toEqual([
+      { id: "file.name", label: "file name" },
+      { id: "file.ext", label: "Extension" },
+      { id: "note.age", label: "age" },
+      { id: "formula.ppu", label: "ppu" },
+      { id: "formula.formatted_price", label: "Price" },
+    ]);
+    expect(full.rows).toEqual([]);
   });
 
-  it("fails Obsidian's full example loudly, naming the formula it cannot run", () => {
-    expect(failure(fixture("obsidian-syntax-example.base"))).toBe(
-      "Not supported: formula.ppu (formulas) in view “My table”'s filters `formula.ppu > 5`.",
-    );
-  });
-
-  it("fails on anything outside the subset, even where no note would reach it", () => {
-    expect(failure(filter("false && file.ctime > 0"))).toMatch(/Not supported: file\.ctime/);
-    expect(failure(filter("if(status, true, false)"))).toMatch(/Not supported: if\(\)/);
-    expect(failure(filter('status.replace("a", "b")'))).toMatch(/status\.replace\(\)/);
-    expect(failure(filter("/ab/.matches(status)"))).toMatch(/regular expressions/);
-    expect(failure(filter("formula"))).toMatch(/formulas/);
-    expect(failure("views:\n  - type: kanban\n")).toMatch(/the kanban view/);
-    expect(failure("views:\n  - type: table\n    order: [formula.x]\n")).toMatch(/formula\.x/);
-    expect(failure("views:\n  - type: table\n    order: [file.embeds]\n")).toMatch(/file\.embeds/);
+  it("fails on a name the language doesn't have, even where no file would reach it", () => {
+    expect(failure(filter("false && file.nope > 0"))).toMatch(/Not supported: file\.nope/);
+    expect(failure(filter("shout(status)"))).toMatch(/Not supported: shout\(\)/);
+    expect(failure(filter("status.shout()"))).toMatch(/status\.shout\(\)/);
+    expect(failure(filter("formula"))).toMatch(/`formula` needs a name/);
+    expect(failure(filter("formula.x > 1"))).toMatch(/No formula named “x”/);
+    expect(failure(filter("/ab"))).toMatch(/Unclosed regular expression/);
+    expect(failure("views:\n  - type: gallery\n")).toMatch(/the gallery view/);
     expect(
-      failure("views:\n  - type: table\n    groupBy: { property: status }\n    groupOrder: [a]\n"),
-    ).toMatch(/groupOrder/);
-    expect(failure("views:\n  - type: table\n    summaries: { priority: Average }\n")).toMatch(
-      /summaries/,
-    );
+      failure(
+        "views:\n  - type: table\n    order: [priority]\n    summaries: { priority: Mode }\n",
+      ),
+    ).toMatch(/No summary named “Mode”/);
     expect(failure(filter("this.file.name == 'x'"))).toMatch(/`this` needs/);
     expect(failure(filter("status = 'open'"))).toMatch(/Unexpected "="/);
     expect(failure("filters:\n  xor: []\n")).toMatch(/exactly one of and, or, not/);
@@ -171,6 +216,7 @@ describe("queries", () => {
       "Delta",
       "Gamma",
       "Index",
+      "Open decisions.base",
       "Textbook",
     ]);
     expect(names(filter("priority >= 2 && note.priority < 3"))).toEqual(["Alpha"]);
@@ -184,19 +230,41 @@ describe("queries", () => {
     expect(names(filter('file.hasLink("Textbook")'))).toEqual(["Alpha"]);
     expect(names(filter('file.links.contains(link("Beta"))'))).toEqual(["Alpha", "Index"]);
     expect(names(filter('file.backlinks.contains("Gamma")'))).toEqual(["Alpha"]);
-    expect(names(filter("file.backlinks.isEmpty()"))).toEqual(["Code", "Delta", "Gamma", "Index"]);
+    expect(names(filter("file.backlinks.isEmpty()"))).toEqual([
+      "Code",
+      "Delta",
+      "Gamma",
+      "Index",
+      "Open decisions.base",
+    ]);
     expect(names(filter('file.hasTag("area")'))).toEqual(["Alpha", "Beta", "Gamma"]);
     expect(names(filter('file.hasTag("notatag") || file.hasProperty("kind")'))).toEqual(["Index"]);
-    expect(
-      names(filter('file.inFolder("/") && file.ext == "md" && file.name == "Beta.md"')),
-    ).toEqual(["Beta"]);
+    expect(names(filter('file.inFolder("/") && file.ext == "md" && file.name == "Beta"'))).toEqual([
+      "Beta",
+    ]);
+    expect(names(filter('file.name == "Beta.md"'))).toEqual([]);
+    expect(names(filter('file.ext == "base"'))).toEqual(["Open decisions.base"]);
   });
 
   it("runs a block embedded in a note with `this` as that note: the tail after a curated head", () => {
-    const [block] = baseBlocks(WIKI.notes.get("index")!.source);
+    const [block] = baseBlocks(FILES["Index.md"]!);
     expect(names(block!, { self: "Index.md" })).toEqual(["Gamma"]);
     expect(names(filter("file.hasLink(this.file)"), { self: "Index" })).toEqual([]);
     expect(names(filter("file.hasLink(this)"), { self: "Alpha.md" })).toEqual(["Gamma", "Index"]);
+  });
+
+  it("makes an error cell of a formula that refers to itself", () => {
+    const source = [
+      "formulas:",
+      "  a: 'formula.b + 1'",
+      "  b: 'formula.a + 1'",
+      "views:",
+      "  - type: table",
+      "    filters: 'file.name == \"Alpha\"'",
+      "    order: [formula.a]",
+    ].join("\n");
+    const result = queryBase(WIKI, parseBase(source), { now: NOW });
+    expect(result.rows[0]?.values["formula.a"]).toMatch(/^Error: The formula “a” refers to itself/);
   });
 
   it("orders, sorts, limits, labels and groups a view, and caps what comes back", () => {
@@ -219,13 +287,13 @@ describe("queries", () => {
       "    order: [file.name, file.mtime]",
     ].join("\n");
     const base = parseBase(source);
-    const cards = queryBase(WIKI, base, { editTimes: EDITED, now: NOW });
+    const cards = queryBase(WIKI, base, { now: NOW });
     expect(cards.view).toEqual({ name: "By priority", type: "cards" });
     expect(cards.views).toEqual(["By priority", "By status"]);
     expect(cards.columns).toEqual([
-      { id: "file.basename", label: "Name" },
+      { id: "file.basename", label: "file base name" },
       { id: "priority", label: "Priority" },
-      { id: "file.links", label: "Links" },
+      { id: "file.links", label: "file links" },
     ]);
     expect(cards.rows).toEqual([
       {
@@ -240,26 +308,28 @@ describe("queries", () => {
         values: {
           "file.basename": "Alpha",
           priority: 2,
-          "file.links": ["[[Venkat]]", "[[Beta]]", "[[Textbook]]"],
+          "file.links": ["[[Venkat|Venkat]]", "[[Beta|Beta]]", "[[Textbook|Textbook]]"],
         },
       },
     ]);
     expect(cards.total).toBe(2);
 
-    const grouped = queryBase(WIKI, base, {
-      view: "by status",
-      editTimes: EDITED,
-      now: NOW,
-      cap: 3,
-    });
+    const grouped = queryBase(WIKI, base, { view: "by status", now: NOW, cap: 3 });
     expect(grouped.groupBy).toEqual({ id: "status", label: "status" });
     expect(grouped.rows.map((row) => [row.name, row.group])).toEqual([
       ["Beta", "done"],
       ["Alpha", "open"],
       ["Code", null],
     ]);
-    expect(grouped.rows[1]?.values["file.mtime"]).toBe("2026-10-30T12:00:00.000Z");
-    expect(grouped.total).toBe(7);
+    expect(grouped.groups.map((group) => [group.value, group.count])).toEqual([
+      ["done", 1],
+      ["open", 1],
+      [null, 6],
+    ]);
+    expect(grouped.rows[1]?.values["file.mtime"]).toBe(
+      formatDate(Date.parse("2026-10-30T12:00:00.000Z"), "YYYY-MM-DDTHH:mm:ss"),
+    );
+    expect(grouped.total).toBe(8);
     expect(grouped.truncated).toBe(true);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "nodes": [
+    { "id": "a1", "type": "file", "file": "Alpha.md", "x": 0, "y": 0, "width": 400, "height": 300 },
+    { "id": "t1", "type": "text", "text": "See [[Beta]]", "x": 500, "y": 0, "width": 200, "height": 100 }
+  ],
+  "edges": []
+}

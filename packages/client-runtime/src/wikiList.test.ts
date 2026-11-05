@@ -94,7 +94,7 @@ describe("wikiListEntries", () => {
     expect(found.settled).toEqual([]);
   });
 
-  it("lists a wiki's .base files as documents named by their file, marked as bases", () => {
+  it("lists a wiki's .base files as documents named by their file, titled without it", () => {
     const withBase: WikiOverview = {
       environmentId,
       wiki: wiki("c", "Plans"),
@@ -107,9 +107,11 @@ describe("wikiListEntries", () => {
       ],
     };
     const { documents } = wikiListEntries([withBase], null);
-    expect(documents.map((document) => [document.name, document.file, document.base])).toEqual([
-      ["Projects.base", "Projects.base", true],
-      ["Roadmap", "Roadmap.md", false],
+    expect(
+      documents.map((document) => [document.name, document.title, document.file, document.base]),
+    ).toEqual([
+      ["Projects.base", "Projects", "Projects.base", true],
+      ["Roadmap", "Roadmap", "Roadmap.md", false],
     ]);
     expect(documents[0]?.changes.map((change) => change.title)).toEqual(["Add a view"]);
     expect(

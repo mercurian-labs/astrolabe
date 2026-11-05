@@ -45,7 +45,7 @@ import {
   ComboboxTrigger,
 } from "../ui/combobox";
 import { MenuItem } from "../ui/menu";
-import { noteNameOfFile } from "./wiki.logic";
+import { wikiDocumentName } from "./wiki.logic";
 import { showWikiTab, wikiPanes } from "./wikiPanes";
 import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 
@@ -53,7 +53,6 @@ import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 const wikiWorktreeFiles = storedWorktreeFiles("astrolabe:wiki-worktree-files:v1");
 
 const CHANGE_REQUEST_BRANCH = /^cr\/(.+)$/;
-const NOT_NOTES = new Set(["readme.md", "agents.md", "claude.md"]);
 
 /** The change request a worktree's branch is, if it is one. */
 const changeRequestOf = (branch: string | null) =>
@@ -156,16 +155,13 @@ export function WikiWorktreeSections({
   const openFile = (worktree: ProjectWorktree, file: string) => {
     const changeRequestId = changeRequestOf(worktree.branch) ?? undefined;
     const onMainLine = worktree.isMain || worktree.branch === wiki.mainBranch;
-    const isNote =
-      /^[^/]+\.md$/i.test(file) &&
-      !NOT_NOTES.has(file.toLowerCase()) &&
-      !/\.skillmap\.md$/i.test(file);
-    if (isNote && (onMainLine || changeRequestId !== undefined)) {
+    const name = /\.md$/i.test(file) ? wikiDocumentName(file) : null;
+    if (name !== null && (onMainLine || changeRequestId !== undefined)) {
       showWikiTab({
         kind: "note",
         environmentId: overview.environmentId,
         wikiId: wiki.wikiId,
-        name: noteNameOfFile(file),
+        name,
         changeRequestId,
       });
       return;

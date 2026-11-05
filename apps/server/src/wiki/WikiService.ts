@@ -24,6 +24,12 @@ import {
   mergeMarkdown,
   parseBase,
   queryBase,
+  baseCorpus,
+  applyBaseEdits,
+  applyChanges,
+  corpusWithChanges,
+  isHidden,
+  type BaseCorpus,
 } from "@mercurian/wiki";
 import {
   type ProjectId,
@@ -52,6 +58,7 @@ import {
   type WikiRevertInput,
   type WikiSaveWorktreeInput,
   type WikiSetChangeRequestStatusInput,
+  type WikiSetMapBackgroundsInput,
   type WikiSetMirrorInput,
   type WikiSetProjectLinkInput,
   type WikiSummary,
@@ -96,7 +103,9 @@ import {
   parseDocumentListing,
   EDIT_TIMES_DEPTH,
   EDIT_TIMES_FORMAT,
-  parseEditTimes,
+  parseFileListing,
+  parseFileTimes,
+  type WikiFileTimes,
   parseMergeTree,
   type WikiRecord,
   type WikiRegistry,
@@ -163,6 +172,9 @@ export class WikiService extends Context.Service<
     /** Forgets the wiki; its folder and history stay as they are. */
     readonly remove: (input: WikiTarget) => Effect.Effect<void, WikiError>;
     readonly setMirror: (input: WikiSetMirrorInput) => Effect.Effect<WikiSummary, WikiError>;
+    readonly setMapBackgrounds: (
+      input: WikiSetMapBackgroundsInput,
+    ) => Effect.Effect<WikiSummary, WikiError>;
     readonly setProjectLink: (
       input: WikiSetProjectLinkInput,
     ) => Effect.Effect<WikiSummary, WikiError>;
@@ -358,7 +370,8 @@ const make = Effect.gen(function* () {
   const snapshots = lru<Snapshot>(24);
   const amendmentLogs = lru<WikiChangeRequest["amendments"]>(128);
   const metadataRecords = lru<ChangeRequestRecord>(512);
-  const editTimes = lru<ReadonlyMap<string, string>>(24);
+  const editTimes = lru<WikiFileTimes>(24);
+  const corpora = lru<BaseCorpus>(8);
 
   const newId = crypto.randomUUIDv4().pipe(
     Effect.orDie,
@@ -1630,6 +1643,7 @@ const make = Effect.gen(function* () {
         mainBranch: wiki.mainBranch,
         projectIds: wiki.projectIds,
         mirror: wiki.mirror,
+        mapBackgrounds: wiki.mapBackgrounds,
         openChangeRequests,
         createdAt: wiki.createdAt,
       })),
@@ -1657,9 +1671,35 @@ const make = Effect.gen(function* () {
       commit,
       "--",
     ]);
-    const times = parseEditTimes(log.stdout);
+    const times = parseFileTimes(log.stdout);
     editTimes.set(commit, times);
     return times;
+  });
+
+  /** Every file at `commit` as a base lists them; only notes and canvases are read. */
+  const corpusAt = Effect.fn("WikiService.corpusAt")(function* (wiki: WikiRecord, commit: string) {
+    const cached = corpora.get(commit);
+    if (cached !== undefined) return cached;
+    const listing = parseFileListing(
+      (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
+    ).filter((entry) => !isHidden(entry.file));
+    const readable = listing.filter((entry) => /\.(md|canvas)$/i.test(entry.file));
+    const contents = yield* readObjects(
+      wiki.root,
+      readable.map((entry) => entry.oid),
+    );
+    const sources = new Map(readable.map((entry, position) => [entry.file, contents[position]]));
+    const times = yield* editTimesAt(wiki, commit);
+    const corpus = baseCorpus(
+      listing.map((entry) => ({
+        file: entry.file,
+        size: entry.size,
+        ...(sources.has(entry.file) ? { source: sources.get(entry.file) ?? "" } : {}),
+      })),
+      times,
+    );
+    corpora.set(commit, corpus);
+    return corpus;
   });
 
   const index: WikiService["Service"]["index"] = (input) =>
@@ -1670,7 +1710,7 @@ const make = Effect.gen(function* () {
           const commit = yield* readCommit(wiki, input);
           const snapshot = yield* snapshotAt(wiki, commit);
           const times = yield* editTimesAt(wiki, commit);
-          return indexResult(wiki.wikiId, commit, snapshot.index, times);
+          return indexResult(wiki.wikiId, commit, snapshot.index, times.modified);
         }),
       input.changeRequestId,
     );
@@ -1699,18 +1739,30 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const commit = yield* readCommit(wiki, input);
           const snapshot = yield* snapshotAt(wiki, commit);
-          const located = locateBase(snapshot.index, input);
+          // Unsaved edits from the view are read as if they had landed.
+          const changes = yield* Effect.try({
+            try: () => (input.edits?.length ? applyBaseEdits(snapshot.files, input.edits) : {}),
+            catch: (cause) =>
+              new WikiError({
+                reason: "invalid",
+                message: cause instanceof BaseError ? cause.message : "The edits could not apply.",
+                cause,
+              }),
+          });
+          const edited = Object.keys(changes).length > 0;
+          const index = edited ? indexFiles(applyChanges(snapshot.files, changes)) : snapshot.index;
+          const located = locateBase(index, input);
           if ("problem" in located) {
             return yield* new WikiError({ reason: located.problem, message: located.message });
           }
-          const editTimes = yield* editTimesAt(wiki, commit);
+          const committed = yield* corpusAt(wiki, commit);
+          const corpus = edited ? corpusWithChanges(committed, changes) : committed;
           const now = yield* Clock.currentTimeMillis;
           const result = yield* Effect.try({
             try: () =>
-              queryBase(snapshot.index, parseBase(located.source), {
+              queryBase(corpus, parseBase(located.source), {
                 view: input.view,
                 self: located.self,
-                editTimes,
                 now,
                 cap: QUERY_ROWS,
               }),
@@ -1924,6 +1976,7 @@ const make = Effect.gen(function* () {
       projectIds: [],
       projectLinkedAt: {},
       mirror: null,
+      mapBackgrounds: [],
       createdAt,
     };
     yield* updateRegistry((registry) =>
@@ -2097,6 +2150,35 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const setMapBackgrounds: WikiService["Service"]["setMapBackgrounds"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const names = new Set(input.backgrounds.map(({ name }) => name.toLowerCase()));
+        if (names.size !== input.backgrounds.length) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: "Two map backgrounds can't share a name.",
+          });
+        }
+        const addresses = input.backgrounds.flatMap(({ lightTiles, darkTiles }) =>
+          darkTiles === null ? [lightTiles] : [lightTiles, darkTiles],
+        );
+        if (addresses.some((address) => !/^https?:\/\//i.test(address))) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: "A map background's address starts with http:// or https://.",
+          });
+        }
+        const next = yield* locked(
+          wiki,
+          replaceWiki({ ...wiki, mapBackgrounds: input.backgrounds }),
+        );
+        // A kind older clients decode; every kind only tells them to read again.
+        yield* publish("mirror", wiki.wikiId, null);
+        return yield* summary(next);
+      }),
+    );
+
   const setProjectLink: WikiService["Service"]["setProjectLink"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       locked(
@@ -2167,6 +2249,7 @@ const make = Effect.gen(function* () {
     create,
     remove,
     setMirror,
+    setMapBackgrounds,
     setProjectLink,
     agentNote,
     pushMirror,

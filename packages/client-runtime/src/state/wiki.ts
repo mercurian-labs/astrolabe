@@ -166,6 +166,10 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:mirror:set",
       tag: WS_METHODS.wikiSetMirror,
     }),
+    setMapBackgrounds: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:map-backgrounds:set",
+      tag: WS_METHODS.wikiSetMapBackgrounds,
+    }),
     setProjectLink: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:project-link:set",
       tag: WS_METHODS.wikiSetProjectLink,

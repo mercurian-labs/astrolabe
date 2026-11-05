@@ -1,10 +1,13 @@
+import "./baseLayout.css";
 import "./mobilePage.css";
 
 import { useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
+import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
+import { WikiLinkPreview, type WikiLinkPeek } from "./linkTools";
 import { WikiNoteEditor } from "./NoteEditor";
 import { parseWikiEditorCommand, WIKI_EDITOR_RECEIVE, type WikiEditorEvent } from "./protocol";
 
@@ -24,9 +27,26 @@ const post = (event: WikiEditorEvent) =>
   window.ReactNativeWebView?.postMessage(JSON.stringify(event));
 const openNote = (name: string) => post({ type: "openNote", name });
 
+function LinkPreview({
+  page,
+  link,
+}: {
+  readonly page: WikiEditorPage;
+  readonly link: WikiLinkPeek;
+}) {
+  const source = useSyncExternalStore(
+    (listener) => page.watchNote(link.name, listener),
+    () => page.getNote(link.name),
+  );
+  return <WikiLinkPreview link={link} source={source} />;
+}
+
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
-  const { mode, base, theme } = useSyncExternalStore(page.subscribe, page.getState);
+  const { mode, base, baseEditable, theme, linkTypes } = useSyncExternalStore(
+    page.subscribe,
+    page.getState,
+  );
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the app theme's CSS variables and color scheme onto the page's root element
   useEffect(() => {
     if (!theme) return;
@@ -38,7 +58,20 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
     root.dataset.appearance = theme.appearance;
   }, [theme]);
   if (base !== null) {
-    return <BaseBlock page={page} source={base} onOpenNote={openNote} />;
+    return (
+      <BaseBlock
+        page={page}
+        source={base}
+        onOpenNote={openNote}
+        onOpenUrl={(href) => post({ type: "openUrl", href })}
+        {...(baseEditable
+          ? {
+              onEdit: (file: string, property: string, value: BaseCellValue) =>
+                post({ type: "editBase", file, property, value }),
+            }
+          : {})}
+      />
+    );
   }
   if (!session) return null;
   return (
@@ -47,8 +80,17 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
       session={session}
       readOnly={mode === "read"}
       onOpenNote={openNote}
+      linkTypes={linkTypes}
+      renderLinkPreview={(link) => <LinkPreview page={page} link={link} />}
       onOpenUrl={(href) => post({ type: "openUrl", href })}
-      renderBase={(source) => <BaseBlock page={page} source={source} onOpenNote={openNote} />}
+      renderBase={(source) => (
+        <BaseBlock
+          page={page}
+          source={source}
+          onOpenNote={openNote}
+          onOpenUrl={(href) => post({ type: "openUrl", href })}
+        />
+      )}
     />
   );
 }

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  IsoDateTime,
   ProviderInstanceId,
   ThreadId,
   WikiError,
+  WikiId,
+  type WikiListResult,
   type WikiQueryResult,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -57,7 +60,10 @@ const rows: WikiQueryResult = {
   truncated: false,
 };
 
-const harness = (answer: Effect.Effect<WikiQueryResult, WikiError>) => {
+const harness = (
+  answer: Effect.Effect<WikiQueryResult, WikiError>,
+  listed: WikiListResult = { wikis: [] },
+) => {
   const calls: unknown[] = [];
   const layer = McpHttpServer.layerWikiToolkit.pipe(
     Layer.provideMerge(McpServer.McpServer.layer),
@@ -65,6 +71,7 @@ const harness = (answer: Effect.Effect<WikiQueryResult, WikiError>) => {
       Layer.mergeAll(
         McpToolAccessTestkit.liveThreadsLayer,
         Layer.mock(WikiService.WikiService)({
+          list: Effect.succeed(listed),
           query: (input) => {
             calls.push(input);
             return answer;
@@ -73,17 +80,43 @@ const harness = (answer: Effect.Effect<WikiQueryResult, WikiError>) => {
       ),
     ),
   );
-  const call = (args: Record<string, unknown>) =>
+  const call = (args: Record<string, unknown>, name = "astrolabe_wiki_query") =>
     McpServer.McpServer.pipe(
-      Effect.flatMap((server) =>
-        server.callTool({ name: "astrolabe_wiki_query", arguments: args }),
-      ),
+      Effect.flatMap((server) => server.callTool({ name, arguments: args })),
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provideService(McpSchema.McpServerClient, client),
       Effect.provide(layer),
     );
   return { calls, call };
 };
+
+describe("astrolabe_wiki_list", () => {
+  it.effect("leaves out map backgrounds, whose addresses can hold access tokens", () =>
+    Effect.gen(function* () {
+      const tools = harness(Effect.succeed(rows), {
+        wikis: [
+          {
+            wikiId: WikiId.make("plans"),
+            name: "Plans",
+            root: "/wikis/plans",
+            mainBranch: "main",
+            projectIds: [],
+            mirror: null,
+            mapBackgrounds: [
+              { name: "Paid", lightTiles: "https://tiles.test/?key=secret", darkTiles: null },
+            ],
+            openChangeRequests: 0,
+            createdAt: IsoDateTime.make("2026-11-04T00:00:00.000Z"),
+          },
+        ],
+      });
+      const result = yield* tools.call({}, "astrolabe_wiki_list");
+      expect(result.isError).not.toBe(true);
+      expect(JSON.stringify(result)).toContain("Plans");
+      expect(JSON.stringify(result)).not.toContain("secret");
+    }),
+  );
+});
 
 describe("astrolabe_wiki_query", () => {
   it.effect("runs the named base from the calling thread's view of the wiki", () =>

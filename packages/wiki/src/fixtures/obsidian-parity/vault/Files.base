@@ -1,0 +1,47 @@
+views:
+  - type: table
+    name: Every file
+    order:
+      - file.name
+      - file.basename
+      - file.path
+      - file.folder
+      - file.ext
+      - file.size
+    sort:
+      - property: file.path
+        direction: ASC
+  - type: table
+    name: In projects
+    filters: file.inFolder("projects")
+    order:
+      - file.name
+      - file.folder
+    sort:
+      - property: file.path
+        direction: ASC
+  - type: table
+    name: Not notes
+    filters: file.ext != "md"
+    order:
+      - file.name
+      - file.ext
+      - file.properties
+      - file.tags
+      - file.links
+    sort:
+      - property: file.name
+        direction: ASC
+  - type: table
+    name: File fields
+    filters: file.ext == "md"
+    order:
+      - file.name
+      - file.tags
+      - file.links
+      - file.backlinks
+      - file.embeds
+      - file.properties
+    sort:
+      - property: file.name
+        direction: ASC

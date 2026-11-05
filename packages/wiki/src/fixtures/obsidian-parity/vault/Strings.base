@@ -1,0 +1,79 @@
+filters:
+  and:
+    - file.hasProperty("status")
+formulas:
+  title_cased: 'title.title()'
+  trimmed: '"  hi  ".trim()'
+  replaced: 'status.replace("o", "0")'
+  regex_first: 'file.basename.replace(/a/, "4")'
+  regex_all: 'file.basename.replace(/a/g, "4")'
+  regex_groups: '"John Smith".replace(/(\w+) (\w+)/, "$2, $1")'
+  split_three: 'words.split(",", 3)'
+  split_regex: 'words.split(/[, ]/)'
+  sliced: 'file.basename.slice(1, 3)'
+  sliced_open: 'file.basename.slice(2)'
+  repeated: 'status.repeat(2)'
+  reversed: 'file.basename.reverse()'
+  lowered: 'file.basename.lower()'
+  length: 'file.basename.length'
+  starts: 'file.basename.startsWith("A")'
+  ends: 'file.basename.endsWith("a")'
+  contains_all: 'file.basename.containsAll("l", "a")'
+  contains_any: 'file.basename.containsAny("e", "x")'
+  matches: '/^[AB]/.matches(file.basename)'
+  matches_flags: '/^alpha$/i.matches(file.basename)'
+  to_string: 'priority.toString()'
+  is_number: 'priority.isType("number")'
+  is_string: 'status.isType("string")'
+  truthy: 'priority.isTruthy()'
+  concat: 'file.basename + " / " + status'
+  concat_number: '"p" + priority'
+  if_else: 'if(done, "Done", "Not done")'
+  if_no_else: 'if(priority > 2, "high")'
+  empty_title: 'title.isEmpty()'
+  escaped: 'escapeHTML("<b>" + file.basename + "</b>")'
+views:
+  - type: table
+    name: Text
+    order:
+      - file.name
+      - formula.title_cased
+      - formula.trimmed
+      - formula.replaced
+      - formula.regex_first
+      - formula.regex_all
+      - formula.regex_groups
+      - formula.split_three
+      - formula.split_regex
+      - formula.sliced
+      - formula.sliced_open
+      - formula.repeated
+      - formula.reversed
+      - formula.lowered
+      - formula.length
+    sort:
+      - property: file.name
+        direction: ASC
+  - type: table
+    name: Tests
+    order:
+      - file.name
+      - formula.starts
+      - formula.ends
+      - formula.contains_all
+      - formula.contains_any
+      - formula.matches
+      - formula.matches_flags
+      - formula.to_string
+      - formula.is_number
+      - formula.is_string
+      - formula.truthy
+      - formula.concat
+      - formula.concat_number
+      - formula.if_else
+      - formula.if_no_else
+      - formula.empty_title
+      - formula.escaped
+    sort:
+      - property: file.name
+        direction: ASC

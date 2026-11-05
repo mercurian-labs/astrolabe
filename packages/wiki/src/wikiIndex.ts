@@ -1,4 +1,4 @@
-import { isBaseFile } from "./bases.ts";
+import { baseBlocks, baseProblems, isBaseFile } from "./bases.ts";
 import { key, links, noteName, type WikiLink } from "./links.ts";
 import { isMapFile, parseMap, type MapEdgeRef, type SkillMap } from "./skillMap.ts";
 
@@ -65,6 +65,17 @@ export function indexFiles(files: WikiFiles): WikiIndex {
     if (notes.has(key(name)))
       throw new WikiCollisionError(`Case-insensitive note collision: ${file}`);
     notes.set(key(name), { name, file, source, links: links(source) });
+  }
+  const linked = new Set<string>();
+  for (const note of notes.values()) for (const link of note.links) linked.add(key(link.target));
+  const named = (name: string) => notes.has(key(name)) || linked.has(key(name));
+  for (const [file, source] of bases) {
+    for (const error of baseProblems(source, named)) errors.push({ file, error });
+  }
+  for (const note of notes.values()) {
+    for (const block of baseBlocks(note.source)) {
+      for (const error of baseProblems(block, named)) errors.push({ file: note.file, error });
+    }
   }
   const partial = { notes };
   for (const [file, map] of maps) {

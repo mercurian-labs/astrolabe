@@ -140,6 +140,7 @@ export const previewBaseTheme = EditorView.baseTheme({
   },
 
   ".cm-md-link, .cm-md-wikilink": { textDecoration: "underline", textUnderlineOffset: "0.15em" },
+  ".cm-md-link-type": { fontStyle: "italic" },
   ".cm-md-external": { display: "inline-flex", marginLeft: "0.15em", verticalAlign: "0.05em" },
   ".cm-md-external svg": { width: "0.8em", height: "0.8em" },
   ".cm-md-link-unsafe": { textDecoration: "underline dotted", textUnderlineOffset: "0.15em" },

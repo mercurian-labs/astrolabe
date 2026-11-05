@@ -88,6 +88,21 @@ describe("host-drawn code blocks", () => {
   });
 });
 
+describe("host-drawn embeds", () => {
+  it("draws an embed alone on its line as the host's block, and leaves others inline", () => {
+    const render: CodeBlockRenderer = (source, element) => {
+      element.textContent = `view of ${source}`;
+    };
+    const doc = "intro\n![[Open.base#Board]]\n\nsee ![[Open.base]] here\n![[pic.png]]";
+    const view = mount(doc, { focused: true, options: { embedBlocks: { base: render } } });
+    const drawn = view.contentDOM.querySelectorAll(".cm-md-host-block");
+    expect([...drawn].map((element) => element.textContent)).toEqual(["view of Open.base#Board"]);
+
+    select(view, doc.indexOf("Open.base#Board"));
+    expect(view.contentDOM.querySelector(".cm-md-host-block")).toBeNull();
+  });
+});
+
 describe("host key options", () => {
   it("reserved keys stay unbound while the other formatting keys work", () => {
     const view = mount("hello", {

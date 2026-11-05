@@ -164,6 +164,10 @@
       "types": "./src/wikiLogic.ts",
       "default": "./src/wikiLogic.ts"
     },
+    "./wikiBaseEdits": {
+      "types": "./src/wikiBaseEdits.ts",
+      "default": "./src/wikiBaseEdits.ts"
+    },
     "./t3ToolSummary": {
       "types": "./src/t3ToolSummary.ts",
       "default": "./src/t3ToolSummary.ts"

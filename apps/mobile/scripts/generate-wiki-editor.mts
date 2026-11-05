@@ -10,6 +10,7 @@ const workspaceRoot = NodePath.resolve(mobileRoot, "../..");
 export const wikiEditorSources = [
   NodePath.join(workspaceRoot, "packages/wiki-editor/src"),
   NodePath.join(workspaceRoot, "packages/editor/src"),
+  NodePath.join(workspaceRoot, "packages/wiki/src"),
 ];
 
 /**

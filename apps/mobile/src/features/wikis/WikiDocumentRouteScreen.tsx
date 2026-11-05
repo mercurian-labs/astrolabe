@@ -38,7 +38,7 @@ import {
   wikiDocumentSubtitle,
 } from "./document/wikiDocument.logic";
 import { useEditorTheme } from "./document/useEditorTheme";
-import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
+import { WikiBaseQueries, WikiNoteReads, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiSaveSheet, type WikiSaveTarget } from "./document/WikiSaveSheet";
 import { WikiBaseScreen } from "./WikiBaseScreen";
@@ -78,6 +78,9 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
 
   const note = useEnvironmentQuery(
     wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
+  );
+  const index = useEnvironmentQuery(
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const changeRequests = useEnvironmentQuery(
@@ -173,8 +176,23 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     editor.current?.send({ type: "baseResult", source, ...answer });
   }, []);
 
+  const linkTypes = index.data?.linkTypes;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's types cross into the editor's web view, outside React
+  useEffect(() => {
+    if (linkTypes) editor.current?.send({ type: "linkTypes", types: linkTypes });
+  }, [linkTypes]);
+
+  // The notes the page's link previews show, read here, as the blocks are.
+  const [previewNames, setPreviewNames] = useState<ReadonlyArray<string>>([]);
+  const onNoteRead = useCallback((name: string, source: string | null) => {
+    editor.current?.send({ type: "noteRead", name, source });
+  }, []);
+
   const onEvent = (event: WikiEditorEvent) => {
     switch (event.type) {
+      case "readNote":
+        setPreviewNames((names) => (names.includes(event.name) ? names : [...names, event.name]));
+        return;
       case "queryBase": {
         const known = baseAnswers.current.get(event.source);
         if (known) editor.current?.send({ type: "baseResult", source: event.source, ...known });
@@ -361,6 +379,13 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         changeRequestId={changeRequestId}
         note={note.data.name}
         onAnswer={onBaseAnswer}
+      />
+      <WikiNoteReads
+        names={previewNames}
+        environmentId={environmentId}
+        wikiId={wikiId}
+        changeRequestId={changeRequestId}
+        onRead={onNoteRead}
       />
       {saving ? (
         <WikiSaveSheet

@@ -12,6 +12,16 @@ describe("cellParts", () => {
     ]);
   });
 
+  it("reads a typed link as its display text, or beside the name when it's only types", () => {
+    expect(cellParts("[[Auth|the flow @depends_on]] [[Auth#Top|@blocks]] [[Sam|\\@sam]]")).toEqual([
+      { kind: "link", name: "Auth", text: "the flow depends_on" },
+      { kind: "text", text: " " },
+      { kind: "link", name: "Auth", text: "Auth blocks" },
+      { kind: "text", text: " " },
+      { kind: "link", name: "Sam", text: "@sam" },
+    ]);
+  });
+
   it("joins a list, and shows empty values as nothing", () => {
     expect(cellParts(["[[Beta]]", 2, true, null])).toEqual([
       { kind: "link", name: "Beta", text: "Beta" },

@@ -55,43 +55,75 @@ const write = <A>(
     ),
   );
 
+// The tool schemas take plain strings, whose descriptions reach agents; the service gets them trimmed.
+const target = <
+  I extends { readonly wiki: string; readonly changeRequestId?: string | undefined },
+>({
+  wiki,
+  changeRequestId,
+  ...rest
+}: I) => ({
+  ...rest,
+  wikiId: WikiId.make(wiki.trim()),
+  ...(changeRequestId === undefined
+    ? {}
+    : { changeRequestId: WikiChangeRequestId.make(changeRequestId.trim()) }),
+});
+
+const written = <I extends { readonly message: string; readonly title?: string | undefined }>(
+  input: I,
+) => ({
+  ...input,
+  message: input.message.trim(),
+  ...(input.title === undefined ? {} : { title: input.title.trim() }),
+});
+
 export const layer = McpToolAccess.toLayer(WikiToolkit, {
-  astrolabe_wiki_list: McpToolAccess.reads(() => read((wikis) => wikis.list)),
-  astrolabe_wiki_read: McpToolAccess.reads(({ wiki, ...input }) =>
-    read((wikis, threadId) => wikis.readNote({ ...input, wikiId: WikiId.make(wiki), threadId })),
-  ),
-  astrolabe_wiki_search: McpToolAccess.reads(({ wiki, ...input }) =>
-    read((wikis, threadId) => wikis.search({ ...input, wikiId: WikiId.make(wiki), threadId })),
-  ),
-  astrolabe_wiki_orient: McpToolAccess.reads(({ wiki, ...input }) =>
-    read((wikis, threadId) => wikis.orient({ ...input, wikiId: WikiId.make(wiki), threadId })),
-  ),
-  astrolabe_wiki_links: McpToolAccess.reads(({ wiki, ...input }) =>
-    read((wikis, threadId) => wikis.links({ ...input, wikiId: WikiId.make(wiki), threadId })),
-  ),
-  astrolabe_wiki_query: McpToolAccess.reads(({ wiki, base, view, changeRequestId }) =>
-    read((wikis, threadId) =>
-      wikis.query({
-        wikiId: WikiId.make(wiki.trim()),
-        base: base.trim(),
-        ...(view === undefined ? {} : { view: view.trim() }),
-        ...(changeRequestId === undefined
-          ? {}
-          : { changeRequestId: WikiChangeRequestId.make(changeRequestId.trim()) }),
-        threadId,
-      }),
+  astrolabe_wiki_list: McpToolAccess.reads(() =>
+    read((wikis) =>
+      wikis.list.pipe(
+        // Tile addresses can hold access tokens, and agents have no use for them.
+        Effect.map(({ wikis }) => ({
+          wikis: wikis.map(({ mapBackgrounds: _, ...wiki }) => wiki),
+        })),
+      ),
     ),
   ),
-  astrolabe_wiki_change_request: McpToolAccess.reads(({ wiki, changeRequestId }) =>
+  astrolabe_wiki_read: McpToolAccess.reads((input) =>
     read((wikis, threadId) =>
-      wikis.changeRequestsGet({ wikiId: WikiId.make(wiki), changeRequestId, threadId }),
+      wikis.readNote({ ...target(input), name: input.name.trim(), threadId }),
     ),
+  ),
+  astrolabe_wiki_search: McpToolAccess.reads((input) =>
+    read((wikis, threadId) => wikis.search({ ...target(input), threadId })),
+  ),
+  astrolabe_wiki_orient: McpToolAccess.reads((input) =>
+    read((wikis, threadId) => wikis.orient({ ...target(input), map: input.map.trim(), threadId })),
+  ),
+  astrolabe_wiki_links: McpToolAccess.reads((input) =>
+    read((wikis, threadId) => wikis.links({ ...target(input), threadId })),
+  ),
+  astrolabe_wiki_query: McpToolAccess.reads(({ base, view, ...input }) =>
+    read((wikis, threadId) =>
+      wikis
+        .query({
+          ...target(input),
+          base: base.trim(),
+          ...(view === undefined ? {} : { view: view.trim() }),
+          threadId,
+        })
+        // The property picker's list is for the app; an agent reads the base's YAML instead.
+        .pipe(Effect.map(({ properties: _properties, ...result }) => result)),
+    ),
+  ),
+  astrolabe_wiki_change_request: McpToolAccess.reads((input) =>
+    read((wikis, threadId) => wikis.changeRequestsGet({ ...target(input), threadId })),
   ),
   // Amendments belong to the calling thread's change request; only a live thread may write.
-  astrolabe_wiki_amend: McpToolAccess.actsAsCaller(({ wiki, ...input }) =>
-    write((wikis, author) => wikis.amend({ ...input, wikiId: WikiId.make(wiki) }, author)),
+  astrolabe_wiki_amend: McpToolAccess.actsAsCaller((input) =>
+    write((wikis, author) => wikis.amend(written(target(input)), author)),
   ),
-  astrolabe_wiki_transform: McpToolAccess.actsAsCaller(({ wiki, ...input }) =>
-    write((wikis, author) => wikis.transform({ ...input, wikiId: WikiId.make(wiki) }, author)),
+  astrolabe_wiki_transform: McpToolAccess.actsAsCaller((input) =>
+    write((wikis, author) => wikis.transform(written(target(input)), author)),
   ),
 });

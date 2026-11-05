@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 
-import { noteKey } from "./wiki.logic";
+import { documentTitle, noteKey } from "./wiki.logic";
 
 /**
  * What a tab in the Wikis area shows: a note, read from main or inside a change request, or a
@@ -115,7 +115,11 @@ export interface WikiDocumentItem {
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
   readonly name: string;
+  /** What lists show: the name, without a base's `.base`. */
+  readonly title: string;
   readonly file: string;
+  /** A `.base` file, which lists mark with a table icon. */
+  readonly base: boolean;
   readonly links: number;
   readonly backlinks: number;
   /** When the note last changed on main; null when the wiki doesn't say. */
@@ -204,7 +208,9 @@ export function wikiSidebarItems(
         environmentId,
         wiki,
         name: note.name,
+        title: documentTitle(note.name),
         file: note.file,
+        base: note.file.endsWith(".base"),
         links: note.outgoing,
         backlinks: note.incoming,
         editedAt: note.editedAt ?? null,

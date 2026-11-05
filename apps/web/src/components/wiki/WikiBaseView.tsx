@@ -1,22 +1,57 @@
-import { cellParts, isNameColumn, type BaseCellValue } from "@mercurian/wiki-editor/base-cells";
+import "@mercurian/wiki-editor/base-layout.css";
+
+import { useAtomValue } from "@effect/atom-react";
+import { BaseLayout, type BaseLayoutHost } from "@mercurian/wiki-editor/base-layout";
 import type {
   EnvironmentId,
+  WikiBaseCell,
+  WikiBaseEdit,
+  WikiBaseFilter,
+  WikiChangeRequest,
   WikiChangeRequestId,
   WikiId,
+  WikiMapBackground,
   WikiQueryResult,
 } from "@t3tools/contracts";
+import { useBlocker } from "@tanstack/react-router";
+import DOMPurify from "dompurify";
+import type { LucideIcon } from "lucide-react";
 import { TriangleAlertIcon } from "lucide-react";
-import { Fragment, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useId, useState } from "react";
 
+import { useAssetUrlState } from "~/assets/assetUrls";
+import { useTheme } from "~/hooks/useTheme";
+import { ensureLocalApi } from "~/localApi";
 import { TabHeader } from "~/panes/TabHeader";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { describeWikiFailure } from "./wiki.logic";
-import { WikiPart } from "./WikiParts";
+import { describeWikiFailure, wikiDocumentName } from "./wiki.logic";
+import {
+  isEditableNote,
+  isNoteProperty,
+  newNoteProperties,
+  withEdit,
+} from "@t3tools/client-runtime/wikiBaseEdits";
+import { ColumnMenu, WikiBaseToolbar } from "./WikiBaseToolbar";
+import { useWikiCommand } from "./wikiEnvironment";
+import { SaveToChangeRequestDialog, type SaveTarget } from "./WikiSaveDialog";
+
+const WikiBaseMap = lazy(() => import("./WikiBaseMap"));
 
 /** A base by name (a `.base` file, or a note's first block), or a block's source in `note`. */
 export type WikiBaseSource =
@@ -24,191 +59,238 @@ export type WikiBaseSource =
   | { readonly source: string; readonly note: string };
 
 type Row = WikiQueryResult["rows"][number];
-type Column = WikiQueryResult["columns"][number];
 
-const NAME_COLUMN: Column = { id: "file.basename", label: "Name" };
-
-function CellValue({
-  value,
-  onOpenNote,
-}: {
-  readonly value: BaseCellValue | undefined;
+/** How a row's own name opens: a wiki document by name, any other file as a file. */
+interface RowOpeners {
   readonly onOpenNote: (name: string) => void;
-}) {
-  // Each part keyed by where its text starts, which is unique within the cell.
-  let at = 0;
-  return cellParts(value ?? null).map((part) => {
-    const key = `${part.kind}@${at}`;
-    at += part.text.length;
-    return part.kind === "text" ? (
-      <Fragment key={key}>{part.text}</Fragment>
-    ) : (
-      <WikiPart.NoteLink key={key} onClick={() => onOpenNote(part.name)}>
-        {part.text}
-      </WikiPart.NoteLink>
-    );
-  });
+  /** Absent where files can't open; such rows show their name as text. */
+  readonly onOpenFile?: ((file: string) => void) | undefined;
 }
 
-/** The row's own note, under a name or path column. */
-function RowName({
-  row,
-  column,
-  onOpenNote,
+/** What a base's own tab can change: the view's settings, and the notes it shows. */
+interface BaseEditing {
+  readonly file: string;
+  readonly edits: ReadonlyArray<WikiBaseEdit>;
+  /** The view the page shows, null for the base's first. */
+  readonly view: string | null;
+  readonly onPickView: (view: string) => void;
+  readonly onEdit: (edit: WikiBaseEdit) => void;
+  /** Drops the latest edit, as when it leaves a base that can't run. */
+  readonly onUndo: () => void;
+  /** New, with what the view's filters and the group it was asked from say the note needs. */
+  readonly onNew: (
+    filters: WikiBaseFilter | undefined,
+    group?: { readonly property: string; readonly value: WikiBaseCell },
+  ) => void;
+}
+
+/** A repository file shown as an image, read from the wiki's checkout. */
+function WikiFileImage({
+  environmentId,
+  root,
+  path,
+  className,
 }: {
-  readonly row: Row;
-  readonly column: Column;
-  readonly onOpenNote: (name: string) => void;
+  readonly environmentId: EnvironmentId;
+  readonly root: string | null;
+  readonly path: string;
+  readonly className: string;
 }) {
-  const path = row.values[column.id];
-  return (
-    <WikiPart.NoteLink onClick={() => onOpenNote(row.name)}>
-      {column.id === "file.path" && typeof path === "string" ? path : row.name}
-    </WikiPart.NoteLink>
+  const state = useAssetUrlState(
+    environmentId,
+    root === null ? null : { _tag: "draft-workspace-file", cwd: root, path },
   );
+  if (state._tag !== "Success") return <span className={className} data-image-missing />;
+  return <img className={className} src={state.url} alt="" loading="lazy" decoding="async" />;
 }
 
-function groupLabel(result: WikiQueryResult, group: BaseCellValue | undefined): ReactNode {
-  const empty = group === undefined || group === null || (Array.isArray(group) && !group.length);
-  return `${result.groupBy?.label ?? "Group"}: ${
-    empty
-      ? "None"
-      : cellParts(group)
-          .map((part) => part.text)
-          .join("")
-  }`;
+let iconModule: Promise<(name: string) => LucideIcon | undefined> | null = null;
+const loadIcons = () =>
+  (iconModule ??= import("~/lib/lucideIconByName").then((module) => module.lucideIconByName));
+
+/** A Lucide icon by name, as `icon()` gives one; the set loads the first time one shows. */
+function BaseIcon({ name }: { readonly name: string }) {
+  const [icon, setIcon] = useState<{ readonly name: string; readonly Icon: LucideIcon } | null>(
+    null,
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the icon set is a lazily loaded module
+  useEffect(() => {
+    let live = true;
+    void loadIcons().then((lookup) => {
+      const found = lookup(name);
+      if (live && found) setIcon({ name, Icon: found });
+    });
+    return () => {
+      live = false;
+    };
+  }, [name]);
+  if (icon === null || icon.name !== name) return null;
+  return <icon.Icon className="inline size-4 align-text-bottom" aria-label={name} />;
 }
 
-/** Whether `rows[position]` opens a new group of a grouped view. */
-const startsGroup = (result: WikiQueryResult, position: number) =>
-  result.groupBy !== null &&
-  (position === 0 ||
-    JSON.stringify(result.rows[position]?.group ?? null) !==
-      JSON.stringify(result.rows[position - 1]?.group ?? null));
+/** HTML a formula made, cleaned of anything that runs or loads. */
+function BaseHtml({ html }: { readonly html: string }) {
+  const clean = DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ["style"] });
+  return <span dangerouslySetInnerHTML={{ __html: clean }} />;
+}
+
+/** What the web app gives a base's layout: its files, images, icons, HTML, map, and edits. */
+function webHost({
+  environmentId,
+  root,
+  backgrounds,
+  result,
+  dark,
+  openRow,
+  onOpenNote,
+  canOpenFiles,
+  editing,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly root: string | null;
+  readonly backgrounds: ReadonlyArray<WikiMapBackground>;
+  readonly result: WikiQueryResult;
+  readonly dark: boolean;
+  readonly openRow: (row: Row) => void;
+  readonly onOpenNote: (name: string) => void;
+  readonly canOpenFiles: boolean;
+  readonly editing: BaseEditing | undefined;
+}): BaseLayoutHost {
+  const groupProperty = result.settings?.groupBy?.property ?? result.groupBy?.id;
+  return {
+    canOpenRow: (row) => wikiDocumentName(row.file) !== null || canOpenFiles,
+    openRow,
+    openLink: onOpenNote,
+    renderImage: (image, className) =>
+      image.kind === "file" ? (
+        <WikiFileImage
+          environmentId={environmentId}
+          root={root}
+          path={image.path}
+          className={className}
+        />
+      ) : null,
+    renderIcon: (name) => <BaseIcon name={name} />,
+    renderHtml: (html) => <BaseHtml html={html} />,
+    renderMap: (shown) => (
+      <Suspense fallback={<Spinner size="md" tone="muted" />}>
+        <WikiBaseMap
+          result={shown as WikiQueryResult}
+          backgrounds={backgrounds}
+          dark={dark}
+          openRow={openRow}
+        />
+      </Suspense>
+    ),
+    ...(editing === undefined
+      ? {}
+      : {
+          canEdit: (row, column) => isEditableNote(row.file) && isNoteProperty(column),
+          onEdit: (row, column, value) =>
+            editing.onEdit({ kind: "property", file: row.file, property: column, value }),
+          onMove: (row, group) => {
+            if (groupProperty === undefined || !isNoteProperty(groupProperty)) return;
+            editing.onEdit({
+              kind: "property",
+              file: row.file,
+              property: groupProperty,
+              value: group,
+            });
+          },
+          onNew: (group) =>
+            editing.onNew(
+              result.settings?.filters,
+              groupProperty === undefined || group === undefined
+                ? undefined
+                : { property: groupProperty, value: group },
+            ),
+          columnHeading: (column, label) => (
+            <ColumnMenu
+              column={column}
+              label={label}
+              result={result}
+              file={editing.file}
+              onEdit={editing.onEdit}
+            />
+          ),
+          onResize: (column, width) =>
+            editing.onEdit({
+              kind: "view",
+              base: editing.file,
+              view: result.view.name,
+              settings: { columnSize: { ...result.settings?.columnSize, [column]: width } },
+            }),
+        }),
+  };
+}
 
 /**
- * A base's view: a table, or cards. Every row leads with its note's name, which opens the
- * note; a view that shows no name column gets one.
+ * A base's view, drawn as Obsidian draws its layout. Every row opens its file; with `editing`,
+ * cells of notes at the top of the wiki edit in place, a board's cards move between groups, and
+ * column headings sort, summarize, rename and hide.
  */
 export function WikiBaseResults({
+  environmentId,
+  wikiId,
   result,
   onOpenNote,
+  onOpenFile,
+  editing,
 }: {
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
   readonly result: WikiQueryResult;
-  readonly onOpenNote: (name: string) => void;
-}) {
-  const columns = result.columns.some((column) => isNameColumn(column.id))
-    ? result.columns
-    : [NAME_COLUMN, ...result.columns];
-  const footer = result.truncated ? (
-    <WikiPart.Muted>{`Showing ${result.rows.length} of ${result.total} notes.`}</WikiPart.Muted>
-  ) : null;
-  if (result.rows.length === 0) return <WikiPart.Muted>No notes match this view.</WikiPart.Muted>;
-
-  if (result.view.type === "cards") {
-    const properties = columns.filter((column) => !isNameColumn(column.id));
-    const groups: Array<{ readonly key: number; readonly rows: Row[] }> = [];
-    result.rows.forEach((row, position) => {
-      if (position === 0 || startsGroup(result, position)) groups.push({ key: position, rows: [] });
-      groups.at(-1)?.rows.push(row);
-    });
-    return (
-      <div className="flex flex-col gap-4">
-        {groups.map((group) => (
-          <section key={group.key} className="flex flex-col gap-2">
-            {result.groupBy ? (
-              <h4 className="text-xs font-medium text-muted-foreground">
-                {groupLabel(result, group.rows[0]?.group)}
-              </h4>
-            ) : null}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3">
-              {group.rows.map((row) => (
-                <article
-                  key={row.file}
-                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3"
-                >
-                  <WikiPart.NoteLink className="font-medium" onClick={() => onOpenNote(row.name)}>
-                    {row.name}
-                  </WikiPart.NoteLink>
-                  {properties.length ? (
-                    <dl className="flex flex-col gap-1.5">
-                      {properties.map((column) => (
-                        <WikiPart.Fact key={column.id} label={column.label}>
-                          <CellValue value={row.values[column.id]} onOpenNote={onOpenNote} />
-                        </WikiPart.Fact>
-                      ))}
-                    </dl>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          </section>
-        ))}
-        {footer}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {columns.map((column) => (
-              <TableHead key={column.id}>{column.label}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {result.rows.map((row, position) => (
-            <Fragment key={row.file}>
-              {startsGroup(result, position) ? (
-                <TableRow>
-                  <TableCell colSpan={columns.length}>
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {groupLabel(result, row.group)}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ) : null}
-              <TableRow>
-                {columns.map((column) => (
-                  <TableCell key={column.id}>
-                    {isNameColumn(column.id) ? (
-                      <RowName row={row} column={column} onOpenNote={onOpenNote} />
-                    ) : (
-                      <CellValue value={row.values[column.id]} onOpenNote={onOpenNote} />
-                    )}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </Fragment>
-          ))}
-        </TableBody>
-      </Table>
-      {footer}
-    </div>
-  );
+  readonly editing?: BaseEditing | undefined;
+} & RowOpeners) {
+  const overviews = useAtomValue(wikiEnvironment.overview(environmentId));
+  const wiki = overviews?.find((overview) => overview.wiki.wikiId === wikiId)?.wiki;
+  const { resolvedTheme } = useTheme();
+  const openRow = (row: Row) => {
+    const document = wikiDocumentName(row.file);
+    if (document !== null) onOpenNote(document);
+    else onOpenFile?.(row.file);
+  };
+  const host = webHost({
+    environmentId,
+    root: wiki?.root ?? null,
+    backgrounds: wiki?.mapBackgrounds ?? [],
+    result,
+    dark: resolvedTheme === "dark",
+    openRow,
+    onOpenNote,
+    canOpenFiles: onOpenFile !== undefined,
+    editing,
+  });
+  return <BaseLayout result={result} host={host} />;
 }
 
 /**
- * One view of a base, run on the server over the notes the tab reads (main, or a change
- * request's head), with a picker when the base has more than one view. Read only.
+ * One view of a base, run on the server over the files the tab reads (main, or a change
+ * request's head) with any unsaved edits applied. With `editing`, its toolbar changes the view;
+ * without, a picker chooses among its views.
  */
 export function WikiBase({
   environmentId,
   wikiId,
   changeRequestId,
   from,
+  view: initialView,
   onOpenNote,
+  onOpenFile,
+  editing,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly from: WikiBaseSource;
-  readonly onOpenNote: (name: string) => void;
-}) {
-  const [view, setView] = useState<string | null>(null);
+  /** The view to show first, as an embed names it. */
+  readonly view?: string | undefined;
+  readonly editing?: BaseEditing | undefined;
+} & RowOpeners) {
+  const [picked, setPicked] = useState<string | null>(initialView ?? null);
+  const view = editing ? editing.view : picked;
+  const setView = editing ? editing.onPickView : setPicked;
+  const edits = editing?.edits ?? [];
   const query = useEnvironmentQuery(
     wikiEnvironment.query({
       environmentId,
@@ -217,10 +299,15 @@ export function WikiBase({
         ...(changeRequestId === undefined ? {} : { changeRequestId }),
         ...from,
         ...(view === null ? {} : { view }),
+        ...(edits.length ? { edits: [...edits] } : {}),
       },
     }),
   );
-  const result = query.data;
+  // An edit keeps the last view on screen until the new one lands.
+  const [lastResult, setLastResult] = useState(query.data);
+  if (query.data !== null && query.data !== lastResult) setLastResult(query.data);
+  // An edit that can't run keeps the toolbar and last view, so it can be undone from there.
+  const result = query.data ?? (query.error === null || editing ? lastResult : null);
   if (result === null) {
     return query.error !== null ? (
       <Alert variant="warning">
@@ -236,39 +323,139 @@ export function WikiBase({
   }
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {result.views.length > 1 ? (
-        <Select
-          value={result.view.name}
-          items={Object.fromEntries(result.views.map((name) => [name, name]))}
-          onValueChange={(value) => {
-            if (typeof value === "string") setView(value);
-          }}
-        >
-          <SelectTrigger size="compact" aria-label="View">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectPopup>
-            {result.views.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
+      {editing ? (
+        <WikiBaseToolbar
+          result={result}
+          file={editing.file}
+          onPickView={setView}
+          onEdit={editing.onEdit}
+          onNew={() => editing.onNew(result.settings?.filters)}
+        />
+      ) : result.views.length > 1 ? (
+        <div className="w-fit">
+          <Select
+            value={result.view.name}
+            items={Object.fromEntries(result.views.map((name) => [name, name]))}
+            onValueChange={(value) => {
+              if (typeof value === "string") setView(value);
+            }}
+          >
+            <SelectTrigger size="compact" aria-label="View">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {result.views.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
       ) : null}
-      <WikiBaseResults result={result} onOpenNote={onOpenNote} />
+      {editing && query.error !== null ? (
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertDescription>{describeWikiFailure(query.failure ?? query.error)}</AlertDescription>
+          {edits.length ? (
+            <AlertAction>
+              <Button variant="outline" size="sm" onClick={editing.onUndo}>
+                Undo last change
+              </Button>
+            </AlertAction>
+          ) : null}
+        </Alert>
+      ) : null}
+      <WikiBaseResults
+        environmentId={environmentId}
+        wikiId={wikiId}
+        result={result}
+        onOpenNote={onOpenNote}
+        onOpenFile={onOpenFile}
+        editing={editing}
+      />
     </div>
   );
 }
 
-/** A `.base` file opened in its own tab: its view, read only. */
+/** Names a new note made from a base's view; it gets what the view's filters and group ask for. */
+function NewNoteDialog({
+  onClose,
+  onCreate,
+}: {
+  readonly onClose: () => void;
+  readonly onCreate: (name: string) => void;
+}) {
+  const id = useId();
+  const [name, setName] = useState("");
+  const clean = name.trim();
+  const valid = clean.length > 0 && !/[/\\#^[\]|:]/.test(clean) && !clean.startsWith(".");
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogPopup className="sm:max-w-sm">
+        <form
+          className="flex min-h-0 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (valid) onCreate(clean);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>New note</DialogTitle>
+            <DialogDescription>
+              It gets the properties this view's filters and group ask for.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={id}>Name</Label>
+              <Input
+                id={id}
+                autoFocus
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!valid}>
+              Add
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogPopup>
+    </Dialog>
+  );
+}
+
+/** The view each base tab shows, so saving, which rekeys the tab, stays on it. */
+const openViews = new Map<string, string>();
+
+const madeView = (edit: WikiBaseEdit) =>
+  edit.kind === "add-view" || (edit.kind === "view" && edit.name !== undefined);
+
+const editCount = (count: number) =>
+  count === 1 ? "1 unsaved change" : `${count} unsaved changes`;
+
+/**
+ * A `.base` file opened in its own tab. Its view edits in place, as in Obsidian: the view's
+ * settings, its notes' properties, new notes. Edits show at once and stay unsaved until they
+ * are saved to a change request, as a note's are; main changes only when one merges.
+ */
 export function WikiBasePage({
   environmentId,
   wikiId,
   file,
   changeRequestId,
   parent,
+  openChangeRequests,
   onOpenNote,
+  onOpenFile,
+  onSaved,
+  registerUnsaved,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
@@ -276,27 +463,125 @@ export function WikiBasePage({
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** Where the base is read from, as the tab header names it. */
   readonly parent: string;
-  readonly onOpenNote: (name: string) => void;
-}) {
+  readonly openChangeRequests: ReadonlyArray<WikiChangeRequest>;
+  readonly onSaved: (changeRequestId: WikiChangeRequestId) => void;
+  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
+} & RowOpeners) {
+  const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
+  const viewKey = `${wikiId}/${file}`;
+  const [view, setView] = useState<string | null>(() => openViews.get(viewKey) ?? null);
+  const pickView = (name: string | null) => {
+    setView(name);
+    if (name === null) openViews.delete(viewKey);
+    else openViews.set(viewKey, name);
+  };
+  const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState<Readonly<Record<string, WikiBaseCell>> | null>(null);
+  const canEdit = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
+  const transform = useWikiCommand(wikiEnvironment.transform, "Couldn't save the base");
+  const editable = canEdit && /^[^/]+\.base$/.test(file);
+  const dirty = edits.length > 0;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are unsaved
+  useEffect(() => registerUnsaved?.(() => dirty), [registerUnsaved, dirty]);
+  useBlocker({
+    disabled: !dirty,
+    enableBeforeUnload: () => dirty,
+    shouldBlockFn: async () => {
+      const leave = await ensureLocalApi().dialogs.confirm(
+        `Leave ${file.replace(/\.base$/, "")}? Your unsaved changes will be lost.`,
+        { variant: "destructive" },
+      );
+      return !leave;
+    },
+  });
+  const save = async (target: SaveTarget, message: string): Promise<string | null> => {
+    const outcome = await transform({
+      environmentId,
+      input: { wikiId, message, transform: { kind: "base-edits", edits: [...edits] }, ...target },
+    });
+    if (!outcome.ok) return outcome.message ?? "The save was cancelled.";
+    setEdits([]);
+    onSaved(outcome.value.changeRequest.changeRequestId);
+    return null;
+  };
+
+  const editing: BaseEditing | undefined = editable
+    ? {
+        file,
+        edits,
+        view,
+        onPickView: pickView,
+        onEdit: (edit) => setEdits((current) => withEdit(current, edit)),
+        onUndo: () => setEdits((current) => current.slice(0, -1)),
+        onNew: (filters, group) => setCreating(newNoteProperties(filters, group)),
+      }
+    : undefined;
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
         <TabHeader.Title label="Base" parent={parent}>
           {file.replace(/\.base$/, "")}
         </TabHeader.Title>
-        <TabHeader.Status>Base · read only</TabHeader.Status>
+        {!editable ? <TabHeader.Status>Base · read only</TabHeader.Status> : null}
+        {dirty ? (
+          <TabHeader.Actions>
+            <TabHeader.Status>{editCount(edits.length)}</TabHeader.Status>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                // A view the edits made or renamed goes with them.
+                if (edits.some(madeView)) pickView(null);
+                setEdits([]);
+              }}
+            >
+              Discard
+            </Button>
+            <Button size="sm" onClick={() => setSaving(true)}>
+              Save to change request
+            </Button>
+          </TabHeader.Actions>
+        ) : null}
       </TabHeader.Root>
       <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-6 pt-6 pb-12">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 pt-6 pb-12">
           <WikiBase
             environmentId={environmentId}
             wikiId={wikiId}
             changeRequestId={changeRequestId}
             from={{ base: file }}
             onOpenNote={onOpenNote}
+            onOpenFile={onOpenFile}
+            editing={editing}
           />
         </div>
       </div>
+      {saving ? (
+        <SaveToChangeRequestDialog
+          environmentId={environmentId}
+          subject={file.replace(/\.base$/, "")}
+          openChangeRequests={openChangeRequests}
+          viewing={changeRequestId}
+          onClose={() => setSaving(false)}
+          onSave={async (target, message) => {
+            const error = await save(target, message);
+            if (error === null) setSaving(false);
+            return error;
+          }}
+        />
+      ) : null}
+      {creating !== null ? (
+        <NewNoteDialog
+          onClose={() => setCreating(null)}
+          onCreate={(name) => {
+            setCreating(null);
+            setEdits((current) =>
+              withEdit(current, { kind: "create", file: `${name}.md`, properties: creating }),
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }
