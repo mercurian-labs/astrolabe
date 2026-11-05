@@ -63,6 +63,14 @@ describe("typed links", () => {
     ]);
   });
 
+  it("reads a link in a table, where its bar is escaped, and renames it the same way", () => {
+    const source = "| Needs |\n| - |\n| [[Auth\\|the flow @depends_on]] |\n";
+    expect(typedLinks(source)).toEqual([{ target: "Auth", types: ["depends_on"] }]);
+    expect(renameLinks(source, "Auth", "Identity")).toContain(
+      "[[Identity\\|the flow @depends_on]]",
+    );
+  });
+
   it("leaves addresses, escapes, code, frontmatter and embeds untyped", () => {
     const source = [
       "---",

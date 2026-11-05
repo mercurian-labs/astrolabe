@@ -52,7 +52,8 @@ export function links(source: string): ReadonlyArray<WikiLink> {
   const found: WikiLink[] = [];
   for (const match of prose(source).matchAll(/(?<!\\)\[\[([^\]\n]+)\]\]/g)) {
     const inner = match[1] ?? "";
-    const target = noteName((inner.split("|")[0] ?? "").split("#")[0]?.trim() ?? "");
+    // In a Markdown table, a link's bar is written `\\|`.
+    const target = noteName((inner.split(/\\?\|/)[0] ?? "").split("#")[0]?.trim() ?? "");
     if (target) found.push({ target, index: match.index ?? 0, raw: match[0], inner });
   }
   return found;
@@ -63,7 +64,7 @@ export function renameLinks(source: string, from: string, to: string): string {
   let output = source;
   for (const link of links(source).toReversed()) {
     if (key(link.target) !== key(from)) continue;
-    const boundary = link.inner.search(/[#|]/);
+    const boundary = link.inner.search(/#|\\?\|/);
     const suffix = boundary < 0 ? "" : link.inner.slice(boundary);
     const oldTarget = (boundary < 0 ? link.inner : link.inner.slice(0, boundary)).trim();
     const extension = /\.md$/i.test(oldTarget) ? ".md" : "";
