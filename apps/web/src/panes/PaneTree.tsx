@@ -149,7 +149,8 @@ function PaneNode({
               hostPaneId={hostPaneId}
               maximized={maximized}
               atTop={atTop && (node.direction === "row" || index === 0)}
-              atLeft={atLeft && (node.direction === "column" || index === 0)}
+              // A maximized pane starts at the panel's left edge, wherever it sits in the tree.
+              atLeft={atLeft && (maximized !== null || node.direction === "column" || index === 0)}
               atRight={
                 atRight && (node.direction === "column" || index === node.children.length - 1)
               }
