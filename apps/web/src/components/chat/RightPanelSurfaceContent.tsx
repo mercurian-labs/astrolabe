@@ -14,6 +14,7 @@ import SideChatPane from "./SideChatPane";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
 import type { ShortcutMatchContext } from "../../keybindings";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
+import { useLiveSurfaceCovered } from "../../panes/LinkedPanel";
 import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import {
   PersistentThreadTerminalPanel,
@@ -88,6 +89,7 @@ export function RightPanelSurfaceContent(props: {
   readonly sideChatParentPanel: SideChatParentPanel;
 }) {
   const { surface, threadRef, visible } = props;
+  const covered = useLiveSurfaceCovered();
   if (surface === null) return null;
   switch (surface.kind) {
     case "preview":
@@ -98,7 +100,7 @@ export function RightPanelSurfaceContent(props: {
             threadRef={threadRef}
             tabId={surface.resourceId}
             configuredUrls={props.configuredPreviewUrls}
-            visible={visible}
+            visible={visible && !covered}
             onSendAnnotation={props.onSendAnnotation}
           />
         </Suspense>

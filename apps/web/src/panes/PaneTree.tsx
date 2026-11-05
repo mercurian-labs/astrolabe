@@ -116,7 +116,8 @@ function PaneNode({
         focused={node.id === focused}
         hosting={node.id === hostPaneId}
         maximized={maximized === null ? null : maximized === node.id}
-        atTop={maximized === node.id || atTop}
+        // A pane beneath a maximized one holds no title bar, nor any drag regions over its strip.
+        atTop={maximized === null ? atTop : maximized === node.id}
         atLeft={atLeft}
         atRight={maximized === node.id || atRight}
         minWidth={paneMinimum()}
@@ -149,7 +150,8 @@ function PaneNode({
               hostPaneId={hostPaneId}
               maximized={maximized}
               atTop={atTop && (node.direction === "row" || index === 0)}
-              atLeft={atLeft && (node.direction === "column" || index === 0)}
+              // A maximized pane starts at the panel's left edge, wherever it sits in the tree.
+              atLeft={atLeft && (maximized !== null || node.direction === "column" || index === 0)}
               atRight={
                 atRight && (node.direction === "column" || index === node.children.length - 1)
               }
