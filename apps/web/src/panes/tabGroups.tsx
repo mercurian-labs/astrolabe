@@ -248,7 +248,7 @@ function TabGroupMarker({
             onDragEnd={actions.dragEnd}
             className={cn(
               // As the strip's tabs behind the one in front: their height, corners and hover.
-              "flex h-7 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent text-primary transition-colors duration-75 outline-none [-webkit-app-region:no-drag] hover:bg-foreground/6 focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
+              "flex h-7 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent text-primary transition-colors duration-75 outline-none hover:bg-foreground/6 focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
               dragging && "opacity-50",
             )}
           />

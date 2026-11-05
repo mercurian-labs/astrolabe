@@ -1827,14 +1827,10 @@ code {
 /* Window drag region (frameless titlebar). Electron folds app regions in document order, so a
    drag rectangle later in the DOM covers any control drawn over it, whatever the stacking. The
    only drag rectangle is the titlebar surface rendered first in `AppSidebarLayout`; a
-   `.drag-region` marks a titlebar strip, and its controls opt out of that surface. */
-.drag-region button,
-.drag-region input,
-.drag-region textarea,
-.drag-region select,
-.drag-region a,
-.drag-region [role="button"],
-.drag-region [role="tab"] {
+   `.drag-region` marks a titlebar strip, and its controls opt out of that surface. Regions also
+   ignore overflow clipping, so a pane's scrolling tabs opt out as one box (see `TabStrip`). */
+.drag-region
+  :is(button, input, textarea, select, a, [role="button"], [role="tab"]):not([data-pane-tabs] *) {
   -webkit-app-region: no-drag;
 }
 

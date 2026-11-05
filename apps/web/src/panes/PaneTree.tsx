@@ -116,7 +116,8 @@ function PaneNode({
         focused={node.id === focused}
         hosting={node.id === hostPaneId}
         maximized={maximized === null ? null : maximized === node.id}
-        atTop={maximized === node.id || atTop}
+        // A pane beneath a maximized one holds no title bar, nor any drag regions over its strip.
+        atTop={maximized === null ? atTop : maximized === node.id}
         atLeft={atLeft}
         atRight={maximized === node.id || atRight}
         minWidth={paneMinimum()}
