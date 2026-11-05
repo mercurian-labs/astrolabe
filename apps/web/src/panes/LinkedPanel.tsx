@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { useRightPanelStore } from "../rightPanelStore";
-import { useMaximizedPaneStore } from "./maximize";
+import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
 import { PaneTabKeyContext, useChatOwner, useWorkspaceHost } from "./PaneSurfaceHost";
 import { findLeaf } from "./tree";
@@ -12,6 +12,16 @@ import {
   workspace,
   WORKSPACE_LAYOUT_KEY,
 } from "./workspace";
+
+/**
+ * Whether a maximized pane fills the panes over the one showing the front chat's live surface.
+ * A browser's webview floats above the app at its pane's position, so a pane can't cover it.
+ */
+export function useLiveSurfaceCovered(): boolean {
+  const maximized = useMaximizedPaneId();
+  const hostPaneId = useWorkspaceHostPaneId();
+  return maximized !== null && maximized !== hostPaneId;
+}
 
 /**
  * Astrolabe: ChatView's right panel inside the shared panes, with no frame: the thread's surfaces

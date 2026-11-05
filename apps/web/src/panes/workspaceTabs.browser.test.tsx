@@ -95,7 +95,9 @@ import { useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { openTab, splitTab, startingArrangement } from "./arrangement";
+import { useLiveSurfaceCovered } from "./LinkedPanel";
 import { LinkedTabsFilter } from "./LinkedTabsFilter";
+import { useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { WorkspaceHostContext } from "./PaneSurfaceHost";
@@ -501,6 +503,33 @@ describe("a thread's surface as a tab of the shared panes", () => {
     });
     const preview = tab(screen.container, "Local site");
     expect(button(preview, "Mute Local site")).toBeUndefined();
+  });
+
+  it("is covered only while another pane is maximized", async () => {
+    function Covered() {
+      return <output>{String(useLiveSurfaceCovered())}</output>;
+    }
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    await using screen = await renderPanes({}, <Covered />);
+    const covered = () => screen.container.querySelector("output")?.textContent;
+    const toggle = async (paneId: string) => {
+      await act(() => useMaximizedPaneStore.getState().toggle(WORKSPACE_LAYOUT_KEY, paneId));
+      await settle();
+    };
+    const panes = leaves(workspace.arrangement().root);
+    const chatPane = panes.find((pane) => pane.tabs.includes(chat))!;
+    const surfacePane = panes.find((pane) => pane !== chatPane)!;
+    expect(covered()).toBe("false");
+
+    await toggle(chatPane.id);
+    expect(covered()).toBe("true");
+    await toggle(chatPane.id);
+    expect(covered()).toBe("false");
+
+    await toggle(surfacePane.id);
+    expect(covered()).toBe("false");
+    await toggle(surfacePane.id);
   });
 });
 
