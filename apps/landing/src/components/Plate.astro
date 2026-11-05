@@ -9,6 +9,8 @@ interface Props {
     relief: number;
     /** The full moon's share of the brightness at night (plate.js), as the sun's is by day; none by default. */
     moonlight?: number;
+    /** How much darker than its tone the plate prints everything but snow (plate.js); 1 by default. */
+    albedo?: number;
     box: number[];
     fig: string;
     /** The observatory's latitude and longitude, set under the figure line. */
@@ -33,6 +35,7 @@ const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
   data-plate-size={plate.size.join(" ")}
   data-plate-relief={plate.relief}
   data-plate-moonlight={plate.moonlight}
+  data-plate-albedo={plate.albedo}
 >
   <div class="plate__sheet">
     <div class="plate__art" role="img" aria-label={plate.alt} style={box}>

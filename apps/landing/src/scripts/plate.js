@@ -75,6 +75,7 @@ import Twilight from "./twilight.js";
     uniform float u_ambient;     // the sky's share
     uniform float u_glowShare;   // how much of the skylight comes from the glow over the sun
     uniform float u_expose;      // direct light on a face that should print as clean paper
+    uniform float u_albedo;      // the plate's ground and building against its snow (1 by default)
     uniform vec3 u_y;            // luminance of the paper, the dark ink, the ivory ink
     uniform vec3 u_dark;
     uniform vec3 u_ivory;
@@ -132,9 +133,11 @@ import Twilight from "./twilight.js";
       float sky = clamp(0.5 + 0.5 * n.y, 0.0, 1.0);
       sky *= sky;
       float glow = pow(max(dot(n, u_glow), 0.0), 1.5) * 1.3;
+      float snow = smoothstep(0.92, 0.99, tone.b);
+      lit *= 1.0 - snow * u_moon; // the snow's moonlight is its own, below
       float body = DAY_Y * (u_direct * lit / u_expose + u_ambient * mix(sky, glow, u_glowShare));
       body *= 1.0 - 0.8 * tone.r; // glass and deep reveals stay dark under any sky
-      body *= 2.0 * tone.b; // snow is brighter than masonry and stays paper in light; rock is darker
+      body *= 2.0 * tone.b * mix(u_albedo, 1.0, snow); // snow is brighter than masonry and stays paper in light; rock is darker
 
       // The olive: recesses, and the side turned from the sun.
       vec3 n2 = normalOf(g2);
@@ -146,11 +149,12 @@ import Twilight from "./twilight.js";
       float paper = u_y.x;
       float dark = u_y.y < paper ? clamp((paper - body) / (paper - u_y.y), 0.0, 1.0) : 0.0;
       float light = u_y.z > paper ? clamp((body - paper) / (u_y.z - paper), 0.0, 1.0) : 0.0;
+      // Under the moon, faces too dim to read print as clean paper, as faces in the sun do by day.
+      if (u_moon > 0.5 && u_direct > 0.0) light *= smoothstep(0.08, 0.45, light);
       // Snow: ground whiter than any building (an albedo near two). By day it is the paper itself, without
       // the tooth below; at dusk, when the building darkens against the paper, it holds the paper's light.
       // Once the inks have turned over it is the brightest thing on the plate, moonlit: an ivory stipple,
       // thicker the more it faces the sky, over a body no darker than the paper.
-      float snow = smoothstep(0.92, 0.99, tone.b);
       float moon = snow * u_moon;
       dark *= 1.0 - snow * u_dusk;
       light = max(light, moon * (0.3 + 0.4 * sky));
@@ -259,6 +263,7 @@ import Twilight from "./twilight.js";
     const up = Math.sin(alt * RAD);
     return south ? [-east, up, north] : [east, up, -north];
   }
+  const MOON = toward(35, 165, false);
 
   /* ─────────── One plate. */
 
@@ -270,6 +275,7 @@ import Twilight from "./twilight.js";
     const size = figure.dataset.plateSize.split(" ").map(Number);
     const relief = Number(figure.dataset.plateRelief);
     const moonlight = Number(figure.dataset.plateMoonlight || 0);
+    const albedo = Number(figure.dataset.plateAlbedo || 1);
     const plate = { figure, dirty: true, paint() {} };
     const fallback = () => figure.classList.add("plate--still");
     if (!("IntersectionObserver" in window)) {
@@ -413,14 +419,15 @@ import Twilight from "./twilight.js";
       gl.uniform2f(u.u_res, canvas.width, canvas.height);
       gl.uniform1f(u.u_dpr, dpr);
       gl.uniform1f(u.u_sub, dpr < 1.5 ? 2 : 1);
-      // After the inks turn over, a plate given moonlight is lit by a full moon, opposite the sun.
+      // After the inks turn over, a plate given moonlight is lit by a full moon over our shoulder.
       const moon = palette.inverted ? moonlight : 0;
-      gl.uniform3f(u.u_sun, ...(moon ? toward(-alt, az + 180, south) : toward(alt, az, south)));
+      gl.uniform3f(u.u_sun, ...(moon ? MOON : toward(alt, az, south)));
       gl.uniform3f(u.u_glow, ...toward(18, az, south));
       gl.uniform1f(u.u_direct, moon || 0.58 * smooth(-0.8, 1, alt));
       gl.uniform1f(u.u_ambient, along(AMBIENT, alt));
       gl.uniform1f(u.u_glowShare, 0.25 + 0.55 * smooth(2, -3, alt) - 0.8 * smooth(-12, -19, alt));
       gl.uniform1f(u.u_expose, 0.6);
+      gl.uniform1f(u.u_albedo, albedo);
       gl.uniform3f(u.u_y, palette.paperY, palette.darkY, palette.ivoryY);
       gl.uniform3f(u.u_dark, ...palette.dark);
       gl.uniform3f(u.u_ivory, ...palette.ivory);

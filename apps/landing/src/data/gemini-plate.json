@@ -3,6 +3,8 @@
   "assets": "/assets/art/gemini",
   "size": [1024, 618],
   "relief": 170.67,
+  "moonlight": 0.2,
+  "albedo": 0.6,
   "box": [-61.0, 192.9, 1122.0, 677.1],
   "fig": "Fig. 5 · Gemini North · Maunakea · 4,213 m · 1999",
   "alt": "A print of the Gemini North telescope in snow on Maunakea, the Canada-France-Hawai‘i Telescope beyond, lit by the astrolabe's sun",
