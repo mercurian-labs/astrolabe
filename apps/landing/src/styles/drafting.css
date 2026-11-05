@@ -4264,7 +4264,7 @@ hidden, leaves the sticky stage working). */
 }
 
 /* The eyepiece (plate.js): while it is open the drawn lines step out of the aperture, a hairline ring
-   with two reticle ticks frames it, and with a fine pointer it is the cursor (which comes back over the
+   with four reticle ticks frames it, and with a fine pointer it is the cursor (which comes back over the
    credit's links). */
 .plate__sheet--eyepiece {
   touch-action: pan-y;
@@ -4312,14 +4312,25 @@ hidden, leaves the sticky stage working). */
 .plate__eyepiece::before {
   left: calc(50% - 0.5px);
   top: 0;
+  bottom: 0;
   width: 1px;
-  height: 7px;
+  background: linear-gradient(
+    var(--ink-2) 7px,
+    #0000 7px calc(100% - 7px),
+    var(--ink-2) calc(100% - 7px)
+  );
 }
 .plate__eyepiece::after {
+  left: 0;
   right: 0;
   top: calc(50% - 0.5px);
-  width: 7px;
   height: 1px;
+  background: linear-gradient(
+    to right,
+    var(--ink-2) 7px,
+    #0000 7px calc(100% - 7px),
+    var(--ink-2) calc(100% - 7px)
+  );
 }
 .is-looking > .plate__eyepiece {
   visibility: visible;
