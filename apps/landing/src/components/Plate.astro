@@ -7,6 +7,8 @@ interface Props {
     assets: string;
     size: number[];
     relief: number;
+    /** The full moon's share of the brightness at night (plate.js), as the sun's is by day; none by default. */
+    moonlight?: number;
     box: number[];
     fig: string;
     /** The observatory's latitude and longitude, set under the figure line. */
@@ -30,6 +32,7 @@ const art = (name: string) => `--art:url("${plate.assets}/${name}.webp")`;
   data-plate-assets={plate.assets}
   data-plate-size={plate.size.join(" ")}
   data-plate-relief={plate.relief}
+  data-plate-moonlight={plate.moonlight}
 >
   <div class="plate__sheet">
     <div class="plate__art" role="img" aria-label={plate.alt} style={box}>

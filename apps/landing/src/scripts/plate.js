@@ -269,6 +269,7 @@ import Twilight from "./twilight.js";
     const assets = figure.dataset.plateAssets;
     const size = figure.dataset.plateSize.split(" ").map(Number);
     const relief = Number(figure.dataset.plateRelief);
+    const moonlight = Number(figure.dataset.plateMoonlight || 0);
     const plate = { figure, dirty: true, paint() {} };
     const fallback = () => figure.classList.add("plate--still");
     if (!("IntersectionObserver" in window)) {
@@ -412,9 +413,11 @@ import Twilight from "./twilight.js";
       gl.uniform2f(u.u_res, canvas.width, canvas.height);
       gl.uniform1f(u.u_dpr, dpr);
       gl.uniform1f(u.u_sub, dpr < 1.5 ? 2 : 1);
-      gl.uniform3f(u.u_sun, ...toward(alt, az, south));
+      // After the inks turn over, a plate given moonlight is lit by a full moon, opposite the sun.
+      const moon = palette.inverted ? moonlight : 0;
+      gl.uniform3f(u.u_sun, ...(moon ? toward(-alt, az + 180, south) : toward(alt, az, south)));
       gl.uniform3f(u.u_glow, ...toward(18, az, south));
-      gl.uniform1f(u.u_direct, 0.58 * smooth(-0.8, 1, alt));
+      gl.uniform1f(u.u_direct, moon || 0.58 * smooth(-0.8, 1, alt));
       gl.uniform1f(u.u_ambient, along(AMBIENT, alt));
       gl.uniform1f(u.u_glowShare, 0.25 + 0.55 * smooth(2, -3, alt) - 0.8 * smooth(-12, -19, alt));
       gl.uniform1f(u.u_expose, 0.6);
