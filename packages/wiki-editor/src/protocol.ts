@@ -126,6 +126,10 @@ export type WikiEditorCommand =
       /** Its notes' cells edit in place, and a board's cards move, as `editBase` events. */
       readonly editable?: boolean | undefined;
     }
+  /** The `@` types the wiki's links use, which the editor suggests. */
+  | { readonly type: "linkTypes"; readonly types: ReadonlyArray<string> }
+  /** A note a link preview asked for, sent again if it changes; null when it isn't written. */
+  | { readonly type: "noteRead"; readonly name: string; readonly source: string | null }
   /** A ```base block's view, sent again whenever it changes; `error` says why it can't show. */
   | {
       readonly type: "baseResult";
@@ -150,6 +154,8 @@ export type WikiEditorEvent =
   | { readonly type: "text"; readonly requestId: number; readonly text: string }
   /** A ```base block is on screen: the app runs it and keeps its view current. */
   | { readonly type: "queryBase"; readonly source: string }
+  /** A link's preview is open: the app reads its note and keeps it current. */
+  | { readonly type: "readNote"; readonly name: string }
   /** A note's property set from the base shown alone: a cell edited, or a card moved. */
   | {
       readonly type: "editBase";
@@ -205,6 +211,10 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
         : null;
     case "queryBase":
       return typeof value.source === "string" ? { type: "queryBase", source: value.source } : null;
+    case "readNote":
+      return typeof value.name === "string" && value.name.length > 0
+        ? { type: "readNote", name: value.name }
+        : null;
     case "editBase":
       return typeof value.file === "string" &&
         typeof value.property === "string" &&
@@ -260,6 +270,18 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
     case "showBase":
       return typeof value.source === "string"
         ? { type: "showBase", source: value.source, editable: value.editable === true }
+        : null;
+    case "linkTypes":
+      return Array.isArray(value.types)
+        ? {
+            type: "linkTypes",
+            types: value.types.filter((type): type is string => typeof type === "string"),
+          }
+        : null;
+    case "noteRead":
+      return typeof value.name === "string" &&
+        (typeof value.source === "string" || value.source === null)
+        ? { type: "noteRead", name: value.name, source: value.source }
         : null;
     case "baseResult": {
       if (typeof value.source !== "string") return null;

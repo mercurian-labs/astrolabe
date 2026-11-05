@@ -9,7 +9,7 @@ import { isMap, isSeq, parseDocument, type Document, type YAMLMap } from "yaml";
 import { BASE_VIEW_SETTING_KEYS, type BaseViewSettings } from "./baseLayout.ts";
 import { BaseError } from "./baseValues.ts";
 import { key } from "./links.ts";
-import { frontmatterEnd } from "./properties.ts";
+import { frontmatterEnd } from "./links.ts";
 import type { WikiFiles } from "./wikiIndex.ts";
 
 /** Whole new content per changed file; `null` deletes the file. */

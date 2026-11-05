@@ -19,6 +19,11 @@ import { appVimKeys } from "~/whichKey/doors";
 
 import type { WikiNoteSession } from "@mercurian/wiki-editor/note-buffer";
 import { wikilinkNoteName } from "@mercurian/wiki-editor/incoming";
+import {
+  useWikiLinkTools,
+  wikilinkDisplay,
+  type WikiLinkPeek,
+} from "@mercurian/wiki-editor/link-tools";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -70,6 +75,7 @@ const previewOptions = (
   },
   // Embeds name wiki files, which the page cannot serve as images yet.
   resolveEmbed: () => null,
+  wikilinkDisplay,
   ...(keys === undefined ? {} : { keys }),
   codeBlocks,
   embedBlocks,
@@ -110,6 +116,8 @@ export function WikiNoteEditor({
   onWrite,
   renderBase,
   renderBaseEmbed,
+  linkTypes,
+  renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
   readonly readOnly?: boolean;
@@ -120,6 +128,10 @@ export function WikiNoteEditor({
   readonly renderBaseEmbed?: (target: string) => ReactNode;
   /** Vim's `:w`: saves the note, as Save to change request does. */
   readonly onWrite?: () => void;
+  /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
+  readonly linkTypes: ReadonlyArray<string>;
+  /** What a link's preview shows, drawn into its popover. */
+  readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
 }) {
   // Read through a ref, so the preview options never change with it.
   const openNoteRef = useRef(onOpenNote);
@@ -132,6 +144,7 @@ export function WikiNoteEditor({
   useLayoutEffect(() => {
     writeRef.current = onWrite;
   }, [onWrite]);
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
   // One array for the editor's life: a new one would remount it.
   const [editableExtensions] = useState(() => [
     WIKI_EDITOR_THEME,
@@ -139,7 +152,9 @@ export function WikiNoteEditor({
     outline(),
     agentChangeBar(),
     appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
+    linkTools.extension,
   ]);
+  const [readOnlyExtensions] = useState(() => [...READ_ONLY_EXTENSIONS, linkTools.extension]);
   // The blocks the editor draws, each filled through a portal so the view keeps the app's context.
   const [baseBlocks, setBaseBlocks] = useState<ReadonlyArray<BaseBlock>>([]);
   const [stable] = useState(() => {
@@ -187,7 +202,7 @@ export function WikiNoteEditor({
       <AtlasEditor
         text={session.text}
         awareness={session.awareness}
-        extensions={readOnly ? READ_ONLY_EXTENSIONS : editableExtensions}
+        extensions={readOnly ? readOnlyExtensions : editableExtensions}
         livePreview={livePreview}
         vim={vim}
         vimPanel={false}
@@ -200,6 +215,7 @@ export function WikiNoteEditor({
           String(block.id),
         ),
       )}
+      {linkTools.previews}
     </div>
   );
 }

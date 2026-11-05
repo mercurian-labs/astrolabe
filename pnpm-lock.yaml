@@ -2805,12 +2805,21 @@ importers:
 
   packages/wiki-editor:
     dependencies:
+      '@codemirror/autocomplete':
+        specifier: ^6.20.4
+        version: 6.20.4
+      '@codemirror/state':
+        specifier: ^6.7.6
+        version: 6.7.6
       '@codemirror/view':
         specifier: ^6.43.15
         version: 6.43.15
       '@mercurian/editor':
         specifier: workspace:*
         version: link:../editor
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../wiki
       react-dom:
         specifier: 19.2.6
         version: 19.2.6(react@19.2.6)

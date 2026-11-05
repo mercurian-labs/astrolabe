@@ -913,6 +913,32 @@ it.effect("reads a wiki by name, and searches and links from its index", () =>
   ),
 );
 
+it.effect("reports link types from both ends, and every type the wiki uses", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikis, wikiId } = yield* registeredWiki(harness);
+      const { changeRequest } = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Say what Alpha's link means",
+          changes: {
+            "Alpha.md": "# Alpha\n\nAlpha [[Beta|builds on @depends_on]] and [[beta|@blocks]].\n",
+          },
+        },
+        agent("thread-types"),
+      );
+      const scope = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      const alpha = yield* wikis.links({ ...scope, name: "Alpha" });
+      assert.deepEqual(alpha.outgoing, [
+        { target: "Beta", unresolved: false, types: ["depends_on", "blocks"] },
+      ]);
+      const beta = yield* wikis.links({ ...scope, name: "Beta" });
+      assert.deepEqual(beta.typedBacklinks, [{ source: "Alpha", types: ["depends_on", "blocks"] }]);
+      assert.deepEqual((yield* wikis.index(scope)).linkTypes, ["blocks", "depends_on"]);
+    }),
+  ),
+);
+
 /** A change request opened by an agent, checked out in a worktree of its own. */
 const changeRequestWorktree = (harness: Harness) =>
   Effect.gen(function* () {

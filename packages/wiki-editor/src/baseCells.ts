@@ -1,3 +1,5 @@
+import { displayRuns } from "@mercurian/wiki/links";
+
 import { wikilinkNoteName } from "./incoming";
 
 /** One property of a row in a base's view, as the server sends it. */
@@ -13,6 +15,16 @@ const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d
 const WIKILINK = /\[\[([^\]\n]+)\]\]/g;
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
+/** A link's text as a reader sees it: `@` types without the `@`, beside the name if alone. */
+export function linkText(name: string, alias: string): string {
+  const runs = displayRuns(alias);
+  const text = runs.map((run) => alias.slice(run.from, run.to)).join("");
+  const typesOnly =
+    runs.some((run) => run.type) &&
+    runs.every((run) => run.type || !alias.slice(run.from, run.to).trim());
+  return !text ? name : typesOnly ? `${name} ${text}` : text;
+}
+
 function scalarParts(value: BaseScalar): BaseCellPart[] {
   if (value === null) return [];
   if (typeof value === "boolean") return [{ kind: "text", text: value ? "Yes" : "No" }];
@@ -27,7 +39,7 @@ function scalarParts(value: BaseScalar): BaseCellPart[] {
     const start = match.index ?? 0;
     if (start > at) parts.push({ kind: "text", text: value.slice(at, start) });
     const alias = inner.includes("|") ? inner.slice(inner.indexOf("|") + 1).trim() : "";
-    parts.push({ kind: "link", name, text: alias || name });
+    parts.push({ kind: "link", name, text: linkText(name, alias) });
     at = start + match[0].length;
   }
   if (at < value.length) parts.push({ kind: "text", text: value.slice(at) });

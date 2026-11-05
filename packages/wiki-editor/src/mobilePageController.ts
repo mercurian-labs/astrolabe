@@ -14,6 +14,8 @@ export interface WikiEditorPageState {
   /** Whether that base's notes edit in place. */
   readonly baseEditable: boolean;
   readonly theme: Extract<WikiEditorCommand, { type: "theme" }>["theme"] | null;
+  /** The `@` types the wiki uses, which the editor suggests. */
+  readonly linkTypes: ReadonlyArray<string>;
 }
 
 /**
@@ -28,6 +30,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     base: null,
     baseEditable: false,
     theme: null,
+    linkTypes: [],
   };
   const listeners = new Set<() => void>();
   const setState = (next: Partial<WikiEditorPageState>) => {
@@ -61,6 +64,21 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     baseListeners.add(listener);
     return () => {
       baseListeners.delete(listener);
+    };
+  };
+
+  // The notes link previews show, by name: asked for once each, then kept current by the app.
+  const notes = new Map<string, string | null>();
+  const noteListeners = new Set<() => void>();
+  const asked = new Set<string>();
+  const watchNote = (name: string, listener: () => void) => {
+    if (!asked.has(name)) {
+      asked.add(name);
+      post({ type: "readNote", name });
+    }
+    noteListeners.add(listener);
+    return () => {
+      noteListeners.delete(listener);
     };
   };
 
@@ -102,6 +120,13 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
       case "showBase":
         setState({ base: command.source, baseEditable: command.editable === true });
         return;
+      case "linkTypes":
+        setState({ linkTypes: command.types });
+        return;
+      case "noteRead":
+        notes.set(command.name, command.source);
+        for (const listener of noteListeners) listener();
+        return;
       case "baseResult":
         bases.set(command.source, { result: command.result, error: command.error });
         for (const listener of baseListeners) listener();
@@ -115,6 +140,9 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     getState: () => state,
     watchBase,
     getBase: (source: string): WikiEditorBase | undefined => bases.get(source),
+    watchNote,
+    /** A note's text, null when it isn't written, undefined until the app answers. */
+    getNote: (name: string): string | null | undefined => notes.get(name),
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {

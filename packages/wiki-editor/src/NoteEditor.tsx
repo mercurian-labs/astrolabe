@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 
 import type { WikiNoteSession } from "./noteBuffer";
 import { wikilinkNoteName } from "./incoming";
+import { useWikiLinkTools, wikilinkDisplay, type WikiLinkPeek } from "./linkTools";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -57,10 +58,16 @@ export function WikiNoteEditor({
   onOpenNote,
   onOpenUrl,
   renderBase,
+  linkTypes,
+  renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
   readonly readOnly?: boolean;
   readonly onOpenNote: (name: string) => void;
+  /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
+  readonly linkTypes: ReadonlyArray<string>;
+  /** What a link's preview shows, drawn into its popover. */
+  readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
   /** Opens an external link; the editor opens a new window when omitted. */
   readonly onOpenUrl?: (href: string) => void;
   /**
@@ -97,6 +104,9 @@ export function WikiNoteEditor({
       },
     };
   });
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
+  // One array for the editor's life: a new one would remount it.
+  const [extensions] = useState(() => [...EXTENSIONS, linkTools.extension]);
   const drawsBases = renderBase !== undefined;
   const livePreview = useMemo<LivePreviewOptions>(
     () => ({
@@ -106,6 +116,7 @@ export function WikiNoteEditor({
       },
       ...(hasOpenUrl ? { openUrl: (href: string) => openUrlRef.current?.(href) } : {}),
       linksOpenOnClick: true,
+      wikilinkDisplay,
       // Embeds name wiki files, which the page cannot serve as images yet.
       resolveEmbed: () => null,
       ...(drawsBases ? { codeBlocks, embedBlocks } : {}),
@@ -122,7 +133,7 @@ export function WikiNoteEditor({
       <AtlasEditor
         text={session.text}
         awareness={session.awareness}
-        extensions={EXTENSIONS}
+        extensions={extensions}
         livePreview={livePreview}
         readOnly={readOnly}
       />
@@ -131,6 +142,7 @@ export function WikiNoteEditor({
             createPortal(renderBase(block.source), block.element, String(block.id)),
           )
         : null}
+      {linkTools.previews}
     </div>
   );
 }

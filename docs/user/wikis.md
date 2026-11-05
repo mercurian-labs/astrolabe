@@ -40,6 +40,18 @@ As in Obsidian, a base with no filters lists every file: notes in every folder, 
 
 Bases support Obsidian's whole language: filters, formulas, every function, regular expressions, summaries, `groupBy` and `groupOrder`. Two details catch people out, in Obsidian too. A property's `displayName` is keyed by its full id (`note.status`, `formula.total`), and a bare `status` is ignored. And `Average` divides by every row, a missing value counting as nothing. A base that names a function or property that doesn't exist says so instead of showing results.
 
+## Link types
+
+A link can say what it means. Add an `@` word to its display text, as in `[[Auth|the login flow @depends_on]]`. Types can be anything, a link can have several, and they read one way, from this note to the linked one. Every mention of a note in a note adds to the same link, so `[[Auth|@depends_on]]` and `[[Auth#Login|@blocks]]` give that link both types. Typing `@` inside a link suggests the types your wiki already uses.
+
+When reading, the word stays where you wrote it, marked and without its `@`. A link with nothing but types, like `[[Auth|@blocks]]`, shows the note's name beside them. Only links in a note's body have types, not those in frontmatter, embeds or code. Every `@` word at the start of the display text or after a space is a type; write `\@sam` to keep it as text.
+
+Hover over a link to preview its note and types. On a phone, press and hold a link while reading.
+
+In a base, `file.linksOfType("depends_on")` lists the links a file makes with that type, and `file.backlinksOfType("depends_on")` the files linking to it with that type. A base embedded in Auth can show what depends on it with the filter `file.linksOfType("depends_on").contains(this.file)`.
+
+Obsidian keeps these links working and shows the `@` word as you wrote it, including the backslash in `\@sam`. Its Bases can't read types, so a filter using these functions shows nothing there.
+
 ## Documents beside your work
 
 A document can open beside a conversation, and a conversation beside a document. **Document** in a pane's New tab (its **+**) finds or writes one in that tab's place. A change request's **Open thread** shows its thread's conversation after the chat in front.

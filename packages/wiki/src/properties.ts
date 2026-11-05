@@ -1,11 +1,6 @@
 import { parseDocument } from "yaml";
 
-import { prose } from "./links.ts";
-
-const FRONTMATTER = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
-
-/** Where a note's frontmatter ends; 0 when it has none. */
-export const frontmatterEnd = (source: string): number => FRONTMATTER.exec(source)?.[0].length ?? 0;
+import { FRONTMATTER, frontmatterEnd, prose } from "./links.ts";
 
 /**
  * A note's properties: the YAML mapping between `---` lines at its very start, as Obsidian

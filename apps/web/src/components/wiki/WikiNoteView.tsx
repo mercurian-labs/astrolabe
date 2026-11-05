@@ -26,12 +26,38 @@ import {
   queuedSaveStep,
   type QueuedWikiSave,
 } from "./wiki.logic";
+import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-tools";
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
 import { WikiBase } from "./WikiBaseView";
 import { WikiNoteEditor } from "./WikiNoteEditor";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
 import { SaveToChangeRequestDialog, useChangeRequestTurn, type SaveTarget } from "./WikiSaveDialog";
+
+const NO_LINK_TYPES: ReadonlyArray<string> = [];
+
+function LinkPreview({
+  environmentId,
+  wikiId,
+  changeRequestId,
+  link,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly link: WikiLinkPeek;
+}) {
+  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const { data } = useEnvironmentQuery(
+    wikiEnvironment.note({ environmentId, input: { wikiId, name: link.name, ...scope } }),
+  );
+  return (
+    <WikiLinkPreview
+      link={link}
+      source={data === null ? undefined : data.exists ? data.source : null}
+    />
+  );
+}
 
 /**
  * One note, editable; edits stay in the buffer until saved to a change request. Inside one, every
@@ -231,6 +257,15 @@ export function WikiNoteView({
               session={snapshot.session}
               readOnly={readOnly}
               onOpenNote={onOpenNote}
+              linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
+              renderLinkPreview={(link) => (
+                <LinkPreview
+                  environmentId={environmentId}
+                  wikiId={wikiId}
+                  changeRequestId={changeRequestId}
+                  link={link}
+                />
+              )}
               renderBase={(source) => (
                 <WikiBase
                   environmentId={environmentId}

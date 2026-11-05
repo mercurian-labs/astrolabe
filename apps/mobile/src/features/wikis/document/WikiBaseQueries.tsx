@@ -54,3 +54,34 @@ export function WikiBaseQueries({
 }: Scope & { readonly sources: ReadonlyArray<string> }) {
   return sources.map((source) => <WikiBaseQuery key={source} source={source} {...scope} />);
 }
+
+function WikiNoteRead({
+  name,
+  environmentId,
+  wikiId,
+  changeRequestId,
+  onRead,
+}: Omit<WikiNoteReadsProps, "names"> & { readonly name: string }) {
+  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const { data } = useEnvironmentQuery(
+    wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
+  useEffect(() => {
+    if (data !== null) onRead(name, data.exists ? data.source : null);
+  }, [data, name, onRead]);
+  return null;
+}
+
+interface WikiNoteReadsProps {
+  readonly names: ReadonlyArray<string>;
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly onRead: (name: string, source: string | null) => void;
+}
+
+/** Reads the notes the editor page's link previews show, each live. Renders nothing. */
+export function WikiNoteReads({ names, ...scope }: WikiNoteReadsProps) {
+  return names.map((name) => <WikiNoteRead key={name} name={name} {...scope} />);
+}

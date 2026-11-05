@@ -85,6 +85,29 @@ describe("the wiki editor page", () => {
     ).toEqual({ type: "baseResult", source, result: null, error: "The base sent no view." });
   });
 
+  it("asks the app for a previewed note once, and follows each read of it", () => {
+    const { page: editor, events } = page();
+    const seen: Array<string | null | undefined> = [];
+    const listen = () => seen.push(editor.getNote("Auth"));
+    const stop = editor.watchNote("Auth", listen);
+    const again = editor.watchNote("Auth", listen);
+    expect(events.filter((event) => event.type === "readNote")).toEqual([
+      { type: "readNote", name: "Auth" },
+    ]);
+    expect(editor.getNote("Auth")).toBeUndefined();
+    editor.handle({ type: "noteRead", name: "Auth", source: "# Auth\n" });
+    editor.handle({ type: "noteRead", name: "Auth", source: null });
+    expect(seen).toEqual(["# Auth\n", null]);
+    stop();
+    again();
+  });
+
+  it("holds the wiki's link types for the editor to suggest", () => {
+    const { page: editor } = page();
+    editor.handle({ type: "linkTypes", types: ["blocks"] });
+    expect(editor.getState().linkTypes).toEqual(["blocks"]);
+  });
+
   it("shows a base file alone once told to, and drops a malformed show", () => {
     const { page: editor } = page();
     expect(editor.getState().base).toBeNull();
@@ -120,6 +143,24 @@ describe("the wiki editor page", () => {
 });
 
 describe("the wiki editor protocol", () => {
+  it("reads what a link preview sends each way, dropping malformed ones", () => {
+    expect(parseWikiEditorEvent('{"type":"readNote","name":"Auth"}')).toEqual({
+      type: "readNote",
+      name: "Auth",
+    });
+    expect(parseWikiEditorEvent('{"type":"readNote","name":""}')).toBeNull();
+    expect(parseWikiEditorCommand({ type: "noteRead", name: "Auth", source: null })).toEqual({
+      type: "noteRead",
+      name: "Auth",
+      source: null,
+    });
+    expect(parseWikiEditorCommand({ type: "noteRead", name: "Auth" })).toBeNull();
+    expect(parseWikiEditorCommand({ type: "linkTypes", types: ["a", 1] })).toEqual({
+      type: "linkTypes",
+      types: ["a"],
+    });
+  });
+
   it("reads commands the app sends, dropping malformed ones and theme entries", () => {
     expect(
       parseWikiEditorCommand({

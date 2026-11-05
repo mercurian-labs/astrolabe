@@ -3,8 +3,7 @@
  * The values Obsidian's Bases language works with, and how each one reads, compares and sorts.
  * Text forms follow what Obsidian 1.14 exports as CSV (see fixtures/obsidian-parity).
  */
-import { key } from "./links.ts";
-import type { TypedLink } from "./linkTypes.ts";
+import { key, type TypedLink } from "./links.ts";
 
 export class BaseError extends Error {
   override readonly name = "BaseError";

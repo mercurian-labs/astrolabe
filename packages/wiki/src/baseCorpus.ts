@@ -5,8 +5,7 @@
  * are left out, as Obsidian leaves them out.
  */
 import { fileName, stripHeading, type BaseDoc, type LinkValue } from "./baseValues.ts";
-import { key, links as findLinks } from "./links.ts";
-import { typedLinks } from "./linkTypes.ts";
+import { key, links as findLinks, typedLinks } from "./links.ts";
 import { noteProperties, noteTags } from "./properties.ts";
 
 export interface BaseFile {

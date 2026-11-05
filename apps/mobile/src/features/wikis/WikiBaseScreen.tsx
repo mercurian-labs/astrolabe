@@ -140,6 +140,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       case "ready":
       case "state":
       case "text":
+      case "readNote":
         return;
     }
   };

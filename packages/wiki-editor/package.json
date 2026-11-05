@@ -16,6 +16,10 @@
       "types": "./src/incoming.ts",
       "default": "./src/incoming.ts"
     },
+    "./link-tools": {
+      "types": "./src/linkTools.tsx",
+      "default": "./src/linkTools.tsx"
+    },
     "./base-cells": {
       "types": "./src/baseCells.ts",
       "default": "./src/baseCells.ts"
@@ -35,8 +39,11 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@mercurian/editor": "workspace:*",
+    "@mercurian/wiki": "workspace:*",
     "react-dom": "19.2.6",
     "y-protocols": "^1.0.7",
     "yjs": "13.6.33"

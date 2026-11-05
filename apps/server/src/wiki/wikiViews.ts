@@ -37,8 +37,12 @@ export const indexResult = (
 ): WikiIndexResult => {
   const incoming = new Map<string, Set<string>>();
   const links: Array<{ from: string; to: string }> = [];
+  const linkTypes = new Set<string>();
   const notes = [...index.notes.values()].map((note) => {
     const targets = outgoingTargets(index, note.name);
+    for (const link of typedLinks(note.source, note.links)) {
+      for (const type of link.types) linkTypes.add(type);
+    }
     for (const target of targets) {
       links.push({ from: note.name, to: target });
       const sources = incoming.get(key(target)) ?? new Set<string>();
@@ -58,6 +62,7 @@ export const indexResult = (
     commit,
     notes: notes.map((note) => ({ ...note, incoming: incoming.get(key(note.name))?.size ?? 0 })),
     links,
+    linkTypes: [...linkTypes].toSorted((a, b) => a.localeCompare(b)),
     bases: [...index.bases.keys()].map((file) => {
       const editedAt = editTimes.get(file);
       return editedAt === undefined ? { file } : { file, editedAt };
@@ -162,9 +167,11 @@ export interface WikiLinksResult {
 export const linksResult = (index: WikiIndex, requested: string): WikiLinksResult => {
   const name = noteName(requested);
   const note = index.notes.get(key(name));
-  const typed = typedLinks(note?.source ?? "");
+  const typed = note ? typedLinks(note.source, note.links) : [];
   const typedBacklinks = [...index.notes.values()].flatMap((source) => {
-    const types = typedLinks(source.source).find((link) => key(link.target) === key(name))?.types;
+    const types = typedLinks(source.source, source.links).find(
+      (link) => key(link.target) === key(name),
+    )?.types;
     return types ? [{ source: source.name, types }] : [];
   });
   return {

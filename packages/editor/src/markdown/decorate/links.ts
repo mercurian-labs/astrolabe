@@ -2,10 +2,17 @@ import { Decoration } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { normalizeLabel } from "../documentIndex.ts";
 import { autolinkHref } from "../url.ts";
-import { EmbedChipWidget, externalLinkWidget, headingSeparator, ImageWidget } from "../widgets.ts";
+import {
+  EmbedChipWidget,
+  externalLinkWidget,
+  headingSeparator,
+  ImageWidget,
+  linkTypeGap,
+} from "../widgets.ts";
 import { markClass, type Collector } from "./collector.ts";
 
 const UNSAFE = markClass("cm-md-link-unsafe");
+const LINK_TYPE = markClass("cm-md-link-type");
 const PLAIN_LINK = markClass("cm-md-link");
 
 /** Link-styled text carrying its target, or the unsafe indicator when the policy blocked it. */
@@ -175,6 +182,17 @@ export function rawTarget(c: LinkSource, parts: WikiParts) {
   return c.slice(parts.open.to, parts.pipe ? parts.pipe.from : parts.close.from);
 }
 
+/** How a host reads an alias: what shows of it, and whether it names only types. */
+export function aliasReading(c: LinkSource, alias: SyntaxNode) {
+  const text = c.slice(alias.from, alias.to);
+  const runs = c.config.wikilinkDisplay?.(text);
+  if (!runs) return null;
+  const typesOnly =
+    runs.some((run) => run.type) &&
+    runs.every((run) => run.type || !text.slice(run.from, run.to).trim());
+  return { runs, typesOnly };
+}
+
 function wikiMark(target: string) {
   return Decoration.mark({
     class: "cm-md-wikilink",
@@ -200,17 +218,28 @@ export function wikiLink(c: Collector, node: SyntaxNode) {
   }
   c.hideNode(open);
   c.hideNode(close);
-  if (alias) {
+  const reading = alias ? aliasReading(c, alias) : null;
+  if (alias && !reading?.typesOnly) {
     c.hide(open.to, alias.from);
     c.mark(alias.from, alias.to, mark);
-    return;
+  } else {
+    if (reading && pipe) c.replace(pipe.from, pipe.to, linkTypeGap);
+    else c.hideNode(pipe);
+    if (fragment) {
+      if (target) c.replace(fragment.from, fragment.from + 1, headingSeparator);
+      else c.hide(fragment.from, fragment.from + 1);
+    }
+    c.mark(open.to, reading ? close.from : pipe ? pipe.from : close.from, mark);
   }
-  c.hideNode(pipe);
-  if (fragment) {
-    if (target) c.replace(fragment.from, fragment.from + 1, headingSeparator);
-    else c.hide(fragment.from, fragment.from + 1);
+  if (alias && reading) {
+    let at = alias.from;
+    for (const run of reading.runs) {
+      c.hide(at, alias.from + run.from);
+      if (run.type) c.mark(alias.from + run.from, alias.from + run.to, LINK_TYPE);
+      at = alias.from + run.to;
+    }
+    c.hide(at, alias.to);
   }
-  c.mark(open.to, pipe ? pipe.from : close.from, mark);
 }
 
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|svg|webp|bmp|avif)$/i;

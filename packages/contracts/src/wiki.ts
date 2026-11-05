@@ -174,6 +174,8 @@ export const WikiIndexResult = Schema.Struct({
   notes: Schema.Array(WikiNoteSummary),
   /** Every note-to-note link, by note name, so a client can draw the wiki's graph. */
   links: Schema.Array(WikiLinkEdge),
+  /** Every `@` type the wiki's links use; what suggests one, never a list of allowed types. */
+  linkTypes: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   maps: Schema.Array(WikiMapSummary),
   bases: Schema.Array(WikiBaseSummary).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   unresolved: Schema.Array(WikiUnresolved),
