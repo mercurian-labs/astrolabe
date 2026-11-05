@@ -6,6 +6,7 @@
  */
 import { fileName, stripHeading, type BaseDoc, type LinkValue } from "./baseValues.ts";
 import { key, links as findLinks } from "./links.ts";
+import { typedLinks } from "./linkTypes.ts";
 import { noteProperties, noteTags } from "./properties.ts";
 
 export interface BaseFile {
@@ -98,10 +99,16 @@ function docOf(entry: BaseFile, times: BaseFileTimes): BaseDoc {
   };
   if (isNote(entry.file)) {
     const properties = noteProperties(source);
-    return { ...base, properties, tags: noteTags(source, properties), ...noteLinks(source) };
+    return {
+      ...base,
+      properties,
+      tags: noteTags(source, properties),
+      ...noteLinks(source),
+      typedLinks: typedLinks(source),
+    };
   }
   const links = /\.canvas$/i.test(entry.file) ? canvasLinks(source) : [];
-  return { ...base, properties: {}, tags: [], links, embeds: [] };
+  return { ...base, properties: {}, tags: [], links, embeds: [], typedLinks: [] };
 }
 
 const collate = (a: string, b: string) =>

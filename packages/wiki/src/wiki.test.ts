@@ -12,6 +12,7 @@ import {
   renameLinks,
   serializeMap,
   support,
+  typedLinks,
   unresolved,
   walk,
   type SkillMap,
@@ -49,6 +50,33 @@ const apply = (files: WikiFiles, changes: WikiChanges): WikiFiles => {
   }
   return next;
 };
+
+describe("typed links", () => {
+  it("reads `@` words from body links, combining a document's mentions", () => {
+    const source = [
+      "Uses [[Auth|the login flow @depends_on]] and [[auth#Login|@blocks @depends_on]].",
+      "The [[Analysis|new work @supersedes and @contradicts-it the old]], [[Plain]], [[Named|text]].",
+    ].join("\n");
+    expect(typedLinks(source)).toEqual([
+      { target: "Auth", types: ["depends_on", "blocks"] },
+      { target: "Analysis", types: ["supersedes", "contradicts-it"] },
+    ]);
+  });
+
+  it("leaves addresses, escapes, code, frontmatter and embeds untyped", () => {
+    const source = [
+      "---",
+      'owner: "[[Priya|@owner]]"',
+      "---",
+      "[[A|sam@example.com]] [[B|\\@sam]] [[C|(@sam)]] `[[D|@code]]` ![[E|@embed]]",
+      "```",
+      "[[F|@fenced]]",
+      "```",
+      "",
+    ].join("\n");
+    expect(typedLinks(source)).toEqual([]);
+  });
+});
 
 describe("links", () => {
   it("finds real links and renames them, keeping anchors, aliases and examples", () => {

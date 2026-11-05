@@ -695,6 +695,7 @@ export function queryBase(
           tags: [],
           links: [],
           embeds: [],
+          typedLinks: [],
           mtime: undefined,
           ctime: undefined,
         });
@@ -875,6 +876,7 @@ const EMPTY_DOC: BaseDoc = {
   tags: [],
   links: [],
   embeds: [],
+  typedLinks: [],
   mtime: undefined,
   ctime: undefined,
 };

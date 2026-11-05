@@ -122,6 +122,46 @@ describe("base blocks", () => {
   });
 });
 
+describe("link types", () => {
+  const typed = baseCorpus(
+    Object.entries({
+      "Beta.md": "# Beta\n",
+      "Gamma.md": "# Gamma\n",
+      "Typed.md": "Uses [[Beta|the flow @depends_on]] and [[Gamma#Top|@blocks]].\n",
+      "Other.md":
+        '---\nfor: "[[Beta|@depends_on]]"\n---\nSee [[Beta|@blocks]] and ![[Gamma|@depends_on]].\n',
+    }).map(([file, source]) => ({ file, source })),
+  );
+  const matching = (statement: string, self?: string) =>
+    queryBase(typed, parseBase(filter(statement)), { now: NOW, self }).rows.map((row) => row.name);
+
+  it("asks which notes link with a type, from either end", () => {
+    expect(matching('file.linksOfType("depends_on").contains(link("Beta"))')).toEqual(["Typed"]);
+    expect(matching('file.linksOfType("blocks").contains(link("Gamma"))')).toEqual(["Typed"]);
+    expect(matching('file.backlinksOfType("depends_on").contains(link("Typed"))')).toEqual([
+      "Beta",
+    ]);
+    expect(matching('file.backlinksOfType("blocks").length > 0')).toEqual(["Beta", "Gamma"]);
+  });
+
+  it("follows `this` for a base embedded in a note", () => {
+    expect(matching('file.linksOfType("depends_on").contains(this.file)', "Beta.md")).toEqual([
+      "Typed",
+    ]);
+  });
+
+  it("reports a type that isn't text", () => {
+    const { rows } = queryBase(
+      typed,
+      parseBase(
+        "formulas:\n  t: 'file.linksOfType(1)'\nviews:\n  - type: table\n    order: [formula.t]\n",
+      ),
+      { now: NOW },
+    );
+    expect(rows[0]?.values["formula.t"]).toContain("Expected String, given Number");
+  });
+});
+
 describe("queries", () => {
   it("runs Obsidian's own examples, copied verbatim, over every file in the wiki", () => {
     // Alpha is a book that links the Textbook; Delta is a book that does not.

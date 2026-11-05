@@ -12,6 +12,7 @@ import {
   noteName,
   support,
   unresolved,
+  typedLinks,
   walk,
   type WikiFiles,
   type WikiIndex,
@@ -140,8 +141,17 @@ export const locateBase = (
 export interface WikiLinksResult {
   readonly name: string;
   readonly exists: boolean;
-  readonly outgoing: ReadonlyArray<{ readonly target: string; readonly unresolved: boolean }>;
+  readonly outgoing: ReadonlyArray<{
+    readonly target: string;
+    readonly unresolved: boolean;
+    readonly types: ReadonlyArray<string>;
+  }>;
   readonly backlinks: ReadonlyArray<string>;
+  /** The backlinks that say what they mean: each source with its `@` types for this note. */
+  readonly typedBacklinks: ReadonlyArray<{
+    readonly source: string;
+    readonly types: ReadonlyArray<string>;
+  }>;
   /** The wiki's red links: names linked to that no note carries yet. */
   readonly unresolved: ReadonlyArray<{
     readonly name: string;
@@ -151,14 +161,22 @@ export interface WikiLinksResult {
 
 export const linksResult = (index: WikiIndex, requested: string): WikiLinksResult => {
   const name = noteName(requested);
+  const note = index.notes.get(key(name));
+  const typed = typedLinks(note?.source ?? "");
+  const typedBacklinks = [...index.notes.values()].flatMap((source) => {
+    const types = typedLinks(source.source).find((link) => key(link.target) === key(name))?.types;
+    return types ? [{ source: source.name, types }] : [];
+  });
   return {
-    name: index.notes.get(key(name))?.name ?? name,
-    exists: index.notes.has(key(name)),
+    name: note?.name ?? name,
+    exists: note !== undefined,
     outgoing: outgoingTargets(index, name).map((target) => ({
       target,
       unresolved: !index.notes.has(key(target)),
+      types: typed.find((link) => key(link.target) === key(target))?.types ?? [],
     })),
     backlinks: backlinks(index, name),
+    typedBacklinks,
     unresolved: unresolved(index),
   };
 };

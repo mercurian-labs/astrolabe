@@ -4,6 +4,7 @@
  * Text forms follow what Obsidian 1.14 exports as CSV (see fixtures/obsidian-parity).
  */
 import { key } from "./links.ts";
+import type { TypedLink } from "./linkTypes.ts";
 
 export class BaseError extends Error {
   override readonly name = "BaseError";
@@ -21,6 +22,8 @@ export interface BaseDoc {
   /** Every link in the file, in order, repeats kept; embeds are links too. */
   readonly links: ReadonlyArray<LinkValue>;
   readonly embeds: ReadonlyArray<LinkValue>;
+  /** The documents the body links to with `@` types; a note's only. */
+  readonly typedLinks: ReadonlyArray<TypedLink>;
   /** Epoch milliseconds of the last and the first commit that touched the file, when known. */
   readonly mtime: number | undefined;
   readonly ctime: number | undefined;

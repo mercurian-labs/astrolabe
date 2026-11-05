@@ -130,6 +130,8 @@ export const METHODS: ReadonlySet<string> = new Set([
   "linksTo",
   "asLink",
   "hasLink",
+  "linksOfType",
+  "backlinksOfType",
   "hasProperty",
   "hasTag",
   "inFolder",
@@ -371,6 +373,29 @@ function fileMethod(
         wanted !== undefined &&
         doc.links.some((link) => identity(link, scope.corpus.resolve) === wanted)
       );
+    }
+    case "linksOfType": {
+      const type = args[0] ?? null;
+      if (typeof type !== "string") return typeError(name, "type", "String", type);
+      return doc.typedLinks
+        .filter((link) => link.types.includes(type))
+        .map((link): BaseValue => ({ kind: "link", path: link.target }));
+    }
+    case "backlinksOfType": {
+      const type = args[0] ?? null;
+      if (typeof type !== "string") return typeError(name, "type", "String", type);
+      return scope.corpus
+        .backlinks(doc)
+        .filter((source) =>
+          source.typedLinks.some(
+            (link) => link.types.includes(type) && scope.corpus.resolve(link.target) === doc,
+          ),
+        )
+        .map((source): BaseValue => ({
+          kind: "link",
+          path: source.file,
+          display: docName(source),
+        }));
     }
     case "hasTag":
       return args.some((tag) => typeof tag === "string" && hasTag(doc.tags, tag));

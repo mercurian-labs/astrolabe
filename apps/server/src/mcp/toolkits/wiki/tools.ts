@@ -27,7 +27,7 @@ const shared = {
 };
 
 const RULES =
-  "A wiki is a git repository of flat markdown notes (Name.md, no folders) linked with [[Name]]; skill maps (*.skillmap.md) arrange notes and teach how to read them.";
+  "A wiki is a git repository of flat markdown notes (Name.md, no folders) linked with [[Name]]; skill maps (*.skillmap.md) arrange notes and teach how to read them. A link can say what it means: an @word in its display text is a link type, as in [[Auth|the login flow @depends_on]]. Types are free-form and go one way, from this note to the linked one.";
 
 // TrimmedNonEmptyString's descriptions never reach the advertised schema; these must.
 const wiki = Schema.NonEmptyString.annotate({
@@ -128,14 +128,23 @@ const WikiOrientTool = Tool.make("astrolabe_wiki_orient", {
 const WikiLinksTool = Tool.make("astrolabe_wiki_links", {
   ...shared,
   description:
-    "A note's outgoing links (marking red links to notes not written yet), its backlinks, and the wiki's whole frontier of red links.",
+    "A note's outgoing links (marking red links to notes not written yet) with their link types, its backlinks, those backlinks that carry types, and the wiki's whole frontier of red links.",
   parameters: Schema.Struct({ wiki, name: TrimmedNonEmptyString, changeRequestId: readFrom }),
   success: Schema.Struct({
     commit: Schema.String,
     name: Schema.String,
     exists: Schema.Boolean,
-    outgoing: Schema.Array(Schema.Struct({ target: Schema.String, unresolved: Schema.Boolean })),
+    outgoing: Schema.Array(
+      Schema.Struct({
+        target: Schema.String,
+        unresolved: Schema.Boolean,
+        types: Schema.Array(Schema.String),
+      }),
+    ),
     backlinks: Schema.Array(Schema.String),
+    typedBacklinks: Schema.Array(
+      Schema.Struct({ source: Schema.String, types: Schema.Array(Schema.String) }),
+    ),
     unresolved: Schema.Array(
       Schema.Struct({ name: Schema.String, sources: Schema.Array(Schema.String) }),
     ),
