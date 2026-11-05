@@ -294,8 +294,8 @@ Legacy cleanup, on the same disposable stage:
 
 ## Mobile TestFlight and store releases
 
-Merges to main publish compatible OTAs and build iOS prereleases with the `testflight`
-profile at version `3.0.0`. Build numbers increment automatically. The committed app
+Astrolabe runs mobile builds and OTAs only by hand (the workflow has no `push:` trigger). iOS
+prereleases use the `testflight` profile at version `0.1.3`. Build numbers increment automatically. The committed app
 version remains the App Store release version; Android keeps using that version.
 
 To release iOS, dispatch **Mobile EAS Production** with `mode=build`,
@@ -303,16 +303,16 @@ To release iOS, dispatch **Mobile EAS Production** with `mode=build`,
 The workflow commits and pushes the version before building and uploading it.
 Select that build in App Store Connect for App Store review.
 
-To force a TestFlight rebuild, select `profile=testflight`, `platform=ios`, and
-leave the version blank. Submit the first `3.0.0` build for external beta review
+To build for TestFlight, select `mode=build`, `profile=testflight`, `platform=ios`, and
+leave the version blank. Submit the first `0.1.3` build for external beta review
 in App Store Connect. Later builds may still require review; uploads alone do
 not guarantee external approval. TestFlight builds expire after 90 days.
 
 Both release and TestFlight binaries receive compatible production-channel OTAs,
 separated by their major-version fingerprints. Manual `mode=update` uses the
-selected profile's version. Before releasing `3.0.0` to the App Store, advance
+selected profile's version. Before releasing `0.1.3` to the App Store, advance
 `build.testflight.env.T3CODE_MOBILE_VERSION` in `apps/mobile/eas.json` to the next
-unreleased major and get its first beta build approved.
+unreleased version and get its first beta build approved.
 
 ## Android APK mirror
 
