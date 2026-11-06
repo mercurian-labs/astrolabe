@@ -281,7 +281,13 @@ function continuesContainers(cx: BlockContext, line: Line) {
   return typeof depth !== "number" || depth >= cx.depth;
 }
 
-const isMathFence = (line: Line) => line.text.startsWith("$$", line.pos);
+/** `$$x$$ and more` is math inside a paragraph: closing early, it opens no block. */
+function isMathFence(line: Line) {
+  if (!line.text.startsWith("$$", line.pos)) return false;
+  const rest = line.text.slice(line.pos + 2).trimEnd();
+  const close = rest.indexOf("$$");
+  return close === -1 || close === rest.length - 2;
+}
 
 const math: MarkdownConfig = {
   defineNodes: [
