@@ -137,10 +137,12 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 - **Language server** (`apps/server/src/languageServers/`, client `packages/editor/src/lsp/`):
   the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs this
   project trusted` (**Trust project**), or failed / stopped / paused to save memory (**Restart**).
-  Clicking it opens its menu: state, memory, Restart, Stop, View logs (a `repo-lsp-logs:` tab with
-  Server log, RPC trace, Server info). The same commands are under `e L` in the keyboard menu. The
+  Clicking it opens its menu: each server on the file (`+N` in the status counts the companions:
+  Ruff, and ESLint or Tailwind where the project uses them) with state, memory, Restart, Stop, View
+  logs (a `repo-lsp-logs:` tab with Server log, RPC trace, Server info); Settings → Projects says
+  why a companion isn't active. The primary's commands are under `e L` in the keyboard menu. The
   toolchain is the checkout's own TypeScript (7 runs `tsc --lsp`, ≤6 typescript-language-server),
-  else a cached download. Problems underline with the message below the line
+  else a cached download. Problems underline with the message and its server's name below the line
   (`.atlas-diagnostic-messages`; F8 / Shift+F8 step); completion as you type; hover
   (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
   beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
