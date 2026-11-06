@@ -339,7 +339,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       const files = result.files.length;
       const undo = undoableEdit(labels.command, () =>
         undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
-          if (outcome._tag !== "Success") return false;
+          if (outcome._tag !== "Success") return null;
           if (outcome.value.skipped.length > 0) {
             toastManager.add({
               type: "warning",
@@ -347,7 +347,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
               description: outcome.value.skipped.join(", "),
             });
           }
-          return true;
+          return outcome.value;
         }),
       );
       lastRename.set(undo);

@@ -147,7 +147,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
   beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
   rename (`input[aria-label="Rename <name>"]`, then a `repo-locations:` tab titled "Renamed X to
-  Y" with one **Undo rename**, which reads "Undone" after; a wiki's file keeps a toast);
+  Y" with one **Undo rename**, which says after what it put back; a wiki's file keeps a toast);
   Cmd+. code actions (`.atlas-lightbulb`, `[aria-label="Code actions"]`); Cmd+Shift+I format.
   Inlay hints (`.atlas-inlay-hint`) and symbol marks (`.atlas-symbol-read`, `-write`) are on by
   default; inline diagnostics (`.atlas-inline-diagnostic`), semantic colours and code lens

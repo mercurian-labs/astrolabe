@@ -16,7 +16,7 @@ import { projectContentSearchPage } from "~/state/projects";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
-import type { UndoState } from "../renameUndo";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { repositoryFileReveal } from "../repositoryFileReveal";
 import { workspace } from "~/panes/workspace";
 import {
@@ -390,15 +390,27 @@ function editedPlaces(edit: NonNullable<LocationList["edit"]>, listed: number) {
   return listed < edit.edits ? `${all}, the first ${listed.toLocaleString()} shown` : all;
 }
 
-const UNDO_REPORTS: Partial<Record<UndoState, string>> = {
-  undone: "Undone",
-  failed: "Could not be undone",
-};
-
 function UndoEdit({ edit }: { readonly edit: NonNullable<LocationList["edit"]> }) {
   const state = useSyncExternalStore(edit.undo.subscribe, edit.undo.state);
-  const report = UNDO_REPORTS[state];
-  if (report !== undefined) return <span className="shrink-0">{report}</span>;
+  if (state === "undone") return <span className="shrink-0">Undone</span>;
+  if (state === "failed") return <span className="shrink-0">Could not be undone</span>;
+  if (state === "partly") {
+    const skipped = edit.undo.skipped();
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<span className="shrink-0" />}>
+          {`Undone, except ${plural(skipped.length, "file")} changed since`}
+        </TooltipTrigger>
+        <TooltipPopup>
+          {skipped.map((path) => (
+            <div key={path} className="text-xs">
+              {path}
+            </div>
+          ))}
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
   return (
     <Button
       size="xs"
