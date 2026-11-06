@@ -1,4 +1,8 @@
-import { embeddedBase, type WikiEditorBaseResult } from "@mercurian/wiki-editor/protocol";
+import {
+  embeddedBase,
+  type WikiEditorBaseResult,
+  type WikiEditorEmbeddedFile,
+} from "@mercurian/wiki-editor/protocol";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useEffect } from "react";
 
@@ -84,4 +88,36 @@ interface WikiNoteReadsProps {
 /** Reads the notes the editor page's link previews show, each live. Renders nothing. */
 export function WikiNoteReads({ names, ...scope }: WikiNoteReadsProps) {
   return names.map((name) => <WikiNoteRead key={name} name={name} {...scope} />);
+}
+
+function WikiFileRead({
+  path,
+  environmentId,
+  wikiId,
+  changeRequestId,
+  onRead,
+}: Omit<WikiFileReadsProps, "paths"> & { readonly path: string }) {
+  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const { data } = useEnvironmentQuery(
+    wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, paths: [path] } }),
+  );
+  const read = data?.files[0];
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
+  useEffect(() => {
+    if (read) onRead(path, { exists: read.exists, file: read.file, text: read.text });
+  }, [read, path, onRead]);
+  return null;
+}
+
+interface WikiFileReadsProps {
+  readonly paths: ReadonlyArray<string>;
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly onRead: (path: string, read: WikiEditorEmbeddedFile) => void;
+}
+
+/** Reads the canvases the editor page's note embeds, each live. Renders nothing. */
+export function WikiFileReads({ paths, ...scope }: WikiFileReadsProps) {
+  return paths.map((path) => <WikiFileRead key={path} path={path} {...scope} />);
 }

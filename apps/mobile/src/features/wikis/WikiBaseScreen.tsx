@@ -137,10 +137,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       case "error":
         console.warn("The wiki editor page failed:", event.message);
         return;
-      case "ready":
-      case "state":
-      case "text":
-      case "readNote":
+      default:
         return;
     }
   };

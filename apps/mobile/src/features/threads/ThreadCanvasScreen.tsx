@@ -1,3 +1,4 @@
+import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
 import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { canvasViewFromToolItem } from "@t3tools/client-runtime/canvasViews";
@@ -33,16 +34,21 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   const view = item?.type === "dynamic_tool" ? canvasViewFromToolItem(item) : undefined;
   const theme = useEditorTheme();
   const editor = useRef<WikiEditorHandle>(null);
+  const camera = useRef<CanvasCamera | null>(null);
 
   const initialCommands = useCallback((): WikiEditorCommand[] => {
     const commands: WikiEditorCommand[] = [{ type: "theme", theme }];
-    if (view !== undefined) commands.push({ type: "showCanvas", data: view.data });
+    if (view !== undefined) {
+      commands.push({ type: "showCanvas", data: view.data, camera: camera.current });
+    }
     return commands;
   }, [theme, view]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the page the board once the stored call loads, which can land after the page is ready
   useEffect(() => {
-    if (view !== undefined) editor.current?.send({ type: "showCanvas", data: view.data });
+    if (view !== undefined) {
+      editor.current?.send({ type: "showCanvas", data: view.data, camera: camera.current });
+    }
   }, [view]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the theme crosses into the web view, outside React
@@ -51,7 +57,9 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   }, [theme]);
 
   const onEvent = (event: WikiEditorEvent) => {
-    if (event.type === "openUrl") {
+    if (event.type === "camera") {
+      camera.current = event.camera;
+    } else if (event.type === "openUrl") {
       void tryOpenExternalUrl(event.href, "canvas");
     } else if (event.type === "openCode") {
       navigation.navigate("ThreadFile", {

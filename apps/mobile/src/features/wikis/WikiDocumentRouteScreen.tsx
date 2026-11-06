@@ -1,4 +1,8 @@
-import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
+import type {
+  WikiEditorCommand,
+  WikiEditorEmbeddedFile,
+  WikiEditorEvent,
+} from "@mercurian/wiki-editor/protocol";
 import {
   StackActions,
   usePreventRemove,
@@ -8,6 +12,7 @@ import {
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   describeWikiFailure,
+  isCanvasName,
   isTurnRunning,
   queuedSaveStep,
   type QueuedWikiSave,
@@ -38,10 +43,16 @@ import {
   wikiDocumentSubtitle,
 } from "./document/wikiDocument.logic";
 import { useEditorTheme } from "./document/useEditorTheme";
-import { WikiBaseQueries, WikiNoteReads, type WikiBaseAnswer } from "./document/WikiBaseQueries";
+import {
+  WikiBaseQueries,
+  WikiFileReads,
+  WikiNoteReads,
+  type WikiBaseAnswer,
+} from "./document/WikiBaseQueries";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiSaveSheet, type WikiSaveTarget } from "./document/WikiSaveSheet";
 import { WikiBaseScreen } from "./WikiBaseScreen";
+import { WikiCanvasScreen } from "./WikiCanvasScreen";
 import type { WikiDocumentParams } from "./wikiRoutes";
 
 /** Whether the change request's thread is mid-turn, and the run it is in. */
@@ -53,8 +64,9 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
   return { running, runId: running ? (shell?.latestRun?.runId ?? null) : null };
 }
 
-/** A wiki document: a note, or a `.base` file opened by its file name, as on web. */
+/** A wiki document: a note, or a `.base` or `.canvas` file opened by its file name, as on web. */
 export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
+  if (isCanvasName(route.params.name)) return <WikiCanvasScreen params={route.params} />;
   return isWikiBaseFile(route.params.name) ? (
     <WikiBaseScreen params={route.params} />
   ) : (
@@ -188,11 +200,25 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     editor.current?.send({ type: "noteRead", name, source });
   }, []);
 
+  // The canvases the note embeds, read here, and kept so a reloaded page gets them at once.
+  const [embeddedPaths, setEmbeddedPaths] = useState<ReadonlyArray<string>>([]);
+  const embeddedFiles = useRef(new Map<string, WikiEditorEmbeddedFile>());
+  const onFileRead = useCallback((path: string, read: WikiEditorEmbeddedFile) => {
+    embeddedFiles.current.set(path, read);
+    editor.current?.send({ type: "fileRead", path, file: read });
+  }, []);
+
   const onEvent = (event: WikiEditorEvent) => {
     switch (event.type) {
       case "readNote":
         setPreviewNames((names) => (names.includes(event.name) ? names : [...names, event.name]));
         return;
+      case "readFile": {
+        const known = embeddedFiles.current.get(event.path);
+        if (known) editor.current?.send({ type: "fileRead", path: event.path, file: known });
+        setEmbeddedPaths((paths) => (paths.includes(event.path) ? paths : [...paths, event.path]));
+        return;
+      }
       case "queryBase": {
         const known = baseAnswers.current.get(event.source);
         if (known) editor.current?.send({ type: "baseResult", source: event.source, ...known });
@@ -386,6 +412,13 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         wikiId={wikiId}
         changeRequestId={changeRequestId}
         onRead={onNoteRead}
+      />
+      <WikiFileReads
+        paths={embeddedPaths}
+        environmentId={environmentId}
+        wikiId={wikiId}
+        changeRequestId={changeRequestId}
+        onRead={onFileRead}
       />
       {saving ? (
         <WikiSaveSheet

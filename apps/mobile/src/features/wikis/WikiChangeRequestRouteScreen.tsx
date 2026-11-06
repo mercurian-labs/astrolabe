@@ -7,6 +7,7 @@ import {
   describeIndexError,
   describeWikiFailure,
   mergeBlockedReason,
+  documentTitle,
   noteNameOfFile,
 } from "@t3tools/client-runtime/wikiLogic";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -304,7 +305,7 @@ export function WikiChangeRequestRouteScreen({
                   className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
                 >
                   <Text className="flex-1 text-base text-foreground" numberOfLines={1}>
-                    {noteNameOfFile(change.file)}
+                    {documentTitle(noteNameOfFile(change.file))}
                   </Text>
                   <Text className="text-sm text-foreground-muted">
                     {change.before === null
@@ -454,7 +455,7 @@ function AmendmentRow(props: {
           {amendment.subject}
         </Text>
         <Text className="text-sm text-foreground-muted">
-          {`${amendment.actor} · ${relativeTime(amendment.at)} · ${amendment.files.map(noteNameOfFile).join(", ")}`}
+          {`${amendment.actor} · ${relativeTime(amendment.at)} · ${amendment.files.map((file) => documentTitle(noteNameOfFile(file))).join(", ")}`}
         </Text>
       </View>
       {props.canRevert ? (

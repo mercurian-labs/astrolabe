@@ -95,6 +95,20 @@ describe("the Wikis list", () => {
     ).toEqual([true, true, false]);
   });
 
+  it("lists a canvas as a document", () => {
+    const withCanvas: WikiOverview = {
+      ...overviews[0]!,
+      index: {
+        ...index([]),
+        canvases: [{ file: "Board.canvas", outgoing: 0, incoming: 0 }],
+      } as unknown as WikiIndexResult,
+    };
+    const documents = buildWikiListItems(wikiListEntries([withCanvas], null)).filter(
+      (item) => item.type === "document",
+    );
+    expect(documents.map((item) => item.entry.title)).toEqual(["Board"]);
+  });
+
   it("leaves out the link when no change is open", () => {
     const scope = wikiScopeKey(remote, "b" as WikiId);
     const items = buildWikiListItems(wikiListEntries(overviews, scope));
@@ -165,6 +179,10 @@ describe("wiki filters and footers", () => {
     expect(wikiDocumentFooter({ ...byName("Inbox"), name: "Tasks.base", base: true })).toEqual({
       inChange: false,
       text: "Base · read only",
+    });
+    expect(wikiDocumentFooter({ ...byName("Inbox"), name: "Board.canvas", canvas: true })).toEqual({
+      inChange: false,
+      text: "Canvas · read only",
     });
     expect(wikiDocumentFooter({ ...byName("Inbox"), links: 1, backlinks: 4 }).text).toBe(
       "1 link · linked from 4",
