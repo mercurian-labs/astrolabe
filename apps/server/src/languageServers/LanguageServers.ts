@@ -2173,7 +2173,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       file.held.some((held) => held.instance.spec.id === server);
     for (const held of file.held.slice(1)) {
       if (wanted.some(({ server }) => server === held.instance.spec.id)) continue;
-      file.held.splice(file.held.indexOf(held), 1);
+      // Another Restart's sync may have dropped it during an earlier release.
+      const index = file.held.indexOf(held);
+      if (index === -1) continue;
+      file.held.splice(index, 1);
       yield* release(session, held);
       publishDiagnostics(session, relativePath);
     }

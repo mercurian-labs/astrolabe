@@ -63,8 +63,8 @@ server's status, and speaks to whatever stands behind it.
   only its documents, and a hold and its record are made uninterruptibly: a session ending
   between them would leave a server nothing stops.
 - **A publish is every server's diagnostics at the highest version any has reached.** Older ones
-  are carried forward through that copy's updates; a copy not there yet goes in as it is, and its
-  update follows within a tick. Each diagnostic names its `source`, the server's name if it gave
+  are carried forward through that copy's updates; a copy not there yet goes in as it is, which
+  a server's round trip makes unlikely, and the next publish puts it right. Each diagnostic names its `source`, the server's name if it gave
   none. lsp-client drops the field, so the editor writes it into the message.
 - **Capabilities arrive late.** `initialize` comes before the open, so it can only speak for what
   already runs. `astrolabe/capabilities` replaces the client's copy as companions come and go;
