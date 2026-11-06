@@ -35,6 +35,7 @@ export {
   isCanvasName,
   wikiDocumentName,
   noteKey,
+  wikiDocumentNames,
   noteNameOfFile,
   defaultSaveTarget,
   mergeBlockedReason,

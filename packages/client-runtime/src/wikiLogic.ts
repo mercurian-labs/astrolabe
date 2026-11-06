@@ -2,6 +2,7 @@ import type {
   WikiChangeRequest,
   WikiChangeRequestId,
   WikiIndexError,
+  WikiIndexResult,
   WikiMergePreview,
   WikiMirrorStatus,
 } from "@t3tools/contracts";
@@ -37,6 +38,15 @@ export function wikiDocumentName(file: string): string | null {
     ? noteNameOfFile(file)
     : null;
 }
+
+/** Everything a wiki's links can name: its notes, and its canvases and bases by file. */
+export const wikiDocumentNames = (
+  index: Pick<WikiIndexResult, "notes" | "canvases" | "bases">,
+): ReadonlyArray<string> => [
+  ...index.notes.map((note) => note.name),
+  ...index.canvases.map((canvas) => canvas.file),
+  ...index.bases.map((base) => base.file),
+];
 
 /**
  * Where an edit is saved by default: the change request the page reads from when it is open,

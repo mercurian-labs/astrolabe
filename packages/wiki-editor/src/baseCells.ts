@@ -62,11 +62,12 @@ export const isNameColumn = (id: string): boolean =>
 const NOT_NOTES = new Set(["readme.md", "agents.md", "claude.md"]);
 
 /**
- * The name a row opens by in the wiki: a top-level note's, or a base's file name. Null for any
- * other file (in a folder, a skill map, an attachment), which only the desktop opens, as a file.
+ * The name a row opens by in the wiki: a top-level note's, or the file name of a base or canvas,
+ * at any depth for a canvas. Null for any other file (in a folder, a skill map, an attachment),
+ * which only the desktop opens, as a file.
  */
 export function rowDocument(row: { readonly name: string; readonly file: string }): string | null {
-  if (/^[^/]+\.base$/i.test(row.file)) return row.file;
+  if (/^[^/]+\.base$/i.test(row.file) || /\.canvas$/i.test(row.file)) return row.file;
   return /^[^/]+\.md$/i.test(row.file) &&
     !NOT_NOTES.has(row.file.toLowerCase()) &&
     !/\.skillmap\.md$/i.test(row.file)

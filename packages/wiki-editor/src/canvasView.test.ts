@@ -48,6 +48,14 @@ describe("CanvasView", () => {
     vi.unstubAllGlobals();
   });
 
+  it("restores a camera as the reader's own, so a resize no longer refits it", () => {
+    const { view, world } = attached();
+    expect(view.fitted).toBe(true);
+    view.restore({ x: 12, y: 34, zoom: 0.5 });
+    expect(view.fitted).toBe(false);
+    expect(world.style.transform).toBe("translate(12px, 34px) scale(0.5)");
+  });
+
   it("pans with one pointer, and marks the board moving only while pressed", () => {
     const { view, world, classes } = attached();
     view.press(1, 10, 10);

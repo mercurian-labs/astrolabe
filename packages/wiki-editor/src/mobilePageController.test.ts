@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
+import { createWikiEditorPage, documentKey, type WikiEditorPage } from "./mobilePageController";
 import {
   parseWikiEditorCommand,
   parseWikiEditorEvent,
@@ -117,9 +117,10 @@ describe("the wiki editor page", () => {
       data,
     });
     const code = { path: "src/a.ts", lines: [1, 2] };
-    expect(parseWikiEditorEvent(JSON.stringify({ type: "openCode", code }))).toEqual({
+    expect(parseWikiEditorEvent(JSON.stringify({ type: "openCode", code, url: "u" }))).toEqual({
       type: "openCode",
       code,
+      url: "u",
     });
     const command = parseWikiEditorCommand({ type: "showBase", source: "Projects.base" });
     expect(command).toEqual({ type: "showBase", source: "Projects.base", editable: false });
@@ -201,5 +202,115 @@ describe("the wiki editor protocol", () => {
     expect(wikiEditorCommandScript({ type: "discard" })).toBe(
       'window.__wikiEditorReceive&&window.__wikiEditorReceive({"type":"discard"});true;',
     );
+  });
+
+  describe("a wiki's board", () => {
+    const board = { nodes: [], edges: [] };
+    const file = (text: string) => ({ exists: true, text });
+
+    it("puts a read answered in parts back in order, and resolves only when it's whole", async () => {
+      const { page: editor, events } = page();
+      const read = editor.readFiles(["a.md", "b.md", "c.md"]);
+      const asked = events[0] as Extract<WikiEditorEvent, { type: "readFiles" }>;
+      expect(asked.paths).toEqual(["a.md", "b.md", "c.md"]);
+      const settled = vi.fn();
+      void read.then(settled);
+      editor.handle({
+        type: "filesRead",
+        requestId: asked.requestId,
+        start: 1,
+        total: 3,
+        files: [file("b"), file("c")],
+      });
+      await Promise.resolve();
+      expect(settled).not.toHaveBeenCalled();
+      editor.handle({
+        type: "filesRead",
+        requestId: asked.requestId,
+        start: 0,
+        total: 3,
+        files: [file("a")],
+      });
+      await expect(read).resolves.toEqual([file("a"), file("b"), file("c")]);
+    });
+
+    it("keeps an image's address through a commit until the new one lands", () => {
+      const { page: editor, events } = page();
+      const asks = () => events.filter((event) => event.type === "readAsset").length;
+      const listener = vi.fn();
+      const unmounted = () => undefined;
+      editor.handle({ type: "showCanvas", data: board, revision: "one" });
+      editor.watchAsset("a.png", unmounted)();
+      editor.watchAsset("a.png", unmounted)();
+      expect(asks()).toBe(1);
+      const expiresAt = Number.MAX_SAFE_INTEGER;
+      const landed = { type: "assetRead", path: "a.png", expiresAt } as const;
+      editor.handle({ ...landed, revision: "one", url: "http://host/one" });
+      const stop = editor.watchAsset("a.png", listener);
+      expect(asks()).toBe(1);
+
+      editor.handle({ type: "canvasRevision", revision: "two" });
+      editor.watchAsset("a.png", unmounted)();
+      expect(asks()).toBe(2);
+      expect(editor.getAsset("a.png")).toBe("http://host/one");
+      editor.handle({ ...landed, revision: "two", url: "http://host/two" });
+      expect(editor.getAsset("a.png")).toBe("http://host/two");
+      expect(listener).toHaveBeenCalledOnce();
+      stop();
+    });
+
+    it("asks again for an address that has stopped working", () => {
+      const { page: editor, events } = page();
+      editor.handle({ type: "showCanvas", data: board, revision: "one" });
+      editor.watchAsset("a.png", () => undefined)();
+      editor.handle({
+        type: "assetRead",
+        path: "a.png",
+        revision: "one",
+        url: "http://host/old",
+        expiresAt: 0,
+      });
+      editor.watchAsset("a.png", () => undefined)();
+      expect(events.filter((event) => event.type === "readAsset")).toHaveLength(2);
+    });
+
+    it("reports a camera once it rests, and not again unless it moved", () => {
+      vi.useFakeTimers();
+      try {
+        const { page: editor, events } = page();
+        const cameras = () => events.filter((event) => event.type === "camera");
+        editor.reportCamera({ x: 1, y: 1, zoom: 1 });
+        editor.reportCamera({ x: 2, y: 2, zoom: 1 });
+        expect(cameras()).toEqual([]);
+        vi.runAllTimers();
+        expect(cameras()).toEqual([{ type: "camera", camera: { x: 2, y: 2, zoom: 1 } }]);
+        editor.reportCamera({ x: 2, y: 2, zoom: 1 });
+        vi.runAllTimers();
+        expect(cameras()).toHaveLength(1);
+        editor.reportCamera(null);
+        vi.runAllTimers();
+        expect(cameras().at(-1)).toEqual({ type: "camera", camera: null });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("hands Jump to group to the board on screen", () => {
+      const { page: editor } = page();
+      const focusCard = vi.fn();
+      editor.handle({ type: "focusCard", id: "before" });
+      editor.setBoard({ focusCard });
+      editor.handle({ type: "focusCard", id: "group" });
+      expect(focusCard.mock.calls).toEqual([["group"]]);
+    });
+
+    it("compares known documents as the wiki compares names", () => {
+      const { page: editor } = page();
+      editor.handle({ type: "knownDocuments", names: ["Board.canvas", "Café"] });
+      const known = editor.getState().knownDocuments;
+      expect(known?.has(documentKey("board.CANVAS"))).toBe(true);
+      expect(known?.has(documentKey("Cafe\u0301"))).toBe(true);
+      expect(known?.has(documentKey("Missing"))).toBe(false);
+    });
   });
 });

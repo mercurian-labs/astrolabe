@@ -237,7 +237,7 @@ export type MermaidDiagramState =
   | {
       readonly status: "ready";
       /** A ref callback: re-created, and so remounted, whenever the renderer or source changes. */
-      readonly mount: (container: HTMLElement) => (() => void) | undefined;
+      readonly mount: (container: HTMLElement | null) => (() => void) | undefined;
       readonly error: string | null;
     };
 
@@ -264,6 +264,7 @@ export function useMermaidDiagram(source: string): MermaidDiagramState {
     status: "ready",
     error: renderError,
     mount: (container) => {
+      if (container === null) return undefined;
       const mounted = load.pele.mount(container, trimmedSource, {
         links: false,
         images: false,

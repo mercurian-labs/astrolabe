@@ -58,6 +58,8 @@ export function WikiNoteEditor({
   onOpenNote,
   onOpenUrl,
   renderBase,
+  renderCanvasEmbed,
+  renderMermaid,
   linkTypes,
   renderLinkPreview,
 }: {
@@ -75,6 +77,10 @@ export function WikiNoteEditor({
    * (`![[Open.base#Table]]`); it shows until the block is edited.
    */
   readonly renderBase?: (source: string) => ReactNode;
+  /** An embedded canvas, `![[Board.canvas]]` alone on its line, by its target. */
+  readonly renderCanvasEmbed?: (target: string) => ReactNode;
+  /** A ```mermaid block's diagram, from its source; it shows until the block is edited. */
+  readonly renderMermaid?: (source: string) => ReactNode;
 }) {
   // Read through refs, so the preview options stay one object and never remount the editor.
   const openNoteRef = useRef(onOpenNote);
@@ -86,24 +92,33 @@ export function WikiNoteEditor({
   }, [onOpenNote, onOpenUrl]);
   const hasOpenUrl = onOpenUrl !== undefined;
   // The blocks the editor draws, each filled through a portal, so the view keeps this tree.
-  const [baseBlocks, setBaseBlocks] = useState<
-    ReadonlyArray<{ readonly id: number; readonly source: string; readonly element: HTMLElement }>
+  const [hostBlocks, setHostBlocks] = useState<
+    ReadonlyArray<{
+      readonly id: number;
+      readonly kind: "base" | "canvas-embed" | "mermaid";
+      readonly source: string;
+      readonly element: HTMLElement;
+    }>
   >([]);
   const [{ codeBlocks, embedBlocks }] = useState(() => {
     let next = 0;
-    const draw = (source: string, element: HTMLElement) => {
-      const id = next++;
-      setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
-      return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
-    };
+    const draw =
+      (kind: "base" | "canvas-embed" | "mermaid") => (source: string, element: HTMLElement) => {
+        const id = next++;
+        setHostBlocks((blocks) => [...blocks, { id, kind, source, element }]);
+        return () => setHostBlocks((blocks) => blocks.filter((block) => block.id !== id));
+      };
+    const base = draw("base");
     return {
-      codeBlocks: { base: draw },
-      // An embedded base is asked for by its embed, `![[Open.base#Table]]` (see `embeddedBase`).
+      codeBlocks: { base, mermaid: draw("mermaid") },
       embedBlocks: {
-        base: (target: string, element: HTMLElement) => draw(`![[${target}]]`, element),
+        // An embedded base is asked for by its embed, `![[Open.base#Table]]` (see `embeddedBase`).
+        base: (target: string, element: HTMLElement) => base(`![[${target}]]`, element),
+        canvas: draw("canvas-embed"),
       },
     };
   });
+  const renderers = { base: renderBase, "canvas-embed": renderCanvasEmbed, mermaid: renderMermaid };
   const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
   // One array for the editor's life: a new one would remount it.
   const [extensions] = useState(() => [...EXTENSIONS, linkTools.extension]);
@@ -137,11 +152,13 @@ export function WikiNoteEditor({
         livePreview={livePreview}
         readOnly={readOnly}
       />
-      {renderBase
-        ? baseBlocks.map((block) =>
-            createPortal(renderBase(block.source), block.element, String(block.id)),
-          )
-        : null}
+      {hostBlocks.map((block) =>
+        createPortal(
+          renderers[block.kind]?.(block.source) ?? null,
+          block.element,
+          String(block.id),
+        ),
+      )}
       {linkTools.previews}
     </div>
   );

@@ -1,4 +1,5 @@
 import { CanvasBoard, type CanvasBoardHost } from "@mercurian/wiki-editor/canvas-board";
+import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
 import { canvasData, type CanvasData } from "@mercurian/wiki/canvas";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -33,10 +34,14 @@ function Frame({
   data,
   host,
   revision,
+  camera,
+  onCamera,
 }: {
   readonly data: CanvasData;
   readonly host?: CanvasBoardHost;
   readonly revision?: string;
+  readonly camera?: CanvasCamera;
+  readonly onCamera?: (camera: CanvasCamera | null) => void;
 }) {
   return (
     <div style={{ width: 1000, height: 700 }}>
@@ -46,6 +51,8 @@ function Frame({
         label="Board"
         {...(host === undefined ? {} : { host })}
         {...(revision === undefined ? {} : { revision })}
+        {...(camera === undefined ? {} : { camera })}
+        {...(onCamera === undefined ? {} : { onCamera })}
       />
     </div>
   );
@@ -146,6 +153,69 @@ describe("cards", () => {
     expect(card("a").hasAttribute("data-selected")).toBe(true);
     await userEvent.click(link);
     expect(opened).toHaveBeenCalledWith("https://example.test");
+  });
+
+  const tap = (target: Element) => {
+    const { left, top, width, height } = target.getBoundingClientRect();
+    const at = {
+      bubbles: true,
+      pointerId: 7,
+      pointerType: "touch",
+      clientX: left + width / 2,
+      clientY: top + height / 2,
+    };
+    target.dispatchEvent(new PointerEvent("pointerdown", at));
+    target.dispatchEvent(new PointerEvent("pointerup", at));
+  };
+
+  it("takes a finger's first tap only to select, whatever iOS clicks after it", async () => {
+    // A synthetic pointer has nothing to capture.
+    using _capture = vi.spyOn(Element.prototype, "setPointerCapture").mockReturnValue();
+    const opened = vi.fn();
+    await using _screen = await render(<Frame data={data} host={{ onOpenUrl: opened }} />, {
+      router: false,
+    });
+    await vi.waitFor(() => expect(card("a")).not.toBeNull());
+    tap(card("a").querySelector(".cv-card-content")!);
+    await vi.waitFor(() => expect(card("a").hasAttribute("data-selected")).toBe(true));
+    const link = card("a").querySelector("a")!;
+    link.click();
+    expect(opened).not.toHaveBeenCalled();
+    link.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+    link.click();
+    expect(opened).toHaveBeenCalledWith("https://example.test");
+  });
+
+  it("opens a file card from its label on a second tap", async () => {
+    using _capture = vi.spyOn(Element.prototype, "setPointerCapture").mockReturnValue();
+    const onOpenLink = vi.fn();
+    const host = { onOpenLink, readFiles: async () => [] };
+    await using _screen = await render(<Frame data={data} host={host} />, { router: false });
+    await vi.waitFor(() => expect(card("note")).not.toBeNull());
+    const label = card("note").querySelector(".cv-card-label")!;
+    tap(label);
+    await vi.waitFor(() => expect(card("note").hasAttribute("data-selected")).toBe(true));
+    expect(onOpenLink).not.toHaveBeenCalled();
+    tap(label);
+    expect(onOpenLink).toHaveBeenCalledWith("Note.md");
+  });
+
+  it("opens where a reader left it, and says where the camera goes next", async () => {
+    const onCamera = vi.fn();
+    const camera = { x: -40, y: -20, zoom: 0.75 };
+    await using _screen = await render(<Frame data={data} camera={camera} onCamera={onCamera} />, {
+      router: false,
+    });
+    await vi.waitFor(() =>
+      expect(world().style.transform).toBe("translate(-40px, -20px) scale(0.75)"),
+    );
+    expect(onCamera).toHaveBeenLastCalledWith(camera);
+    wheel({ deltaX: 10, deltaY: 0 });
+    await vi.waitFor(() =>
+      expect(onCamera).toHaveBeenLastCalledWith({ x: -50, y: -20, zoom: 0.75 }),
+    );
+    await userEvent.click(document.querySelector("[aria-label='Fit the board in view']")!);
+    await vi.waitFor(() => expect(onCamera).toHaveBeenLastCalledWith(null));
   });
 
   it("draws groups beneath cards, smaller above larger, and clicks through a group's body", async () => {

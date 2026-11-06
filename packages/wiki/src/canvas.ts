@@ -98,6 +98,14 @@ export function canvasBounds(data: Pick<CanvasData, "nodes">): CanvasBounds {
 
 export const isCanvasFile = (file: string): boolean => /\.canvas$/i.test(file);
 
+/** The groups a reader can jump to: those with a label, in the file's order. */
+export const canvasGroups = (
+  data: Pick<CanvasData, "nodes">,
+): ReadonlyArray<{ readonly id: string; readonly label: string }> =>
+  data.nodes.flatMap((node) =>
+    node.type === "group" && node.label !== undefined ? [{ id: node.id, label: node.label }] : [],
+  );
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

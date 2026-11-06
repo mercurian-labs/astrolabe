@@ -1,4 +1,9 @@
-import { parseCanvas, type CanvasCodeReference, type CanvasData } from "@mercurian/wiki/canvas";
+import {
+  canvasGroups,
+  parseCanvas,
+  type CanvasCodeReference,
+  type CanvasData,
+} from "@mercurian/wiki/canvas";
 import {
   CanvasAssetView,
   CanvasBoard,
@@ -32,7 +37,13 @@ import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
-import { describeWikiFailure, documentTitle, noteKey, wikiDocumentName } from "./wiki.logic";
+import {
+  describeWikiFailure,
+  documentTitle,
+  noteKey,
+  wikiDocumentName,
+  wikiDocumentNames,
+} from "./wiki.logic";
 import { WikiBase } from "./WikiBaseView";
 import { registerWikiCanvasBoard, type WikiCanvasGroup } from "./wikiCanvasBoards";
 import { useWikiCommand } from "./wikiEnvironment";
@@ -107,16 +118,7 @@ function CanvasBoardPane({
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
-  const known =
-    index.data === null
-      ? null
-      : new Set(
-          [
-            ...index.data.notes.map((note) => note.name),
-            ...index.data.canvases.map((canvas) => canvas.file),
-            ...index.data.bases.map((base) => base.file),
-          ].map(noteKey),
-        );
+  const known = index.data === null ? null : new Set(wikiDocumentNames(index.data).map(noteKey));
   const projects = useProjects();
   const runFiles = useAtomQueryRunner(wikiEnvironment.files, QUIET_READ);
   const runCode = useAtomQueryRunner(wikiEnvironment.codeStatus, QUIET_READ);
@@ -230,11 +232,6 @@ function CanvasBoardPane({
 }
 
 const EMPTY_GROUPS: ReadonlyArray<WikiCanvasGroup> = [];
-
-const canvasGroups = (data: CanvasData): ReadonlyArray<WikiCanvasGroup> =>
-  data.nodes.flatMap((node) =>
-    node.type === "group" && node.label !== undefined ? [{ id: node.id, label: node.label }] : [],
-  );
 
 /**
  * A `.canvas` file in its own tab, read from main or a change request, and refreshed per commit

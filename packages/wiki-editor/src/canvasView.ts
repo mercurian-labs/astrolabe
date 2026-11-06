@@ -52,6 +52,18 @@ export class CanvasView {
     };
   }
 
+  /** Whether the board is fitted: the reader hasn't moved it, so it follows its frame. */
+  get fitted() {
+    return this.#fitted;
+  }
+
+  /** Back where the reader left it, on a page that had to load again. */
+  restore(camera: CanvasCamera) {
+    this.#camera = camera;
+    this.#fitted = false;
+    this.#paint();
+  }
+
   /** New contents. The camera stays where the reader left it: only `refit` moves it. */
   setBounds(bounds: CanvasBounds, refit: boolean) {
     this.#bounds = bounds;

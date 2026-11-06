@@ -25,6 +25,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactNode,
   type Ref,
@@ -69,17 +70,40 @@ export type CanvasAsset =
 export function CanvasAssetView({
   asset,
   url,
+  onError,
 }: {
   readonly asset: Exclude<CanvasAsset, { readonly kind: "pdf" }>;
   readonly url: string;
+  /** The engine can't show it, or the address no longer answers. */
+  readonly onError?: () => void;
 }) {
   switch (asset.kind) {
     case "image":
-      return <img className="cv-asset-image" src={url} alt="" loading="lazy" decoding="async" />;
+      return (
+        <img
+          className="cv-asset-image"
+          src={url}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={onError}
+        />
+      );
     case "audio":
-      return <audio className="cv-asset-media" src={url} controls preload="metadata" />;
+      return (
+        <audio className="cv-asset-media" src={url} controls preload="metadata" onError={onError} />
+      );
     case "video":
-      return <video className="cv-asset-media" src={url} controls preload="metadata" />;
+      return (
+        <video
+          className="cv-asset-media"
+          src={url}
+          controls
+          playsInline
+          preload="metadata"
+          onError={onError}
+        />
+      );
     case "background":
       return (
         <div
@@ -611,6 +635,8 @@ export function CanvasBoard({
   host = NO_HOST,
   label,
   revision,
+  camera: openingCamera,
+  onCamera,
   ref,
 }: {
   readonly data: CanvasData;
@@ -619,6 +645,10 @@ export function CanvasBoard({
   readonly label: string;
   /** Changes when the wiki does: known files are read again, and the camera stays. */
   readonly revision?: string | undefined;
+  /** Where the board opens, for a page that had to load again; read once. Unset, it fits. */
+  readonly camera?: CanvasCamera | null | undefined;
+  /** Hears the camera each time it draws: null while it still fits the board. */
+  readonly onCamera?: ((camera: CanvasCamera | null) => void) | undefined;
   readonly ref?: Ref<CanvasBoardHandle>;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -631,6 +661,8 @@ export function CanvasBoard({
   const [selected, setSelected] = useState<string | null>(null);
   const layoutRef = useRef(layout);
   const boundsRef = useRef(bounds);
+  const openingCameraRef = useRef(openingCamera);
+  const onCameraRef = useRef(onCamera);
   const [reads] = useState(() => ({
     files: new BatchedReads<CanvasFileRead>(FILE_READ_BATCH),
     code: new BatchedReads<CanvasCodeStatus>(FILE_READ_BATCH),
@@ -646,6 +678,7 @@ export function CanvasBoard({
     }
     const mounted = overview ? OVERVIEW : next;
     setShown((current) => (sameShown(current, mounted) ? current : mounted));
+    onCameraRef.current?.(view.fitted ? null : camera);
     if (next.simple) return;
     reads.files.want(next.cards.flatMap((card) => (card.type === "file" ? [card.file] : [])));
     reads.code.want(
@@ -661,11 +694,14 @@ export function CanvasBoard({
     const board = boardRef.current;
     const world = worldRef.current;
     if (board === null || world === null) return;
-    return view.attach(board, world, boundsRef.current, FIT_PADDING[mode], show);
+    const detach = view.attach(board, world, boundsRef.current, FIT_PADDING[mode], show);
+    if (openingCameraRef.current) view.restore(openingCameraRef.current);
+    return detach;
   }, [view, mode, show]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- new contents reach the view outside React, keeping a reader's camera where it was
   useLayoutEffect(() => {
+    onCameraRef.current = onCamera;
     reads.files.readFrom((paths) => host.readFiles?.(paths) ?? Promise.resolve([]));
     reads.code.readFrom(
       (keys) => host.readCodeStatus?.(keys.map(codeOfKey)) ?? Promise.resolve([]),
@@ -673,7 +709,7 @@ export function CanvasBoard({
     layoutRef.current = layout;
     boundsRef.current = bounds;
     view.setBounds(bounds, mode === "fit");
-  }, [view, reads, host, layout, bounds, mode]);
+  }, [view, reads, host, layout, bounds, mode, onCamera]);
 
   const readAt = useRef(revision);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new commit in the wiki reads what's in view again, through the view, which knows what that is
@@ -716,9 +752,17 @@ export function CanvasBoard({
     readonly y: number;
     moved: boolean;
   } | null>(null);
+  // iOS finds a tap's click after the tap selected its card, so it can land on what just went live.
+  const swallowClick = useRef(false);
+
+  const openFileCard = (id: string | null | undefined) => {
+    const node = id ? layout.byId.get(id) : undefined;
+    if (node?.type === "file") host.onOpenLink?.(node.file);
+  };
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as Element;
+    swallowClick.current = false;
     if (target.closest(".cv-controls, [data-live]") !== null) return;
     const board = event.currentTarget;
     if (
@@ -745,9 +789,19 @@ export function CanvasBoard({
     const pressed = press.current;
     press.current = null;
     if (pressed === null || pressed.moved) return;
+    swallowClick.current = true;
     // A group's body clicks through, as the board does; only its label picks it.
     const hit = pressed.target.closest(".cv-card, .cv-group-label");
-    setSelected(hit?.closest("[data-card-id]")?.getAttribute("data-card-id") ?? null);
+    const id = hit?.closest("[data-card-id]")?.getAttribute("data-card-id") ?? null;
+    // A finger has no double click: a selected file card's label opens on the next tap.
+    if (
+      event.pointerType === "touch" &&
+      id === selected &&
+      pressed.target.closest(".cv-card-label") !== null
+    ) {
+      openFileCard(id);
+    }
+    setSelected(id);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -783,11 +837,15 @@ export function CanvasBoard({
             press.current = null;
             view.release(event.pointerId);
           },
-          onDoubleClick: (event: PointerEvent<HTMLDivElement>) => {
+          onClickCapture: (event: MouseEvent<HTMLDivElement>) => {
+            if (!swallowClick.current) return;
+            swallowClick.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+          },
+          onDoubleClick: (event: MouseEvent<HTMLDivElement>) => {
             const card = (event.target as Element).closest(".cv-card-label");
-            const id = card?.closest("[data-card-id]")?.getAttribute("data-card-id");
-            const node = id ? layout.byId.get(id) : undefined;
-            if (node?.type === "file") host.onOpenLink?.(node.file);
+            openFileCard(card?.closest("[data-card-id]")?.getAttribute("data-card-id"));
           },
           onKeyDown,
         }

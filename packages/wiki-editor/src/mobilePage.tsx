@@ -1,15 +1,15 @@
 import "./baseLayout.css";
 import "./mobilePage.css";
 
-import type { CanvasCodeReference } from "@mercurian/wiki/canvas";
 import { useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
-import { CanvasBoard } from "./CanvasBoard";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiLinkPreview, type WikiLinkPeek } from "./linkTools";
+import { MobileCanvas, MobileCanvasEmbed } from "./mobileCanvas";
+import { MobileMermaid } from "./MobileMermaid";
 import { WikiNoteEditor } from "./NoteEditor";
 import { parseWikiEditorCommand, WIKI_EDITOR_RECEIVE, type WikiEditorEvent } from "./protocol";
 
@@ -28,10 +28,6 @@ declare global {
 const post = (event: WikiEditorEvent) =>
   window.ReactNativeWebView?.postMessage(JSON.stringify(event));
 const openNote = (name: string) => post({ type: "openNote", name });
-const canvasHost = {
-  onOpenUrl: (href: string) => post({ type: "openUrl", href }),
-  onOpenCode: (code: CanvasCodeReference) => post({ type: "openCode", code }),
-};
 
 function LinkPreview({
   page,
@@ -64,11 +60,7 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
     root.dataset.appearance = theme.appearance;
   }, [theme]);
   if (canvas !== null) {
-    return (
-      <div className="canvas-page">
-        <CanvasBoard data={canvas} mode="free" host={canvasHost} label="Canvas" />
-      </div>
-    );
+    return <MobileCanvas page={page} data={canvas} post={post} />;
   }
   if (base !== null) {
     return (
@@ -104,6 +96,10 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
           onOpenUrl={(href) => post({ type: "openUrl", href })}
         />
       )}
+      renderCanvasEmbed={(target) => (
+        <MobileCanvasEmbed page={page} target={target} onOpen={openNote} />
+      )}
+      renderMermaid={(source) => <MobileMermaid source={source} />}
     />
   );
 }
