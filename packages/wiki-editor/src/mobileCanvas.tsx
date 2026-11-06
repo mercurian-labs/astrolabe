@@ -1,5 +1,5 @@
 import { parseCanvas, type CanvasData } from "@mercurian/wiki/canvas";
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { BaseBlock } from "./BaseBlock";
 import {
@@ -9,7 +9,7 @@ import {
   type CanvasBoardHost,
   type CanvasCardEditor,
 } from "./CanvasBoard";
-import { canvasCardSession } from "./canvasCardSession";
+import { canvasCardSession, focusCardEditor } from "./canvasCardSession";
 import { cardFileName } from "./canvasGeometry";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { MobileMermaid } from "./MobileMermaid";
@@ -82,16 +82,22 @@ function CardEditor({
   readonly onOpenNote: (name: string) => void;
 }) {
   const [session] = useState(() => canvasCardSession(editor.initialText, editor.onChange));
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open
-  useEffect(() => session.dispose, [session]);
+  const frame = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open, and opening it puts the caret there
+  useEffect(() => {
+    focusCardEditor(frame.current);
+    return session.dispose;
+  }, [session]);
   return (
-    <WikiNoteEditor
-      session={session}
-      onOpenNote={onOpenNote}
-      linkTypes={NO_LINK_TYPES}
-      renderLinkPreview={() => null}
-      renderMermaid={(source) => <MobileMermaid source={source} />}
-    />
+    <div ref={frame}>
+      <WikiNoteEditor
+        session={session}
+        onOpenNote={onOpenNote}
+        linkTypes={NO_LINK_TYPES}
+        renderLinkPreview={() => null}
+        renderMermaid={(source) => <MobileMermaid source={source} />}
+      />
+    </div>
   );
 }
 

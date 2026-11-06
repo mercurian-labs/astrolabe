@@ -1860,6 +1860,17 @@ export function CanvasBoard({
     menu !== null || dialog !== null,
   );
 
+  // What's selected can go in a commit from elsewhere: the toolbar goes with it.
+  const gone =
+    [...selection.cards].some((id) => !layout.byId.has(id)) ||
+    (selection.arrow !== null && !layout.shapes.some((shape) => shape.edge.id === selection.arrow));
+  if (gone) {
+    setSelection({
+      cards: new Set([...selection.cards].filter((id) => layout.byId.has(id))),
+      arrow: null,
+    });
+  }
+
   const [lone] = selection.cards;
   const single = selection.cards.size === 1 ? layout.byId.get(lone ?? "") : undefined;
   const hasSelection = selection.cards.size > 0 || selection.arrow !== null;

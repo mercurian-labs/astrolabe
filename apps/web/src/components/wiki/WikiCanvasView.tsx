@@ -203,7 +203,10 @@ export default function WikiCanvasPage({
   const query = useEnvironmentQuery(
     wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, paths: [file] } }),
   );
-  const read = query.data?.files[0];
+  // The first edit moves the tab onto the draft: a new read, which mustn't take the board down.
+  const [files, setFiles] = useState(query.data);
+  if (query.data !== null && query.data !== files) setFiles(query.data);
+  const read = files?.files[0];
   const text = read?.text ?? null;
   const parsed = text === null ? null : parseCanvas(text);
   const detail = useEnvironmentQuery(
@@ -233,7 +236,7 @@ export default function WikiCanvasPage({
 
   // Writes follow `checkFileName`, flat until wikis have folders: one deeper can only be read.
   const reachable = /^[^/]+\.canvas$/i.test(file);
-  const known = changeRequestId === undefined || changeRequest !== undefined;
+  const known = savesTo === undefined || changeRequest !== undefined;
   const canEdit = canWrite && reachable && known && !isSettledChangeRequest(changeRequest);
   const [readOnly, setReadOnly] = useLocalStorage(
     `astrolabe:canvas-read-only:${wikiId}:${file}`,
@@ -265,7 +268,7 @@ export default function WikiCanvasPage({
       return { ok: true };
     },
   });
-  const commit = query.data?.commit ?? null;
+  const commit = files?.commit ?? null;
   const document = parsed?.ok === true ? parsed.document : null;
   if (canvas === null && document !== null && commit !== null) {
     setCanvas(new CanvasDocument({ document, revision: commit, onEdited: autosave.edited }));
@@ -303,7 +306,7 @@ export default function WikiCanvasPage({
   const groups = groupData === null ? EMPTY_GROUPS : canvasGroups(groupData);
 
   const body = () => {
-    if (query.data === null) {
+    if (files === null) {
       return query.error !== null ? (
         <Empty>
           <EmptyHeader>
@@ -368,7 +371,7 @@ export default function WikiCanvasPage({
         changeRequestId={changeRequestId}
         savesTo={savesTo}
         file={file}
-        commit={query.data.commit}
+        commit={files.commit}
         data={review?.data ?? parsed.data}
         // Your own draft's cards all read as changed, which says nothing a person doesn't know.
         marks={changeRequest?.draft === true ? undefined : review?.marks}

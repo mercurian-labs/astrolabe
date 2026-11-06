@@ -42,23 +42,40 @@ Bases support Obsidian's whole language: filters, formulas, every function, regu
 
 ## Canvases
 
-A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web, desktop and the phone, and agents change them through change requests. You can't drag cards here yet.
+A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. You can edit one by hand on web, desktop and the phone, and agents change them through change requests.
 
-To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then choose **Create canvas**. It starts in your draft. To draw on it, make the draft a change request and ask an agent to work in it, or edit the file in Obsidian or any editor in that change request's worktree. You can also [keep a canvas from a thread](html-renders.md#canvases).
+To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then choose **Create canvas**. It starts in your draft. You can also [keep a canvas from a thread](html-renders.md#canvases).
 
 An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a group can grow to fit a new card. Its changes land on a change request, never on main. A canvas open in that change request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the change request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
 
-Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, ⇧1 fits the board, and ⇧2 zooms to the selected card. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the top of its tab or the command palette.
+Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, hold Space and drag to pan, ⇧1 fits the board, and ⇧2 zooms to the selection. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the top of its tab or the command palette.
 
 Click a card to select it, and its content becomes live: links open, a note scrolls, a web page loads, and media plays. Double-click a file card's name to open the file. A web page that refuses to be framed stays blank on its card, so open it from the link instead.
 
-On the phone, drag to pan and pinch to zoom. Tap a card to select it, and tap again to follow a link in it or open a code card. Tap a selected file card's name to open the file; Back returns to the board. **Jump to group** is in the header. A PDF on a card opens in the app's viewer from its **Open** button, as does audio or video the phone can't play in place, and a link card opens in your browser.
+### Edit a canvas
+
+Edits save by themselves a moment after you stop, into [your draft](#drafts), or into the change request the canvas is open in. There is no Save. A canvas in a closed change request, or one you can't write to, only reads, and the gear on a board turns **Read-only** on for that board alone.
+
+- **Add:** double-click the board for a text card, right-click it, drag from the bar at the bottom, or paste text, an address or an image. Drop files from your computer, a folder's files with them, or drag documents from the sidebar. Dropped and pasted files are kept beside the wiki's documents.
+- **Select and move:** click a card, Shift-click to add, or drag across the board to select everything you touch. Cards snap to a grid of 20 and to the cards near them; hold ⌃ during a drag to turn snapping off, Shift to hold to one direction, and Alt to leave a copy behind. Arrow keys nudge the selection, further with Shift.
+- **Connect:** drag from the dot on a card's side. Drop on another card, or in empty space to make a new one. Drag an arrow to move its nearer end, and double-click it to label it.
+- **Resize:** drag just outside a selected card's edge. Double-click the bottom or right edge to fit its text.
+- **Group:** select cards and choose **Create group**. A group carries whatever sits fully inside it, and you pick it up by its label. An unlabelled group is reached by dragging across it.
+- **Edit text:** double-click a card, or click a selected one. Escape or clicking away leaves it. A note card edits the note itself.
+
+A selected card shows what you can do with it above it, and right-clicking (or ⇧F10) gives the rest: **Align**, **Convert to file…**, **Swap file…**, **Narrow to heading…**, and a group's background. **?** on the board lists the keys. Undo steps back one gesture at a time, through what has already saved, but not through other people's changes. If someone else changes a card while you type in it, the board keeps both versions and says so.
+
+**Export as image**, in the gear's menu or the command palette, saves a PNG on web and desktop. Text cards draw as plain text, and what only a live card can show draws as its name: Mermaid, math, a note's body, a web page, a base, a PDF.
+
+**Settings → Wikis** holds what the wheel does, when card names show, both kinds of snapping, and the zoom at which card content hides. They apply to every board on that computer. A canvas in a folder only reads for now, since wikis have no folders of their own yet.
+
+On the phone, drag to pan and pinch to zoom. Tap a card to select it and show its toolbar, tap again to follow a link in it or open a code card, and double-tap to edit. A selected card can be dragged, and shows handles and dots for your finger. Touch and hold a card or the board for its menu, and **Select** in the bottom bar turns tapping and dragging into selecting several, for **Align** and **Create group**. Tap a selected file card's name to open the file; Back returns to the board. **Jump to group** is in the header. A PDF on a card opens in the app's viewer from its **Open** button, as does audio or video the phone can't play in place, and a link card opens in your browser. The phone doesn't export images or take pasted images.
 
 A file card can narrow a note to a heading or block, or pin a base to one view, as in Obsidian. A card linking to code marks when its file has changed or gone at the project's head, and never changes itself.
 
 A canvas in a change request opens as a board with marks on what changed: added, removed, text, moved and restyled. The list beside it names each change, and clicking a row focuses that card. Moves are folded at the end of the list, removed cards stay on the board so you can see what went, and **JSON** shows the file's raw diff. Click the board once to pan it with the wheel; until then the wheel scrolls the page. On the phone, tap a canvas in the change request to see the same board with the list below it.
 
-Merging a change request merges a canvas card by card, so two people's edits to different cards never clash. Text changed in the same card merges by sentence. Where both sides moved, resized or recoloured a card, the change being merged wins. An arrow whose card goes in the merge goes with it, and deleting a card beats moving it. The change request says beforehand what merging will decide, and a revert says what it decided. A card edited on one side and deleted on the other, the same sentence changed on both sides, or JSON that doesn't read is a conflict. To settle one, put the change request in a worktree, edit the file in Obsidian or any editor so the clashing cards agree with main, and use **Save edits to the change request**. To keep a card main deleted, give it a new `id` there. The phone shows a conflict but can't settle it.
+Merging a change request merges a canvas card by card, so two people's edits to different cards never clash. Text changed in the same card merges by sentence. Where both sides moved, resized or recoloured a card, the change being merged wins. An arrow whose card goes in the merge goes with it, and deleting a card beats moving it. The change request says beforehand what merging will decide, and a revert says what it decided. A card edited on one side and deleted on the other, the same sentence changed on both sides, or JSON that doesn't read is a conflict. To settle one, edit the clashing cards on the board in the change request so they agree with main, or put it in a worktree, edit the file in Obsidian or any editor, and use **Save edits to the change request**. To keep a card main deleted, give it a new `id` there. The phone shows a conflict but can't settle it.
 
 A file card or a link in a text card counts as a backlink, and a link in a text card to something unwritten is a red link. Arrows never count as links. Renaming a note updates the canvases that show it. Link to a canvas with its extension, as `[[Board.canvas]]`: `[[Board]]` doesn't find it. `![[Board.canvas]]` on a line of its own shows a picture of the board, and clicking it opens the canvas.
 

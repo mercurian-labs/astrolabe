@@ -162,7 +162,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Agents as the way back. Splits stay at every width.
 - **Canvases** (`wiki/WikiCanvasView.tsx`, the board in `packages/wiki-editor/src/CanvasBoard.tsx`,
   the format in `packages/wiki/src/canvas.ts`): a `.canvas` is a document named by its file, with a
-  `Waypoints` icon in the sidebar and Finder. Its tab reads as **Canvas**, **Read only**. Walk: fit
+  `Waypoints` icon in the sidebar and Finder. Its tab reads as **Canvas**, with **Read only** only where it can't be edited. Walk: fit
   on open; `Zoom in`, `Reset zoom`, `Fit the board in view`, `Zoom out`; ⇧1 and ⇧2; below 0.3 text
   cards become a lines glyph; a first click selects (`data-selected`) and only then is content
   live (`data-live`). `[data-card-id]` counts what's mounted, and it must follow the view. Every
@@ -216,7 +216,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): an agent's
   change shows in the feed as a row, `Changed the canvas <name>`, that opens it in the change
   request, with the same marks and one highlight per commit. A `.canvas`
-  lists as `button "<name>, canvas, <wiki>"` with "Canvas · read only", and opens in `WikiDocument`
+  lists as `button "<name>, canvas, <wiki>"` with "Canvas", or "Canvas · read only" where it can't be edited, and opens in `WikiDocument`
   from the list, a change request's documents, links in notes and a base's rows, subtitle
   `<wiki> · Main · Canvas · read only`, with a `Jump to group` header menu when it has labelled
   groups. Walk: touch pan, pinch, left-edge back swipe, first tap selects and a second acts (a link,
@@ -351,3 +351,43 @@ mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseV
 `packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,
 `packages/wiki-editor/src/BaseBlock.tsx` and `baseCells.ts`, server `wiki/wikiViews.ts` and
 `mcp/toolkits/wiki/` (`astrolabe_wiki_query`).
+
+## Editing a canvas
+
+Walk on a seeded wiki, on web and on the phone. After each group, open the `.canvas` in the
+change request's worktree: it's tabs, one card per line, and a key the card had that Astrolabe
+doesn't know is still there. Open it in Obsidian once at the end.
+
+- **Add:** double-click (250x60, centred, typing), the board's menu, a drag from the bottom bar, a
+  dropped connection, paste of text, an address and an image, a dropped file, a dropped folder, a
+  sidebar row dragged on. Escape on a dropped connection leaves nothing.
+- **Move:** a drag lands on the grid; a neighbour's edge beats the grid; ⌃ mid-drag lands exactly;
+  Shift holds an axis; Alt leaves the original and copies arrows and group contents; arrows nudge
+  20, Shift 100. A dragged card comes to the end of `nodes`; a nudged one doesn't.
+- **Resize:** eight grips outside the edge, 50x50 at least, an image holds its shape on a corner,
+  a double-click on the bottom or right grip fits the text.
+- **Connect:** a dot on each side, the side nearest the drop, no arrow to itself; drag an arrow to
+  move its nearer end and the `id` stays; Enter in a label makes a new line; line direction writes
+  only `toEnd:"none"` or `fromEnd:"arrow"`.
+- **Groups:** only the label selects one, and an unlabelled one by marquee. A card half out stays
+  behind. **Create group** leaves 20 around the selection with the label ready. A "ratio"
+  background changes the group's height.
+- **Arrange:** all thirteen from **Align**, on two and on five cards, and on a lone group's contents.
+- **Convert and narrow:** a name that's taken gets a number, the card keeps its place and arrows
+  under a new id; narrowing to a block with no id writes a 6-hex one into the note; **Pin view** on
+  a base; **Swap file** drops `subpath`; **New note** on a missing card.
+- **Undo:** a gesture at a time, three quick nudges as one, after the save landed too. Pan and zoom
+  aren't steps.
+- **Two windows:** edit one card in both: the board keeps both versions and says so. Delete a card
+  the other window is typing in: the text stays. Selection and camera stay.
+- **Drafts:** the first edit on main starts a draft, and the board doesn't blink, lose its selection
+  or close an open card. Discard from the pill takes the board back to main.
+- **Reads:** a chat board, a review, a closed change request and a board with **Read-only** on take
+  no edits. Read-only keeps Zoom to selection and survives a reload on web.
+- **Keys:** with the board focused, the leader key opens on a tap of Space and doesn't on Space-drag.
+  ⇧F10 opens a menu, ⌥ arrows reach cards, Tab reaches the toolbar, and focus comes back after an edit.
+  With Vim on, Escape ends insert mode, and the next leaves the card.
+- **Export:** on web and desktop, both areas, zoom, logo, privacy. Compare an image card from a
+  remote environment: if it draws as a name, CORS refused it.
+- **Phone:** long-press menus, tap toolbar, double-tap to edit with the card above the keyboard,
+  handles and dots by finger, **Select**, pinch, and a swipe from the left edge still goes back.

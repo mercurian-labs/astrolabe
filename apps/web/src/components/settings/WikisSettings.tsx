@@ -25,6 +25,7 @@ import { wikiScopeKey } from "../wiki/wikiTabs";
 import { useRepositories } from "../repositories/useRepositories";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { WikiCanvasSettings } from "./WikiCanvasSettings";
 import { WikiMapBackgrounds } from "./WikiMapBackgrounds";
 
 const MIRROR_BADGE: Record<MirrorTone, "outline" | "success" | "warning" | "error" | "secondary"> =
@@ -97,6 +98,7 @@ function WikiListRow({
 
 function WikiList({ overviews }: { readonly overviews: ReadonlyArray<WikiOverview> }) {
   const { environments } = useEnvironments();
+  const servers = [...new Set(overviews.map((overview) => overview.environmentId))];
   const labelOf = (environmentId: EnvironmentId) =>
     environments.length < 2
       ? null
@@ -132,6 +134,13 @@ function WikiList({ overviews }: { readonly overviews: ReadonlyArray<WikiOvervie
           ))
         )}
       </SettingsSection>
+      {servers.map((environmentId) => (
+        <WikiCanvasSettings
+          key={environmentId}
+          environmentId={environmentId}
+          serverLabel={labelOf(environmentId)}
+        />
+      ))}
     </SettingsPageContainer>
   );
 }

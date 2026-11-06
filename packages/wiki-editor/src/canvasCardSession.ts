@@ -1,3 +1,4 @@
+import { EditorView } from "@codemirror/view";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 
@@ -24,4 +25,14 @@ export function canvasCardSession(
       doc.destroy();
     },
   };
+}
+
+/** Puts the caret at the end of the editor inside `frame`, ready to type. */
+export function focusCardEditor(frame: Element | null) {
+  const content = frame?.querySelector<HTMLElement>(".cm-content");
+  if (content === undefined || content === null) return;
+  const view = EditorView.findFromDOM(content);
+  if (view === null) return;
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  view.focus();
 }

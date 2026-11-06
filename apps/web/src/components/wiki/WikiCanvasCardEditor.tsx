@@ -1,7 +1,7 @@
 import type { CanvasCardEditor } from "@mercurian/wiki-editor/canvas-board";
-import { canvasCardSession } from "@mercurian/wiki-editor/canvas-card-session";
+import { canvasCardSession, focusCardEditor } from "@mercurian/wiki-editor/canvas-card-session";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -27,8 +27,12 @@ export default function WikiCanvasCardEditor({
   readonly onOpenNote: (name: string) => void;
 }) {
   const [session] = useState(() => canvasCardSession(editor.initialText, editor.onChange));
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open
-  useEffect(() => session.dispose, [session]);
+  const frame = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open, and opening it puts the caret there
+  useEffect(() => {
+    focusCardEditor(frame.current);
+    return session.dispose;
+  }, [session]);
   const index = useEnvironmentQuery(
     wikiEnvironment.index({
       environmentId,
@@ -36,22 +40,24 @@ export default function WikiCanvasCardEditor({
     }),
   );
   return (
-    <WikiNoteEditor
-      session={session}
-      onOpenNote={onOpenNote}
-      linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
-      linkNames={index.data === null ? [] : wikiDocumentNames(index.data)}
-      renderLinkPreview={() => null}
-      renderBase={(source) => (
-        <WikiBase
-          environmentId={environmentId}
-          wikiId={wikiId}
-          changeRequestId={changeRequestId}
-          from={{ source, note: "" }}
-          onOpenNote={onOpenNote}
-        />
-      )}
-      renderMermaid={(source) => <WikiMermaid source={source} />}
-    />
+    <div ref={frame}>
+      <WikiNoteEditor
+        session={session}
+        onOpenNote={onOpenNote}
+        linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
+        linkNames={index.data === null ? [] : wikiDocumentNames(index.data)}
+        renderLinkPreview={() => null}
+        renderBase={(source) => (
+          <WikiBase
+            environmentId={environmentId}
+            wikiId={wikiId}
+            changeRequestId={changeRequestId}
+            from={{ source, note: "" }}
+            onOpenNote={onOpenNote}
+          />
+        )}
+        renderMermaid={(source) => <WikiMermaid source={source} />}
+      />
+    </div>
   );
 }

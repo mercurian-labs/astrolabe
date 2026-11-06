@@ -4,6 +4,8 @@ import {
   type CanvasAsset,
   type CanvasBoardHost,
 } from "@mercurian/wiki-editor/canvas-board";
+import { EditorView } from "@codemirror/view";
+import { vimAtRest, vimInsertMode } from "@mercurian/editor/vim";
 import { canvasFileKind } from "@mercurian/wiki-editor/canvas-geometry";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
@@ -31,6 +33,12 @@ const WikiCanvasCardEditor = lazy(() => import("./WikiCanvasCardEditor"));
 
 const QUIET_READ = { reportFailure: false, reportDefect: false };
 const QUIET_MINT = { ...QUIET_READ, refresh: true };
+
+/** Vim's insert mode takes the first Escape; the next leaves the card. */
+function vimHoldsEscape(target: Element) {
+  const view = EditorView.findFromDOM(target.closest<HTMLElement>(".cm-editor") ?? document.body);
+  return view !== null && vimInsertMode(view) !== null && !vimAtRest(view);
+}
 
 const openUrl = (href: string) => {
   const api = readLocalApi();
@@ -247,6 +255,7 @@ export function useWikiCanvasHost({
     readFileText,
     openInNewTab,
     copyText: (text) => void navigator.clipboard?.writeText(text),
+    editorTakesEscape: vimHoldsEscape,
     draggedFiles: draggedWikiFiles,
     onLeaderKey: () =>
       document.activeElement !== null && openLeaderFrom(document.activeElement, " "),

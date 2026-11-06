@@ -158,9 +158,12 @@ export function WikiCanvasScreen({
   const viewing =
     all?.find((changeRequest) => changeRequest.changeRequestId === changeRequestId) ?? null;
 
-  const read = query.data?.files[0];
+  // The first edit moves the screen onto the draft: a new read, which mustn't take the board down.
+  const [files, setFiles] = useState(query.data);
+  if (query.data !== null && query.data !== files) setFiles(query.data);
+  const read = files?.files[0];
   const text = read?.text ?? null;
-  const commit = review?.commit ?? query.data?.commit ?? null;
+  const commit = review?.commit ?? files?.commit ?? null;
   const parsed = useMemo(() => (text === null ? null : parseCanvas(text)), [text]);
   // Reviewing has its board already. Read in a change request, it marks what that changes.
   const detail = useEnvironmentQuery(
@@ -180,7 +183,7 @@ export function WikiCanvasScreen({
     review === undefined &&
     canWrite &&
     /^[^/]+\.canvas$/i.test(file) &&
-    (changeRequestId === undefined || changes !== null) &&
+    (routeChangeRequestId === undefined || changes !== null) &&
     !isSettledChangeRequest(changes?.changeRequest);
   const document = editable && parsed?.ok === true ? parsed.document : undefined;
   const boardKey = `${wikiId}:${file}`;
@@ -579,7 +582,7 @@ export function WikiCanvasScreen({
         </>
       );
     }
-    if (query.data === null) {
+    if (files === null) {
       return query.error !== null ? (
         <EmptyState title={`Couldn't open ${title}`} detail={query.error} />
       ) : (
