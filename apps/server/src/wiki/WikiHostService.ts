@@ -120,6 +120,9 @@ type Job =
 
 const isWikiError = Schema.is(WikiError);
 
+const hasUnpublishedAmendments = (entry: WikiChangeRequest) =>
+  entry.status === "open" && entry.amendments.length > 0 && entry.pushedHead !== entry.head;
+
 const hostError = (message: string) => (cause: unknown) =>
   isWikiError(cause) ? cause : new WikiError({ reason: "git-failed", message, cause });
 
@@ -336,16 +339,16 @@ const make = Effect.gen(function* () {
       }
     }
     const unpublished = changeRequests.filter(
-      (entry) =>
-        entry.status === "open" &&
-        entry.pushedHead !== entry.head &&
-        entry.amendments.length > 0 &&
-        age(entry) > UNPUBLISHED_GRACE_MS,
+      (entry) => hasUnpublishedAmendments(entry) && age(entry) > UNPUBLISHED_GRACE_MS,
     );
     for (const entry of unpublished) {
       yield* isolated(entry, publish({ wikiId, changeRequestId: entry.changeRequestId }));
     }
-    yield* wikis.recordChangeRequestIssue(wikiId, issues[0] ?? null);
+    // Work still waiting may be what an earlier publish failed on, so only a clean wiki clears it.
+    const waiting = changeRequests.some(hasUnpublishedAmendments);
+    if (issues[0] !== undefined || !waiting) {
+      yield* wikis.recordChangeRequestIssue(wikiId, issues[0] ?? null);
+    }
   });
 
   /** Syncs one wiki for a person who asked; the failure reaches them and the wiki records it. */
@@ -529,6 +532,24 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  /** A refused push is this change request's trouble, not the wiki's sync's. */
+  const publishQuietly = (wikiId: WikiId, entry: WikiChangeRequest) =>
+    publish({ wikiId, changeRequestId: entry.changeRequestId }).pipe(
+      Effect.asVoid,
+      Effect.catch((error) =>
+        wikis
+          .recordChangeRequestIssue(wikiId, `${entry.title}: ${error.message}`)
+          .pipe(
+            Effect.andThen(
+              Effect.logWarning("A wiki change request could not be published").pipe(
+                Effect.annotateLogs({ wikiId, cause: error }),
+              ),
+            ),
+            Effect.ignore,
+          ),
+      ),
+    );
+
   const publishForThread = Effect.fn("WikiHostService.publishForThread")(function* (
     threadId: ThreadId,
   ) {
@@ -540,7 +561,7 @@ const make = Effect.gen(function* () {
         status: "open",
       });
       for (const entry of changeRequests) {
-        yield* quietly(wikiId, publish({ wikiId, changeRequestId: entry.changeRequestId }));
+        yield* publishQuietly(wikiId, entry);
       }
     }
   });
@@ -553,7 +574,7 @@ const make = Effect.gen(function* () {
     const entry = yield* wikis.changeRequest({ wikiId, changeRequestId });
     if (entry.status !== "open") return;
     if (entry.amendments.at(-1)?.actor !== WikiService.person.actor) return;
-    yield* publish({ wikiId, changeRequestId });
+    yield* publishQuietly(wikiId, entry);
   });
 
   const sweep: WikiHostService["Service"]["sweep"] = Effect.gen(function* () {

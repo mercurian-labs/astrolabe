@@ -648,6 +648,22 @@ it.effect("a push a branch rule refuses is named as that, not as work to sync", 
       );
       assert.equal(refused.reason, "git-failed");
       assert.include(refused.message, "refused");
+
+      // Published by the turn's end, the same refusal is the change request's, not the sync's.
+      const { wikis } = fixture;
+      yield* wikis.recordChangeRequestIssue(wikiId, "One.md: refused");
+      yield* hosts.sweep;
+      const held = (yield* wikis.get(wikiId)).host;
+      assert.equal(held?.changeRequestIssue, "One.md: refused", "work is still waiting");
+      assert.isNull(held?.lastError ?? null);
+      assert.equal(held?.relation, "up-to-date");
+
+      yield* Effect.flatMap(FileSystem.FileSystem, (fileSystem) =>
+        fileSystem.remove(`${bare}/hooks/pre-receive`),
+      ).pipe(Effect.orDie);
+      yield* hosts.publish({ wikiId, changeRequestId: changeRequest.changeRequestId });
+      yield* hosts.sync({ wikiId });
+      assert.isNull((yield* wikis.get(wikiId)).host?.changeRequestIssue ?? null);
     }),
   ),
 );
