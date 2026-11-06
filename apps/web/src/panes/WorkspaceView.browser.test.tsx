@@ -113,10 +113,14 @@ vi.mock(import("~/components/ChatView"), async () => {
       </>
     );
   }
-  function Surface({ thread }: { thread: string }) {
+  function Surface({ thread, surface }: { thread: string; surface: string }) {
     const [id] = useState(() => Math.random().toString(36).slice(2));
     useState(() => probe.surfaces.push(`${thread}#${id}`));
-    return <div data-fake-surface={thread}>surface {thread}</div>;
+    return (
+      <div data-fake-surface={thread} data-fake-surface-id={surface}>
+        surface {thread}
+      </div>
+    );
   }
   function FakeChatView({ threadId }: { threadId: string; environmentId: string }) {
     const [id] = useState(() => Math.random().toString(36).slice(2));
@@ -125,6 +129,11 @@ vi.mock(import("~/components/ChatView"), async () => {
     instances.add(id);
     probe.instances.set(threadId, instances);
     const composerRef = useChatComposerRef();
+    const surfaces = useRightPanelStore(
+      (state) =>
+        selectThreadRightPanelState(state.byThreadKey, scopeThreadRef(env, ThreadId.make(threadId)))
+          .surfaces,
+    );
     useChatShortcuts({
       enabled: probe.shortcuts,
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
@@ -174,8 +183,12 @@ vi.mock(import("~/components/ChatView"), async () => {
         <div data-scroller={threadId} style={{ height: 300, overflowY: "auto" }}>
           <div style={{ height: 4000 }}>timeline {threadId}</div>
         </div>
-        <LinkedPanel {...(panelProps(threadId) as unknown as Omit<PanelProps, "children">)}>
-          <Surface thread={threadId} />
+        <LinkedPanel
+          {...(panelProps(threadId) as unknown as Omit<PanelProps, "children">)}
+          surfaces={surfaces}
+          renderSurface={(surface) => <Surface thread={threadId} surface={surface.id} />}
+        >
+          {null}
         </LinkedPanel>
         <TerminalDrawer composerRef={composerRef} />
         <Composer composerRef={composerRef} />
@@ -209,7 +222,7 @@ import { chatRouteOf } from "../chatTabs/chatTabLabel";
 import { useClosedViewStore } from "../closedViewStore";
 import { ComposerHandleContext, focusedChatComposerRef } from "../composerHandleContext";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
-import { useRightPanelStore } from "../rightPanelStore";
+import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
 import { Route as ChatLayoutRoute } from "../routes/_chat";
 import { agentsRoute } from "./agentsRoute";
@@ -555,6 +568,31 @@ describe("WorkspaceView chat tabs", () => {
 
     expect(workspace.linked().front).toBe(chatOf("A"));
     expect(document.querySelector("[data-fake-surface=A]")?.checkVisibility()).toBe(true);
+  });
+
+  it("shows two of a chat's linked tabs side by side, and moves focus between them without a mount", async () => {
+    setup();
+    const store = useRightPanelStore.getState();
+    store.openTerminal(refOf("A"), "t1");
+    store.openTerminal(refOf("A"), "t2");
+    workspace.update(() => openTab(startingArrangement(), chatOf("A")));
+    await using _screen = await mount("A");
+    const first = chatSurfaceKey(chatOf("A"), "terminal:t1");
+    const second = chatSurfaceKey(chatOf("A"), "terminal:t2");
+    await change(() => workspace.update((a) => splitTab(a, second, "right")));
+    await change(() => workspace.update((a) => activateTab(a, first)));
+    const live = () =>
+      [...document.querySelectorAll<HTMLElement>("[data-fake-surface-id]")]
+        .filter((node) => node.checkVisibility())
+        .map((node) => node.dataset.fakeSurfaceId)
+        .toSorted();
+    expect(live()).toEqual(["terminal:t1", "terminal:t2"]);
+    const mounted = probe.surfaces.length;
+
+    await change(() => workspace.update((a) => activateTab(a, second)));
+
+    expect(live()).toEqual(["terminal:t1", "terminal:t2"]);
+    expect(probe.surfaces.length).toBe(mounted);
   });
 
   it("closes the focused tab from mod+w, a chat or its linked tab, and leaves a lone New tab open", async () => {

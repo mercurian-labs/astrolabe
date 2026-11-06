@@ -91,6 +91,8 @@ export function RightPanelSurfaceContent(props: {
   const { surface, threadRef, visible } = props;
   const covered = useLiveSurfaceCovered();
   if (surface === null) return null;
+  // The shared panes show several surfaces at once; only the active one answers shortcuts.
+  const shortcutsEnabled = visible && props.activeSurfaceId === surface.id;
   switch (surface.kind) {
     case "preview":
       return (
@@ -101,6 +103,7 @@ export function RightPanelSurfaceContent(props: {
             tabId={surface.resourceId}
             configuredUrls={props.configuredPreviewUrls}
             visible={visible && !covered}
+            shortcutsEnabled={shortcutsEnabled && !covered}
             onSendAnnotation={props.onSendAnnotation}
           />
         </Suspense>
@@ -140,7 +143,7 @@ export function RightPanelSurfaceContent(props: {
       return (
         <PullRequestDetailPanel
           getShortcutContext={props.getShortcutContext}
-          shortcutsEnabled={visible && props.activeSurfaceId === surface.id}
+          shortcutsEnabled={shortcutsEnabled}
           key={`${scopedThreadKey(threadRef)}:${surface.id}`}
           environmentId={props.environmentId}
           onSelectPullRequest={(reference) => {
@@ -239,7 +242,7 @@ export function RightPanelSurfaceContent(props: {
             composerDraftTarget={props.composerDraftTarget}
             keybindings={props.keybindings}
             availableEditors={files.availableEditors}
-            openInShortcutEnabled={visible}
+            openInShortcutEnabled={shortcutsEnabled}
             relativePath={surface.kind === "file" ? surface.relativePath : null}
             {...(attachment ? { attachment } : {})}
             revealLine={surface.kind === "file" ? (surface.revealLine ?? null) : null}

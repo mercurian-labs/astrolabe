@@ -57,14 +57,11 @@ import {
 } from "./workspace";
 
 /**
- * Astrolabe: the shared panes' tabs. Chats, files, documents and pull requests each render once
- * into their own container; a chat's surfaces are T3 Code's, and the front chat's live one
- * renders into a container that moves into the pane showing it (`LinkedPanel`).
+ * Astrolabe: the shared panes' tabs. Each renders once into its own container: chats, files,
+ * documents and pull requests from the workspace, a chat's surfaces from its ChatView
+ * (`LinkedPanel`).
  */
 export function createWorkspaceHost(): WorkspaceHost {
-  const surface = document.createElement("div");
-  surface.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col";
-  surface.dataset.panesContent = "surface";
   const containers = new Map<string, HTMLDivElement>();
   const containerFor = (key: string) => {
     let container = containers.get(key);
@@ -90,22 +87,16 @@ export function createWorkspaceHost(): WorkspaceHost {
       ),
     close: closeWorkspaceTab,
     NewTab: NewTabButton,
-    place: (slot, leaf, hosting) => {
-      if (hosting) {
-        if (surface.parentNode !== slot) slot.appendChild(surface);
-        surface.style.display = "";
-      } else if (surface.parentNode === slot) {
-        surface.style.display = "none";
-      }
+    place: (slot, leaf) => {
       for (const key of leaf.tabs) {
-        if (isEmptyTab(key) || parseChatSurfaceKey(key) !== null) continue;
+        if (isEmptyTab(key)) continue;
         const container = containerFor(key);
         // Moving a node that is already in place would still detach and reattach it.
         if (container.parentNode !== slot) slot.appendChild(container);
         container.style.display = key === leaf.active ? "" : "none";
       }
     },
-    Overlay: SurfaceOverlay,
+    Overlay: EmptyTabOverlay,
     reservesTopRight: false,
     // Every section's tabs are here already; a thread's Files and Diffs have more in Repositories.
     openElsewhere: (tabKey) => {
@@ -118,7 +109,6 @@ export function createWorkspaceHost(): WorkspaceHost {
   return {
     controller: workspace.store,
     tabs,
-    surface,
     containerFor,
     prune(open) {
       for (const [key, container] of containers) {
@@ -596,16 +586,9 @@ function NewTabButton({ paneId }: { paneId: string }) {
   );
 }
 
-/**
- * What covers a pane's content: an empty tab's launcher, or a surface waiting its turn to be the
- * one T3 Code renders. Nothing while the pane shows its tab's own content.
- */
-function SurfaceOverlay({ leaf, hosting }: { leaf: Leaf; hosting: boolean }) {
-  if (isEmptyTab(leaf.active)) return <EmptyTab paneId={leaf.id} tabKey={leaf.active} />;
-  if (parseChatSurfaceKey(leaf.active) !== null && !hosting) {
-    return <WaitingSurface tabKey={leaf.active} />;
-  }
-  return null;
+/** What covers a pane's content: an empty tab's launcher, else nothing. */
+function EmptyTabOverlay({ leaf }: { leaf: Leaf }) {
+  return isEmptyTab(leaf.active) ? <EmptyTab paneId={leaf.id} tabKey={leaf.active} /> : null;
 }
 
 /**
@@ -670,22 +653,5 @@ function EmptyLauncher({
       sideChatAvailable={panel.sideChatAvailable === true}
       sideChatDisabledReason={panel.sideChatDisabledReason ?? null}
     />
-  );
-}
-
-/**
- * A surface's tab shown while another surface is the one T3 Code renders: T3 Code keeps one
- * surface live per thread, so this one waits for its pane to take focus.
- */
-function WaitingSurface({ tabKey }: { tabKey: string }) {
-  const { title, icon } = useTabLabel(tabKey);
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
-      <span className="flex items-center gap-1.5 text-foreground [&_svg]:size-4">
-        {icon}
-        {title}
-      </span>
-      <span>Click to show</span>
-    </div>
   );
 }

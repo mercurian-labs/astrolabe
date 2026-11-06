@@ -7,8 +7,11 @@ import {
   withMessageContext,
   deriveAvailableRevertTurnCounts,
   deriveWorkspaceMutationId,
+  shouldRenderPreviewMiniPlayer,
 } from "./ChatView.logic";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
+import { browserMiniPlayerSource } from "../previewMiniPlayerStore";
+import type { RightPanelSurface } from "../rightPanelStore";
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { deriveProviderInstanceEntries } from "../providerInstances";
 import { ensureInlineContextReferences } from "../lib/composerContextReferences";
@@ -1194,5 +1197,17 @@ describe("deriveWorkspaceMutationId", () => {
     expect(deriveWorkspaceMutationId([item("reply", "assistant_message", "completed")], null)).toBe(
       null,
     );
+  });
+});
+
+describe("shouldRenderPreviewMiniPlayer", () => {
+  const browser = browserMiniPlayerSource("tab-1");
+  const preview: RightPanelSurface = { id: "browser:tab-1", kind: "preview", resourceId: "tab-1" };
+  const files: RightPanelSurface = { id: "files", kind: "files" };
+
+  it("hides while its source shows on any surface, not only the first", () => {
+    expect(shouldRenderPreviewMiniPlayer(browser, [files, preview])).toBe(false);
+    expect(shouldRenderPreviewMiniPlayer(browser, [files])).toBe(true);
+    expect(shouldRenderPreviewMiniPlayer(null, [])).toBe(false);
   });
 });

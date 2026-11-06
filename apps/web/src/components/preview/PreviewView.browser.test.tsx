@@ -299,4 +299,15 @@ describe("PreviewView", () => {
     act(() => dispatchPreviewAction("focus-url"));
     await expect.element(address).toHaveFocus();
   });
+
+  it("leaves shortcuts to the active view while showing beside it", async () => {
+    setup();
+    await using _screen = await render(
+      <PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible shortcutsEnabled={false} />,
+    );
+
+    act(() => dispatchPreviewAction("focus-url"));
+
+    await expect.element(page.getByRole("textbox")).not.toHaveFocus();
+  });
 });

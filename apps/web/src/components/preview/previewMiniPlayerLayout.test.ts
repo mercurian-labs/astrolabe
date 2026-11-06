@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   clampPreviewMiniPlayerPosition,
   PREVIEW_MINI_PLAYER_EDGE_GAP,
+  PREVIEW_MINI_PLAYER_PAGE_TOP,
   type PreviewMiniPlayerObstacles,
   resizePreviewMiniPlayer,
   resolvePreviewMiniPlayerFrame,
@@ -13,6 +14,7 @@ import {
 const container = { width: 1_000, height: 700 };
 const source = { width: 1_600, height: 1_000 };
 const gap = PREVIEW_MINI_PLAYER_EDGE_GAP;
+const bar = PREVIEW_MINI_PLAYER_PAGE_TOP;
 const composer = { left: 100, right: 900, height: 150 };
 const obstacles: PreviewMiniPlayerObstacles = { composer, detailsCard: null };
 const tallComposer: PreviewMiniPlayerObstacles = {
@@ -35,6 +37,21 @@ describe("resolvePreviewMiniPlayerSourceSize", () => {
 });
 
 describe("resolvePreviewMiniPlayerFrame", () => {
+  it("holds the bar above a page that keeps the source's proportions", () => {
+    const frame = resolvePreviewMiniPlayerFrame({
+      width: 480,
+      position: { x: 100, y: 80 },
+      source,
+      container,
+    });
+    expect(frame).toEqual({
+      x: 100,
+      y: 80,
+      width: 480,
+      height: 300 + bar,
+    });
+  });
+
   it("shrinks to the space above the composer without losing the stored width", () => {
     const frame = resolvePreviewMiniPlayerFrame({
       width: 800,
@@ -43,14 +60,14 @@ describe("resolvePreviewMiniPlayerFrame", () => {
       container,
       obstacles: tallComposer,
     });
-    expect(frame).toEqual({ x: 100, y: PREVIEW_MINI_PLAYER_EDGE_GAP, width: 602, height: 376 });
+    expect(frame).toEqual({ x: 100, y: PREVIEW_MINI_PLAYER_EDGE_GAP, width: 538, height: 376 });
   });
 
   it("keeps a tall frame parked beside the composer across layout passes", () => {
     const phone = { width: 390, height: 844 };
     const beside = { composer: { left: 300, right: 900, height: 300 }, detailsCard: null };
     const resized = resizePreviewMiniPlayer({
-      start: { x: 12, y: 100, width: 240, height: 519 },
+      start: { x: 12, y: 100, width: 240, height: 519 + bar },
       direction: "east",
       delta: { x: 10, y: 0 },
       source: phone,
@@ -70,7 +87,19 @@ describe("resolvePreviewMiniPlayerFrame", () => {
 });
 
 describe("resizePreviewMiniPlayer", () => {
-  const start = { x: 300, y: 200, width: 320, height: 200 };
+  it("measures a vertical drag against the page, not the bar", () => {
+    expect(
+      resizePreviewMiniPlayer({
+        start: { x: 100, y: 80, width: 480, height: 300 + bar },
+        direction: "south",
+        delta: { x: 0, y: 100 },
+        source,
+        container,
+      }),
+    ).toEqual({ x: 100, y: 80, width: 640, height: 400 + bar });
+  });
+
+  const start = { x: 300, y: 200, width: 320, height: 200 + bar };
 
   it("does not jump when corner motion crosses opposing dominant axes", () => {
     const frames = [-99, -100, -101].map((y) =>
@@ -94,36 +123,64 @@ describe("resizePreviewMiniPlayer", () => {
         source,
         container,
       }),
-    ).toEqual({ x: 300, y: 200, width: 379, height: 237 });
+    ).toEqual({ x: 300, y: 200, width: 379, height: 237 + bar });
   });
 
   it("stops at the container edge in the drag direction", () => {
     expect(
       resizePreviewMiniPlayer({
-        start: { x: 600, y: 12, width: 320, height: 200 },
+        start: { x: 600, y: 12, width: 320, height: 200 + bar },
         direction: "east",
         delta: { x: 500, y: 0 },
         source,
         container,
       }),
-    ).toEqual({ x: 600, y: 12, width: 388, height: 243 });
+    ).toEqual({ x: 600, y: 12, width: 388, height: 243 + bar });
+  });
+
+  it.each([
+    {
+      corner: "against the top",
+      start: { x: 300, y: gap, width: 320, height: 200 + bar },
+      direction: "northeast" as const,
+      delta: { x: 40, y: -20 },
+      expected: { x: 300, y: gap, width: 358, height: 224 + bar },
+    },
+    {
+      corner: "against the top",
+      start: { x: 300, y: gap, width: 320, height: 200 + bar },
+      direction: "northwest" as const,
+      delta: { x: -40, y: -20 },
+      expected: { x: 262, y: gap, width: 358, height: 224 + bar },
+    },
+    {
+      corner: "against the right",
+      start: { x: 1_000 - gap - 320, y: 300, width: 320, height: 200 + bar },
+      direction: "northeast" as const,
+      delta: { x: 40, y: -20 },
+      expected: { x: 1_000 - gap - 358, y: 300 - 24, width: 358, height: 224 + bar },
+    },
+  ])("slides a $direction drag along a limit $corner", ({ start, direction, delta, expected }) => {
+    expect(resizePreviewMiniPlayer({ start, direction, delta, source, container })).toEqual(
+      expected,
+    );
   });
 
   it("shifts the player when the free axis would overflow", () => {
     expect(
       resizePreviewMiniPlayer({
-        start: { x: 12, y: 400, width: 320, height: 200 },
+        start: { x: 12, y: 400, width: 320, height: 200 + bar },
         direction: "east",
         delta: { x: 300, y: 0 },
         source,
         container,
       }),
-    ).toEqual({ x: 12, y: 300, width: 620, height: 388 });
+    ).toEqual({ x: 12, y: 300 - bar, width: 620, height: 388 + bar });
   });
 
   it("lets a player beside a tall composer keep its height on an edge drag", () => {
     const phone = { width: 390, height: 844 };
-    const start = { x: 12, y: 100, width: 240, height: 519 };
+    const start = { x: 12, y: 100, width: 240, height: 519 + bar };
     const beside = { composer: { left: 300, right: 900, height: 300 }, detailsCard: null };
     expect(
       resizePreviewMiniPlayer({
@@ -134,7 +191,7 @@ describe("resizePreviewMiniPlayer", () => {
         container,
         obstacles: beside,
       }),
-    ).toEqual({ x: 12, y: 100, width: 250, height: 541 });
+    ).toEqual({ x: 12, y: 100, width: 250, height: 541 + bar });
     expect(
       resizePreviewMiniPlayer({
         start: { ...start, x: 400 },
@@ -150,14 +207,14 @@ describe("resizePreviewMiniPlayer", () => {
   it("stops growing downward at the composer beneath the player's columns", () => {
     expect(
       resizePreviewMiniPlayer({
-        start: { x: 300, y: 100, width: 320, height: 200 },
+        start: { x: 300, y: 100, width: 320, height: 200 + bar },
         direction: "south",
         delta: { x: 0, y: 400 },
         source,
         container,
         obstacles: tallComposer,
       }),
-    ).toEqual({ x: 300, y: 100, width: 461, height: 288 });
+    ).toEqual({ x: 300, y: 100, width: 397, height: 288 });
   });
 });
 
@@ -171,7 +228,7 @@ describe("resolvePreviewMiniPlayerFrame with the details card", () => {
         container,
         obstacles: withCard,
       }),
-    ).toEqual({ x: 988 - 320, y: 260 + gap, width: 320, height: 200 });
+    ).toEqual({ x: 988 - 320, y: 260 + gap, width: 320, height: 200 + bar });
   });
 
   it("opens left of the card when it cannot fit beneath it", () => {
@@ -184,7 +241,12 @@ describe("resolvePreviewMiniPlayerFrame with the details card", () => {
         container,
         obstacles: tallCard,
       }),
-    ).toEqual({ x: 680 - gap - 320, y: 700 - 150 - gap - 200, width: 320, height: 200 });
+    ).toEqual({
+      x: 680 - gap - 320,
+      y: 700 - 150 - gap - 200 - bar,
+      width: 320,
+      height: 200 + bar,
+    });
   });
 
   it("keeps a stored player's size when the card covers its columns", () => {
@@ -197,9 +259,9 @@ describe("resolvePreviewMiniPlayerFrame with the details card", () => {
     });
     expect(frame).toEqual({
       x: 680 - gap - 480,
-      y: 700 - 150 - gap - 300,
+      y: 700 - 150 - gap - 300 - bar,
       width: 480,
-      height: 300,
+      height: 300 + bar,
     });
   });
 });

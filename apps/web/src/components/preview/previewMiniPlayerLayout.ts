@@ -11,11 +11,14 @@ import type { DeviceScreenSize } from "@t3tools/client-runtime/device/stream";
 
 export const PREVIEW_MINI_PLAYER_EDGE_GAP = 12;
 export const PREVIEW_MINI_PLAYER_CORNER_RADIUS = 12;
+export const PREVIEW_MINI_PLAYER_BAR_HEIGHT = 32;
+export const PREVIEW_MINI_PLAYER_PAGE_TOP = PREVIEW_MINI_PLAYER_BAR_HEIGHT + 8;
 // The mini-player shell straddles this webview at 47 and 49: above --z-sheet, under dialogs (50).
 export const PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX = 48;
 const PREVIEW_MINI_PLAYER_DEFAULT_BOX = { width: 320, height: 320 } as const;
 const PREVIEW_MINI_PLAYER_MIN_SIZE = { width: 240, height: 150 } as const;
 
+/** The whole window: the page, plus the bar floating above it. */
 export interface PreviewMiniPlayerFrame extends PreviewMiniPlayerPosition, PreviewMiniPlayerSize {}
 
 export function resolvePreviewMiniPlayerSourceSize(
@@ -120,9 +123,12 @@ function fitPreviewMiniPlayerWidth(
       PREVIEW_MINI_PLAYER_MIN_SIZE.height * aspectRatio,
     ),
     Math.max(1, max.width),
-    Math.max(1, max.height * aspectRatio),
+    Math.max(1, (max.height - PREVIEW_MINI_PLAYER_PAGE_TOP) * aspectRatio),
   );
-  return { width: Math.round(width), height: Math.round(width / aspectRatio) };
+  return {
+    width: Math.round(width),
+    height: Math.round(width / aspectRatio) + PREVIEW_MINI_PLAYER_PAGE_TOP,
+  };
 }
 
 function defaultPreviewMiniPlayerWidth(source: PreviewMiniPlayerSize): number {
@@ -282,22 +288,27 @@ export function resizePreviewMiniPlayer(input: {
   const span = spanOf(start.x, start.width);
   const floor = floorFor(span, container, obstacles);
   const ceiling = ceilingFor(span, obstacles);
+  const horizontal = east || west;
+  const vertical = north || south;
+  // An edge stops at the limit it pushes against. A corner has another way to grow, so it slides off
+  // the limit instead of stopping dead, as an edge's free axis already does.
   const max = {
-    width: west
-      ? right - PREVIEW_MINI_PLAYER_EDGE_GAP
-      : east
-        ? container.width - PREVIEW_MINI_PLAYER_EDGE_GAP - start.x
+    width:
+      horizontal && !vertical
+        ? west
+          ? right - PREVIEW_MINI_PLAYER_EDGE_GAP
+          : container.width - PREVIEW_MINI_PLAYER_EDGE_GAP - start.x
         : container.width - PREVIEW_MINI_PLAYER_EDGE_GAP * 2,
-    height: north
-      ? bottom - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP
-      : south
-        ? floor - PREVIEW_MINI_PLAYER_EDGE_GAP - start.y
+    height:
+      vertical && !horizontal
+        ? north
+          ? bottom - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP
+          : floor - PREVIEW_MINI_PLAYER_EDGE_GAP - start.y
         : floor - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP * 2,
   };
   const desiredWidth = start.width + (east ? delta.x : west ? -delta.x : 0);
-  const desiredHeight = start.height + (south ? delta.y : north ? -delta.y : 0);
-  const horizontal = east || west;
-  const vertical = north || south;
+  const desiredHeight =
+    start.height - PREVIEW_MINI_PLAYER_PAGE_TOP + (south ? delta.y : north ? -delta.y : 0);
   const aspectRatio = source.width / source.height;
   // Project onto the aspect-ratio diagonal; dominant-axis switching jumps when axes move in opposite
   // directions.
