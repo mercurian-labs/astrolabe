@@ -146,12 +146,22 @@ const RUST_ANALYZER_RELEASE =
 // and lenses only when its settings show them, and the kinds it wants are chosen there.
 const TYPESCRIPT_FEATURES = {
   inlayHints: {
+    // TypeScript 7's own names.
     parameterNames: { enabled: "all", suppressWhenArgumentMatchesName: true },
     parameterTypes: { enabled: true },
     variableTypes: { enabled: true, suppressWhenTypeMatchesName: true },
     propertyDeclarationTypes: { enabled: true },
     functionLikeReturnTypes: { enabled: true },
     enumMemberValues: { enabled: true },
+    // tsserver's, through typescript-language-server.
+    includeInlayParameterNameHints: "all",
+    includeInlayParameterNameHintsWhenArgumentMatchesName: false,
+    includeInlayFunctionParameterTypeHints: true,
+    includeInlayVariableTypeHints: true,
+    includeInlayVariableTypeHintsWhenTypeMatchesName: false,
+    includeInlayPropertyDeclarationTypeHints: true,
+    includeInlayFunctionLikeReturnTypeHints: true,
+    includeInlayEnumMemberValueHints: true,
   },
   referencesCodeLens: { enabled: true },
   implementationsCodeLens: { enabled: true },

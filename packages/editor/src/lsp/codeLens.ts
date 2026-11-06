@@ -40,13 +40,17 @@ const RESOLVE_QUIET_MS = 100;
 const isAbout = (command: ServerCommand, word: RegExp) =>
   word.test(command.title) || word.test(command.command);
 
+// TypeScript's count lenses carry no command unless the client names its own: the title says.
+const opensReferences = (command: ServerCommand) => isAbout(command, /reference/i);
+const opensImplementations = (command: ServerCommand) => isAbout(command, /implementation/i);
+
 /** Runs a lens, as the server meant it. */
 function runLens(view: EditorView, entry: Lens) {
   const command = entry.shown;
   const plugin = LSPPlugin.get(view);
   if (!plugin || !command) return;
-  if (isAbout(command, /reference/i)) return void lookUpAt(view, "references", entry.pos);
-  if (isAbout(command, /implementation/i)) return void lookUpAt(view, "implementation", entry.pos);
+  if (opensReferences(command)) return void lookUpAt(view, "references", entry.pos);
+  if (opensImplementations(command)) return void lookUpAt(view, "implementation", entry.pos);
   if (view.state.readOnly) return;
   plugin.client.sync();
   plugin.client
@@ -87,7 +91,7 @@ class LensRow extends WidgetType {
     for (const entry of this.entries) {
       const command = entry.shown;
       if (!command) continue;
-      if (command.command === "") {
+      if (command.command === "" && !opensReferences(command) && !opensImplementations(command)) {
         const label = document.createElement("span");
         label.className = "atlas-code-lens-item";
         label.textContent = command.title;

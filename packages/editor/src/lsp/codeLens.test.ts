@@ -71,7 +71,7 @@ const resolved = (lens: any) => ({
   ...lens,
   command:
     lens.data === "references"
-      ? { title: "2 references", command: "editor.showReferences" }
+      ? { title: "2 references", command: "" }
       : { title: "Run test", command: "server.runTest", arguments: [1] },
 });
 
