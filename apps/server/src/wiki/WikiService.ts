@@ -74,6 +74,7 @@ import {
   wikiAgentGuidance,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
+import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { newProjectFolderName } from "@t3tools/shared/path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -280,8 +281,8 @@ export class WikiService extends Context.Service<
 /** The most rows a base query returns, for a view and for an agent's context alike. */
 const QUERY_ROWS = 200;
 
-/** The largest file `readFiles` returns text for; a board reads many at once. */
-const READ_TEXT_BYTES = 2 * 1024 * 1024;
+/** The largest file `readFiles` returns text for. */
+const READ_TEXT_BYTES = 16 * 1024 * 1024;
 const PROJECT_PAGE = 200;
 
 // Product commits never run the user's hooks or ask to sign; git never prompts.
@@ -341,6 +342,26 @@ const lru = <A>(capacity: number) => {
       if (entries.size > capacity && !oldest.done) entries.delete(oldest.value);
     },
   };
+};
+
+/** A path as a wiki's links mean it: exact, else ignoring case, else a bare name in any folder. */
+const listedFile = <A extends { readonly file: string }>(
+  listing: ReadonlyArray<A>,
+  path: string,
+): A | undefined => {
+  const wanted = key(path);
+  const exact = listing.find(({ file }) => file === path || key(file) === wanted);
+  if (exact !== undefined || path.includes("/")) return exact;
+  const suffix = `/${wanted}`;
+  return listing
+    .filter(({ file }) => key(file).endsWith(suffix))
+    .toSorted((a, b) => a.file.split("/").length - b.file.split("/").length)
+    .at(0);
+};
+
+const isMediaFile = (file: string) => {
+  const mime = hostPreviewMimeTypeFromExtension(/\.[^./]+$/.exec(file)?.[0] ?? "");
+  return mime !== null && /^(image|audio|video|font)\/|\/pdf$/.test(mime) && !mime.includes("svg");
 };
 
 const decodeRegistry = Schema.decodeEffect(WikiRegistryJson);
@@ -1856,11 +1877,12 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const commit = yield* fileCommit(wiki, input);
           const listing = yield* fileListingAt(wiki, commit);
-          const exact = new Map(listing.map((entry) => [entry.file, entry]));
-          const byKey = new Map(listing.map((entry) => [key(entry.file), entry]));
-          const found = input.paths.map((path) => exact.get(path) ?? byKey.get(key(path)));
+          const found = input.paths.map((path) => listedFile(listing, path));
+          // A media file's existence is all a card needs here: its bytes come as an asset.
           const readable = found.flatMap((entry) =>
-            entry !== undefined && entry.size <= READ_TEXT_BYTES ? [entry] : [],
+            entry !== undefined && entry.size <= READ_TEXT_BYTES && !isMediaFile(entry.file)
+              ? [entry]
+              : [],
           );
           const contents = yield* readObjects(
             wiki.root,
@@ -1896,9 +1918,7 @@ const make = Effect.gen(function* () {
             ? {}
             : { changeRequestId: WikiChangeRequestId.make(input.changeRequestId) }),
         });
-        const entry = (yield* fileListingAt(wiki, commit)).find(
-          ({ file }) => file === input.path || key(file) === key(input.path),
-        );
+        const entry = listedFile(yield* fileListingAt(wiki, commit), input.path);
         if (entry === undefined) {
           return yield* new WikiError({
             reason: "not-found",

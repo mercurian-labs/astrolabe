@@ -15,7 +15,9 @@ function attached() {
     },
     getBoundingClientRect: () => ({ left: 0, top: 0 }),
   } as unknown as HTMLElement;
-  const world = { style: { transform: "" } } as unknown as HTMLElement;
+  const world = {
+    style: { transform: "", setProperty: () => undefined },
+  } as unknown as HTMLElement;
   const view = new CanvasView();
   const detach = view.attach(board, world, bounds, 0);
   return { view, world, classes, detach };

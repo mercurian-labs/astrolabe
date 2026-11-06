@@ -1379,9 +1379,6 @@ importers:
       pdfjs-dist:
         specifier: 6.4.299
         version: 6.4.299
-      pele:
-        specifier: ^1.8.0
-        version: 1.8.0
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -2829,6 +2826,15 @@ importers:
       '@mercurian/wiki':
         specifier: workspace:*
         version: link:../wiki
+      dompurify:
+        specifier: ^3.4.16
+        version: 3.4.16
+      katex:
+        specifier: ^0.18.9
+        version: 0.18.10
+      pele:
+        specifier: ^1.8.0
+        version: 1.8.0
       react-dom:
         specifier: 19.2.6
         version: 19.2.6(react@19.2.6)

@@ -1,8 +1,11 @@
 import type { CanvasBounds } from "@mercurian/wiki/canvas";
 
-import { fitCamera, zoomAt, type CanvasCamera } from "./canvasGeometry";
+import { fitCamera, zoomAt, ZOOM_STEP, type CanvasCamera } from "./canvasGeometry";
 
 const WHEEL_ZOOM_SPEED = 0.01;
+
+/** Told where the camera ended up, each time it draws. */
+export type CanvasPaint = (camera: CanvasCamera, width: number, height: number) => void;
 
 /**
  * A board's camera and gestures, on the element and not in React. It draws at most once a frame
@@ -17,17 +20,26 @@ export class CanvasView {
   /** Until the reader moves it, the board keeps fitting as its frame resizes. */
   #fitted = true;
   #frame: number | null = null;
+  #onPaint: CanvasPaint | undefined;
   readonly #pointers = new Map<number, { readonly x: number; readonly y: number }>();
 
   /** Starts showing `bounds` in `board`. Returns the way to stop. */
-  attach(board: HTMLElement, world: HTMLElement, bounds: CanvasBounds, padding: number) {
+  attach(
+    board: HTMLElement,
+    world: HTMLElement,
+    bounds: CanvasBounds,
+    padding: number,
+    onPaint?: CanvasPaint,
+  ) {
     this.#board = board;
     this.#world = world;
     this.#bounds = bounds;
     this.#padding = padding;
+    this.#onPaint = onPaint;
     this.fit();
     const observer = new ResizeObserver(() => {
       if (this.#fitted) this.fit();
+      else this.#paint();
     });
     observer.observe(board);
     return () => {
@@ -36,7 +48,15 @@ export class CanvasView {
       this.#frame = null;
       this.#board = null;
       this.#world = null;
+      this.#onPaint = undefined;
     };
+  }
+
+  /** New contents. The camera stays where the reader left it: only `refit` moves it. */
+  setBounds(bounds: CanvasBounds, refit: boolean) {
+    this.#bounds = bounds;
+    if (refit) this.fit();
+    else this.#paint();
   }
 
   fit() {
@@ -51,6 +71,12 @@ export class CanvasView {
     this.#paint();
   }
 
+  /** Shows `rect` whole, never closer than actual size. */
+  focus(rect: CanvasBounds) {
+    if (this.#board === null) return;
+    this.#move(fitCamera(rect, this.#board.clientWidth, this.#board.clientHeight, this.#padding));
+  }
+
   pan(dx: number, dy: number) {
     this.#move({ ...this.#camera, x: this.#camera.x + dx, y: this.#camera.y + dy });
   }
@@ -59,6 +85,19 @@ export class CanvasView {
     if (this.#board === null) return;
     const { clientWidth, clientHeight } = this.#board;
     this.#move(zoomAt(this.#camera, clientWidth / 2, clientHeight / 2, factor));
+  }
+
+  zoomIn() {
+    this.zoomBy(ZOOM_STEP);
+  }
+
+  zoomOut() {
+    this.zoomBy(1 / ZOOM_STEP);
+  }
+
+  /** Back to actual size, about the frame's centre. */
+  resetZoom() {
+    this.zoomBy(1 / this.#camera.zoom);
   }
 
   wheel(event: WheelEvent) {
@@ -115,5 +154,10 @@ export class CanvasView {
     if (this.#world === null) return;
     const { x, y, zoom } = this.#camera;
     this.#world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+    // Labels, borders and arrows thin out slower than the board, so they stay readable.
+    this.#world.style.setProperty("--cv-ui", String(1 / Math.sqrt(zoom)));
+    if (this.#board !== null) {
+      this.#onPaint?.(this.#camera, this.#board.clientWidth, this.#board.clientHeight);
+    }
   }
 }

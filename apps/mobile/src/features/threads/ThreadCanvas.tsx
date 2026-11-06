@@ -101,7 +101,9 @@ export function ThreadCanvas(props: {
               ? (node.label ?? "")
               : node.type === "text"
                 ? node.text
-                : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
+                : node.type === "file"
+                  ? node.file
+                  : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
           return (
             <G key={node.id}>
               <Rect

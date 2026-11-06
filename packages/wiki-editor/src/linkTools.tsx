@@ -18,6 +18,8 @@ export interface WikiLinkPeek {
 
 export interface WikiLinkToolsHost {
   readonly linkTypes: () => ReadonlyArray<string>;
+  /** The documents a `[[` can complete to: a note by name, a base or canvas by its file. */
+  readonly linkNames?: () => ReadonlyArray<string>;
   /** Fills `element` with a link's preview; returns what takes it down. */
   readonly drawPreview: (link: WikiLinkPeek, element: HTMLElement) => () => void;
 }
@@ -109,6 +111,22 @@ const previewTheme = EditorView.baseTheme({
 });
 
 const typing = /\[\[[^\]\n|]+\|(?:[^\]\n]*\s)?@([\p{L}\p{N}_-]*)$/u;
+const linking = /\[\[([^\]\n|#]*)$/;
+
+/** The wiki's documents, where the caret is on a link's name. */
+export function nameSuggestions(
+  context: Pick<CompletionContext, "state" | "pos">,
+  names: ReadonlyArray<string>,
+) {
+  const line = context.state.doc.lineAt(context.pos);
+  const match = linking.exec(line.text.slice(0, context.pos - line.from));
+  if (!match) return null;
+  return {
+    from: context.pos - (match[1]?.length ?? 0),
+    options: names.map((label) => ({ label })),
+    validFor: /^[^\]\n|#]*$/,
+  };
+}
 
 /** The wiki's types, where the caret is on an `@` word in a link's display text. */
 export function typeSuggestions(
@@ -150,7 +168,11 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
     previewTheme,
     pressed,
     autocompletion({
-      override: [(context) => typeSuggestions(context, host.linkTypes())],
+      override: [
+        (context) =>
+          typeSuggestions(context, host.linkTypes()) ??
+          nameSuggestions(context, host.linkNames?.() ?? []),
+      ],
     }),
     hoverTooltip((view, pos) => {
       const found = linkAt(view, pos);
@@ -189,12 +211,15 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
 export function useWikiLinkTools(
   linkTypes: ReadonlyArray<string>,
   render: (link: WikiLinkPeek) => ReactNode,
+  linkNames: ReadonlyArray<string> = [],
 ) {
   const types = useRef(linkTypes);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types for the editor's completion source
+  const names = useRef(linkNames);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types and names for the editor's completion source
   useLayoutEffect(() => {
     types.current = linkTypes;
-  }, [linkTypes]);
+    names.current = linkNames;
+  }, [linkTypes, linkNames]);
   const [open, setOpen] = useState<
     ReadonlyArray<{ id: number; link: WikiLinkPeek; element: HTMLElement }>
   >([]);
@@ -202,6 +227,7 @@ export function useWikiLinkTools(
     let next = 0;
     return {
       linkTypes: () => types.current,
+      linkNames: () => names.current,
       drawPreview: (link, element) => {
         const id = next++;
         setOpen((previews) => [...previews, { id, link, element }]);

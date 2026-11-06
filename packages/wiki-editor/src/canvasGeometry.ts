@@ -13,8 +13,12 @@ export interface CanvasCamera {
   readonly zoom: number;
 }
 
-const MIN_ZOOM = 0.05;
+const MIN_ZOOM = 0.0625;
 const MAX_ZOOM = 2;
+/** What a button's press zooms by, as in Obsidian. */
+export const ZOOM_STEP = Math.SQRT2;
+/** Below this zoom a card's content is too small to read, so it draws in its simple form. */
+export const SIMPLE_ZOOM = 0.3;
 const clampZoom = (zoom: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
 /** The whole board in view and centred, never enlarged past its own size. */
@@ -38,6 +42,24 @@ export function fitCamera(
   };
 }
 
+/** The world a frame of this size shows, with `margin` screen pixels to spare on each side. */
+export function cameraWindow(
+  camera: CanvasCamera,
+  width: number,
+  height: number,
+  margin: number,
+): CanvasBounds {
+  return {
+    x: (-margin - camera.x) / camera.zoom,
+    y: (-margin - camera.y) / camera.zoom,
+    width: (width + margin * 2) / camera.zoom,
+    height: (height + margin * 2) / camera.zoom,
+  };
+}
+
+export const overlaps = (a: CanvasBounds, b: CanvasBounds): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
 /** Zooms by `factor`, keeping what is under the screen point `(x, y)` under it. */
 export function zoomAt(camera: CanvasCamera, x: number, y: number, factor: number): CanvasCamera {
   const zoom = clampZoom(camera.zoom * factor);
@@ -51,6 +73,8 @@ export interface CanvasEdgeShape {
   readonly path: string;
   readonly heads: ReadonlyArray<string>;
   readonly labelAt: { readonly x: number; readonly y: number };
+  /** What the curve and its arrowheads can reach, for culling. */
+  readonly bounds: CanvasBounds;
 }
 
 interface Point {
@@ -80,6 +104,7 @@ const sideMiddle = (node: CanvasNode, side: CanvasSide): Point => {
 
 /** The sides facing each other: the spec leaves `fromSide` and `toSide` optional. */
 function facingSides(from: CanvasNode, to: CanvasNode): readonly [CanvasSide, CanvasSide] {
+  if (from === to) return ["right", "right"];
   const dx = to.x + to.width / 2 - (from.x + from.width / 2);
   const dy = to.y + to.height / 2 - (from.y + from.height / 2);
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ["right", "left"] : ["left", "right"];
@@ -95,6 +120,19 @@ function head(tip: Point, normal: Point): string {
   const baseY = tip.y + normal.y * HEAD_LENGTH;
   const across = { x: -normal.y * HEAD_WIDTH, y: normal.x * HEAD_WIDTH };
   return `M${tip.x} ${tip.y}L${baseX + across.x} ${baseY + across.y}L${baseX - across.x} ${baseY - across.y}Z`;
+}
+
+function boundsOf(points: ReadonlyArray<Point>): CanvasBounds {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const x = Math.min(...xs) - HEAD_LENGTH;
+  const y = Math.min(...ys) - HEAD_LENGTH;
+  return {
+    x,
+    y,
+    width: Math.max(...xs) + HEAD_LENGTH - x,
+    height: Math.max(...ys) + HEAD_LENGTH - y,
+  };
 }
 
 const cubicAt = (a: Point, b: Point, c: Point, d: Point, t: number): Point => {
@@ -131,6 +169,7 @@ export function canvasEdgeShapes(data: CanvasData): CanvasEdgeShape[] {
         path: `M${start.x} ${start.y}C${control1.x} ${control1.y} ${control2.x} ${control2.y} ${end.x} ${end.y}`,
         heads,
         labelAt: cubicAt(start, control1, control2, end, 0.5),
+        bounds: boundsOf([start, control1, control2, end]),
       },
     ];
   });
@@ -148,3 +187,32 @@ export function canvasColor(color: string | undefined): {
 
 /** Whether a link is safe to open: card text and URLs come from a model or a file. */
 export const isOpenableUrl = (href: string): boolean => /^(https?:|mailto:)/i.test(href.trim());
+
+export type CanvasFileKind =
+  | "note"
+  | "canvas"
+  | "base"
+  | "image"
+  | "pdf"
+  | "audio"
+  | "video"
+  | "other";
+
+const FILE_KINDS: ReadonlyArray<readonly [RegExp, CanvasFileKind]> = [
+  [/\.md$/i, "note"],
+  [/\.canvas$/i, "canvas"],
+  [/\.base$/i, "base"],
+  [/\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i, "image"],
+  [/\.pdf$/i, "pdf"],
+  [/\.(3gp|flac|m4a|mp3|oga|ogg|opus|wav)$/i, "audio"],
+  [/\.(mkv|mov|mp4|ogv|webm)$/i, "video"],
+];
+
+/** What a file card shows, by the file's extension, as Obsidian decides it. */
+export function canvasFileKind(file: string): CanvasFileKind {
+  return FILE_KINDS.find(([pattern]) => pattern.test(file))?.[1] ?? "other";
+}
+
+/** A card's name: its file without folders, and a note's without `.md`. */
+export const cardFileName = (file: string): string =>
+  (file.split("/").pop() ?? file).replace(/\.md$/i, "");

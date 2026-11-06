@@ -1,7 +1,15 @@
 import type { CanvasData, CanvasNode } from "@mercurian/wiki/canvas";
 import { describe, expect, it } from "vite-plus/test";
 
-import { canvasColor, canvasEdgeShapes, fitCamera, isOpenableUrl, zoomAt } from "./canvasGeometry";
+import {
+  cameraWindow,
+  canvasColor,
+  canvasEdgeShapes,
+  canvasFileKind,
+  fitCamera,
+  isOpenableUrl,
+  zoomAt,
+} from "./canvasGeometry";
 
 const card = (id: string, x: number, y: number): CanvasNode => ({
   id,
@@ -93,5 +101,43 @@ describe("colours and links", () => {
     expect(isOpenableUrl("javascript:alert(1)")).toBe(false);
     expect(isOpenableUrl("data:text/html,x")).toBe(false);
     expect(isOpenableUrl("")).toBe(false);
+  });
+});
+
+describe("cameraWindow", () => {
+  it("is what the frame shows, with its margin in screen pixels", () => {
+    expect(cameraWindow({ x: 100, y: 0, zoom: 2 }, 400, 200, 40)).toEqual({
+      x: -70,
+      y: -20,
+      width: 240,
+      height: 140,
+    });
+  });
+});
+
+describe("canvasEdgeShapes", () => {
+  it("draws a self-edge from one side, and covers its curve in its bounds", () => {
+    const card = { id: "a", type: "text" as const, text: "", x: 0, y: 0, width: 100, height: 60 };
+    const [shape] = canvasEdgeShapes({
+      nodes: [card],
+      edges: [{ id: "e", fromNode: "a", toNode: "a" }],
+    });
+    expect(shape?.path.startsWith("M100 30")).toBe(true);
+    expect(shape?.bounds.width).toBeGreaterThan(0);
+  });
+});
+
+describe("canvasFileKind", () => {
+  it.each([
+    ["Note.md", "note"],
+    ["a/B.canvas", "canvas"],
+    ["Open.base", "base"],
+    ["a/pic.PNG", "image"],
+    ["doc.pdf", "pdf"],
+    ["song.mp3", "audio"],
+    ["clip.mp4", "video"],
+    ["data.zip", "other"],
+  ])("reads %s as %s", (file, kind) => {
+    expect(canvasFileKind(file)).toBe(kind);
   });
 });

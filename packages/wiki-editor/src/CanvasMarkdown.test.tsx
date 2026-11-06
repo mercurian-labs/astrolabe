@@ -4,7 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { CanvasMarkdown } from "./CanvasMarkdown";
 
 const html = (text: string, onOpenUrl: ((href: string) => void) | null = () => undefined) =>
-  renderToStaticMarkup(<CanvasMarkdown text={text} onOpenUrl={onOpenUrl ?? undefined} />);
+  renderToStaticMarkup(<CanvasMarkdown text={text} host={{ onOpenUrl: onOpenUrl ?? undefined }} />);
 
 describe("CanvasMarkdown", () => {
   it("draws inline marks without showing their syntax", () => {
@@ -33,7 +33,7 @@ describe("CanvasMarkdown", () => {
 
   it("shows a wikilink as its alias, or its target", () => {
     expect(html("See [[Alpha|the alpha]] and [[Beta]]")).toBe(
-      "<p>See <span>the alpha</span> and <span>Beta</span></p>",
+      '<p>See <span class="cv-wikilink">the alpha</span> and <span class="cv-wikilink">Beta</span></p>',
     );
   });
 
@@ -48,7 +48,51 @@ describe("CanvasMarkdown", () => {
     expect(html("text <b>bold</b>")).not.toContain("<b>");
   });
 
-  it("shows a table it can't draw as its source, not nothing", () => {
-    expect(html("| a |\n| - |\n| b |")).toContain("| a |");
+  it("shows syntax it can't draw as its source, not nothing", () => {
+    expect(html("<div>raw</div>")).toContain("&lt;div&gt;raw&lt;/div&gt;");
+  });
+
+  it("draws a table, a callout and a tag", () => {
+    expect(html("| a | b |\n| - | - |\n| 1 | 2 |")).toBe(
+      "<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>",
+    );
+    const callout = html("> [!warning] Careful\n> Body");
+    expect(callout).toContain('data-callout="warning"');
+    expect(callout).toContain("Careful");
+    expect(callout).toContain("<p>Body</p>");
+    expect(callout).not.toContain("[!warning]");
+    expect(html("A #tag here")).toContain('<span class="cv-tag">#tag</span>');
+  });
+
+  it("dims a link to nothing, opens one to something, and shows its alias", () => {
+    const markup = (text: string) =>
+      renderToStaticMarkup(
+        <CanvasMarkdown
+          text={text}
+          host={{ onOpenLink: () => undefined, isResolved: (name) => name === "Here" }}
+        />,
+      );
+    expect(markup("[[Here|shown]]")).toContain(">shown</button>");
+    expect(markup("[[Here|shown]]")).not.toContain("data-missing");
+    expect(markup("[[Gone]]")).toContain("data-missing");
+  });
+
+  it("hands a diagram and an embed to its host, and shows them as text without one", () => {
+    const host = {
+      renderMermaid: (source: string) => <i>{source}</i>,
+      renderEmbed: (target: string) => <b>{target}</b>,
+    };
+    const fence = "```mermaid\ngraph TD\n```";
+    expect(renderToStaticMarkup(<CanvasMarkdown text={fence} host={host} />)).toContain(
+      "<i>graph TD</i>",
+    );
+    expect(html(fence)).toBe("<pre>graph TD</pre>");
+    expect(renderToStaticMarkup(<CanvasMarkdown text="![[Note#H]]" host={host} />)).toBe(
+      '<div class="cv-md-paragraph"><span><b>Note#H</b></span></div>',
+    );
+  });
+
+  it("drops an escape's backslash and a comment", () => {
+    expect(html("\\*plain\\* %%hidden%% shown")).toBe("<p>*plain*  shown</p>");
   });
 });

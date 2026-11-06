@@ -727,6 +727,10 @@ it.effect("reads any file at a commit, and a change request's own at its head", 
       const pinned = yield* wikis.readFiles({ wikiId, commit: first, paths: ["Board.canvas"] });
       assert.equal(pinned.files[0]?.exists, false);
 
+      assert.equal(
+        (yield* wikis.readFiles({ wikiId, paths: ["Note.md"] })).files[0]?.file,
+        "deep/er/Note.md",
+      );
       assert.deepEqual(yield* wikis.locateFile({ wikiId, path: "deep/er/note.md" }), {
         root,
         commit: first,

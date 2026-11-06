@@ -40,6 +40,14 @@
     "./canvas-geometry": {
       "types": "./src/canvasGeometry.ts",
       "default": "./src/canvasGeometry.ts"
+    },
+    "./canvas-minimap": {
+      "types": "./src/CanvasMinimap.tsx",
+      "default": "./src/CanvasMinimap.tsx"
+    },
+    "./mermaid": {
+      "types": "./src/mermaid.ts",
+      "default": "./src/mermaid.ts"
     }
   },
   "scripts": {
@@ -52,6 +60,9 @@
     "@codemirror/view": "^6.43.15",
     "@mercurian/editor": "workspace:*",
     "@mercurian/wiki": "workspace:*",
+    "dompurify": "^3.4.16",
+    "katex": "^0.18.9",
+    "pele": "^1.8.0",
     "react-dom": "19.2.6",
     "y-protocols": "^1.0.7",
     "yjs": "13.6.33"
