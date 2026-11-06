@@ -10,5 +10,6 @@ export * from "./baseCorpus.ts";
 export * from "./baseEdits.ts";
 export * from "./baseLayout.ts";
 export * from "./canvas.ts";
+export * from "./canvasEdits.ts";
 export * from "./canvasIndex.ts";
 export * from "./canvasMerge.ts";

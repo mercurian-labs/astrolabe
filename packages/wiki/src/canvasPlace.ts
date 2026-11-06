@@ -41,7 +41,7 @@ export interface CanvasDrawing {
     | undefined;
 }
 
-const PRESETS: Readonly<Record<string, string>> = {
+export const CANVAS_PRESETS: Readonly<Record<string, string>> = {
   red: "1",
   orange: "2",
   yellow: "3",
@@ -57,6 +57,17 @@ const GROUP_PADDING = 24;
 const GROUP_LABEL = 28;
 /** Boards are read in a chat column, so the layout that lands nearest this shape wins. */
 const TARGET_ASPECT = 1.6;
+/** Text longer than this gets Obsidian's wider card. */
+const WIDE_TEXT = 240;
+/** What stays open around anything placed on a board. */
+const CLEARANCE = 20;
+/** Obsidian's padding when it draws a group around a selection. */
+const AROUND_PADDING = 20;
+const EMPTY_GROUP = 400;
+/** How far from a `near` card to look before giving up and going off the board. */
+const NEAR_RINGS = 8;
+/** Past this many cards in a group, a new one goes along its edge without looking for a gap. */
+const GROUP_SCAN_LIMIT = 64;
 
 const snap = (value: number) => Math.ceil(value / GRID) * GRID;
 
@@ -235,7 +246,10 @@ function arrange(boxes: ReadonlyArray<Box>, links: ReadonlyArray<Link>) {
   return { placed, width: right, height: bottom };
 }
 
-const sides = (from: CanvasBounds, to: CanvasBounds): readonly [CanvasSide, CanvasSide] => {
+export const canvasArrowSides = (
+  from: CanvasBounds,
+  to: CanvasBounds,
+): readonly [CanvasSide, CanvasSide] => {
   const dx = to.x + to.width / 2 - (from.x + from.width / 2);
   const dy = to.y + to.height / 2 - (from.y + from.height / 2);
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ["right", "left"] : ["left", "right"];
@@ -361,7 +375,7 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
   }
 
   const color = (name: string | undefined) =>
-    name === undefined ? {} : { color: PRESETS[name] ?? name };
+    name === undefined ? {} : { color: CANVAS_PRESETS[name] ?? name };
   const groupNodes = groups.flatMap((group): CanvasNode[] => {
     const rect = rects.get(group.id);
     if (rect === undefined) return [];
@@ -402,7 +416,7 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
     const from = rects.get(arrow.from);
     const to = rects.get(arrow.to);
     if (from === undefined || to === undefined) return [];
-    const [fromSide, toSide] = sides(from, to);
+    const [fromSide, toSide] = canvasArrowSides(from, to);
     return [
       {
         id: `arrow-${index}`,
@@ -418,4 +432,380 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
     ];
   });
   return { nodes: [...groupNodes, ...cardNodes], edges };
+}
+
+/** How `canvasPlace` measures what it can't: the sizes Obsidian gives a new card. */
+export function canvasCardSize(card: {
+  readonly text?: string | undefined;
+}): Pick<CanvasBounds, "width" | "height"> {
+  if (card.text === undefined) return { width: 400, height: 400 };
+  const width = card.text.length > WIDE_TEXT ? 400 : 250;
+  return { width, height: snap(38 + textHeight(card.text, width)) };
+}
+
+/** A card on its way onto a board. */
+export interface CanvasNewCard extends Pick<CanvasBounds, "width" | "height"> {
+  readonly id: string;
+  /** The group it goes in, on the board or among the new ones. */
+  readonly in?: string | undefined;
+  readonly near?: string | undefined;
+}
+
+export interface CanvasNewGroup {
+  readonly id: string;
+  readonly near?: string | undefined;
+  /** Cards it is drawn around, where they stand. Without any, it is sized to what goes in it. */
+  readonly around?: ReadonlyArray<string> | undefined;
+}
+
+export interface CanvasPlacement {
+  /** Where each new card and group goes. */
+  readonly placed: Readonly<Record<string, CanvasBounds>>;
+  /** The groups already on the board that grew, at their new size. */
+  readonly grown: Readonly<Record<string, CanvasBounds>>;
+  /** New cards left beside their group, because everything around it is taken. */
+  readonly outside: ReadonlyArray<string>;
+}
+
+interface Block extends Box {
+  readonly near?: string | undefined;
+  /** A new group's cards, relative to it. */
+  readonly inner?: ReadonlyMap<string, CanvasBounds>;
+}
+
+interface Cluster {
+  readonly blocks: ReadonlyArray<Block>;
+  readonly links: ReadonlyArray<Link>;
+  readonly anchor?: string | undefined;
+}
+
+const touching = (a: CanvasBounds, b: CanvasBounds, margin: number) =>
+  a.x < b.x + b.width + margin &&
+  b.x < a.x + a.width + margin &&
+  a.y < b.y + b.height + margin &&
+  b.y < a.y + a.height + margin;
+
+const union = (a: CanvasBounds, b: CanvasBounds): CanvasBounds => {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+};
+
+/** A group's room around a rectangle of what it holds, as `placeCanvas` leaves it. */
+const padded = (rect: CanvasBounds): CanvasBounds => ({
+  x: rect.x - GROUP_PADDING,
+  y: rect.y - GROUP_PADDING - GROUP_LABEL,
+  width: rect.width + GROUP_PADDING * 2,
+  height: rect.height + GROUP_PADDING * 2 + GROUP_LABEL,
+});
+
+/** Blocks joined by links, each set in the order its first block came. */
+function connected(blocks: ReadonlyArray<Block>, links: ReadonlyArray<Link>): Block[][] {
+  const parent = new Map(blocks.map((block) => [block.id, block.id]));
+  const root = (id: string): string => {
+    const up = parent.get(id) ?? id;
+    return up === id ? id : root(up);
+  };
+  for (const { from, to } of links) {
+    if (parent.has(from) && parent.has(to)) parent.set(root(from), root(to));
+  }
+  const sets = new Map<string, Block[]>();
+  for (const block of blocks) {
+    const set = sets.get(root(block.id));
+    if (set === undefined) sets.set(root(block.id), [block]);
+    else set.push(block);
+  }
+  return [...sets.values()];
+}
+
+/**
+ * Finds room on a board for new cards and groups. Nothing on the board moves, except that a group
+ * may grow, leaving its cards where they are, and its groups with it. Cards linked to each other
+ * land laid out together. Without a hint they land off the board's short side.
+ */
+export function canvasPlace(
+  board: ReadonlyArray<CanvasBounds & { readonly id: string; readonly type?: string }>,
+  batch: {
+    readonly cards: ReadonlyArray<CanvasNewCard>;
+    readonly groups?: ReadonlyArray<CanvasNewGroup> | undefined;
+    readonly links?: ReadonlyArray<Link> | undefined;
+  },
+): CanvasPlacement {
+  const rects = new Map<string, CanvasBounds>(
+    board.map(({ id, x, y, width, height }) => [id, { x, y, width, height }]),
+  );
+  const groupIds = new Set(board.filter((node) => node.type === "group").map((node) => node.id));
+  const placed: Record<string, CanvasBounds> = {};
+  const grown: Record<string, CanvasBounds> = {};
+  const outside: string[] = [];
+  const newGroups = batch.groups ?? [];
+  const links = batch.links ?? [];
+  const put = (id: string, rect: CanvasBounds) => {
+    const isNew = id in placed || !rects.has(id);
+    rects.set(id, rect);
+    if (isNew) placed[id] = rect;
+    else grown[id] = rect;
+  };
+
+  const isClear = (rect: CanvasBounds, ignore: (id: string) => boolean = () => false) => {
+    for (const [id, other] of rects) {
+      if (!ignore(id) && touching(rect, other, CLEARANCE)) return false;
+    }
+    return true;
+  };
+
+  const freeSpot = (width: number, height: number, anchor: CanvasBounds | undefined): Placed => {
+    const all = [...rects.values()];
+    const first = all[0];
+    if (first === undefined) return { x: 0, y: 0 };
+    const whole = all.reduce(union, first);
+    const offBoard: Placed =
+      whole.width / Math.max(1, whole.height) > TARGET_ASPECT
+        ? { x: snap(whole.x), y: snap(whole.y + whole.height + RANK_GAP) }
+        : { x: snap(whole.x + whole.width + RANK_GAP), y: snap(whole.y) };
+    if (anchor === undefined) return offBoard;
+    const fits = (x: number, y: number) => isClear({ x: snap(x), y: snap(y), width, height });
+    const stepX = width + CROSS_GAP;
+    const stepY = height + CROSS_GAP;
+    for (let ring = 0; ring <= NEAR_RINGS; ring++) {
+      for (let out = 0; out <= ring; out++) {
+        for (let along = 0; along <= ring; along++) {
+          if (out !== ring && along !== ring) continue;
+          for (const shift of along === 0 ? [0] : [along, -along]) {
+            const right = anchor.x + anchor.width + RANK_GAP + out * stepX;
+            const below = anchor.y + anchor.height + RANK_GAP + out * stepY;
+            const left = anchor.x - RANK_GAP - width - out * stepX;
+            const above = anchor.y - RANK_GAP - height - out * stepY;
+            const spots: ReadonlyArray<Placed> = [
+              { x: right, y: anchor.y + shift * stepY },
+              { x: anchor.x + shift * stepX, y: below },
+              { x: left, y: anchor.y + shift * stepY },
+              { x: anchor.x + shift * stepX, y: above },
+            ];
+            for (const spot of spots) {
+              if (fits(spot.x, spot.y)) return { x: snap(spot.x), y: snap(spot.y) };
+            }
+          }
+        }
+      }
+    }
+    return offBoard;
+  };
+
+  /** What growing a group to `wanted` asks of it and the groups holding it; null if it hits something. */
+  const growth = (id: string, wanted: CanvasBounds) => {
+    const was = rects.get(id);
+    if (was === undefined) return null;
+    const holders = [...rects]
+      .filter(([each, rect]) => each !== id && groupIds.has(each) && insideGroup(rect, was))
+      .sort(([, a], [, b]) => a.width * a.height - b.width * b.height);
+    const chain = new Map([[id, wanted]]);
+    let current = wanted;
+    for (const [holder, rect] of holders) {
+      const room = padded(current);
+      if (insideGroup(rect, room)) continue;
+      const next = union(rect, room);
+      chain.set(holder, next);
+      current = next;
+    }
+    for (const [group, rect] of chain) {
+      const before = rects.get(group) ?? rect;
+      for (const [each, other] of rects) {
+        if (chain.has(each) || insideGroup(before, other) || insideGroup(other, before)) continue;
+        if (touching(rect, other, CLEARANCE)) return null;
+      }
+    }
+    return chain;
+  };
+
+  const putInGroup = (card: CanvasNewCard, groupId: string): void => {
+    const group = rects.get(groupId);
+    if (group === undefined) return;
+    const { width, height } = card;
+    const members = [...rects]
+      .filter(([each, rect]) => each !== groupId && insideGroup(group, rect))
+      .map(([, rect]) => rect);
+    const left = group.x + GROUP_PADDING;
+    const top = group.y + GROUP_PADDING + GROUP_LABEL;
+    const right = group.x + group.width - GROUP_PADDING;
+    const bottom = group.y + group.height - GROUP_PADDING;
+    const holds = (each: string) => {
+      const rect = rects.get(each);
+      return each === groupId || (rect !== undefined && insideGroup(rect, group));
+    };
+    if (members.length <= GROUP_SCAN_LIMIT) {
+      const xs = [left, ...members.map((rect) => rect.x + rect.width + CROSS_GAP)].sort(
+        (a, b) => a - b,
+      );
+      const ys = [top, ...members.map((rect) => rect.y + rect.height + CROSS_GAP)].sort(
+        (a, b) => a - b,
+      );
+      for (const rawY of ys) {
+        for (const rawX of xs) {
+          const rect = { x: snap(rawX), y: snap(rawY), width, height };
+          if (rect.x + width <= right && rect.y + height <= bottom && isClear(rect, holds)) {
+            put(card.id, rect);
+            return;
+          }
+        }
+      }
+    }
+    const lowest = Math.max(top - CROSS_GAP, ...members.map((rect) => rect.y + rect.height));
+    const rightmost = Math.max(left - CROSS_GAP, ...members.map((rect) => rect.x + rect.width));
+    const leftmost = Math.min(right + CROSS_GAP, ...members.map((rect) => rect.x));
+    const highest = Math.min(bottom + CROSS_GAP, ...members.map((rect) => rect.y));
+    const down: Placed = { x: snap(left), y: snap(lowest + CROSS_GAP) };
+    const across: Placed = { x: snap(rightmost + CROSS_GAP), y: snap(top) };
+    const back: Placed = { x: snap(leftmost - CROSS_GAP - width), y: snap(top) };
+    const up: Placed = { x: snap(left), y: snap(highest - CROSS_GAP - height) };
+    const wide = group.width / Math.max(1, group.height) > TARGET_ASPECT;
+    for (const spot of wide ? [down, across, back, up] : [across, down, back, up]) {
+      const rect = { ...spot, width, height };
+      const chain = growth(groupId, union(group, padded(rect)));
+      if (chain === null) continue;
+      for (const [id, next] of chain) put(id, next);
+      put(card.id, rect);
+      return;
+    }
+    outside.push(card.id);
+    const beside = freeSpot(width, height, group);
+    put(card.id, { ...beside, width, height });
+  };
+
+  const placeCluster = ({ blocks, links: inner, anchor }: Cluster) => {
+    const layout = arrange(blocks, inner);
+    const at = freeSpot(
+      layout.width,
+      layout.height,
+      anchor === undefined ? undefined : rects.get(anchor),
+    );
+    for (const block of blocks) {
+      const spot = layout.placed.get(block.id) ?? { x: 0, y: 0 };
+      const rect = {
+        x: at.x + spot.x,
+        y: at.y + spot.y,
+        width: block.width,
+        height: block.height,
+      };
+      put(block.id, rect);
+      for (const [id, member] of block.inner ?? []) {
+        put(id, { ...member, x: rect.x + member.x, y: rect.y + member.y });
+      }
+    }
+  };
+
+  for (const group of newGroups) {
+    const around = (group.around ?? []).flatMap((id) => rects.get(id) ?? []);
+    const [first, ...others] = around;
+    if (first === undefined) continue;
+    const box = others.reduce(union, first);
+    put(group.id, {
+      x: box.x - AROUND_PADDING,
+      y: box.y - AROUND_PADDING,
+      width: box.width + AROUND_PADDING * 2,
+      height: box.height + AROUND_PADDING * 2,
+    });
+    groupIds.add(group.id);
+  }
+
+  for (const card of batch.cards) {
+    if (card.in !== undefined && rects.has(card.in)) putInGroup(card, card.in);
+  }
+
+  const groupBlocks = newGroups.flatMap((group): Block[] => {
+    if (rects.has(group.id)) return [];
+    groupIds.add(group.id);
+    const near = group.near === undefined ? {} : { near: group.near };
+    const members = batch.cards.filter((card) => card.in === group.id);
+    if (members.length === 0) {
+      return [{ id: group.id, width: EMPTY_GROUP, height: EMPTY_GROUP, ...near }];
+    }
+    const held = new Set(members.map((card) => card.id));
+    const layout = arrange(
+      members,
+      links.filter((link) => held.has(link.from) && held.has(link.to) && link.from !== link.to),
+    );
+    const inner = new Map(
+      members.map((card) => {
+        const spot = layout.placed.get(card.id) ?? { x: 0, y: 0 };
+        return [
+          card.id,
+          {
+            x: GROUP_PADDING + spot.x,
+            y: GROUP_PADDING + GROUP_LABEL + spot.y,
+            width: card.width,
+            height: card.height,
+          },
+        ] as const;
+      }),
+    );
+    return [
+      {
+        id: group.id,
+        width: snap(layout.width + GROUP_PADDING * 2),
+        height: snap(layout.height + GROUP_PADDING * 2 + GROUP_LABEL),
+        ...near,
+        inner,
+      },
+    ];
+  });
+  const newGroupIds = new Set(groupBlocks.map((block) => block.id));
+  const blocks: Block[] = [...batch.cards.filter((card) => card.in === undefined), ...groupBlocks];
+
+  const held = new Map(
+    batch.cards.flatMap((card) =>
+      card.in !== undefined && newGroupIds.has(card.in) ? [[card.id, card.in] as const] : [],
+    ),
+  );
+  const blockOf = (id: string) => held.get(id) ?? id;
+  const blockLinks = links.flatMap((link) => {
+    const from = blockOf(link.from);
+    const to = blockOf(link.to);
+    return from === to ? [] : [{ from, to }];
+  });
+  const hinted = blocks.filter((block) => block.near !== undefined);
+  const free = blocks.filter((block) => block.near === undefined);
+  const anchored: Cluster[] = [];
+  const loose: Block[][] = [];
+  for (const set of connected(free, blockLinks)) {
+    const members = new Set(set.map((block) => block.id));
+    const leaving = blockLinks.find(({ from, to }) => members.has(from) !== members.has(to));
+    if (leaving === undefined) {
+      loose.push(set);
+      continue;
+    }
+    anchored.push({
+      blocks: set,
+      links: blockLinks.filter(({ from, to }) => members.has(from) && members.has(to)),
+      anchor: members.has(leaving.from) ? leaving.to : leaving.from,
+    });
+  }
+  const unhinted = loose.flat();
+  const unhintedIds = new Set(unhinted.map((block) => block.id));
+  const waiting: Cluster[] = [
+    ...hinted.map((block) => ({ blocks: [block], links: [], anchor: block.near })),
+    ...anchored,
+    ...(unhinted.length === 0
+      ? []
+      : [
+          {
+            blocks: unhinted,
+            links: blockLinks.filter(
+              ({ from, to }) => unhintedIds.has(from) && unhintedIds.has(to),
+            ),
+          },
+        ]),
+  ];
+  while (waiting.length > 0) {
+    const ready = waiting.findIndex(({ anchor }) => anchor === undefined || rects.has(anchor));
+    const [cluster] = waiting.splice(Math.max(ready, 0), 1);
+    if (cluster !== undefined) placeCluster(cluster);
+  }
+
+  return { placed, grown, outside };
 }

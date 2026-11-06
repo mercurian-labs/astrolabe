@@ -120,8 +120,11 @@ const side = (value: unknown) =>
     : undefined;
 const end = (value: unknown) => (value === "none" || value === "arrow" ? value : undefined);
 
-function codeReference(value: unknown): CanvasCodeReference | undefined {
-  if (!isRecord(value) || typeof value.path !== "string") return undefined;
+/** A kept card holds its code on `astrolabe` itself; a thread's board nests it under `code`. */
+function codeReference(astrolabe: unknown): CanvasCodeReference | undefined {
+  if (!isRecord(astrolabe)) return undefined;
+  const value = isRecord(astrolabe.code) ? astrolabe.code : astrolabe;
+  if (typeof value.path !== "string") return undefined;
   const { lines } = value;
   const repository = text(value.repository);
   const commit = text(value.commit);
@@ -161,7 +164,7 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
     case "link": {
       const astrolabe = isRecord(raw.astrolabe) ? raw.astrolabe : undefined;
       const caption = text(astrolabe?.caption);
-      const code = codeReference(astrolabe?.code);
+      const code = codeReference(astrolabe);
       return {
         ...base,
         type: "link",
@@ -216,7 +219,7 @@ function canvasEdge(raw: Record<string, unknown>, id: string): CanvasEdge | unde
 }
 
 /** A list's entries by the ids they draw under, unique though a file's may repeat or be missing. */
-function entries(
+export function canvasEntries(
   list: unknown,
   prefix: string,
 ): ReadonlyArray<{ readonly id: string; readonly raw: Record<string, unknown> }> {
@@ -235,7 +238,7 @@ const drawn = <A>(
   prefix: string,
   read: (raw: Record<string, unknown>, id: string) => A | undefined,
 ): A[] =>
-  entries(list, prefix).flatMap(({ id, raw }) => {
+  canvasEntries(list, prefix).flatMap(({ id, raw }) => {
     const item = read(raw, id);
     return item === undefined ? [] : [item];
   });
@@ -359,7 +362,7 @@ const lastPart = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** A card as a person would name it, for a change list or a merge's preview. */
 export function canvasCardName(card: Readonly<Record<string, unknown>>): string {
-  const code = isRecord(card.astrolabe) ? codeReference(card.astrolabe.code) : undefined;
+  const code = codeReference(card.astrolabe);
   const named =
     card.type === "text"
       ? brief(text(card.text) ?? "")
@@ -431,8 +434,8 @@ function changeOf(
 export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
   const was = isRecord(before) ? before : {};
   const now = isRecord(after) ? after : {};
-  const cards = [entries(was.nodes, "node"), entries(now.nodes, "node")] as const;
-  const arrows = [entries(was.edges, "edge"), entries(now.edges, "edge")] as const;
+  const cards = [canvasEntries(was.nodes, "node"), canvasEntries(now.nodes, "node")] as const;
+  const arrows = [canvasEntries(was.edges, "edge"), canvasEntries(now.edges, "edge")] as const;
   const names = new Map([...cards[0], ...cards[1]].map(({ id, raw }) => [id, raw]));
   const cardName = (id: unknown) => {
     const card = typeof id === "string" ? names.get(id) : undefined;
@@ -440,7 +443,7 @@ export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
   };
   const compare = (
     item: CanvasChange["item"],
-    [from, to]: readonly [ReturnType<typeof entries>, ReturnType<typeof entries>],
+    [from, to]: readonly [ReturnType<typeof canvasEntries>, ReturnType<typeof canvasEntries>],
     looks: ReadonlyArray<CanvasLook>,
   ): CanvasChange[] => {
     const name = (raw: Record<string, unknown>) =>
