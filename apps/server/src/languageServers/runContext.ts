@@ -10,7 +10,7 @@ import * as Schema from "effect/Schema";
  * manifest's folder, and which tools it names. Only reads files: nothing here runs one.
  */
 
-type Tools = Omit<LanguageServerRunContext, "trusted" | "python">;
+type Tools = Omit<LanguageServerRunContext, "trusted" | "python" | "shell">;
 
 export const NO_RUN_TOOLS: Tools = {
   root: "",
@@ -65,9 +65,15 @@ const LOCKFILES: ReadonlyArray<readonly [string, string]> = [
   ["package-lock.json", "npx"],
 ];
 
+const WRAPPERS = {
+  posix: { maven: "mvnw", gradle: "gradlew", here: "./", up: "../" },
+  win32: { maven: "mvnw.cmd", gradle: "gradlew.bat", here: ".\\", up: "..\\" },
+} as const;
+
 export const readRunTools = Effect.fn("LanguageServers.readRunTools")(function* (
   cwd: string,
   relativePath: string,
+  platform: NodeJS.Platform,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -97,11 +103,12 @@ export const readRunTools = Effect.fn("LanguageServers.readRunTools")(function* 
     const found = yield* nearest(["pom.xml", "build.gradle", "build.gradle.kts"]);
     if (found === null) return NO_RUN_TOOLS;
     const buildTool = found.name === "pom.xml" ? ("maven" as const) : ("gradle" as const);
-    const wrapper = buildTool === "maven" ? "mvnw" : "gradlew";
+    const wrappers = WRAPPERS[platform === "win32" ? "win32" : "posix"];
+    const wrapper = wrappers[buildTool];
     const upward = folders.slice(folders.indexOf(found.folder));
     for (const [levels, folder] of upward.entries()) {
       if (yield* exists(here(folder, wrapper))) {
-        const climb = levels === 0 ? "./" : "../".repeat(levels);
+        const climb = levels === 0 ? wrappers.here : wrappers.up.repeat(levels);
         return { ...NO_RUN_TOOLS, root: found.folder, buildTool, buildCommand: climb + wrapper };
       }
     }

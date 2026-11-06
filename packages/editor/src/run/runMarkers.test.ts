@@ -17,6 +17,7 @@ import {
 const CONTEXT: RunContext = {
   root: "",
   python: "python3",
+  shell: "posix",
   testRunner: null,
   packageRunner: "npx",
   buildTool: null,
@@ -48,6 +49,7 @@ function open(
   options: {
     capabilities?: Record<string, unknown>;
     answer?: (method: string, params: unknown) => unknown;
+    markers?: boolean;
   } = {},
 ) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -61,10 +63,8 @@ function open(
     copy: (command) => void copied.push(command),
     menu: vi.fn(async () => "run"),
   };
-  const editor = setup(text, {
-    ...options,
-    extensions: runMarkers({ host, markers: true }),
-  });
+  const { markers = true, ...server } = options;
+  const editor = setup(text, { ...server, extensions: runMarkers({ host, markers }) });
   return {
     ...editor,
     host,
@@ -230,6 +230,27 @@ describe("runMarkers", () => {
     await showRunMenu(view, site, { x: 1, y: 2 });
     expect(copied).toEqual(["cargo run"]);
     expect(ran).toHaveLength(1);
+  });
+
+  it("does nothing in the background with the markers off, and still runs when asked", async () => {
+    using editor = open("src/lib.rs", RUST, {
+      markers: false,
+      capabilities: { experimental: { runnables: { kinds: ["cargo"] } } },
+      answer: () => [],
+    });
+    const { view, sent, ran } = editor;
+    await editor.initialize();
+    view.dispatch({ effects: setRunContext.of(CONTEXT) });
+    await settle();
+    view.dispatch({ changes: { from: 0, insert: "// edited\n" } });
+    await settle();
+    expect(runSites(view.state)).toEqual([]);
+    expect(sent.filter(({ message }) => message.method === "experimental/runnables")).toEqual([]);
+
+    view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf("body()") } });
+    expect(hasRunMarkers(view.state)).toBe(true);
+    expect(runAtCursor(view)).toBe(true);
+    expect(ran.map((target) => target.command)).toEqual(["cargo test tests::adds"]);
   });
 
   it("leaves a file nothing runs alone", () => {

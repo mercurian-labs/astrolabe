@@ -393,6 +393,9 @@ export const LanguageServerRunContextInput = Schema.Struct({
 });
 export type LanguageServerRunContextInput = typeof LanguageServerRunContextInput.Type;
 
+export const LanguageServerShellFamily = Schema.Literals(["posix", "fish", "powershell", "cmd"]);
+export type LanguageServerShellFamily = typeof LanguageServerShellFamily.Type;
+
 /** What a client builds a file's run commands from. Running is running the project's code. */
 export const LanguageServerRunContext = Schema.Struct({
   trusted: Schema.Boolean,
@@ -400,6 +403,8 @@ export const LanguageServerRunContext = Schema.Struct({
   root: Schema.String,
   /** The checkout's chosen or found interpreter, else the one to find on PATH. */
   python: Schema.String,
+  /** How the environment's terminals read a command line. */
+  shell: LanguageServerShellFamily,
   testRunner: Schema.NullOr(Schema.Literals(["vitest", "jest", "node", "vp"])),
   /** What runs a package's own binary: "npx", "pnpm exec". */
   packageRunner: Schema.String,

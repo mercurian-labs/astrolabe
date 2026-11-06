@@ -929,6 +929,8 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     repositoryOf,
     activationOf,
     activePython,
+    platform,
+    environment,
     pythonOnPath: platform === "win32" ? "python" : "python3",
     pythonInterpreters,
   };

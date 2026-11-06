@@ -195,6 +195,7 @@ const TRUSTED = {
   trusted: true,
   root: "",
   python: "python3",
+  shell: "posix",
   testRunner: null,
   packageRunner: "npx",
   buildTool: null,

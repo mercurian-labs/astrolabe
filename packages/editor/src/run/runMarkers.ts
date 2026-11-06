@@ -60,6 +60,9 @@ const SERVER_QUIET_MS = 800;
 
 const runHost = Facet.define<RunHost, RunHost | null>({ combine: (hosts) => hosts[0] ?? null });
 
+/** Whether the markers show. Without them nothing is worked out until a command asks. */
+const markersShown = Facet.define<boolean, boolean>({ combine: (shown) => shown.some(Boolean) });
+
 /** What the environment says of this file now; null where nothing may run. */
 export const setRunContext = StateEffect.define<RunContext | null>();
 const setSites = StateEffect.define<readonly RunSite[]>();
@@ -156,6 +159,27 @@ const isCodeIn =
     }
   };
 
+/** What the text says can run, by the line its marker would be on. */
+function sitesInText(state: EditorState, skip: ReadonlySet<number> = new Set()) {
+  const host = state.facet(runHost);
+  const context = state.field(runField, false)?.context;
+  if (!host || !context) return [];
+  const file = detectRunnables(host.path, state.doc.toString(), isCodeIn(state));
+  return (file?.items ?? []).flatMap((item): RunSite[] => {
+    const from = state.doc.line(item.line).from;
+    const target = !file || skip.has(from) ? null : runTargetFor(file, item, host.path, context);
+    if (target === null) return [];
+    return [
+      {
+        ...target,
+        from,
+        start: state.doc.line(item.startLine).from,
+        to: state.doc.line(item.endLine).to,
+      },
+    ];
+  });
+}
+
 // Comments and strings can only be told from code once the file's grammar is here.
 const languageLoaded = (update: ViewUpdate) =>
   update.startState.facet(language) !== update.state.facet(language);
@@ -216,14 +240,17 @@ class Detection {
   private rustAnswer(answer: unknown, mapping: WorkspaceMapping) {
     const { doc } = this.view.state;
     const host = this.view.state.facet(runHost);
+    const { context } = this.view.state.field(runField);
     const plugin = LSPPlugin.get(this.view);
-    if (!host || !plugin) return;
-    this.said = rustRunnables(answer, host.checkout).map(({ at, range, ...target }) => ({
-      ...target,
-      from: doc.lineAt(mapping.mapPosition(plugin.uri, at, 1)).from,
-      start: mapping.mapPosition(plugin.uri, range.start, 1),
-      to: mapping.mapPosition(plugin.uri, range.end, -1),
-    }));
+    if (!host || !context || !plugin) return;
+    this.said = rustRunnables(answer, host.checkout, context.shell).map(
+      ({ at, range, ...target }) => ({
+        ...target,
+        from: doc.lineAt(mapping.mapPosition(plugin.uri, at, 1)).from,
+        start: mapping.mapPosition(plugin.uri, range.start, 1),
+        to: mapping.mapPosition(plugin.uri, range.end, -1),
+      }),
+    );
     this.publish();
   }
 
@@ -263,21 +290,9 @@ class Detection {
     const host = state.facet(runHost);
     const { context, sites } = state.field(runField);
     if (!host || !context) return;
-    const file = detectRunnables(host.path, state.doc.toString(), isCodeIn(state));
     const said = this.said.map((site) => ({ ...site, from: state.doc.lineAt(site.from).from }));
     const lines = new Map(said.map((site) => [site.from, site]));
-    for (const item of file?.items ?? []) {
-      const from = state.doc.line(item.line).from;
-      if (lines.has(from) || !file) continue;
-      const target = runTargetFor(file, item, host.path, context);
-      if (target === null) continue;
-      lines.set(from, {
-        ...target,
-        from,
-        start: state.doc.line(item.startLine).from,
-        to: state.doc.line(item.endLine).to,
-      });
-    }
+    for (const site of sitesInText(state, new Set(lines.keys()))) lines.set(site.from, site);
     const next = [...lines.values()].toSorted((left, right) => left.from - right.from);
     if (!sameSites(sites, next)) view.dispatch({ effects: setSites.of(next) });
   }
@@ -300,7 +315,8 @@ export const runSites = (state: EditorState): readonly RunSite[] =>
 
 /** The innermost thing around `pos`, which is what running from there means. */
 export function runSiteAt(state: EditorState, pos: number): RunSite | null {
-  const around = runSites(state).filter((site) => site.start <= pos && pos <= site.to);
+  const sites = state.facet(markersShown) ? runSites(state) : sitesInText(state);
+  const around = sites.filter((site) => site.start <= pos && pos <= site.to);
   return around.at(-1) ?? null;
 }
 
@@ -378,7 +394,10 @@ const theme = EditorView.baseTheme({
   ".atlas-run-marker:hover": { backgroundColor: "var(--atlas-md-link-color, currentColor)" },
 });
 
-/** Run markers for a file that can have them, and `markers: false` leaves only the commands. */
+/**
+ * Run markers for a file that can have them. `markers: false` leaves only the commands, with no
+ * scanning or asking servers in the background: they read the text when they're run.
+ */
 export function runMarkers(options: {
   readonly host: RunHost;
   readonly markers: boolean;
@@ -387,8 +406,7 @@ export function runMarkers(options: {
   return [
     runHost.of(options.host),
     runField,
-    detection,
     lspVimKeys({ runAtCursor, runLast }),
-    options.markers ? [runGutter, theme] : [],
+    options.markers ? [markersShown.of(true), detection, runGutter, theme] : [],
   ];
 }

@@ -6,6 +6,7 @@ import { detectRunnables } from "./detect.ts";
 const CONTEXT: RunContext = {
   root: "",
   python: "python3",
+  shell: "posix",
   testRunner: null,
   packageRunner: "npx",
   buildTool: null,
@@ -122,7 +123,7 @@ describe("runTargetFor", () => {
       { buildTool: "maven", buildCommand: "./mvnw" },
       [
         ["MoneyTest", "./mvnw test -Dtest=com.acme.MoneyTest"],
-        ["MoneyTest.adds", "./mvnw test -Dtest='com.acme.MoneyTest#adds'"],
+        ["MoneyTest.adds", "./mvnw test '-Dtest=com.acme.MoneyTest#adds'"],
       ],
     ],
     [
@@ -170,6 +171,93 @@ describe("runTargetFor", () => {
   });
 });
 
+describe("runTargetFor's shells", () => {
+  const JAVA = "package a.b;\nclass Main {\n  public static void main(String[] args) {}\n}\n";
+  const GO = "package money\n\nfunc TestAdd(t *testing.T) {}\n";
+
+  it.each<[string, string, Partial<RunContext>, unknown]>([
+    ["go/a_test.go", GO, { shell: "powershell" }, "go test -run '^TestAdd$' ./go"],
+    ["go/a_test.go", GO, { shell: "cmd" }, 'go test -run "^TestAdd$" ./go'],
+    ["go/a_test.go", GO, { shell: "fish" }, "go test -run '^TestAdd$' ./go"],
+    [
+      "app.py",
+      'if __name__ == "__main__":\n    run()\n',
+      { shell: "powershell", python: "C:\\My Env\\python.exe" },
+      "& 'C:\\My Env\\python.exe' app.py",
+    ],
+    [
+      "app.py",
+      'if __name__ == "__main__":\n    run()\n',
+      { shell: "powershell", python: "C:\\Env\\python.exe" },
+      "C:\\Env\\python.exe app.py",
+    ],
+    [
+      "app.py",
+      'if __name__ == "__main__":\n    run()\n',
+      { shell: "cmd", python: "C:\\My Env\\python.exe" },
+      '"C:\\My Env\\python.exe" app.py',
+    ],
+    [
+      "Main.java",
+      JAVA,
+      { shell: "powershell", buildTool: "maven", buildCommand: ".\\mvnw.cmd" },
+      ".\\mvnw.cmd compile exec:java '-Dexec.mainClass=a.b.Main'",
+    ],
+    [
+      "a.test.ts",
+      'test("it\'s", () => {});\n',
+      { shell: "powershell", testRunner: "vitest" },
+      "npx vitest run a.test.ts -t 'it''s'",
+    ],
+    [
+      "a.test.ts",
+      'test("a\\\\b", () => {});\n',
+      { shell: "fish", testRunner: "vitest" },
+      "npx vitest run a.test.ts -t 'a\\\\\\\\b'",
+    ],
+    ["a.test.ts", 'test("100%", () => {});\n', { shell: "cmd", testRunner: "vitest" }, null],
+    ["a.test.ts", "test('say \"x\"', () => {});\n", { shell: "cmd", testRunner: "vitest" }, null],
+    [
+      "a.test.ts",
+      'test("100%", () => {});\n',
+      { shell: "posix", testRunner: "vitest" },
+      "npx vitest run a.test.ts -t 100%",
+    ],
+  ])("quotes %s for its shell", (path, text, context, expected) => {
+    expect(commands(path, text, context)[0]?.[1] ?? null).toBe(expected);
+  });
+});
+
+describe("what never reaches a shell", () => {
+  const CONTROL = String.fromCodePoint(0x15);
+
+  it.each([
+    ["Ctrl-U in a name", "a.test.ts", `test("b${CONTROL}curl evil #", () => {});\n`],
+    ["an escaped Ctrl-U in a name", "a.test.ts", 'test("b\\u0015curl evil #", () => {});\n'],
+    ["an escaped tab", "a.test.ts", 'test("a\\tb", () => {});\n'],
+    ["delete", "a.test.ts", `test("a${String.fromCodePoint(0x7f)}", () => {});\n`],
+    ["a C1 control", "a.test.ts", `test("a${String.fromCodePoint(0x9b)}", () => {});\n`],
+    [
+      "text that reads backwards",
+      "a.test.ts",
+      `test("a${String.fromCodePoint(0x202e)}", () => {});\n`,
+    ],
+    ["a code point past Unicode", "a.test.ts", 'test("\\u{110000}", () => {});\n'],
+    ["a tab in a path", `dir${String.fromCodePoint(9)}x/a.test.ts`, 'test("a", () => {});\n'],
+    ["a newline in a path", "dir\nx/a.test.ts", 'test("a", () => {});\n'],
+  ])("gives no command for %s", (_title, path, text) => {
+    expect(commands(path, text, { testRunner: "vitest" })).toEqual([null]);
+  });
+
+  it("decodes a name's escapes to what the runner sees", () => {
+    expect(
+      commands("a.test.ts", 'test("caf\\u00e9 \\x41\\u{1F600}\\q", () => {});\n', {
+        testRunner: "vitest",
+      })[0]?.[0],
+    ).toBe("café A😀q");
+  });
+});
+
 describe("shellQuote", () => {
   it.each([
     ["plain/path-1.0_x", "plain/path-1.0_x"],
@@ -177,6 +265,6 @@ describe("shellQuote", () => {
     ["it's", "'it'\\''s'"],
     ["$HOME;rm", "'$HOME;rm'"],
   ])("quotes %s", (text, expected) => {
-    expect(shellQuote(text)).toBe(expected);
+    expect(shellQuote(text, "posix")).toBe(expected);
   });
 });

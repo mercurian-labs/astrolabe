@@ -1,4 +1,4 @@
-import { shellQuote } from "./command.ts";
+import { isRunnableText, type ShellFamily, shellQuote } from "./command.ts";
 import type { RunKind } from "./detect.ts";
 
 /**
@@ -45,7 +45,11 @@ function folderWithin(checkout: string, folder: string): string | null {
 }
 
 /** `experimental/runnables`' answer; those with no place in the file aren't a marker's. */
-export function rustRunnables(answer: Json, checkout: string): readonly RustRunnable[] {
+export function rustRunnables(
+  answer: Json,
+  checkout: string,
+  shell: ShellFamily,
+): readonly RustRunnable[] {
   if (!Array.isArray(answer)) return [];
   return answer.flatMap((runnable: Json): RustRunnable[] => {
     const { args, location, label } = runnable ?? {};
@@ -59,6 +63,9 @@ export function rustRunnables(answer: Json, checkout: string): readonly RustRunn
     const words = (args.cargoArgs as ReadonlyArray<unknown>).map(String);
     const after = Array.isArray(args.executableArgs) ? args.executableArgs.map(String) : [];
     const program = typeof args.overrideCargo === "string" ? args.overrideCargo : "cargo";
+    const typed = [String(label), directory, program, ...words, ...after];
+    if (!typed.every((text) => isRunnableText(text, shell))) return [];
+    const quote = (text: string) => shellQuote(text, shell);
     return [
       {
         at,
@@ -69,8 +76,8 @@ export function rustRunnables(answer: Json, checkout: string): readonly RustRunn
             ? String(label).replace(/^run/, "Run")
             : String(label).replace(matched[0], ""),
         command: [
-          ...[program, ...words].map(shellQuote),
-          ...(after.length > 0 ? ["--", ...after.map(shellQuote)] : []),
+          ...[program, ...words].map(quote),
+          ...(after.length > 0 ? ["--", ...after.map(quote)] : []),
         ].join(" "),
         directory,
       },

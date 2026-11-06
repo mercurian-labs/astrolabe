@@ -51,6 +51,7 @@ import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ContentModified, RequestCancelled } from "./connection.ts";
 import * as LanguageServers from "./LanguageServers.ts";
+import { readRunTools } from "./runContext.ts";
 import type { LanguageServerSpec, ReleaseAsset, ReleaseSource } from "./registry.ts";
 
 const FAKE_SERVER = NodeURL.fileURLToPath(
@@ -1295,6 +1296,19 @@ describe("LanguageServers", () => {
           buildTool: "gradle",
           buildCommand: "../../gradlew",
         });
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("names Windows wrappers as Windows runs them", () =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* checkout.write("pom.xml", "<project/>");
+        yield* checkout.write("mvnw.cmd", "");
+        yield* checkout.write("mod/build.gradle", "");
+        yield* checkout.write("gradlew.bat", "");
+        const tools = (path: string) => readRunTools(checkout.cwd, path, "win32");
+        expect(yield* tools("src/A.java")).toMatchObject({ buildCommand: ".\\mvnw.cmd" });
+        expect(yield* tools("mod/src/A.java")).toMatchObject({ buildCommand: "..\\gradlew.bat" });
       }).pipe(Effect.scoped, Effect.provide(layerFor())),
     );
 

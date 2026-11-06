@@ -7,11 +7,15 @@ import type { Detected, DetectedFile, RunKind } from "./detect.ts";
 
 export type TestRunner = "vitest" | "jest" | "node" | "vp";
 
+/** How the environment's terminals read a line: fish and PowerShell differ from POSIX. */
+export type ShellFamily = "posix" | "fish" | "powershell" | "cmd";
+
 /** The environment's `languageServers.runContext`, for what a command is built from. */
 export interface RunContext {
   /** The nearest manifest's folder, within the checkout; "" at its root. */
   readonly root: string;
   readonly python: string;
+  readonly shell: ShellFamily;
   readonly testRunner: TestRunner | null;
   /** What runs a package's own binary: "npx", "pnpm exec". */
   readonly packageRunner: string;
@@ -29,10 +33,33 @@ export interface RunTarget {
   readonly directory: string;
 }
 
-/** `text` as one word to a POSIX shell. PowerShell reads a single-quoted word the same way. */
-export function shellQuote(text: string): string {
-  return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replaceAll("'", `'\\''`)}'`;
+// A command reaches an interactive shell, whose line editor acts on keys before any parsing:
+// Ctrl-U erases what was typed, Tab completes. Invisible text would make what's shown a lie.
+const NOT_TYPED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+// cmd has no quote that keeps a double quote or a %VARIABLE% literal.
+const NOT_QUOTABLE_IN_CMD = /["%]/;
+
+/** Whether `text` can go on a command line as text, under `shell`. */
+export const isRunnableText = (text: string, shell: ShellFamily) =>
+  !NOT_TYPED.test(text) && !(shell === "cmd" && NOT_QUOTABLE_IN_CMD.test(text));
+
+/** `text` as one word to `shell`. Text `isRunnableText` refuses has no safe form in cmd. */
+export function shellQuote(text: string, shell: ShellFamily): string {
+  switch (shell) {
+    case "posix":
+      return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replaceAll("'", `'\\''`)}'`;
+    case "fish":
+      // Unlike POSIX, fish reads \\ and \' inside single quotes.
+      return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replace(/[\\']/g, "\\$&")}'`;
+    case "powershell":
+      // A bare word that starts with a dash splits at its first dot.
+      return /^[\w./\\:][\w./\\:-]*$/.test(text) ? text : `'${text.replaceAll("'", "''")}'`;
+    case "cmd":
+      return /^[\w@+=:,./\\-]+$/.test(text) ? text : `"${text}"`;
+  }
 }
+
+type Quote = (text: string) => string;
 
 /** Test names are read as regular expressions by every runner's name filter. */
 const escapePattern = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -45,39 +72,41 @@ function within(root: string, path: string): string | null {
 
 const folderOf = (path: string) => path.slice(0, Math.max(path.lastIndexOf("/"), 0));
 
-function rustCommand(item: Detected, relative: string): string {
+function rustCommand(item: Detected, relative: string, quote: Quote): string {
   const name = item.names.join("::");
   const bin = /^src\/bin\/(?:([^/]+)\/main|([^/]+))\.rs$/.exec(relative);
   const binName = bin?.[1] ?? bin?.[2];
   if (item.kind === "main") {
-    if (binName !== undefined) return `cargo run --bin ${shellQuote(binName)}`;
+    if (binName !== undefined) return `cargo run --bin ${quote(binName)}`;
     const example = /^examples\/([^/]+)\.rs$/.exec(relative)?.[1];
-    return example === undefined ? "cargo run" : `cargo run --example ${shellQuote(example)}`;
+    return example === undefined ? "cargo run" : `cargo run --example ${quote(example)}`;
   }
   const target = /^tests\/([^/]+)\.rs$/.exec(relative)?.[1];
   const scope =
     target !== undefined
-      ? ` --test ${shellQuote(target)}`
+      ? ` --test ${quote(target)}`
       : binName !== undefined
-        ? ` --bin ${shellQuote(binName)}`
+        ? ` --bin ${quote(binName)}`
         : "";
-  return `cargo ${item.kind === "benchmark" ? "bench" : "test"}${scope} ${shellQuote(name)}`;
+  return `cargo ${item.kind === "benchmark" ? "bench" : "test"}${scope} ${quote(name)}`;
 }
 
-function goCommand(item: Detected, relative: string): string {
+function goCommand(item: Detected, relative: string, quote: Quote): string {
   const folder = folderOf(relative);
   const pkg = folder === "" ? "." : `./${folder}`;
   const name = item.names.at(-1)!;
-  if (item.kind === "main") return `go run ${pkg}`;
+  if (item.kind === "main") return `go run ${quote(pkg)}`;
   return item.kind === "benchmark"
-    ? `go test -run '^$' -bench ${shellQuote(`^${name}$`)} ${pkg}`
-    : `go test -run ${shellQuote(`^${name}$`)} ${pkg}`;
+    ? `go test -run ${quote("^$")} -bench ${quote(`^${name}$`)} ${quote(pkg)}`
+    : `go test -run ${quote(`^${name}$`)} ${quote(pkg)}`;
 }
 
-function pythonCommand(item: Detected, relative: string, context: RunContext): string {
-  const python = shellQuote(context.python);
-  if (item.kind === "main") return `${python} ${shellQuote(relative)}`;
-  return `${python} -m pytest ${shellQuote([relative, ...item.names].join("::"))}`;
+function pythonCommand(item: Detected, relative: string, context: RunContext, quote: Quote) {
+  const quoted = quote(context.python);
+  // A quoted path is a string to PowerShell until `&` says to run it.
+  const python = context.shell === "powershell" && quoted.startsWith("'") ? `& ${quoted}` : quoted;
+  if (item.kind === "main") return `${python} ${quote(relative)}`;
+  return `${python} -m pytest ${quote([relative, ...item.names].join("::"))}`;
 }
 
 function javaScriptCommand(
@@ -85,10 +114,11 @@ function javaScriptCommand(
   relative: string,
   file: DetectedFile,
   context: RunContext,
+  quote: Quote,
 ): string | null {
   const runner = file.nodeTest ? "node" : context.testRunner;
-  const target = shellQuote(relative);
-  const pattern = shellQuote(escapePattern(item.names.join(" ")));
+  const target = quote(relative);
+  const pattern = quote(escapePattern(item.names.join(" ")));
   switch (runner) {
     case "vitest":
       return `${context.packageRunner} vitest run ${target} -t ${pattern}`;
@@ -96,27 +126,36 @@ function javaScriptCommand(
       return `${context.packageRunner} jest ${target} -t ${pattern}`;
     case "vp":
       return `vp test run ${target} -t ${pattern}`;
-    case "node":
+    case "node": {
       // Node matches each test by itself, not by its describes' names before it.
-      return `node --test --test-name-pattern=${shellQuote(escapePattern(item.names.at(-1)!))} ${target}`;
+      const own = escapePattern(item.names.at(-1)!);
+      return `node --test ${quote(`--test-name-pattern=${own}`)} ${target}`;
+    }
     case null:
       return null;
   }
 }
 
-function javaCommand(item: Detected, relative: string, context: RunContext): string | null {
+function javaCommand(
+  item: Detected,
+  relative: string,
+  context: RunContext,
+  quote: Quote,
+): string | null {
   const [owner, method] = item.names;
   const { buildCommand: tool, buildTool } = context;
   if (item.kind === "main") {
-    if (buildTool === "maven") return `${tool} compile exec:java -Dexec.mainClass=${owner}`;
-    return buildTool === "gradle" ? `${tool} run` : `java ${shellQuote(relative)}`;
+    if (buildTool === "maven") {
+      return `${tool} compile exec:java ${quote(`-Dexec.mainClass=${owner}`)}`;
+    }
+    return buildTool === "gradle" ? `${tool} run` : `java ${quote(relative)}`;
   }
   if (buildTool === "maven") {
-    return `${tool} test -Dtest=${shellQuote(method === undefined ? owner! : `${owner}#${method}`)}`;
+    return `${tool} test ${quote(`-Dtest=${method === undefined ? owner : `${owner}#${method}`}`)}`;
   }
   if (buildTool === "gradle") {
     const name = method === undefined ? owner! : `${owner}.${method}`;
-    return `${tool} test --tests ${shellQuote(name)}`;
+    return `${tool} test --tests ${quote(name)}`;
   }
   return null;
 }
@@ -139,14 +178,17 @@ export function runTargetFor(
 ): RunTarget | null {
   const relative = within(context.root, path);
   if (relative === null) return null;
+  const runnable = (text: string) => isRunnableText(text, context.shell);
+  if (!item.names.every(runnable) || !runnable(path)) return null;
+  const quote: Quote = (text) => shellQuote(text, context.shell);
   const command = {
-    rust: () => rustCommand(item, relative),
-    go: () => goCommand(item, relative),
-    python: () => pythonCommand(item, relative, context),
-    javascript: () => javaScriptCommand(item, relative, file, context),
-    java: () => javaCommand(item, relative, context),
+    rust: () => rustCommand(item, relative, quote),
+    go: () => goCommand(item, relative, quote),
+    python: () => pythonCommand(item, relative, context, quote),
+    javascript: () => javaScriptCommand(item, relative, file, context, quote),
+    java: () => javaCommand(item, relative, context, quote),
   }[file.language]();
-  if (command === null) return null;
+  if (command === null || NOT_TYPED.test(command)) return null;
   return {
     kind: item.kind,
     name: tabName(item, file, path),

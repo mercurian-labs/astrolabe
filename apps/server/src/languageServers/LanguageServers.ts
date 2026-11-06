@@ -72,6 +72,7 @@ import * as NodeURL from "node:url";
 
 import * as ServerConfig from "../config.ts";
 import * as Documents from "../documents/Documents.ts";
+import { terminalShellFamily } from "../terminal/Manager.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import {
@@ -2123,13 +2124,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     if (path.isAbsolute(relativePath) || relativePath.split("/").includes("..")) {
       return yield* failure("unsupported", "That file is not in this checkout.");
     }
+    const { platform, environment } = installer;
+    const shell = yield* terminalShellFamily(platform, environment);
     if (!(yield* isTrusted(cwd))) {
-      return { ...NO_RUN_TOOLS, trusted: false, python: installer.pythonOnPath };
+      return { ...NO_RUN_TOOLS, trusted: false, python: installer.pythonOnPath, shell };
     }
-    const tools = yield* readRunTools(cwd, relativePath);
+    const tools = yield* readRunTools(cwd, relativePath, platform);
     const selected = settings.get().toolchains[cwd]?.python ?? null;
     const python = yield* installer.activePython(cwd, selected);
-    return { ...tools, trusted: true, python: python ?? installer.pythonOnPath };
+    return { ...tools, trusted: true, python: python ?? installer.pythonOnPath, shell };
   }, Effect.provideContext(processServices));
 
   /** What one change reaches: the checkouts whose servers or routes may differ after it. */

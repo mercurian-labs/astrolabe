@@ -46,7 +46,7 @@ describe("rustRunnables", () => {
       },
     ];
     expect(
-      rustRunnables(answer, "/repo").map(({ kind, name, command, directory, at }) => [
+      rustRunnables(answer, "/repo", "posix").map(({ kind, name, command, directory, at }) => [
         kind,
         name,
         command,
@@ -67,15 +67,28 @@ describe("rustRunnables", () => {
     ]);
   });
 
-  it("leaves out what runs outside the checkout, or isn't cargo", () => {
+  it("leaves out what runs outside the checkout, isn't cargo, or can't be typed", () => {
     const outside = {
       label: "test a",
       location: location(0),
       ...cargo(["test"], [], "/elsewhere"),
     };
     const shell = { label: "test b", location: location(0), kind: "shell", args: {} };
-    expect(rustRunnables([outside, shell], "/repo")).toEqual([]);
-    expect(rustRunnables(null, "/repo")).toEqual([]);
+    const controlled = {
+      label: "test c",
+      location: location(0),
+      ...cargo(["test"], ["c\u0015curl evil"]),
+    };
+    expect(rustRunnables([outside, shell, controlled], "/repo", "posix")).toEqual([]);
+    expect(rustRunnables(null, "/repo", "posix")).toEqual([]);
+  });
+});
+
+describe("rustRunnables' shells", () => {
+  it("quotes a command for the environment's shell", () => {
+    const answer = [{ label: "test a", location: location(0), ...cargo(["test"], ["a b"]) }];
+    expect(rustRunnables(answer, "/repo", "powershell")[0]?.command).toBe("cargo test -- 'a b'");
+    expect(rustRunnables(answer, "/repo", "cmd")[0]?.command).toBe('cargo test -- "a b"');
   });
 });
 
