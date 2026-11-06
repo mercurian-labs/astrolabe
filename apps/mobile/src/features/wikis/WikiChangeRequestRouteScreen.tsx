@@ -45,6 +45,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { wikiEnvironment } from "../../state/wiki";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { WikiDraftSheet } from "./document/WikiDraftBar";
 import type { WikiChangeRequestParams } from "./wikiRoutes";
 
 const STATUS_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
@@ -100,6 +101,10 @@ export function WikiChangeRequestRouteScreen({
   const merge = useWikiAction(wikiEnvironment.merge);
   const setStatus = useWikiAction(wikiEnvironment.setChangeRequestStatus);
   const [busy, setBusy] = useState(false);
+  const [draftActions, setDraftActions] = useState(false);
+  const list = useEnvironmentQuery(
+    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
 
   const act = async (run: () => Promise<string | null>, failureTitle: string) => {
     setBusy(true);
@@ -168,7 +173,14 @@ export function WikiChangeRequestRouteScreen({
       <NativeStackScreenOptions
         options={{
           title: "Change request",
-          unstable_headerSubtitle: [wikiName, STATUS_LABEL[changeRequest.status]]
+          unstable_headerSubtitle: [
+            wikiName,
+            changeRequest.draft
+              ? open
+                ? "Draft"
+                : "Discarded draft"
+              : STATUS_LABEL[changeRequest.status],
+          ]
             .filter(Boolean)
             .join(" · "),
         }}
@@ -181,7 +193,12 @@ export function WikiChangeRequestRouteScreen({
           accessibilityLabel="Change request actions"
           disabled={busy}
         >
-          {open ? (
+          {open && changeRequest.draft ? (
+            <Toolbar.MenuAction icon="square.and.pencil" onPress={() => setDraftActions(true)}>
+              <Toolbar.Label>Make it a change request, move or discard</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ) : null}
+          {open && !changeRequest.draft ? (
             <Toolbar.MenuAction
               icon={PullRequestGlyph.merged}
               disabled={blocked !== null}
@@ -191,7 +208,7 @@ export function WikiChangeRequestRouteScreen({
               <Toolbar.Label>Merge into main</Toolbar.Label>
             </Toolbar.MenuAction>
           ) : null}
-          {open ? (
+          {open && !changeRequest.draft ? (
             <Toolbar.MenuAction
               icon="xmark.circle"
               disabled={!canSetStatus}
@@ -204,7 +221,8 @@ export function WikiChangeRequestRouteScreen({
             >
               <Toolbar.Label>Close</Toolbar.Label>
             </Toolbar.MenuAction>
-          ) : changeRequest.status === "closed" ? (
+          ) : null}
+          {changeRequest.status === "closed" ? (
             <Toolbar.MenuAction
               icon="arrow.uturn.backward.circle"
               disabled={!canSetStatus}
@@ -330,6 +348,14 @@ export function WikiChangeRequestRouteScreen({
           )}
         </Section>
       </ScrollView>
+      {draftActions ? (
+        <WikiDraftSheet
+          environmentId={environmentId}
+          draft={changeRequest}
+          changeRequests={list.data?.changeRequests ?? []}
+          onClose={() => setDraftActions(false)}
+        />
+      ) : null}
     </View>
   );
 }

@@ -32,6 +32,15 @@ describe("wikiDocumentSubtitle", () => {
     ).toBe("almagest · In “Grow Atlas” · agent working");
     expect(
       wikiDocumentSubtitle({
+        wikiName: "almagest",
+        changeRequest: { title: "Edit Atlas", draft: true },
+        readsChangeRequest: true,
+        agentWorking: false,
+        saving: "Saving…",
+      }),
+    ).toBe("almagest · In your draft · Saving…");
+    expect(
+      wikiDocumentSubtitle({
         wikiName: null,
         changeRequest: null,
         readsChangeRequest: true,

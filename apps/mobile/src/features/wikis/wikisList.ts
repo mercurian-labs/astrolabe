@@ -9,13 +9,15 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 /**
  * Astrolabe: the Wikis tab and the Change requests tab's wiki group, each one flat list laid out
- * as the thread list is. Wikis lists the documents, with a first row counting the open change
- * requests that leads to them; Change requests lists the open ones under a section label, then a
- * folded shelf of the merged and closed.
+ * as the thread list is. Wikis lists the documents, with first rows for the person's drafts and
+ * counting the open change requests that leads to them; Change requests lists drafts and the open
+ * ones under section labels, then a folded shelf of the merged and closed.
  */
 export type WikiListItem =
   | { readonly type: "section"; readonly key: string; readonly label: string }
   | { readonly type: "changes-link"; readonly key: string; readonly count: number }
+  /** A wiki's draft, apart from the change requests. */
+  | { readonly type: "draft-link"; readonly key: string; readonly entry: WikiChangeEntry }
   | {
       readonly type: "settled-shelf";
       readonly key: string;
@@ -45,9 +47,13 @@ function withDividers(items: WikiListItem[]): WikiListItem[] {
   });
 }
 
-/** The Wikis tab: a row counting the open changes, when there are any, then the documents. */
+/** The Wikis tab: the drafts, a row counting the open changes, when there are any, then the documents. */
 export function buildWikiListItems(entries: WikiListEntries): WikiListItem[] {
-  const items: WikiListItem[] = [];
+  const items: WikiListItem[] = entries.drafts.map((entry) => ({
+    type: "draft-link",
+    key: `draft:${entry.key}`,
+    entry,
+  }));
   if (entries.changes.length > 0) {
     items.push({ type: "changes-link", key: "changes-link", count: entries.changes.length });
   }
@@ -76,8 +82,20 @@ export function buildWikiChangeItems(
     entry,
     showTrailingDivider: false,
   });
-  if (entries.changes.length === 0 && entries.settled.length === 0) return [];
+  if (entries.drafts.length === 0 && entries.changes.length === 0 && entries.settled.length === 0) {
+    return [];
+  }
   const items: WikiListItem[] = [
+    ...(entries.drafts.length > 0
+      ? [
+          {
+            type: "section" as const,
+            key: "section:drafts",
+            label: `Your drafts · ${entries.drafts.length}`,
+          },
+          ...entries.drafts.map(change),
+        ]
+      : []),
     { type: "section", key: "section:changes", label: `Wiki changes · ${entries.changes.length}` },
     ...entries.changes.map(change),
   ];
@@ -135,7 +153,9 @@ export function wikiDocumentFooter(entry: WikiDocumentEntry): {
       text:
         entry.changes.length > 1
           ? `In ${entry.changes.length} open changes`
-          : `In “${first.title}”`,
+          : first.draft
+            ? "In your draft"
+            : `In “${first.title}”`,
     };
   }
   if (entry.base) return { inChange: false, text: "Base · read only" };
@@ -158,8 +178,12 @@ export function wikiChangeFooter(entry: WikiChangeEntry): {
     changeRequest.status === "merged"
       ? "Merged"
       : changeRequest.status === "closed"
-        ? "Closed"
-        : null;
+        ? changeRequest.draft
+          ? "Discarded draft"
+          : "Closed"
+        : changeRequest.draft
+          ? "Draft"
+          : null;
   return {
     summary: [
       status,

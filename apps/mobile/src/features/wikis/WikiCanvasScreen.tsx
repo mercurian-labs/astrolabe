@@ -16,8 +16,11 @@ import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import {
   changeRequestCanvasReview,
   documentTitle,
+  filesHoldDocument,
   wikiDocumentName,
   wikiDocumentNames,
+  wikiDocumentScope,
+  wikiDraft,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
@@ -42,6 +45,7 @@ import { fileRoutePathSegments } from "../files/filePath";
 import { useEditorTheme } from "./document/useEditorTheme";
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
+import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiCanvasChanges } from "./WikiCanvasChanges";
 import type { WikiDocumentParams } from "./wikiRoutes";
@@ -85,7 +89,17 @@ export function WikiCanvasScreen({
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
   const file = params.name;
-  const changeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const changeRequests = useEnvironmentQuery(
+    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
+  const all = changeRequests.data?.changeRequests;
+  const draft = wikiDraft(all);
+  const changeRequestId = wikiDocumentScope({
+    tabChangeRequestId: routeChangeRequestId,
+    draft,
+    name: file,
+  });
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const title = documentTitle(cardFileName(file));
 
@@ -96,14 +110,9 @@ export function WikiCanvasScreen({
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const changeRequests = useEnvironmentQuery(
-    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
-  );
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
   const viewing =
-    changeRequests.data?.changeRequests.find(
-      (changeRequest) => changeRequest.changeRequestId === changeRequestId,
-    ) ?? null;
+    all?.find((changeRequest) => changeRequest.changeRequestId === changeRequestId) ?? null;
 
   const read = query.data?.files[0];
   const text = read?.text ?? null;
@@ -426,6 +435,19 @@ export function WikiCanvasScreen({
             ))}
           </Toolbar.Menu>
         </Toolbar>
+      ) : null}
+      {draft !== null &&
+      review === undefined &&
+      (routeChangeRequestId === undefined || viewing?.draft) ? (
+        <WikiDraftBar
+          environmentId={environmentId}
+          draft={draft}
+          changeRequests={all ?? []}
+          onLanded={(id, files) => {
+            // The document on screen follows where its edits went.
+            if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
+          }}
+        />
       ) : null}
       {body()}
       <WikiBaseQueries

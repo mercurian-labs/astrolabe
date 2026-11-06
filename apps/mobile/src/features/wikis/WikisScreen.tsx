@@ -5,8 +5,10 @@ import {
   searchWikiListEntries,
   wikiListEntries,
   wikiScopeKey,
+  type WikiChangeEntry,
   type WikiDocumentEntry,
 } from "@t3tools/client-runtime/wikiList";
+import { draftLabel } from "@t3tools/client-runtime/wikiLogic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
@@ -109,6 +111,17 @@ export function WikisScreen() {
     },
     [navigation],
   );
+  const openDraft = useCallback(
+    (entry: WikiChangeEntry) => {
+      Keyboard.dismiss();
+      navigation.navigate("WikiChangeRequest", {
+        environmentId: String(entry.environmentId),
+        wikiId: String(entry.wiki.wikiId),
+        changeRequestId: String(entry.changeRequest.changeRequestId),
+      });
+    },
+    [navigation],
+  );
   // Change requests are the Change requests tab's; this row leads there.
   const setChangeRequestKind = useAtomSet(changeRequestProjectKindAtom);
   const setChangeRequestWikiScope = useAtomSet(changeRequestWikiScopeAtom);
@@ -148,6 +161,22 @@ export function WikisScreen() {
               <SymbolView name="chevron.right" size={13} tintColorClassName="accent-icon" />
             </Pressable>
           );
+        case "draft-link":
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={draftLabel(item.entry.changeRequest)}
+              accessibilityHint="Opens your draft."
+              onPress={() => openDraft(item.entry)}
+              className="flex-row items-center gap-2 px-4 py-3 active:opacity-60"
+            >
+              <SymbolView name="square.and.pencil" size={15} tintColorClassName="accent-icon" />
+              <Text className="flex-1 text-sm font-t3-medium text-foreground-muted">
+                {draftLabel(item.entry.changeRequest)}
+              </Text>
+              <SymbolView name="chevron.right" size={13} tintColorClassName="accent-icon" />
+            </Pressable>
+          );
         case "settled-shelf":
         case "section":
         case "change":
@@ -162,7 +191,7 @@ export function WikisScreen() {
           );
       }
     },
-    [openDocument, openChanges],
+    [openDocument, openDraft, openChanges],
   );
 
   const previousSearchMode = useRef(tab.searchMode);

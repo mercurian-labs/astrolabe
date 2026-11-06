@@ -75,20 +75,6 @@ export const wikiDocumentNames = (
   ...index.bases.map((base) => base.file),
 ];
 
-/**
- * Where an edit is saved by default: the change request the page reads from when it is open,
- * else a new one.
- */
-export function defaultSaveTarget(
-  openChangeRequests: ReadonlyArray<Pick<WikiChangeRequest, "changeRequestId">>,
-  viewing: WikiChangeRequestId | undefined,
-): WikiChangeRequestId | null {
-  if (viewing === undefined) return null;
-  return openChangeRequests.some((changeRequest) => changeRequest.changeRequestId === viewing)
-    ? viewing
-    : null;
-}
-
 /** Everything a change request's amendments touch, in the order they did. */
 export const changeRequestFiles = (
   changeRequest: Pick<WikiChangeRequest, "amendments">,
@@ -286,23 +272,4 @@ export function authorColor(name: string): string {
     hash = (hash * 31 + name.charCodeAt(index)) >>> 0;
   }
   return AUTHOR_COLORS[hash % AUTHOR_COLORS.length]!;
-}
-
-/** A save waiting for the turn of the change request's thread to end. */
-export interface QueuedWikiSave {
-  readonly changeRequestId: WikiChangeRequestId;
-  readonly message: string;
-}
-
-/**
- * What a queued save does now: wait while the turn runs, commit once it ended, nothing when no
- * save is queued or one is already being committed.
- */
-export function queuedSaveStep(input: {
-  readonly queued: QueuedWikiSave | null;
-  readonly turnRunning: boolean;
-  readonly committing: boolean;
-}): "idle" | "wait" | "commit" {
-  if (input.queued === null || input.committing) return "idle";
-  return input.turnRunning ? "wait" : "commit";
 }

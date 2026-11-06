@@ -95,6 +95,25 @@ describe("the Wikis list", () => {
     ).toEqual([true, true, false]);
   });
 
+  it("puts a wiki's draft first, and lists it apart in Change requests", () => {
+    const draft = {
+      ...overviews[0]!.changeRequests![0]!,
+      changeRequestId: "cr-draft",
+      title: "Edit Old",
+      draft: true,
+    } as WikiChangeRequest;
+    const entries = wikiListEntries(
+      [{ ...overviews[0]!, changeRequests: [...overviews[0]!.changeRequests!, draft] }],
+      null,
+    );
+    expect(buildWikiListItems(entries)[0]).toMatchObject({ type: "draft-link" });
+    expect(
+      buildWikiChangeItems(entries, { settledExpanded: false }).flatMap((item) =>
+        item.type === "section" ? [item.label] : [],
+      ),
+    ).toEqual(["Your drafts · 1", "Wiki changes · 1"]);
+  });
+
   it("lists a canvas as a document", () => {
     const withCanvas: WikiOverview = {
       ...overviews[0]!,

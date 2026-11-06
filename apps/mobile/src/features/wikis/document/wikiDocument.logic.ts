@@ -6,16 +6,20 @@ import { authorColor, latestAmendmentFor, PERSON_ACTOR } from "@t3tools/client-r
 export function wikiDocumentSubtitle(input: {
   readonly wikiName: string | null;
   /** The change request the document is read inside; null reads main. */
-  readonly changeRequest: Pick<WikiChangeRequest, "title"> | null;
+  readonly changeRequest: (Pick<WikiChangeRequest, "title"> & { readonly draft?: boolean }) | null;
   readonly readsChangeRequest: boolean;
   readonly agentWorking: boolean;
+  /** How the edits stand, when they stand anywhere worth saying. */
+  readonly saving?: string | null;
 }): string {
   const scope = !input.readsChangeRequest
     ? "Main"
-    : input.changeRequest
-      ? `In “${input.changeRequest.title}”`
-      : "In a change request";
-  return [input.wikiName, scope, input.agentWorking ? "agent working" : null]
+    : input.changeRequest?.draft
+      ? "In your draft"
+      : input.changeRequest
+        ? `In “${input.changeRequest.title}”`
+        : "In a change request";
+  return [input.wikiName, scope, input.agentWorking ? "agent working" : null, input.saving ?? null]
     .filter((part): part is string => part !== null && part.length > 0)
     .join(" · ");
 }
