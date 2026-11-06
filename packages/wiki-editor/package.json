@@ -37,6 +37,10 @@
       "types": "./src/CanvasBoard.tsx",
       "default": "./src/CanvasBoard.tsx"
     },
+    "./canvas-export": {
+      "types": "./src/CanvasExportDialog.tsx",
+      "default": "./src/CanvasExportDialog.tsx"
+    },
     "./canvas-document": {
       "types": "./src/canvasDocument.ts",
       "default": "./src/canvasDocument.ts"

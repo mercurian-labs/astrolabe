@@ -148,7 +148,6 @@ type Session =
       draft: SVGPathElement | null;
       hidden: HTMLElement | SVGElement | null;
     }
-  | { readonly kind: "handle-click"; readonly card: string; readonly handle: CanvasHandle }
   | { readonly kind: "none" };
 
 interface Press {

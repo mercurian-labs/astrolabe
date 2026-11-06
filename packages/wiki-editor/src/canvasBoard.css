@@ -583,6 +583,16 @@ span.cv-wikilink {
   cursor: default;
   -webkit-touch-callout: none;
 }
+/* A press on a selected card drags it: reading its text is what a read-only board is for. */
+.cv-board[data-editable] .cv-card-content[data-live] {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cv-board[data-editable] .cv-card-editor {
+  user-select: text;
+  -webkit-user-select: text;
+}
 .cv-board[data-editable].cv-moving {
   cursor: grabbing;
 }

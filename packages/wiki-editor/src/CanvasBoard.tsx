@@ -62,7 +62,6 @@ import {
   type CanvasPromptRequest,
 } from "./canvasCommands";
 import type { CanvasDocument, CanvasDocumentState } from "./canvasDocument";
-import { CanvasExportDialog } from "./CanvasExportDialog";
 import {
   CanvasGestures,
   NO_SELECTION,
@@ -176,8 +175,8 @@ export interface CanvasBoardHost
   readonly draggedFiles?: () => ReadonlyArray<string> | null;
   /** The leader key, tapped on the board. */
   readonly onLeaderKey?: () => boolean;
-  /** Image export: left out where a platform can't save one. */
-  readonly canExport?: boolean;
+  /** Image export's dialog: left out where a platform can't save one. */
+  readonly renderExportDialog?: (dialog: CanvasExportRequest) => ReactNode;
   /** Whether a finger drives this board. */
   readonly touch?: boolean;
 }
@@ -189,6 +188,14 @@ export interface CanvasCardEditor {
   /** Leaves editing, as Escape does. */
   readonly onExit: () => void;
   readonly file: string | undefined;
+}
+
+/** What an export is of. */
+export interface CanvasExportRequest {
+  readonly data: CanvasData;
+  readonly viewport: CanvasBounds;
+  readonly name: string;
+  readonly onClose: () => void;
 }
 
 /** A board's settings: the Wikis page's, and the board's own menu writes back. */
@@ -1054,6 +1061,7 @@ class BoardLive {
   selecting = false;
   revision: string | undefined = undefined;
   editing: CanvasEditing | null = null;
+  openMenu: OpenMenu | null = null;
   readAt: string | undefined = undefined;
   openingCamera: CanvasCamera | null | undefined;
   onCamera: ((camera: CanvasCamera | null) => void) | undefined = undefined;
@@ -1288,6 +1296,12 @@ export function CanvasBoard({
   });
 
   const closeEditing = useCallback(() => {
+    // A label commits as it blurs, which it wouldn't get to do if it just went.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.matches(".cv-label-editor")) {
+      active.blur();
+      return;
+    }
     live.canvasDocument?.finishTyping();
     setEditing(null);
     boardRef.current?.focus({ preventScroll: true });
@@ -1426,6 +1440,7 @@ export function CanvasBoard({
         },
         openMenu: (clientX, clientY, target) => live.openBoardMenu(clientX, clientY, target),
         closeOverlays: () => {
+          live.openMenu?.onClose?.();
           setMenu(null);
           setPopover(null);
           if (live.editing !== null) live.closeEditing();
@@ -1491,6 +1506,7 @@ export function CanvasBoard({
       selecting,
       revision,
       editing,
+      openMenu: menu,
       onSettings,
       onReadOnly,
       openBoardMenu,
@@ -1724,6 +1740,7 @@ export function CanvasBoard({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (editingTyping(event.target)) return;
+    if ((event.target as Element).closest(".cv-chrome") !== null) return;
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key;
     const canEdit = live.editable;
@@ -1731,7 +1748,6 @@ export function CanvasBoard({
     const arrow = arrows[key as keyof typeof arrows];
     const anything = selection.cards.size > 0 || selection.arrow !== null;
     if (key === " ") {
-      if ((event.target as Element).closest("button, .cv-chrome") !== null) return;
       if (!event.repeat) {
         live.update({ spaceHeld: true, spaceUsed: false });
         boardRef.current?.classList.add("cv-panning");
@@ -1857,7 +1873,7 @@ export function CanvasBoard({
 
   useRestoreFocus(
     useCallback(() => boardRef.current, []),
-    menu !== null || dialog !== null,
+    menu !== null || dialog !== null || selection.cards.size > 0 || selection.arrow !== null,
   );
 
   // What's selected can go in a commit from elsewhere: the toolbar goes with it.
@@ -2023,7 +2039,7 @@ export function CanvasBoard({
                       run: () => onSettings?.({ snapToObjects: !settings.snapToObjects }),
                     },
                     { label: "Read-only", checked: false, run: () => onReadOnly?.(true) },
-                    ...(host.canExport === true
+                    ...(host.renderExportDialog !== undefined
                       ? [
                           "separator" as const,
                           { label: "Export as image…", run: () => run("export-image") },
@@ -2118,15 +2134,14 @@ export function CanvasBoard({
         />
       ) : null}
       {dialog?.kind === "help" ? <CanvasHelp onClose={closeDialog} /> : null}
-      {dialog?.kind === "export" ? (
-        <CanvasExportDialog
-          data={data}
-          view={view}
-          name={label}
-          assetUrl={host.assetUrl}
-          onClose={closeDialog}
-        />
-      ) : null}
+      {dialog?.kind === "export"
+        ? host.renderExportDialog?.({
+            data,
+            viewport: view.window(),
+            name: label,
+            onClose: closeDialog,
+          })
+        : null}
     </div>
   );
 }

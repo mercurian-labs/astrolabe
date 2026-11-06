@@ -11,6 +11,7 @@ import {
   type CanvasMarks,
 } from "@mercurian/wiki/canvas";
 import { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
+import { CanvasExportDialog } from "@mercurian/wiki-editor/canvas-export";
 import { createRef, Profiler } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -786,6 +787,90 @@ describe("editing a board", () => {
     const card = canvas.getState().data.nodes.find((node) => node.type === "file")!;
     expect(card).toMatchObject({ file: "Taken 1.md", x: 0, y: 0, width: 200, height: 100 });
     expect(canvas.getState().data.edges[0]).toMatchObject({ id: "e", fromNode: card.id });
+  });
+
+  it("commits a label when the board is clicked, and a line left in space when a menu goes", async () => {
+    using _capture = setup();
+    const canvas = newCanvas(
+      [text("a", 0, 0), text("b", 500, 0)],
+      [{ id: "e", fromNode: "a", fromSide: "right", toNode: "b", toSide: "left" }],
+    );
+    await using _screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const hit = await vi.waitFor(() => {
+      const found = document.querySelector(".cv-edge-hit");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    click(hit, { x: 350, y: 50 });
+    click(hit, { x: 350, y: 50 });
+    const label = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLTextAreaElement>("textarea.cv-label-editor");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    await userEvent.fill(label, "one\ntwo");
+    click(board(), { x: 400, y: 500 });
+    await vi.waitFor(() =>
+      expect(canvas.getState().data.edges[0]).toMatchObject({ label: "one\ntwo" }),
+    );
+
+    const dot = element("a").querySelector("[data-side='bottom']")!;
+    drag(dot, { x: 100, y: 100 }, { x: 100, y: 150 }, { x: 100, y: 400 });
+    await vi.waitFor(() => expect(document.querySelector(".cv-edge-draft")).not.toBeNull());
+    await vi.waitFor(() => expect(document.querySelector(".cv-menu")).not.toBeNull());
+    click(board(), { x: 800, y: 600 });
+    await vi.waitFor(() => expect(document.querySelector(".cv-menu")).toBeNull());
+    expect(document.querySelector(".cv-edge-draft")).toBeNull();
+    expect(canvas.getState().data.edges).toHaveLength(1);
+  });
+
+  it("saves a PNG drawn from the data, with text obscured in privacy mode", async () => {
+    using _capture = setup();
+    using _click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockReturnValue();
+    const saved = vi.spyOn(URL, "createObjectURL");
+    const canvas = newCanvas([text("a", 0, 0, { color: "3" }), text("b", 400, 0)], []);
+    const host: CanvasBoardHost = {
+      renderExportDialog: (dialog) => <CanvasExportDialog {...dialog} assetUrl={undefined} />,
+    };
+    const handle = createRef<CanvasBoardHandle>();
+    await using _screen = await render(
+      <div style={{ width: 1000, height: 700 }}>
+        <CanvasBoard
+          ref={handle}
+          data={canvas.getState().data}
+          mode="free"
+          label="Board"
+          document={canvas}
+          host={host}
+        />
+      </div>,
+      { router: false },
+    );
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    handle.current?.run("export-image");
+    const dialog = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>(".cv-export");
+      expect(found?.textContent).toContain("680 × 180");
+      return found!;
+    });
+    await userEvent.click(dialog.querySelectorAll("input[type='checkbox']")[1]!);
+    await userEvent.click(dialog.querySelector("button[type='submit']")!);
+    await vi.waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    expect(saved.mock.calls[0]?.[0]).toMatchObject({ type: "image/png" });
+    await vi.waitFor(() => expect(document.querySelector(".cv-export")).toBeNull());
+  });
+
+  it("takes a selected card away with a commit that removed it", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0), text("b", 400, 0)]);
+    await using _screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    click(element("a"), { x: 50, y: 50 });
+    await vi.waitFor(() => expect(document.querySelector(".cv-toolbar")).not.toBeNull());
+    canvas.receive({ nodes: [text("b", 400, 0)], edges: [] }, "r1");
+    await vi.waitFor(() => expect(document.querySelector(".cv-toolbar")).toBeNull());
+    expect(document.querySelector("[data-selected]")).toBeNull();
   });
 
   it("drags on 5,000 cards without rendering or mounting anything", async () => {

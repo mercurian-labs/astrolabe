@@ -30,6 +30,11 @@ import { useWikiAutosaveCommand } from "./wikiEnvironment";
 import { WikiMermaid } from "./WikiMermaid";
 
 const WikiCanvasCardEditor = lazy(() => import("./WikiCanvasCardEditor"));
+const CanvasExportDialog = lazy(() =>
+  import("@mercurian/wiki-editor/canvas-export").then(({ CanvasExportDialog }) => ({
+    default: CanvasExportDialog,
+  })),
+);
 
 const QUIET_READ = { reportFailure: false, reportDefect: false };
 const QUIET_MINT = { ...QUIET_READ, refresh: true };
@@ -259,6 +264,10 @@ export function useWikiCanvasHost({
     draggedFiles: draggedWikiFiles,
     onLeaderKey: () =>
       document.activeElement !== null && openLeaderFrom(document.activeElement, " "),
-    canExport: true,
+    renderExportDialog: (dialog) => (
+      <Suspense fallback={null}>
+        <CanvasExportDialog {...dialog} assetUrl={assetUrl} />
+      </Suspense>
+    ),
   };
 }

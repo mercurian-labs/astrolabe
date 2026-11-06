@@ -492,12 +492,13 @@ export const CanvasEmptyHint = () => (
   </div>
 );
 
-/** Asks once, and gives focus back to the board when it goes. */
+/** When an overlay goes and takes the focused control with it, keys go back to the board. */
 export function useRestoreFocus(element: () => HTMLElement | null, open: boolean) {
   const wasOpen = useRef(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focus lives in the browser: keys go back to the board when an overlay closes
   useEffect(() => {
-    if (wasOpen.current && !open) element()?.focus({ preventScroll: true });
+    const dropped = document.activeElement === null || document.activeElement === document.body;
+    if (wasOpen.current && !open && dropped) element()?.focus({ preventScroll: true });
     wasOpen.current = open;
   }, [element, open]);
 }

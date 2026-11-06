@@ -1,6 +1,6 @@
-import type { CanvasData } from "@mercurian/wiki/canvas";
 import { useRef, useState } from "react";
 
+import type { CanvasExportRequest } from "./CanvasBoard";
 import {
   canvasExportArea,
   canvasExportSize,
@@ -8,7 +8,6 @@ import {
   loadExportImages,
   type CanvasExportColors,
 } from "./canvasExport";
-import type { CanvasView } from "./canvasView";
 
 function themeColors(element: Element): CanvasExportColors {
   const style = getComputedStyle(element);
@@ -25,16 +24,12 @@ function themeColors(element: Element): CanvasExportColors {
 /** Export as image: what it covers, how large, and whether it says what it says. */
 export function CanvasExportDialog({
   data,
-  view,
+  viewport,
   name,
   assetUrl,
   onClose,
-}: {
-  readonly data: CanvasData;
-  readonly view: CanvasView;
-  readonly name: string;
+}: CanvasExportRequest & {
   readonly assetUrl: ((path: string) => Promise<string | null>) | undefined;
-  readonly onClose: () => void;
 }) {
   const [area, setArea] = useState<"full" | "viewport">("full");
   const [zoom, setZoom] = useState(0);
@@ -43,7 +38,7 @@ export function CanvasExportDialog({
   const [saving, setSaving] = useState(false);
   const dialog = useRef<HTMLFormElement>(null);
   const empty = data.nodes.length === 0;
-  const bounds = canvasExportArea(data, view.window(), { area });
+  const bounds = canvasExportArea(data, viewport, { area });
   const { width, height } = canvasExportSize(bounds, zoom);
 
   const save = async () => {
