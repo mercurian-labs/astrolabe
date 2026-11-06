@@ -9,7 +9,7 @@ import {
   type CanvasBoardHost,
   type CanvasCardEditor,
 } from "./CanvasBoard";
-import { canvasCardSession, focusCardEditor } from "./canvasCardSession";
+import { focusCardEditor, useCanvasCardSession } from "./canvasCardSession";
 import { cardFileName } from "./canvasGeometry";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { MobileMermaid } from "./MobileMermaid";
@@ -81,13 +81,11 @@ function CardEditor({
   readonly editor: CanvasCardEditor;
   readonly onOpenNote: (name: string) => void;
 }) {
-  const [session] = useState(() => canvasCardSession(editor.initialText, editor.onChange));
+  const session = useCanvasCardSession(editor);
   const frame = useRef<HTMLDivElement>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open, and opening it puts the caret there
-  useEffect(() => {
-    focusCardEditor(frame.current);
-    return session.dispose;
-  }, [session]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync, react/exhaustive-effect-dependencies -- the caret goes in once the session's editor exists
+  useEffect(() => focusCardEditor(frame.current), [session]);
+  if (session === null) return null;
   return (
     <div ref={frame}>
       <WikiNoteEditor

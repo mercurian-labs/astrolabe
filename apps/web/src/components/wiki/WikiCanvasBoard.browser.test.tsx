@@ -12,7 +12,8 @@ import {
 } from "@mercurian/wiki/canvas";
 import { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
 import { CanvasExportDialog } from "@mercurian/wiki-editor/canvas-export";
-import { createRef, Profiler } from "react";
+import { useCanvasCardSession } from "@mercurian/wiki-editor/canvas-card-session";
+import { createRef, Profiler, StrictMode, useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -37,6 +38,12 @@ function grid(count: number): CanvasData {
     toNode: node.id,
   }));
   return canvasData({ nodes, edges });
+}
+
+function CardSessionProbe({ onChange }: { readonly onChange: (text: string) => void }) {
+  const [editor] = useState(() => ({ initialText: "Start", onChange }));
+  const session = useCanvasCardSession(editor);
+  return <button onClick={() => session?.text.insert(5, ", typed")}>Type</button>;
 }
 
 const mountedCards = () => document.querySelectorAll("[data-card-id]").length;
@@ -127,6 +134,21 @@ describe("a board of 5,000 cards", () => {
     await expect.element(document.querySelector<HTMLElement>(".cv-controls")).toBeVisible();
     expect(world().style.transform).toBe(painted);
     expect(frames).not.toHaveBeenCalled();
+  });
+});
+
+describe("a card's editor", () => {
+  it("still reports what's typed after React runs its effect twice", async () => {
+    const onChange = vi.fn();
+    await using screen = await render(
+      <StrictMode>
+        <CardSessionProbe onChange={onChange} />
+      </StrictMode>,
+      // A hook probe, with nothing routed.
+      { router: false },
+    );
+    await screen.getByRole("button", { name: "Type" }).click();
+    expect(onChange).toHaveBeenLastCalledWith("Start, typed");
   });
 });
 

@@ -1,7 +1,7 @@
 import type { CanvasCardEditor } from "@mercurian/wiki-editor/canvas-board";
-import { canvasCardSession, focusCardEditor } from "@mercurian/wiki-editor/canvas-card-session";
+import { focusCardEditor, useCanvasCardSession } from "@mercurian/wiki-editor/canvas-card-session";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -26,19 +26,17 @@ export default function WikiCanvasCardEditor({
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly onOpenNote: (name: string) => void;
 }) {
-  const [session] = useState(() => canvasCardSession(editor.initialText, editor.onChange));
+  const session = useCanvasCardSession(editor);
   const frame = useRef<HTMLDivElement>(null);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open, and opening it puts the caret there
-  useEffect(() => {
-    focusCardEditor(frame.current);
-    return session.dispose;
-  }, [session]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync, react/exhaustive-effect-dependencies -- the caret goes in once the session's editor exists
+  useEffect(() => focusCardEditor(frame.current), [session]);
   const index = useEnvironmentQuery(
     wikiEnvironment.index({
       environmentId,
       input: { wikiId, ...(changeRequestId === undefined ? {} : { changeRequestId }) },
     }),
   );
+  if (session === null) return null;
   return (
     <div ref={frame}>
       <WikiNoteEditor
