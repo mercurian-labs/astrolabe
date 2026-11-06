@@ -155,6 +155,17 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   Back and Forward (`ctrl+-`, `ctrl+shift+-` in a code file) cross go-tos and results tabs.
   `mod+alt+o` opens the palette's `project-symbol-picker`; a server must be running, else the
   code index answers.
+- **Language server settings** (`components/settings/LanguageServerSettings.tsx`, stored in the
+  environment's `language-server-settings.json`): Settings → Projects → Language servers.
+  **Changes here apply to** picks this project or all projects; each row has a switch, up and down
+  arrows where a language has several, and **Configure** (binary, arguments, environment, JSON
+  initialization options and settings; bad JSON shows at its field, `role=alert`, and saves
+  nothing). Turning off a server reads `<name>: Off in settings` in the header, with **Turn on**,
+  and an open file moves to the next server without reopening. **Add language server** adds a
+  `custom:` one; its row has **Edit** and **Remove** under **Configure**. A bad
+  `.astrolabe/language-servers.json` shows as a row and in the status menu's message. Python files
+  show the interpreter in the status menu with a **Select Python interpreter** submenu, and the
+  same command opens the palette's `interpreter-picker`.
 - **Right-click menu** (`packages/editor/src/lsp/contextMenu.ts`): moves the cursor to the
   click unless it lands in the selection, then Go to Definition / Type Definition /
   Implementation / Find All References / Show Incoming Calls / Show Outgoing Calls |
@@ -302,6 +313,10 @@ now**. With the **server** project that makes two projects.
 12. Cmd+K `e` `v`: a `repo-problems:` tab ("N errors, …"). With that tab focused, Cmd+Shift+F,
     type a name: "N results in M files"; Cmd+Enter opens a `repo-search:` tab.
 13. Delete the file on disk: status **Deleted**; **Save** recreates it.
+14. In a Python file with a second venv in the checkout, select that venv from the status menu: the
+    server restarts, and an import only that venv has stops being a problem. **Automatic** brings it
+    back. Turn the server off in Settings: the header reads **Off in settings**; **Turn on** there
+    undoes it.
 
 ## Source
 

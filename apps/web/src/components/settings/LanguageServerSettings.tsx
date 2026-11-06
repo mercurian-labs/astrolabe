@@ -127,6 +127,12 @@ function ProjectTrustRow({
   );
 }
 
+/** Lives out here because React Compiler can't take a computed key in a destructure. */
+const withoutField = <Errors extends object>(errors: Errors, name: keyof Errors) => {
+  const { [name]: _cleared, ...others } = errors;
+  return others as Errors;
+};
+
 /** A server's settings at one scope, each field's problem shown beside it. */
 function ServerForm({
   check,
@@ -147,7 +153,7 @@ function ServerForm({
     error: errors[name],
     onChange: (value: string) => {
       setFields((current) => ({ ...current, [name]: value }));
-      setErrors(({ [name]: _cleared, ...others }) => others);
+      setErrors((current) => withoutField(current, name));
     },
   });
   const save = () => {
@@ -257,7 +263,7 @@ function CustomServerForm({
     error: errors[name],
     onChange: (value: string) => {
       setFields((current) => ({ ...current, [name]: value }));
-      setErrors(({ [name]: _cleared, ...others }) => others);
+      setErrors((current) => withoutField(current, name));
     },
   });
   const save = () => {
