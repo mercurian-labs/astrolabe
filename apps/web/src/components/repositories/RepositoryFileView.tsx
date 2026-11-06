@@ -37,7 +37,7 @@ import { fileSave } from "./fileSave";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { searchableSetting } from "../settings/settingsSearch";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { lastRename, type UndoableRename } from "./renameUndo";
+import { lastRename, undoableEdit } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
 import { codeContextMenu, type CodeContextMenuHost } from "@mercurian/editor/lsp/context-menu";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
@@ -304,30 +304,41 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     ],
   }));
   const undoEdit = useAtomCommand(languageServersEnvironment.undoEdit, "undo rename");
-  // The environment applied the rename to every file: it offers Undo here, and to Undo Rename.
-  // An edit the environment applied for the language server (a rename, a code action): a notice
-  // with Undo, which Undo Rename runs too while it is the last.
+  // An edit the environment applied for the language server (a rename, a code action): its
+  // changed places with one Undo where a project's file can show them, else a notice with Undo.
   const offerUndo = useStableCallback(
-    (title: string, result: AppliedCodeAction | RenameResult, undoLabel: string) => {
+    (
+      title: string,
+      result: AppliedCodeAction | RenameResult,
+      labels: { readonly undo: string; readonly command: string },
+      review: boolean,
+    ) => {
       const files = result.files.length;
-      let done = false;
-      const undo: UndoableRename = {
-        label: undoLabel,
-        run: () => {
-          if (done) return;
-          done = true;
-          if (lastRename.get() === undo) lastRename.set(null);
-          void undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
-            if (outcome._tag !== "Success" || outcome.value.skipped.length === 0) return;
+      const undo = undoableEdit(labels.command, () =>
+        undoEdit({ environmentId, input: { id: result.id } }).then((outcome) => {
+          if (outcome._tag !== "Success") return false;
+          if (outcome.value.skipped.length > 0) {
             toastManager.add({
               type: "warning",
               title: "Some files changed since, and were left as they are",
               description: outcome.value.skipped.join(", "),
             });
-          });
-        },
-      };
+          }
+          return true;
+        }),
+      );
       lastRename.set(undo);
+      if (review && "projectId" in tab && result.places.length > 0) {
+        const key = locationsTabKey(tab, {
+          title,
+          locations: result.places,
+          edit: { edits: result.edits, files, undoLabel: labels.undo, undo },
+        });
+        panes.update((arrangement) =>
+          openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+        );
+        return;
+      }
       const toast = toastManager.add({
         type: "success",
         title,
@@ -346,12 +357,18 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     offerUndo(
       `Renamed ${result.from} to ${result.to}`,
       result,
-      `Undo rename of ${result.from} to ${result.to}`,
+      { undo: "Undo rename", command: `Undo rename of ${result.from} to ${result.to}` },
+      true,
     ),
   );
   const [rename] = useState<RenameHost>(() => ({ renamed }));
   const appliedAction = useStableCallback((_view: EditorView, action: AppliedCodeAction) =>
-    offerUndo(action.title, action, `Undo ${action.title}`),
+    offerUndo(
+      action.title,
+      action,
+      { undo: "Undo", command: `Undo ${action.title}` },
+      action.files.length > 1,
+    ),
   );
   const [codeActions] = useState<CodeActionHost>(() => ({ applied: appliedAction }));
 

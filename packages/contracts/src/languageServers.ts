@@ -376,6 +376,16 @@ export const CodeLocations = Schema.Struct({
 });
 export type CodeLocations = typeof CodeLocations.Type;
 
+/** Text an applied edit wrote, in the file as it left it: lines from 1, columns from 0. */
+export const LanguageServerEditPlace = Schema.Struct({
+  path: Schema.String,
+  line: PositiveInt,
+  column: NonNegativeInt,
+  endLine: PositiveInt,
+  endColumn: NonNegativeInt,
+});
+export type LanguageServerEditPlace = typeof LanguageServerEditPlace.Type;
+
 /**
  * A language server's edit the environment applied (a rename, a code action): the files it
  * changed, and the id that undoes it while the environment keeps it.
@@ -385,6 +395,8 @@ export const LanguageServerAppliedEdit = Schema.Struct({
   /** Repository-relative. */
   files: Schema.Array(Schema.String),
   edits: NonNegativeInt,
+  /** The first places it changed; `edits` counts them all. */
+  places: Schema.Array(LanguageServerEditPlace),
 });
 export type LanguageServerAppliedEdit = typeof LanguageServerAppliedEdit.Type;
 

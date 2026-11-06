@@ -11,6 +11,7 @@ import {
   type FileDiagnostic,
   type FileDiagnostics,
   type LanguageServerAppliedEdit,
+  type LanguageServerEditPlace,
   type LanguageServerCheck,
   type LanguageServerCheckResult,
   type LanguageServerInfo,
@@ -241,6 +242,8 @@ const DIAGNOSTICS_LISTED = 200;
 const EDITS_KEPT = 20;
 const LOCATIONS_LISTED = 200;
 const PREVIEW_LENGTH = 200;
+/** Places an applied edit lists; a huge rename's answer stays small, and says how many in all. */
+const EDIT_PLACES_LISTED = 200;
 
 const LOCATE_METHODS: Readonly<
   Record<CodeLocationKind, { readonly method: string; readonly capability: string }>
@@ -316,6 +319,7 @@ interface AppliedFile {
   readonly inverse: ChangeSet;
   /** The file's text right after the edit, to recognise it once the document was reloaded. */
   readonly after: string;
+  readonly places: ReadonlyArray<LanguageServerEditPlace>;
 }
 
 interface AppliedEdit {
@@ -600,6 +604,24 @@ const mapAnswer = (
     }
     throw error;
   }
+};
+
+/** Where `changes` left their text in `text`, the document after them. */
+const editPlaces = (path: string, changes: ChangeSet, text: Text) => {
+  const places: Array<LanguageServerEditPlace> = [];
+  changes.iterChangedRanges((_fromA, _toA, from, to) => {
+    if (places.length >= EDIT_PLACES_LISTED) return;
+    const start = text.lineAt(from);
+    const end = text.lineAt(to);
+    places.push({
+      path,
+      line: start.number,
+      column: from - start.from,
+      endLine: end.number,
+      endColumn: to - end.from,
+    });
+  });
+  return places;
 };
 
 const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServersOptions) {
@@ -1909,6 +1931,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           inverse: accepted.invert(before),
           after: text.toString(),
           edits: edits.length,
+          places: editPlaces(relativePath, accepted, text),
         };
       }
     }
@@ -1956,6 +1979,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       id,
       files: files.map((file) => file.relativePath),
       edits: count,
+      places: files.flatMap((file) => file.places).slice(0, EDIT_PLACES_LISTED),
     } satisfies LanguageServerAppliedEdit;
   });
 
@@ -2023,6 +2047,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       id: first.id,
       files: [...new Set(edits.flatMap((edit) => edit.files))],
       edits: edits.reduce((sum, edit) => sum + edit.edits, 0),
+      places: edits.flatMap((edit) => edit.places).slice(0, EDIT_PLACES_LISTED),
     };
   };
 

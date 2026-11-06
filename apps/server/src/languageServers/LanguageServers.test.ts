@@ -521,6 +521,13 @@ describe("LanguageServers", () => {
         files: [FILE, "src/point.ts"],
         edits: 4,
       });
+      // In the files as the rename left them, the agent's line included.
+      expect(rename.result.applied.places).toEqual([
+        { path: FILE, line: 1, column: 14, endLine: 1, endColumn: 21 },
+        { path: FILE, line: 3, column: 0, endLine: 3, endColumn: 7 },
+        { path: "src/point.ts", line: 1, column: 16, endLine: 1, endColumn: 23 },
+        { path: "src/point.ts", line: 2, column: 0, endLine: 2, endColumn: 7 },
+      ]);
       const read = (name: string) => fileSystem.readFileString(`${checkout.cwd}/${name}`);
       expect(yield* read(FILE)).toBe(
         "const point = pointAt(1, 2);\nexport const label = point;\npointAt(3, 4);\n",
@@ -534,6 +541,30 @@ describe("LanguageServers", () => {
       expect(yield* read("src/point.ts")).toBe(POINT);
       const again = yield* service.undoEdit({ id: rename.result.applied.id }).pipe(Effect.flip);
       expect(again.reason).toBe("document");
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("lists a huge rename's first places, and counts them all", () =>
+    Effect.gen(function* () {
+      const uses = "makePoint();\n".repeat(250);
+      const checkout = yield* makeCheckout(SOURCE, { renameAlso: "src/point.ts" });
+      yield* checkout.write("src/point.ts", uses);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const rename = yield* session.request(
+        1,
+        "textDocument/rename",
+        {
+          textDocument: { uri: checkout.uri },
+          position: editor.position("makePoint", 1),
+          newName: "pointAt",
+        },
+        editor.envelope(),
+      );
+      expect(rename.result.applied.edits).toBe(251);
+      expect(rename.result.applied.places).toHaveLength(200);
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 

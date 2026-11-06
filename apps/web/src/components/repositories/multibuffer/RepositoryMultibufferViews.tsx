@@ -5,7 +5,7 @@ import { isWholeWord, textMatcher } from "@t3tools/shared/textReplace";
 import type { FileDiagnostics } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { RefreshCwIcon } from "lucide-react";
-import { type ReactNode, useContext, useEffect, useState } from "react";
+import { type ReactNode, useContext, useEffect, useState, useSyncExternalStore } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { openTab } from "~/panes/arrangement";
@@ -15,6 +15,7 @@ import { projectContentSearchPage } from "~/state/projects";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
+import type { UndoState } from "../renameUndo";
 import { repositoryFileReveal } from "../repositoryFileReveal";
 import { workspace } from "~/panes/workspace";
 import {
@@ -25,7 +26,7 @@ import {
 } from "../repositoryTabs";
 import { MultibufferView } from "./MultibufferView";
 import { locationFiles, problemCounts, problemFiles, searchFiles } from "./multibufferInputs";
-import { locationList } from "./openMultibuffer";
+import { type LocationList, locationList } from "./openMultibuffer";
 import { replaceAll, type ReplaceAllDone } from "./replaceAll";
 import { newClientId, useMultibuffer, type MultibufferSaveState } from "./useMultibuffer";
 
@@ -382,6 +383,32 @@ function ProblemCountsLabel({
   );
 }
 
+function editedPlaces(edit: NonNullable<LocationList["edit"]>, listed: number) {
+  const all = `${plural(edit.edits, "place")} in ${plural(edit.files, "file")}`;
+  return listed < edit.edits ? `${all}, the first ${listed.toLocaleString()} shown` : all;
+}
+
+const UNDO_REPORTS: Partial<Record<UndoState, string>> = {
+  undone: "Undone",
+  failed: "Could not be undone",
+};
+
+function UndoEdit({ edit }: { readonly edit: NonNullable<LocationList["edit"]> }) {
+  const state = useSyncExternalStore(edit.undo.subscribe, edit.undo.state);
+  const report = UNDO_REPORTS[state];
+  if (report !== undefined) return <span className="shrink-0">{report}</span>;
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      disabled={state === "undoing"}
+      onClick={() => edit.undo.run()}
+    >
+      {edit.undoLabel}
+    </Button>
+  );
+}
+
 export function RepositoryLocationsView({
   tabKey,
   tab,
@@ -407,7 +434,10 @@ export function RepositoryLocationsView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Toolbar>
-        <span className="min-w-0 truncate">{`${list.title} · ${plural(list.locations.length, "place")}`}</span>
+        <span className="min-w-0 truncate">
+          {`${list.title} · ${list.edit ? editedPlaces(list.edit, list.locations.length) : plural(list.locations.length, "place")}`}
+        </span>
+        {list.edit ? <UndoEdit edit={list.edit} /> : null}
         <span className="ml-auto shrink-0">{saveLabel(saveState, !canWrite)}</span>
       </Toolbar>
       <MultibufferView

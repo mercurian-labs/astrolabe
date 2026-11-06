@@ -21,6 +21,7 @@ import {
 } from "@codemirror/view";
 
 import { serverDiagnosticsAt } from "./environmentLsp.ts";
+import type { EditPlace } from "./rename.ts";
 
 /**
  * Astrolabe: the language server's code actions (quick fixes, refactors) for the selection: a
@@ -43,6 +44,7 @@ export interface AppliedCodeAction {
   readonly id: string;
   readonly files: readonly string[];
   readonly edits: number;
+  readonly places: readonly EditPlace[];
 }
 
 export interface CodeActionHost {
@@ -154,7 +156,11 @@ function apply(view: EditorView, action: CodeActionSummary) {
     .then(
       (answer) => {
         if (!answer?.applied) return;
-        view.state.facet(codeActionHost)?.applied(view, { ...answer.applied, title: action.title });
+        // An older environment names no places.
+        const { places = [] } = answer.applied;
+        view.state
+          .facet(codeActionHost)
+          ?.applied(view, { ...answer.applied, places, title: action.title });
       },
       (error) => plugin.reportError("Code action failed", error),
     );
