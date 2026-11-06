@@ -154,7 +154,7 @@ function scanGo({ lines, isCode, add }: Scan, path: string) {
 }
 
 const PY_TEST_FILE = /(^|\/)(test_[^/]*|[^/]*_test)\.py$/;
-const PY_DEF = /^\s*(?:async\s+)?def\s+(test\w*)\s*\(/;
+const PY_DEF = /^\s*(?:async\s+)?def\s+(\w+)\s*\(/;
 const PY_CLASS = /^\s*class\s+(\w+)\s*(\([^)]*\))?\s*:/;
 const PY_MAIN = /^if\s+__name__\s*==\s*["']__main__["']\s*:/;
 
@@ -167,7 +167,8 @@ function scanPython({ lines, isCode, add }: Scan, path: string) {
   }>();
   const fileName = path.slice(path.lastIndexOf("/") + 1);
   lines.forEach((line, index) => {
-    scopes.at(line);
+    // A signature's closing line and a comment at the margin end no block.
+    if (!/^\s*[)\]}#]/.test(line)) scopes.at(line);
     if (!isCode(index + 1, indentOf(line))) return;
     if (PY_MAIN.test(line)) return add("main", [fileName], index);
     if (!isTestFile) return;
@@ -184,8 +185,12 @@ function scanPython({ lines, isCode, add }: Scan, path: string) {
       return;
     }
     const def = PY_DEF.exec(line);
+    if (!def) return;
+    const name = def[1]!;
+    // pytest collects a module's functions and a test class's methods, never one inside another.
     const collected = owner === undefined ? indentOf(line) === 0 : owner.isTest;
-    if (def && collected) add("test", [...names, def[1]!], index);
+    if (collected && name.startsWith("test")) add("test", [...names, name], index);
+    scopes.open.push({ indent: indentOf(line), name, isTest: false });
   });
 }
 
@@ -195,7 +200,26 @@ const JS_TEST_IMPORT = /\b(?:from|import|require\()\s*\(?["'](node:test|vitest|@
 const JS_CALL =
   /^\s*(describe|suite|context|it|test)(?:\.(?!each\b|for\b|todo\b)\w+)*\s*\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|`((?:\\.|[^`\\$])*)`)/;
 
-const unescapeJs = (text: string) => text.replace(/\\(.)/g, "$1");
+const JS_ESCAPES: Readonly<Record<string, string>> = {
+  n: "\n",
+  t: "\t",
+  r: "\r",
+  b: "\b",
+  f: "\f",
+  v: "\v",
+  "0": "\0",
+};
+
+/** A string literal's value; a code point past Unicode comes out as a control, so never runs. */
+const decodeJs = (text: string) =>
+  text.replace(
+    /\\(?:u\{([\da-fA-F]+)\}|u([\da-fA-F]{4})|x([\da-fA-F]{2})|(.))/gs,
+    (_, braced?: string, unicode?: string, hex?: string, other?: string) => {
+      const code = Number.parseInt(braced ?? unicode ?? hex ?? "", 16);
+      if (Number.isNaN(code)) return JS_ESCAPES[other!] ?? other!;
+      return code > 0x10_ff_ff ? "\0" : String.fromCodePoint(code);
+    },
+  );
 
 function scanJavaScript({ lines, isCode, add }: Scan, path: string, fileText: string) {
   if (!JS_TEST_FILE.test(path) && !JS_TEST_IMPORT.test(fileText)) return;
@@ -204,7 +228,7 @@ function scanJavaScript({ lines, isCode, add }: Scan, path: string, fileText: st
     scopes.at(line);
     const call = JS_CALL.exec(line);
     if (!call || !isCode(index + 1, indentOf(line))) return;
-    const name = unescapeJs(call[2] ?? call[3] ?? call[4] ?? "");
+    const name = decodeJs(call[2] ?? call[3] ?? call[4] ?? "");
     if (name === "") return;
     const names = [...scopes.open.map((scope) => scope.name), name];
     if (call[1] === "it" || call[1] === "test") return add("test", names, index);

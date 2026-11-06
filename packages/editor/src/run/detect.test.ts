@@ -105,6 +105,34 @@ class MoneyCase(unittest.TestCase):
       ],
     ],
     [
+      "a def nested in a test, however its signature or comments run",
+      "tests/test_nested.py",
+      `class TestMoney:
+    def test_outer(self):
+        def test_helper():
+            pass
+        class TestInner:
+            def test_in_a_function(self):
+                pass
+
+    def test_long(
+        self,
+    ):
+        def test_after_signature():
+            pass
+
+# A comment at the margin ends nothing.
+    def test_after_comment(self):
+        pass
+`,
+      [
+        ["suite", "TestMoney", 1],
+        ["test", "TestMoney > test_outer", 2],
+        ["test", "TestMoney > test_long", 9],
+        ["test", "TestMoney > test_after_comment", 16],
+      ],
+    ],
+    [
       "Python's entry point in any file",
       "app.py",
       `def test_not_collected():
