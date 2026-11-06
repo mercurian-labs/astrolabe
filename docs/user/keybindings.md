@@ -396,6 +396,10 @@ Command Palette, and you can rebind it under **Editors**.
 | `mod+f12`                    | Go to type definition      | `e` `g` `t`   | `g` `y` |
 | `shift+f12`                  | Go to implementation       | `e` `g` `i`   | `g` `I` |
 | `alt+shift+f12`              | Find references            | `e` `g` `r`   | `g` `r` |
+|                              | Show incoming calls        | `e` `g` `h`   | `g` `h` |
+|                              | Show outgoing calls        | `e` `g` `H`   | `g` `H` |
+| `mod+alt+o`                  | Go to symbol in project    | `e` `g` `s`   | `g` `W` |
+| `ctrl+-` `ctrl+shift+-`      | Back and forward           | `t`           |         |
 | `f2`                         | Rename symbol              | `e` `e`       |         |
 |                              | Undo rename or code action | `e` `z`       |         |
 | `mod+shift+i`                | Format document            | `e` `=`       |         |
@@ -418,11 +422,21 @@ finds the references instead. Find References opens every use, the declaration i
 [one editor of excerpts](projects.md#results-in-one-editor) in a tab beside the file; so does
 Go to Implementation when there are several. Uses outside the checkout are left out of it. With
 `mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
+Back returns from any of these to where you were, and Forward goes there again.
+
+Show Incoming Calls and Show Outgoing Calls, also in the right-click menu, list what calls the
+function at the cursor and what it calls, one level at a time, in the same kind of editor. To go a
+level further, open a result in its file and run the command again.
+
+Go to Symbol in Project searches names across the project in front, by part of a name. It asks
+the language servers already running there, and the code index when none is or they have no
+answer.
 
 Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
-cancel. The rename reaches every file that uses the name, open or not, and they are saved. It is
-not in the file's own undo: click **Undo** on the notice, or run Undo Rename, to put every file
-back. Edits made since are kept.
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. Then
+every changed place opens in one editor of excerpts, with **Undo rename** at the top. It is not in
+the file's own undo: use that button, or run Undo Rename, to put every file back. Edits made since
+are kept. Closing the tab keeps the rename.
 
 Format Document reformats the file with its language server, Ruff for Python, as one step you can
 undo. Repository files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and
@@ -431,7 +445,20 @@ this off with **Format on save** in Settings → Appearance.
 
 When a server has fixes or refactors for where the cursor rests, a light bulb shows beside the
 line. Click it, or press `mod+.`, for every server's in one list; Enter applies one. Like a rename, the environment
-applies it to every file it touches, and the notice's **Undo** (or Undo Rename) takes it back.
+applies it to every file it touches, and Undo Rename takes it back, as does **Undo** on its notice,
+or at the top of the changed places when it touched several files.
+
+While your cursor rests on a name, its other uses in the file are marked, writes more strongly than
+reads. Typing in an HTML or JSX tag writes its closing tag too, where the language server offers it.
+
+**Settings → Appearance** chooses what else language servers draw in a code file, on this device:
+
+| Setting            | Does                                                                                      | Toggle in keyboard menu |
+| ------------------ | ----------------------------------------------------------------------------------------- | ----------------------- |
+| Inlay hints        | Shows types and parameter names beside the text; click a hint to write it into the file   | `e` `L` `h`             |
+| Inline diagnostics | Shows each line's worst problem at its end. Off at first                                  | `e` `L` `d`             |
+| Semantic colours   | Colours code by what the server knows it is. Off at first; large files keep their colours |                         |
+| Code lens          | Shows counts and actions above definitions. Off at first; click one to run it             |                         |
 
 ## Search results and problems in one editor
 
@@ -575,7 +602,8 @@ field gets its own undo back. Terminals always keep their native shortcut.
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
 through the pages you have visited, like a browser's back and forward buttons. In
 every section they go back and forward in the focused tab instead, as the arrows at the start of
-each tab's header do for their own tab.
+each tab's header do for their own tab. After a jump to a definition or into results they go back
+to where you were first. In a code file those keys indent, so use `ctrl+-` and `ctrl+shift+-`.
 
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the

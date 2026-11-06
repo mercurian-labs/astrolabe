@@ -35,7 +35,15 @@ positions land on the wrong text.
   after it, and collab rebases it over whatever landed since. That is why a rename is not in the
   editor's own undo history. Code actions go the same way: the gateway keeps the actions it
   offered in the server's coordinates and sends the editor only titles; the editor applies one
-  by index, and a command's own `workspace/applyEdit` lands through the same path.
+  by index, and a command's own `workspace/applyEdit` lands through the same path. The answer
+  lists the first places an edit changed, read back from the update it became, so what the
+  review view shows is what landed, not what the server asked for.
+- **Semantic tokens are not mapped.** Five relative numbers per token would have to be decoded to
+  move one, and an answer is thrown away the next time anyone types. An editor behind the
+  environment gets `ContentModified`, and asks again when it catches up.
+- **Hints and linked ranges refuse differently.** A hint in text the editor lacks is left out and
+  the rest stand; linked ranges are all or nothing, because mirroring into a clamped range writes
+  over the wrong text.
 - **Only pushed diagnostics carry a version.** They are computed on the environment's text at a
   version; the editor holds them until it has that version, then maps them through what it has
   done since.
@@ -74,12 +82,28 @@ server's status, and speaks to whatever stands behind it.
 - **Asking several must not cost the wait for the slowest.** After `fanOutTimeout` what has come in
   is the answer. An empty answer doesn't count, or Tailwind saying nothing would cut off a
   TypeScript server still loading; with nothing yet, the first answer with content ends it.
-- **Completion items and code actions remember their server.** `completionItem/resolve` names
-  neither file nor server, so each item's `data` is wrapped with both.
+- **What an editor hands back remembers its server.** `completionItem/resolve`, `codeLens/resolve`
+  and `callHierarchy/*Calls` name neither file nor server, so each item's `data` is wrapped with
+  both. A call item goes back exactly as it came, so the gateway maps nothing in it: incoming and
+  outgoing calls answer in the environment's text, which is what a multi-file view shows.
 - **One formatter per language**, the first in the primary's `formatters` that can.
 
 ESLint and Tailwind never come from PATH: each loads the project's own ESLint or Tailwind, so a
 machine's copy brings no fit with the toolchain, and an old one breaks on today's configs.
+
+## What a server draws in the text
+
+Inlay hints, code lenses and semantic colours are chosen per client, in client settings, so a phone
+and a laptop on one environment can differ. Servers therefore offer everything they can
+(TypeScript and gopls only when told, in `settings`), and an editor asks only for what it shows. A
+refresh is a request of the gateway, which answers it and passes it on as `astrolabe/refresh` to
+every session showing that server's files, since a companion has no sessions of its own.
+
+Multi-file views have no language server: their excerpts draw neither hints nor highlights, so
+none can be wrong. Problems views draw what the environment last reported.
+
+Back and Forward follow jumps in a list of the client's (`jumpHistory.ts`), ahead of each tab's
+history, because a go-to opens a new tab or moves the cursor and neither is a step of that history.
 
 ## Where a server comes from
 
