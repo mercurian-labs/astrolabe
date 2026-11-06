@@ -342,7 +342,7 @@ export function canvasMerge(base: string, ours: string, theirs: string): CanvasM
     said.resolved.push({
       kind: "arrow-dropped",
       id: key,
-      message: `${arrowKind.name(raw)} is dropped, because its card “${cardName(end)}” is deleted in this merge.`,
+      message: `${arrowKind.name(raw)} is dropped, because its card “${cardName(end)}” is deleted.`,
     });
   }
 
