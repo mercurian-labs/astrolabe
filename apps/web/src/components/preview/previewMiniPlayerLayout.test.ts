@@ -3,8 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   clampPreviewMiniPlayerPosition,
-  PREVIEW_MINI_PLAYER_BAR_HEIGHT,
   PREVIEW_MINI_PLAYER_EDGE_GAP,
+  PREVIEW_MINI_PLAYER_PAGE_TOP,
   type PreviewMiniPlayerObstacles,
   resizePreviewMiniPlayer,
   resolvePreviewMiniPlayerFrame,
@@ -14,7 +14,7 @@ import {
 const container = { width: 1_000, height: 700 };
 const source = { width: 1_600, height: 1_000 };
 const gap = PREVIEW_MINI_PLAYER_EDGE_GAP;
-const bar = PREVIEW_MINI_PLAYER_BAR_HEIGHT;
+const bar = PREVIEW_MINI_PLAYER_PAGE_TOP;
 const composer = { left: 100, right: 900, height: 150 };
 const obstacles: PreviewMiniPlayerObstacles = { composer, detailsCard: null };
 const tallComposer: PreviewMiniPlayerObstacles = {
@@ -60,7 +60,7 @@ describe("resolvePreviewMiniPlayerFrame", () => {
       container,
       obstacles: tallComposer,
     });
-    expect(frame).toEqual({ x: 100, y: PREVIEW_MINI_PLAYER_EDGE_GAP, width: 550, height: 376 });
+    expect(frame).toEqual({ x: 100, y: PREVIEW_MINI_PLAYER_EDGE_GAP, width: 538, height: 376 });
   });
 
   it("keeps a tall frame parked beside the composer across layout passes", () => {
@@ -186,7 +186,7 @@ describe("resizePreviewMiniPlayer", () => {
         container,
         obstacles: tallComposer,
       }),
-    ).toEqual({ x: 300, y: 100, width: 410, height: 288 });
+    ).toEqual({ x: 300, y: 100, width: 397, height: 288 });
   });
 });
 

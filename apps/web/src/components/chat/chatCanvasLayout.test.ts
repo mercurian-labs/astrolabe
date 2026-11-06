@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveChatCanvasLayout, type ChatCanvasPreview } from "./chatCanvasLayout";
 import {
-  PREVIEW_MINI_PLAYER_BAR_HEIGHT as bar,
+  PREVIEW_MINI_PLAYER_PAGE_TOP as bar,
   resizePreviewMiniPlayer,
 } from "../preview/previewMiniPlayerLayout";
 import {
@@ -28,7 +28,7 @@ const expectClear = (result: ReturnType<typeof resolve>) => {
 describe("chat canvas layout", () => {
   it("lifts a growing preview above the composer without snapping at the chat boundary", () => {
     let previous: ReturnType<typeof resolve> | undefined;
-    for (let width = 480; width <= 1050; width++) {
+    for (let width = 480; width <= 1040; width++) {
       const result = resolve(1344, {
         ...preview,
         width,
@@ -49,7 +49,7 @@ describe("chat canvas layout", () => {
       previous = result;
     }
     expect(previous!.overlapsChat).toBe(true);
-    expect(previous!.frame!.width).toBe(1050);
+    expect(previous!.frame!.width).toBe(1040);
   });
   it.each([900, 1000, 1004])("allows dragging across a %spx chat canvas", (width) => {
     const start = resolve(width, { ...preview, position: { x: width - 332, y: 200 } }).frame!;

@@ -55,6 +55,7 @@ import {
   clampPreviewMiniPlayerPosition,
   PREVIEW_MINI_PLAYER_BAR_HEIGHT,
   PREVIEW_MINI_PLAYER_CORNER_RADIUS,
+  PREVIEW_MINI_PLAYER_PAGE_TOP,
   PREVIEW_MINI_PLAYER_WEBVIEW_Z_INDEX,
   type PreviewMiniPlayerFrame,
   resizePreviewMiniPlayer,
@@ -81,7 +82,7 @@ interface Props {
 
 const frameCornerRadius = () => PREVIEW_MINI_PLAYER_CORNER_RADIUS;
 
-// Outside the frame, like the bar: a desktop page draws above everything in the pane, so anything
+// Outside the page, like the bar: a desktop page draws above everything in the pane, so anything
 // laid over it can be neither seen nor grabbed.
 const RESIZE_HANDLES: ReadonlyArray<{
   readonly direction: BrowserViewportResizeDirection;
@@ -439,7 +440,7 @@ function MiniPlayerShell({
   const radius = frame
     ? cornerRadius({
         width: frame.width,
-        height: frame.height - PREVIEW_MINI_PLAYER_BAR_HEIGHT,
+        height: frame.height - PREVIEW_MINI_PLAYER_PAGE_TOP,
       })
     : PREVIEW_MINI_PLAYER_CORNER_RADIUS;
 
@@ -518,10 +519,9 @@ function MiniPlayerShell({
             borderRadius: radius,
           }}
         >
-          <div className="absolute inset-0 z-[47] rounded-[inherit] bg-popover shadow-2xl/35 ring-1 ring-border/80" />
           <div
             data-preview-mini-player-bar=""
-            className="pointer-events-auto absolute inset-x-0 top-0 z-[49] flex cursor-grab touch-none items-center justify-between pl-2 pr-1 active:cursor-grabbing"
+            className="pointer-events-auto absolute inset-x-0 top-0 z-[49] flex cursor-grab touch-none items-center justify-between rounded-lg border border-border/80 bg-popover pl-2 pr-1 shadow-lg/20 active:cursor-grabbing"
             style={{ height: PREVIEW_MINI_PLAYER_BAR_HEIGHT }}
             onPointerDown={(event) => beginGesture(event, null)}
             onPointerMove={handlePointerMove}
@@ -576,22 +576,23 @@ function MiniPlayerShell({
           </div>
           <div
             className="absolute inset-x-0 bottom-0 rounded-[inherit]"
-            style={{ top: PREVIEW_MINI_PLAYER_BAR_HEIGHT }}
+            style={{ top: PREVIEW_MINI_PLAYER_PAGE_TOP }}
           >
+            <div className="absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35 ring-1 ring-border/80" />
             {children(frame)}
+            {RESIZE_HANDLES.map(({ direction, className }) => (
+              <div
+                key={direction}
+                role="presentation"
+                data-preview-mini-player-resize={direction}
+                className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
+                onPointerDown={(event) => beginGesture(event, direction)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={endGesture}
+                onPointerCancel={endGesture}
+              />
+            ))}
           </div>
-          {RESIZE_HANDLES.map(({ direction, className }) => (
-            <div
-              key={direction}
-              role="presentation"
-              data-preview-mini-player-resize={direction}
-              className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
-              onPointerDown={(event) => beginGesture(event, direction)}
-              onPointerMove={handlePointerMove}
-              onPointerUp={endGesture}
-              onPointerCancel={endGesture}
-            />
-          ))}
         </section>
       ) : null}
     </div>
