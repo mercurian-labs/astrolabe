@@ -42,13 +42,15 @@ Bases support Obsidian's whole language: filters, formulas, every function, regu
 
 ## Canvases
 
-A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web and desktop; a canvas can't be changed here yet, and the phone doesn't list them.
+A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web, desktop and the phone; a canvas can't be changed here yet.
 
 To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then save it to a change request. To add cards, edit the file in Obsidian or any editor in that change request's worktree.
 
 Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, ⇧1 fits the board, and ⇧2 zooms to the selected card. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the top of its tab or the command palette.
 
 Click a card to select it, and its content becomes live: links open, a note scrolls, a web page loads, and media plays. Double-click a file card's name to open the file. A web page that refuses to be framed stays blank on its card, so open it from the link instead.
+
+On the phone, drag to pan and pinch to zoom. Tap a card to select it, and tap again to follow a link in it or open a code card. Tap a selected file card's name to open the file; Back returns to the board. **Jump to group** is in the header. A PDF on a card opens in the app's viewer from its **Open** button, as does audio or video the phone can't play in place, and a link card opens in your browser.
 
 A file card can narrow a note to a heading or block, or pin a base to one view, as in Obsidian. A card linking to code marks when its file has changed or gone at the project's head, and never changes itself.
 

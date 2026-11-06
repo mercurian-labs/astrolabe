@@ -8,6 +8,7 @@ real model, and ask for a diagram of boxes and arrows that cites a file.
   expand button opens a Canvas tab. Drag, wheel, Ctrl-wheel, the zoom buttons and **Fit** all
   work there. A code card opens its file at the cited line. Check dark mode.
 - **Phone:** the feed shows the layout as a thumbnail. Tapping opens the board, which pans by
-  touch. A swipe from the left edge goes back, and doesn't pan. A code card opens its file.
+  touch. A swipe from the left edge goes back, and doesn't pan. A code card opens its file. A
+  killed page (`onContentProcessDidTerminate`) comes back with the camera where it was.
 - **Hermes:** the phone runs the layout code on an engine without newer array methods. A broken
   build shows as a render error on any thread holding a canvas.

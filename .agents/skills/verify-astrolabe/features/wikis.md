@@ -175,6 +175,19 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   page draws only the base (`showBase` in `protocol.ts`, the same `BaseBlock`); a `View` header
   menu (iOS only, as every header button) appears with two or more views and ticks the one shown.
   A row's name opens its note on top; Back returns to the base.
+- **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): a `.canvas`
+  lists as `button "<name>, canvas, <wiki>"` with "Canvas · read only", and opens in `WikiDocument`
+  from the list, a change request's documents, links in notes and a base's rows, subtitle
+  `<wiki> · Main · Canvas · read only`, with a `Jump to group` header menu when it has labelled
+  groups. Walk: touch pan, pinch, left-edge back swipe, first tap selects and a second acts (a link,
+  a code card, a file card's name; Back returns to the board with its camera). File cards read in
+  batches at the commit shown (`readFiles`/`filesRead`, split at 256 KB a message). Images, audio and
+  video load from a commit-scoped asset URL (`readAsset`/`assetRead`); a PDF, and media WebKit
+  can't play, shows its name and **Open**, the app's viewer. Check repository images on a plain-http
+  server (the page's origin must stay `http://localhost/`: on https WebKit upgrades them and they
+  fail). Base cards, nested canvases as minimaps, `![[Board.canvas]]` in a note, Mermaid on cards and
+  in notes (each diagram type injected the first time it draws, `peleOnDemand.ts`). Android is
+  the same code and needs its own walk.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
   (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
   `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open
