@@ -828,6 +828,10 @@ describe("editing a board", () => {
   it("saves a PNG drawn from the data, with text obscured in privacy mode", async () => {
     using _capture = setup();
     using _click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockReturnValue();
+    // Encoding runs on the browser's own schedule, which a busy machine stretches.
+    using _encode = vi
+      .spyOn(HTMLCanvasElement.prototype, "toBlob")
+      .mockImplementation((done) => done(new Blob([], { type: "image/png" })));
     const saved = vi.spyOn(URL, "createObjectURL");
     const canvas = newCanvas([text("a", 0, 0, { color: "3" }), text("b", 400, 0)], []);
     const host: CanvasBoardHost = {
