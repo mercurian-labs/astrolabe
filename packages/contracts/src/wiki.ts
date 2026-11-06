@@ -225,6 +225,20 @@ export const WikiReadFilesInput = Schema.Struct({
 });
 export type WikiReadFilesInput = typeof WikiReadFilesInput.Type;
 
+/** Every file a wiki's repository holds at a commit, any depth, hidden folders left out. */
+export const WikiListFilesInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  commit: Schema.optional(TrimmedNonEmptyString),
+});
+export type WikiListFilesInput = typeof WikiListFilesInput.Type;
+
+export const WikiListFilesResult = Schema.Struct({
+  commit: Schema.String,
+  files: Schema.Array(Schema.Struct({ file: Schema.String, size: NonNegativeInt })),
+});
+export type WikiListFilesResult = typeof WikiListFilesResult.Type;
+
 export const WikiFileRead = Schema.Struct({
   /** As asked for. A path differing only by case still finds its file, as a wiki's links do. */
   path: Schema.String,
@@ -685,6 +699,9 @@ export const WikiAmendResult = Schema.Struct({
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
 
+/** About 32 MiB of bytes: an attachment travels in one message. */
+const WIKI_ATTACHMENT_MAX_BASE64 = 44_000_000;
+
 /** What one autosave writes: a note's whole text, or a transform replayed on the head. */
 export const WikiAutosaveWrite = Schema.Union([
   Schema.Struct({
@@ -695,6 +712,12 @@ export const WikiAutosaveWrite = Schema.Union([
     readAt: Schema.optional(Schema.String),
   }),
   Schema.Struct({ kind: Schema.Literal("transform"), transform: WikiTransform }),
+  /** A file a board shows, such as a pasted image, beside the wiki's documents. */
+  Schema.Struct({
+    kind: Schema.Literal("attachment"),
+    file: TrimmedNonEmptyString,
+    base64: Schema.String.check(Schema.isMaxLength(WIKI_ATTACHMENT_MAX_BASE64)),
+  }),
 ]);
 export type WikiAutosaveWrite = typeof WikiAutosaveWrite.Type;
 

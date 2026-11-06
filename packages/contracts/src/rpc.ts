@@ -432,6 +432,8 @@ import {
   WikiCodeStatusResult,
   WikiQueryInput,
   WikiQueryResult,
+  WikiListFilesInput,
+  WikiListFilesResult,
   WikiReadFilesInput,
   WikiReadFilesResult,
   WikiReadScope,
@@ -679,6 +681,7 @@ export const WS_METHODS = {
   wikiReadNote: "wiki.readNote",
   wikiQuery: "wiki.query",
   wikiReadFiles: "wiki.readFiles",
+  wikiListFiles: "wiki.listFiles",
   wikiCodeStatus: "wiki.codeStatus",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
@@ -2217,6 +2220,12 @@ const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiListFilesRpc = Rpc.make(WS_METHODS.wikiListFiles, {
+  payload: WikiListFilesInput,
+  success: WikiListFilesResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiReadFilesRpc = Rpc.make(WS_METHODS.wikiReadFiles, {
   payload: WikiReadFilesInput,
   success: WikiReadFilesResult,
@@ -2799,6 +2808,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiReadNoteRpc,
   WsWikiQueryRpc,
   WsWikiReadFilesRpc,
+  WsWikiListFilesRpc,
   WsWikiCodeStatusRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,

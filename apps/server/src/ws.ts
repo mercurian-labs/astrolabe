@@ -1285,6 +1285,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
       [WS_METHODS.wikiQuery]: (input) => wikis.query(input),
       [WS_METHODS.wikiReadFiles]: (input) => wikis.readFiles(input),
+      [WS_METHODS.wikiListFiles]: (input) => wikis.listFiles(input),
       [WS_METHODS.wikiCodeStatus]: (input) => wikis.codeStatus(input),
       [WS_METHODS.wikiChangeRequestsList]: (input) =>
         wikis.changeRequestsList(input, WikiService.person),

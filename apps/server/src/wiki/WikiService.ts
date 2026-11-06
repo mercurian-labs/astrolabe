@@ -19,6 +19,7 @@ import {
   WikiFormatError,
   type AmendmentStamp,
   type PlannedAmendment,
+  type WikiAttachment,
   type WikiChanges,
   type WikiFiles,
   type WikiIndex,
@@ -61,6 +62,8 @@ import {
   type WikiEvent,
   WikiId,
   type WikiIndexResult,
+  type WikiListFilesInput,
+  type WikiListFilesResult,
   type WikiListResult,
   type WikiMergePreview,
   type WikiMergeResult,
@@ -229,6 +232,9 @@ export class WikiService extends Context.Service<
     readonly readFiles: (
       input: WikiReadTarget & Omit<WikiReadFilesInput, "wikiId" | "changeRequestId">,
     ) => Effect.Effect<WikiReadFilesResult, WikiError>;
+    readonly listFiles: (
+      input: WikiListFilesInput,
+    ) => Effect.Effect<WikiListFilesResult, WikiError>;
     /** Where to read a file's bytes, once it is known to exist at that commit. */
     readonly locateFile: (input: {
       readonly wikiId: string;
@@ -430,6 +436,10 @@ const oneLine = (text: string) => text.replace(/[\r\n<>]+/g, " ").trim();
 const actorName = (author: WikiAuthor) => oneLine(author.actor) || "Agent";
 
 /** A document as an amendment names it: without the extension a person never reads. */
+/** Flat and visible like a document, and never one: those go through a skill map's checks. */
+const isAttachmentName = (file: string) =>
+  !/[/\\\0\r\n]/.test(file) && !file.startsWith(".") && !isWikiDocument(file);
+
 const documentSubject = (document: string) => document.replace(/\.(md|base|canvas)$/i, "");
 
 const isCommitId = (value: string) => /^[0-9a-f]{4,64}$/i.test(value);
@@ -664,7 +674,12 @@ const make = Effect.gen(function* () {
   });
 
   /** A tree of `base` with `changes` applied, built on a private index. */
-  const buildTree = (cwd: string, base: string, changes: WikiChanges) =>
+  const buildTree = (
+    cwd: string,
+    base: string,
+    changes: WikiChanges,
+    attachment?: WikiAttachment,
+  ) =>
     Effect.scoped(
       Effect.gen(function* () {
         const directory = yield* fileSystem
@@ -681,11 +696,18 @@ const make = Effect.gen(function* () {
           );
         const env = { GIT_INDEX_FILE: path.join(directory, "index") };
         yield* runGit("readTree", cwd, ["read-tree", base], { env });
-        const entries = Object.entries(changes);
-        const written = entries.filter((entry): entry is [string, string] => entry[1] !== null);
+        const entries: ReadonlyArray<readonly [string, string | Uint8Array | null]> = [
+          ...Object.entries(changes),
+          ...(attachment === undefined ? [] : [[attachment.file, attachment.bytes] as const]),
+        ];
+        const written = entries.filter(
+          (entry): entry is readonly [string, string | Uint8Array] => entry[1] !== null,
+        );
         const blobPaths = written.map((_, position) => path.join(directory, `blob-${position}`));
         yield* Effect.forEach(written, ([, content], position) =>
-          fileSystem.writeFileString(blobPaths[position] ?? "", content),
+          typeof content === "string"
+            ? fileSystem.writeFileString(blobPaths[position] ?? "", content)
+            : fileSystem.writeFile(blobPaths[position] ?? "", content),
         ).pipe(
           Effect.mapError(
             (cause) =>
@@ -1375,7 +1397,7 @@ const make = Effect.gen(function* () {
       try: () => plan(snapshot.files, stamp),
       catch: planningError,
     });
-    const tree = yield* buildTree(wiki.root, from, planned.changes);
+    const tree = yield* buildTree(wiki.root, from, planned.changes, planned.attachment);
     const treeOf = (commit: string) =>
       gitOut("parentTree", wiki.root, ["rev-parse", `${commit}^{tree}`]);
     if (tree === (yield* treeOf(parent))) {
@@ -1580,6 +1602,12 @@ const make = Effect.gen(function* () {
                 yield* requireInStep(wiki, target.stored, write.file, write.readAt);
               }
             }
+            if (write.kind === "attachment" && !isAttachmentName(write.file)) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: `${write.file} can't be attached to a wiki.`,
+              });
+            }
             const onto =
               target.kind === "existing"
                 ? yield* autosaveRunParent(wiki, target.stored, input.document, author)
@@ -1591,7 +1619,13 @@ const make = Effect.gen(function* () {
               `Edit ${documentSubject(input.document)}`,
               write.kind === "text"
                 ? (files, stamp) => planAmendment(files, { [write.file]: write.text }, stamp)
-                : planWikiTransform(write.transform),
+                : write.kind === "transform"
+                  ? planWikiTransform(write.transform)
+                  : () => ({
+                      changes: {},
+                      errors: [],
+                      attachment: { file: write.file, bytes: Buffer.from(write.base64, "base64") },
+                    }),
               // A link broken for a moment while typing stamps no lasting warning on a map.
               {
                 autosave: input.document,
@@ -2357,6 +2391,21 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
+  const listFiles: WikiService["Service"]["listFiles"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const commit = yield* fileCommit(wiki, input);
+          const listing = yield* fileListingAt(wiki, commit);
+          return {
+            commit,
+            files: listing.flatMap(({ file, size }) => (isHidden(file) ? [] : [{ file, size }])),
+          };
+        }),
+      input.changeRequestId,
+    );
+
   const locateFile: WikiService["Service"]["locateFile"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       Effect.gen(function* () {
@@ -2949,6 +2998,7 @@ const make = Effect.gen(function* () {
     amend,
     transform,
     autosave,
+    listFiles,
     draftPromote,
     draftMove,
     revertAmendment,

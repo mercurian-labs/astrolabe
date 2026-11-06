@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { serializeCanvas } from "@mercurian/wiki";
 import {
+  type CanvasEdit,
   CommandId,
   ProjectId,
   ThreadId,
@@ -1930,6 +1931,89 @@ it.effect("lands a base's edits and a canvas's in the draft, replayed in a run",
       );
       assert.equal(carded.changeRequest?.amendments.length, 2);
       assert.include(yield* git(root, ["show", `${carded.commit}:Board.canvas`]), "A card");
+    }),
+  ),
+);
+
+it.effect("lands hand edits on a canvas, attaches a file beside it, and lists both", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const hands = (edits: ReadonlyArray<CanvasEdit>) =>
+        wikis.autosave(
+          {
+            wikiId,
+            document: "Board.canvas",
+            write: {
+              kind: "transform",
+              transform: { kind: "canvas", file: "Board.canvas", edits },
+            },
+          },
+          WikiService.person,
+        );
+      yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Board.canvas",
+          write: {
+            kind: "transform",
+            transform: { kind: "canvas-create", file: "Board.canvas" },
+          },
+        },
+        WikiService.person,
+      );
+      const node = {
+        id: "card",
+        x: 0,
+        y: 0,
+        width: 250,
+        height: 60,
+        type: "text",
+        text: "Hello",
+        future: 1,
+      };
+      yield* hands([{ op: "put-card", node }]);
+      const moved = yield* hands([{ op: "move", card: "card", x: 40, y: 20 }]);
+      assert.equal(moved.changeRequest?.amendments.length, 1);
+      const written = yield* git(root, ["show", `${moved.commit}:Board.canvas`]);
+      assert.equal(
+        written,
+        '{\n\t"nodes":[\n\t\t{"id":"card","x":40,"y":20,"width":250,"height":60,"type":"text","text":"Hello","future":1}\n\t],\n\t"edges":[]\n}',
+      );
+
+      const pixel = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+      const attached = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Board.canvas",
+          write: {
+            kind: "attachment",
+            file: "Pasted image 1.png",
+            base64: pixel.toString("base64"),
+          },
+        },
+        WikiService.person,
+      );
+      const stored = yield* git(root, ["cat-file", "-s", `${attached.commit}:Pasted image 1.png`]);
+      assert.equal(stored, String(pixel.length));
+      const { files } = yield* wikis.listFiles({
+        wikiId,
+        changeRequestId: attached.changeRequest!.changeRequestId,
+      });
+      assert.includeMembers(
+        files.map(({ file }) => file),
+        ["Board.canvas", "Pasted image 1.png"],
+      );
+
+      for (const file of ["Sneaky.md", "../up.png", ".hidden"]) {
+        const refused = yield* failure(
+          wikis.autosave(
+            { wikiId, document: "Board.canvas", write: { kind: "attachment", file, base64: "" } },
+            WikiService.person,
+          ),
+        );
+        assert.equal(refused.reason, "invalid");
+      }
     }),
   ),
 );

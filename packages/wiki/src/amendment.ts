@@ -59,9 +59,16 @@ export interface AmendmentStamp {
   readonly newId: () => string;
 }
 
+/** A file a document shows, such as a pasted image: bytes that are nobody's text. */
+export interface WikiAttachment {
+  readonly file: string;
+  readonly bytes: Uint8Array;
+}
+
 export interface PlannedAmendment {
   /** The changes to commit, including any map whose warnings this amendment stamped. */
   readonly changes: WikiChanges;
+  readonly attachment?: WikiAttachment;
   /** Index errors standing after the amendment (stale edges included). */
   readonly errors: ReadonlyArray<WikiIndexError>;
   /** What a canvas transform reports, returned with the amendment. */

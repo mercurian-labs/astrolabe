@@ -122,6 +122,12 @@ export function createWikiEnvironmentAtoms<R, E>(
       tag: WS_METHODS.wikiReadFiles,
       refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
     }),
+    /** Every file in a wiki's repository, for a board's pickers. */
+    fileList: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:file-list",
+      tag: WS_METHODS.wikiListFiles,
+      refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
+    }),
     /** How code cards' files compare with their project's head. */
     codeStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:wiki:code-status",
