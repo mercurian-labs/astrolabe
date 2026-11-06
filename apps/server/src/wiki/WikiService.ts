@@ -13,6 +13,7 @@ import {
   isWikiDocument,
   keepWarningHistory,
   planAmendment,
+  planCanvasEdits,
   planTransform,
   WikiCollisionError,
   WikiFormatError,
@@ -326,7 +327,7 @@ interface StoredChangeRequest {
   readonly head: string;
 }
 
-/** The way out of a canvas conflict: an amendment can't write one until agents can draw. */
+/** A person's way out of a canvas conflict. An agent changes the clashing cards with a transform. */
 const SETTLE_IN_WORKTREE =
   "A canvas is settled in the change request's worktree: edit it there so the clashing cards agree with main, save the edits to the change request, then merge again.";
 
@@ -1354,6 +1355,7 @@ const make = Effect.gen(function* () {
       commit,
       amendment,
       errors: planned.errors,
+      ...planned.canvas,
     } satisfies WikiAmendResult;
   });
 
@@ -1381,7 +1383,7 @@ const make = Effect.gen(function* () {
       return Effect.fail(
         new WikiError({
           reason: "invalid",
-          message: `${canvas} is a canvas, which astrolabe_wiki_amend can't write. Read it with astrolabe_wiki_read, and tell the person what it needs: changing a canvas isn't possible yet.`,
+          message: `${canvas} is a canvas, which astrolabe_wiki_amend can't write. Change it with astrolabe_wiki_transform, kind "canvas": say what is on it, and it is placed for you.`,
           wikiId: input.wikiId,
         }),
       );
@@ -1390,9 +1392,15 @@ const make = Effect.gen(function* () {
   };
 
   const transform: WikiService["Service"]["transform"] = (input, author) =>
-    amendWith(input, author, (files, stamp) =>
-      planAmendment(files, planTransform(files, input.transform, stamp), stamp),
-    );
+    amendWith(input, author, (files, stamp) => {
+      const change = input.transform;
+      if (change.kind !== "canvas") {
+        return planAmendment(files, planTransform(files, change, stamp), stamp);
+      }
+      const { changes, cards, notes } = planCanvasEdits(files, change, stamp);
+      const canvas = { cards, ...(notes.length > 0 ? { notes } : {}) };
+      return { ...planAmendment(files, changes, stamp), canvas };
+    });
 
   const revertAmendment: WikiService["Service"]["revertAmendment"] = (input, author) =>
     withWiki(

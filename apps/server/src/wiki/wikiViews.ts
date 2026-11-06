@@ -7,16 +7,19 @@
 import {
   backlinks,
   baseBlocks,
+  canvasMatches,
   canvasSourceOutline,
   findMap,
   isCanvasFile,
   isDocumentLink,
   key,
   noteName,
+  parseCanvas,
   support,
   unresolved,
   typedLinks,
   walk,
+  type CanvasMatch,
   type WikiFiles,
   type WikiIndex,
 } from "@mercurian/wiki";
@@ -295,47 +298,61 @@ export interface WikiSearchResult {
   readonly matches: ReadonlyArray<{
     readonly name: string;
     readonly lines: ReadonlyArray<{ readonly line: number; readonly text: string }>;
+    /** A canvas's matches: cards, which have ids to edit them by, not lines. */
+    readonly cards?: ReadonlyArray<CanvasMatch>;
   }>;
-  /** True when more notes or lines matched than the result carries. */
+  /** True when more documents, lines or cards matched than the result carries. */
   readonly truncated: boolean;
 }
 
-/**
- * Case-insensitive substring search over document names and text, bounded for an agent's context.
- * A canvas is searched as its outline, so a match's line is one `astrolabe_wiki_read` returns.
- */
+const clipped = (text: string) =>
+  text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text;
+
+/** Case-insensitive substring search over document names and text, bounded for an agent's context. */
 export const searchNotes = (index: WikiIndex, query: string): WikiSearchResult => {
   const needle = query.toLowerCase();
   const matches: Array<WikiSearchResult["matches"][number]> = [];
   let truncated = false;
-  const documents = [
+  const documents: ReadonlyArray<{ readonly name: string; readonly source: string }> = [
     ...index.notes.values(),
-    ...[...index.canvases.values()].map(({ file, source }) => ({
-      name: file,
-      source: canvasSourceOutline(file, source),
-    })),
+    ...[...index.canvases.values()].map(({ file, source }) => ({ name: file, source })),
   ];
-  for (const note of documents) {
+  for (const { name, source } of documents) {
+    const board = isCanvasFile(name) ? parseCanvas(source) : null;
+    if (board?.ok === true) {
+      const cards = canvasMatches(board.data, query);
+      if (cards.length === 0 && !name.toLowerCase().includes(needle)) continue;
+      if (matches.length >= MAX_SEARCH_NOTES) {
+        truncated = true;
+        break;
+      }
+      truncated ||= cards.length > MAX_LINES_PER_NOTE;
+      matches.push({
+        name,
+        lines: [],
+        cards: cards
+          .slice(0, MAX_LINES_PER_NOTE)
+          .map((card) => ({ ...card, text: clipped(card.text) })),
+      });
+      continue;
+    }
     const lines: Array<{ line: number; text: string }> = [];
     let more = false;
-    note.source.split("\n").forEach((text, position) => {
+    source.split("\n").forEach((text, position) => {
       if (!text.toLowerCase().includes(needle)) return;
       if (lines.length >= MAX_LINES_PER_NOTE) {
         more = true;
         return;
       }
-      lines.push({
-        line: position + 1,
-        text: text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text,
-      });
+      lines.push({ line: position + 1, text: clipped(text) });
     });
-    if (!lines.length && !note.name.toLowerCase().includes(needle)) continue;
+    if (!lines.length && !name.toLowerCase().includes(needle)) continue;
     if (matches.length >= MAX_SEARCH_NOTES) {
       truncated = true;
       break;
     }
     truncated ||= more;
-    matches.push({ name: note.name, lines });
+    matches.push({ name, lines });
   }
   return { matches, truncated };
 };

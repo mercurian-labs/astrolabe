@@ -1,6 +1,7 @@
 import { applyBaseEdits, type BaseEdit } from "./baseEdits.ts";
 import { renameInBase, renameInBaseBlocks } from "./bases.ts";
-import { isCanvasFile, serializeCanvas } from "./canvas.ts";
+import { isCanvasFile, parseCanvas, serializeCanvas } from "./canvas.ts";
+import { applyCanvasEdits, CanvasEditError, type CanvasEdit } from "./canvasEdits.ts";
 import { renameInCanvas, type CanvasRename } from "./canvasIndex.ts";
 import { key, renameLinks } from "./links.ts";
 import {
@@ -63,6 +64,11 @@ export interface PlannedAmendment {
   readonly changes: WikiChanges;
   /** Index errors standing after the amendment (stale edges included). */
   readonly errors: ReadonlyArray<WikiIndexError>;
+  /** What a canvas transform reports, returned with the amendment. */
+  readonly canvas?: {
+    readonly cards: PlannedCanvasEdits["cards"];
+    readonly notes?: PlannedCanvasEdits["notes"];
+  };
 }
 
 /** `files` with `changes` applied. */
@@ -167,8 +173,43 @@ export type WikiTransform =
     }
   /** Edits made from a base's view (see `applyBaseEdits`). */
   | { readonly kind: "base-edits"; readonly edits: ReadonlyArray<BaseEdit> }
-  /** A new, empty canvas: the one way to start a canvas until cards can be written. */
-  | { readonly kind: "canvas-create"; readonly file: string };
+  /** A new canvas: empty, or holding `source`, a board whose coordinates are already decided. */
+  | { readonly kind: "canvas-create"; readonly file: string; readonly source?: string | undefined };
+
+/** Edits to one canvas, replayed on the head under the wiki's lock. */
+export interface CanvasTransform {
+  readonly file: string;
+  readonly edits: ReadonlyArray<CanvasEdit>;
+}
+
+export interface PlannedCanvasEdits {
+  readonly changes: WikiChanges;
+  readonly cards: Readonly<Record<string, string>>;
+  readonly notes: ReadonlyArray<string>;
+}
+
+/** A canvas transform as changes to the wiki's files, with the ids it minted. */
+export function planCanvasEdits(
+  files: WikiFiles,
+  transform: CanvasTransform,
+  stamp: Pick<AmendmentStamp, "amendment">,
+): PlannedCanvasEdits {
+  const file = checkFileName(transform.file.trim());
+  if (!isCanvasFile(file)) throw new AmendmentError(`Expected a .canvas filename: ${file}`);
+  const existing = Object.keys(files).find((name) => key(name) === key(file));
+  try {
+    const { source, cards, notes } = applyCanvasEdits(
+      existing ?? file,
+      existing === undefined ? null : (files[existing] ?? null),
+      transform.edits,
+      stamp.amendment,
+    );
+    return { changes: { [existing ?? file]: source }, cards, notes };
+  } catch (error) {
+    if (error instanceof CanvasEditError) throw new AmendmentError(error.message);
+    throw error;
+  }
+}
 
 /** What a rename touches: a note goes by its name, a canvas by its file name. */
 function renameOf(index: WikiIndex, from: string, to: string): CanvasRename {
@@ -205,7 +246,13 @@ export function planTransform(
     if (Object.keys(files).some((existing) => key(existing) === key(file))) {
       throw new AmendmentError(`A file named ${file} already exists`);
     }
-    changes[file] = serializeCanvas({ nodes: [], edges: [] });
+    if (transform.source === undefined) {
+      changes[file] = serializeCanvas({ nodes: [], edges: [] });
+      return changes;
+    }
+    const parsed = parseCanvas(transform.source);
+    if (!parsed.ok) throw new AmendmentError(`${file} isn't valid JSON: ${parsed.error}`);
+    changes[file] = serializeCanvas(parsed.document);
     return changes;
   }
   if (transform.kind === "rename") {

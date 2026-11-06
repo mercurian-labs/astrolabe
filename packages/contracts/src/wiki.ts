@@ -9,6 +9,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { WikiCanvasAgentTransform, WikiCanvasTransform } from "./canvas.ts";
 
 /** Astrolabe: local wikis. A wiki is a git repository of linked markdown notes. */
 export const WikiId = TrimmedNonEmptyString.pipe(Schema.brand("WikiId"));
@@ -638,14 +639,22 @@ const WikiMechanicalTransforms = [
 ] as const;
 
 /** The transforms an agent applies; it writes a base's YAML whole instead of editing its view. */
-export const WikiAgentTransform = Schema.Union(WikiMechanicalTransforms);
+export const WikiAgentTransform = Schema.Union([
+  ...WikiMechanicalTransforms,
+  WikiCanvasAgentTransform,
+]);
 
 export const WikiTransform = Schema.Union([
   ...WikiMechanicalTransforms,
   /** Edits made from a base's view, landed on the change request's head as one amendment. */
   Schema.Struct({ kind: Schema.Literal("base-edits"), edits: Schema.Array(WikiBaseEdit) }),
-  /** A new, empty canvas. */
-  Schema.Struct({ kind: Schema.Literal("canvas-create"), file: TrimmedNonEmptyString }),
+  /** A new canvas: empty, or holding `source`, whose coordinates are already decided. */
+  Schema.Struct({
+    kind: Schema.Literal("canvas-create"),
+    file: TrimmedNonEmptyString,
+    source: Schema.optional(Schema.String),
+  }),
+  WikiCanvasTransform,
 ]);
 export type WikiTransform = typeof WikiTransform.Type;
 
@@ -660,6 +669,10 @@ export const WikiAmendResult = Schema.Struct({
   errors: Schema.Array(WikiIndexError),
   /** What a revert's merge settled by itself in canvases: it has no preview to say so. */
   canvases: Schema.optional(Schema.Array(WikiCanvasMergeNotes)),
+  /** A canvas transform's new cards and groups: the id each `ref` got. */
+  cards: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  /** What a canvas transform couldn't do as asked. */
+  notes: Schema.optional(Schema.Array(Schema.String)),
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
 

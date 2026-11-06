@@ -75,6 +75,9 @@ const WikiSearchTool = Tool.make("astrolabe_wiki_search", {
       Schema.Struct({
         name: Schema.String,
         lines: Schema.Array(Schema.Struct({ line: Schema.Number, text: Schema.String })),
+        cards: Schema.optional(
+          Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String })),
+        ),
       }),
     ),
     truncated: Schema.Boolean,

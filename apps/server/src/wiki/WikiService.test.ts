@@ -868,6 +868,7 @@ it.effect("refuses a canvas in an amendment, while a worktree and a revert still
       );
       assert.equal(refused.reason, "invalid");
       assert.include(refused.message, "Board.canvas is a canvas");
+      assert.include(refused.message, "astrolabe_wiki_transform");
 
       yield* write(worktree, { "Board.canvas": '{"nodes":[],"edges":[]}' });
       const saved = yield* wikis.saveWorktree(
@@ -884,6 +885,78 @@ it.effect("refuses a canvas in an amendment, while a worktree and a revert still
         paths: ["Board.canvas"],
       });
       assert.equal(read.files[0]?.exists, false);
+    }),
+  ),
+);
+
+it.effect("lands canvas edits on the head, placed by the server, with the ids it minted", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const thread = agent("thread-canvas");
+      const drawn = yield* wikis.transform(
+        {
+          wikiId,
+          message: "Draw the board",
+          transform: {
+            kind: "canvas",
+            file: "Board.canvas",
+            edits: [
+              { op: "create" },
+              { op: "add", ref: "login", text: "Login" },
+              { op: "add", ref: "token", text: "Token" },
+              { op: "connect", from: "login", to: "token" },
+            ],
+          },
+        },
+        thread,
+      );
+      const login = drawn.cards?.login ?? "";
+      assert.match(login, /^[0-9a-f]{16}$/);
+      const added = yield* wikis.transform(
+        {
+          wikiId,
+          message: "Add a step",
+          transform: {
+            kind: "canvas",
+            file: "Board.canvas",
+            edits: [{ op: "add", ref: "check", text: "Check", near: login }],
+          },
+        },
+        thread,
+      );
+      assert.equal(added.changeRequest.changeRequestId, drawn.changeRequest.changeRequestId);
+      const { files } = yield* wikis.readFiles({
+        wikiId,
+        changeRequestId: drawn.changeRequest.changeRequestId,
+        paths: ["Board.canvas"],
+      });
+      const { nodes, edges } = JSON.parse(files[0]?.text ?? "");
+      assert.lengthOf(nodes, 3);
+      assert.lengthOf(edges, 1);
+      assert.equal(nodes[0].id, login);
+      assert.equal(nodes[2].id, added.cards?.check);
+      assert.notDeepEqual([nodes[2].x, nodes[2].y], [nodes[1].x, nodes[1].y]);
+
+      const onMain = yield* wikis.readFiles({ wikiId, paths: ["Board.canvas"] });
+      assert.isFalse(onMain.files[0]?.exists);
+
+      const refused = yield* failure(
+        wikis.transform(
+          {
+            wikiId,
+            message: "Nothing here",
+            transform: {
+              kind: "canvas",
+              file: "Other.canvas",
+              edits: [{ op: "add", ref: "a", text: "A" }],
+            },
+          },
+          thread,
+        ),
+      );
+      assert.equal(refused.reason, "invalid");
+      assert.include(refused.message, "start one with `create`");
     }),
   ),
 );
@@ -1023,8 +1096,14 @@ it.effect("indexes a canvas beside the notes, for links, search and agents' read
 
       const search = yield* wikis.search({ wikiId, query: "links [[alpha" });
       assert.deepEqual(search.matches, [
-        { name: "Board.canvas", lines: [{ line: 2, text: "[a] Links [[Alpha]] and [[Ghost]]" }] },
+        {
+          name: "Board.canvas",
+          lines: [],
+          cards: [{ id: "a", text: "Links [[Alpha]] and [[Ghost]]" }],
+        },
       ]);
+      const arrow = yield* wikis.search({ wikiId, query: "USES" });
+      assert.deepEqual(arrow.matches[0]?.cards, [{ id: "e", text: "[a] -> [b]: uses" }]);
     }),
   ),
 );
