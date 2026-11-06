@@ -36,10 +36,10 @@ export interface ReleaseAsset {
   readonly bytes: number;
   readonly sha256: string;
   /**
-   * `gz` is the executable itself, gzipped; `zip` and `tgz` unpack whole and run `entry` (the
-   * release's name by default). A `tgz`'s one top folder is dropped, if it has one.
+   * `binary` is the executable itself and `gz` the same gzipped; `zip` and `tgz` unpack whole and
+   * run `entry` (the release's name by default). A `tgz`'s one top folder is dropped, if it has one.
    */
-  readonly format: "gz" | "zip" | "tgz";
+  readonly format: "binary" | "gz" | "zip" | "tgz";
   readonly entry?: string;
   /**
    * With `java`, what comes before `-jar entry`. `{release}` is the unpacked folder and `{data}`
@@ -197,6 +197,32 @@ const TYPESCRIPT_SETTINGS = {
   javascript: TYPESCRIPT_FEATURES,
 };
 
+/** What every server of `vscode-langservers-extracted` runs on. */
+const VSCODE_SERVER = {
+  "@vscode/l10n": "0.0.18",
+  "core-js": "3.51.0",
+  "regenerator-runtime": "0.13.11",
+  "vscode-jsonrpc": "9.0.3",
+  "vscode-languageserver": "10.1.2",
+  "vscode-languageserver-protocol": "3.18.4",
+  "vscode-languageserver-textdocument": "1.0.16",
+  "vscode-languageserver-types": "3.18.4",
+  "vscode-uri": "3.2.0",
+};
+
+/** One of that package's servers, with what it alone needs: HTML's TypeScript is 22 MB. */
+const extractedServer = (server: string, dependencies: Record<string, string>): NpmSource => ({
+  name: "vscode-langservers-extracted",
+  version: "4.10.0",
+  licence: "MIT",
+  entry: `bin/vscode-${server}-language-server`,
+  runWith: "node",
+  dependencies,
+});
+
+const TAPLO_RELEASE = "https://github.com/tamasfe/taplo/releases/download/0.10.0";
+const LUA_RELEASE = "https://github.com/LuaLS/lua-language-server/releases/download/3.19.2";
+const MARKSMAN_RELEASE = "https://github.com/artempyanykh/marksman/releases/download/2026-02-08";
 const CLANGD_RELEASE = "https://github.com/clangd/clangd/releases/download/23.1.0";
 const RUFF_RELEASE = "https://github.com/astral-sh/ruff/releases/download/0.17.4";
 
@@ -538,6 +564,527 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
           "{data}",
         ],
         // Imports Maven and Gradle builds, which run their plugins and build scripts.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  json: {
+    id: "json",
+    name: "JSON",
+    languages: "JSON",
+    missing: "JSON's language server could not be found or downloaded.",
+    launches: [
+      {
+        name: "JSON",
+        pathCommand: "vscode-json-language-server",
+        npm: extractedServer("json", {
+          ...VSCODE_SERVER,
+          "jsonc-parser": "3.3.1",
+          "request-light": "0.7.0",
+          "vscode-json-languageservice": "5.7.2",
+        }),
+        args: ["--stdio"],
+        initializationOptions: { provideFormatter: true },
+        // Runs nothing. A file's `$schema` can make it fetch that URL, a GET and no more.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  css: {
+    id: "css",
+    name: "CSS",
+    languages: "CSS, SCSS and Less",
+    missing: "CSS's language server could not be found or downloaded.",
+    launches: [
+      {
+        name: "CSS",
+        pathCommand: "vscode-css-language-server",
+        npm: extractedServer("css", {
+          ...VSCODE_SERVER,
+          "vscode-css-languageservice": "6.3.10",
+        }),
+        args: ["--stdio"],
+        initializationOptions: { provideFormatter: true },
+        // Its linter fails on no settings at all, which it reports as a clean file.
+        settings: { css: {}, scss: {}, less: {} },
+        // Parses stylesheets; it follows no import to run anything.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  html: {
+    id: "html",
+    name: "HTML",
+    languages: "HTML",
+    missing: "HTML's language server could not be found or downloaded.",
+    launches: [
+      {
+        name: "HTML",
+        pathCommand: "vscode-html-language-server",
+        npm: extractedServer("html", {
+          ...VSCODE_SERVER,
+          typescript: "4.9.5",
+          "vscode-css-languageservice": "6.3.10",
+          "vscode-html-languageservice": "5.6.2",
+        }),
+        args: ["--stdio"],
+        initializationOptions: { provideFormatter: true },
+        settings: { html: {}, css: {}, javascript: {} },
+        // Embedded scripts go to its own TypeScript, which loads no project plugins.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  yaml: {
+    id: "yaml",
+    name: "YAML",
+    languages: "YAML",
+    missing: "YAML's language server could not be found or downloaded.",
+    launches: [
+      {
+        name: "YAML",
+        pathCommand: "yaml-language-server",
+        npm: {
+          name: "yaml-language-server",
+          version: "2.0.0",
+          licence: "MIT",
+          entry: "bin/yaml-language-server",
+          runWith: "node",
+          dependencies: {
+            "@vscode/l10n": "0.0.18",
+            ajv: "8.20.0",
+            "ajv-draft-04": "1.0.0",
+            "ajv-i18n": "4.2.0",
+            "fast-deep-equal": "3.1.3",
+            "fast-uri": "3.1.9",
+            "json-schema-traverse": "1.0.0",
+            "jsonc-parser": "3.3.1",
+            picomatch: "4.0.7",
+            prettier: "3.9.10",
+            "request-light": "0.5.8",
+            "require-from-string": "2.0.2",
+            "vscode-jsonrpc": "9.0.3",
+            "vscode-languageserver": "10.1.2",
+            "vscode-languageserver-protocol": "3.18.4",
+            "vscode-languageserver-textdocument": "1.0.16",
+            "vscode-languageserver-types": "3.18.4",
+            "vscode-uri": "3.2.0",
+            yaml: "2.8.3",
+          },
+        },
+        args: ["--stdio"],
+        // Runs nothing. It fetches schemas: SchemaStore's list, and a URL a file names.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  bash: {
+    id: "bash",
+    name: "Bash",
+    languages: "Bash",
+    missing: "Bash's language server could not be found or downloaded.",
+    launches: [
+      {
+        name: "Bash",
+        pathCommand: "bash-language-server",
+        npm: {
+          name: "bash-language-server",
+          version: "5.8.1",
+          licence: "MIT",
+          entry: "out/cli.js",
+          runWith: "node",
+          dependencies: {
+            "@isaacs/balanced-match": "4.0.1",
+            "@isaacs/brace-expansion": "5.0.1",
+            "@mixmark-io/domino": "2.2.0",
+            "@nodelib/fs.scandir": "2.1.5",
+            "@nodelib/fs.stat": "2.0.5",
+            "@nodelib/fs.walk": "1.2.8",
+            "@one-ini/wasm": "0.2.1",
+            braces: "3.0.3",
+            commander: "14.0.3",
+            editorconfig: "3.0.2",
+            "fast-glob": "3.3.3",
+            fastq: "1.20.3",
+            "fill-range": "7.1.1",
+            "fuzzy-search": "3.2.1",
+            "glob-parent": "5.1.2",
+            "is-extglob": "2.1.1",
+            "is-glob": "4.0.3",
+            "is-number": "7.0.0",
+            merge2: "1.4.1",
+            micromatch: "4.0.8",
+            // The last under ISC, and what `.editorconfig` globs need of it: later ones are
+            // BlueOak-1.0.0, which we don't download.
+            minimatch: "10.0.3",
+            picomatch: "2.3.2",
+            "queue-microtask": "1.2.3",
+            reusify: "1.1.0",
+            "run-parallel": "1.2.0",
+            semver: "7.8.6",
+            "to-regex-range": "5.0.1",
+            turndown: "7.2.4",
+            "vscode-jsonrpc": "9.0.2",
+            "vscode-languageserver": "10.1.1",
+            "vscode-languageserver-protocol": "3.18.3",
+            "vscode-languageserver-textdocument": "1.0.14",
+            "vscode-languageserver-types": "3.18.3",
+            "web-tree-sitter": "0.27.0",
+            zod: "3.25.76",
+          },
+        },
+        args: ["start"],
+        // Only ShellCheck and shfmt from the machine, which read scripts and never run them.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  dockerfile: {
+    id: "dockerfile",
+    name: "Dockerfile",
+    languages: "Dockerfile",
+    missing: "Dockerfile's language server could not be found or downloaded.",
+    launches: [
+      {
+        name: "Dockerfile",
+        pathCommand: "docker-langserver",
+        npm: {
+          name: "dockerfile-language-server-nodejs",
+          version: "0.15.0",
+          licence: "MIT",
+          entry: "bin/docker-langserver",
+          runWith: "node",
+          dependencies: {
+            "dockerfile-ast": "0.7.1",
+            "dockerfile-language-service": "0.16.1",
+            "dockerfile-utils": "0.16.3",
+            "vscode-jsonrpc": "8.0.2",
+            "vscode-languageserver": "8.0.2",
+            "vscode-languageserver-protocol": "3.17.2",
+            "vscode-languageserver-textdocument": "1.0.16",
+            "vscode-languageserver-types": "3.17.2",
+          },
+        },
+        args: ["--stdio"],
+        // Reads the file in front of it, and starts nothing.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  taplo: {
+    id: "taplo",
+    name: "Taplo",
+    languages: "TOML",
+    missing: "Taplo has no download for this machine: install `taplo`, then try again.",
+    launches: [
+      {
+        name: "Taplo",
+        pathCommand: "taplo",
+        probe: ["--version"],
+        release: {
+          name: "taplo",
+          version: "0.10.0",
+          licence: "MIT",
+          host: "GitHub",
+          assets: {
+            "darwin-arm64": {
+              url: `${TAPLO_RELEASE}/taplo-darwin-aarch64.gz`,
+              bytes: 4616415,
+              sha256: "713734314c3e71894b9e77513c5349835eefbd52908445a0d73b0c7dc469347d",
+              format: "gz",
+            },
+            "darwin-x64": {
+              url: `${TAPLO_RELEASE}/taplo-darwin-x86_64.gz`,
+              bytes: 4921954,
+              sha256: "898122cde3a0b1cd1cbc2d52d3624f23338218c91b5ddb71518236a4c2c10ef2",
+              format: "gz",
+            },
+            "linux-arm64": {
+              url: `${TAPLO_RELEASE}/taplo-linux-aarch64.gz`,
+              bytes: 4631779,
+              sha256: "033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3",
+              format: "gz",
+            },
+            "linux-x64": {
+              url: `${TAPLO_RELEASE}/taplo-linux-x86_64.gz`,
+              bytes: 5116068,
+              sha256: "8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156",
+              format: "gz",
+            },
+            "win32-arm64": {
+              url: `${TAPLO_RELEASE}/taplo-windows-aarch64.gz`,
+              bytes: 4810191,
+              sha256: "c16a9a1248bdd746fde657b0196bfc47c8bede1e50ae73b7d9d33088a6682180",
+              format: "gz",
+            },
+            "win32-x64": {
+              url: `${TAPLO_RELEASE}/taplo-windows-x86_64.gz`,
+              bytes: 5182493,
+              sha256: "550fdc955343f8a196447a05346ecf8827e391726e4ded577bb00a0a36cf220c",
+              format: "gz",
+            },
+          },
+        },
+        args: ["lsp", "stdio"],
+        // Parses TOML, with no plugins. Its config can name schemas to fetch, not code to run.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  lua: {
+    id: "lua",
+    name: "LuaLS",
+    languages: "Lua",
+    quietUnchanged: true,
+    missing:
+      "LuaLS has no download for this machine: install `lua-language-server`, then try again.",
+    launches: [
+      {
+        name: "LuaLS",
+        pathCommand: "lua-language-server",
+        release: {
+          name: "lua-language-server",
+          version: "3.19.2",
+          licence: "MIT",
+          host: "GitHub",
+          assets: {
+            "darwin-arm64": {
+              url: `${LUA_RELEASE}/lua-language-server-3.19.2-darwin-arm64.tar.gz`,
+              bytes: 3286148,
+              sha256: "79149584320a23bd5fcd5bc31f47a1975acd8a4560a0e89036bb1016fa61687f",
+              format: "tgz",
+              entry: "bin/lua-language-server",
+            },
+            "darwin-x64": {
+              url: `${LUA_RELEASE}/lua-language-server-3.19.2-darwin-x64.tar.gz`,
+              bytes: 2337043,
+              sha256: "6f2174ece5ec63bcd9d5b22b2c902445c1cd9045fafe48c62602448ebf4c09cc",
+              format: "tgz",
+              entry: "bin/lua-language-server",
+            },
+            "linux-arm64": {
+              url: `${LUA_RELEASE}/lua-language-server-3.19.2-linux-arm64.tar.gz`,
+              bytes: 2633728,
+              sha256: "17b8e401a874440adeb649e5024c364f2bb9d15156c74a40e56d1ae9a1b2e4f2",
+              format: "tgz",
+              entry: "bin/lua-language-server",
+            },
+            "linux-x64": {
+              url: `${LUA_RELEASE}/lua-language-server-3.19.2-linux-x64.tar.gz`,
+              bytes: 3696210,
+              sha256: "93ad326b10f6c00911dd8c450fa098332dbd8f9f45d1052f5636a2d54479b947",
+              format: "tgz",
+              entry: "bin/lua-language-server",
+            },
+            "win32-x64": {
+              url: `${LUA_RELEASE}/lua-language-server-3.19.2-win32-x64.zip`,
+              bytes: 4455290,
+              sha256: "4a3dc851b3b31e7b75a23f645d1ba4a2137579a55f5fa4edbb17a3e2a6254044",
+              format: "zip",
+              entry: "bin/lua-language-server.exe",
+            },
+          },
+        },
+        // Out of the release, which every checkout shares.
+        args: ["--logpath={data}/log", "--metapath={data}/meta"],
+        settings: { Lua: { hint: { enable: true }, telemetry: { enable: false } } },
+        // `.luarc.json` can name a Lua plugin, which it runs.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  marksman: {
+    id: "marksman",
+    name: "Marksman",
+    languages: "Markdown",
+    quietUnchanged: true,
+    missing: "Marksman has no download for this machine: install `marksman`, then try again.",
+    launches: [
+      {
+        name: "Marksman",
+        pathCommand: "marksman",
+        release: {
+          name: "marksman",
+          version: "2026-02-08",
+          licence: "MIT",
+          host: "GitHub",
+          assets: {
+            // One universal build; its musl builds still need musl, so glibc's is the wider.
+            "darwin-arm64": {
+              url: `${MARKSMAN_RELEASE}/marksman-macos`,
+              bytes: 43856208,
+              sha256: "6a801c17b5ac0dba69787c5282b3b3bd416e66c96253fae098d311c6bbd1833b",
+              format: "binary",
+            },
+            "darwin-x64": {
+              url: `${MARKSMAN_RELEASE}/marksman-macos`,
+              bytes: 43856208,
+              sha256: "6a801c17b5ac0dba69787c5282b3b3bd416e66c96253fae098d311c6bbd1833b",
+              format: "binary",
+            },
+            "linux-arm64": {
+              url: `${MARKSMAN_RELEASE}/marksman-linux-arm64`,
+              bytes: 21851058,
+              sha256: "db8e124527f7f8048e3e6c91821b9c52ef173d92c01e47d221bf1337afd962fb",
+              format: "binary",
+            },
+            "linux-x64": {
+              url: `${MARKSMAN_RELEASE}/marksman-linux-x64`,
+              bytes: 22500875,
+              sha256: "be5098e8213219269c47fc0d916a66fa31ce0602ec967475c722260aabf26087",
+              format: "binary",
+            },
+            "win32-x64": {
+              url: `${MARKSMAN_RELEASE}/marksman.exe`,
+              bytes: 20502938,
+              sha256: "a6d05beb08ebe41b0a9f09c98a438540421436fa5531424c22e0bb1d22529705",
+              format: "binary",
+            },
+          },
+        },
+        args: ["server"],
+        // Reads Markdown and nothing else; `.marksman.toml` holds only its own options.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  // Installed, not downloaded: each of these needs its language's own toolchain to be any use,
+  // and that toolchain, or the version it pins, decides which build fits.
+  zls: {
+    id: "zls",
+    name: "zls",
+    languages: "Zig",
+    missing:
+      "zls isn't installed: run `brew install zls`, or get the build matching your Zig from zigtools.org, then try again.",
+    launches: [
+      {
+        name: "zls",
+        pathCommand: "zls",
+        probe: ["--version"],
+        args: [],
+        // Runs the project's `build.zig` to learn its modules.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  "sourcekit-lsp": {
+    id: "sourcekit-lsp",
+    name: "SourceKit-LSP",
+    languages: "Swift",
+    writes: [".build/"],
+    missing:
+      "SourceKit-LSP comes with Swift: install Xcode or its command line tools, or Swift from swift.org, then try again.",
+    launches: [
+      {
+        name: "SourceKit-LSP",
+        // /usr/bin's is the shim that offers to install Xcode's tools.
+        knownPaths: [
+          "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/sourcekit-lsp",
+          "/Library/Developer/CommandLineTools/usr/bin/sourcekit-lsp",
+        ],
+        pathCommand: "sourcekit-lsp",
+        args: [],
+        // Compiles and runs `Package.swift`.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  "ruby-lsp": {
+    id: "ruby-lsp",
+    name: "Ruby LSP",
+    languages: "Ruby",
+    writes: [".ruby-lsp/"],
+    missing: "Ruby LSP isn't installed: run `gem install ruby-lsp`, then try again.",
+    launches: [
+      {
+        name: "Ruby LSP",
+        pathCommand: "ruby-lsp",
+        probe: ["--version"],
+        args: [],
+        // Runs Bundler on the project's Gemfile, and loads add-ons from its gems.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  phpactor: {
+    id: "phpactor",
+    name: "Phpactor",
+    languages: "PHP",
+    missing:
+      "Phpactor isn't installed: follow phpactor.readthedocs.io (it needs PHP), then try again.",
+    launches: [
+      {
+        name: "Phpactor",
+        pathCommand: "phpactor",
+        args: ["language-server"],
+        // `.phpactor.json` can name tools for it to run.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  csharp: {
+    id: "csharp",
+    name: "csharp-ls",
+    languages: "C#",
+    missing:
+      "No C# language server is installed: run `dotnet tool install --global csharp-ls`, or put OmniSharp on PATH, then try again.",
+    launches: [
+      {
+        name: "csharp-ls",
+        pathCommand: "csharp-ls",
+        // Where `dotnet tool install --global` puts it, often off PATH.
+        knownPaths: ["~/.dotnet/tools/csharp-ls"],
+        args: [],
+        // Both evaluate the project through MSBuild, which can run its targets.
+        restrictedSafe: false,
+      },
+      { name: "OmniSharp", pathCommand: "omnisharp", args: ["-lsp"], restrictedSafe: false },
+    ],
+  },
+  kotlin: {
+    id: "kotlin",
+    name: "Kotlin",
+    languages: "Kotlin",
+    missing:
+      "kotlin-language-server isn't installed: run `brew install kotlin-language-server`, then try again.",
+    launches: [
+      {
+        name: "Kotlin",
+        pathCommand: "kotlin-language-server",
+        args: [],
+        // Asks Gradle or Maven for the classpath, which runs build scripts.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  "elixir-ls": {
+    id: "elixir-ls",
+    name: "ElixirLS",
+    languages: "Elixir",
+    writes: [".elixir_ls/"],
+    missing: "ElixirLS isn't installed: run `brew install elixir-ls`, then try again.",
+    launches: [
+      {
+        name: "ElixirLS",
+        pathCommand: "elixir-ls",
+        args: [],
+        // Compiles the project with Mix, macros and all.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  dart: {
+    id: "dart",
+    name: "Dart",
+    languages: "Dart",
+    missing: "Dart's language server comes with its SDK: install it from dart.dev, then try again.",
+    launches: [
+      {
+        name: "Dart",
+        pathCommand: "dart",
+        probe: ["--version"],
+        args: ["language-server", "--protocol=lsp"],
+        // Analyzer plugins named in `analysis_options.yaml` run as code.
         restrictedSafe: false,
       },
     ],

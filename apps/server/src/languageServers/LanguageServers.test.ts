@@ -49,7 +49,7 @@ import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ContentModified, RequestCancelled } from "./connection.ts";
 import * as LanguageServers from "./LanguageServers.ts";
-import type { LanguageServerSpec, ReleaseSource } from "./registry.ts";
+import type { LanguageServerSpec, ReleaseAsset, ReleaseSource } from "./registry.ts";
 
 const FAKE_SERVER = NodeURL.fileURLToPath(
   new URL("./testing/fakeLanguageServer.mjs", import.meta.url),
@@ -1515,7 +1515,7 @@ const releaseServing = (bytes: Uint8Array) =>
 /** A release whose build for this machine is `bytes`, pinned as `pinned` (its own by default). */
 const releaseSpecs = (
   bytes: Uint8Array,
-  format: "gz" | "zip" | "tgz",
+  format: ReleaseAsset["format"],
   pinned: Uint8Array = bytes,
   entry?: string,
 ) => ({
@@ -2247,11 +2247,16 @@ describe("LanguageServers downloads", () => {
       const session = yield* openSession(checkout);
       expect((yield* session.state("ready")).source).toBe("cache");
       yield* session.open(checkout.uri);
-      const config = yield* ServerConfig.ServerConfig;
+      const service = yield* LanguageServers.LanguageServers;
+      const {
+        servers: [check],
+      } = yield* service.check(checkout.cwd);
       const fileSystem = yield* FileSystem.FileSystem;
+      // A folder of these pins: another server of the package may need others.
+      expect(check?.executable).toMatch(/fake-server@1\.0\.0-[0-9a-f]{8}\/server\.mjs$/);
       expect(
         yield* fileSystem.readFileString(
-          `${config.providerStatusCacheDir}/language-servers/fake-server@1.0.0/node_modules/fake-dep/index.js`,
+          check!.executable!.replace("server.mjs", "node_modules/fake-dep/index.js"),
         ),
       ).toBe("dependency");
     }).pipe(
@@ -2317,6 +2322,21 @@ describe("LanguageServers downloads", () => {
         layerFor(
           { specs: releaseSpecs(NodeZlib.gzipSync(nativeFakeServer), "gz"), trusted: undefined },
           releaseServing(NodeZlib.gzipSync(nativeFakeServer)),
+        ),
+      ),
+    ),
+  );
+
+  it.live("takes a release that is the executable itself", () =>
+    Effect.gen(function* () {
+      const session = yield* openSession(yield* makeCheckout(SOURCE));
+      expect((yield* session.state("ready")).source).toBe("cache");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: releaseSpecs(new TextEncoder().encode(nativeFakeServer), "binary") },
+          releaseServing(new TextEncoder().encode(nativeFakeServer)),
         ),
       ),
     ),

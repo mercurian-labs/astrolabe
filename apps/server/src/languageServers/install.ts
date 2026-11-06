@@ -107,7 +107,11 @@ const cacheFolder = (download: Download) => {
       : download.kind === "release"
         ? [download.release.name, download.release.version]
         : [download.go.name, download.go.version];
-  return `${name.replaceAll("/", "+")}@${version}`;
+  const folder = `${name.replaceAll("/", "+")}@${version}`;
+  if (download.kind !== "npm" || download.npm.dependencies === undefined) return folder;
+  // One package can run several servers, each with its own pins, and a pin can move.
+  const pins = JSON.stringify([download.npm.entry, download.npm.dependencies]);
+  return `${folder}-${NodeCrypto.createHash("sha256").update(pins).digest("hex").slice(0, 8)}`;
 };
 
 const MISSING = Symbol("missing");
@@ -682,11 +686,18 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
             message: `${release.name} failed its integrity check.`,
           });
         }
-        if (asset.format === "gz") {
-          const executable = path.join(
-            staging,
-            `${release.name}${platform === "win32" ? ".exe" : ""}`,
-          );
+        const executable = path.join(
+          staging,
+          `${release.name}${platform === "win32" ? ".exe" : ""}`,
+        );
+        if (asset.format === "binary") {
+          yield* fileSystem
+            .rename(archive, executable)
+            .pipe(
+              Effect.andThen(fileSystem.chmod(executable, 0o755)),
+              Effect.mapError(failed(`Could not unpack ${release.name}.`)),
+            );
+        } else if (asset.format === "gz") {
           const bytes = yield* fileSystem
             .readFile(archive)
             .pipe(Effect.mapError(failed(`Could not unpack ${release.name}.`)));

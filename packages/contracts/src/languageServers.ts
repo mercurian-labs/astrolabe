@@ -17,6 +17,23 @@ export const BuiltInLanguageServerId = Schema.Literals([
   "gopls",
   "clangd",
   "jdtls",
+  "json",
+  "css",
+  "html",
+  "yaml",
+  "bash",
+  "dockerfile",
+  "taplo",
+  "lua",
+  "marksman",
+  "zls",
+  "sourcekit-lsp",
+  "ruby-lsp",
+  "phpactor",
+  "csharp",
+  "kotlin",
+  "elixir-ls",
+  "dart",
   "ruff",
   "eslint",
   "tailwindcss",
@@ -69,7 +86,36 @@ const LANGUAGE_IDS: Readonly<
     mm: "objective-cpp",
   },
   jdtls: { java: "java" },
+  json: { json: "json", jsonc: "jsonc" },
+  css: { css: "css", scss: "scss", less: "less" },
+  html: { html: "html", htm: "html" },
+  yaml: { yaml: "yaml", yml: "yaml" },
+  bash: { sh: "shellscript", bash: "shellscript" },
+  dockerfile: { dockerfile: "dockerfile" },
+  taplo: { toml: "toml" },
+  lua: { lua: "lua" },
+  marksman: { md: "markdown", markdown: "markdown" },
+  zls: { zig: "zig", zon: "zig" },
+  "sourcekit-lsp": { swift: "swift" },
+  "ruby-lsp": { rb: "ruby", rake: "ruby", gemspec: "ruby", ru: "ruby" },
+  phpactor: { php: "php" },
+  csharp: { cs: "csharp" },
+  kotlin: { kt: "kotlin", kts: "kotlin" },
+  "elixir-ls": { ex: "elixir", exs: "elixir" },
+  dart: { dart: "dart" },
 };
+
+/**
+ * Files whose name says what they are, read as this extension. JSON with comments goes by name
+ * because servers call a comment an error in a file opened as plain JSON.
+ */
+const NAMED_FILES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(^|\/)(docker|container)file(\.[^/]+)?$/, "dockerfile"],
+  [/(^|\/)\.(bashrc|bash_profile|bash_aliases|bash_logout|profile)$/, "sh"],
+  [/(^|\/)(gemfile|rakefile)$/, "rb"],
+  [/(^|\/)([jt]sconfig([^/]*)|\.?devcontainer|\.eslintrc|\.oxlintrc|biome|turbo)\.json$/, "jsonc"],
+  [/(^|\/)\.vscode\/[^/]+\.json$/, "jsonc"],
+];
 
 /** The extensions each companion joins the primary on, in the order they follow it. */
 const COMPANION_EXTENSIONS: ReadonlyArray<readonly [BuiltInLanguageServerId, ReadonlySet<string>]> =
@@ -97,9 +143,12 @@ export interface LanguageServerForPath {
 }
 
 const extensionOf = (path: string) => {
-  const name = path.slice(path.lastIndexOf("/") + 1);
+  const lowered = path.toLowerCase();
+  const named = NAMED_FILES.find(([pattern]) => pattern.test(lowered));
+  if (named !== undefined) return named[1];
+  const name = lowered.slice(lowered.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
-  return dot <= 0 ? null : name.slice(dot + 1).toLowerCase();
+  return dot <= 0 ? null : name.slice(dot + 1);
 };
 
 /** The extensions built-in servers read, for what lists them all. */

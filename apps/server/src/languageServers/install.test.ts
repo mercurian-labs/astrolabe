@@ -372,6 +372,22 @@ describe("download checks", () => {
     expect(licenceAllowed(undefined)).toBe(false);
   });
 
+  it("pins every release by size and SHA-256, under a licence we may download", () => {
+    for (const spec of Object.values(LANGUAGE_SERVERS)) {
+      for (const { npm, release } of spec.launches) {
+        if (npm !== undefined) expect(licenceAllowed(npm.licence), spec.id).toBe(true);
+        if (release === undefined) continue;
+        expect(release.licenceRuled === true || licenceAllowed(release.licence), spec.id).toBe(
+          true,
+        );
+        for (const asset of Object.values(release.assets)) {
+          expect(asset?.sha256, spec.id).toMatch(/^[0-9a-f]{64}$/);
+          expect(asset?.bytes, spec.id).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
   it("refuses archive entries that climb out of the package", () => {
     const header = new Uint8Array(512);
     header.set(new TextEncoder().encode("package/../../evil"), 0);
