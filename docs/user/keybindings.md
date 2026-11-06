@@ -335,8 +335,12 @@ This Turn** in the Command Palette, switches too.
 Code files show the problems their language servers find: a wavy underline, a mark beside the
 line number, and the message on hover, naming the server that found it. Astrolabe has language
 servers for TypeScript and JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer),
-Go (gopls), C and C++ (clangd), and Java (jdtls), and you can
-[add your own](#add-your-own-language-server). Others join them where they apply: Ruff on
+Go (gopls), C and C++ (clangd), Java (jdtls), JSON, CSS, SCSS and Less, HTML, YAML, Bash,
+Dockerfiles, TOML (Taplo), Lua (LuaLS) and Markdown (Marksman). Repository files get Marksman;
+notes in a wiki don't, since a wiki has its own links. Zig (zls), Swift (SourceKit-LSP), Ruby
+(Ruby LSP), PHP (Phpactor), C# (csharp-ls or OmniSharp), Kotlin, Elixir (ElixirLS) and Dart work
+once installed, and you can [add your own](#add-your-own-language-server). Bash files find
+problems through ShellCheck, so install it for those. Others join them where they apply: Ruff on
 every Python file, ESLint when the project has an ESLint config or `eslint` in its `package.json`,
 and Tailwind CSS when it has a Tailwind config or `tailwindcss` there. After adding one to a
 project with files open, restart a language server to pick it up. The messages of the line the
@@ -346,9 +350,9 @@ cursor is on also show below it. `f8` and `shift+f8` move to the next and previo
 The header names the language server and says when it is starting. A trusted project runs its
 own server when it has one (its TypeScript, or basedpyright in its `.venv`), then one installed on
 the machine, such as rustup's rust-analyzer or Xcode's clangd, and downloads one when neither is
-there. gopls is built with the machine's Go, so Go files need Go installed. jdtls is never
-downloaded: install it (`brew install jdtls`, with Java 21 or newer) for Java files. When a server
-isn't installed the header says so: click it for what to install, then **Try again**. If a server
+there, the first time you open a file of that language. gopls is built with the machine's Go, so
+Go files need Go installed. jdtls runs on the machine's Java, so Java files need Java 21 or newer.
+When a server isn't installed the header says so: click it for what to install, then **Try again**. If a server
 keeps stopping, or was paused because several ran at once, click **Restart** in the header.
 
 Clicking the server's name in the header lists every server on the file, a `+1` beside the name

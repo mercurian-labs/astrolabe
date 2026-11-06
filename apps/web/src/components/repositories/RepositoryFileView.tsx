@@ -223,11 +223,13 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       hash: searchableSetting("project-language-servers").id,
     });
   });
+  // A wiki's links and notes have their own rules, which Marksman would call broken.
+  const wikiNote = "wikiId" in tab && isMarkdownPath(path);
   const languageServer = useLanguageServer(
     environmentId,
     cwd,
     path,
-    session,
+    wikiNote ? null : session,
     !fromDisk && state.status !== "failed",
     { openLogs, openSettings: "projectId" in tab ? openSettings : null },
   );

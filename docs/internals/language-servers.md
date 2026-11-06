@@ -116,8 +116,21 @@ rustup installs a `rust-analyzer` proxy that fails without the component. Downlo
 npm by its registry integrity, release builds by the size and SHA-256 written in the registry,
 gopls by Go's checksum database. Bumping a release means updating its hashes there. npm's tarball
 holds no dependencies, so a package that needs some pins exactly what its server requires
-(`dependencies`, flat in `node_modules`); `vscode-langservers-extracted` declares far more, for
-servers we don't run.
+(`dependencies`, flat in `node_modules`). `vscode-langservers-extracted` holds several servers, and
+HTML's alone needs a TypeScript, so each pins its own and the pins name the cache folder: otherwise
+whichever came first would leave the others short.
+
+Licences are checked for every package as the registry publishes it. EPL-2.0 is allowed for jdtls
+alone, by `licenceRuled` on its row. Bash's server wants a `minimatch` under BlueOak-1.0.0, so it
+pins the last ISC one, which is all `.editorconfig` needs of it.
+
+jdtls runs from its jar, so Python needn't be on the machine, on the first Java new enough. Every
+candidate's version is read: `java_home -v 21+` answers with what it has even when that's too old.
+The read runs in the checkout, since a version manager's shim obeys the checkout's own file, so an
+untrusted checkout's answer is the first Java present, unread.
+
+zls isn't downloaded: each build fits only the Zig it was made for, and the checkout's Zig decides
+that. Installed-only servers are in the registry so people get a `missing` that says what to do.
 
 ## Settings
 
@@ -198,6 +211,12 @@ one. An agent gets one answer, so the gateway must not hand it a result that is 
   to get its own diagnostics back: in push mode it clears them when loading ends and says nothing
   more until `cargo check` finishes. Its `experimental/serverStatus` reports when it has finished,
   so the gateway pulls again then and holds agents until that answer is in.
+- LuaLS and Marksman publish only what differs from their last word, so a clean file, or an edit
+  that changes no problem, gets none (`quietUnchanged`). An agent's answer waits for them to answer
+  a request on the file, since that waits on their project loading, then for `silenceAfter`.
+  Their last word is kept by file while they run: Marksman speaks of files nobody has opened, and
+  says nothing again when one is reopened.
+- A pull answered `unchanged` counts as a look at that version: LuaLS answers every pull so.
 - Pushed and pulled diagnostics are separate sources, and each replaces only its own: rust-analyzer
   pulls its analysis and pushes `cargo check`. An agent is not held for `cargo check`, which can
   take minutes, so errors only it finds reach editors but may miss an agent's first answer.

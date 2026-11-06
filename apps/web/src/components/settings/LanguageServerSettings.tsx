@@ -11,13 +11,14 @@ import {
   type LanguageServerSettingsScope,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon } from "lucide-react";
 import { type ChangeEvent, useContext, useId, useState } from "react";
 
 import { languageServersEnvironment } from "../../state/languageServers";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -449,7 +450,21 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
   const settings = stored.data;
   const canEdit =
     editable && edited !== null && edited.settingsProblem === null && settings !== null;
-  const groups = languageGroups(servers);
+  // With every language listed, those not set up anywhere here would bury the ones that are.
+  const untouched = (server: LanguageServerCheck) =>
+    checkouts.every(({ checks }) => {
+      const check = checks?.find((candidate) => candidate.server === server.server);
+      return (
+        check !== undefined &&
+        (check.state === "download" || check.state === "missing") &&
+        !check.off &&
+        check.overrides.length === 0 &&
+        check.replacedBy.length === 0
+      );
+    });
+  const allGroups = languageGroups(servers);
+  const groups = allGroups.filter((group) => !group.every(untouched));
+  const waitingGroups = allGroups.filter((group) => group.every(untouched));
   const layer = settings?.[scope];
   const change = async (next: LanguageServerSettingsChange) => {
     if (editing === undefined) return;
@@ -464,6 +479,146 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
   const prefix = (member: Checkout) =>
     members.length > 1 && member.environmentLabel !== null ? `${member.environmentLabel}: ` : "";
   const custom = settings?.custom ?? [];
+  const serverRows = (group: ReadonlyArray<LanguageServerCheck>) =>
+    group.map((server, index) => (
+      <SettingsRow
+        key={server.server}
+        title={server.companion === null ? server.languages : server.name}
+        status={group.length > 1 && index === 0 ? "Runs first" : undefined}
+        description={
+          <span>
+            {checkouts.map(({ member, trusted, checks, failed }) => {
+              const check = checks?.find((candidate) => candidate.server === server.server);
+              const inactive = check?.companion?.active === false;
+              return (
+                <span key={`${member.environmentId}:${member.workspaceRoot}`} className="block">
+                  {prefix(member)}
+                  {check !== undefined
+                    ? describe(check)
+                    : failed
+                      ? "Couldn't check this machine."
+                      : checks === null
+                        ? "Checking…"
+                        : "Unavailable on this machine."}
+                  {check?.companion?.active === true && !check.off ? (
+                    <span className="block text-muted-foreground">{check.companion.reason}</span>
+                  ) : null}
+                  {check?.state === "found" && trusted === false && !inactive && !check.off ? (
+                    <span className="block text-muted-foreground">
+                      Runs restricted until this project is trusted.
+                    </span>
+                  ) : null}
+                  {check?.message && !inactive && !check.off ? (
+                    <span className="block text-muted-foreground">{check.message}</span>
+                  ) : null}
+                  {check !== undefined && check.replacedBy.length > 0 ? (
+                    <span className="block text-muted-foreground">
+                      {check.replacedBy.join(", ")} takes its place on some files.
+                    </span>
+                  ) : null}
+                  {check !== undefined && check.overrides.length > 0 ? (
+                    <span className="block text-muted-foreground">{describeOverrides(check)}</span>
+                  ) : null}
+                  {check !== undefined && check.envNames.length > 0 ? (
+                    <span className="block text-muted-foreground">
+                      Environment variables: {check.envNames.join(", ")}
+                    </span>
+                  ) : null}
+                </span>
+              );
+            })}
+            {projectLayer?.servers[server.server]?.enabled !== undefined ? (
+              <span className="block text-muted-foreground">
+                This project's own setting keeps it{" "}
+                {projectLayer.servers[server.server]?.enabled ? "on" : "off"} here, whatever all
+                projects say.
+              </span>
+            ) : null}
+            {server.language !== null && projectLayer?.order[server.language] !== undefined ? (
+              <span className="block text-muted-foreground">
+                This project's own order decides here, whatever all projects say.
+              </span>
+            ) : null}
+          </span>
+        }
+        control={
+          <ServerControls
+            check={server}
+            enabled={enabledAtScope(server)}
+            order={group.map(({ server: id }) => id)}
+            disabled={!canEdit}
+            open={configuring === server.server}
+            onToggleOpen={() =>
+              setConfiguring(configuring === server.server ? null : server.server)
+            }
+            onEnabled={(enabled) =>
+              void change({ type: "enabled", scope, server: server.server, enabled })
+            }
+            onMove={(by) => {
+              if (server.language === null) return;
+              const order = moved(
+                group.flatMap(({ server: id }) => (isBuiltInLanguageServerId(id) ? [id] : [])),
+                server.server as BuiltInLanguageServerId,
+                by,
+              );
+              void change({ type: "order", scope, language: server.language, order });
+            }}
+          />
+        }
+      >
+        {configuring === server.server && layer !== undefined && canEdit ? (
+          <>
+            <ServerForm
+              key={scope}
+              check={server}
+              override={layer.servers[server.server]}
+              custom={server.language === null}
+              onSave={(override) =>
+                void change({ type: "server", scope, server: server.server, override })
+              }
+            />
+            {server.language === null ? (
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setCustomForm(server.server as CustomLanguageServer["id"])}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive-outline"
+                  onClick={() => {
+                    setConfiguring(null);
+                    void change({
+                      type: "removeCustom",
+                      id: server.server as CustomLanguageServer["id"],
+                    });
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        {customForm === server.server ? (
+          <CustomServerForm
+            initial={customFormFields(custom.find(({ id }) => id === server.server)!)}
+            onCancel={() => setCustomForm(null)}
+            onSave={(fields) => {
+              setCustomForm(null);
+              void change({
+                type: "custom",
+                id: server.server as CustomLanguageServer["id"],
+                server: fields,
+              });
+            }}
+          />
+        ) : null}
+      </SettingsRow>
+    ));
   // All projects can say one thing while a project's own setting decides here.
   const projectLayer = scope === "machine" ? settings?.project : undefined;
   const enabledAtScope = (server: LanguageServerCheck) =>
@@ -551,151 +706,24 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
           description={edited.projectFile.problem}
         />
       ) : null}
-      {groups.flatMap((group) =>
-        group.map((server, index) => (
-          <SettingsRow
-            key={server.server}
-            title={server.companion === null ? server.languages : server.name}
-            status={group.length > 1 && index === 0 ? "Runs first" : undefined}
-            description={
-              <span>
-                {checkouts.map(({ member, trusted, checks, failed }) => {
-                  const check = checks?.find((candidate) => candidate.server === server.server);
-                  const inactive = check?.companion?.active === false;
-                  return (
-                    <span key={`${member.environmentId}:${member.workspaceRoot}`} className="block">
-                      {prefix(member)}
-                      {check !== undefined
-                        ? describe(check)
-                        : failed
-                          ? "Couldn't check this machine."
-                          : checks === null
-                            ? "Checking…"
-                            : "Unavailable on this machine."}
-                      {check?.companion?.active === true && !check.off ? (
-                        <span className="block text-muted-foreground">
-                          {check.companion.reason}
-                        </span>
-                      ) : null}
-                      {check?.state === "found" && trusted === false && !inactive && !check.off ? (
-                        <span className="block text-muted-foreground">
-                          Runs restricted until this project is trusted.
-                        </span>
-                      ) : null}
-                      {check?.message && !inactive && !check.off ? (
-                        <span className="block text-muted-foreground">{check.message}</span>
-                      ) : null}
-                      {check !== undefined && check.replacedBy.length > 0 ? (
-                        <span className="block text-muted-foreground">
-                          {check.replacedBy.join(", ")} takes its place on some files.
-                        </span>
-                      ) : null}
-                      {check !== undefined && check.overrides.length > 0 ? (
-                        <span className="block text-muted-foreground">
-                          {describeOverrides(check)}
-                        </span>
-                      ) : null}
-                      {check !== undefined && check.envNames.length > 0 ? (
-                        <span className="block text-muted-foreground">
-                          Environment variables: {check.envNames.join(", ")}
-                        </span>
-                      ) : null}
-                    </span>
-                  );
-                })}
-                {projectLayer?.servers[server.server]?.enabled !== undefined ? (
-                  <span className="block text-muted-foreground">
-                    This project's own setting keeps it{" "}
-                    {projectLayer.servers[server.server]?.enabled ? "on" : "off"} here, whatever all
-                    projects say.
-                  </span>
-                ) : null}
-                {server.language !== null && projectLayer?.order[server.language] !== undefined ? (
-                  <span className="block text-muted-foreground">
-                    This project's own order decides here, whatever all projects say.
-                  </span>
-                ) : null}
-              </span>
-            }
-            control={
-              <ServerControls
-                check={server}
-                enabled={enabledAtScope(server)}
-                order={group.map(({ server: id }) => id)}
-                disabled={!canEdit}
-                open={configuring === server.server}
-                onToggleOpen={() =>
-                  setConfiguring(configuring === server.server ? null : server.server)
-                }
-                onEnabled={(enabled) =>
-                  void change({ type: "enabled", scope, server: server.server, enabled })
-                }
-                onMove={(by) => {
-                  if (server.language === null) return;
-                  const order = moved(
-                    group.flatMap(({ server: id }) => (isBuiltInLanguageServerId(id) ? [id] : [])),
-                    server.server as BuiltInLanguageServerId,
-                    by,
-                  );
-                  void change({ type: "order", scope, language: server.language, order });
-                }}
-              />
-            }
-          >
-            {configuring === server.server && layer !== undefined && canEdit ? (
-              <>
-                <ServerForm
-                  key={scope}
-                  check={server}
-                  override={layer.servers[server.server]}
-                  custom={server.language === null}
-                  onSave={(override) =>
-                    void change({ type: "server", scope, server: server.server, override })
-                  }
-                />
-                {server.language === null ? (
-                  <div className="mt-2 flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setCustomForm(server.server as CustomLanguageServer["id"])}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive-outline"
-                      onClick={() => {
-                        setConfiguring(null);
-                        void change({
-                          type: "removeCustom",
-                          id: server.server as CustomLanguageServer["id"],
-                        });
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-            {customForm === server.server ? (
-              <CustomServerForm
-                initial={customFormFields(custom.find(({ id }) => id === server.server)!)}
-                onCancel={() => setCustomForm(null)}
-                onSave={(fields) => {
-                  setCustomForm(null);
-                  void change({
-                    type: "custom",
-                    id: server.server as CustomLanguageServer["id"],
-                    server: fields,
-                  });
-                }}
-              />
-            ) : null}
-          </SettingsRow>
-        )),
-      )}
+      {groups.flatMap(serverRows)}
+      {waitingGroups.length > 0 ? (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex min-h-10 w-full items-center gap-1.5 border-t border-border/50 px-3 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4">
+            <ChevronRightIcon
+              aria-hidden
+              className="size-3.5 shrink-0 transition-transform duration-150 group-data-panel-open:rotate-90 motion-reduce:transition-none"
+            />
+            {waitingGroups.length} more not set up yet, downloading when a file opens or needing an
+            install
+          </CollapsibleTrigger>
+          <CollapsiblePanel animate={false}>
+            <div className="border-t border-border/50 [&>*+*]:border-t [&>*+*]:border-border/50">
+              {waitingGroups.flatMap(serverRows)}
+            </div>
+          </CollapsiblePanel>
+        </Collapsible>
+      ) : null}
       {servers.length === 0 && !waiting ? (
         <SettingsRow title="Unavailable" description="This machine could not check its servers." />
       ) : null}
