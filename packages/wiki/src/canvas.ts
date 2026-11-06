@@ -480,6 +480,14 @@ export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
   };
 }
 
+/** The cards still on the board that changed between two versions: what to catch the eye. */
+export const canvasChangedCards = (before: CanvasData, after: CanvasData): ReadonlySet<string> =>
+  new Set(
+    diffCanvas(before, after)
+      .changes.filter((change) => change.item === "card" && change.mark !== "removed")
+      .map((change) => change.id),
+  );
+
 /** Which cards and arrows a board marks, by id: a card and an arrow may share one. */
 export interface CanvasMarks {
   readonly cards: Readonly<Record<string, CanvasMark>>;

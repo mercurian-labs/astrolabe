@@ -1,6 +1,12 @@
-import { canvasGroups, parseCanvas, type CanvasData } from "@mercurian/wiki/canvas";
+import {
+  canvasGroups,
+  parseCanvas,
+  type CanvasData,
+  type CanvasMarks,
+} from "@mercurian/wiki/canvas";
 import { CanvasBoard, type CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
 import { useAtomValue } from "@effect/atom-react";
+import { changeRequestCanvasReview } from "@t3tools/client-runtime/wikiLogic";
 import type {
   EnvironmentId,
   WikiChangeRequest,
@@ -32,6 +38,7 @@ function CanvasBoardPane({
   file,
   commit,
   data,
+  marks,
   groups,
   onOpenNote,
   onOpenFile,
@@ -44,6 +51,8 @@ function CanvasBoardPane({
   readonly file: string;
   readonly commit: string;
   readonly data: CanvasData;
+  /** What the change request it's read in changes, until that's merged or closed. */
+  readonly marks: CanvasMarks | undefined;
   readonly groups: ReadonlyArray<WikiCanvasGroup>;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenFile: ((path: string) => void) | undefined;
@@ -97,6 +106,7 @@ function CanvasBoardPane({
           host={host}
           label={documentTitle(file)}
           revision={commit}
+          {...(marks === undefined ? {} : { marks })}
         />
       </div>
     </div>
@@ -107,8 +117,9 @@ const EMPTY_GROUPS: ReadonlyArray<WikiCanvasGroup> = [];
 
 /**
  * A `.canvas` file in its own tab, read from main or a change request, and refreshed per commit
- * with its camera kept. Reading only: nothing here writes the file, and a canvas that doesn't
- * exist yet is started in a change request.
+ * with its camera kept. In a change request it marks what that changes, so an agent's work shows
+ * as it lands. Reading only: nothing here writes the file, and a canvas that doesn't exist yet is
+ * started in a change request.
  */
 export default function WikiCanvasPage({
   tabKey,
@@ -144,6 +155,12 @@ export default function WikiCanvasPage({
   const text = read?.text ?? null;
   const parsed = text === null ? null : parseCanvas(text);
   const groups = parsed?.ok ? canvasGroups(parsed.data) : EMPTY_GROUPS;
+  const detail = useEnvironmentQuery(
+    changeRequestId === undefined
+      ? null
+      : wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
+  );
+  const review = changeRequestCanvasReview(detail.data, file, text);
   const title = documentTitle(file);
   const [creating, setCreating] = useState(false);
   const canCreate = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
@@ -219,7 +236,8 @@ export default function WikiCanvasPage({
         changeRequestId={changeRequestId}
         file={file}
         commit={query.data.commit}
-        data={parsed.data}
+        data={review?.data ?? parsed.data}
+        marks={review?.marks}
         groups={groups}
         onOpenNote={onOpenNote}
         onOpenFile={onOpenFile}

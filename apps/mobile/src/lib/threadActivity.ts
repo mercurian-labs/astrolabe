@@ -71,6 +71,8 @@ import {
   compactDynamicToolOutput,
   htmlRenderFromToolItem,
   mcpAppFromToolItem,
+  wikiCanvasFromToolItem,
+  type WikiCanvasReference,
 } from "@t3tools/shared/toolOutput";
 import * as DateTime from "effect/DateTime";
 import {
@@ -188,6 +190,13 @@ type RawThreadFeedEntry =
       readonly canvas: CanvasView;
     }
   | {
+      readonly type: "wiki-canvas";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      readonly canvas: WikiCanvasReference;
+    }
+  | {
       readonly type: "mcp-app";
       readonly id: string;
       readonly createdAt: string;
@@ -205,7 +214,10 @@ export type ThreadFeedEntry = ThreadFeedEntryContent & {
 };
 
 type ThreadFeedEntryContent =
-  | Extract<RawThreadFeedEntry, { type: "message" | "html-render" | "canvas" | "mcp-app" }>
+  | Extract<
+      RawThreadFeedEntry,
+      { type: "message" | "html-render" | "canvas" | "wiki-canvas" | "mcp-app" }
+    >
   | {
       readonly type: "activity-group";
       readonly id: string;
@@ -1112,6 +1124,7 @@ function deriveThreadFeedRunFolds(
         : entry.type === "activity-group" ||
             entry.type === "html-render" ||
             entry.type === "canvas" ||
+            entry.type === "wiki-canvas" ||
             entry.type === "mcp-app"
           ? (entry.runId ?? runlessKey)
           : null;
@@ -1166,6 +1179,7 @@ function deriveThreadFeedRunFolds(
             entry.id !== terminalAssistantId &&
             entry.type !== "html-render" &&
             entry.type !== "canvas" &&
+            entry.type !== "wiki-canvas" &&
             entry.type !== "mcp-app" &&
             !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&
             !(
@@ -2124,6 +2138,23 @@ export function buildThreadFeed(
         sourceThreadId: row.sourceThreadId,
         itemId: row.sourceItemId,
         canvas,
+      };
+      projectedEntriesCache.set(row, { attemptId, entry });
+      entries.push(entry);
+      entryRows.push(index);
+      continue;
+    }
+    const changedCanvas =
+      item.type === "dynamic_tool" && item.status === "completed"
+        ? wikiCanvasFromToolItem(item)
+        : undefined;
+    if (changedCanvas) {
+      const entry: RawThreadFeedEntry = {
+        type: "wiki-canvas",
+        id: `wiki-canvas:${row.visibility}:${row.sourceThreadId}:${row.sourceItemId}`,
+        createdAt,
+        runId: item.runId,
+        canvas: changedCanvas,
       };
       projectedEntriesCache.set(row, { attemptId, entry });
       entries.push(entry);

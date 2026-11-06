@@ -3,6 +3,7 @@ import "./canvasBoard.css";
 
 import {
   canvasBounds,
+  canvasChangedCards,
   CANVAS_MARK_LABELS,
   parseCanvas,
   type CanvasBounds,
@@ -485,16 +486,23 @@ function SimpleCard({ node }: { readonly node: CanvasNode }) {
 const MarkBadge = ({ mark }: { readonly mark: CanvasMark | undefined }) =>
   mark === undefined ? null : <span className="cv-mark">{CANVAS_MARK_LABELS[mark]}</span>;
 
+/** Mounted anew for each commit that changes a card, which is what replays its one highlight. */
+const Flash = ({ revision }: { readonly revision: string | undefined }) =>
+  revision === undefined ? null : <span key={revision} className="cv-flash" aria-hidden />;
+
 const CardNode = memo(function CardNode({
   node,
   selected,
   simple,
   mark,
+  flash,
 }: {
   readonly node: Exclude<CanvasNode, CanvasGroupNode>;
   readonly selected: boolean;
   readonly simple: boolean;
   readonly mark: CanvasMark | undefined;
+  /** The commit it just changed in. */
+  readonly flash: string | undefined;
 }) {
   const { mode } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -511,6 +519,7 @@ const CardNode = memo(function CardNode({
     >
       {node.type === "file" ? <FileCardLabel node={node} /> : null}
       <MarkBadge mark={mark} />
+      <Flash revision={flash} />
       <div className="cv-card-content" data-live={(live && !simple) || undefined}>
         {simple ? (
           <SimpleCard node={node} />
@@ -537,10 +546,12 @@ const GroupNode = memo(function GroupNode({
   node,
   selected,
   mark,
+  flash,
 }: {
   readonly node: CanvasGroupNode;
   readonly selected: boolean;
   readonly mark: CanvasMark | undefined;
+  readonly flash: string | undefined;
 }) {
   const { host } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -555,6 +566,7 @@ const GroupNode = memo(function GroupNode({
       {...color}
     >
       <MarkBadge mark={mark} />
+      <Flash revision={flash} />
       {node.background === undefined
         ? null
         : host.renderAsset?.({
@@ -640,6 +652,13 @@ interface Shown {
 
 const NOTHING: Shown = { groups: [], cards: [], shapes: [], simple: false };
 const NO_MARKS: CanvasMarks = { cards: {}, arrows: {} };
+/** As long as `.cv-flash` plays, and a little over. */
+const FLASH_MS = 1400;
+
+interface Flashed {
+  readonly revision: string;
+  readonly cards: ReadonlySet<string>;
+}
 const OVERVIEW: Shown = { ...NOTHING, simple: true };
 
 function inView(layout: Layout, view: CanvasBounds, simple: boolean): Shown {
@@ -759,6 +778,24 @@ export function CanvasBoard({
     boundsRef.current = bounds;
     view.setBounds(bounds, mode === "fit");
   }, [view, reads, host, layout, marks, bounds, mode, onCamera]);
+
+  // Changing a commit's cards catches the eye once; the marks are what stay. A board with no
+  // revision never changes under its reader.
+  const [flash, setFlash] = useState<Flashed | null>(null);
+  const [drawn, setDrawn] = useState({ revision, data });
+  if (drawn.revision !== revision) {
+    setDrawn({ revision, data });
+    const cards = revision === undefined ? null : canvasChangedCards(drawn.data, data);
+    if (drawn.revision !== undefined && cards !== null && cards.size > 0) {
+      setFlash({ revision: revision ?? "", cards });
+    }
+  }
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a card scrolled back into view mounts anew, and must not replay a highlight that has finished
+  useEffect(() => {
+    if (flash === null) return;
+    const timer = setTimeout(() => setFlash(null), FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [flash]);
 
   const readAt = useRef(revision);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new commit in the wiki reads what's in view again, through the view, which knows what that is
@@ -926,6 +963,7 @@ export function CanvasBoard({
               node={node}
               selected={node.id === selected}
               mark={marks.cards[node.id]}
+              flash={flash?.cards.has(node.id) ? flash.revision : undefined}
             />
           ))}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
@@ -948,6 +986,7 @@ export function CanvasBoard({
               selected={node.id === selected}
               simple={shown.simple}
               mark={marks.cards[node.id]}
+              flash={flash?.cards.has(node.id) ? flash.revision : undefined}
             />
           ))}
         </div>

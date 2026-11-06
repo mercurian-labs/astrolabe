@@ -276,6 +276,46 @@ describe("cards", () => {
   });
 });
 
+describe("a commit landing on a board", () => {
+  const flashes = () =>
+    [...document.querySelectorAll("[data-card-id]:has(.cv-flash)")].map((card) =>
+      card.getAttribute("data-card-id"),
+    );
+
+  it("catches the eye on the cards it changed, once, and leaves the camera", async () => {
+    const before = grid(4);
+    const changed = (text: string) => ({
+      ...before,
+      nodes: before.nodes.map((node) =>
+        node.id === "n2" && node.type === "text" ? { ...node, text } : node,
+      ),
+    });
+    await using screen = await render(<Frame data={before} revision="one" />, {
+      router: false,
+    });
+    await vi.waitFor(() => expect(mountedCards()).toBe(4));
+    expect(flashes()).toEqual([]);
+
+    await screen.rerender(<Frame data={changed("New")} revision="two" />);
+    await vi.waitFor(() => expect(flashes()).toEqual(["n2"]));
+    const first = document.querySelector(".cv-flash");
+    const camera = world().style.transform;
+
+    await screen.rerender(<Frame data={changed("Newer")} revision="three" />);
+    await vi.waitFor(() => expect(document.querySelector(".cv-flash")).not.toBe(first));
+    expect(flashes()).toEqual(["n2"]);
+    expect(world().style.transform).toBe(camera);
+  });
+
+  it("stays still when a commit doesn't touch it, and on a board with no commits", async () => {
+    const data = grid(4);
+    await using screen = await render(<Frame data={data} revision="one" />, { router: false });
+    await vi.waitFor(() => expect(mountedCards()).toBe(4));
+    await screen.rerender(<Frame data={data} revision="two" />);
+    expect(flashes()).toEqual([]);
+  });
+});
+
 describe("a board under review", () => {
   const near = { y: 60, width: 200, height: 80 };
   const before = {

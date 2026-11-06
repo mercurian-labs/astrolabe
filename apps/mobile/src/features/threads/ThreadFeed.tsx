@@ -235,7 +235,12 @@ import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { resolveThreadFeedFixedItemSize } from "./thread-feed-item-size";
 import { htmlRenderFrameHeight } from "@t3tools/shared/htmlRender";
 import { htmlRenderRowHeight, ThreadHtmlRender } from "./HtmlRenderWebView";
-import { canvasRowHeight, ThreadCanvas } from "./ThreadCanvas";
+import {
+  canvasRowHeight,
+  ThreadCanvas,
+  ThreadWikiCanvas,
+  WIKI_CANVAS_ROW_HEIGHT,
+} from "./ThreadCanvas";
 import { ThreadMcpApp } from "./McpAppWebView";
 import { assetEnvironment, useAssetUrl, useRefreshAssetUrl } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
@@ -1692,6 +1697,10 @@ function renderFeedEntry(
         frameWidth={props.contentWidth}
       />
     );
+  }
+
+  if (entry.type === "wiki-canvas") {
+    return <ThreadWikiCanvas environmentId={props.environmentId} canvas={entry.canvas} />;
   }
 
   if (entry.type === "mcp-app") {
@@ -3472,6 +3481,7 @@ export const ThreadFeed = memo(function ThreadFeed({
       return htmlRenderRowHeight(htmlRenderFrameHeight(entry.render, contentWidth));
     }
     if (entry.type === "canvas") return canvasRowHeight(entry.canvas, contentWidth);
+    if (entry.type === "wiki-canvas") return WIKI_CANVAS_ROW_HEIGHT;
     if (workRowSizing.fixedRowHeight === undefined || entry.checkpointSummary) {
       return undefined;
     }

@@ -1,6 +1,7 @@
 /*
  * A JSON Canvas board, for the web app and the phone's page alike: only tokens both define.
- * No transitions: everything here is moved by the camera, frame by frame.
+ * No transitions: everything here is moved by the camera, frame by frame. The one animation
+ * plays once and ends, so nothing repaints at rest.
  */
 .cv-board {
   --cv-tint: var(--muted-foreground);
@@ -151,6 +152,29 @@
   line-height: 1.3;
   color: var(--cv-mark);
   pointer-events: none;
+}
+/* One highlight when a commit changes a card, on opacity alone; the mark is what stays. */
+.cv-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 calc(3px * var(--cv-ui, 1)) var(--primary);
+  opacity: 0;
+  pointer-events: none;
+  animation: cv-flash 1.2s ease-out 1;
+}
+@keyframes cv-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-flash {
+    animation: none;
+  }
 }
 /* Beneath a card's content until it's selected, the press lands on the board instead. */
 .cv-board[data-mode="free"] .cv-card-content:not([data-live]) > * {

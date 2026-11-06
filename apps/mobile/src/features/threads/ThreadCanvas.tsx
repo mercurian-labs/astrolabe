@@ -1,6 +1,8 @@
 import { canvasBounds } from "@mercurian/wiki/canvas";
+import { documentTitle } from "@t3tools/client-runtime/wikiLogic";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { canvasEdgeShapes } from "@mercurian/wiki-editor/canvas-geometry";
+import type { WikiCanvasReference } from "@t3tools/shared/toolOutput";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { useMemo } from "react";
@@ -40,6 +42,39 @@ function frameHeight(view: CanvasView, width: number) {
 /** The feed row's height: known up front, so a list of rows never jumps as it scrolls. */
 export const canvasRowHeight = (view: CanvasView, width: number) =>
   CAPTION_HEIGHT + frameHeight(view, width) + ROW_BOTTOM_MARGIN;
+
+export const WIKI_CANVAS_ROW_HEIGHT = 36;
+
+/** A canvas an agent changed in a wiki: where it landed, and the way to it. */
+export function ThreadWikiCanvas(props: {
+  readonly environmentId: EnvironmentId;
+  readonly canvas: WikiCanvasReference;
+}) {
+  const navigation = useNavigation();
+  const { wikiId, changeRequestId, file } = props.canvas;
+  const title = documentTitle(file);
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Open ${title}`}
+      className="flex-row items-center gap-2 active:opacity-70"
+      style={{ height: WIKI_CANVAS_ROW_HEIGHT }}
+      onPress={() =>
+        navigation.navigate("WikiDocument", {
+          environmentId: String(props.environmentId),
+          wikiId,
+          name: file,
+          changeRequestId,
+        })
+      }
+    >
+      <Text className="flex-1 text-sm text-foreground-secondary" numberOfLines={1}>
+        {`Changed the canvas ${title}`}
+      </Text>
+      <SymbolView name="chevron.right" size={12} tintColorClassName="accent-icon-subtle" />
+    </Pressable>
+  );
+}
 
 /** A card's first line, cut to what fits its width at the size this draws. */
 function firstLine(text: string, width: number) {

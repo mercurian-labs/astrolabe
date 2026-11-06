@@ -14,6 +14,7 @@ import {
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import {
+  changeRequestCanvasReview,
   documentTitle,
   wikiDocumentName,
   wikiDocumentNames,
@@ -69,9 +70,9 @@ function previewKind(path: string): FilePreviewSource["kind"] | null {
 
 /**
  * A `.canvas` file on its own, read at the commit the wiki stands at and refreshed per commit with
- * the camera kept. The editor page draws the board; this screen reads for it: visible cards' files
- * in batches, their addresses, and bases. What a card opens goes on top, read from the same place.
- * With `review`, a change request's board with marks takes its place, its cards read at that head.
+ * the camera kept. The editor page draws the board; this screen reads for it. With `review`, a
+ * change request's board with marks takes its place, its cards read at that head; without it, a
+ * canvas read in a change request still marks what that changes.
  */
 export function WikiCanvasScreen({
   params,
@@ -108,8 +109,17 @@ export function WikiCanvasScreen({
   const text = read?.text ?? null;
   const commit = review?.commit ?? query.data?.commit ?? null;
   const parsed = useMemo(() => (text === null ? null : parseCanvas(text)), [text]);
-  const data = review?.board.data ?? (parsed?.ok ? parsed.data : null);
-  const marks = review?.board.marks;
+  // Reviewing has its board already. Read in a change request, it marks what that changes.
+  const detail = useEnvironmentQuery(
+    changeRequestId === undefined || review !== undefined
+      ? null
+      : wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
+  );
+  const changes = detail.data;
+  const live = useMemo(() => changeRequestCanvasReview(changes, file, text), [changes, file, text]);
+  const board = review?.board ?? live;
+  const data = board?.data ?? (parsed?.ok ? parsed.data : null);
+  const marks = board?.marks;
   const groups = useMemo(() => (data === null ? [] : canvasGroups(data)), [data]);
   const names = useMemo(
     () => (index.data === null ? null : wikiDocumentNames(index.data)),
