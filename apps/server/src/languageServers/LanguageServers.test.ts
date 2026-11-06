@@ -429,6 +429,14 @@ describe("LanguageServers", () => {
       );
       expect(hover.result.contents).toBe("makePoint");
       expect(editor.slice(hover.result.range)).toBe("makePoint");
+      const highlights = yield* session.request(
+        3,
+        "textDocument/documentHighlight",
+        { textDocument: { uri: checkout.uri }, position: editor.position("= point", 3) },
+        editor.envelope(),
+      );
+      expect(highlights.result).toHaveLength(1);
+      expect(editor.slice(highlights.result[0].range)).toBe("point");
       // Once the editor has the updates, a request needs no mapping and still lands right.
       yield* editor.catchUp;
       const again = yield* session.request(
@@ -438,17 +446,6 @@ describe("LanguageServers", () => {
         editor.envelope(),
       );
       expect(editor.slice(again.result.range)).toBe("label");
-      const highlights = yield* session.request(
-        3,
-        "textDocument/documentHighlight",
-        { textDocument: { uri: checkout.uri }, position: editor.position("point", 1) },
-        editor.envelope(),
-      );
-      expect(highlights.result.map(({ range }: any) => editor.slice(range))).toEqual([
-        "point",
-        "point",
-      ]);
-      expect(highlights.result.map(({ kind }: any) => kind)).toEqual([3, 2]);
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 

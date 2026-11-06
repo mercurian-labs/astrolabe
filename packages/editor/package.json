@@ -87,6 +87,10 @@
       "types": "./src/lsp/contextMenu.ts",
       "default": "./src/lsp/contextMenu.ts"
     },
+    "./lsp/symbol-highlights": {
+      "types": "./src/lsp/symbolHighlights.ts",
+      "default": "./src/lsp/symbolHighlights.ts"
+    },
     "./lsp/inlay-hints": {
       "types": "./src/lsp/inlayHints.ts",
       "default": "./src/lsp/inlayHints.ts"
