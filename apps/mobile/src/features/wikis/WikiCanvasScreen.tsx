@@ -19,6 +19,7 @@ import {
   wikiDocumentNames,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 
@@ -221,8 +222,10 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
       Dialog.alert(`${cardFileName(path)} doesn't open here`, "Open it on a computer.");
       return;
     }
+    const mimeType = mediaMimeTypeFromExtension(path.slice(path.lastIndexOf(".")));
     setPreview({
       kind,
+      ...(mimeType === null ? {} : { mimeType }),
       environmentId,
       resource: { _tag: "wiki-file", wikiId, commit: revision, path },
       name: cardFileName(path),

@@ -6,7 +6,7 @@ import {
   type WikiEditorEvent,
 } from "@mercurian/wiki-editor/protocol";
 import wikiEditorPage from "@t3tools/mobile-wiki-editor";
-import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import { diagramScript } from "./wikiEditorDiagrams";
@@ -65,6 +65,14 @@ export const WikiEditorWebView = forwardRef<
     [],
   );
 
+  // The OS reclaimed the page's process: a new web view, resent everything once it is ready. Not
+  // `reload()`: that asks the network for the document's base URL, not this HTML.
+  const [generation, setGeneration] = useState(0);
+  const restart = () => {
+    ready.current = false;
+    setGeneration((current) => current + 1);
+  };
+
   const onMessage = (message: WebViewMessageEvent) => {
     const event = parseWikiEditorEvent(message.nativeEvent.data);
     if (!event) return;
@@ -82,6 +90,7 @@ export const WikiEditorWebView = forwardRef<
 
   return (
     <WebView<object>
+      key={generation}
       ref={webView}
       source={source}
       originWhitelist={["*"]}
@@ -91,11 +100,8 @@ export const WikiEditorWebView = forwardRef<
       onShouldStartLoadWithRequest={(request) =>
         request.url === "about:blank" || request.url.startsWith(source.baseUrl)
       }
-      onContentProcessDidTerminate={() => {
-        // iOS reclaimed the page's process: reload it, and resend everything once it is ready.
-        ready.current = false;
-        webView.current?.reload();
-      }}
+      onContentProcessDidTerminate={restart}
+      onRenderProcessGone={restart}
       keyboardDisplayRequiresUserAction={false}
       allowsInlineMediaPlayback
       scrollEnabled={props.fixed !== true}
