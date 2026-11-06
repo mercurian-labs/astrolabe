@@ -482,6 +482,7 @@ const CLIENT_CAPABILITIES = {
     typeDefinition: {},
     references: {},
     inlayHint: {},
+    documentHighlight: {},
     codeAction: {
       codeActionLiteralSupport: {
         codeActionKind: {

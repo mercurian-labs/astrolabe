@@ -164,6 +164,11 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
     case "textDocument/rangeFormatting":
       for (const edit of Array.isArray(result) ? result : []) mapEdit(m, edit, true);
       return result;
+    case "textDocument/documentHighlight":
+      for (const highlight of Array.isArray(result) ? result : []) {
+        highlight.range = mapRange(m, highlight.range, false);
+      }
+      return result;
     case "textDocument/inlayHint":
       return (Array.isArray(result) ? result : []).flatMap((hint: Json) => {
         const offset = fromPosition(m.from, hint.position);

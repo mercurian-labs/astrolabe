@@ -455,6 +455,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["type parameter names language server code repository file editor inline"],
   },
   {
+    id: "inline-diagnostics",
+    title: "Inline diagnostics",
+    to: "/settings/appearance",
+    searchTerms: ["errors problems warnings end of line message language server code editor"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",

@@ -82,6 +82,7 @@ const LANGUAGE_SERVER_KEYBINDING_COMMANDS = [
   "lsp.checkServers",
   "lsp.viewLogs",
   "lsp.toggleInlayHints",
+  "lsp.toggleInlineDiagnostics",
 ] as const;
 
 /**

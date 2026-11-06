@@ -159,6 +159,7 @@ const FILE_EDITOR_THEME = EditorView.theme({
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
+const selectInlineDiagnostics = (settings: ClientSettings) => settings.inlineDiagnostics;
 const selectInlayHintTypes = (settings: ClientSettings) =>
   settings.inlayHints && settings.inlayHintTypes;
 const selectInlayHintParameters = (settings: ClientSettings) =>
@@ -616,6 +617,7 @@ function FileEditor({
   const formatOnSave = useClientSettings(selectFormatOnSave);
   const hintTypes = useClientSettings(selectInlayHintTypes);
   const hintParameters = useClientSettings(selectInlayHintParameters);
+  const inlineDiagnostics = useClientSettings(selectInlineDiagnostics);
   // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
   const save = useStableCallback(() => {
     const view = viewRef.current;
@@ -750,6 +752,7 @@ function FileEditor({
           ? languageServerUi(lspKeys, diagnosticKeys, initial, {
               hintTypes,
               hintParameters,
+              inlineDiagnostics,
             })
           : [],
         "session" in initial.source
@@ -776,6 +779,7 @@ function FileEditor({
     saveKeys,
     hintTypes,
     hintParameters,
+    inlineDiagnostics,
   ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the read-only state to the CodeMirror view
@@ -825,10 +829,14 @@ function languageServerUi(
     readonly rename: RenameHost;
     readonly codeActions: CodeActionHost;
   },
-  shown: { readonly hintTypes: boolean; readonly hintParameters: boolean },
+  shown: {
+    readonly hintTypes: boolean;
+    readonly hintParameters: boolean;
+    readonly inlineDiagnostics: boolean;
+  },
 ): Extension {
   return [
-    diagnosticsUi({ keys: diagnosticKeys }),
+    diagnosticsUi({ keys: diagnosticKeys, inline: shown.inlineDiagnostics }),
     shown.hintTypes || shown.hintParameters
       ? inlayHints({ types: shown.hintTypes, parameters: shown.hintParameters })
       : [],

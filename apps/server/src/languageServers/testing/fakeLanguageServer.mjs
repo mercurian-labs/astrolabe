@@ -144,6 +144,7 @@ const handle = (message) => {
           executeCommandProvider: { commands: ["fake.removeLine"] },
           referencesProvider: true,
           inlayHintProvider: true,
+          documentHighlightProvider: true,
           completionProvider: {
             resolveProvider: true,
             triggerCharacters: config.triggerCharacters ?? ["."],
@@ -300,6 +301,17 @@ const handle = (message) => {
             kind: 1,
             textEdits: [{ range: rangeOf(text, offset, offset), newText: ": Point" }],
           })),
+      );
+    }
+    case "textDocument/documentHighlight": {
+      // The word's first use is its write.
+      const { text } = docs.get(params.textDocument.uri);
+      const target = wordAt(text, offsetOf(text, params.position)).word;
+      return reply(
+        occurrences(text, target).map((offset, index) => ({
+          range: rangeOf(text, offset, offset + target.length),
+          kind: index === 0 ? 3 : 2,
+        })),
       );
     }
     case "test/refresh": {

@@ -438,6 +438,17 @@ describe("LanguageServers", () => {
         editor.envelope(),
       );
       expect(editor.slice(again.result.range)).toBe("label");
+      const highlights = yield* session.request(
+        3,
+        "textDocument/documentHighlight",
+        { textDocument: { uri: checkout.uri }, position: editor.position("point", 1) },
+        editor.envelope(),
+      );
+      expect(highlights.result.map(({ range }: any) => editor.slice(range))).toEqual([
+        "point",
+        "point",
+      ]);
+      expect(highlights.result.map(({ kind }: any) => kind)).toEqual([3, 2]);
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 

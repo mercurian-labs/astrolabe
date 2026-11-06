@@ -556,6 +556,12 @@ function astrolabeCommand(
         updateClientSettings({ inlayHints: !on }),
       );
     }
+    case "lsp.toggleInlineDiagnostics": {
+      const on = getClientSettings().inlineDiagnostics;
+      return entry(on ? "Hide inline diagnostics" : "Show inline diagnostics", () =>
+        updateClientSettings({ inlineDiagnostics: !on }),
+      );
+    }
     case "lsp.undoRename": {
       const rename = lastRename.get();
       return entry(rename?.label ?? "No rename to undo", rename?.run ?? null);

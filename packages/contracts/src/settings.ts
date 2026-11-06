@@ -498,6 +498,7 @@ export const ClientSettingsSchema = Schema.Struct({
   inlayHints: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   inlayHintTypes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   inlayHintParameters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  inlineDiagnostics: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Astrolabe: Vim's j and k move by screen line (as gj and gk) without a count. Off by default,
   // as Vim's are.
   vimScreenLinesEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1842,6 +1843,7 @@ export const ClientSettingsPatch = Schema.Struct({
   inlayHints: Schema.optionalKey(Schema.Boolean),
   inlayHintTypes: Schema.optionalKey(Schema.Boolean),
   inlayHintParameters: Schema.optionalKey(Schema.Boolean),
+  inlineDiagnostics: Schema.optionalKey(Schema.Boolean),
   vimScreenLinesEnabled: Schema.optionalKey(Schema.Boolean),
   // Astrolabe: Space as the keyboard menu's leader key.
   spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),
