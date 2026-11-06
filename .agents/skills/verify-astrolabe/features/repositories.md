@@ -146,11 +146,19 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   (`.atlas-diagnostic-messages`; F8 / Shift+F8 step); completion as you type; hover
   (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
   beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
-  rename (`input[aria-label="Rename <name>"]`, then a "Renamed X to Y" toast with **Undo**);
+  rename (`input[aria-label="Rename <name>"]`, then a `repo-locations:` tab titled "Renamed X to
+  Y" with one **Undo rename**, which reads "Undone" after; a wiki's file keeps a toast);
   Cmd+. code actions (`.atlas-lightbulb`, `[aria-label="Code actions"]`); Cmd+Shift+I format.
+  Inlay hints (`.atlas-inlay-hint`) and symbol marks (`.atlas-symbol-read`, `-write`) are on by
+  default; inline diagnostics (`.atlas-inline-diagnostic`), semantic colours and code lens
+  (`.atlas-code-lens`) are off, in Settings → Appearance. Typing in a JSX tag writes its pair.
+  Back and Forward (`ctrl+-`, `ctrl+shift+-` in a code file) cross go-tos and results tabs.
+  `mod+alt+o` opens the palette's `project-symbol-picker`; a server must be running, else the
+  code index answers.
 - **Right-click menu** (`packages/editor/src/lsp/contextMenu.ts`): moves the cursor to the
   click unless it lands in the selection, then Go to Definition / Type Definition /
-  Implementation / Find All References | Rename Symbol… / Code Actions… / Format Document |
+  Implementation / Find All References / Show Incoming Calls / Show Outgoing Calls |
+  Rename Symbol… / Code Actions… / Format Document |
   Cut / Copy / Paste | Copy Relative Path / Open Local Graph. Language rows show only with a
   server and are faint while it starts or lacks the feature; Cut/Copy are faint with no
   selection. On the web its items are `role=menuitem` by name; on desktop the menu is native.

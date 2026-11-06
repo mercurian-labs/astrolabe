@@ -227,7 +227,8 @@ const theme = EditorView.baseTheme({
   ".atlas-code-lens": {
     display: "flex",
     alignItems: "baseline",
-    gap: "1em",
+    gap: "10px",
+    paddingLeft: "6px",
     fontFamily: "var(--atlas-md-font-ui, inherit)",
     fontSize: "11px",
     color: "var(--atlas-md-syntax-color, #888)",
@@ -236,7 +237,7 @@ const theme = EditorView.baseTheme({
     whiteSpace: "pre",
     fontFamily: "var(--atlas-md-font-mono, monospace)",
     fontSize: "13px",
-    marginRight: "-1em",
+    marginRight: "-10px",
   },
   ".atlas-code-lens-item": {
     padding: "0",
