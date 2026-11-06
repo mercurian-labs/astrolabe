@@ -1,4 +1,13 @@
-import { canvasGroups, parseCanvas, type CanvasReview } from "@mercurian/wiki/canvas";
+import { useAtomValue } from "@effect/atom-react";
+import {
+  canvasGroups,
+  parseCanvas,
+  type CanvasData,
+  type CanvasMarks,
+  type CanvasReview,
+} from "@mercurian/wiki/canvas";
+import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
+import type { CanvasBoardSettings } from "@mercurian/wiki-editor/canvas-board";
 import {
   canvasFileKind,
   cardFileName,
@@ -7,6 +16,8 @@ import {
 import {
   cardFile,
   filesReadMessages,
+  type WikiEditorCanvasAnswer,
+  type WikiEditorCanvasAsk,
   type WikiEditorCodeReference,
   type WikiEditorCommand,
   type WikiEditorEvent,
@@ -17,6 +28,7 @@ import {
   changeRequestCanvasReview,
   documentTitle,
   filesHoldDocument,
+  isSettledChangeRequest,
   wikiDocumentName,
   wikiDocumentNames,
   wikiDocumentScope,
@@ -24,6 +36,7 @@ import {
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
+import { DEFAULT_WIKI_CANVAS_SETTINGS } from "@t3tools/contracts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 
@@ -37,12 +50,16 @@ import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { assetEnvironment } from "../../state/assets";
 import { useProjects } from "../../state/entities";
+import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
 import { usePreparedConnection } from "../../state/session";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { wikiEnvironment } from "../../state/wiki";
 import { fileRoutePathSegments } from "../files/filePath";
 import { useEditorTheme } from "./document/useEditorTheme";
+import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
 import { WikiDraftBar } from "./document/WikiDraftBar";
@@ -56,6 +73,33 @@ const QUIET_MINT = { ...QUIET_READ, refresh: true };
 const NO_ADDRESS_MS = 60_000;
 /** Invalid JSON shows as text, and a phone's text view doesn't need all of a huge file. */
 const SOURCE_SHOWN_CHARS = 20_000;
+
+/** A board as the page takes it. */
+function canvasCommand(
+  camera: CanvasCamera | null,
+  current: {
+    readonly data: CanvasData;
+    readonly commit: string;
+    readonly marks: CanvasMarks | undefined;
+    readonly document: unknown;
+    readonly readOnly: boolean;
+    readonly settings: CanvasBoardSettings;
+  },
+): WikiEditorCommand {
+  return {
+    type: "showCanvas",
+    data: current.data,
+    revision: current.commit,
+    camera,
+    marks: current.marks,
+    readOnly: current.readOnly,
+    settings: current.settings,
+    ...(current.document === undefined ? {} : { document: current.document }),
+  };
+}
+
+/** A board's own read-only toggle, for as long as the app runs: the page has nowhere to keep it. */
+const readOnlyBoards = new Set<string>();
 
 /** What the app's viewers can open that a board can't play in place. */
 function previewKind(path: string): FilePreviewSource["kind"] | null {
@@ -128,7 +172,27 @@ export function WikiCanvasScreen({
   const live = useMemo(() => changeRequestCanvasReview(changes, file, text), [changes, file, text]);
   const board = review?.board ?? live;
   const data = board?.data ?? (parsed?.ok ? parsed.data : null);
-  const marks = board?.marks;
+  // Your own draft's cards all read as changed, which says nothing a person doesn't know.
+  const marks = changes?.changeRequest.draft === true ? undefined : board?.marks;
+  const canWrite = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  // Writes follow `checkFileName`, flat until wikis have folders: one deeper can only be read.
+  const editable =
+    review === undefined &&
+    canWrite &&
+    /^[^/]+\.canvas$/i.test(file) &&
+    (changeRequestId === undefined || changes !== null) &&
+    !isSettledChangeRequest(changes?.changeRequest);
+  const document = editable && parsed?.ok === true ? parsed.document : undefined;
+  const boardKey = `${wikiId}:${file}`;
+  const [readOnly, setReadOnly] = useState(() => readOnlyBoards.has(boardKey));
+  const { environments } = useEnvironments();
+  const settings =
+    environments.find((each) => each.environmentId === environmentId)?.serverConfig?.settings
+      .wikiCanvas ?? DEFAULT_WIKI_CANVAS_SETTINGS;
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "canvas settings update",
+    reportFailure: true,
+  });
   const groups = useMemo(() => (data === null ? [] : canvasGroups(data)), [data]);
   const names = useMemo(
     () => (index.data === null ? null : wikiDocumentNames(index.data)),
@@ -141,10 +205,10 @@ export function WikiCanvasScreen({
   // Until the page first asks, what it would be sent is in `initialCommands`: a board is one
   // large message, so it isn't sent twice.
   const pageAsked = useRef(false);
-  const shown = useRef({ theme, data, commit, names, marks });
+  const shown = useRef({ theme, data, commit, names, marks, document, readOnly, settings });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a reloaded web view reads the latest board, commit and names
   useLayoutEffect(() => {
-    shown.current = { theme, data, commit, names, marks };
+    shown.current = { theme, data, commit, names, marks, document, readOnly, settings };
   });
   const initialCommands = useCallback((): WikiEditorCommand[] => {
     pageAsked.current = true;
@@ -157,13 +221,11 @@ export function WikiCanvasScreen({
       ...(current.data === null || current.commit === null
         ? []
         : [
-            {
-              type: "showCanvas" as const,
+            canvasCommand(camera.current, {
+              ...current,
               data: current.data,
-              revision: current.commit,
-              camera: camera.current,
-              marks: current.marks,
-            },
+              commit: current.commit,
+            }),
           ]),
     ];
   }, []);
@@ -179,11 +241,12 @@ export function WikiCanvasScreen({
   }, [names]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new version of the board crosses into the web view, outside React
   useEffect(() => {
-    const revision = shown.current.commit;
-    if (data === null || revision === null || !pageAsked.current) return;
-    const { marks } = shown.current;
-    editor.current?.send({ type: "showCanvas", data, revision, camera: camera.current, marks });
-  }, [data]);
+    const { commit, marks } = shown.current;
+    if (data === null || commit === null || !pageAsked.current) return;
+    editor.current?.send(
+      canvasCommand(camera.current, { data, commit, marks, document, readOnly, settings }),
+    );
+  }, [data, document, readOnly, settings]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new commit crosses into the web view, outside React
   useEffect(() => {
     if (commit !== null && pageAsked.current) {
@@ -234,6 +297,116 @@ export function WikiCanvasScreen({
       url: state._tag === "Success" ? state.url : null,
       expiresAt: state._tag === "Success" ? state.expiresAt : Date.now() + NO_ADDRESS_MS,
     });
+  };
+
+  const send = useWikiAutosaveCommand();
+  // The page's latest list of everything unlanded: each `canvasEdited` replaces the last.
+  const unlanded = useRef<{
+    readonly edits: ReadonlyArray<CanvasHandEdit>;
+    readonly through: number;
+  } | null>(null);
+  const landing =
+    routeChangeRequestId === undefined ? {} : { changeRequestId: routeChangeRequestId };
+  const { autosave, status } = useWikiAutosave({
+    subject: title,
+    save: async () => {
+      const taken = unlanded.current;
+      if (taken === null) return { ok: true };
+      const outcome = await send({
+        environmentId,
+        input: {
+          wikiId,
+          ...landing,
+          document: file,
+          write: {
+            kind: "transform",
+            transform: { kind: "canvas", file, edits: [...taken.edits] },
+          },
+        },
+      });
+      if (!outcome.ok) return outcome;
+      if (unlanded.current === taken) unlanded.current = null;
+      editor.current?.send({
+        type: "canvasLanded",
+        through: taken.through,
+        commit: outcome.value.commit,
+      });
+      return { ok: true };
+    },
+  });
+  const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
+  const answer = async (ask: WikiEditorCanvasAsk): Promise<WikiEditorCanvasAnswer> => {
+    switch (ask.kind) {
+      case "list-files": {
+        const result = await runFileList({ environmentId, input: { wikiId, ...scope } });
+        return {
+          kind: "files",
+          files: result._tag === "Success" ? result.value.files.map((each) => each.file) : [],
+        };
+      }
+      case "read-file": {
+        const revision = shown.current.commit;
+        const result = await runFiles({
+          environmentId,
+          input: {
+            wikiId,
+            ...(revision === null ? scope : { commit: revision }),
+            paths: [ask.path],
+          },
+        });
+        return {
+          kind: "value",
+          value: result._tag === "Success" ? (result.value.files[0]?.text ?? null) : null,
+        };
+      }
+      case "asset-url": {
+        const revision = shown.current.commit;
+        if (revision === null) return { kind: "value", value: null };
+        const result = await mintUrl({
+          environmentId,
+          input: { resource: { _tag: "wiki-file", wikiId, commit: revision, path: ask.path } },
+        });
+        const state = assetUrlStateFromResult(result, httpBaseUrl);
+        return { kind: "value", value: state._tag === "Success" ? state.url : null };
+      }
+      case "write-note": {
+        const { file: note, text, readAt } = ask;
+        const outcome = await send({
+          environmentId,
+          input: {
+            wikiId,
+            ...landing,
+            document: note,
+            write: {
+              kind: "text",
+              file: note,
+              text,
+              ...(readAt === undefined ? {} : { readAt }),
+            },
+          },
+        });
+        return { kind: "failure", message: outcome.ok ? null : outcome.message };
+      }
+      case "rename": {
+        const outcome = await send({
+          environmentId,
+          input: {
+            wikiId,
+            ...landing,
+            document: ask.file,
+            write: {
+              kind: "transform",
+              transform: {
+                kind: "rename",
+                from: ask.file.replace(/\.md$/i, ""),
+                to: ask.to,
+              },
+            },
+          },
+        });
+        return { kind: "failure", message: outcome.ok ? null : outcome.message };
+      }
+    }
   };
 
   const [baseSources, setBaseSources] = useState<ReadonlyArray<string>>([]);
@@ -300,6 +473,30 @@ export function WikiCanvasScreen({
       case "camera":
         camera.current = event.camera;
         return;
+      case "canvasEdited":
+        unlanded.current = event;
+        autosave.edited();
+        return;
+      case "canvasAsk":
+        void answer(event.ask).then((result) =>
+          editor.current?.send({
+            type: "canvasAnswer",
+            requestId: event.requestId,
+            answer: result,
+          }),
+        );
+        return;
+      case "canvasSettings":
+        void updateSettings({
+          environmentId,
+          input: { patch: { wikiCanvas: { ...settings, ...event.settings } } },
+        });
+        return;
+      case "canvasReadOnly":
+        if (event.on) readOnlyBoards.add(boardKey);
+        else readOnlyBoards.delete(boardKey);
+        setReadOnly(event.on);
+        return;
       case "openNote":
         openLink(event.name);
         return;
@@ -342,6 +539,7 @@ export function WikiCanvasScreen({
     }
   };
 
+  const saveLabel = wikiSaveLabel(status);
   const subtitle = [
     wikiDocumentSubtitle({
       wikiName: wiki?.name ?? null,
@@ -349,7 +547,11 @@ export function WikiCanvasScreen({
       readsChangeRequest: changeRequestId !== undefined,
       agentWorking: false,
     }),
-    review === undefined ? "Canvas · read only" : "Canvas · changes",
+    review !== undefined
+      ? "Canvas · changes"
+      : editable && !readOnly
+        ? `Canvas${saveLabel === null ? "" : ` · ${saveLabel}`}`
+        : "Canvas · read only",
   ].join(" · ");
   const header = (
     <NativeStackScreenOptions
