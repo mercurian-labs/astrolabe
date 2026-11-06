@@ -9,7 +9,7 @@ import { vimAtRest, vimInsertMode } from "@mercurian/editor/vim";
 import { canvasFileKind } from "@mercurian/wiki-editor/canvas-geometry";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 
 import { useAssetUrlState } from "~/assets/assetUrls";
 import { readLocalApi } from "~/localApi";
@@ -157,9 +157,10 @@ export function useWikiCanvasHost({
     };
     const found = await read({ commit }, paths);
     const missing = found.filter((file) => !file.exists).map((file) => file.file);
-    if (draftId === undefined || missing.length === 0) return found;
+    const fallback = draftId ?? noteDraft.current;
+    if (fallback === undefined || missing.length === 0) return found;
     const drafted = new Map(
-      (await read({ changeRequestId: draftId }, missing)).map((file) => [file.file, file]),
+      (await read({ changeRequestId: fallback }, missing)).map((file) => [file.file, file]),
     );
     return found.map((file) => drafted.get(file.file) ?? file);
   });
@@ -171,6 +172,8 @@ export function useWikiCanvasHost({
   );
 
   const send = useWikiAutosaveCommand();
+  // The first note of a new draft reads back before the list of change requests has it.
+  const noteDraft = useRef<WikiChangeRequestId | undefined>(undefined);
   const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
   const mintUrl = useAtomQueryRunner(assetEnvironment.createUrl, QUIET_MINT);
   const connection = usePreparedConnection(environmentId);
@@ -190,6 +193,8 @@ export function useWikiCanvasHost({
         write: { kind: "text", file, text, ...(readAt === undefined ? {} : { readAt }) },
       },
     });
+    // oxlint-disable-next-line react/immutability -- written when a save returns, not in render
+    if (outcome.ok) noteDraft.current = outcome.value.changeRequest?.changeRequestId;
     return outcome.ok ? null : outcome.message;
   });
   const attachFile = useStableCallback(async (name: string, base64: string) => {

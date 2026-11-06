@@ -532,7 +532,7 @@ function MissingFile({
   return (
     <div className="cv-card-body cv-missing">
       <p>"{file}" could not be found.</p>
-      {note && newNote !== undefined ? (
+      {note && !file.includes("/") && newNote !== undefined ? (
         <button type="button" className="cv-button" onClick={newNote}>
           New note
         </button>
@@ -1639,7 +1639,8 @@ export function CanvasBoard({
       if (!hasFiles && (dragged() ?? null) === null) return;
       event.preventDefault();
       event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      // A sidebar's row allows a move and nothing else: asking for a copy refuses the drop.
+      if (event.dataTransfer) event.dataTransfer.dropEffect = hasFiles ? "copy" : "move";
     };
     const onDrop = (event: DragEvent) => {
       if (!live.editable) return;
@@ -1886,7 +1887,7 @@ export function CanvasBoard({
       : {};
 
   const board = useCallback(() => boardRef.current, []);
-  useRestoreFocus(board, menu !== null || dialog !== null);
+  useRestoreFocus(board, menu !== null || dialog !== null || popover !== null);
   useRestoreFocus(board, selection.cards.size > 0 || selection.arrow !== null);
 
   // What's selected can go in a commit from elsewhere: the toolbar goes with it.
@@ -2219,7 +2220,10 @@ function SelectionToolbar({
       {count > 1 ? (
         <CanvasToolbarButton
           label="Create group"
-          onClick={() => commands.createGroup({ x: 0, y: 0 })}
+          onClick={() => {
+            setPopover(null);
+            commands.createGroup({ x: 0, y: 0 });
+          }}
         >
           Group
         </CanvasToolbarButton>

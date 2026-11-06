@@ -63,6 +63,7 @@ import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./docume
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
 import { WikiBelowHeader } from "./document/WikiBelowHeader";
+import { WikiNotice } from "./document/WikiNotice";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiCanvasChanges } from "./WikiCanvasChanges";
@@ -259,12 +260,15 @@ export function WikiCanvasScreen({
   }, [commit]);
 
   const runFiles = useAtomQueryRunner(wikiEnvironment.files, QUIET_READ);
+  // The first note of a new draft reads back before the list of change requests has it.
+  const noteDraft = useRef<WikiChangeRequestId | undefined>(undefined);
   const runCode = useAtomQueryRunner(wikiEnvironment.codeStatus, QUIET_READ);
   const mintUrl = useAtomQueryRunner(assetEnvironment.createUrl, QUIET_MINT);
   const connection = usePreparedConnection(environmentId);
   const httpBaseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
 
   const answerFiles = async (requestId: number, paths: ReadonlyArray<string>) => {
+    const cardsFrom = draft?.changeRequestId ?? noteDraft.current;
     const revision = shown.current.commit;
     const result = await runFiles({
       environmentId,
@@ -272,15 +276,15 @@ export function WikiCanvasScreen({
     });
     // A note made from a missing card sits in the draft, not at the board's commit.
     const missing =
-      result._tag === "Success" && draft !== null
+      result._tag === "Success" && cardsFrom !== undefined
         ? result.value.files.filter((each) => !each.exists).map((each) => each.file)
         : [];
     const drafted =
-      missing.length === 0 || draft === null
+      missing.length === 0 || cardsFrom === undefined
         ? null
         : await runFiles({
             environmentId,
-            input: { wikiId, changeRequestId: draft.changeRequestId, paths: missing },
+            input: { wikiId, changeRequestId: cardsFrom, paths: missing },
           });
     const inDraft = new Map(
       drafted?._tag === "Success" ? drafted.value.files.map((each) => [each.file, each]) : [],
@@ -405,6 +409,7 @@ export function WikiCanvasScreen({
             },
           },
         });
+        if (outcome.ok) noteDraft.current = outcome.value.changeRequest?.changeRequestId;
         return { kind: "failure", message: outcome.ok ? null : outcome.message };
       }
       case "rename": {
@@ -670,6 +675,13 @@ export function WikiCanvasScreen({
               // The document on screen follows where its edits went.
               if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
             }}
+          />
+        ) : null}
+        {status.kind === "failed" ? (
+          <WikiNotice
+            text={`Your changes aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
+            action="Try again"
+            onAction={autosave.retry}
           />
         ) : null}
       </WikiBelowHeader>
