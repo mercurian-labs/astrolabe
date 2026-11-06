@@ -1,0 +1,6 @@
+file name,priority,score,absolute,ceiling,floored,rounded,rounded_one,fixed,smallest,largest,parsed,from_bool,from_date,remainder,ratio,product,negated,precedence,compared,empty_score
+Delta,5,0,0,0,0,0,0,0.00,0,5,8.4,0,1735707600000,1,1.25,0,-5,8,true,false
+Alpha,3,2.5,2.5,3,2,3,0.8,2.50,2,3,6.4,0,1735707600000,1,0.75,5,-3,5,true,false
+Gamma,2,10,10,10,10,10,3.3,10.00,2,10,5.4,0,1735707600000,0,0.5,20,-2,3.5,false,false
+Beta,1,-1.25,1.25,-1,-2,-1,-0.4,-1.25,-1.25,1,4.4,1,1735707600000,1,0.25,-2.5,-1,2,false,false
+Epsilon,0,,,,,,,,,,3.4,1,1735707600000,0,0,,0,0.5,false,true

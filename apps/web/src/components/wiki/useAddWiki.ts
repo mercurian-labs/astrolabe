@@ -1,18 +1,19 @@
 import type { EnvironmentId, WikiSummary } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 
 import { wikiEnvironment } from "~/state/wiki";
 import { type WikiCommandOutcome, useWikiCommand } from "./wikiEnvironment";
-import { storeWikiFilter } from "./wikiFilter";
+import { useOpenWiki } from "./useOpenWiki";
 import { wikiScopeKey } from "./wikiTabs";
 
 /**
  * Astrolabe: the last step of the palette's add flow when it adds a wiki. Registers a folder or
- * creates an empty wiki, then opens the Wikis section narrowed to it. Resolves to the wiki, or
- * null when it failed.
+ * creates an empty wiki, then opens the Wikis section narrowed to it, or its page when added from
+ * Settings. Resolves to the wiki, or null when it failed.
  */
 export function useAddWiki() {
-  const navigate = useNavigate();
+  const router = useRouter();
+  const openWiki = useOpenWiki();
   const register = useWikiCommand(wikiEnvironment.register, "Failed to add wiki");
   const create = useWikiCommand(wikiEnvironment.create, "Failed to create wiki");
   const show = async (
@@ -20,12 +21,13 @@ export function useAddWiki() {
     outcome: WikiCommandOutcome<WikiSummary>,
   ): Promise<WikiSummary | null> => {
     if (!outcome.ok) return null;
-    storeWikiFilter({
-      wikis: [wikiScopeKey(environmentId, outcome.value.wikiId)],
-      changed: false,
-      hidden: [],
-    });
-    await navigate({ to: "/wikis" });
+    const { wikiId } = outcome.value;
+    await (router.state.location.pathname === "/settings/wikis"
+      ? router.navigate({
+          to: "/settings/wikis",
+          search: { wiki: wikiScopeKey(environmentId, wikiId) },
+        })
+      : openWiki(environmentId, wikiId));
     return outcome.value;
   };
   return {

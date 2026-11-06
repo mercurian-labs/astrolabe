@@ -12,6 +12,7 @@ import {
   renameLinks,
   serializeMap,
   support,
+  typedLinks,
   unresolved,
   walk,
   type SkillMap,
@@ -49,6 +50,41 @@ const apply = (files: WikiFiles, changes: WikiChanges): WikiFiles => {
   }
   return next;
 };
+
+describe("typed links", () => {
+  it("reads `@` words from body links, combining a document's mentions", () => {
+    const source = [
+      "Uses [[Auth|the login flow @depends_on]] and [[auth#Login|@blocks @depends_on]].",
+      "The [[Analysis|new work @supersedes and @contradicts-it the old]], [[Plain]], [[Named|text]].",
+    ].join("\n");
+    expect(typedLinks(source)).toEqual([
+      { target: "Auth", types: ["depends_on", "blocks"] },
+      { target: "Analysis", types: ["supersedes", "contradicts-it"] },
+    ]);
+  });
+
+  it("reads a link in a table, where its bar is escaped, and renames it the same way", () => {
+    const source = "| Needs |\n| - |\n| [[Auth\\|the flow @depends_on]] |\n";
+    expect(typedLinks(source)).toEqual([{ target: "Auth", types: ["depends_on"] }]);
+    expect(renameLinks(source, "Auth", "Identity")).toContain(
+      "[[Identity\\|the flow @depends_on]]",
+    );
+  });
+
+  it("leaves addresses, escapes, code, frontmatter and embeds untyped", () => {
+    const source = [
+      "---",
+      'owner: "[[Priya|@owner]]"',
+      "---",
+      "[[A|sam@example.com]] [[B|\\@sam]] [[C|(@sam)]] `[[D|@code]]` ![[E|@embed]]",
+      "```",
+      "[[F|@fenced]]",
+      "```",
+      "",
+    ].join("\n");
+    expect(typedLinks(source)).toEqual([]);
+  });
+});
 
 describe("links", () => {
   it("finds real links and renames them, keeping anchors, aliases and examples", () => {
@@ -198,9 +234,73 @@ describe("amendments", () => {
     expect(indexFiles(renamed).errors).toEqual([]);
   });
 
+  it("renames a note inside bases: link-shaped literals and name comparisons, nothing else", () => {
+    const files = {
+      ...base(),
+      "Open.base": [
+        "filters:",
+        "  or:",
+        '    - file.hasLink("B")',
+        "    - 'file.hasLink(link(\"[[B|bee]]\"))'",
+        "    - \"file.basename == 'B' && status != 'B'\"",
+        "formulas:",
+        "  next: link('B.md')",
+        "views:",
+        "  - type: table # the only view",
+        '    filters: { and: [file.name != "A"] }',
+        "",
+      ].join("\n"),
+      "C.md": "# C\n\n```base\nfilters: 'file.hasLink(\"B\")'\n```\n",
+    };
+    const changes = planTransform(files, { kind: "rename", from: "B", to: "Bee: two" }, stamp());
+    expect(changes["Open.base"]).toBe(
+      [
+        "filters:",
+        "  or:",
+        '    - "file.hasLink(\\"Bee: two\\")"',
+        "    - 'file.hasLink(link(\"[[Bee: two|bee]]\"))'",
+        "    - \"file.basename == 'Bee: two' && status != 'B'\"",
+        "formulas:",
+        "  next: \"link('Bee: two.md')\"",
+        "views:",
+        "  - type: table # the only view",
+        '    filters: { and: [file.name != "A"] }',
+        "",
+      ].join("\n"),
+    );
+    expect(changes["C.md"]).toBe("# C\n\n```base\nfilters: 'file.hasLink(\"Bee: two\")'\n```\n");
+    expect(indexFiles(apply(files, changes)).errors).toEqual([]);
+  });
+
+  it("reports a base naming a note that nothing carries, as a rename made in Obsidian leaves", () => {
+    const files = {
+      ...base(),
+      "Open.base": 'filters: \'file.hasLink("Gone") || file.hasLink("Missing")\'\n',
+    };
+    expect(indexFiles(files).errors).toEqual([
+      { file: "Open.base", error: "Names “Gone”, but no note is called that or links to it." },
+    ]);
+    const amended = planAmendment(files, { "B.md": "# B\n[[Gone]]\n" }, stamp());
+    expect(amended.errors).toEqual([]);
+  });
+
+  it("writes a base, keeping what it can't run as an index error rather than a refusal", () => {
+    const planned = planAmendment(base(), { "Open.base": "views:\n  - type: board\n" }, stamp());
+    expect(planned.changes["Open.base"]).toBe("views:\n  - type: board\n");
+    expect(planned.errors).toEqual([
+      {
+        file: "Open.base",
+        error:
+          "Not supported: the board view (table, cards, list, kanban and map are) in view “Board”.",
+      },
+    ]);
+  });
+
   it("refuses paths outside the flat wiki", () => {
     expect(() => planAmendment(base(), { "../x.md": "x" }, stamp())).toThrow(/flat/);
     expect(() => planAmendment(base(), { "notes/x.md": "x" }, stamp())).toThrow(/flat/);
+    expect(() => planAmendment(base(), { "notes/x.base": "x" }, stamp())).toThrow(/flat/);
+    expect(() => planAmendment(base(), { "x.canvas": "x" }, stamp())).toThrow(/flat/);
   });
 
   it("restores warning history that a revert's inverse would drop", () => {

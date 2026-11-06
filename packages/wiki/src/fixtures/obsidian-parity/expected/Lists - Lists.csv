@@ -1,0 +1,4 @@
+file name,nums,sorted,unique,reversed,joined,sliced,filtered,mapped,indexed,summed,largest,flattened,has_two,has_all,has_any,count,first,wrapped,listed,empty_list,sorted_words,tag_count,keys,property_values,empty_object
+Alpha,"4, 1, 3","1, 3, 4","1, 3, 4","3, 1, 4",4-1-3,"1, 3","4, 3","40, 10, 30","0, 1, 2",8,4,"1, 2, 3, 4",false,false,true,3,4,open,"4, 1, 3",true,"Apple, banana, pear",3,"status, priority, due, tags, owner, done, score, nums, words",9,false
+Beta,"2, 2, 5","2, 2, 5","2, 5","5, 2, 2",2-2-5,"2, 5","2, 2, 5","20, 20, 50","0, 1, 2",9,5,"1, 2, 3, 4",true,false,false,3,2,closed,"2, 2, 5",true,"Apple, banana, pear",1,"status, priority, due, tags, owner, done, score, people, title, nums, words",11,false
+Epsilon,"3, 1, 2, 2","1, 2, 2, 3","1, 2, 3","2, 2, 1, 3",3-1-2-2,"1, 2","3, 2, 2","30, 10, 20, 20","0, 1, 2, 3",8,3,"1, 2, 3, 4",true,true,true,4,3,archived,"3, 1, 2, 2",true,"Apple, banana, pear",0,"status, priority, due, nums, done",5,false

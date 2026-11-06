@@ -22,16 +22,13 @@ function marketingSiteDocumentUrl(path: string): string {
   return new URL(path, MARKETING_SITE_URL).toString();
 }
 
-const PRIVACY_POLICY_URL = marketingSiteDocumentUrl("privacy-policy");
-const SECURITY_POLICY_URL = marketingSiteDocumentUrl("security-policy");
-const TERMS_OF_SERVICE_URL = marketingSiteDocumentUrl("terms-of-service");
-export const LEGAL_URL = marketingSiteDocumentUrl("legal");
+// The landing site has no /legal index; each document's page links to the other two.
+export const LEGAL_URL = marketingSiteDocumentUrl("privacy-policy");
 
 const ALLOWED_LEGAL_DOCUMENT_URLS = [
   LEGAL_URL,
-  PRIVACY_POLICY_URL,
-  TERMS_OF_SERVICE_URL,
-  SECURITY_POLICY_URL,
+  marketingSiteDocumentUrl("terms-of-service"),
+  marketingSiteDocumentUrl("licenses"),
 ] as const;
 
 function webDocumentIdentity(value: string): string | null {

@@ -165,6 +165,10 @@ describe("scoreThreadSearch", () => {
     const subject = thread("Cmd+K search", { branch: "t3/cmdk-search-v2" });
     expect(scoreThreadSearch(foldSearchQuery("t3/cmdk-search-v2"), subject, NOW)).not.toBeNull();
     expect(scoreThreadSearch(foldSearchQuery("t3/cmdk"), subject, NOW)).not.toBeNull();
+    const current = thread("Cmd+K search", { branch: "astrolabe/cmdk-search-v2" });
+    expect(scoreThreadSearch(foldSearchQuery("astrolabe/cmdk"), current, NOW)).not.toBeNull();
+    // The app's own prefix says nothing about a thread, so it alone doesn't match every one.
+    expect(scoreThreadSearch(foldSearchQuery("astrolabe"), current, NOW)).toBeNull();
   });
 
   it("ranks a title holding the words above the app's own branch prefix and project name", () => {

@@ -26,6 +26,7 @@ import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatWikisWikiIdRouteImport } from './routes/_chat.wikis_.$wikiId'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsWorkspacesRouteImport } from './routes/_chat.settings.workspaces'
+import { Route as ChatSettingsWikisRouteImport } from './routes/_chat.settings.wikis'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
 import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
 import { Route as ChatSettingsSourceControlRouteImport } from './routes/_chat.settings.source-control'
@@ -137,6 +138,11 @@ const ChatSettingsWorktreesRoute = ChatSettingsWorktreesRouteImport.update({
 const ChatSettingsWorkspacesRoute = ChatSettingsWorkspacesRouteImport.update({
   id: '/workspaces',
   path: '/workspaces',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsWikisRoute = ChatSettingsWikisRouteImport.update({
+  id: '/wikis',
+  path: '/wikis',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
 const ChatSettingsThreadsRoute = ChatSettingsThreadsRouteImport.update({
@@ -328,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/settings/source-control': typeof ChatSettingsSourceControlRoute
   '/settings/storage': typeof ChatSettingsStorageRoute
   '/settings/threads': typeof ChatSettingsThreadsRoute
+  '/settings/wikis': typeof ChatSettingsWikisRoute
   '/settings/workspaces': typeof ChatSettingsWorkspacesRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/wikis/$wikiId': typeof ChatWikisWikiIdRoute
@@ -374,6 +381,7 @@ export interface FileRoutesByTo {
   '/settings/source-control': typeof ChatSettingsSourceControlRoute
   '/settings/storage': typeof ChatSettingsStorageRoute
   '/settings/threads': typeof ChatSettingsThreadsRoute
+  '/settings/wikis': typeof ChatSettingsWikisRoute
   '/settings/workspaces': typeof ChatSettingsWorkspacesRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/wikis/$wikiId': typeof ChatWikisWikiIdRoute
@@ -422,6 +430,7 @@ export interface FileRoutesById {
   '/_chat/settings/source-control': typeof ChatSettingsSourceControlRoute
   '/_chat/settings/storage': typeof ChatSettingsStorageRoute
   '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
+  '/_chat/settings/wikis': typeof ChatSettingsWikisRoute
   '/_chat/settings/workspaces': typeof ChatSettingsWorkspacesRoute
   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/_chat/wikis_/$wikiId': typeof ChatWikisWikiIdRoute
@@ -470,6 +479,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/storage'
     | '/settings/threads'
+    | '/settings/wikis'
     | '/settings/workspaces'
     | '/settings/worktrees'
     | '/wikis/$wikiId'
@@ -516,6 +526,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/storage'
     | '/settings/threads'
+    | '/settings/wikis'
     | '/settings/workspaces'
     | '/settings/worktrees'
     | '/wikis/$wikiId'
@@ -563,6 +574,7 @@ export interface FileRouteTypes {
     | '/_chat/settings/source-control'
     | '/_chat/settings/storage'
     | '/_chat/settings/threads'
+    | '/_chat/settings/wikis'
     | '/_chat/settings/workspaces'
     | '/_chat/settings/worktrees'
     | '/_chat/wikis_/$wikiId'
@@ -697,6 +709,13 @@ declare module '@tanstack/react-router' {
       path: '/workspaces'
       fullPath: '/settings/workspaces'
       preLoaderRoute: typeof ChatSettingsWorkspacesRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/wikis': {
+      id: '/_chat/settings/wikis'
+      path: '/wikis'
+      fullPath: '/settings/wikis'
+      preLoaderRoute: typeof ChatSettingsWikisRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
     '/_chat/settings/threads': {
@@ -925,6 +944,7 @@ interface ChatSettingsRouteChildren {
   ChatSettingsSourceControlRoute: typeof ChatSettingsSourceControlRoute
   ChatSettingsStorageRoute: typeof ChatSettingsStorageRoute
   ChatSettingsThreadsRoute: typeof ChatSettingsThreadsRoute
+  ChatSettingsWikisRoute: typeof ChatSettingsWikisRoute
   ChatSettingsWorkspacesRoute: typeof ChatSettingsWorkspacesRoute
   ChatSettingsWorktreesRoute: typeof ChatSettingsWorktreesRoute
 }
@@ -956,6 +976,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsSourceControlRoute: ChatSettingsSourceControlRoute,
   ChatSettingsStorageRoute: ChatSettingsStorageRoute,
   ChatSettingsThreadsRoute: ChatSettingsThreadsRoute,
+  ChatSettingsWikisRoute: ChatSettingsWikisRoute,
   ChatSettingsWorkspacesRoute: ChatSettingsWorkspacesRoute,
   ChatSettingsWorktreesRoute: ChatSettingsWorktreesRoute,
 }

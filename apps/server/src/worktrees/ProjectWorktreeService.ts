@@ -272,6 +272,16 @@ const make = Effect.gen(function* () {
         allowNonZeroExit: true,
       })
       .pipe(Effect.mapError(failWith("Git failed")));
+  /** git in a folder that may be no repository: its output, or null when it is none. */
+  const gitIfRepository = (operation: string, cwd: string, args: ReadonlyArray<string>) =>
+    git.execute({ operation: `ProjectWorktreeService.${operation}`, cwd, args }).pipe(
+      Effect.map((result): string | null => result.stdout),
+      Effect.catchIf(
+        (error) => error.reason === "not_a_repository",
+        () => Effect.succeed(null),
+      ),
+      Effect.mapError(failWith("Git failed")),
+    );
 
   const loadKept = Effect.gen(function* () {
     const cached = yield* Ref.get(keptCache);
@@ -342,22 +352,22 @@ const make = Effect.gen(function* () {
   });
 
   const changedFiles = (cwd: string) =>
-    runGit("status", cwd, [
+    gitIfRepository("status", cwd, [
       "status",
       "--porcelain=v1",
       "-z",
       "--untracked-files=all",
       "--ignore-submodules=dirty",
-    ]).pipe(Effect.map((result) => countStatusFiles(result.stdout)));
+    ]).pipe(Effect.map((stdout) => countStatusFiles(stdout ?? "")));
 
   const listSetAside = (root: string) =>
-    runGit("listSetAside", root, [
+    gitIfRepository("listSetAside", root, [
       "for-each-ref",
       "--format=%(refname)%00%(parent)",
       SET_ASIDE_REF_PREFIX,
     ]).pipe(
-      Effect.map((result) =>
-        result.stdout
+      Effect.map((stdout) =>
+        (stdout ?? "")
           .split("\n")
           .filter(Boolean)
           .map((line): ProjectWorktreeSetAside => {
@@ -446,11 +456,19 @@ const make = Effect.gen(function* () {
   /** The worktrees each repository had when last listed, which a single worktree is checked against. */
   const listedPaths = new Map<string, ReadonlySet<string>>();
 
+  /** The worktrees git lists; a folder that is no repository is its own one checkout. */
+  const readListed = (root: string) =>
+    gitIfRepository("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
+      Effect.map((stdout): ReadonlyArray<ListedWorktree> =>
+        stdout === null
+          ? [{ path: root, isMain: true, branch: null, head: null, plainFolder: true }]
+          : parseWorktreeList(stdout),
+      ),
+    );
+
   /** A repository's worktrees, uncounted: counting each would run git status in every one. */
   const listWorktrees = Effect.fn("ProjectWorktreeService.listWorktrees")(function* (root: string) {
-    const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
-      Effect.map((result) => parseWorktreeList(result.stdout)),
-    );
+    const listed = yield* readListed(root);
     listedPaths.set(root, new Set(listed.map((entry) => entry.path)));
     const { kept } = yield* loadKept;
     const numbers = yield* numbersFor(
@@ -482,6 +500,7 @@ const make = Effect.gen(function* () {
           const worktree: ProjectWorktree = {
             path: entry.path,
             isMain: entry.isMain,
+            isRepository: entry.plainFolder !== true,
             branch: entry.branch,
             head: entry.head,
             alias: entry.branch ?? entry.head?.slice(0, 8) ?? path.basename(entry.path),
@@ -800,9 +819,7 @@ const make = Effect.gen(function* () {
     "ProjectWorktreeService.setKept",
   )(function* (input) {
     const root = yield* repositoryRoot(input);
-    const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
-      Effect.map((result) => parseWorktreeList(result.stdout)),
-    );
+    const listed = yield* readListed(root);
     if (!listed.some((entry) => entry.path === input.path && !entry.isMain))
       return yield* fail("That worktree is not in this repository.");
     yield* writeKept(input.path, input.kept);
@@ -838,9 +855,7 @@ const make = Effect.gen(function* () {
     Stream.unwrap(
       Effect.gen(function* () {
         const root = yield* repositoryRoot(input);
-        const listed = yield* runGit("list", root, ["worktree", "list", "--porcelain", "-z"]).pipe(
-          Effect.map((result) => parseWorktreeList(result.stdout)),
-        );
+        const listed = yield* readListed(root);
         if (!listed.some((entry) => entry.path === input.path))
           return yield* fail("That worktree is not in this repository.");
         return yield* watcher.changes(input.path);

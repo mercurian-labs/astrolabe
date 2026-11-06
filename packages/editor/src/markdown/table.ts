@@ -6,6 +6,7 @@ import {
   isExternal,
   rawTarget,
   resolveTarget,
+  aliasReading,
   wikiParts,
   type LinkSource,
 } from "./decorate/links.ts";
@@ -202,12 +203,20 @@ function appendNode(parent: Element, node: SyntaxNode, c: LinkSource) {
       link.dataset.wikilink = target;
       link.title = target;
       const { alias, fragment } = parts;
-      if (alias) {
-        link.textContent = c.slice(alias.from, alias.to);
+      const reading = alias ? aliasReading(c, alias) : null;
+      if (alias && !reading?.typesOnly) {
+        if (!reading) link.textContent = c.slice(alias.from, alias.to);
       } else {
         const path = parts.target ? c.slice(parts.target.from, parts.target.to) : "";
         const heading = fragment ? c.slice(fragment.from + 1, fragment.to) : "";
         link.textContent = path && heading ? `${path} > ${heading}` : path || heading;
+        if (reading) link.append(" ");
+      }
+      if (alias && reading) {
+        for (const run of reading.runs) {
+          const text = c.slice(alias.from + run.from, alias.from + run.to);
+          link.append(run.type ? span("cm-md-link-type", text) : text);
+        }
       }
       parent.append(link);
       return;

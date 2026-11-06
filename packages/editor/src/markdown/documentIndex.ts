@@ -34,6 +34,8 @@ export interface DocumentIndex {
   mathBlocks: readonly SyntaxNode[];
   /** Fenced code blocks, which a host may draw itself where they start a line. */
   fencedCode: readonly SyntaxNode[];
+  /** Embeds alone on their line, which a host may draw as blocks. */
+  embedLines: readonly SyntaxNode[];
   /** Every definition as one string: equal strings mean links resolve the same way. */
   definitionsKey: string;
 }
@@ -81,6 +83,7 @@ export function documentIndex(state: EditorState): DocumentIndex {
   const tables: IndexedTable[] = [];
   const mathBlocks: SyntaxNode[] = [];
   const fencedCode: SyntaxNode[] = [];
+  const embedLines: SyntaxNode[] = [];
   let frontmatter: DocumentIndex["frontmatter"] = null;
   tree.iterate({
     enter(ref) {
@@ -128,6 +131,15 @@ export function documentIndex(state: EditorState): DocumentIndex {
         case "FencedCode":
           fencedCode.push(ref.node);
           return false;
+        case "Paragraph": {
+          for (const embed of ref.node.getChildren("Embed")) {
+            const line = state.doc.lineAt(embed.from);
+            if (line.to >= embed.to && line.text.trim() === state.sliceDoc(embed.from, embed.to)) {
+              embedLines.push(embed);
+            }
+          }
+          return false;
+        }
         case "Blockquote": {
           const callout = calloutOf(state, ref.node);
           if (callout?.fold === "-") {
@@ -154,6 +166,7 @@ export function documentIndex(state: EditorState): DocumentIndex {
     tables,
     mathBlocks,
     fencedCode,
+    embedLines,
     definitionsKey,
   };
   indexes.set(tree, index);

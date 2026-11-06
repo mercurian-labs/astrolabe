@@ -1,0 +1,59 @@
+filters: file.hasProperty("due")
+formulas:
+  iso: 'due.format("YYYY-MM-DD")'
+  long: 'due.format("dddd, MMMM Do YYYY")'
+  clock: 'due.format("HH:mm:ss")'
+  short: 'due.format("DD/MM/YY")'
+  year: 'due.year'
+  month: 'due.month'
+  day: 'due.day'
+  hour: 'due.hour'
+  minute: 'due.minute'
+  week_later: '(due + "1w").format("YYYY-MM-DD")'
+  days_before: '(due - "2d").format("YYYY-MM-DD")'
+  month_later: '(due + "1M").format("YYYY-MM-DD")'
+  year_later: '(due + "1y").format("YYYY-MM-DD")'
+  hours_later: '(due + "36h").format("YYYY-MM-DD HH:mm")'
+  doubled: '(date("2025-01-01") + duration("1d") * 2).format("YYYY-MM-DD")'
+  spelled: '(due + "3 days").format("YYYY-MM-DD")'
+  parsed: 'date("2025-02-03 10:20:30").format("YYYY-MM-DD HH:mm:ss")'
+  time_part: 'due.time()'
+  date_part: 'due.date().format("YYYY-MM-DD HH:mm:ss")'
+  gap: 'date("2025-03-10") - date("2025-01-05")'
+  later_than: 'due > date("2025-02-01")'
+  same_day: 'due == date("2025-03-10")'
+  as_number: 'number(due)'
+  empty_due: 'due.isEmpty()'
+views:
+  - type: table
+    name: Dates
+    order:
+      - file.name
+      - due
+      - formula.iso
+      - formula.long
+      - formula.clock
+      - formula.short
+      - formula.year
+      - formula.month
+      - formula.day
+      - formula.hour
+      - formula.minute
+      - formula.week_later
+      - formula.days_before
+      - formula.month_later
+      - formula.year_later
+      - formula.hours_later
+      - formula.doubled
+      - formula.spelled
+      - formula.parsed
+      - formula.time_part
+      - formula.date_part
+      - formula.gap
+      - formula.later_than
+      - formula.same_day
+      - formula.as_number
+      - formula.empty_due
+    sort:
+      - property: due
+        direction: ASC

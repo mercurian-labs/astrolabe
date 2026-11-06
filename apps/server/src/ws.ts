@@ -1293,6 +1293,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
+      [WS_METHODS.wikiSetMapBackgrounds]: (input) => wikis.setMapBackgrounds(input),
       [WS_METHODS.wikiSetProjectLink]: (input) => wikis.setProjectLink(input),
       [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
       [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),

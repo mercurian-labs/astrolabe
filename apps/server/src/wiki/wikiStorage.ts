@@ -15,6 +15,7 @@ import {
   WikiChangeRequestId,
   WikiChangeRequestStatus,
   WikiId,
+  WikiMapBackground,
   WikiMirrorStatus,
 } from "@t3tools/contracts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
@@ -27,7 +28,14 @@ export const WikiRecord = Schema.Struct({
   root: TrimmedNonEmptyString,
   mainBranch: TrimmedNonEmptyString,
   projectIds: Schema.Array(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /** When each link was made, so a running conversation hears of it once. Older links have none. */
+  projectLinkedAt: Schema.Record(ProjectId, IsoDateTime).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   mirror: Schema.NullOr(WikiMirrorStatus),
+  mapBackgrounds: Schema.Array(WikiMapBackground).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   createdAt: IsoDateTime,
 });
 export type WikiRecord = typeof WikiRecord.Type;
@@ -150,22 +158,51 @@ export const parseAmendmentLog = (output: string): ReadonlyArray<WikiAmendmentSu
 export const EDIT_TIMES_DEPTH = 2000;
 export const EDIT_TIMES_FORMAT = "%x1e%cI";
 
+/** When each file was last and first changed, as ISO times. */
+export interface WikiFileTimes {
+  readonly modified: ReadonlyMap<string, string>;
+  readonly created: ReadonlyMap<string, string>;
+}
+
 /**
- * When each file was last changed, from `git log --no-renames --name-only -z` (newest first)
- * with {@link EDIT_TIMES_FORMAT}: the first commit naming a file is its latest.
+ * When each file was last and first changed, from `git log --no-renames --name-only -z` (newest
+ * first) with {@link EDIT_TIMES_FORMAT}: the first commit naming a file is its latest, the last
+ * its first within {@link EDIT_TIMES_DEPTH}.
  */
-export const parseEditTimes = (output: string): ReadonlyMap<string, string> => {
-  const times = new Map<string, string>();
+export const parseFileTimes = (output: string): WikiFileTimes => {
+  const modified = new Map<string, string>();
+  const created = new Map<string, string>();
   for (const record of output.split("\x1e").slice(1)) {
     const [header = "", ...files] = record.split("\0");
     const [at, first] = header.split("\n");
     if (!at) continue;
     for (const file of [first ?? "", ...files.map((name) => name.replace(/^\n/, ""))]) {
-      if (file && !times.has(file)) times.set(file, at);
+      if (!file) continue;
+      if (!modified.has(file)) modified.set(file, at);
+      created.set(file, at);
     }
   }
-  return times;
+  return { modified, created };
 };
+
+/** `git ls-tree -r -l -z`: every file at a commit, with its blob and size, for bases to list. */
+export const parseFileListing = (
+  output: string,
+): ReadonlyArray<{ readonly file: string; readonly oid: string; readonly size: number }> =>
+  output.split("\0").flatMap((entry) => {
+    const tab = entry.indexOf("\t");
+    if (tab < 0) return [];
+    const [mode, type, oid, size] = entry.slice(0, tab).split(/ +/);
+    const file = entry.slice(tab + 1);
+    const bytes = Number(size);
+    return type === "blob" &&
+      oid !== undefined &&
+      (mode === "100644" || mode === "100755") &&
+      Number.isFinite(bytes) &&
+      !file.includes("\n")
+      ? [{ file, oid, size: bytes }]
+      : [];
+  });
 
 /** `git merge-tree --write-tree --name-only --no-messages -z`: the tree, then conflicted files. */
 export const parseMergeTree = (

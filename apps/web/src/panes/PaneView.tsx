@@ -113,8 +113,6 @@ interface TabPillProps {
   closable: boolean;
   /** Whether no tab follows it in the strip. */
   last: boolean;
-  /** Whether its strip is part of the window's title bar, which drags the window. */
-  draggableInTitlebar: boolean;
 }
 
 const TabPill = memo(function TabPill(props: TabPillProps) {
@@ -132,7 +130,6 @@ function LabeledTabPill({
   only,
   closable,
   last,
-  draggableInTitlebar,
   label,
 }: TabPillProps & { readonly label: PaneTabLabel }) {
   const { controller, tabs } = usePanesHost();
@@ -262,7 +259,6 @@ function LabeledTabPill({
         // from the others' top to the strip's foot (its curved feet and the rules between tabs
         // are `index.css`'s); the others are bare until hovered.
         "group/tab relative flex w-60 min-w-24 shrink cursor-pointer items-center gap-1.5 border border-transparent ps-2.25 pe-1.5 text-xs font-medium transition-colors duration-75 outline-none select-none focus-visible:inset-ring focus-visible:inset-ring-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24",
-        draggableInTitlebar && "[-webkit-app-region:no-drag]",
         active
           ? cn(
               "z-10 mt-1.5 self-stretch rounded-t-md border-border border-b-0 bg-(--tab-join)",
@@ -427,7 +423,6 @@ function TabStrip({
       // Beside other panes, closing it closes its pane, as `:q` does.
       closable={!(alone && leaf.tabs.length === 1 && isEmptyTab(key))}
       last={key === leaf.tabs.at(-1)}
-      draggableInTitlebar={titlebar}
     />
   );
 
@@ -442,58 +437,72 @@ function TabStrip({
         atTop && atLeft && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
       )}
     >
-      <div
-        ref={strip}
-        role="tablist"
-        aria-orientation="horizontal"
-        aria-multiselectable
-        data-pane-tabs
-        // Past the strip's padding on each side, so the joined tab's curved feet and a tab's
-        // focus ring stay whole; down over the strip's bottom border, which the joined tab covers.
-        className="-mx-2 -mb-px flex min-w-0 items-center gap-1 self-stretch overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        onWheel={(event) => {
-          // A vertical wheel scrolls the tabs sideways.
-          if (event.deltaX === 0 && event.deltaY !== 0) {
-            event.currentTarget.scrollLeft += event.deltaY;
-          }
-        }}
-      >
-        {runs.map(({ group, keys }) => {
-          if (group === null) return keys.map(renderTab);
-          const id = tabGroupId(group);
-          const collapsedNow = isCollapsed(id) || draggedGroup === id;
-          return (
-            <TabGroupRun
-              key={`${id}:${keys[0]}`}
-              group={group}
-              firstKey={keys[0]}
-              shownKeys={
-                draggedGroup === id ? [] : keys.filter((key) => !collapsedNow || key === active)
-              }
-              collapsedNow={collapsedNow}
-              dragging={draggedGroup === id}
-              actions={{
-                // The group's own tab, in front where these panes have it, else at the run's head.
-                show: () =>
-                  controller.update((arrangement) =>
-                    showTabBefore(arrangement, changeGroupTabKey(group), keys[0] ?? ""),
-                  ),
-                // As each tab's own close does, so a surface leaves its thread's record too.
-                close: () => {
-                  for (const key of keys) tabs.close(key);
-                },
-                dragStart: (event) =>
-                  startDrag(
-                    event,
-                    { key: keys.includes(active) ? active : (keys[0] ?? active), keys, group: id },
-                    group.title,
-                  ),
-                dragEnd: endDrag,
-              }}
-              renderTab={renderTab}
-            />
-          );
-        })}
+      {/* Past the strip's padding on each side, so the joined tab's curved feet and a tab's focus
+          ring stay whole; down over the strip's bottom border, which the joined tab covers. */}
+      <div className="relative -mx-2 -mb-px flex min-w-0 self-stretch">
+        <div
+          ref={strip}
+          role="tablist"
+          aria-orientation="horizontal"
+          aria-multiselectable
+          data-pane-tabs
+          className="flex min-w-0 items-center gap-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          onWheel={(event) => {
+            // A vertical wheel scrolls the tabs sideways.
+            if (event.deltaX === 0 && event.deltaY !== 0) {
+              event.currentTarget.scrollLeft += event.deltaY;
+            }
+          }}
+        >
+          {runs.map(({ group, keys }) => {
+            if (group === null) return keys.map(renderTab);
+            const id = tabGroupId(group);
+            const collapsedNow = isCollapsed(id) || draggedGroup === id;
+            return (
+              <TabGroupRun
+                key={`${id}:${keys[0]}`}
+                group={group}
+                firstKey={keys[0]}
+                shownKeys={
+                  draggedGroup === id ? [] : keys.filter((key) => !collapsedNow || key === active)
+                }
+                collapsedNow={collapsedNow}
+                dragging={draggedGroup === id}
+                actions={{
+                  // The group's own tab, in front where these panes have it, else at the run's head.
+                  show: () =>
+                    controller.update((arrangement) =>
+                      showTabBefore(arrangement, changeGroupTabKey(group), keys[0] ?? ""),
+                    ),
+                  // As each tab's own close does, so a surface leaves its thread's record too.
+                  close: () => {
+                    for (const key of keys) tabs.close(key);
+                  },
+                  dragStart: (event) =>
+                    startDrag(
+                      event,
+                      {
+                        key: keys.includes(active) ? active : (keys[0] ?? active),
+                        keys,
+                        group: id,
+                      },
+                      group.title,
+                    ),
+                  dragEnd: endDrag,
+                }}
+                renderTab={renderTab}
+              />
+            );
+          })}
+        </div>
+        {/* Electron folds app regions unclipped: a tab scrolled out of this strip would still
+            block window drags wherever it lands. This one box stands in for all of them. */}
+        {titlebar ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 [-webkit-app-region:no-drag]"
+          />
+        ) : null}
       </div>
       <NewTab paneId={leaf.id} />
       {alone ? null : <MaximizeButton paneId={leaf.id} maximized={maximized} />}
@@ -599,7 +608,7 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null) {
 /**
  * Where the tabs of `item` dragged over `pane` at (clientX, clientY) would land: over the strip
  * they join the pane's tabs at the insertion line, over the content they divide the pane on the
- * nearest half. Null for every tab of a pane over its own pane.
+ * nearest half. Null for every tab of a pane over its own pane, and over a strip they are kept from.
  */
 function dropTargetAt(
   pane: HTMLElement,
@@ -607,6 +616,7 @@ function dropTargetAt(
   item: DragItem,
   clientX: number,
   clientY: number,
+  keptFromPane: PaneTabs["keptFromPane"],
 ): DropTarget | null {
   // Every tab of a pane dragged over that pane has nowhere to go.
   if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
@@ -619,7 +629,11 @@ function dropTargetAt(
     rect.height,
     stripSize,
   );
-  if (zone === "center") return stripTargetAt(pane, rect, leaf, item, clientX);
+  if (zone === "center") {
+    return keptFromPane?.(item.keys, leaf.tabs)
+      ? null
+      : stripTargetAt(pane, rect, leaf, item, clientX);
+  }
   const halfWidth = Math.round(rect.width / 2);
   const content = rect.height - stripSize;
   const halfHeight = Math.round(content / 2);
@@ -781,7 +795,14 @@ export const PaneView = memo(function PaneView({
       const item = currentDrag();
       if (!item) return;
       event.stopPropagation();
-      const next = dropTargetAt(pane, latest.current.leaf, item, event.clientX, event.clientY);
+      const next = dropTargetAt(
+        pane,
+        latest.current.leaf,
+        item,
+        event.clientX,
+        event.clientY,
+        tabs.keptFromPane,
+      );
       if (!next) {
         if (latest.current.target) setTarget(null);
         return;
@@ -798,7 +819,14 @@ export const PaneView = memo(function PaneView({
       if (!item) return;
       event.stopPropagation();
       const { leaf: current } = latest.current;
-      const drop = dropTargetAt(pane, current, item, event.clientX, event.clientY);
+      const drop = dropTargetAt(
+        pane,
+        current,
+        item,
+        event.clientX,
+        event.clientY,
+        tabs.keptFromPane,
+      );
       setTarget(null);
       if (!drop) return;
       event.preventDefault();
@@ -838,7 +866,7 @@ export const PaneView = memo(function PaneView({
       pane.removeEventListener("dragleave", onDragLeave);
       pane.removeEventListener("drop", onDrop, true);
     };
-  }, [controller]);
+  }, [controller, tabs]);
 
   return (
     <section

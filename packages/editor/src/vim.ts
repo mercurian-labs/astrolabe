@@ -11,7 +11,28 @@ import {
   type RangeValue,
   type Text,
 } from "@codemirror/state";
-import { EditorView, ViewPlugin, runScopeHandlers, showPanel, type Panel } from "@codemirror/view";
+import {
+  EditorView,
+  ViewPlugin,
+  keymap,
+  runScopeHandlers,
+  showPanel,
+  type Command,
+  type Panel,
+} from "@codemirror/view";
+import {
+  deleteCharBackward,
+  deleteCharForward,
+  deleteGroupBackward,
+  deleteGroupForward,
+  deleteLineBoundaryBackward,
+  deleteLineBoundaryForward,
+  deleteToLineEnd,
+  insertNewlineAndIndent,
+  splitLine,
+  standardKeymap,
+  transposeChars,
+} from "@codemirror/commands";
 import { CodeMirror, Vim, getCM, vim, type CodeMirrorV } from "@replit/codemirror-vim";
 import { drawnSelection } from "./drawnSelection.ts";
 import { cellModalLayer } from "./markdown/tableCells.ts";
@@ -154,6 +175,8 @@ function configureVim() {
   configured = true;
   defineWindowKeys();
   defineScreenLineKeys();
+  // Vim's own Ctrl-h, as `h`; the package leaves it unbound.
+  Vim.mapCommand("<C-h>", "motion", "moveByCharacters", { forward: false }, {});
   const { commands } = CodeMirror;
   const { undo, redo } = commands;
   const save: unknown = commands.save;
@@ -470,10 +493,43 @@ export const vimNormalModeFont: Extension = EditorView.theme({
   },
 });
 
+const STANDARD_EDITS = new Set<Command>([
+  deleteCharBackward,
+  deleteCharForward,
+  deleteGroupBackward,
+  deleteGroupForward,
+  deleteLineBoundaryBackward,
+  deleteLineBoundaryForward,
+  deleteToLineEnd,
+  insertNewlineAndIndent,
+  splitLine,
+  transposeChars,
+]);
+
+const outsideInsertMode: Command = (view) => vimInsertMode(view) === false;
+
+/**
+ * The standard keymap's editing keys, which Vim declines where it has no entry for them (macOS's
+ * Ctrl-k and Ctrl-t, Ctrl-o after an operator, Shift-Enter): outside insert mode they stop here,
+ * consumed so macOS's text system does not run its Emacs keys on the content either.
+ */
+const standardEditsOff = keymap.of(
+  standardKeymap
+    .filter((binding) => binding.run && STANDARD_EDITS.has(binding.run))
+    .map((binding) => ({
+      ...binding,
+      run: outsideInsertMode,
+      ...(binding.shift && { shift: outsideInsertMode }),
+      preventDefault: false,
+    })),
+);
+
 /** Vim in a table cell's editor: the outer editor's panel shows its mode, same history. */
 function cellVim(history: VimHistory): Extension {
   return [
     vim(),
+    // Below the cell's own keys: Enter moves to the row below in any mode.
+    Prec.high(standardEditsOff),
     vimHistory.of(history),
     Prec.highest(cellSupport),
     restOnVisibleText,
@@ -518,6 +574,8 @@ export function vimMode(
     // reach Vim first; Vim passes on what it does not handle in insert mode. Vim's own panel
     // only opens for the ex line; the mode panel is this layer's.
     Prec.high(vim()),
+    // Above the live preview's Enter.
+    Prec.highest(standardEditsOff),
     textwidthTracker,
     vimHistory.of(history),
     vimModeField,

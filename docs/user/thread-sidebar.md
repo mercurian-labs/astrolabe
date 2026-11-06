@@ -94,18 +94,21 @@ document or any other tab in focus it does nothing, even with a chat showing in 
 A thread's terminals, browsers, diff, files, pull request, Graph and Lineage are linked to its
 chat, and show only while that chat is in front: bring another chat to the front and the pane beside it shows
 that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
-the one you clicked last. Closing a chat closes its linked tabs; the thread keeps its terminals
-and browsers for the next time you open it.
+the one you clicked last. Linked tabs stay in their own pane beside the chat, so you can't drop
+one into the chat's tab bar. Closing a chat closes its linked tabs; the thread keeps its terminals and browsers for the next time you open it.
 
-Linked tabs are added from **New linked tab** at the end of the chat's header, or Space `t` `n`.
-It opens a linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull
-request and the rest), in front beside the chat's other linked tabs, bringing back any that were
-hidden first; the one you pick takes its place. Once a chat has linked tabs, the button next to
-it hides them. Hiding sets them aside rather than closing them: while they are hidden the button
-shows how many, and clicking it brings them all back where they stood. `mod+alt+b`, or Space
-`p` `r`, does the same. A linked tab's ✕ closes it for good: a terminal closed this way ends, and the
-tab does not come back. A New tab opened with a pane's **+** stands on its own, even beside
-linked tabs, and stays where it is when another chat comes to the front.
+The button at the end of the chat's header manages its linked tabs. With none, it adds one: a
+linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull request and
+the rest); the one you pick takes its place. Once a chat has linked tabs, the button shows how
+many and opens a filter of them. Tick or untick a tab to show or hide it, use its trash icon to
+delete it, or use **Show all**, **Hide all** and **New linked tab** below the list. Space `t` `n`
+opens a linked New tab directly, and `mod+alt+b`, or Space `p` `r`, hides what's showing or
+brings it back.
+
+Hiding sets a tab aside rather than closing it: it stays hidden until you tick it again or open
+it from the chat. Deleting closes it for good: a terminal closed this way ends, and the tab does
+not come back. A linked tab's ✕ does the same. A New tab opened with a pane's **+** stands on its
+own, even beside linked tabs, and stays where it is when another chat comes to the front.
 
 A linked tab and its owner carry the same chain mark; hover it to see what it belongs to.
 Everything else (chats, documents, project files and changes, change groups) stands on its

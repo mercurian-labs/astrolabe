@@ -4,6 +4,8 @@ import { resolveIncomingNote, wikilinkNoteName } from "./incoming";
 
 describe("wikilinkNoteName", () => {
   it("opens the note a link names, whatever heading or alias it carries", () => {
+    expect(wikilinkNoteName("Auth\\")).toBe("Auth");
+    expect(wikilinkNoteName("Auth\\|the flow")).toBe("Auth");
     expect(wikilinkNoteName("Note")).toBe("Note");
     expect(wikilinkNoteName("Note#Heading")).toBe("Note");
     expect(wikilinkNoteName("Note|Alias")).toBe("Note");

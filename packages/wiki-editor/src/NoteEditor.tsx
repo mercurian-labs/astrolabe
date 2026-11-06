@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 
 import type { WikiNoteSession } from "./noteBuffer";
 import { wikilinkNoteName } from "./incoming";
+import { useWikiLinkTools, wikilinkDisplay, type WikiLinkPeek } from "./linkTools";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -57,13 +58,22 @@ export function WikiNoteEditor({
   onOpenNote,
   onOpenUrl,
   renderBase,
+  linkTypes,
+  renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
   readonly readOnly?: boolean;
   readonly onOpenNote: (name: string) => void;
+  /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
+  readonly linkTypes: ReadonlyArray<string>;
+  /** What a link's preview shows, drawn into its popover. */
+  readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
   /** Opens an external link; the editor opens a new window when omitted. */
   readonly onOpenUrl?: (href: string) => void;
-  /** A ```base block's view, from its YAML; it shows until the block is edited. */
+  /**
+   * A ```base block's view, from its YAML, or an embedded base's, from its embed
+   * (`![[Open.base#Table]]`); it shows until the block is edited.
+   */
   readonly renderBase?: (source: string) => ReactNode;
 }) {
   // Read through refs, so the preview options stay one object and never remount the editor.
@@ -79,16 +89,24 @@ export function WikiNoteEditor({
   const [baseBlocks, setBaseBlocks] = useState<
     ReadonlyArray<{ readonly id: number; readonly source: string; readonly element: HTMLElement }>
   >([]);
-  const [codeBlocks] = useState(() => {
+  const [{ codeBlocks, embedBlocks }] = useState(() => {
     let next = 0;
+    const draw = (source: string, element: HTMLElement) => {
+      const id = next++;
+      setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
+      return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
+    };
     return {
-      base: (source: string, element: HTMLElement) => {
-        const id = next++;
-        setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
-        return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
+      codeBlocks: { base: draw },
+      // An embedded base is asked for by its embed, `![[Open.base#Table]]` (see `embeddedBase`).
+      embedBlocks: {
+        base: (target: string, element: HTMLElement) => draw(`![[${target}]]`, element),
       },
     };
   });
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
+  // One array for the editor's life: a new one would remount it.
+  const [extensions] = useState(() => [...EXTENSIONS, linkTools.extension]);
   const drawsBases = renderBase !== undefined;
   const livePreview = useMemo<LivePreviewOptions>(
     () => ({
@@ -98,11 +116,12 @@ export function WikiNoteEditor({
       },
       ...(hasOpenUrl ? { openUrl: (href: string) => openUrlRef.current?.(href) } : {}),
       linksOpenOnClick: true,
+      wikilinkDisplay,
       // Embeds name wiki files, which the page cannot serve as images yet.
       resolveEmbed: () => null,
-      ...(drawsBases ? { codeBlocks } : {}),
+      ...(drawsBases ? { codeBlocks, embedBlocks } : {}),
     }),
-    [hasOpenUrl, drawsBases, codeBlocks],
+    [hasOpenUrl, drawsBases, codeBlocks, embedBlocks],
   );
   return (
     <div
@@ -114,7 +133,7 @@ export function WikiNoteEditor({
       <AtlasEditor
         text={session.text}
         awareness={session.awareness}
-        extensions={EXTENSIONS}
+        extensions={extensions}
         livePreview={livePreview}
         readOnly={readOnly}
       />
@@ -123,6 +142,7 @@ export function WikiNoteEditor({
             createPortal(renderBase(block.source), block.element, String(block.id)),
           )
         : null}
+      {linkTools.previews}
     </div>
   );
 }

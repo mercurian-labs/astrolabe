@@ -8,6 +8,7 @@ import {
   describeWikiFailure,
   isTurnRunning,
   latestAmendmentFor,
+  mapTilesFor,
   mergeBlockedReason,
   parseWikiSearch,
   queuedSaveStep,
@@ -155,5 +156,27 @@ describe("live authors and queued saves", () => {
     expect(queuedSaveStep({ queued, turnRunning: false, committing: false })).toBe("commit");
     expect(queuedSaveStep({ queued, turnRunning: false, committing: true })).toBe("idle");
     expect(queuedSaveStep({ queued: null, turnRunning: false, committing: false })).toBe("idle");
+  });
+});
+
+describe("mapTilesFor", () => {
+  const terrain = { name: "Terrain", lightTiles: "https://a/light", darkTiles: "https://a/dark" };
+  const satellite = { name: "Satellite", lightTiles: "https://b/light", darkTiles: null };
+
+  it("keeps a view's own tiles over the wiki's backgrounds", () => {
+    const view = { mapTiles: ["https://own/light"], mapTilesDark: ["https://own/dark"] };
+    expect(mapTilesFor(view, [terrain], "Terrain", false)).toEqual(["https://own/light"]);
+    expect(mapTilesFor(view, [terrain], null, true)).toEqual(["https://own/dark"]);
+  });
+
+  it("draws the picked background, else the first, else leaves the default", () => {
+    expect(mapTilesFor({}, [terrain, satellite], "Satellite", false)).toEqual(["https://b/light"]);
+    expect(mapTilesFor({}, [terrain, satellite], "Removed", false)).toEqual(["https://a/light"]);
+    expect(mapTilesFor({}, [], null, false)).toBeUndefined();
+  });
+
+  it("uses a background's dark tiles in dark mode, or its light ones without any", () => {
+    expect(mapTilesFor({}, [terrain], null, true)).toEqual(["https://a/dark"]);
+    expect(mapTilesFor({}, [satellite], null, true)).toEqual(["https://b/light"]);
   });
 });

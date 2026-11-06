@@ -1,3 +1,10 @@
+import {
+  keptFilterKeys,
+  parseFilterPicks,
+  toggleFilterAll,
+  toggleFilterPick,
+  type FilterPicks,
+} from "../projects/filterPicks";
 import { storedChoice } from "../projects/storedChoice";
 
 /**
@@ -6,8 +13,8 @@ import { storedChoice } from "../projects/storedChoice";
  * drop out of the file trees.
  */
 export interface WikiFilter {
-  /** Wiki scope keys (`wikiScopeKey`). */
-  readonly wikis: ReadonlyArray<string>;
+  /** Wiki scope keys (`wikiScopeKey`), as `FilterPicks` reads them. */
+  readonly wikis: FilterPicks;
   readonly changed: boolean;
   /** Worktree keys (`environmentId:path`), so a new worktree shows until it is hidden. */
   readonly hidden: ReadonlyArray<string>;
@@ -25,33 +32,25 @@ export const setWikiWorktreeHidden = (
   return { ...filter, hidden: hidden ? [...rest, key] : rest };
 };
 
-/**
- * The wikis the filter keeps, or null for every wiki. Picks whose wiki is gone are ignored, and
- * picking every wiki reads as every wiki, so a filter of only those reads as none.
- */
-export function filterWikiKeys(
+/** The wikis the filter keeps, or null for every wiki. */
+export const filterWikiKeys = (
   filter: WikiFilter,
   keys: ReadonlyArray<string>,
-): ReadonlySet<string> | null {
-  const kept = keys.filter((key) => filter.wikis.includes(key));
-  return kept.length === 0 || kept.length === keys.length ? null : new Set(kept);
-}
+): ReadonlySet<string> | null => keptFilterKeys(filter.wikis, keys);
 
-/**
- * Ticks or unticks a wiki from the boxes as shown, every wiki ticked while none is picked, so
- * unticking one keeps the rest. Unticking the last, or ticking every one, is every wiki again.
- */
-export function toggleFilterWiki(
+export const toggleFilterWiki = (
   filter: WikiFilter,
   key: string,
   keys: ReadonlyArray<string>,
-): WikiFilter {
-  const shown = filterWikiKeys(filter, keys) ?? new Set(keys);
-  const next = shown.has(key)
-    ? keys.filter((each) => each !== key && shown.has(each))
-    : keys.filter((each) => each === key || shown.has(each));
-  return { ...filter, wikis: next.length === keys.length ? [] : next };
-}
+): WikiFilter => ({ ...filter, wikis: toggleFilterPick(filter.wikis, key, keys) });
+
+export const toggleFilterAllWikis = (
+  filter: WikiFilter,
+  keys: ReadonlyArray<string>,
+): WikiFilter => ({
+  ...filter,
+  wikis: toggleFilterAll(filter.wikis, keys),
+});
 
 /** Whether a document passes: its wiki is kept, and it has changes when that is asked for. */
 export function wikiFilterKeepsDocument(
@@ -76,7 +75,7 @@ export function parseWikiFilter(stored: string): WikiFilter | null {
   const strings = (value: unknown) =>
     Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
   return {
-    wikis: strings(record.wikis),
+    wikis: parseFilterPicks(record.wikis),
     changed: record.changed === true,
     hidden: strings(record.hidden),
   };
@@ -93,7 +92,7 @@ export const useStoredWikiFilter = wikiFilterStore.useValue;
 
 export const storeWikiFilter = (filter: WikiFilter) =>
   wikiFilterStore.set(
-    filter.wikis.length === 0 && !filter.changed && filter.hidden.length === 0
+    filter.wikis?.length === 0 && !filter.changed && filter.hidden.length === 0
       ? EMPTY_WIKI_FILTER
       : filter,
   );

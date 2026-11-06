@@ -1,4 +1,9 @@
-import type { EnvironmentId, WikiChangeRequestId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  WikiChangeRequestId,
+  WikiMapBackground,
+  WikiQueryResult,
+} from "@t3tools/contracts";
 
 /**
  * `/wikis/$wikiId` search: a link to a document (`note`, read inside `changeRequest` when one
@@ -26,6 +31,8 @@ export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
 
 // Shared with the mobile app.
 export {
+  documentTitle,
+  wikiDocumentName,
   noteKey,
   noteNameOfFile,
   defaultSaveTarget,
@@ -41,3 +48,18 @@ export {
   type MirrorTone,
   type QueuedWikiSave,
 } from "@t3tools/client-runtime/wikiLogic";
+
+/** A map's tiles, picked as Obsidian does: the view's own, else a background, else the default. */
+export function mapTilesFor(
+  settings: NonNullable<WikiQueryResult["settings"]>,
+  backgrounds: ReadonlyArray<WikiMapBackground>,
+  picked: string | null,
+  dark: boolean,
+): ReadonlyArray<string> | undefined {
+  if (settings.mapTiles?.length) {
+    return dark && settings.mapTilesDark?.length ? settings.mapTilesDark : settings.mapTiles;
+  }
+  const background = backgrounds.find(({ name }) => name === picked) ?? backgrounds[0];
+  if (background === undefined) return undefined;
+  return [dark ? (background.darkTiles ?? background.lightTiles) : background.lightTiles];
+}

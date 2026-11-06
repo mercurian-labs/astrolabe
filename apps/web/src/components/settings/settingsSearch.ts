@@ -18,6 +18,7 @@ import type { ResolvedSettingsScope } from "./settingsScope";
 
 export type SettingsPath =
   | "/settings/projects"
+  | "/settings/wikis"
   | "/settings/general"
   | "/settings/diagnostics"
   | "/settings/appearance"
@@ -92,6 +93,7 @@ export interface SettingsSearchAvailability {
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/diagnostics": "Diagnostics",
   "/settings/projects": "Projects",
+  "/settings/wikis": "Wikis",
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
   "/settings/chat": "Chat",
@@ -146,6 +148,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     heading: "Code",
     paths: [
       "/settings/projects",
+      "/settings/wikis",
       "/settings/source-control",
       "/settings/change-requests",
       "/settings/worktrees",
@@ -1047,6 +1050,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "wikis",
+    title: "Wikis",
+    to: "/settings/wikis",
+    searchTerms: ["wiki notes link project mirror add remove plans research"],
+  },
+  {
     id: "worktree-branch-naming",
     title: "Worktree branch naming",
     to: "/settings/worktrees",
@@ -1318,6 +1327,7 @@ const SEARCH_ITEMS_BY_ID = new Map(SETTINGS_SEARCH_ITEMS.map((item) => [item.id,
 const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScope | null>> = {
   "/settings/diagnostics": "environment",
   "/settings/projects": "project",
+  "/settings/wikis": null,
   "/settings/general": null,
   "/settings/appearance": null,
   "/settings/chat": null,

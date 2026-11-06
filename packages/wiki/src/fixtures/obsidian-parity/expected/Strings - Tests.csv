@@ -1,0 +1,6 @@
+file name,starts,ends,contains_all,contains_any,matches,matches_flags,to_string,is_number,is_string,truthy,concat,concat_number,if_else,if_no_else,empty_title,escaped
+Alpha,true,true,true,false,true,true,3,true,true,true,Alpha / open,p3,Not done,high,true,&lt;b&gt;Alpha&lt;/b&gt;
+Beta,false,true,false,true,true,false,1,true,true,true,Beta / closed,p1,Done,,false,&lt;b&gt;Beta&lt;/b&gt;
+Delta,false,true,true,true,false,false,5,true,true,true,Delta / open,p5,Not done,high,true,&lt;b&gt;Delta&lt;/b&gt;
+Epsilon,false,false,false,true,false,false,0,true,true,false,Epsilon / archived,p0,Done,,true,&lt;b&gt;Epsilon&lt;/b&gt;
+Gamma,false,true,false,false,false,false,2,true,true,true,Gamma / open,p2,Not done,,true,&lt;b&gt;Gamma&lt;/b&gt;

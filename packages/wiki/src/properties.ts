@@ -1,11 +1,6 @@
 import { parseDocument } from "yaml";
 
-import { prose } from "./links.ts";
-
-const FRONTMATTER = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
-
-/** Where a note's frontmatter ends; 0 when it has none. */
-export const frontmatterEnd = (source: string): number => FRONTMATTER.exec(source)?.[0].length ?? 0;
+import { FRONTMATTER, frontmatterEnd, prose } from "./links.ts";
 
 /**
  * A note's properties: the YAML mapping between `---` lines at its very start, as Obsidian
@@ -31,7 +26,7 @@ export function noteProperties(source: string): Readonly<Record<string, unknown>
 // or `/` (nesting), with at least one character that is not a digit.
 const INLINE_TAG = /(?<=^|\s)#([\p{L}\p{N}_\-/]+)/gu;
 
-/** A note's tags, `#` first, from its `tags` property and the `#tags` in its prose. */
+/** A note's tags, `#` first: the `#tags` in its prose, then its `tags` property, as Obsidian lists them. */
 export function noteTags(
   source: string,
   properties: Readonly<Record<string, unknown>>,
@@ -43,12 +38,12 @@ export function noteTags(
       found.set(tag.toLowerCase(), `#${tag}`);
     }
   };
+  const body = prose(source).slice(frontmatterEnd(source));
+  for (const match of body.matchAll(INLINE_TAG)) add(match[1] ?? "");
   const declared = properties.tags ?? properties.tag;
   for (const value of Array.isArray(declared) ? declared : [declared]) {
     if (typeof value === "string") for (const part of value.split(/[,\s]+/)) add(part);
   }
-  const body = prose(source).slice(frontmatterEnd(source));
-  for (const match of body.matchAll(INLINE_TAG)) add(match[1] ?? "");
   return [...found.values()];
 }
 

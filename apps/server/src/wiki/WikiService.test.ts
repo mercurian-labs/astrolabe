@@ -1,12 +1,15 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProjectId, ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
@@ -21,6 +24,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as WikiService from "./WikiService.ts";
+import { WikiRegistryJson } from "./wikiStorage.ts";
 
 const layerEnrichment = ProjectEnrichmentService.layer.pipe(
   Layer.provide(
@@ -110,7 +114,9 @@ const write = (root: string, files: Readonly<Record<string, string>>) =>
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     for (const [file, content] of Object.entries(files)) {
-      yield* fileSystem.writeFileString(path.join(root, file), content).pipe(Effect.orDie);
+      const target = path.join(root, file);
+      yield* fileSystem.makeDirectory(path.dirname(target), { recursive: true }).pipe(Effect.orDie);
+      yield* fileSystem.writeFileString(target, content).pipe(Effect.orDie);
     }
   });
 
@@ -217,6 +223,32 @@ it.effect("links repositories, and tells their threads which wikis hold their pl
   ),
 );
 
+it.effect("tells a conversation with turns only about wikis linked since its last message", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, summary, wikis } = yield* registeredWiki(harness);
+      const repository = ProjectId.make("project-app");
+      const beforeTheLink = yield* DateTime.now;
+      yield* TestClock.adjust("1 minute");
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      yield* TestClock.adjust("1 minute");
+      const afterTheLink = yield* DateTime.now;
+
+      assert.include(yield* wikis.agentNote(repository, beforeTheLink), `wiki "${summary.name}"`);
+      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+
+      // Saving an existing link again is not a new link.
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
+      yield* TestClock.adjust("1 minute");
+      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
+      assert.include(yield* wikis.agentNote(repository, afterTheLink), `wiki "${summary.name}"`);
+    }),
+  ),
+);
+
 it.effect("creates a wiki as a new repository under the data dir", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
@@ -276,6 +308,7 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
           "filters: 'status == \"open\"'\nviews:\n  - type: cards\n    name: Open\n    order: [file.basename, status]\n",
         "Index.md":
           "# Index\n\nStart at [[Alpha]].\n\n```base\nfilters: '!this.file.links.contains(file) && file.name != this.file.name'\n```\n",
+        "attachments/pic.png": "png",
       });
       yield* git(root, ["add", "."]);
       yield* git(root, ["commit", "--quiet", "-m", "Statuses and bases"]);
@@ -291,7 +324,22 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
       assert.deepEqual(byFile.rows, [
         { name: "Alpha", file: "Alpha.md", values: { "file.basename": "Alpha", status: "open" } },
       ]);
-      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Index" })), ["Beta"]);
+      // A base lists every file in the repository, as an Obsidian vault does.
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Index" })), [
+        "Beta",
+        "Open.base",
+        "pic.png",
+        "Product.skillmap",
+      ]);
+      const attachments = yield* wikis.query({
+        wikiId,
+        source:
+          'filters: file.inFolder("attachments")\nviews:\n  - type: table\n    order: [file.path, file.size]\n',
+      });
+      assert.deepEqual(
+        attachments.rows.map((row) => row.values),
+        [{ "file.path": "attachments/pic.png", "file.size": 3 }],
+      );
       // A block as the editor holds it, unsaved: `this` is the note it sits in.
       assert.deepEqual(
         names(yield* wikis.query({ wikiId, source: "filters: file.hasLink(this)", note: "Beta" })),
@@ -321,10 +369,8 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
         wikis.query({ wikiId, source: "views:\n  - type: table\n    order: [formula.ppu]\n" }),
       );
       assert.equal(outside.reason, "invalid");
-      assert.equal(
-        outside.message,
-        "Not supported: formula.ppu (formulas) in view “Table”'s order.",
-      );
+      // A base's own error names what to fix.
+      assert.equal(outside.message, "No formula named “ppu” in view “Table”'s order.");
     }),
   ),
 );
@@ -643,6 +689,66 @@ it.effect("closes and reopens a change request, keeping its history", () =>
   ),
 );
 
+it.effect("previews a view's unsaved edits, then saves them to a change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "Alpha.md": "---\nstatus: open\n---\n# Alpha\n",
+        "Beta.md": "---\nstatus: done\n---\n# Beta\n",
+        "Open.base": "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Statuses"]);
+      const names = (result: { readonly rows: ReadonlyArray<{ readonly name: string }> }) =>
+        result.rows.map((row) => row.name);
+      const edits = [
+        { kind: "property", file: "Beta.md", property: "status", value: "open" },
+        { kind: "create", file: "Gamma.md", properties: { status: "open" } },
+        {
+          kind: "view",
+          base: "Open.base",
+          view: "Open",
+          settings: { sort: [{ property: "file.name", direction: "DESC" }] },
+        },
+      ] as const;
+
+      const preview = yield* wikis.query({ wikiId, base: "Open", edits });
+      assert.deepEqual(names(preview), ["Gamma", "Beta", "Alpha"]);
+      assert.deepEqual(preview.settings?.sort, [{ property: "file.name", direction: "DESC" }]);
+      // Nothing is written until the edits are saved.
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open" })), ["Alpha"]);
+
+      const saved = yield* wikis.transform(
+        {
+          wikiId,
+          title: "Reopen Beta",
+          message: "Reopen Beta",
+          transform: { kind: "base-edits", edits },
+        },
+        agent("thread-base-edits"),
+      );
+      const changeRequestId = saved.changeRequest.changeRequestId;
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open", changeRequestId })), [
+        "Gamma",
+        "Beta",
+        "Alpha",
+      ]);
+      assert.deepEqual(names(yield* wikis.query({ wikiId, base: "Open" })), ["Alpha"]);
+
+      const refused = yield* failure(
+        wikis.query({
+          wikiId,
+          base: "Open",
+          edits: [{ kind: "property", file: "Nope.md", property: "status", value: "open" }],
+        }),
+      );
+      assert.equal(refused.reason, "invalid");
+      assert.equal(refused.message, "No note Nope.md to edit.");
+    }),
+  ),
+);
+
 it.effect("renames a note through a transform, rewriting its links and map edges", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
@@ -665,6 +771,62 @@ it.effect("renames a note through a transform, rewriting its links and map edges
       const oriented = yield* wikis.orient({ wikiId, map: "Product", changeRequestId: id });
       assert.equal(oriented.edges[0]?.to, "Base");
       assert.equal(oriented.edges[0]?.supportingProse?.note, "Alpha");
+    }),
+  ),
+);
+
+const decodeRegistry = Schema.decodeSync(WikiRegistryJson);
+
+it("reads a registry saved before wikis had map backgrounds", () => {
+  const registry = decodeRegistry(
+    JSON.stringify({
+      version: 1,
+      wikis: [
+        {
+          wikiId: "plans",
+          name: "Plans",
+          root: "/wikis/plans",
+          mainBranch: "main",
+          mirror: null,
+          createdAt: "2026-11-04T00:00:00.000Z",
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(registry.wikis[0]?.mapBackgrounds, []);
+});
+
+it.effect("keeps map backgrounds on the server, in order, and out of the wiki's repository", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const backgrounds = [
+        {
+          name: "Paid",
+          lightTiles: "https://tiles.test/{z}/{x}/{y}.png?key=secret",
+          darkTiles: null,
+        },
+        { name: "Free", lightTiles: "https://free.test/style", darkTiles: "http://free.test/dark" },
+      ];
+      yield* wikis.setMapBackgrounds({ wikiId, backgrounds });
+      assert.deepEqual((yield* wikis.list).wikis[0]?.mapBackgrounds, backgrounds);
+      assert.equal(yield* git(root, ["status", "--porcelain"]), "");
+
+      const twice = yield* wikis
+        .setMapBackgrounds({
+          wikiId,
+          backgrounds: [...backgrounds, { ...backgrounds[1]!, name: "paid" }],
+        })
+        .pipe(Effect.flip);
+      assert.equal(twice.message, "Two map backgrounds can't share a name.");
+      const script = yield* wikis
+        .setMapBackgrounds({
+          wikiId,
+          backgrounds: [{ name: "Bad", lightTiles: "javascript:alert(1)", darkTiles: null }],
+        })
+        .pipe(Effect.flip);
+      assert.equal(script.message, "A map background's address starts with http:// or https://.");
+      assert.deepEqual((yield* wikis.list).wikis[0]?.mapBackgrounds, backgrounds);
     }),
   ),
 );
@@ -747,6 +909,32 @@ it.effect("reads a wiki by name, and searches and links from its index", () =>
         (yield* failure(wikis.index({ wikiId: WikiId.make("nope") }))).reason,
         "not-found",
       );
+    }),
+  ),
+);
+
+it.effect("reports link types from both ends, and every type the wiki uses", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikis, wikiId } = yield* registeredWiki(harness);
+      const { changeRequest } = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Say what Alpha's link means",
+          changes: {
+            "Alpha.md": "# Alpha\n\nAlpha [[Beta|builds on @depends_on]] and [[beta|@blocks]].\n",
+          },
+        },
+        agent("thread-types"),
+      );
+      const scope = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      const alpha = yield* wikis.links({ ...scope, name: "Alpha" });
+      assert.deepEqual(alpha.outgoing, [
+        { target: "Beta", unresolved: false, types: ["depends_on", "blocks"] },
+      ]);
+      const beta = yield* wikis.links({ ...scope, name: "Beta" });
+      assert.deepEqual(beta.typedBacklinks, [{ source: "Alpha", types: ["depends_on", "blocks"] }]);
+      assert.deepEqual((yield* wikis.index(scope)).linkTypes, ["blocks", "depends_on"]);
     }),
   ),
 );

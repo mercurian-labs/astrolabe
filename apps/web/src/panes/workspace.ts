@@ -49,14 +49,16 @@ import {
 } from "./arrangement";
 import {
   linkedArrangement,
-  linkedToggle,
   linkTab,
+  hideLinkedTab,
+  linkedTabsOf,
   openLinked,
+  showLinkedTabs,
   settleLinks,
   unlinkTab,
   type LinkContext,
   type LinkedArrangement,
-  type LinkedToggle,
+  type LinkedTab,
 } from "./linkedTabs";
 import type { PanelProps } from "./panesController";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
@@ -426,25 +428,48 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     if (!now.isOpen || closing) return next;
     const asked = target && target.until > Date.now() ? target.paneId : null;
     const keys = surfaceKeysOf(front, next);
-    const followed = followRecord(next.arrangement, previous, now, asked, keys);
+    const showing = now.surfaceIds.filter((id) => !next.parked[keys.key(id)]?.hidden);
+    const followed = followRecord(
+      next.arrangement,
+      previous,
+      { ...now, surfaceIds: showing },
+      asked,
+      keys,
+    );
     if (followed.consumedTarget) target = null;
     let out: LinkedArrangement = { ...next, arrangement: followed.arrangement };
-    for (const id of now.surfaceIds) {
+    for (const id of showing) {
       const key = keys.key(id);
       if (leafWithTab(out.arrangement.root, key) && out.owners[key] !== front) {
         out = linkTab(out, key, front);
       }
     }
     if (!allTabs(out.arrangement).some((key) => out.owners[key] === front)) {
-      const { arrangement } = out;
-      const key = `empty/${arrangement.seq}`;
-      out = openLinked({ ...out, arrangement: { ...arrangement, seq: arrangement.seq + 1 } }, key);
+      const hidden = hiddenTabsOf(out, front);
+      if (hidden.length === 0) {
+        const { arrangement } = out;
+        const key = `empty/${arrangement.seq}`;
+        out = openLinked(
+          { ...out, arrangement: { ...arrangement, seq: arrangement.seq + 1 } },
+          key,
+        );
+      } else if (!previous?.isOpen) {
+        // A panel opening with every tab hidden shows them, not an empty tab. One whose last
+        // showing tab just went closes instead (`apply`).
+        out = showLinkedTabs(out, hidden);
+      }
     }
     const settled = settleLinks(out, context);
     return settled.arrangement === next.arrangement && settled.owners === next.owners
       ? next
       : settled;
   }
+
+  /** The linked tabs of `owner` hidden on their own. */
+  const hiddenTabsOf = (linked: LinkedArrangement, owner: string) =>
+    Object.keys(linked.parked).filter(
+      (key) => linked.parked[key]?.hidden && linked.owners[key] === owner,
+    );
 
   /** Brings the record's active surface in line with the panes, if it says otherwise. */
   const writeRecord = () => {
@@ -497,6 +522,13 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       front !== null && allTabs(linked.arrangement).some((key) => linked.owners[key] === front);
     const closing = front !== null && front === before.front && ownedIn(before) && !ownedIn(next);
     next = mirror(next, closing);
+    // The last tab showing went with others hidden on their own: nothing is left to show.
+    const emptied =
+      !closing &&
+      front !== null &&
+      record?.isOpen === true &&
+      !ownedIn(next) &&
+      hiddenTabsOf(next, front).length > 0;
     const nextHistories = keepHistories(
       history ? history(histories) : histories,
       allTabs(next.arrangement),
@@ -509,7 +541,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     writeRecord();
     publish();
     const ref = refOf(front);
-    if (closing && ref) useRightPanelStore.getState().close(ref);
+    if ((closing || emptied) && ref) useRightPanelStore.getState().close(ref);
   };
 
   const update = (change: (arrangement: Arrangement) => Arrangement) =>
@@ -531,7 +563,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   const takeRecord = () => {
     const front = current().front;
     const ref = refOf(front);
-    if (!ref) return;
+    if (!ref || front === null) return;
     const now = recordOf(ref);
     if (recordOwner === front && sameRecord(record, now)) return;
     if (writing) {
@@ -550,7 +582,24 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       useRightPanelStore.getState().show(ref);
       return;
     }
-    apply(arriveAtTarget);
+    const previous = recordOwner === front ? record : null;
+    const surfaceKeyOf = (id: string) => chatSurfaceKey(front, id);
+    const gone = (previous?.surfaceIds ?? []).filter((id) => !now.surfaceIds.includes(id));
+    // A tab set aside is not in the panes for the record to take out of them.
+    const closed = gone.map(surfaceKeyOf).filter((key) => key in current().parked);
+    // Asked for by name, a hidden surface comes back; a neighbour taking over a closed one doesn't.
+    const asked =
+      previous && gone.length === 0 && now.activeSurfaceId !== previous.activeSurfaceId
+        ? now.activeSurfaceId
+        : null;
+    apply((linked) =>
+      arriveAtTarget(
+        showLinkedTabs(
+          closed.reduce(unlinkTab, linked),
+          asked === null ? [] : [surfaceKeyOf(asked)],
+        ),
+      ),
+    );
   };
 
   /**
@@ -708,7 +757,11 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     return navigatesInPlace(active) && historyTarget(histories, active, direction) !== null;
   };
 
-  const close = (key: string) => update((arrangement) => closeTab(arrangement, key));
+  const close = (key: string) =>
+    apply((linked) => {
+      const left = unlinkTab(linked, key);
+      return { ...left, arrangement: closeTab(left.arrangement, key) };
+    });
 
   /** Puts `key` in the New tab `blank`'s place, where it shows instead (`putInPlace`). */
   const fill = (blank: string, key: string) =>
@@ -838,6 +891,40 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     });
   };
 
+  /**
+   * Shows or hides one of the chat `owner`'s linked tabs. With its panel closed none show, so the
+   * one picked shows alone. Hiding the last one showing is its panel's to do: the filter calls its toggle.
+   */
+  const setLinkedTabShown = (owner: string, key: string, shown: boolean) => {
+    const ref = refOf(owner);
+    if (ref === null) return;
+    if (!shown) {
+      if (isEmptyTab(key)) close(key);
+      else apply((linked) => hideLinkedTab(linked, key, owner));
+      return;
+    }
+    const panelOpen = recordOf(ref).isOpen;
+    const others = linkedTabsOf(current(), owner, context).filter((tab) => tab.key !== key);
+    apply((linked) =>
+      showLinkedTabs(
+        panelOpen
+          ? linked
+          : others.reduce((each, tab) => hideLinkedTab(each, tab.key, owner), linked),
+        [key],
+      ),
+    );
+    if (!panelOpen) useRightPanelStore.getState().show(ref);
+    update((arrangement) => activateTab(arrangement, key, false));
+  };
+
+  /** Shows every linked tab of the chat `owner`, the ones hidden on their own too. */
+  const showAllLinkedTabs = (owner: string) => {
+    const ref = refOf(owner);
+    if (ref === null) return;
+    apply((linked) => showLinkedTabs(linked, hiddenTabsOf(linked, owner)));
+    useRightPanelStore.getState().show(ref);
+  };
+
   return {
     store,
     /** The arrangement as it stands. */
@@ -858,8 +945,10 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     openLinked: openLinkedTab,
     unlink,
     newLinkedTab,
-    /** What the chat `owner`'s linked-tabs toggle offers now. */
-    toggleOf: (owner: string): LinkedToggle => linkedToggle(current(), owner, context),
+    setLinkedTabShown,
+    showAllLinkedTabs,
+    /** The chat `owner`'s linked tabs, as its filter lists them. */
+    linkedTabsOf: (owner: string): LinkedTab[] => linkedTabsOf(current(), owner, context),
     /** The thread of the chat in front, whose surfaces the panes show. */
     frontRef: () => refOf(current().front),
     /**

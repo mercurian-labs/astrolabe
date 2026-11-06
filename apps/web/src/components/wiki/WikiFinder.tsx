@@ -1,7 +1,7 @@
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { FilePenLineIcon, FilePlusIcon, FileTextIcon } from "lucide-react";
+import { FilePenLineIcon, FilePlusIcon, FileTextIcon, TableIcon } from "lucide-react";
 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { useState } from "react";
@@ -135,8 +135,8 @@ function documentRow(
   return {
     kind: "action",
     value: `wiki-finder:${document.key}`,
-    searchTerms: [document.name],
-    title: document.name,
+    searchTerms: [document.title],
+    title: document.title,
     description: [
       multipleWikis ? document.wiki.name : null,
       document.editedAt ? `edited ${formatRelativeTimeLabel(document.editedAt)}` : null,
@@ -147,6 +147,8 @@ function documentRow(
     icon:
       document.changes.length > 0 ? (
         <FilePenLineIcon className={ITEM_ICON_CLASS} />
+      ) : document.base ? (
+        <TableIcon className={ITEM_ICON_CLASS} />
       ) : (
         <FileTextIcon className={ITEM_ICON_CLASS} />
       ),

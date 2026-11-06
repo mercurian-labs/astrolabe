@@ -141,7 +141,11 @@ describe("parseOriginUrlFromGitConfig", () => {
 
 describe("isTemporaryWorktreeBranch", () => {
   it("matches generated temporary worktree refs", () => {
+    expect(WORKTREE_BRANCH_PREFIX).toBe("astrolabe");
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef`)).toBe(true);
+    // Threads started before the prefix changed still get their branch's generated name.
+    expect(isTemporaryWorktreeBranch("t3/deadbeef")).toBe(true);
+    expect(isTemporaryWorktreeBranch("t3-deadbeef")).toBe(true);
     expect(isTemporaryWorktreeBranch(` ${WORKTREE_BRANCH_PREFIX}/deadbeef `)).toBe(true);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/DEADBEEF`)).toBe(true);
   });

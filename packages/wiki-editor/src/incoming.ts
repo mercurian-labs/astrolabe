@@ -1,6 +1,7 @@
 /** The note a wikilink names: `Note#Heading` and `Note|Alias` both open `Note`. */
 export function wikilinkNoteName(target: string): string | null {
-  const name = target.split("|")[0]!.split("#")[0]!.trim();
+  // In a Markdown table, a link's bar is written `\\|`.
+  const name = target.split(/\\?\|/)[0]!.split("#")[0]!.replace(/\\$/, "").trim();
   return name.length > 0 ? name : null;
 }
 

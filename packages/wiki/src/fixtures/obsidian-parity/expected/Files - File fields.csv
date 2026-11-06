@@ -1,0 +1,10 @@
+file name,file tags,file links,file backlinks,file embeds
+Alpha,"#urgent, #project, #area/infra","[[Priya|Priya]], [[Beta|Beta]], [[Gamma#Heading|Gamma > Heading]], [[diagram.png|diagram.png]]","[[Beta.md|Beta]], [[Board.canvas|Board.canvas]], [[Gamma.md|Gamma]], [[Priya.md|Priya]], [[projects/archive/Epsilon.md|Epsilon]]",[[diagram.png|diagram.png]]
+Beta,#project,"[[Sam|Sam]], [[Priya|Priya]], [[Sam|Sam]], [[Alpha|Alpha]]","[[Alpha.md|Alpha]], [[Board.canvas|Board.canvas]], [[projects/Delta.md|Delta]]",
+Delta,#project,"[[Priya|Priya]], [[Beta|Beta]]","[[Gamma.md|Gamma]], [[projects/archive/Epsilon.md|Epsilon]]",
+Epsilon,,"[[Alpha|Alpha]], [[projects/Delta|Delta]]",,
+Gamma,#area/docs,"[[Alpha|Alpha]], [[Delta|Delta]]",[[Alpha.md|Alpha]],
+Priya,,[[Alpha|Alpha]],"[[Alpha.md|Alpha]], [[Beta.md|Beta]], [[projects/Delta.md|Delta]]",
+README,,,,
+Sam,,,[[Beta.md|Beta]],
+Untitled,,,,

@@ -113,6 +113,29 @@ describe("links", () => {
     expect(line(view, 1).textContent).toBe("Note Alias Note > Head");
   });
 
+  it("a host's alias reading drops what doesn't show and marks types in place", () => {
+    const wikilinkDisplay = (alias: string) =>
+      alias === "new @goes old"
+        ? [
+            { from: 0, to: 4, type: false },
+            { from: 5, to: 9, type: true },
+            { from: 9, to: 13, type: false },
+          ]
+        : [{ from: 1, to: alias.length, type: true }];
+    const view = mount("[[Note|new @goes old]]\n\n[[Note#Top|@only]]", {
+      options: { wikilinkDisplay },
+    });
+    expect(sourceText(line(view, 1))).toBe("new goes old");
+    expect(sourceText(line(view, 3))).toContain("Note");
+    expect(sourceText(line(view, 3))).toContain("only");
+    expect(sourceText(line(view, 3))).not.toContain("@");
+    expect(texts(view, ".cm-md-link-type")).toEqual(["goes", "only"]);
+    const targets = [...view.contentDOM.querySelectorAll<HTMLElement>("[data-wikilink]")].map(
+      (element) => element.dataset.wikilink,
+    );
+    expect(new Set(targets)).toEqual(new Set(["Note", "Note#Top"]));
+  });
+
   it("a plain click follows a wikilink only on a read-only document whose host opens links on click", () => {
     const click = (view: EditorView) => {
       const link = view.contentDOM.querySelector<HTMLElement>("[data-wikilink]");

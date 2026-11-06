@@ -399,6 +399,17 @@ function buildFolds(state: EditorState): Folds {
     const widget = new HostBlockWidget(block.language, block.source, render);
     folds.push(Decoration.replace({ widget, block: true }).range(lines.from, lines.to));
   }
+  const { embedBlocks } = state.facet(previewConfig);
+  for (const node of Object.keys(embedBlocks).length ? index.embedLines : []) {
+    const inner = state.sliceDoc(node.from + 3, node.to - 2);
+    const target = (inner.split("|")[0] ?? "").trim();
+    const extension = /\.([^./#]+)(?:#|$)/.exec(target)?.[1]?.toLowerCase() ?? "";
+    const render = embedBlocks[extension];
+    const lines = widgetLines(state, node);
+    if (!render || !lines || reveal.lines(node.from, node.to)) continue;
+    const widget = new HostBlockWidget(`embed:${extension}`, target, render);
+    folds.push(Decoration.replace({ widget, block: true }).range(lines.from, lines.to));
+  }
   // A block that holds a host-drawn range stays source, so the host's drawing shows.
   const kept = excluded.length
     ? folds.filter((fold) => !overlapsAny(excluded, fold.from, fold.to))

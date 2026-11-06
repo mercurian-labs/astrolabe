@@ -6,17 +6,79 @@
 
 import type { BaseCellValue } from "./baseCells";
 
+/** A column's summary, as Obsidian displays its value. */
+export interface WikiEditorBaseSummary {
+  readonly column: string;
+  readonly name: string;
+  readonly value: string;
+}
+
+/** An image a card or cell shows: a file in the wiki's repository, a web address, or a colour. */
+export type WikiEditorBaseImage =
+  | { readonly kind: "file"; readonly path: string }
+  | { readonly kind: "url"; readonly url: string }
+  | { readonly kind: "color"; readonly color: string };
+
+/** How a cell shows when it isn't text. */
+export type WikiEditorBaseDisplay =
+  | { readonly kind: "date"; readonly date: string }
+  | { readonly kind: "url"; readonly href: string; readonly text: string }
+  | { readonly kind: "html"; readonly html: string }
+  | { readonly kind: "icon"; readonly name: string }
+  | { readonly kind: "image"; readonly image: WikiEditorBaseImage }
+  | { readonly kind: "error"; readonly message: string };
+
+/** The settings a view is drawn with, as Obsidian keys them (see the server's `viewSettings`). */
+export interface WikiEditorBaseSettings {
+  readonly groupBy?: { readonly property: string; readonly direction: "ASC" | "DESC" } | undefined;
+  readonly columnSize?: Readonly<Record<string, number>> | undefined;
+  readonly rowHeight?: string | undefined;
+  readonly cardSize?: number | undefined;
+  readonly image?: string | undefined;
+  readonly imageFit?: string | undefined;
+  readonly imageAspectRatio?: number | undefined;
+  readonly markers?: string | undefined;
+  readonly indentProperties?: boolean | undefined;
+  readonly separator?: string | undefined;
+  readonly coordinates?: string | undefined;
+  readonly mapHeight?: number | undefined;
+}
+
+export interface WikiEditorBaseRow {
+  readonly name: string;
+  readonly file: string;
+  readonly values: Readonly<Record<string, BaseCellValue>>;
+  readonly group?: BaseCellValue | undefined;
+  readonly display?: Readonly<Record<string, WikiEditorBaseDisplay>> | undefined;
+  readonly cover?: WikiEditorBaseImage | undefined;
+  readonly marker?:
+    | {
+        readonly lat: number;
+        readonly lng: number;
+        readonly icon?: string | undefined;
+        readonly color?: string | undefined;
+      }
+    | undefined;
+}
+
 /** One view of a ```base block, run by the app on the server (`wiki.query`). */
 export interface WikiEditorBaseResult {
-  readonly view: { readonly name: string; readonly type: "table" | "cards" };
+  readonly view: {
+    readonly name: string;
+    readonly type: "table" | "cards" | "list" | "kanban" | "map";
+  };
+  readonly settings?: WikiEditorBaseSettings | undefined;
   readonly columns: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly groupBy: { readonly id: string; readonly label: string } | null;
-  readonly rows: ReadonlyArray<{
-    readonly name: string;
-    readonly file: string;
-    readonly values: Readonly<Record<string, BaseCellValue>>;
-    readonly group?: BaseCellValue;
-  }>;
+  readonly rows: ReadonlyArray<WikiEditorBaseRow>;
+  readonly groups?:
+    | ReadonlyArray<{
+        readonly value: BaseCellValue;
+        readonly count?: number | undefined;
+        readonly summaries: ReadonlyArray<WikiEditorBaseSummary>;
+      }>
+    | undefined;
+  readonly summaries?: ReadonlyArray<WikiEditorBaseSummary> | undefined;
   readonly total: number;
   readonly truncated: boolean;
 }
@@ -58,7 +120,16 @@ export type WikiEditorCommand =
    * The page shows one base alone, read only, instead of the note: a `.base` file opened on
    * its own. It asks for `source` with `queryBase` as it would a block's.
    */
-  | { readonly type: "showBase"; readonly source: string }
+  | {
+      readonly type: "showBase";
+      readonly source: string;
+      /** Its notes' cells edit in place, and a board's cards move, as `editBase` events. */
+      readonly editable?: boolean | undefined;
+    }
+  /** The `@` types the wiki's links use, which the editor suggests. */
+  | { readonly type: "linkTypes"; readonly types: ReadonlyArray<string> }
+  /** A note a link preview asked for, sent again if it changes; null when it isn't written. */
+  | { readonly type: "noteRead"; readonly name: string; readonly source: string | null }
   /** A ```base block's view, sent again whenever it changes; `error` says why it can't show. */
   | {
       readonly type: "baseResult";
@@ -83,6 +154,15 @@ export type WikiEditorEvent =
   | { readonly type: "text"; readonly requestId: number; readonly text: string }
   /** A ```base block is on screen: the app runs it and keeps its view current. */
   | { readonly type: "queryBase"; readonly source: string }
+  /** A link's preview is open: the app reads its note and keeps it current. */
+  | { readonly type: "readNote"; readonly name: string }
+  /** A note's property set from the base shown alone: a cell edited, or a card moved. */
+  | {
+      readonly type: "editBase";
+      readonly file: string;
+      readonly property: string;
+      readonly value: BaseCellValue;
+    }
   /** The page failed (see `WIKI_EDITOR_ERROR_HOOK`); it may show nothing. */
   | { readonly type: "error"; readonly message: string };
 
@@ -131,6 +211,16 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
         : null;
     case "queryBase":
       return typeof value.source === "string" ? { type: "queryBase", source: value.source } : null;
+    case "readNote":
+      return typeof value.name === "string" && value.name.length > 0
+        ? { type: "readNote", name: value.name }
+        : null;
+    case "editBase":
+      return typeof value.file === "string" &&
+        typeof value.property === "string" &&
+        isCellValue(value.value)
+        ? { type: "editBase", file: value.file, property: value.property, value: value.value }
+        : null;
     case "error":
       return typeof value.message === "string" ? { type: "error", message: value.message } : null;
     default:
@@ -178,7 +268,21 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         ? { type: "requestText", requestId: value.requestId }
         : null;
     case "showBase":
-      return typeof value.source === "string" ? { type: "showBase", source: value.source } : null;
+      return typeof value.source === "string"
+        ? { type: "showBase", source: value.source, editable: value.editable === true }
+        : null;
+    case "linkTypes":
+      return Array.isArray(value.types)
+        ? {
+            type: "linkTypes",
+            types: value.types.filter((type): type is string => typeof type === "string"),
+          }
+        : null;
+    case "noteRead":
+      return typeof value.name === "string" &&
+        (typeof value.source === "string" || value.source === null)
+        ? { type: "noteRead", name: value.name, source: value.source }
+        : null;
     case "baseResult": {
       if (typeof value.source !== "string") return null;
       // The app's own page: the shape is the server's, checked only far enough to draw it.
@@ -212,3 +316,21 @@ function readAuthor(value: unknown): WikiEditorAuthor | null {
     ? { name, color, turnId }
     : null;
 }
+
+/**
+ * The base an embed names, when a base's `source` is an embed such as `![[Open.base#Table]]`
+ * rather than a block's YAML: its file and view.
+ */
+export function embeddedBase(
+  source: string,
+): { readonly base: string; readonly view: string | undefined } | null {
+  const target = /^!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/.exec(source.trim())?.[1];
+  if (target === undefined) return null;
+  const [base = "", view] = target.split("#");
+  return base.trim() ? { base: base.trim(), view: view?.trim() || undefined } : null;
+}
+
+const isScalar = (value: unknown) =>
+  value === null || ["string", "number", "boolean"].includes(typeof value);
+const isCellValue = (value: unknown): value is BaseCellValue =>
+  isScalar(value) || (Array.isArray(value) && value.every(isScalar));

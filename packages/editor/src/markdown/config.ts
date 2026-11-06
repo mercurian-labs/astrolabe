@@ -10,6 +10,11 @@ export interface LivePreviewOptions {
   /** Called on Mod-click of a wikilink or embed with its raw target. */
   openWikilink?: (target: string) => void;
   /**
+   * How a wikilink's alias reads, as ranges of it: `type` ranges are marked, and what lies between
+   * ranges doesn't show. An alias with nothing but `type` ranges shows beside the link's name.
+   */
+  wikilinkDisplay?: WikilinkDisplay;
+  /**
    * Whether a plain click opens links and embeds while the document is read-only, as in a
    * reading view on a touch screen, which has no modifier keys. Mod-click always opens; while
    * the document is editable, a plain click places the caret.
@@ -41,6 +46,12 @@ export interface LivePreviewOptions {
    * in for them; editing the block shows its source. Keep the record and its functions stable.
    */
   codeBlocks?: Readonly<Record<string, CodeBlockRenderer>>;
+  /**
+   * Embeds the host draws as blocks, by the embedded file's extension (`base`), where a
+   * `![[…]]` stands alone on its line, as Obsidian draws an embedded base. The renderer gets the
+   * embed's target (`Open.base#Table`) as its source. Keep the record and its functions stable.
+   */
+  embedBlocks?: Readonly<Record<string, CodeBlockRenderer>>;
 }
 
 /**
@@ -49,14 +60,20 @@ export interface LivePreviewOptions {
  */
 export type CodeBlockRenderer = (source: string, element: HTMLElement) => (() => void) | void;
 
+export type WikilinkDisplay = (
+  alias: string,
+) => ReadonlyArray<{ readonly from: number; readonly to: number; readonly type: boolean }>;
+
 export interface ResolvedConfig {
   urlPolicy: UrlPolicy;
   resolveEmbed: (target: string) => string | null;
   openWikilink: ((target: string) => void) | null;
+  wikilinkDisplay: WikilinkDisplay | null;
   openUrl: ((href: string) => void) | null;
   linksOpenOnClick: boolean;
   tabIndentsProse: boolean;
   codeBlocks: Readonly<Record<string, CodeBlockRenderer>>;
+  embedBlocks: Readonly<Record<string, CodeBlockRenderer>>;
 }
 
 export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
@@ -66,10 +83,12 @@ export const previewConfig = Facet.define<LivePreviewOptions, ResolvedConfig>({
       urlPolicy: options.urlPolicy ?? defaultUrlPolicy,
       resolveEmbed: options.resolveEmbed ?? ((target) => target),
       openWikilink: options.openWikilink ?? null,
+      wikilinkDisplay: options.wikilinkDisplay ?? null,
       openUrl: options.openUrl ?? null,
       linksOpenOnClick: options.linksOpenOnClick ?? false,
       tabIndentsProse: options.tabIndentsProse ?? true,
       codeBlocks: options.codeBlocks ?? {},
+      embedBlocks: options.embedBlocks ?? {},
     };
   },
 });

@@ -6,6 +6,7 @@ import {
   EyeOffIcon,
   FilePenLineIcon,
   FolderGit2Icon,
+  FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
   ListFilterIcon,
@@ -53,6 +54,7 @@ import {
   EMPTY_REPOSITORY_FILTER,
   setWorktreeHidden,
   storeRepositoryFilter,
+  toggleFilterAllRepositories,
   toggleFilterRepository,
   type RepositoryFilter,
 } from "./repositoryFilter";
@@ -78,10 +80,11 @@ const worktreeValue = (key: string) => `worktree:${key}`;
 
 const worktreeName = (worktree: ProjectWorktree) => worktree.branch ?? worktree.alias;
 
-/** A worktree's mark in a filter row: its number, else a branch icon. */
+/** A worktree's mark in a filter row: its number, else a branch icon, or a plain folder's. */
 export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
+  const Icon = worktree.isRepository ? GitBranchIcon : FolderIcon;
   return worktree.number === null ? (
-    <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+    <Icon className="size-4 shrink-0 text-muted-foreground" />
   ) : (
     <span className="flex size-4 shrink-0 items-center justify-center">
       <WorktreeNumber number={worktree.number} />
@@ -197,7 +200,7 @@ export function RepositoryFilterMenu({
   const lists = useManyProjectWorktrees(listedRepositories.map(projectWorktrees));
   const worktreeGroups = listedRepositories.map((repository, index) => ({
     key: `${repository.environmentId}:${repository.id}`,
-    all: lists[index]?.worktrees ?? NO_WORKTREES,
+    all: lists[index]?.data?.worktrees ?? NO_WORKTREES,
     worktreeKey: (worktree: ProjectWorktree) =>
       worktreeFilesKey(repository.environmentId, worktree.path),
   }));
@@ -272,8 +275,9 @@ export function RepositoryFilterMenu({
   const selected = values.filter(checked);
   const toggle = (value: string) => {
     if (value === CHANGED_VALUE) storeRepositoryFilter({ ...filter, changed: !filter.changed });
-    else if (value === ALL_VALUE) storeRepositoryFilter({ ...filter, repositories: [] });
-    else if (value.startsWith("repository:")) {
+    else if (value === ALL_VALUE) {
+      storeRepositoryFilter(toggleFilterAllRepositories(filter, repositoryKeys));
+    } else if (value.startsWith("repository:")) {
       storeRepositoryFilter(
         toggleFilterRepository(filter, value.slice("repository:".length), repositoryKeys),
       );
@@ -435,8 +439,7 @@ export function RepositoryFilterPills({
   const hidden = hiddenWorktrees(filter, worktreeGroups);
   // Counting every worktree runs git status in each, so Has changes shows only while it is on.
   const showChanged = filter.changed;
-  const count =
-    (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0) + (hidden.length > 0 ? 1 : 0);
+  const count = (filter.changed ? 1 : 0) + (kept !== null ? 1 : 0) + (hidden.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills
@@ -453,7 +456,7 @@ export function RepositoryFilterPills({
           onToggle={() => storeRepositoryFilter({ ...filter, changed: !filter.changed })}
         />
       ) : null}
-      {picked.length > 0 ? (
+      {kept !== null ? (
         <FilterPill
           label={namesOrCount(
             picked.map((repository) => repository.title),

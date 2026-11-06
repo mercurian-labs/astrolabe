@@ -551,8 +551,7 @@ each tab's header do for their own tab.
 
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the
-[linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, or brings them back as
-its tabs button does; Space `t` `n` opens a new linked tab for the focused chat, and Space
+[linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, or brings them back; Space `t` `n` opens a new linked tab for the focused chat, and Space
 `t` `k` links the focused tab to the chat in front, or unlinks it.
 
 `chat.new` may ask you to choose a project when there is more than one.
@@ -562,12 +561,13 @@ its tabs button does; Space `t` `n` opens a new linked tab for the focused chat,
 
 ## Reserved shortcuts
 
-In the desktop app, `mod+w` closes the focused terminal or the active right-panel
-tab. When nothing remains to close, it does nothing; it never closes the window. In a browser, `mod+w`
+In the desktop app, `mod+w` closes the focused terminal, or else the focused tab,
+whether a chat, a file, a document, or one of a chat's linked tabs. When nothing
+remains to close, it does nothing; it never closes the window. In a browser, `mod+w`
 closes the browser tab; rebind `rightPanel.close` and `terminal.close` to an available
 shortcut such as `alt+w`.
 
-`mod+shift+t` reopens the last closed tab across the app, including files,
+`mod+shift+t` reopens the last closed tab across the app, including chats, files,
 diffs, pull requests, browsers, and devices, in the order you closed them.
 A browser opens in a fresh session without its old page history. Incognito tabs
 can reopen until you reload or quit the app. This shortcut does not undo deleted work.

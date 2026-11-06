@@ -1,0 +1,48 @@
+filters: file.hasProperty("priority")
+formulas:
+  absolute: 'score.abs()'
+  ceiling: 'score.ceil()'
+  floored: 'score.floor()'
+  rounded: 'score.round()'
+  rounded_one: '(score / 3).round(1)'
+  fixed: 'score.toFixed(2)'
+  smallest: 'min(priority, score, 2)'
+  largest: 'max(priority, score)'
+  parsed: 'number("3.4") + priority'
+  from_bool: 'number(done)'
+  from_date: 'number(date("2025-01-01"))'
+  remainder: 'priority % 2'
+  ratio: 'priority / 4'
+  product: 'score * 2'
+  negated: '-priority'
+  precedence: '1 + priority * 2 - (priority + 1) / 2'
+  compared: 'priority >= 2 && score < 5'
+  empty_score: 'score.isEmpty()'
+views:
+  - type: table
+    name: Numbers
+    order:
+      - file.name
+      - priority
+      - score
+      - formula.absolute
+      - formula.ceiling
+      - formula.floored
+      - formula.rounded
+      - formula.rounded_one
+      - formula.fixed
+      - formula.smallest
+      - formula.largest
+      - formula.parsed
+      - formula.from_bool
+      - formula.from_date
+      - formula.remainder
+      - formula.ratio
+      - formula.product
+      - formula.negated
+      - formula.precedence
+      - formula.compared
+      - formula.empty_score
+    sort:
+      - property: priority
+        direction: DESC

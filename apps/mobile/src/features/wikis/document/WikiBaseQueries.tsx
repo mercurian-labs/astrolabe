@@ -1,4 +1,4 @@
-import type { WikiEditorBaseResult } from "@mercurian/wiki-editor/protocol";
+import { embeddedBase, type WikiEditorBaseResult } from "@mercurian/wiki-editor/protocol";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useEffect } from "react";
 
@@ -22,14 +22,17 @@ interface Scope {
 
 function WikiBaseQuery({ source, ...scope }: Scope & { readonly source: string }) {
   const { environmentId, wikiId, changeRequestId, note, onAnswer } = scope;
+  // An embedded base runs by its file and view; a block, by its YAML in the note.
+  const embedded = embeddedBase(source);
   const { data, error } = useEnvironmentQuery(
     wikiEnvironment.query({
       environmentId,
       input: {
         wikiId,
         ...(changeRequestId === undefined ? {} : { changeRequestId }),
-        source,
-        note,
+        ...(embedded === null
+          ? { source, note }
+          : { base: embedded.base, ...(embedded.view ? { view: embedded.view } : {}) }),
       },
     }),
   );
@@ -50,4 +53,35 @@ export function WikiBaseQueries({
   ...scope
 }: Scope & { readonly sources: ReadonlyArray<string> }) {
   return sources.map((source) => <WikiBaseQuery key={source} source={source} {...scope} />);
+}
+
+function WikiNoteRead({
+  name,
+  environmentId,
+  wikiId,
+  changeRequestId,
+  onRead,
+}: Omit<WikiNoteReadsProps, "names"> & { readonly name: string }) {
+  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const { data } = useEnvironmentQuery(
+    wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
+  useEffect(() => {
+    if (data !== null) onRead(name, data.exists ? data.source : null);
+  }, [data, name, onRead]);
+  return null;
+}
+
+interface WikiNoteReadsProps {
+  readonly names: ReadonlyArray<string>;
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly onRead: (name: string, source: string | null) => void;
+}
+
+/** Reads the notes the editor page's link previews show, each live. Renders nothing. */
+export function WikiNoteReads({ names, ...scope }: WikiNoteReadsProps) {
+  return names.map((name) => <WikiNoteRead key={name} name={name} {...scope} />);
 }

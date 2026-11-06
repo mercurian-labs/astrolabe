@@ -52,6 +52,11 @@ const CLUSTER_PULL = 0.5;
 const CLUSTER_PUSH = 1;
 /** A link between two nodes of one cluster is this share of the link distance. */
 const INSIDE_LINK = 0.45;
+/**
+ * A link out of a cluster pulls at this share of its strength, or a leaf would follow it out and
+ * stretch the disc around it: the link would beat the cluster's pull.
+ */
+const ACROSS_LINK = 0.1;
 /** Room around a cluster's nodes inside its rim, in world pixels. */
 export const CLUSTER_PAD = 14;
 
@@ -62,6 +67,16 @@ export interface Point {
 
 interface ForceNode extends SimulationNode3D {
   readonly id: string;
+}
+
+/** A cluster's disc this tick, and how far it moves as a whole to clear the discs beside it. */
+interface Disc {
+  readonly x: number;
+  readonly y: number;
+  radius: number;
+  dx: number;
+  dy: number;
+  overlaps: number;
 }
 
 /** d3 swaps a link's ends for its nodes as it starts. */
@@ -77,6 +92,8 @@ export class FileForces {
   readonly #leastDegree: ReadonlyArray<number>;
   /** Whether each link joins two nodes of one cluster, by the link's index. */
   readonly #inside: ReadonlyArray<boolean>;
+  /** Whether each link leaves a cluster, by the link's index. */
+  readonly #across: ReadonlyArray<boolean>;
   readonly #simulation;
   readonly #link;
   readonly #charge;
@@ -112,6 +129,9 @@ export class FileForces {
       const cluster = clusterOf[link.source as number];
       return cluster != null && cluster === clusterOf[link.target as number];
     });
+    this.#across = links.map(
+      (link) => clusterOf[link.source as number] !== clusterOf[link.target as number],
+    );
     this.#leastDegree = links.map((link) =>
       Math.max(1, Math.min(degree[link.source as number] ?? 1, degree[link.target as number] ?? 1)),
     );
@@ -233,7 +253,11 @@ export class FileForces {
     // d3's own link strength, scaled: a link between two hubs pulls less than one to a leaf.
     this.#link
       .distance((_, index) => forces.linkDistance * (this.#inside[index] ? INSIDE_LINK : 1))
-      .strength((_, index) => forces.linkForce / (this.#leastDegree[index] ?? 1));
+      .strength(
+        (_, index) =>
+          (forces.linkForce / (this.#leastDegree[index] ?? 1)) *
+          (this.#across[index] ? ACROSS_LINK : 1),
+      );
     // A loose Barnes–Hut approximation: a few hundred files settle in a few dozen milliseconds.
     this.#charge.strength(-forces.repelForce * REPEL_UNIT).theta(1.2);
     this.#x.strength(forces.centerForce * CENTER_UNIT);
@@ -242,17 +266,26 @@ export class FileForces {
 }
 
 /**
- * Keeps each open cluster together and its disc clear: its nodes drift to its middle, and a node
- * of no cluster or another one inside its disc drifts out.
+ * Keeps each open cluster together and its disc clear: its nodes drift to its middle, discs under
+ * one holder part as wholes, and a node inside a disc of its holder drifts out. Discs never push
+ * another cluster's nodes one by one: a disc's size is read off its nodes, so scattering them
+ * widens it, it pushes harder, and past a dozen discs the layout runs away.
  */
 function clusterForce(graph: FileGraphData, nodes: ReadonlyArray<ForceNode>) {
   const chains = clusterChains(graph);
   const memberships = graph.nodes.map((node) =>
     node.cluster == null ? [] : (chains.get(node.cluster) ?? []),
   );
-  const clusters = [...chains.keys()];
+  /** The discs each cluster holds; null holds those at the top. */
+  const held = new Map<string | null, Array<string>>();
+  for (const [id, chain] of chains) {
+    const holder = chain[1] ?? null;
+    held.set(holder, [...(held.get(holder) ?? []), id]);
+  }
   const force = (alpha: number) => {
-    if (clusters.length === 0) return;
+    if (chains.size === 0) return;
+    // A floor under the cooling, so what is left overlapping still clears as the graph rests.
+    const heat = CLUSTER_PUSH * Math.max(alpha, 0.1);
     const sums = new Map<string, { x: number; y: number; count: number }>();
     for (const [index, chain] of memberships.entries()) {
       const node = nodes[index];
@@ -265,20 +298,46 @@ function clusterForce(graph: FileGraphData, nodes: ReadonlyArray<ForceNode>) {
         sums.set(id, sum);
       }
     }
-    const middles = new Map<string, { x: number; y: number; radius: number }>();
+    const middles = new Map<string, Disc>();
     for (const [id, sum] of sums) {
-      const x = sum.x / sum.count;
-      const y = sum.y / sum.count;
-      let radius = 0;
-      for (const [index, chain] of memberships.entries()) {
-        const node = nodes[index];
-        if (node !== undefined && chain.includes(id)) {
-          radius = Math.max(radius, Math.hypot((node.x ?? 0) - x, (node.y ?? 0) - y));
+      const [x, y] = [sum.x / sum.count, sum.y / sum.count];
+      middles.set(id, { x, y, radius: 0, dx: 0, dy: 0, overlaps: 0 });
+    }
+    for (const [index, chain] of memberships.entries()) {
+      const node = nodes[index];
+      if (node === undefined) continue;
+      for (const id of chain) {
+        const middle = middles.get(id);
+        if (middle === undefined) continue;
+        const reach = Math.hypot((node.x ?? 0) - middle.x, (node.y ?? 0) - middle.y);
+        middle.radius = Math.max(middle.radius, reach);
+      }
+    }
+    for (const [id, middle] of middles) {
+      // The drawn disc also holds its nodes' dots and the padding of the discs inside it.
+      middle.radius += CLUSTER_PAD * (held.has(id) ? 2 : 1) + 12;
+    }
+    for (const discs of held.values()) {
+      for (const [at, id] of discs.entries()) {
+        const a = middles.get(id);
+        if (a === undefined) continue;
+        for (let other = at + 1; other < discs.length; other += 1) {
+          const b = middles.get(discs[other] ?? "");
+          if (b === undefined) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const distance = Math.hypot(dx, dy);
+          const overlap = a.radius + b.radius - distance;
+          if (overlap <= 0 || distance === 0) continue;
+          const part = ((overlap / distance) * heat) / 2;
+          a.dx -= dx * part;
+          a.dy -= dy * part;
+          a.overlaps += 1;
+          b.dx += dx * part;
+          b.dy += dy * part;
+          b.overlaps += 1;
         }
       }
-      // The drawn disc also holds its nodes' dots and the padding of the discs inside it.
-      const nested = clusters.filter((other) => chains.get(other)?.[1] === id).length > 0;
-      middles.set(id, { x, y, radius: radius + CLUSTER_PAD * (nested ? 2 : 1) + 12 });
     }
     for (const [index, node] of nodes.entries()) {
       const chain = memberships[index] ?? [];
@@ -286,20 +345,28 @@ function clusterForce(graph: FileGraphData, nodes: ReadonlyArray<ForceNode>) {
         const middle = middles.get(id);
         if (middle === undefined) continue;
         const pull = (CLUSTER_PULL * alpha) / 2 ** level;
-        node.vx = (node.vx ?? 0) + (middle.x - (node.x ?? 0)) * pull;
-        node.vy = (node.vy ?? 0) + (middle.y - (node.y ?? 0)) * pull;
+        const share = Math.max(1, middle.overlaps);
+        node.vx = (node.vx ?? 0) + (middle.x - (node.x ?? 0)) * pull + middle.dx / share;
+        node.vy = (node.vy ?? 0) + (middle.y - (node.y ?? 0)) * pull + middle.dy / share;
       }
-      for (const [id, middle] of middles) {
-        if (chain.includes(id)) continue;
+      // Only the disc it is deepest in moves it: several at once would throw it far past them all.
+      let deepest = 0;
+      let outX = 0;
+      let outY = 0;
+      for (const id of held.get(chain[0] ?? null) ?? []) {
+        const middle = middles.get(id);
+        if (middle === undefined) continue;
         const dx = (node.x ?? 0) - middle.x;
         const dy = (node.y ?? 0) - middle.y;
         const distance = Math.hypot(dx, dy);
-        if (distance >= middle.radius || distance === 0) continue;
-        // A floor under the cooling, so a node left inside a disc still leaves it as the graph rests.
-        const push = ((middle.radius - distance) / distance) * CLUSTER_PUSH * Math.max(alpha, 0.1);
-        node.vx = (node.vx ?? 0) + dx * push;
-        node.vy = (node.vy ?? 0) + dy * push;
+        const depth = middle.radius - distance;
+        if (depth <= deepest || distance === 0) continue;
+        deepest = depth;
+        outX = (dx / distance) * depth;
+        outY = (dy / distance) * depth;
       }
+      node.vx = (node.vx ?? 0) + outX * heat;
+      node.vy = (node.vy ?? 0) + outY * heat;
     }
   };
   return force;

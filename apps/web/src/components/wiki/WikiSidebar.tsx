@@ -18,6 +18,7 @@ import {
   FolderPlusIcon,
   ListFilterIcon,
   SettingsIcon,
+  TableIcon,
   UsersIcon,
 } from "lucide-react";
 import {
@@ -103,7 +104,7 @@ import {
 } from "../ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { isTurnRunning, noteNameOfFile } from "./wiki.logic";
+import { documentTitle, isTurnRunning, noteNameOfFile } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
@@ -122,12 +123,12 @@ import {
 } from "../repositories/RepositoryFilterMenu";
 import { worktreeFilesKey } from "../repositories/repositoryScope";
 import { openWikiTab, placeWikiTabs, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
-import { WikiSettingsDialog } from "./WikiSettingsDialog";
 import {
   EMPTY_WIKI_FILTER,
   filterWikiKeys,
   setWikiWorktreeHidden,
   storeWikiFilter,
+  toggleFilterAllWikis,
   toggleFilterWiki,
   useStoredWikiFilter,
   wikiFilterKeepsDocument,
@@ -182,7 +183,6 @@ export function WikiSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const [foldedWikis, setFoldedWikis] = useState<ReadonlySet<string>>(() => new Set());
   const [finding, setFinding] = useState(false);
-  const [settingsFor, setSettingsFor] = useState<WikiOverview | null>(null);
   const navigate = useNavigate();
   const [menu, dispatchMenu] = useReducer(reduceSidebarProjectScopeMenuState, {
     open: false,
@@ -460,11 +460,14 @@ export function WikiSidebar() {
       const onMain = allLists.documents.find(
         (document) => sameWiki(overview, document) && document.file === file,
       );
+      const name = onMain?.name ?? noteNameOfFile(file);
       const item: WikiDocumentItem = {
         key: `${changeRequestId}:${file}`,
         environmentId: overview.environmentId,
         wiki: overview.wiki,
-        name: onMain?.name ?? noteNameOfFile(file),
+        name,
+        title: documentTitle(name),
+        base: file.endsWith(".base"),
         file,
         links: onMain?.links ?? 0,
         backlinks: onMain?.backlinks ?? 0,
@@ -523,7 +526,14 @@ export function WikiSidebar() {
                     menu={menu}
                     dispatchMenu={dispatchMenu}
                     onFilter={setFilter}
-                    onSettings={setSettingsFor}
+                    onSettings={(overview) =>
+                      void navigate({
+                        to: "/settings/wikis",
+                        search: {
+                          wiki: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
+                        },
+                      })
+                    }
                   />
                 </>
               }
@@ -678,13 +688,6 @@ export function WikiSidebar() {
         scope={scope}
         mode="new"
       />
-      {settingsFor ? (
-        <WikiSettingsDialog
-          environmentId={settingsFor.environmentId}
-          wiki={settingsFor.wiki}
-          onClose={() => setSettingsFor(null)}
-        />
-      ) : null}
     </>
   );
 }
@@ -761,7 +764,7 @@ function WikiFilterMenu({
   );
   const lists = useManyProjectWorktrees(listedWikis.map(worktreesOfWiki));
   const worktreeRows = listedWikis.flatMap((overview, index) =>
-    (lists[index]?.worktrees ?? []).map((worktree) => ({
+    (lists[index]?.data?.worktrees ?? []).map((worktree) => ({
       value: `${WORKTREE_PREFIX}${worktreeFilesKey(overview.environmentId, worktree.path)}`,
       wikiKey: wikiScopeKey(overview.environmentId, overview.wiki.wikiId),
       overview,
@@ -819,7 +822,7 @@ function WikiFilterMenu({
   const selected = values.filter(checked);
   const toggle = (value: string) => {
     if (value === CHANGED_VALUE) onFilter({ ...filter, changed: !filter.changed });
-    else if (value === ALL_WIKIS_VALUE) onFilter({ ...filter, wikis: [] });
+    else if (value === ALL_WIKIS_VALUE) onFilter(toggleFilterAllWikis(filter, wikiKeys));
     else if (value.startsWith(WORKTREE_PREFIX)) {
       const key = value.slice(WORKTREE_PREFIX.length);
       onFilter(setWikiWorktreeHidden(filter, key, !filter.hidden.includes(key)));
@@ -985,7 +988,7 @@ function WikiFilterPills({
     filter.hidden.length === 0 ? [] : overviews.map(worktreesOfWiki),
   );
   const hiddenNames = overviews.flatMap((overview, index) =>
-    (lists[index]?.worktrees ?? [])
+    (lists[index]?.data?.worktrees ?? [])
       .filter((worktree) =>
         filter.hidden.includes(worktreeFilesKey(overview.environmentId, worktree.path)),
       )
@@ -993,7 +996,7 @@ function WikiFilterPills({
   );
   const showChanged = filter.changed || changedCount > 0;
   const count =
-    (filter.changed ? 1 : 0) + (picked.length > 0 ? 1 : 0) + (hiddenNames.length > 0 ? 1 : 0);
+    (filter.changed ? 1 : 0) + (kept !== null ? 1 : 0) + (hiddenNames.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills label="Document filters" count={count} onClear={() => onFilter(EMPTY_WIKI_FILTER)}>
@@ -1006,7 +1009,7 @@ function WikiFilterPills({
           onToggle={() => onFilter({ ...filter, changed: !filter.changed })}
         />
       ) : null}
-      {picked.length > 0 ? (
+      {kept !== null ? (
         <FilterPill
           label={namesOrCount(
             picked.map((overview) => overview.wiki.name),
@@ -1283,9 +1286,17 @@ function SlimTitle({ active, children }: { readonly active: boolean; readonly ch
   );
 }
 
-function SlimTime({ children }: { readonly children: ReactNode }) {
+/** When a row last changed, right-aligned, with any marks (a base, an open change) beside it. */
+function SlimTime({
+  marks,
+  children,
+}: {
+  readonly marks?: ReactNode;
+  readonly children: ReactNode;
+}) {
   return (
-    <span className="ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end text-xs tabular-nums text-secondary-label">
+    <span className="ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1.5 text-xs tabular-nums text-secondary-label">
+      {marks}
       {children}
     </span>
   );
@@ -1323,8 +1334,8 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
     <CardRow
       label={
         changeRequestId === undefined || change === undefined
-          ? `${item.name}, ${item.wiki.name}`
-          : `${item.name}, in ${change.title}`
+          ? `${item.title}${item.base ? ", base" : ""}, ${item.wiki.name}`
+          : `${item.title}${item.base ? ", base" : ""}, in ${change.title}`
       }
       active={active}
       selected={selected}
@@ -1333,9 +1344,13 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       option={option}
       slim
       details={
-        <ThreadHoverCard title={item.name}>
+        <ThreadHoverCard title={item.title}>
           <WikiPlaceDetails item={item} />
-          {item.file.endsWith(".base") ? null : (
+          {item.base ? (
+            <DetailLine icon={<TableIcon className={DETAIL_ICON_CLASS} />}>
+              A base: a saved question over the wiki's notes
+            </DetailLine>
+          ) : (
             <DetailLine icon={<LinkIcon className={DETAIL_ICON_CLASS} />}>
               {linkSummary(item)}
             </DetailLine>
@@ -1353,12 +1368,22 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
       onOpen={(event) => onOpen(tab, event)}
     >
       <SlimIcon item={item} active={active} />
-      <SlimTitle active={active}>{item.name}</SlimTitle>
+      <SlimTitle active={active}>{item.title}</SlimTitle>
       {outsideFilter ? <OutsideFilterMark /> : null}
-      {change ? (
-        <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
-      ) : null}
-      <SlimTime>{working ? <WorkingStatus /> : compactTimeLabel(item.editedAt)}</SlimTime>
+      <SlimTime
+        marks={
+          <>
+            {item.base ? (
+              <TableIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+            ) : null}
+            {change ? (
+              <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+            ) : null}
+          </>
+        }
+      >
+        {working ? <WorkingStatus /> : compactTimeLabel(item.editedAt)}
+      </SlimTime>
     </CardRow>
   );
 });
@@ -1486,7 +1511,7 @@ function WikiChangeDetails({
       : changeRequest.status === "closed"
         ? "Closed"
         : "Open";
-  const listed = item.files.slice(0, DOCUMENTS_LISTED).map(noteNameOfFile);
+  const listed = item.files.slice(0, DOCUMENTS_LISTED);
   const more = item.files.length - listed.length;
   return (
     <ThreadHoverCard
@@ -1494,9 +1519,18 @@ function WikiChangeDetails({
       footer={
         listed.length > 0 ? (
           <div className="grid gap-1 border-t border-border/60 pt-2 pl-0.5 text-xs text-muted-foreground">
-            {listed.map((name) => (
-              <DetailLine key={name} icon={<FileTextIcon className={DETAIL_ICON_CLASS} />}>
-                {name}
+            {listed.map((file) => (
+              <DetailLine
+                key={file}
+                icon={
+                  file.endsWith(".base") ? (
+                    <TableIcon className={DETAIL_ICON_CLASS} />
+                  ) : (
+                    <FileTextIcon className={DETAIL_ICON_CLASS} />
+                  )
+                }
+              >
+                {documentTitle(noteNameOfFile(file))}
               </DetailLine>
             ))}
             {more > 0 ? <div className="pl-5">{`${more} more`}</div> : null}

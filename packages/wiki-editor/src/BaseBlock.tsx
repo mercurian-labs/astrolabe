@@ -1,152 +1,74 @@
-import { Fragment, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
-import { cellParts, isNameColumn, type BaseCellValue } from "./baseCells";
+import { rowDocument, type BaseCellValue } from "./baseCells";
+import { BaseLayout, type BaseLayoutHost } from "./baseLayout";
 import type { WikiEditorPage } from "./mobilePageController";
-import type { WikiEditorBaseResult } from "./protocol";
 
-type Row = WikiEditorBaseResult["rows"][number];
+const isNoteProperty = (column: string) =>
+  !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
+const isEditableNote = (file: string) =>
+  /^[^/]+\.md$/i.test(file) && !/\.skillmap\.md$/i.test(file);
 
-function Cell({
-  value,
-  onOpenNote,
-}: {
-  readonly value: BaseCellValue | undefined;
-  readonly onOpenNote: (name: string) => void;
-}) {
-  // Each part keyed by where its text starts, which is unique within the cell.
-  let at = 0;
-  return cellParts(value ?? null).map((part) => {
-    const key = `${part.kind}@${at}`;
-    at += part.text.length;
-    return part.kind === "text" ? (
-      <Fragment key={key}>{part.text}</Fragment>
-    ) : (
-      <button key={key} type="button" className="base-link" onClick={() => onOpenNote(part.name)}>
-        {part.text}
-      </button>
-    );
-  });
-}
-
-const groupText = (result: WikiEditorBaseResult, group: BaseCellValue | undefined) => {
-  const text = cellParts(group ?? null)
-    .map((part) => part.text)
-    .join("");
-  return `${result.groupBy?.label ?? "Group"}: ${text || "None"}`;
-};
-
-const opensGroup = (result: WikiEditorBaseResult, position: number) =>
-  result.groupBy !== null &&
-  (position === 0 ||
-    JSON.stringify(result.rows[position]?.group ?? null) !==
-      JSON.stringify(result.rows[position - 1]?.group ?? null));
-
-function Results({
-  result,
-  onOpenNote,
-}: {
-  readonly result: WikiEditorBaseResult;
-  readonly onOpenNote: (name: string) => void;
-}) {
-  if (result.rows.length === 0) return <p className="base-muted">No notes match this view.</p>;
-  const properties = result.columns.filter((column) => !isNameColumn(column.id));
-  const name = (row: Row) => (
-    <button type="button" className="base-link base-name" onClick={() => onOpenNote(row.name)}>
-      {row.name}
-    </button>
-  );
-  const footer = result.truncated ? (
-    <p className="base-muted">{`Showing ${result.rows.length} of ${result.total} notes.`}</p>
-  ) : null;
-  if (result.view.type === "cards") {
-    return (
-      <>
-        {result.rows.map((row, position) => (
-          <Fragment key={row.file}>
-            {opensGroup(result, position) ? (
-              <p className="base-group">{groupText(result, row.group)}</p>
-            ) : null}
-            <article className="base-card">
-              {name(row)}
-              {properties.map((column) => (
-                <p key={column.id} className="base-fact">
-                  <span className="base-muted">{column.label}</span>{" "}
-                  <Cell value={row.values[column.id]} onOpenNote={onOpenNote} />
-                </p>
-              ))}
-            </article>
-          </Fragment>
-        ))}
-        {footer}
-      </>
-    );
-  }
-  return (
-    <>
-      <div className="base-scroll">
-        <table className="base-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              {properties.map((column) => (
-                <th key={column.id}>{column.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {result.rows.map((row, position) => (
-              <Fragment key={row.file}>
-                {opensGroup(result, position) ? (
-                  <tr>
-                    <td className="base-group" colSpan={properties.length + 1}>
-                      {groupText(result, row.group)}
-                    </td>
-                  </tr>
-                ) : null}
-                <tr>
-                  <td>{name(row)}</td>
-                  {properties.map((column) => (
-                    <td key={column.id}>
-                      <Cell value={row.values[column.id]} onOpenNote={onOpenNote} />
-                    </td>
-                  ))}
-                </tr>
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {footer}
-    </>
-  );
+/** Cells of notes at the top of the wiki edit in place; a board's cards move between groups. */
+function editingHost(
+  groupProperty: string | undefined,
+  onEdit: (file: string, property: string, value: BaseCellValue) => void,
+): Pick<BaseLayoutHost, "canEdit" | "onEdit" | "onMove" | "moveByPicker"> {
+  return {
+    moveByPicker: true,
+    canEdit: (row, column) => isEditableNote(row.file) && isNoteProperty(column),
+    onEdit: (row, column, value) => onEdit(row.file, column, value),
+    onMove: (row, group) => {
+      if (groupProperty !== undefined && isNoteProperty(groupProperty)) {
+        onEdit(row.file, groupProperty, group);
+      }
+    },
+  };
 }
 
 /**
  * A base's view on the phone, a ```base block's or a `.base` file's: the app runs it and keeps
  * the page's copy current. One view, the one the app picked (a block's first); each row's name
- * opens its note.
+ * opens its note. A map view lists its places, and repository images show as blanks.
  */
 export function BaseBlock({
   page,
   source,
   onOpenNote,
+  onOpenUrl,
+  onEdit,
 }: {
   readonly page: WikiEditorPage;
   readonly source: string;
   readonly onOpenNote: (name: string) => void;
+  readonly onOpenUrl?: (href: string) => void;
+  /** Sets a note's property, where the base shown alone edits in place. */
+  readonly onEdit?: (file: string, property: string, value: BaseCellValue) => void;
 }) {
   const base = useSyncExternalStore(
     (listener) => page.watchBase(source, listener),
     () => page.getBase(source),
   );
+  const host: BaseLayoutHost = {
+    canOpenRow: (row) => rowDocument(row) !== null,
+    openRow: (row) => {
+      const document = rowDocument(row);
+      if (document !== null) onOpenNote(document);
+    },
+    openLink: onOpenNote,
+    ...(onOpenUrl ? { openUrl: onOpenUrl } : {}),
+    ...(onEdit && base?.result
+      ? editingHost(base.result.settings?.groupBy?.property ?? base.result.groupBy?.id, onEdit)
+      : {}),
+  };
   return (
     <div className="base-view">
       {base?.result ? (
-        <Results result={base.result} onOpenNote={onOpenNote} />
+        <BaseLayout result={base.result} host={host} />
       ) : base?.error ? (
         <p className="base-error">{base.error}</p>
       ) : (
-        <p className="base-muted">Loading the base…</p>
+        <p className="bl-muted">Loading the base…</p>
       )}
     </div>
   );

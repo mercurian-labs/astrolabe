@@ -86,7 +86,9 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   thread's surface is `chat-surface:<env>:<thread>:<surface id>`, owned by `chat:<env>:<thread>`.
   Switching chats parks the old chat's owned tabs and brings the new chat's back where they
   stood, else into the pane the old ones vacated, else a new pane right of the chat (0.45 of
-  its room). Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
+  its room). A chat's linked tab never shares its chat's pane: dragging it onto that strip shows no
+  drop line (the pane's edges still split), and `settleLinks` moves one that lands there anyway, or
+  whose chat is dragged in, to the chat's other linked tabs, else a new pane beside it. Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
   come back next time). Hiding (the chat's panel closing) parks its linked tabs, except an empty
   one, which closes; closing a tab (its ✕, `:q`, the tab menu, Close pane, `t` `c`,
   `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An
@@ -103,17 +105,21 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   tab still linked (a change group's, or one linked before). `t` `k` (`tab.toggleLink`) does
   the focused tab's link item: a local graph's follow/pin (repositories.md) or Unlink tab, and
   is faint otherwise.
-- **Linked tabs buttons** (`panes/LinkedTabsToggle.tsx`): in a pane's chat header, after the
-  thread details and terminal drawer toggles, in place of T3 Code's right-panel toggle.
-  **New linked tab** (`[data-new-linked-tab]`, square-plus, always there) opens a linked New tab
-  in front: showing, in the linked tabs' pane after them; hidden, after bringing them back where
-  they stood; with none, in a new pane right of the chat. The toggle (`[data-right-panel-toggle]`)
-  shows only with linked tabs: with the panel open, a square-minus, **Hide tabs** (pressed); with
-  tabs parked for that chat (its own and its change group's, plus record surfaces no pane held
-  yet), a rounded square holding their count (label `Show tabs (N hidden)`) that brings them all
-  straight back where they stood, the one in front still in front, with no menu.
-  `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette do the same as the toggle, so
-  two presses hide and restore; with none they open the linked New tab. The header has no
+- **Linked tabs filter** (`panes/LinkedTabsFilter.tsx`): one button in a pane's chat header,
+  after the thread details and terminal drawer toggles, in place of T3 Code's right-panel toggle.
+  With no linked tabs it is **New linked tab** (`[data-new-linked-tab]`, square-plus), opening a
+  linked New tab in a new pane right of the chat. With some it is `[data-right-panel-toggle]`, a
+  rounded square holding their count (label `Linked tabs (N)`, or `Linked tabs (N, M hidden)` with
+  a primary dot), pressed while any shows, and it opens a multi-select filter with a search box.
+  A row's tick shows or hides that tab alone (`ParkedTab.hidden`, kept across reloads), the popover
+  staying open; with the panel closed the tab ticked shows alone; unticking the last one showing
+  closes the panel. A row's trash closes the tab for good, showing or hidden. Below the list:
+  **New linked tab**, in front in the linked tabs' pane, closing the popover; **Show all** with any
+  hidden; **Hide all** with any showing. A hidden surface comes back when asked for by name (the
+  record's active surface moves to it), but not when it inherits active from a closed neighbour.
+  `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette hide what shows and restore it,
+  leaving tabs hidden one by one hidden, so two presses hide and restore; with none they open the
+  linked New tab. The header has no
   maximize of its own; the pane strip's does that.
 - **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
   (`[data-link-mark=<ink>]`) in the ✕'s place on every linked tab on screen and on its owner (hovering the tab swaps it for the ✕; on a device without hover both show), with

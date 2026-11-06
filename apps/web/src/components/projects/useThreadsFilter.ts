@@ -10,6 +10,7 @@ import {
   THREAD_STATUS_FILTER_LABELS,
   THREAD_STATUS_FILTERS,
   threadMatchesStatuses,
+  toggleFilterAllProjects,
   toggleFilterProject,
   toggleFilterStatus,
   useStoredThreadsFilter,
@@ -126,7 +127,7 @@ export function useThreadsFilter<Group extends ProjectGroup>({
       case "status":
         return update(toggleFilterStatus(filter, item.status));
       case "all":
-        return update({ ...filter, projects: [] });
+        return update(toggleFilterAllProjects(filter, groupKeys));
       case "repository":
         return update(toggleFilterProject(filter, item.repository.projectKey, groupKeys));
     }
@@ -134,7 +135,7 @@ export function useThreadsFilter<Group extends ProjectGroup>({
 
   const items = [...statusItems, ...projectItems];
   const isOnlyProject = (groupKey: string) =>
-    filter.projects.length === 1 && filter.projects[0] === groupKey;
+    filter.projects?.length === 1 && filter.projects[0] === groupKey;
 
   return {
     items,
@@ -144,18 +145,18 @@ export function useThreadsFilter<Group extends ProjectGroup>({
     toggle,
     /** The projects offered, in the order the filter lists them. */
     groups,
-    /** The picked projects, or none for every project. */
+    /** The picked projects, or null for every project. Empty when the filter picks none. */
     scopedGroups:
       scopedGroupKeys === null
-        ? []
+        ? null
         : groups.filter((group) => scopedGroupKeys.has(group.projectKey)),
     scopedProjectKeys,
     statuses: filter.statuses,
     statusCounts,
-    /** What the project pill names: each picked project. */
+    /** What the project pill names: each picked project, or null while every project shows. */
     pickedProjectItems:
       scopedGroupKeys === null
-        ? []
+        ? null
         : projectItems.filter((item) => item.kind === "repository" && isChecked(item)),
     isActive: scopedGroupKeys !== null || filter.statuses.length > 0,
     /** The filter as one key, for state that resets with it. */

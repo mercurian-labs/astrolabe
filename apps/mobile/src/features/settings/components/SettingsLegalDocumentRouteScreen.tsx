@@ -121,6 +121,7 @@ export function SettingsLegalDocumentRouteScreen({
         cacheEnabled={false}
         cacheMode="LOAD_NO_CACHE"
         allowsBackForwardNavigationGestures
+        contentInsetAdjustmentBehavior="automatic"
         domStorageEnabled={false}
         incognito
         javaScriptEnabled={false}

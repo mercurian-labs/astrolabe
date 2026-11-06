@@ -423,6 +423,7 @@ class TextWidget extends WidgetType {
 }
 
 export const headingSeparator = new TextWidget(" > ", "cm-md-wikilink-separator");
+export const linkTypeGap = new TextWidget(" ", "cm-md-wikilink-separator");
 
 /** The small arrow after the text of a link to an http(s) target. */
 class ExternalLinkWidget extends WidgetType {

@@ -1,0 +1,80 @@
+filters: file.hasProperty("priority")
+formulas:
+  double: 'priority * 2'
+summaries:
+  doubled_total: 'values.reduce(acc + value, 0) * 2'
+  how_many: 'values.length'
+properties:
+  priority:
+    displayName: Priority level
+views:
+  - type: table
+    name: Number summaries
+    order:
+      - file.name
+      - priority
+      - score
+      - formula.double
+    summaries:
+      priority: Sum
+      score: Average
+      formula.double: doubled_total
+    sort:
+      - property: file.name
+        direction: ASC
+  - type: table
+    name: More number summaries
+    order:
+      - file.name
+      - priority
+      - score
+    summaries:
+      priority: Median
+      score: Stddev
+  - type: table
+    name: Min max range
+    order:
+      - file.name
+      - priority
+      - score
+      - due
+    summaries:
+      priority: Min
+      score: Max
+      due: Range
+  - type: table
+    name: Date and check summaries
+    order:
+      - file.name
+      - due
+      - done
+      - status
+      - owner
+    summaries:
+      due: Earliest
+      done: Checked
+      status: Unique
+      owner: Filled
+  - type: table
+    name: Other summaries
+    order:
+      - file.name
+      - due
+      - done
+      - owner
+      - status
+    summaries:
+      due: Latest
+      done: Unchecked
+      owner: Empty
+      status: how_many
+  - type: table
+    name: Grouped summaries
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - priority
+    summaries:
+      priority: Sum

@@ -4,6 +4,7 @@ import {
   EMPTY_WIKI_FILTER,
   filterWikiKeys,
   parseWikiFilter,
+  toggleFilterAllWikis,
   toggleFilterWiki,
   wikiFilterKeepsDocument,
 } from "./wikiFilter";
@@ -17,11 +18,17 @@ describe("the wikis filter", () => {
     expect(filterWikiKeys(next, keys)).toEqual(new Set(["a", "c"]));
   });
 
-  it("reads ticking every wiki, or unticking the last, as every wiki", () => {
+  it("reads ticking every wiki as every wiki, and unticking the last as none", () => {
     const allButB = toggleFilterWiki(EMPTY_WIKI_FILTER, "b", keys);
     expect(toggleFilterWiki(allButB, "b", keys).wikis).toEqual([]);
     const onlyA = { ...EMPTY_WIKI_FILTER, wikis: ["a"] };
-    expect(toggleFilterWiki(onlyA, "a", keys).wikis).toEqual([]);
+    expect(filterWikiKeys(toggleFilterWiki(onlyA, "a", keys), keys)).toEqual(new Set());
+  });
+
+  it("unticks every wiki from All wikis, and ticks them all back", () => {
+    const none = toggleFilterAllWikis(EMPTY_WIKI_FILTER, keys);
+    expect(filterWikiKeys(none, keys)).toEqual(new Set());
+    expect(toggleFilterAllWikis(none, keys)).toEqual(EMPTY_WIKI_FILTER);
   });
 
   it("picks several wikis, each toggling on its own", () => {
