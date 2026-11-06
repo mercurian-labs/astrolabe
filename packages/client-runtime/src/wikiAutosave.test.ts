@@ -153,6 +153,22 @@ describe("createWikiAutosave", () => {
     expect(autosave.getStatus().kind).toBe("idle");
   });
 
+  it("keeps a save in flight when its view leaves, and retries what the view last held", async () => {
+    const { save: viewSave, finish: finishView } = manualSave();
+    const { save: lastSave, finish: finishLast } = manualSave();
+    const onOrphanedFailure = vi.fn();
+    const autosave = createWikiAutosave({ save: viewSave, onOrphanedFailure });
+    autosave.edited();
+    await vi.advanceTimersByTimeAsync(2_000);
+    autosave.retire(lastSave);
+    await finishView(OFFLINE);
+    expect(onOrphanedFailure).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(lastSave).toHaveBeenCalledTimes(1);
+    await finishLast(OFFLINE);
+    expect(onOrphanedFailure).toHaveBeenCalledTimes(1);
+  });
+
   it("outlives its view until the last edits land, and reports a failure after it", async () => {
     const { save: viewSave } = manualSave();
     const { save: lastSave, finish } = manualSave();

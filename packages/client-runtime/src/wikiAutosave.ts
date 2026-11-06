@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off globalDate:off - A pause in typing, timed outside an Effect runtime.
 /**
  * Astrolabe: when a wiki document's edits land, shared by web and mobile. A store with no
  * framework in it: an edit only moves a timer, so nothing renders or writes per keystroke, and
@@ -39,8 +40,8 @@ export interface WikiAutosave {
   /** Forgets anything unsaved. A save already sent still lands. */
   readonly cancel: () => void;
   /**
-   * The view is going away: with anything unsaved, `save` replaces the view's own, holding what it
-   * last showed, and this runs until that lands. A failure from then on goes to
+   * The view is going away: with anything unsaved or on its way, `save` replaces the view's own,
+   * holding what it last showed, and this runs until that lands. A failure from then on goes to
    * `onOrphanedFailure`.
    */
   readonly retire: (save: () => Promise<WikiSaveOutcome>) => void;
@@ -145,7 +146,7 @@ export function createWikiAutosave(options: {
     unsaved = true;
     failure = { message: outcome.message, retrying: outcome.retry };
     settleFlushes(false);
-    if (retired) options.onOrphanedFailure?.(outcome.message);
+    if (retired && attempts === 0) options.onOrphanedFailure?.(outcome.message);
     if (outcome.retry) {
       timer = setTimeout(send, Math.min(FIRST_RETRY_MS * 2 ** attempts, LAST_RETRY_MS));
       attempts += 1;
@@ -197,7 +198,7 @@ export function createWikiAutosave(options: {
       publish();
     },
     retire: (next) => {
-      if (!unsaved) return;
+      if (!unsaved && !sending) return;
       save = next;
       retired = true;
       held = false;
