@@ -193,6 +193,24 @@ describe("codeLens", () => {
     }
   });
 
+  it("leaves a lens a run marker stands for out of its rows", async () => {
+    const editor = open(resolved, (doc) => [
+      { range: range(doc, 9, 12), data: "references" },
+      {
+        range: range(doc, 29, 33),
+        command: { title: "run test", command: "gopls.run_tests", arguments: [{}] },
+      },
+    ]);
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(900);
+      expect(rows(editor)).toEqual(["2 references"]);
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it("draws nothing after it is turned off, however late an answer comes", async () => {
     const editor = open(() => undefined);
     try {

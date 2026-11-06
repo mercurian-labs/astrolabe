@@ -3,6 +3,7 @@ import type { Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
 import { lineBlocks, removeLineBlocks, setLineBlocks } from "../blocks/lineBlocks.ts";
+import { isRunLens } from "../run/serverRunnables.ts";
 import { reportApplied } from "./codeActions.ts";
 import { askAgain } from "./environmentLsp.ts";
 import { lookUpAt } from "./navigation.ts";
@@ -163,7 +164,8 @@ class Lenses {
       (answer, mapping, plugin) => {
         this.cancelResolves();
         const before = new Map(this.lenses.map((entry) => [entry.pos, entry.shown]));
-        this.lenses = (answer ?? []).map((lens) => {
+        const shown = (answer ?? []).filter((lens) => !lens.command || !isRunLens(lens.command));
+        this.lenses = shown.map((lens) => {
           const pos = mapping.mapPosition(plugin.uri, lens.range.start, 1);
           return {
             pos,

@@ -30,7 +30,7 @@ mod tests {
 `;
 
 describe("runTargetFor", () => {
-  it.each([
+  it.each<[string, string, Partial<RunContext>, unknown]>([
     [
       "src/main.rs",
       RUST,

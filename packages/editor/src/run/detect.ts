@@ -73,6 +73,10 @@ function blockEnd(lines: readonly string[], start: number): number {
   return last;
 }
 
+/** The last line of the block a line opens, both from 1. */
+export const blockEndLine = (lines: readonly string[], line: number) =>
+  blockEnd(lines, line - 1) + 1;
+
 /** The names open around a line, closed again as the indent comes back. */
 class Scopes<Scope extends { readonly indent: number }> {
   readonly open: Scope[] = [];

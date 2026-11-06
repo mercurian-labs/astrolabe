@@ -17,7 +17,9 @@ export type LspVimAction =
   | "references"
   | "incomingCalls"
   | "outgoingCalls"
-  | "projectSymbols";
+  | "projectSymbols"
+  | "runAtCursor"
+  | "runLast";
 
 const VIM_KEYS: Readonly<Record<LspVimAction, string>> = {
   hover: "K",
@@ -29,6 +31,8 @@ const VIM_KEYS: Readonly<Record<LspVimAction, string>> = {
   incomingCalls: "gh",
   outgoingCalls: "gH",
   projectSymbols: "gW",
+  runAtCursor: "gR",
+  runLast: "gL",
 };
 
 const actions = Facet.define<Partial<Record<LspVimAction, Command>>>();
