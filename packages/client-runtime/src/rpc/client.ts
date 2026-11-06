@@ -66,6 +66,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.languageServersSubscribe
   | typeof WS_METHODS.languageServersSession
   | typeof WS_METHODS.languageServersProblems
+  | typeof WS_METHODS.languageServersLogs
   | typeof WS_METHODS.serverGetStorageCleanupReport
   | typeof WS_METHODS.serverGetDatabaseStorage
   | typeof WS_METHODS.subscribeTerminalMetadata

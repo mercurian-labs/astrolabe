@@ -68,10 +68,13 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexClear]: AuthEnvironmentMaintainScope,
-  // Astrolabe: language servers are processes the environment runs and downloads.
+  // Astrolabe: language servers are processes the environment runs and downloads, and trust says
+  // which it may; a trace records file contents.
   [WS_METHODS.languageServersRestart]: AuthEnvironmentMaintainScope,
   [WS_METHODS.languageServersStop]: AuthEnvironmentMaintainScope,
-  [WS_METHODS.languageServersConfirmDownload]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersTrustProject]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersRevokeProjectTrust]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersSetTrace]: AuthEnvironmentMaintainScope,
   // Astrolabe: undoing a rename writes the files it changed.
   [WS_METHODS.languageServersUndoEdit]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,

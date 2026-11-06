@@ -8,7 +8,7 @@ import { HttpClient } from "effect/http";
 
 import { encodeMessage, MessageDecoder } from "./framing.ts";
 import { makeInstaller } from "./install.ts";
-import { LANGUAGE_SERVERS, licenceAllowed } from "./registry.ts";
+import { LANGUAGE_SERVERS, type LanguageServerSpec, licenceAllowed } from "./registry.ts";
 import { readTar, TarError } from "./tar.ts";
 
 const unusedHttp = HttpClient.make(() => Effect.die("no downloads here"));
@@ -46,6 +46,55 @@ const onMac = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   );
 
 describe("language server resolution", () => {
+  it.effect(
+    "runs nothing of an untrusted checkout, the Python it would hand a server included",
+    () =>
+      Effect.gen(function* () {
+        const env = yield* setup(null);
+        yield* env.put(".venv/bin/basedpyright-langserver");
+        yield* env.put(".venv/bin/python");
+        const basedpyright = LANGUAGE_SERVERS.basedpyright;
+        expect(yield* env.installer.resolve(env.cwd, basedpyright, true)).toMatchObject({
+          type: "ready",
+          server: {
+            source: "project",
+            settings: { python: { pythonPath: `${env.cwd}/.venv/bin/python` } },
+          },
+        });
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cached = `${env.cache}/basedpyright@1.40.2`;
+        yield* fileSystem.makeDirectory(cached, { recursive: true });
+        yield* fileSystem.writeFileString(`${cached}/langserver.index.js`, "");
+        yield* fileSystem.writeFileString(`${cached}/.astrolabe-complete`, "1.40.2");
+        const restricted = yield* env.installer.resolve(env.cwd, basedpyright, false);
+        expect(restricted).toMatchObject({ type: "ready", server: { source: "cache" } });
+        expect(JSON.stringify(restricted)).not.toContain(".venv");
+      }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("doesn't probe a server for an untrusted checkout: a probe runs in the checkout", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const env = yield* setup(null);
+      const binary = `${env.cache}-tool`;
+      yield* fileSystem.writeFileString(binary, "#!/bin/sh\ntouch probed\n");
+      yield* fileSystem.chmod(binary, 0o755);
+      const spec: LanguageServerSpec = {
+        ...LANGUAGE_SERVERS.gopls,
+        launches: [
+          { name: "Tool", knownPaths: [binary], probe: [], args: [], restrictedSafe: false },
+        ],
+      };
+      expect(yield* env.installer.resolve(env.cwd, spec, false)).toMatchObject({
+        type: "trust-needed",
+        name: "Tool",
+      });
+      expect(yield* fileSystem.exists(`${env.cwd}/probed`)).toBe(false);
+      expect(yield* env.installer.resolve(env.cwd, spec, true)).toMatchObject({ type: "ready" });
+      expect(yield* fileSystem.exists(`${env.cwd}/probed`)).toBe(true);
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("runs the project's TypeScript 7 as its own server", () =>
     Effect.gen(function* () {
       const env = yield* setup("7.0.2");
@@ -94,8 +143,13 @@ describe("language server resolution", () => {
         const project = yield* setup("7.0.2");
         yield* project.put("node_modules/@typescript/typescript-darwin-arm64/lib/tsc");
         expect(yield* resolve(project, false)).toMatchObject({
-          type: "download",
-          download: { npm: { name: "@typescript/typescript-darwin-arm64" } },
+          type: "trust-needed",
+          name: "TypeScript 7.0.2",
+          message: "TypeScript 7.0.2 can run code from this project.",
+        });
+        expect(yield* resolve(bare, false)).toMatchObject({
+          type: "trust-needed",
+          message: expect.stringContaining("needs downloading from npm"),
         });
         const fileSystem = yield* FileSystem.FileSystem;
         const cached = `${project.cache}/@typescript+typescript-darwin-arm64@7.0.2`;

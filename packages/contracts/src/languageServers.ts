@@ -78,8 +78,8 @@ export function languageServerForPath(
 }
 
 export const LanguageServerState = Schema.Literals([
-  /** Nothing usable is installed, and the environment's first download waits for a yes. */
-  "download-needed",
+  /** The project isn't trusted, and this server needs a download or runs its code. */
+  "trust-needed",
   "downloading",
   "starting",
   "ready",
@@ -127,8 +127,11 @@ export const LanguageServerCheck = Schema.Struct({
   languages: Schema.String,
   /** "rust-analyzer 1.99.0", or the bare name before a version is known. */
   name: Schema.String,
-  /** `download`: the first file of its language downloads it, after the environment's yes. */
-  state: Schema.Literals(["found", "download", "missing"]),
+  /**
+   * `download`: the first file of its language downloads it. `trust`: it won't start until the
+   * project is trusted.
+   */
+  state: Schema.Literals(["found", "download", "trust", "missing"]),
   source: Schema.NullOr(LanguageServerSource),
   /** The binary that runs, when found. */
   executable: Schema.NullOr(Schema.String),
@@ -136,6 +139,91 @@ export const LanguageServerCheck = Schema.Struct({
   message: Schema.NullOr(Schema.String),
 });
 export type LanguageServerCheck = typeof LanguageServerCheck.Type;
+
+export const LanguageServerCheckResult = Schema.Struct({
+  /** Whether the checkout's project is trusted on this environment. */
+  trusted: Schema.Boolean,
+  servers: Schema.Array(LanguageServerCheck),
+});
+export type LanguageServerCheckResult = typeof LanguageServerCheckResult.Type;
+
+/** A checkout, standing for every checkout of its repository: they share trust. */
+export const LanguageServerTrustInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
+export type LanguageServerTrustInput = typeof LanguageServerTrustInput.Type;
+
+export const LanguageServerLogSource = Schema.Literals([
+  "stderr",
+  /** `window/logMessage`. */
+  "log",
+  /** `window/showMessage`, which the server means a person to see. */
+  "message",
+  /** The environment's own note: a start, an exit. */
+  "environment",
+]);
+export type LanguageServerLogSource = typeof LanguageServerLogSource.Type;
+
+export const LanguageServerLogLine = Schema.Struct({
+  /** Milliseconds since the epoch. */
+  at: NonNegativeInt,
+  source: LanguageServerLogSource,
+  /** The server's own severity, for `log` and `message`. */
+  severity: Schema.optional(Schema.Literals(["error", "warning", "info", "log"])),
+  text: Schema.String,
+});
+export type LanguageServerLogLine = typeof LanguageServerLogLine.Type;
+
+/** One LSP message as JSON, cut when long. It can hold file contents: memory only, off by default. */
+export const LanguageServerTraceEntry = Schema.Struct({
+  at: NonNegativeInt,
+  /** As the environment sees it: `sent` went to the server. */
+  direction: Schema.Literals(["sent", "received"]),
+  text: Schema.String,
+});
+export type LanguageServerTraceEntry = typeof LanguageServerTraceEntry.Type;
+
+/** A server as a person debugging it wants it: its status, and the process behind it. */
+export const LanguageServerInfo = Schema.Struct({
+  ...LanguageServerStatus.fields,
+  /** The last launch's: they stay after the process stops. */
+  binary: Schema.NullOr(Schema.String),
+  args: Schema.Array(Schema.String),
+  /** What the running server says it is. */
+  version: Schema.NullOr(Schema.String),
+  pid: Schema.NullOr(NonNegativeInt),
+  /** The running server's capabilities, as JSON. */
+  capabilities: Schema.NullOr(Schema.String),
+});
+export type LanguageServerInfo = typeof LanguageServerInfo.Type;
+
+const LanguageServerLogState = Schema.Struct({
+  /** Null while no server runs for the target: it may have stopped for being idle. */
+  info: Schema.NullOr(LanguageServerInfo),
+  tracing: Schema.Boolean,
+});
+
+export const LanguageServerLogItem = Schema.Union([
+  /** What the environment has kept. */
+  Schema.Struct({
+    type: Schema.Literal("snapshot"),
+    state: LanguageServerLogState,
+    lines: Schema.Array(LanguageServerLogLine),
+    trace: Schema.Array(LanguageServerTraceEntry),
+  }),
+  /** What arrived since the last item, batched; `state` only when it changed. */
+  Schema.Struct({
+    type: Schema.Literal("batch"),
+    state: Schema.optional(LanguageServerLogState),
+    lines: Schema.Array(LanguageServerLogLine),
+    trace: Schema.Array(LanguageServerTraceEntry),
+  }),
+]);
+export type LanguageServerLogItem = typeof LanguageServerLogItem.Type;
+
+export const LanguageServerSetTraceInput = Schema.Struct({
+  ...LanguageServerTarget.fields,
+  enabled: Schema.Boolean,
+});
+export type LanguageServerSetTraceInput = typeof LanguageServerSetTraceInput.Type;
 
 /** Chosen by the client, unique per connection. */
 export const LanguageServerSessionId = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
@@ -293,7 +381,7 @@ export type LanguageServerProblemsItem = typeof LanguageServerProblemsItem.Type;
 export const LanguageServerErrorReason = Schema.Literals([
   /** No language server serves this file. */
   "unsupported",
-  "download-needed",
+  "trust-needed",
   "not-running",
   "failed",
   "timeout",

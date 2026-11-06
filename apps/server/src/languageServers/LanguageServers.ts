@@ -12,6 +12,10 @@ import {
   type FileDiagnostics,
   type LanguageServerAppliedEdit,
   type LanguageServerCheck,
+  type LanguageServerCheckResult,
+  type LanguageServerInfo,
+  type LanguageServerLogItem,
+  type LanguageServerSetTraceInput,
   type LanguageServerUndoEditInput,
   type LanguageServerUndoEditResult,
   languageServerForPath,
@@ -57,8 +61,14 @@ import {
   type ResponseError,
   ServerCancelled,
 } from "./connection.ts";
-import { DEFAULT_REGISTRY, describeDownload, makeInstaller } from "./install.ts";
+import {
+  DEFAULT_REGISTRY,
+  describeDownload,
+  makeInstaller,
+  type ResolvedServer,
+} from "./install.ts";
 import { parseJson, stringifyJson } from "./json.ts";
+import { type LogEvent, type LogSubscriber, makeServerLog, type ServerLog } from "./logs.ts";
 import { makeMemoryReader, type MemoryReader } from "./memory.ts";
 import {
   browserToAuthority,
@@ -76,6 +86,7 @@ import {
   wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
+import { makeProjectTrust } from "./trust.ts";
 import {
   type FileWatcher,
   FILE_CHANGE_TYPES,
@@ -96,12 +107,20 @@ export class LanguageServers extends Context.Service<
     /** Every server now, then the whole list on each change. */
     readonly subscribe: Stream.Stream<ReadonlyArray<LanguageServerStatus>>;
     /** What each server would run for a checkout, starting and downloading none. */
-    readonly check: (
-      cwd: string,
-    ) => Effect.Effect<ReadonlyArray<LanguageServerCheck>, LanguageServerError>;
+    readonly check: (cwd: string) => Effect.Effect<LanguageServerCheckResult, LanguageServerError>;
     readonly restart: (input: LanguageServerTarget) => Effect.Effect<void, LanguageServerError>;
     readonly stop: (input: LanguageServerTarget) => Effect.Effect<void, LanguageServerError>;
-    readonly confirmDownload: Effect.Effect<void, LanguageServerError>;
+    /** Trusts a checkout's repository; its servers that are held back or restricted restart. */
+    readonly trustProject: (cwd: string) => Effect.Effect<void, LanguageServerError>;
+    /** Takes the trust back; the repository's servers restart in their restricted form. */
+    readonly revokeProjectTrust: (cwd: string) => Effect.Effect<void, LanguageServerError>;
+    /** A server's kept output, then what follows in batches, surviving its restarts. */
+    readonly logs: (
+      input: LanguageServerTarget,
+    ) => Stream.Stream<LanguageServerLogItem, LanguageServerError>;
+    readonly setTrace: (
+      input: LanguageServerSetTraceInput,
+    ) => Effect.Effect<void, LanguageServerError>;
     /** One LSP connection: the server's status, then messages from the gateway. */
     readonly session: (
       input: LanguageServerSessionInput,
@@ -174,10 +193,11 @@ export interface LanguageServersOptions {
   readonly cacheDir?: string;
   readonly readMemory?: MemoryReader;
   /**
-   * Astrolabe has no repository trust yet, and agents already run code in every repository, so
-   * each is trusted. A restricted one gets our own server with nothing that runs its code.
+   * Whether a checkout's project is trusted, in place of the environment's record. A trusted one
+   * gets every launch, downloading as needed; an untrusted one only restricted-safe launches
+   * already here, and nothing of its own runs.
    */
-  readonly trusted: (cwd: string) => Effect.Effect<boolean>;
+  readonly trusted?: ((cwd: string) => Effect.Effect<boolean>) | undefined;
 }
 
 /** Versions of each document kept to map an editor's positions from; older ones get ContentModified. */
@@ -199,6 +219,12 @@ const LOCATE_METHODS: Readonly<
   references: { method: "textDocument/references", capability: "referencesProvider" },
 };
 const SHUTDOWN_TIMEOUT = Duration.seconds(2);
+/** Log events a subscriber may fall behind by; past it the oldest are dropped. */
+const LOG_EVENTS_QUEUED = 8192;
+const LOG_BATCH_SIZE = 1024;
+/** Batches reach a client at most this often, however fast a server writes. */
+const LOG_BATCH_WINDOW = Duration.millis(150);
+const LOG_SEVERITIES = [undefined, "error", "warning", "info", "log"] as const;
 
 // LSP messages are untyped JSON; each use checks the shape it reads.
 type Json = any;
@@ -288,6 +314,8 @@ interface Running {
   readonly connection: LspConnection;
   readonly capabilities: Json;
   readonly pull: boolean;
+  /** What the server says it is, from its `initialize` answer. */
+  readonly version: string | null;
 }
 
 interface ServerEdit {
@@ -322,6 +350,12 @@ interface Instance {
   /** File changes waiting out a burst, by path; `changesGeneration` restarts the wait. */
   readonly changes: Map<string, WatchedFileChange["type"]>;
   changesGeneration: number;
+  /** Called on each status change, for those waiting on one. */
+  readonly statusWatchers: Set<() => void>;
+  /** Kept apart from the process and the instance: a crash's output outlives both. */
+  readonly log: ServerLog;
+  /** The last launch. */
+  launched: ResolvedServer | null;
   /** Resolves when the current or next process is ready. */
   ready: Deferred.Deferred<Running>;
   processScope: Scope.Closeable | null;
@@ -499,10 +533,13 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const path = yield* Path.Path;
   const fileSystem = yield* FileSystem.FileSystem;
   const config = yield* ServerConfig.ServerConfig;
-  const installer = yield* makeInstaller({
-    cacheDir: options.cacheDir ?? path.join(config.providerStatusCacheDir, "language-servers"),
-    registry: options.registry,
+  const cacheDir = options.cacheDir ?? path.join(config.providerStatusCacheDir, "language-servers");
+  const installer = yield* makeInstaller({ cacheDir, registry: options.registry });
+  const trust = yield* makeProjectTrust({
+    file: path.join(path.dirname(cacheDir), "language-server-trust.json"),
+    repositoryOf: installer.repositoryOf,
   });
+  const isTrusted = options.trusted ?? trust.isTrusted;
   const readMemory = options.readMemory ?? (yield* makeMemoryReader());
   const processServices = yield* Effect.context<
     ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
@@ -514,6 +551,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const sessions = new Map<string, { readonly instance: Instance; readonly session: Session }>();
   const statuses = yield* SubscriptionRef.make<ReadonlyArray<LanguageServerStatus>>([]);
   const applied = new Map<string, AppliedEdit>();
+  const logs = new Map<string, ServerLog>();
   let editCount = 0;
   let clock = 0;
 
@@ -535,6 +573,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       for (const session of instance.sessions.values()) {
         Queue.offerUnsafe(session.queue, { type: "status", status: instance.status });
       }
+      for (const watcher of instance.statusWatchers) watcher();
+      instance.log.stateChanged();
       return instances.get(instance.key) === instance ? publishList() : Effect.void;
     });
 
@@ -871,6 +911,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return Scope.close(doc.scope, Exit.void).pipe(Effect.andThen(scheduleIdle(instance)));
     });
 
+  const logMessage = (log: ServerLog, source: "log" | "message", params: Json) =>
+    log.line(source, String(params?.message ?? ""), LOG_SEVERITIES[params?.type]);
+
   const onRequestFromServer = (instance: Instance) => (method: string, params: Json) => {
     switch (method) {
       case "workspace/configuration":
@@ -897,8 +940,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           instance.watchers.delete(String(registration?.id));
         }
         return null;
-      case "window/workDoneProgress/create":
       case "window/showMessageRequest":
+        logMessage(instance.log, "message", params);
+        return null;
+      case "window/workDoneProgress/create":
         return null;
       case "workspace/applyEdit":
         return new Promise((resolve) =>
@@ -922,6 +967,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       }
       return;
     }
+    if (method === "window/logMessage") return logMessage(instance.log, "log", params);
+    if (method === "window/showMessage") return logMessage(instance.log, "message", params);
     if (method !== "textDocument/publishDiagnostics" || typeof params?.uri !== "string") return;
     const doc = [...instance.docs.values()].find((candidate) => candidate.uri === params.uri);
     if (doc === undefined || !Array.isArray(params.diagnostics)) return;
@@ -957,8 +1004,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   )(function* (instance: Instance) {
     const generation = ++instance.generation;
     if (Deferred.isDoneUnsafe(instance.ready)) instance.ready = Deferred.makeUnsafe();
-    yield* setStatus(instance, { state: "starting", message: null });
-    const trusted = yield* options.trusted(instance.cwd);
+    const trusted = yield* isTrusted(instance.cwd);
+    yield* setStatus(instance, { state: "starting", message: null, restricted: !trusted });
     let resolution = yield* installer
       .resolve(instance.cwd, instance.spec, trusted)
       .pipe(
@@ -966,15 +1013,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           Effect.succeed({ type: "unavailable" as const, message: error.message }),
         ),
       );
+    if (resolution.type === "trust-needed") {
+      return yield* setStatus(instance, {
+        state: "trust-needed",
+        name: resolution.name,
+        message: resolution.message,
+        memoryBytes: null,
+      });
+    }
     if (resolution.type === "download") {
-      if (!(yield* installer.consented)) {
-        return yield* setStatus(instance, {
-          state: "download-needed",
-          name: resolution.name,
-          message: describeDownload(resolution.download),
-          restricted: !trusted,
-        });
-      }
       yield* setStatus(instance, { state: "downloading", name: resolution.name, message: null });
       const downloaded = yield* installer.download(resolution.download).pipe(
         Effect.as(null),
@@ -1001,12 +1048,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return yield* failWith(instance, "The download did not install.");
     }
     const server = resolution.server;
-    yield* setStatus(instance, {
-      state: "starting",
-      name: server.name,
-      source: server.source,
-      restricted: !trusted,
-    });
+    instance.launched = server;
+    yield* setStatus(instance, { state: "starting", name: server.name, source: server.source });
     if (instance.spec.writes !== undefined) {
       yield* installer.excludeFromGit(instance.cwd, instance.spec.writes);
     }
@@ -1020,6 +1063,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       {
         onNotification: onNotificationFromServer(instance),
         onRequest: onRequestFromServer(instance),
+        onStderr: instance.log.stderr,
+        tracing: () => instance.log.tracing,
+        onMessage: instance.log.trace,
       },
     ).pipe(Scope.provide(processScope), Effect.option);
     if (Option.isNone(connection)) {
@@ -1027,8 +1073,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       yield* Scope.close(processScope, Exit.void);
       return yield* onCrash(instance, generation, "The language server could not be started.");
     }
+    instance.log.line("environment", `Started ${server.binary} (process ${connection.value.pid}).`);
     // From here a failure ends the process, and its exit is what counts as the crash.
     yield* connection.value.exited.pipe(
+      Effect.tap((code) =>
+        Effect.sync(() => {
+          instance.log.endStderr();
+          instance.log.line("environment", `The process exited with code ${code}.`);
+        }),
+      ),
       Effect.flatMap(() => onExit(instance, generation, connection.value)),
       Effect.forkIn(serviceScope, { startImmediately: true }),
     );
@@ -1049,13 +1102,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return yield* Scope.close(processScope, Exit.void);
     }
     connection.value.notify("initialized", {});
-    const capabilities = (init.value.value as Json)?.capabilities ?? {};
-    const started = { connection: connection.value, capabilities };
+    const answer = init.value.value as Json;
+    const capabilities = answer?.capabilities ?? {};
+    const version = answer?.serverInfo?.version;
     const running: Running = {
       generation,
-      connection: started.connection,
-      capabilities: started.capabilities,
-      pull: started.capabilities?.diagnosticProvider != null,
+      connection: connection.value,
+      capabilities,
+      pull: capabilities?.diagnosticProvider != null,
+      version: typeof version === "string" ? version : null,
     };
     instance.running = running;
     for (const doc of instance.docs.values()) openOnServer(instance, doc);
@@ -1131,6 +1186,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     yield* stopProcess(instance);
     if (instances.get(instance.key) === instance) instances.delete(instance.key);
     yield* Scope.close(instance.scope, Exit.void);
+    if (instance.log.subscribers.size === 0) logs.delete(instance.key);
+    instance.log.stateChanged();
     yield* publishList();
   });
 
@@ -1168,6 +1225,23 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     Effect.forkIn(serviceScope, { startImmediately: true }),
   );
 
+  const assertProject = (cwd: string) =>
+    knownWorkspaces
+      .assertContains(cwd)
+      .pipe(
+        Effect.mapError((cause) =>
+          failure("unsupported", "That folder is not a project here.", cause),
+        ),
+      );
+
+  const logOf = (key: string) => {
+    const known = logs.get(key);
+    if (known !== undefined) return known;
+    const log = makeServerLog();
+    logs.set(key, log);
+    return log;
+  };
+
   const instanceOf = Effect.fn("LanguageServers.instance")(function* (
     target: LanguageServerTarget,
   ) {
@@ -1178,13 +1252,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     if (spec === undefined) {
       return yield* failure("unsupported", "That language server is not available here.");
     }
-    yield* knownWorkspaces
-      .assertContains(target.cwd)
-      .pipe(
-        Effect.mapError((cause) =>
-          failure("unsupported", "That folder is not a project here.", cause),
-        ),
-      );
+    yield* assertProject(target.cwd);
     const realCwd = yield* fileSystem
       .realPath(target.cwd)
       .pipe(Effect.orElseSucceed(() => target.cwd));
@@ -1218,6 +1286,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       running: null,
       loading: false,
       settings: {},
+      statusWatchers: new Set(),
+      log: logOf(key),
+      launched: null,
       ready: Deferred.makeUnsafe(),
       processScope: null,
       generation: 0,
@@ -1305,16 +1376,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const check: LanguageServers["Service"]["check"] = Effect.fn("LanguageServers.check")(function* (
     cwd,
   ) {
-    yield* knownWorkspaces
-      .assertContains(cwd)
-      .pipe(
-        Effect.mapError((cause) =>
-          failure("unsupported", "That folder is not a project here.", cause),
-        ),
-      );
-    const trusted = yield* options.trusted(cwd);
+    yield* assertProject(cwd);
+    const trusted = yield* isTrusted(cwd);
     const specs = Object.values(options.specs).filter((spec) => spec !== undefined);
-    return yield* Effect.forEach(
+    const servers = yield* Effect.forEach(
       specs,
       Effect.fnUntraced(function* (spec): Effect.fn.Return<
         LanguageServerCheck,
@@ -1356,6 +1421,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
               executable: null,
               message: [describeDownload(resolution.download), hint].filter(Boolean).join(" "),
             };
+          case "trust-needed":
+            return {
+              ...base,
+              name: resolution.name,
+              state: "trust",
+              source: null,
+              executable: null,
+              message: [resolution.message, hint].filter(Boolean).join(" "),
+            };
           case "unavailable":
             return {
               ...base,
@@ -1369,17 +1443,110 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       }),
       { concurrency: "unbounded" },
     );
+    return { trusted, servers };
   }, Effect.provideContext(processServices));
 
-  const confirmDownload: LanguageServers["Service"]["confirmDownload"] = Effect.gen(function* () {
-    yield* installer.consent.pipe(
-      Effect.mapError((error) => failure("failed", error.message, error)),
-    );
+  const changeTrust = Effect.fn("LanguageServers.changeTrust")(function* (
+    cwd: string,
+    trusted: boolean,
+  ) {
+    yield* assertProject(cwd);
+    yield* trust
+      .set(cwd, trusted)
+      .pipe(Effect.mapError((cause) => failure("failed", "Could not record the trust.", cause)));
+    const project = yield* trust.keyOf(cwd);
     for (const instance of instances.values()) {
-      if (instance.status.state !== "download-needed") continue;
-      yield* fork(instance.lock.withPermit(startProcess(instance)), instance.scope);
+      if ((yield* trust.keyOf(instance.cwd)) !== project) continue;
+      const { state, restricted } = instance.status;
+      // A stopped or capped one takes the new trust when it next starts.
+      if (state === "stopped" || state === "capped") continue;
+      if (state === "ready" && restricted === !trusted) continue;
+      instance.crashes = 0;
+      yield* fork(
+        instance.lock.withPermit(
+          stopProcess(instance).pipe(Effect.andThen(startProcess(instance))),
+        ),
+        instance.scope,
+      );
     }
-  }).pipe(Effect.withSpan("LanguageServers.confirmDownload"));
+  }, Effect.provideContext(processServices));
+
+  const trustProject: LanguageServers["Service"]["trustProject"] = (cwd) => changeTrust(cwd, true);
+  const revokeProjectTrust: LanguageServers["Service"]["revokeProjectTrust"] = (cwd) =>
+    changeTrust(cwd, false);
+
+  const infoOf = (key: string): LanguageServerInfo | null => {
+    const instance = instances.get(key);
+    if (instance === undefined) return null;
+    const running = instance.running;
+    return {
+      ...instance.status,
+      binary: instance.launched?.binary ?? null,
+      args: instance.launched?.args ?? [],
+      version: running?.version ?? null,
+      pid: running?.connection.pid ?? null,
+      capabilities: running === null ? null : JSON.stringify(running.capabilities, null, 2),
+    };
+  };
+
+  /** A batch of log events as one item, each kind in order. */
+  const logBatch = (key: string, log: ServerLog, events: ReadonlyArray<LogEvent>) => ({
+    type: "batch" as const,
+    ...(events.some((event) => event.type === "state")
+      ? { state: { info: infoOf(key), tracing: log.tracing } }
+      : {}),
+    lines: events.flatMap((event) => (event.type === "line" ? [event.line] : [])),
+    trace: events.flatMap((event) => (event.type === "trace" ? [event.entry] : [])),
+  });
+
+  const logsOf: LanguageServers["Service"]["logs"] = (target) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        if (options.specs[target.server] === undefined) {
+          return yield* failure("unsupported", "That language server is not available here.");
+        }
+        yield* assertProject(target.cwd);
+        const key = `${target.cwd}\0${target.server}`;
+        const log = logOf(key);
+        const events = yield* Queue.sliding<LogEvent>(LOG_EVENTS_QUEUED);
+        const subscriber: LogSubscriber = {
+          offer: (event) => void Queue.offerUnsafe(events, event),
+        };
+        log.subscribers.add(subscriber);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            log.subscribers.delete(subscriber);
+            if (log.subscribers.size > 0) return;
+            log.onLastSubscriberGone();
+            if (!instances.has(key) && logs.get(key) === log) logs.delete(key);
+          }),
+        );
+        const snapshot: LanguageServerLogItem = {
+          type: "snapshot",
+          state: { info: infoOf(key), tracing: log.tracing },
+          lines: log.lines(),
+          trace: log.entries(),
+        };
+        return Stream.concat(
+          Stream.succeed(snapshot),
+          Stream.fromQueue(events).pipe(
+            Stream.groupedWithin(LOG_BATCH_SIZE, LOG_BATCH_WINDOW),
+            Stream.map((batch) => logBatch(key, log, batch)),
+          ),
+        );
+      }),
+    );
+
+  const setTrace: LanguageServers["Service"]["setTrace"] = Effect.fn("LanguageServers.setTrace")(
+    function* (input) {
+      const log = logs.get(`${input.cwd}\0${input.server}`);
+      // Only for someone reading: a trace nobody watches would hold file contents for nothing.
+      if (log === undefined || log.subscribers.size === 0) {
+        return yield* failure("not-running", "Open that language server's logs first.");
+      }
+      log.setTracing(input.enabled);
+    },
+  );
 
   const relativePathOf = (instance: Instance, uri: unknown): string | null => {
     if (typeof uri !== "string" || !uri.startsWith("file:")) return null;
@@ -1984,6 +2151,45 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     },
   );
 
+  /** Why an agent can't have this server, or null while it runs or is on its way. */
+  const whyUnusable = (status: LanguageServerStatus) => {
+    switch (status.state) {
+      case "stopped":
+        return failure("not-running", "The language server was stopped; restart it in Astrolabe.");
+      case "trust-needed":
+        return failure(
+          "trust-needed",
+          "The language server needs the user to trust this project in Astrolabe.",
+        );
+      case "failed":
+      case "missing":
+        return failure("failed", status.message ?? "The language server failed.");
+      default:
+        return null;
+    }
+  };
+
+  const assertUsable = (instance: Instance) =>
+    Effect.suspend(() => {
+      const why = whyUnusable(instance.status);
+      return why === null ? Effect.void : Effect.fail(why);
+    });
+
+  /** The running server for an agent, failing as soon as a start ends without one. */
+  const readyForAgent = (instance: Instance) =>
+    Effect.raceFirst(
+      Deferred.await(instance.ready),
+      Effect.callback<never, LanguageServerError>((resume) => {
+        const watch = () => {
+          const why = whyUnusable(instance.status);
+          if (why !== null) resume(Effect.fail(why));
+        };
+        instance.statusWatchers.add(watch);
+        watch();
+        return Effect.sync(() => instance.statusWatchers.delete(watch));
+      }),
+    );
+
   const diagnostics: LanguageServers["Service"]["diagnostics"] = Effect.fn(
     "LanguageServers.diagnostics",
   )(function* (input) {
@@ -1992,21 +2198,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return yield* failure("unsupported", "No language server reads this kind of file.");
     }
     const instance = yield* use({ cwd: input.cwd, server: match.server });
-    const state = instance.status.state;
-    if (state === "stopped") {
-      return yield* failure(
-        "not-running",
-        "The language server was stopped; restart it in Astrolabe.",
-      );
-    }
-    if (state === "download-needed") {
-      return yield* failure(
-        "download-needed",
-        "The language server needs a download the user has to allow in Astrolabe first.",
-      );
-    }
-    if (state === "failed" || state === "missing")
-      return yield* failure("failed", instance.status.message ?? "The language server failed.");
+    yield* assertUsable(instance);
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const doc = yield* Effect.acquireRelease(
@@ -2020,7 +2212,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const synced = yield* documents
           .sync({ cwd: instance.cwd, relativePath: input.relativePath })
           .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
-        yield* Deferred.await(instance.ready);
+        yield* readyForAgent(instance);
         yield* until(
           doc,
           () =>
@@ -2058,22 +2250,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         return yield* failure("unsupported", "No language server reads this kind of file.");
       }
       const instance = yield* use({ cwd: input.cwd, server: match.server });
-      const state = instance.status.state;
-      if (state === "stopped") {
-        return yield* failure(
-          "not-running",
-          "The language server was stopped; restart it in Astrolabe.",
-        );
-      }
-      if (state === "download-needed") {
-        return yield* failure(
-          "download-needed",
-          "The language server needs a download the user has to allow in Astrolabe first.",
-        );
-      }
-      if (state === "failed" || state === "missing") {
-        return yield* failure("failed", instance.status.message ?? "The language server failed.");
-      }
+      yield* assertUsable(instance);
       const { method, capability } = LOCATE_METHODS[input.kind];
       return yield* Effect.scoped(
         Effect.gen(function* () {
@@ -2088,7 +2265,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           const synced = yield* documents
             .sync({ cwd: instance.cwd, relativePath: input.relativePath })
             .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
-          const running = yield* Deferred.await(instance.ready);
+          const running = yield* readyForAgent(instance);
           if (!running.capabilities?.[capability]) {
             return yield* failure(
               "unsupported",
@@ -2304,7 +2481,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     check,
     restart,
     stop,
-    confirmDownload,
+    trustProject,
+    revokeProjectTrust,
+    logs: logsOf,
+    setTrace,
     session,
     send,
     diagnostics,
@@ -2324,7 +2504,6 @@ export const defaultOptions: LanguageServersOptions = {
   fileChangeQuiet: Duration.millis(200),
   formatTimeout: Duration.seconds(2),
   registry: DEFAULT_REGISTRY,
-  trusted: () => Effect.succeed(true),
 };
 
 export const layerWith = (options: LanguageServersOptions) =>

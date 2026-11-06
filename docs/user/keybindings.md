@@ -339,14 +339,20 @@ JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer), Go (gopls)
 cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
 `.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
 
-The header names the language server and says when it is starting. It runs the project's own
-server when it has one (its TypeScript, or basedpyright in its `.venv`), then one installed on the
-machine, such as rustup's rust-analyzer or Xcode's clangd. Without either, the first time an
-environment needs a language server it asks to download it: click **Download**. gopls is built
-with the machine's Go, so Go files need Go installed. jdtls is never downloaded: install it
-(`brew install jdtls`, with Java 21 or newer) for Java files. When a server isn't installed the
-header says so: hover it for what to install, then click **Try again**. If a server keeps stopping, or was paused
-because several ran at once, click **Restart** in the header.
+The header names the language server and says when it is starting. A trusted project runs its
+own server when it has one (its TypeScript, or basedpyright in its `.venv`), then one installed on
+the machine, such as rustup's rust-analyzer or Xcode's clangd, and downloads one when neither is
+there. gopls is built with the machine's Go, so Go files need Go installed. jdtls is never
+downloaded: install it (`brew install jdtls`, with Java 21 or newer) for Java files. When a server
+isn't installed the header says so: hover it for what to install, then click **Try again**. If a
+server keeps stopping, or was paused because several ran at once, click **Restart** in the header.
+
+Language servers can run a project's code, so each project starts out untrusted, once per machine.
+An untrusted project runs only the servers that never run project code and are already on the
+machine or downloaded, marked restricted in the header; the others wait, and agents' code tools
+say so. Click **Trust project** in the header to run them, downloads included. A worktree shares
+its repository's trust. To take it back, go to **Settings → Projects → Language servers** and
+click **Revoke**: the project's servers restart restricted.
 
 **Settings → Projects → Language servers** shows what each server would run for a project and
 what is missing, without starting any. clangd reads each file's compiler flags from a

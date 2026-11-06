@@ -51,6 +51,25 @@ rustup installs a `rust-analyzer` proxy that fails without the component. Downlo
 npm by its registry integrity, release builds by the size and SHA-256 written in the registry,
 gopls by Go's checksum database. Bumping a release means updating its hashes there.
 
+## Project trust
+
+A language server can run a project's code: tsserver plugins, `build.rs`, Go's `gopls` running the
+toolchain the project names. So trust is per project, on the environment that would run the code:
+`language-server-trust.json` beside the server cache. Trusted, a server starts with no further
+question; there is no separate yes for a download, because a download only ever happens to serve
+a project that was already allowed to run code.
+
+- **The key is the repository**, `git rev-parse --git-common-dir`, or the folder without git: a
+  worktree is created by whoever owns the repository, and asking again per worktree teaches people
+  to click through. A folder's `.git` file can name another repository, so a checkout unpacked
+  from an archive could claim a trusted one's trust.
+- **Untrusted means nothing of the checkout's runs**, which is more than skipping launches:
+  `restrictedSafe` launches skip `projectBinary`, and basedpyright isn't told the checkout's
+  interpreter, which it would start to read `sys.path`. A probe runs in the checkout, where
+  rustup's proxy obeys `rust-toolchain.toml`, so what trust would bring is worked out unprobed.
+- **Granting is a person's act.** Agents get an error saying so and have no tool for it, and the
+  RPCs take the environment maintenance scope.
+
 ## When a file's diagnostics are final
 
 LSP doesn't say when a server has finished. Editors don't care: a later result replaces an early

@@ -1,6 +1,7 @@
 import {
   WS_METHODS,
   type EnvironmentId,
+  type LanguageServerLogItem,
   type LanguageServerProblemsItem,
   type LanguageServerSendInput,
   type LanguageServerSessionItem,
@@ -21,8 +22,8 @@ import {
 /**
  * Astrolabe: language servers in an environment. An editor opens its own LSP session to the
  * gateway: `session` streams the server's status and messages while it is mounted, and `send`
- * carries the editor's messages, in order. Restarting, stopping and the download consent are
- * permission-guarded. `check` is what each server would run for a checkout, for settings.
+ * carries the editor's messages, in order. Restarting, stopping, a project's trust and recording
+ * a trace are permission-guarded. `check` is what each server would run for a checkout, for settings.
  */
 export function createLanguageServerEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -45,13 +46,23 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     label: "environment-data:language-servers:undo-edit",
     tag: WS_METHODS.languageServersUndoEdit,
   });
-  const confirmDownload = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:language-servers:confirm-download",
-    tag: WS_METHODS.languageServersConfirmDownload,
+  const trustProject = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:trust-project",
+    tag: WS_METHODS.languageServersTrustProject,
+  });
+  const revokeProjectTrust = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:revoke-project-trust",
+    tag: WS_METHODS.languageServersRevokeProjectTrust,
+  });
+  const setTrace = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:set-trace",
+    tag: WS_METHODS.languageServersSetTrace,
   });
   const checkQuery = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:language-servers:check",
     tag: WS_METHODS.languageServersCheck,
+    // Trust can change from a file's header: settings read it fresh each time they open.
+    idleTtlMs: 0,
   });
   const check = (environmentId: EnvironmentId, cwd: string) =>
     checkQuery({ environmentId, input: { cwd } });
@@ -96,6 +107,22 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       ),
     );
 
+  /** A server's logs while mounted: each item as it arrives, again after a reconnect. */
+  const logs = (
+    environmentId: EnvironmentId,
+    target: LanguageServerTarget,
+    onItem: (item: LanguageServerLogItem) => void,
+  ) =>
+    runtime.atom(
+      followStreamInEnvironment(
+        environmentId,
+        subscribeDynamic(WS_METHODS.languageServersLogs, () => Effect.succeed(target)),
+      ).pipe(
+        Stream.runForEach((item) => Effect.sync(() => onItem(item))),
+        Effect.ignore,
+      ),
+    );
+
   /** An editor's messages to its session, sent in order. */
   const sender =
     (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
@@ -103,5 +130,18 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       void send.run(registry, { environmentId, input });
     };
 
-  return { send, sender, restart, stop, confirmDownload, undoEdit, session, problems, check };
+  return {
+    send,
+    sender,
+    restart,
+    stop,
+    trustProject,
+    revokeProjectTrust,
+    setTrace,
+    undoEdit,
+    session,
+    problems,
+    logs,
+    check,
+  };
 }

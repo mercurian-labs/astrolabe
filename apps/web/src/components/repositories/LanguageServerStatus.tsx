@@ -7,7 +7,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = {
-  "download-needed": (name) => `${name} needs a download`,
+  "trust-needed": (name) => `${name} needs this project trusted`,
   downloading: (name) => `Downloading ${name}…`,
   starting: (name) => `${name} starting…`,
   ready: (name) => name,
@@ -19,7 +19,7 @@ const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = 
 
 /**
  * Astrolabe: a code file's language server, in its header: what runs, while it starts, and the
- * one action that moves it on when it can't (download, or restart).
+ * one action that moves it on when it can't (trusting the project, or restart).
  */
 export function LanguageServerStatusEntry({
   environmentId,
@@ -34,17 +34,17 @@ export function LanguageServerStatusEntry({
   const restart = useAtomCommand(languageServersEnvironment.restart, {
     label: "language server restart",
   });
-  const confirmDownload = useAtomCommand(languageServersEnvironment.confirmDownload, {
-    label: "language server download",
+  const trustProject = useAtomCommand(languageServersEnvironment.trustProject, {
+    label: "trust project",
   });
   if (status === null) return null;
   const action =
     !canMaintain || status.state === "ready" || status.state === "starting"
       ? null
-      : status.state === "download-needed"
+      : status.state === "trust-needed"
         ? {
-            label: "Download",
-            run: () => void confirmDownload({ environmentId, input: {} }),
+            label: "Trust project",
+            run: () => void trustProject({ environmentId, input: { cwd: status.cwd } }),
           }
         : status.state === "downloading"
           ? null
@@ -56,7 +56,7 @@ export function LanguageServerStatusEntry({
   const label = (
     <span role="status">
       {LABELS[status.state](status.name)}
-      {status.restricted ? " (restricted)" : null}
+      {status.restricted && status.state !== "trust-needed" ? " (restricted)" : null}
     </span>
   );
   return (

@@ -493,16 +493,19 @@ import {
   DocumentUndoReplaceAllResult,
 } from "./documents.ts";
 import {
-  LanguageServerCheck,
   LanguageServerCheckInput,
+  LanguageServerCheckResult,
   LanguageServerError,
+  LanguageServerLogItem,
   LanguageServerProblemsInput,
   LanguageServerProblemsItem,
   LanguageServerSendInput,
   LanguageServerSessionInput,
   LanguageServerSessionItem,
+  LanguageServerSetTraceInput,
   LanguageServerStatus,
   LanguageServerTarget,
+  LanguageServerTrustInput,
   LanguageServerUndoEditInput,
   LanguageServerUndoEditResult,
 } from "./languageServers.ts";
@@ -704,7 +707,10 @@ export const WS_METHODS = {
   languageServersCheck: "languageServers.check",
   languageServersRestart: "languageServers.restart",
   languageServersStop: "languageServers.stop",
-  languageServersConfirmDownload: "languageServers.confirmDownload",
+  languageServersTrustProject: "languageServers.trustProject",
+  languageServersRevokeProjectTrust: "languageServers.revokeProjectTrust",
+  languageServersLogs: "languageServers.logs",
+  languageServersSetTrace: "languageServers.setTrace",
   languageServersSession: "languageServers.session",
   languageServersSend: "languageServers.send",
   languageServersUndoEdit: "languageServers.undoEdit",
@@ -2336,7 +2342,7 @@ const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscri
 /** What every language server would run for a checkout, and what's missing; starts none. */
 const WsLanguageServersCheckRpc = Rpc.make(WS_METHODS.languageServersCheck, {
   payload: LanguageServerCheckInput,
-  success: Schema.Array(LanguageServerCheck),
+  success: LanguageServerCheckResult,
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
@@ -2351,9 +2357,32 @@ const WsLanguageServersStopRpc = Rpc.make(WS_METHODS.languageServersStop, {
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
-/** The yes to this environment's first language-server download; later ones need none. */
-const WsLanguageServersConfirmDownloadRpc = Rpc.make(WS_METHODS.languageServersConfirmDownload, {
-  payload: Schema.Struct({}),
+/** Trusts a checkout's project on this environment: its servers download and start in full. */
+const WsLanguageServersTrustProjectRpc = Rpc.make(WS_METHODS.languageServersTrustProject, {
+  payload: LanguageServerTrustInput,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Takes the trust back: the project's servers start again in their restricted form. */
+const WsLanguageServersRevokeProjectTrustRpc = Rpc.make(
+  WS_METHODS.languageServersRevokeProjectTrust,
+  {
+    payload: LanguageServerTrustInput,
+    error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  },
+);
+
+/** A server's recent output, then what follows in batches; starts no server. */
+const WsLanguageServersLogsRpc = Rpc.make(WS_METHODS.languageServersLogs, {
+  payload: LanguageServerTarget,
+  success: LanguageServerLogItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** Records a server's LSP messages, for its `languageServers.logs` subscribers. */
+const WsLanguageServersSetTraceRpc = Rpc.make(WS_METHODS.languageServersSetTrace, {
+  payload: LanguageServerSetTraceInput,
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
@@ -2787,7 +2816,10 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsLanguageServersRestartRpc,
   WsLanguageServersUndoEditRpc,
   WsLanguageServersStopRpc,
-  WsLanguageServersConfirmDownloadRpc,
+  WsLanguageServersTrustProjectRpc,
+  WsLanguageServersRevokeProjectTrustRpc,
+  WsLanguageServersLogsRpc,
+  WsLanguageServersSetTraceRpc,
   WsLanguageServersSessionRpc,
   WsLanguageServersSendRpc,
   WsLanguageServersProblemsRpc,

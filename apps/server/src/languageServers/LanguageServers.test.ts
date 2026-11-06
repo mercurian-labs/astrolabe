@@ -14,6 +14,7 @@ import type {
   DocumentStreamItem,
   LanguageServerDocumentState,
   LanguageServerError,
+  LanguageServerLogItem,
   LanguageServerProblemsItem,
   LanguageServerSessionItem,
   LanguageServerStatus,
@@ -103,12 +104,13 @@ const layerFor = (
     readMemory: () => Effect.succeed(new Map()),
     initializeTimeout: "30 seconds",
     diagnosticsTimeout: "30 seconds",
+    trusted: () => Effect.succeed(true),
     ...options,
   }).pipe(
     Layer.provideMerge(layerDocuments),
     Layer.provide(Layer.succeed(HttpClient.HttpClient, http)),
     Layer.provide(layerKnownWorkspaces),
-    Layer.provide(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix: "t3-lsp-" })),
+    Layer.provideMerge(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix: "t3-lsp-" })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provide(
       Layer.succeed(
@@ -954,19 +956,22 @@ describe("LanguageServers", () => {
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
-      expect(yield* service.check(checkout.cwd)).toEqual([
-        {
-          server: "typescript",
-          languages: "TypeScript",
-          name: "Fake",
-          state: "found",
-          source: "project",
-          executable: `${checkout.cwd}/fake-server.mjs`,
-          message: "No compile_commands.json.",
-        },
-      ]);
+      expect(yield* service.check(checkout.cwd)).toEqual({
+        trusted: true,
+        servers: [
+          {
+            server: "typescript",
+            languages: "TypeScript",
+            name: "Fake",
+            state: "found",
+            source: "project",
+            executable: `${checkout.cwd}/fake-server.mjs`,
+            message: "No compile_commands.json.",
+          },
+        ],
+      });
       yield* checkout.write("build/compile_commands.json", "[]");
-      expect((yield* service.check(checkout.cwd))[0]?.message).toBeNull();
+      expect((yield* service.check(checkout.cwd)).servers[0]?.message).toBeNull();
       // Checking starts nothing.
       expect(yield* checkout.starts).toBe(0);
     }).pipe(
@@ -1341,18 +1346,14 @@ describe("LanguageServers downloads", () => {
     "package.json": '{"name":"fake-server","version":"1.0.0","license":"MIT"}',
   });
 
-  it.live("asks before the environment's first download, then installs into the shared cache", () =>
+  it.live("downloads for a trusted project without asking, into the shared cache", () =>
     Effect.gen(function* () {
-      const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
       const session = yield* openSession(checkout);
-      const waiting = yield* session.state("download-needed");
-      expect(waiting.message).toContain("fake-server 1.0.0 (MIT)");
-      yield* service.confirmDownload;
       yield* session.state("downloading");
       const ready = yield* session.state("ready");
       expect(ready.source).toBe("cache");
-      // A second checkout finds it cached and asks nothing.
+      // A second checkout finds it cached.
       const other = yield* makeCheckout(SOURCE);
       const next = yield* openSession(other);
       expect((yield* next.state("ready")).source).toBe("cache");
@@ -1364,11 +1365,8 @@ describe("LanguageServers downloads", () => {
 
   it.live("refuses a package the registry publishes under a licence outside the allowlist", () =>
     Effect.gen(function* () {
-      const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
       const session = yield* openSession(checkout);
-      yield* session.state("download-needed");
-      yield* service.confirmDownload;
       const failed = yield* session.state("failed");
       expect(failed.message).toContain("licence");
     }).pipe(
@@ -1384,17 +1382,17 @@ describe("LanguageServers downloads", () => {
       const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
       const session = yield* openSession(checkout);
-      const waiting = yield* session.state("download-needed");
+      const waiting = yield* session.state("trust-needed");
       expect(waiting.message).toBe(
         "fake-server 1.0.0 (Apache-2.0 WITH LLVM-exception) needs downloading from Releases.",
       );
-      yield* service.confirmDownload;
+      yield* service.trustProject(checkout.cwd);
       expect((yield* session.state("ready")).source).toBe("cache");
     }).pipe(
       Effect.scoped,
       Effect.provide(
         layerFor(
-          { specs: releaseSpecs(NodeZlib.gzipSync(nativeFakeServer), "gz") },
+          { specs: releaseSpecs(NodeZlib.gzipSync(nativeFakeServer), "gz"), trusted: undefined },
           releaseServing(NodeZlib.gzipSync(nativeFakeServer)),
         ),
       ),
@@ -1411,10 +1409,10 @@ describe("LanguageServers downloads", () => {
       const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
       const session = yield* openSession(checkout);
-      yield* session.state("download-needed");
-      yield* service.confirmDownload;
       expect((yield* session.state("ready")).source).toBe("cache");
-      const [check] = yield* service.check(checkout.cwd);
+      const {
+        servers: [check],
+      } = yield* service.check(checkout.cwd);
       const fileSystem = yield* FileSystem.FileSystem;
       expect(check?.executable).toMatch(/fake-server@1\.0\.0\/fake_1\.0\.0\/bin\/fake-server$/);
       expect(
@@ -1435,11 +1433,8 @@ describe("LanguageServers downloads", () => {
 
   it.live("refuses a release build that doesn't match its pinned checksum", () =>
     Effect.gen(function* () {
-      const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
       const session = yield* openSession(checkout);
-      yield* session.state("download-needed");
-      yield* service.confirmDownload;
       expect((yield* session.state("failed")).message).toBe(
         "fake-server failed its integrity check.",
       );
@@ -1458,5 +1453,290 @@ describe("LanguageServers downloads", () => {
         ),
       ),
     ),
+  );
+});
+
+/** Runs `run` with a server on the machine: a project launch only trust allows, then that one. */
+const withMachineServer = <A, E, R>(
+  run: (specs: LanguageServers.LanguageServersOptions["specs"]) => Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const folder = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-machine-" });
+    const file = `${folder}/fake-server`;
+    yield* fileSystem.writeFileString(file, nativeFakeServer);
+    yield* fileSystem.chmod(file, 0o755);
+    return yield* run({
+      typescript: {
+        ...fakeSpec(fakeLaunch),
+        launches: [
+          { ...fakeLaunch, restrictedSafe: false },
+          { name: "Machine", knownPaths: [file], args: [], restrictedSafe: true },
+        ],
+      },
+    });
+  }).pipe(Effect.provide(NodeServices.layer));
+
+const git = (cwd: string, ...args: ReadonlyArray<string>) =>
+  Effect.sync(() =>
+    NodeChildProcess.execFileSync("git", [...args], {
+      cwd,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    }),
+  );
+
+describe("LanguageServers project trust", () => {
+  const untrusted = layerFor({ trusted: undefined });
+
+  it.live("holds back a server that needs trust, and starts it in full once trusted", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const config = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      // The old global yes trusts nothing.
+      yield* fileSystem.makeDirectory(`${config.providerStatusCacheDir}/language-servers`, {
+        recursive: true,
+      });
+      yield* fileSystem.writeFileString(
+        `${config.providerStatusCacheDir}/language-servers/download-consent.json`,
+        '{"consented":true}',
+      );
+      const checkout = yield* makeCheckout(SOURCE);
+      expect(yield* service.check(checkout.cwd)).toMatchObject({
+        trusted: false,
+        servers: [{ state: "trust", executable: null }],
+      });
+      const session = yield* openSession(checkout);
+      const waiting = yield* session.state("trust-needed");
+      expect(waiting.message).toBe("Fake can run code from this project.");
+      expect(yield* checkout.starts).toBe(0);
+      yield* service.trustProject(checkout.cwd);
+      const ready = yield* session.state("ready");
+      expect(ready).toMatchObject({ source: "project", restricted: false });
+      expect(yield* service.check(checkout.cwd)).toMatchObject({
+        trusted: true,
+        servers: [{ state: "found" }],
+      });
+    }).pipe(Effect.scoped, Effect.provide(untrusted)),
+  );
+
+  it.live("tells an agent at once that the project needs trusting", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const failed = yield* service
+        .diagnostics({ cwd: checkout.cwd, relativePath: FILE })
+        .pipe(Effect.flip);
+      expect(failed).toMatchObject({
+        reason: "trust-needed",
+        message: "The language server needs the user to trust this project in Astrolabe.",
+      });
+      const other = yield* makeCheckout(SOURCE);
+      const located = yield* service
+        .locate({ cwd: other.cwd, relativePath: FILE, line: 1, kind: "definition" })
+        .pipe(Effect.flip);
+      expect(located.reason).toBe("trust-needed");
+    }).pipe(Effect.scoped, Effect.provide(untrusted)),
+  );
+
+  it.live("runs a machine's safe server restricted, and swaps it as trust comes and goes", () =>
+    withMachineServer((specs) =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        const session = yield* openSession(checkout);
+        expect(yield* session.state("ready")).toMatchObject({
+          name: "Machine",
+          source: "path",
+          restricted: true,
+        });
+        yield* service.trustProject(checkout.cwd);
+        yield* session.state("starting");
+        expect(yield* session.state("ready")).toMatchObject({
+          name: "Fake",
+          source: "project",
+          restricted: false,
+        });
+        yield* service.revokeProjectTrust(checkout.cwd);
+        yield* session.state("starting");
+        expect(yield* session.state("ready")).toMatchObject({ name: "Machine", restricted: true });
+        expect(yield* checkout.starts).toBe(3);
+      }).pipe(Effect.provide(layerFor({ specs, trusted: undefined }))),
+    ).pipe(Effect.scoped),
+  );
+
+  it.live("leaves a stopped server stopped when trust changes", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("trust-needed");
+      yield* service.stop({ cwd: checkout.cwd, server: "typescript" });
+      yield* session.state("stopped");
+      yield* service.trustProject(checkout.cwd);
+      yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      expect(yield* session.state("ready")).toMatchObject({ restricted: false });
+      expect(yield* checkout.starts).toBe(1);
+    }).pipe(Effect.scoped, Effect.provide(untrusted)),
+  );
+
+  it.live("shares trust between a repository's worktrees", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const main = yield* makeCheckout(SOURCE);
+      yield* git(main.cwd, "init", "-q");
+      yield* git(main.cwd, "add", "-A");
+      yield* git(main.cwd, "commit", "-q", "-m", "first");
+      const parent = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-worktree-" });
+      const cwd = `${parent}/linked`;
+      yield* git(main.cwd, "worktree", "add", "-q", "-b", "linked", cwd);
+      const linked = { ...main, cwd };
+      const first = yield* openSession(main);
+      const second = yield* openSession(linked);
+      yield* first.state("trust-needed");
+      yield* second.state("trust-needed");
+      yield* service.trustProject(main.cwd);
+      yield* first.state("ready");
+      yield* second.state("ready");
+      expect((yield* service.check(cwd)).trusted).toBe(true);
+      yield* service.revokeProjectTrust(cwd);
+      yield* first.state("trust-needed");
+      yield* second.state("trust-needed");
+      expect((yield* service.check(main.cwd)).trusted).toBe(false);
+    }).pipe(Effect.scoped, Effect.provide(untrusted)),
+  );
+});
+
+/** A server's log subscription: each item, and the lines and trace entries so far. */
+const openLogs = Effect.fn("openLogs")(function* (checkout: Checkout) {
+  const service = yield* LanguageServers.LanguageServers;
+  const items = yield* Queue.unbounded<LanguageServerLogItem, Cause.Done | LanguageServerError>();
+  const fiber = yield* service
+    .logs({ cwd: checkout.cwd, server: "typescript" })
+    .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+  const seen: Array<LanguageServerLogItem> = [];
+  const lines = () => seen.flatMap((item) => item.lines);
+  const trace = () => seen.flatMap((item) => item.trace);
+  const until = <A>(found: () => A | undefined) =>
+    Effect.gen(function* () {
+      for (;;) {
+        const result = found();
+        if (result !== undefined) return result;
+        seen.push(yield* Queue.take(items));
+      }
+    });
+  return { seen, lines, trace, until, close: Fiber.interrupt(fiber) };
+});
+
+describe("LanguageServers logs", () => {
+  it.live("streams a server's stderr and messages, keeping them across its restarts", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE, { crashTimes: 1 });
+      const logs = yield* openLogs(checkout);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* logs.until(() => logs.lines().find((line) => line.text === "fake is starting"));
+      const lines = logs.lines();
+      expect(lines.find((line) => line.text === "boom")).toMatchObject({ source: "stderr" });
+      expect(lines.find((line) => line.text === "fake is starting")).toMatchObject({
+        source: "log",
+        severity: "info",
+      });
+      yield* logs.until(() => logs.lines().find((line) => line.text === "fake wants a look"));
+      expect(logs.lines().find((line) => line.text === "fake wants a look")).toMatchObject({
+        source: "message",
+        severity: "warning",
+      });
+      const info = yield* logs.until(() =>
+        logs.seen.flatMap((item) => item.state?.info ?? []).findLast((i) => i.state === "ready"),
+      );
+      expect(info).toMatchObject({
+        binary: `${checkout.cwd}/fake-server.mjs`,
+        cwd: checkout.cwd,
+        version: "9.9.9",
+      });
+      expect(info.pid).toBeGreaterThan(0);
+      expect(JSON.parse(info.capabilities!)).toMatchObject({ referencesProvider: true });
+
+      yield* logs.close;
+      const again = yield* openLogs(checkout);
+      yield* again.until(() => again.seen[0]);
+      const [snapshot] = again.seen;
+      expect(snapshot?.type).toBe("snapshot");
+      expect(snapshot?.lines.map((line) => line.text)).toContain("boom");
+      yield* service.stop({ cwd: checkout.cwd, server: "typescript" });
+      const stopped = yield* again.until(() =>
+        again.seen.flatMap((item) => item.state?.info ?? []).find((i) => i.state === "stopped"),
+      );
+      expect(stopped).toMatchObject({ pid: null, capabilities: null });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("hands a burst of output over in batches", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE, { chatter: 400 });
+      const logs = yield* openLogs(checkout);
+      yield* openSession(checkout);
+      yield* logs.until(() => logs.lines().find((line) => line.text === "chatter 400"));
+      expect(logs.seen.length).toBeLessThan(40);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("records a trace only while it is on, and only while someone reads it", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const target = { cwd: checkout.cwd, server: "typescript" } as const;
+      const refused = yield* service.setTrace({ ...target, enabled: true }).pipe(Effect.flip);
+      expect(refused.reason).toBe("not-running");
+      const logs = yield* openLogs(checkout);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics();
+      expect(logs.trace()).toEqual([]);
+
+      yield* service.setTrace({ ...target, enabled: true });
+      yield* session.request(1, "textDocument/hover", {
+        textDocument: { uri: checkout.uri },
+        position: { line: 0, character: 6 },
+      });
+      yield* logs.until(() => logs.trace().find((entry) => entry.direction === "received"));
+      expect(
+        logs
+          .trace()
+          .find((entry) => entry.direction === "sent")
+          ?.text.includes("textDocument/hover"),
+      ).toBe(true);
+
+      yield* service.setTrace({ ...target, enabled: false });
+      yield* logs.until(() =>
+        logs.seen.some((item) => item.state?.tracing === false) ? true : undefined,
+      );
+      const before = logs.trace().length;
+      yield* session.request(2, "textDocument/hover", {
+        textDocument: { uri: checkout.uri },
+        position: { line: 0, character: 6 },
+      });
+      const off = yield* openLogs(checkout);
+      yield* off.until(() => off.seen[0]);
+      expect(off.seen[0]?.trace).toHaveLength(before);
+      yield* off.close;
+
+      // With the last reader gone it stops, and what it held goes.
+      yield* service.setTrace({ ...target, enabled: true });
+      yield* logs.close;
+      const after = yield* openLogs(checkout);
+      yield* after.until(() => after.seen[0]);
+      expect(after.seen[0]).toMatchObject({ trace: [], state: { tracing: false } });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 });

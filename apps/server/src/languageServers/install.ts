@@ -28,7 +28,7 @@ import {
   type ReleaseAsset,
   type ReleaseSource,
 } from "./registry.ts";
-import { parseJson, stringifyJson } from "./json.ts";
+import { parseJson } from "./json.ts";
 import { readTar } from "./tar.ts";
 
 /**
@@ -59,6 +59,8 @@ export type Download =
 export type Resolution =
   | { readonly type: "ready"; readonly server: ResolvedServer }
   | { readonly type: "download"; readonly name: string; readonly download: Download }
+  /** An untrusted checkout's server that won't start until it is trusted; `message` says why. */
+  | { readonly type: "trust-needed"; readonly name: string; readonly message: string }
   | { readonly type: "unavailable"; readonly message: string };
 
 /** "rust-analyzer 2026-11-02 (MIT OR Apache-2.0) needs downloading from GitHub." */
@@ -80,7 +82,6 @@ class InstallError extends Data.TaggedError("InstallError")<{
 
 export const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 const COMPLETE = ".astrolabe-complete";
-const CONSENT = "download-consent.json";
 const PROBE_TIMEOUT = Duration.seconds(10);
 const GO_INSTALL_TIMEOUT = Duration.minutes(10);
 const VERSION = /\d+\.\d+(?:\.\d+)?/;
@@ -219,7 +220,11 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
   });
 
   /** On the machine: a known install path first, then PATH. */
-  const installed = Effect.fn("LanguageServers.installed")(function* (launch: Launch, cwd: string) {
+  const installed = Effect.fn("LanguageServers.installed")(function* (
+    launch: Launch,
+    cwd: string,
+    probing: boolean,
+  ) {
     const candidates = (launch.knownPaths ?? []).flatMap((known) =>
       known.startsWith("~/") ? (home === null ? [] : [path.join(home, known.slice(2))]) : [known],
     );
@@ -235,7 +240,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     }
     for (const file of candidates) {
       if (!(yield* exists(file))) continue;
-      const version = yield* probe(file, launch, cwd);
+      const version = probing ? yield* probe(file, launch, cwd) : "";
       if (version !== null) return { file, version };
     }
     return null;
@@ -298,13 +303,18 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           )
         : path.join(folder, `${download.go.name}${platform === "win32" ? ".exe" : ""}`);
 
-  /** The first launch whose toolchain the checkout has (and trust allows) decides. */
-  const resolve = Effect.fn("LanguageServers.resolve")(function* (
+  /**
+   * The first launch whose toolchain the checkout has (and trust allows) decides. Without trust
+   * nothing of the checkout's runs: not its binaries, nor its interpreter, which basedpyright would
+   * start to find its imports.
+   */
+  const walk = Effect.fn("LanguageServers.walk")(function* (
     cwd: string,
     spec: LanguageServerSpec,
     trusted: boolean,
+    probing: boolean,
   ) {
-    const python = yield* pythonOf(cwd);
+    const python = trusted ? yield* pythonOf(cwd) : null;
     const data = path.join(
       options.cacheDir,
       "data",
@@ -356,14 +366,14 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           reportsQuiescence: listed.reportsQuiescence === true,
         },
       });
-      if (launch.projectBinary !== undefined) {
+      if (trusted && launch.projectBinary !== undefined) {
         const file = path.join(cwd, fillPlatform(launch.projectBinary.path, platform, arch));
         if (yield* exists(file)) {
           const found = yield* command(file, launch.projectBinary.runWith, launch);
           return ready(file, found, "project", null);
         }
       }
-      const onMachine = yield* installed(launch, cwd);
+      const onMachine = yield* installed(launch, cwd, probing);
       if (onMachine !== null) {
         return ready(
           onMachine.file,
@@ -395,14 +405,34 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     return { type: "unavailable", message: spec.missing } satisfies Resolution;
   });
 
-  const consentFile = path.join(options.cacheDir, CONSENT);
-  const consented = exists(consentFile);
-  const consent = fileSystem.makeDirectory(options.cacheDir, { recursive: true }).pipe(
-    Effect.andThen(fileSystem.writeFileString(consentFile, stringifyJson({ consented: true }))),
-    Effect.mapError(
-      (cause) => new InstallError({ message: "Could not record the download consent.", cause }),
-    ),
-  );
+  /** What runs for a checkout. Untrusted, only restricted-safe launches already here do. */
+  const resolve = Effect.fn("LanguageServers.resolve")(function* (
+    cwd: string,
+    spec: LanguageServerSpec,
+    trusted: boolean,
+  ) {
+    const allowed = yield* walk(cwd, spec, trusted, true);
+    if (trusted || allowed.type === "ready") return allowed;
+    // What trust would bring, unprobed: a probe runs in the checkout, and rustup's proxy obeys
+    // the checkout's toolchain file.
+    const wanted = yield* walk(cwd, spec, true, false);
+    switch (wanted.type) {
+      case "ready":
+        return {
+          type: "trust-needed",
+          name: wanted.server.name,
+          message: `${wanted.server.name} can run code from this project.`,
+        } satisfies Resolution;
+      case "download":
+        return {
+          type: "trust-needed",
+          name: wanted.name,
+          message: describeDownload(wanted.download),
+        } satisfies Resolution;
+      default:
+        return wanted;
+    }
+  });
 
   /** Fills a staging folder and swaps it in for `folder` once it is complete. */
   const install = Effect.fn("LanguageServers.install")(function* (
@@ -668,7 +698,16 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     Effect.ignore({ log: "Warn", message: "Could not keep a server's files out of git." }),
   );
 
-  return { resolve, download, consented, consent, excludeFromGit };
+  /** The folder every checkout of `cwd`'s repository shares; null for a folder without git. */
+  const repositoryOf = Effect.fn("LanguageServers.repositoryOf")(function* (cwd: string) {
+    const found = yield* run("git", ["rev-parse", "--git-common-dir"], {
+      cwd,
+      timeout: PROBE_TIMEOUT,
+    });
+    return found === null || found.code !== 0 ? null : path.resolve(cwd, found.output.trim());
+  });
+
+  return { resolve, download, excludeFromGit, repositoryOf };
 });
 
 export type Installer = Effect.Success<ReturnType<typeof makeInstaller>>;

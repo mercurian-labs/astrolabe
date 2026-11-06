@@ -135,8 +135,8 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `role=toolbar[name=Change]`: **Restore this change**, **Previous change**, **Next change**;
   Cmd+Shift+' shows every change; Cmd+F8 / Cmd+Shift+F8 step.
 - **Language server** (`apps/server/src/languageServers/`, client `packages/editor/src/lsp/`):
-  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs a
-  download` (**Download**), or failed / stopped / paused to save memory (**Restart**). The
+  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs this
+  project trusted` (**Trust project**), or failed / stopped / paused to save memory (**Restart**). The
   toolchain is the checkout's own TypeScript (7 runs `tsc --lsp`, ≤6 typescript-language-server),
   else a cached download. Problems underline with the message below the line
   (`.atlas-diagnostic-messages`; F8 / Shift+F8 step); completion as you type; hover
@@ -282,7 +282,7 @@ now**. With the **server** project that makes two projects.
    graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
    the graph re-roots on it; unpress it and it stays.
 10. Language server: in the `.ts` file wait for the header status `TypeScript <version>` (a
-    fresh machine asks to **Download** first). Type `const x: number = "a";`: Saving… → Saved
+    an untrusted project asks to **Trust project** first). Type `const x: number = "a";`: Saving… → Saved
     and a wavy underline with `.atlas-diagnostic-messages`.
 11. Right-click a call: the cursor moves there and the menu lists the language rows; choose
     **Find All References**: a `repo-locations:` tab opens beside with `[data-excerpt]`

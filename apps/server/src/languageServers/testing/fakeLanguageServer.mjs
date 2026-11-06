@@ -1,7 +1,7 @@
-// A language server for tests, configured by `fake-server.json` in its working directory, as
-// each option's use says. `pushes` publishes instead of answering pulls, nothing at first and the
-// real ones `pushes.after` ms later; `quiescentOn` answers pulls with nothing until that file
-// exists, then reports it finished. Every "bad" is an error diagnostic.
+// A language server for tests, configured by `fake-server.json` in its working directory.
+// `pushes` publishes instead of answering pulls, nothing at first and the real ones `pushes.after`
+// ms later; `quiescentOn` answers pulls with nothing until that file exists, then reports it
+// finished; `chatter` writes that many stderr lines at startup. Every "bad" is an error diagnostic.
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 
@@ -108,8 +108,14 @@ const handle = (message) => {
         process.stderr.write("boom\n", () => process.exit(1));
         return;
       }
+      for (let line = 1; line <= (config.chatter ?? 0); line++) {
+        process.stderr.write(`chatter ${line}\n`);
+      }
+      write({ method: "window/logMessage", params: { type: 3, message: "fake is starting" } });
+      write({ method: "window/showMessage", params: { type: 2, message: "fake wants a look" } });
       const answer = () => {
         reply({
+          serverInfo: { name: "fake", version: "9.9.9" },
           capabilities: {
             textDocumentSync: config.save ? { openClose: true, change: 2, save: true } : 2,
             ...(config.pushes
