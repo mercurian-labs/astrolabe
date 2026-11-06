@@ -4,10 +4,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canvasBounds,
+  canvasChangeSections,
+  canvasChangeSummary,
   canvasData,
   canvasDrawingProblems,
+  diffCanvas,
   parseCanvas,
   placeCanvas,
+  reviewCanvas,
   serializeCanvas,
   type CanvasBounds,
   type CanvasDrawing,
@@ -34,6 +38,127 @@ describe("serializeCanvas", () => {
     expect(serializeCanvas({})).toBe("{}");
     expect(serializeCanvas({ nodes: [], edges: [] })).toBe('{\n\t"nodes":[],\n\t"edges":[]\n}');
     expect(serializeCanvas({ c: { d: {} } })).toBe('{\n\t"c":{\n\t\t"d":{}\n\t}\n}');
+  });
+});
+
+describe("diffCanvas", () => {
+  const card = { id: "a", type: "text", text: "One", x: 0, y: 0, width: 250, height: 60 };
+  const arrow = { id: "e", fromNode: "a", toNode: "b" };
+  const other = { ...card, id: "b", text: "Two" };
+  const marks = (before: unknown, after: unknown) =>
+    diffCanvas(before, after).changes.map(({ id, item, mark, also }) => [id, item, mark, also]);
+
+  it.each([
+    ["a moved card", { x: 20 }, "moved", []],
+    ["a resized card", { width: 300 }, "moved", []],
+    ["a recoloured card", { color: "1" }, "restyled", []],
+    ["new text", { text: "Uno" }, "text", []],
+    ["a key it can't read", { note: true }, "text", []],
+    ["text moved and recoloured", { text: "Uno", x: 1, color: "2" }, "text", ["restyled", "moved"]],
+    ["a recoloured move", { x: 1, color: "2" }, "restyled", ["moved"]],
+  ])("reads %s", (_, change, mark, also) => {
+    expect(marks({ nodes: [card] }, { nodes: [{ ...card, ...change }] })).toEqual([
+      ["a", "card", mark, also],
+    ]);
+  });
+
+  it("matches by id, ignoring key order, and sees what's added and removed", () => {
+    const reordered = { height: 60, width: 250, y: 0, x: 0, text: "One", type: "text", id: "a" };
+    expect(marks({ nodes: [card] }, { nodes: [reordered] })).toEqual([]);
+    expect(marks({ nodes: [card] }, { nodes: [other] })).toEqual([
+      ["b", "card", "added", []],
+      ["a", "card", "removed", []],
+    ]);
+  });
+
+  it.each([
+    ["a new label", { label: "why" }, "text"],
+    ["a new target", { toNode: "c" }, "text"],
+    ["a new colour", { color: "3" }, "restyled"],
+    ["new ends", { toEnd: "none" }, "restyled"],
+    ["new sides", { fromSide: "top" }, "moved"],
+  ])("reads an arrow with %s", (_, change, mark) => {
+    expect(marks({ edges: [arrow] }, { edges: [{ ...arrow, ...change }] })).toEqual([
+      ["e", "arrow", mark, []],
+    ]);
+  });
+
+  it("counts a card type it can't draw, and what's outside the cards", () => {
+    const unknown = { id: "u", type: "sticker", x: 0, y: 0, width: 1, height: 1 };
+    expect(diffCanvas({ nodes: [unknown] }, { nodes: [{ ...unknown, shine: 1 }] })).toMatchObject({
+      changes: [{ id: "u", mark: "text", name: "sticker card" }],
+      rest: false,
+    });
+    expect(diffCanvas({ nodes: [], extra: 1 }, { nodes: [], extra: 2 }).rest).toBe(true);
+  });
+
+  it("names what changed and what it said before", () => {
+    const text = (said: string) => ({ ...card, text: said });
+    const [change] = diffCanvas(
+      { nodes: [text("# Title\nOld line\nSame")] },
+      { nodes: [text("# Title\nNew line\nSame")] },
+    ).changes;
+    expect(change).toMatchObject({ name: "Title", was: "Old line" });
+    const [linked] = diffCanvas(
+      { nodes: [card, other], edges: [] },
+      { nodes: [card, other], edges: [{ ...arrow, label: "why" }] },
+    ).changes;
+    expect(linked).toMatchObject({ item: "arrow", name: "One → Two: why", was: null });
+  });
+
+  it("uses the ids the board draws under", () => {
+    const repeated = { nodes: [card, { ...card, text: "Again" }] };
+    const data = canvasData(repeated);
+    const [change] = diffCanvas({ nodes: [card] }, repeated).changes;
+    expect(data.nodes.map((node) => node.id)).toContain(change?.id);
+  });
+});
+
+describe("reviewCanvas", () => {
+  const card = { id: "a", type: "text", text: "One", x: 0, y: 0, width: 250, height: 60 };
+  const gone = { ...card, id: "gone", text: "Gone" };
+  const kept = { ...card, id: "kept", x: 300 };
+  const before = {
+    nodes: [card, gone, kept],
+    edges: [
+      { id: "ag", fromNode: "a", toNode: "gone" },
+      { id: "ak", fromNode: "a", toNode: "kept" },
+    ],
+  };
+  const after = {
+    nodes: [{ ...card, text: "Uno" }, kept, { ...card, id: "new" }],
+    edges: [{ id: "ak", fromNode: "a", toNode: "kept", color: "1" }],
+  };
+
+  it("draws the new version with what it removed beneath, marked", () => {
+    const review = reviewCanvas(before, after);
+    expect(review.data.nodes.map((node) => node.id)).toEqual(["gone", "a", "kept", "new"]);
+    expect(review.data.edges.map((edge) => edge.id)).toEqual(["ak", "ag"]);
+    expect(review.marks).toEqual({
+      cards: { a: "text", new: "added", gone: "removed" },
+      arrows: { ak: "restyled", ag: "removed" },
+    });
+    expect(review.changes.every((change) => change.drawn)).toBe(true);
+  });
+
+  it("says when a change can't be found on the board", () => {
+    const unknown = { id: "u", type: "sticker" };
+    const review = reviewCanvas({ nodes: [] }, { nodes: [unknown] });
+    expect(review.changes).toMatchObject([{ id: "u", drawn: false }]);
+  });
+
+  it("treats a file added or deleted as all added or all removed", () => {
+    expect(canvasChangeSummary(reviewCanvas({}, before).changes)).toBe("5 added");
+    expect(canvasChangeSummary(reviewCanvas(before, {}).changes)).toBe("5 removed");
+  });
+
+  it("folds moves below what to read first", () => {
+    const changes = [{ mark: "moved" }, { mark: "text" }, { mark: "added" }] as const;
+    expect(canvasChangeSections(changes)).toEqual({
+      changed: [{ mark: "added" }, { mark: "text" }],
+      moved: [{ mark: "moved" }],
+    });
+    expect(canvasChangeSummary(changes)).toBe("1 added, 1 changed, 1 moved");
   });
 });
 

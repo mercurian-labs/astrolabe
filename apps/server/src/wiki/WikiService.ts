@@ -21,6 +21,8 @@ import {
   type WikiChanges,
   type WikiFiles,
   type WikiIndex,
+  canvasMerge,
+  canvasMergeMessages,
   mergeMarkdown,
   parseBase,
   queryBase,
@@ -38,6 +40,7 @@ import {
   type ThreadId,
   type WikiAmendInput,
   type WikiAmendResult,
+  type WikiCanvasMergeNotes,
   type WikiChangeRequest,
   type WikiChangeRequestDetail,
   WikiChangeRequestId,
@@ -323,6 +326,23 @@ interface StoredChangeRequest {
   readonly head: string;
 }
 
+/** The way out of a canvas conflict: an amendment can't write one until agents can draw. */
+const SETTLE_IN_WORKTREE =
+  "A canvas is settled in the change request's worktree: edit it there so the clashing cards agree with main, save the edits to the change request, then merge again.";
+
+/** Two commits merged as a tree, or what stopped them, with what a canvas's merge had to say. */
+type WikiTreeMerge =
+  | {
+      readonly tree: string;
+      readonly conflicts: readonly [];
+      readonly canvases: ReadonlyArray<WikiCanvasMergeNotes>;
+    }
+  | {
+      readonly tree: null;
+      readonly conflicts: ReadonlyArray<string>;
+      readonly canvases: ReadonlyArray<WikiCanvasMergeNotes>;
+    };
+
 /** Derived data keyed by immutable object ids, so an entry is never stale, only evicted. */
 const lru = <A>(capacity: number) => {
   const entries = new Map<string, A>();
@@ -425,6 +445,8 @@ const make = Effect.gen(function* () {
   const editTimes = lru<WikiFileTimes>(24);
   const corpora = lru<BaseCorpus>(8);
   const fileListings = lru<ReturnType<typeof parseFileListing>>(8);
+  // A change request's every read asks for its preview, and a canvas's merge reads three blobs.
+  const mergePreviews = lru<WikiTreeMerge>(64);
 
   const newId = crypto.randomUUIDv4().pipe(
     Effect.orDie,
@@ -659,52 +681,86 @@ const make = Effect.gen(function* () {
     );
 
   /**
-   * Merges a change request's head into main as a tree. Git's line merge goes first; when it
-   * conflicts only on notes, each conflicted note is merged again by paragraph and sentence,
-   * so edits to different sentences of one paragraph still merge.
+   * Merges `theirs` into `ours` as a tree. Git's line merge goes first. Every canvas changed on
+   * both sides is then merged by card, whatever git made of it: git can merge an arrow onto a
+   * deleted card without a conflict. With `notes`, a note git conflicted on is merged again by
+   * paragraph and sentence, so edits to different sentences of one paragraph still merge.
    */
-  const mergeIntoMain = Effect.fn("WikiService.mergeIntoMain")(function* (
+  const mergeTrees = Effect.fn("WikiService.mergeTrees")(function* (
     wiki: WikiRecord,
-    main: string,
-    head: string,
-  ): Effect.fn.Return<
-    | { readonly tree: string; readonly conflicts: readonly [] }
-    | { readonly tree: null; readonly conflicts: ReadonlyArray<string> },
-    WikiError
-  > {
+    ours: string,
+    theirs: string,
+    options: { readonly notes: boolean },
+  ): Effect.fn.Return<WikiTreeMerge, WikiError> {
     const merged = yield* runGit(
       "mergeTree",
       wiki.root,
-      ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", main, head],
+      ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", ours, theirs],
       { allowExitCodes: [1] },
     );
     const { tree, conflicts } = parseMergeTree(merged.stdout);
-    if (merged.exitCode === 0) return { tree, conflicts: [] };
-    if (!conflicts.length || !conflicts.every(isWikiDocument)) return { tree: null, conflicts };
-    const base = yield* runGit("mergeBase", wiki.root, ["merge-base", main, head], {
+    const clean = merged.exitCode === 0;
+    const asGitLeftIt: WikiTreeMerge = clean
+      ? { tree, conflicts: [], canvases: [] }
+      : { tree: null, conflicts, canvases: [] };
+    if (!clean && conflicts.length === 0) return asGitLeftIt;
+    const base = yield* runGit("mergeBase", wiki.root, ["merge-base", ours, theirs], {
       allowExitCodes: [1],
     });
-    if (base.exitCode !== 0) return { tree: null, conflicts };
+    if (base.exitCode !== 0) return asGitLeftIt;
     const baseCommit = base.stdout.trim();
+    const changedTo = (tip: string) =>
+      runGit("diffNames", wiki.root, [
+        "diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        baseCommit,
+        tip,
+      ]).pipe(Effect.map((diff) => diff.stdout.split("\0").filter(isCanvasFile)));
+    const onOurs = new Set(yield* changedTo(ours));
+    const onBoth = (yield* changedTo(theirs)).filter((file) => onOurs.has(file));
+    const retried = conflicts.filter(
+      (file) => isCanvasFile(file) || (options.notes && isWikiDocument(file)),
+    );
+    const files = [...new Set([...onBoth, ...retried])];
+    if (files.length === 0) return asGitLeftIt;
     const sides = yield* readObjects(
       wiki.root,
-      conflicts.flatMap((file) => [`${baseCommit}:${file}`, `${main}:${file}`, `${head}:${file}`]),
+      files.flatMap((file) => [`${baseCommit}:${file}`, `${ours}:${file}`, `${theirs}:${file}`]),
     );
     const resolved: Record<string, string> = {};
-    const unresolved: string[] = [];
-    conflicts.forEach((file, position) => {
-      const [ancestor, ours, theirs] = sides.slice(position * 3, position * 3 + 3);
-      const outcome =
-        // Never the Markdown merge: it would read a canvas's JSON as prose.
-        ancestor != null && ours != null && theirs != null && !isCanvasFile(file)
-          ? mergeMarkdown(ancestor, ours, theirs)
-          : ({ status: "conflict" } as const);
+    const stuck = conflicts.filter((file) => !files.includes(file));
+    const canvases: WikiCanvasMergeNotes[] = [];
+    files.forEach((file, position) => {
+      const [ancestor, mine, other] = sides.slice(position * 3, position * 3 + 3);
+      const conflicted = conflicts.includes(file);
+      if (ancestor == null || mine == null || other == null) {
+        // Added on both sides, or deleted on one: nothing to merge by card, so git's answer stands.
+        if (conflicted) stuck.push(file);
+        return;
+      }
+      if (mine === other && !conflicted) return;
+      if (!isCanvasFile(file)) {
+        const outcome = mergeMarkdown(ancestor, mine, other);
+        if (outcome.status === "merged") resolved[file] = outcome.text;
+        else stuck.push(file);
+        return;
+      }
+      const outcome = canvasMerge(ancestor, mine, other);
+      const notes = outcome.status === "merged" ? outcome.resolved : outcome.conflicts;
+      if (notes.length > 0) canvases.push({ file, notes: canvasMergeMessages(notes) });
       if (outcome.status === "merged") resolved[file] = outcome.text;
-      else unresolved.push(file);
+      else stuck.push(file);
     });
-    if (unresolved.length) return { tree: null, conflicts: unresolved };
-    return { tree: yield* buildTree(wiki.root, tree, resolved), conflicts: [] };
+    if (stuck.length > 0) return { tree: null, conflicts: stuck, canvases };
+    if (Object.keys(resolved).length === 0) return { tree, conflicts: [], canvases };
+    return { tree: yield* buildTree(wiki.root, tree, resolved), conflicts: [], canvases };
   });
+
+  /** Merges a change request's head into main as a tree. */
+  const mergeIntoMain = (wiki: WikiRecord, main: string, head: string) =>
+    mergeTrees(wiki, main, head, { notes: true });
 
   /** The folder that has `ref` checked out: the wiki's own, one of its worktrees, or none. */
   const checkoutHolding = Effect.fn("WikiService.checkoutHolding")(function* (
@@ -1382,28 +1438,16 @@ const make = Effect.gen(function* () {
               "Temporary inverse base",
               env,
             );
-            const merged = yield* runGit(
-              "revertMerge",
-              wiki.root,
-              [
-                "merge-tree",
-                "--write-tree",
-                "--name-only",
-                "--no-messages",
-                "-z",
-                stored.head,
-                inverse,
-              ],
-              { allowExitCodes: [1] },
-            );
-            if (merged.exitCode !== 0) {
+            const merged = yield* mergeTrees(wiki, stored.head, inverse, { notes: false });
+            if (merged.tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message:
-                  "This amendment overlaps later work in the change request; reconcile it with a new amendment instead.",
+                message: merged.conflicts.some(isCanvasFile)
+                  ? `This amendment overlaps later work in the change request, in ${merged.conflicts.join(", ")}. ${SETTLE_IN_WORKTREE}`
+                  : "This amendment overlaps later work in the change request; reconcile it with a new amendment instead.",
               });
             }
-            const { tree } = parseMergeTree(merged.stdout);
+            const { tree, canvases } = merged;
             const names = (yield* runGit("revertDiff", wiki.root, [
               "diff",
               "--no-renames",
@@ -1425,7 +1469,7 @@ const make = Effect.gen(function* () {
             const subject = (yield* amendmentsOf(wiki, stored)).find(
               (amendment) => amendment.commit === commit,
             )?.subject;
-            return yield* land(
+            const landed = yield* land(
               wiki,
               { kind: "existing", stored },
               author,
@@ -1437,6 +1481,7 @@ const make = Effect.gen(function* () {
                 }),
               { reverts: commit },
             );
+            return canvases.length > 0 ? { ...landed, canvases } : landed;
           }),
         ),
       input.changeRequestId,
@@ -1664,7 +1709,11 @@ const make = Effect.gen(function* () {
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. Amend the change request to reconcile, then merge again.`,
+                message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. ${
+                  conflicts.some(isCanvasFile)
+                    ? SETTLE_IN_WORKTREE
+                    : "Amend the change request to reconcile, then merge again."
+                }`,
               });
             }
             const now = yield* DateTime.now;
@@ -2045,14 +2094,18 @@ const make = Effect.gen(function* () {
     main: string,
   ): Effect.fn.Return<WikiMergePreview, WikiError> {
     if (yield* isAncestor(wiki.root, stored.head, main)) {
-      return { status: "up-to-date", conflicts: [], errors: [] };
+      return { status: "up-to-date", conflicts: [], errors: [], canvases: [] };
     }
-    const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
-    if (tree === null) return { status: "conflict", conflicts, errors: [] };
+    const key = `${main}:${stored.head}`;
+    const merge = mergePreviews.get(key) ?? (yield* mergeIntoMain(wiki, main, stored.head));
+    mergePreviews.set(key, merge);
+    const { tree, conflicts, canvases } = merge;
+    if (tree === null) return { status: "conflict", conflicts, errors: [], canvases };
     return {
       status: "clean",
       conflicts: [],
       errors: (yield* snapshotAt(wiki, tree)).index.errors,
+      canvases,
     };
   });
 
@@ -2104,7 +2157,7 @@ const make = Effect.gen(function* () {
             })),
             mergePreview:
               stored.record.status === "merged"
-                ? { status: "up-to-date" as const, conflicts: [], errors: [] }
+                ? { status: "up-to-date" as const, conflicts: [], errors: [], canvases: [] }
                 : yield* mergePreview(wiki, stored, main),
             errors: (yield* snapshotAt(wiki, stored.head)).index.errors,
           } satisfies WikiChangeRequestDetail;

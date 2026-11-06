@@ -559,11 +559,19 @@ export const WikiFileChange = Schema.Struct({
 });
 export type WikiFileChange = typeof WikiFileChange.Type;
 
+/** What merging one canvas settled by itself, or what stops it, said for a person. */
+export const WikiCanvasMergeNotes = Schema.Struct({
+  file: Schema.String,
+  notes: Schema.Array(Schema.String),
+});
+export type WikiCanvasMergeNotes = typeof WikiCanvasMergeNotes.Type;
+
 export const WikiMergePreview = Schema.Struct({
   status: Schema.Literals(["clean", "conflict", "up-to-date"]),
   conflicts: Schema.Array(Schema.String),
   /** Index errors standing on the merged result. */
   errors: Schema.Array(WikiIndexError),
+  canvases: Schema.Array(WikiCanvasMergeNotes).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 });
 export type WikiMergePreview = typeof WikiMergePreview.Type;
 
@@ -650,6 +658,8 @@ export const WikiAmendResult = Schema.Struct({
   amendment: Schema.String,
   /** Index errors standing after the amendment, stale map edges included. */
   errors: Schema.Array(WikiIndexError),
+  /** What a revert's merge settled by itself in canvases: it has no preview to say so. */
+  canvases: Schema.optional(Schema.Array(WikiCanvasMergeNotes)),
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
 

@@ -1,6 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { CommandId, ProjectId, ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
+import { serializeCanvas } from "@mercurian/wiki";
+import {
+  CommandId,
+  ProjectId,
+  ThreadId,
+  type WikiChangeRequestId,
+  type WikiError,
+  WikiId,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -112,6 +120,17 @@ const git = (cwd: string, args: ReadonlyArray<string>, stdin?: string) =>
       }),
     ),
     Effect.map((result) => result.stdout.trim()),
+    Effect.provide(ProcessRunner.layer),
+    Effect.orDie,
+  );
+
+/** What git itself makes of a command, as `merge-tree` answers with its exit code. */
+const gitExit = (cwd: string, args: ReadonlyArray<string>) =>
+  ProcessRunner.ProcessRunner.pipe(
+    Effect.flatMap((runner) =>
+      runner.run({ command: "git", args: ["-C", cwd, ...args], allowNonZeroExit: true }),
+    ),
+    Effect.map((result) => result.exitCode),
     Effect.provide(ProcessRunner.layer),
     Effect.orDie,
   );
@@ -626,31 +645,205 @@ it.effect("refuses a merge that conflicts with main", () =>
   ),
 );
 
-it.effect("sends a canvas both sides changed to a conflict, never the Markdown merge", () =>
+const boardCard = (id: string, text: string) => ({
+  id,
+  type: "text",
+  text,
+  x: 0,
+  y: 0,
+  width: 250,
+  height: 60,
+});
+const boardArrow = (id: string, fromNode: string, toNode: string) => ({ id, fromNode, toNode });
+const boardFile = (nodes: ReadonlyArray<unknown>, edges: ReadonlyArray<unknown> = []) =>
+  serializeCanvas({ nodes, edges });
+
+/** A board committed on main, and a change request with a worktree to draw on it in. */
+const boardChangeRequest = (harness: Harness, board: string) =>
+  Effect.gen(function* () {
+    const opened = yield* changeRequestWorktree(harness, { "Board.canvas": board });
+    const editBoth = (cr: string, main: string) =>
+      Effect.gen(function* () {
+        const saved = yield* saveBoard(cr);
+        yield* write(opened.root, { "Board.canvas": main });
+        yield* git(opened.root, ["commit", "--quiet", "-am", "Board on main"]);
+        return saved;
+      });
+    const saveBoard = (board: string) =>
+      Effect.gen(function* () {
+        yield* write(opened.worktree, { "Board.canvas": board });
+        return yield* opened.wikis.saveWorktree(
+          { wikiId: opened.wikiId, changeRequestId: opened.changeRequestId, message: "Board" },
+          WikiService.person,
+        );
+      });
+    const preview = opened.wikis
+      .changeRequestsGet({ wikiId: opened.wikiId, changeRequestId: opened.changeRequestId })
+      .pipe(Effect.map((detail) => detail.mergePreview));
+    return { ...opened, editBoth, saveBoard, preview };
+  });
+
+const mergedBoard = (
+  { wikis, wikiId, root }: { wikis: WikiService.WikiService["Service"]; wikiId: WikiId; root: string },
+  changeRequestId: WikiChangeRequestId,
+) =>
+  Effect.gen(function* () {
+    yield* wikis.merge({ wikiId, changeRequestId });
+    return JSON.parse(yield* read(root, "Board.canvas")) as {
+      readonly nodes: ReadonlyArray<{ readonly id: string; readonly text?: string }>;
+      readonly edges: ReadonlyArray<{ readonly id: string }>;
+    };
+  });
+
+it.effect("sends the same sentence of a card changed on both sides to a conflict", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
-      const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const card = (text: string) => JSON.stringify({ nodes: [{ id: "a", type: "text", text }] });
-      yield* write(root, { "Board.canvas": card("old") });
-      yield* git(root, ["add", "."]);
-      yield* git(root, ["commit", "--quiet", "-m", "Board"]);
-      const opened = yield* wikis.amend(
-        { wikiId, message: "Open", changes: { "Beta.md": "# Beta\n\nGrows.\n" } },
-        agent("thread-a"),
+      const cr = yield* boardChangeRequest(harness, boardFile([boardCard("a", "old")]));
+      yield* cr.editBoth(
+        boardFile([boardCard("a", "from the change request")]),
+        boardFile([boardCard("a", "from main")]),
       );
-      const { changeRequestId } = opened.changeRequest;
-      const worktree = yield* harness.folder("worktree");
-      yield* git(root, ["worktree", "add", "--quiet", worktree, `cr/${changeRequestId}`]);
-      yield* write(worktree, { "Board.canvas": card("from the change request") });
-      yield* wikis.saveWorktree(
-        { wikiId, changeRequestId, message: "Board in the CR" },
+      const preview = yield* cr.preview;
+      assert.equal(preview.status, "conflict");
+      assert.deepEqual(preview.conflicts, ["Board.canvas"]);
+      assert.include(preview.canvases[0]?.notes[0], "both sides changed the same sentence");
+
+      const refused = yield* failure(
+        cr.wikis.merge({ wikiId: cr.wikiId, changeRequestId: cr.changeRequestId }),
+      );
+      assert.equal(refused.reason, "conflict");
+      assert.include(refused.message, "worktree");
+      assert.notInclude(refused.message, "Amend");
+
+      // The way out: the change request's worktree comes to agree with main.
+      yield* cr.saveBoard(boardFile([boardCard("a", "from main")]));
+      assert.equal((yield* cr.preview).status, "clean");
+    }),
+  ),
+);
+
+it.effect("merges cards on adjacent lines, which git calls a conflict", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const [a, b] = [boardCard("a", "Alpha"), boardCard("b", "Beta")];
+      const cr = yield* boardChangeRequest(harness, boardFile([a, b]));
+      yield* cr.editBoth(
+        boardFile([{ ...a, text: "Alpha, edited" }, b]),
+        boardFile([a, { ...b, text: "Beta, edited" }]),
+      );
+      const conflicted = yield* gitExit(cr.root, [
+        "merge-tree",
+        "--write-tree",
+        "main",
+        `cr/${cr.changeRequestId}`,
+      ]);
+      assert.equal(conflicted, 1);
+      const preview = yield* cr.preview;
+      assert.equal(preview.status, "clean");
+      assert.deepEqual(preview.canvases, []);
+      const merged = yield* mergedBoard(cr, cr.changeRequestId);
+      assert.deepEqual(
+        merged.nodes.map((node) => node.text),
+        ["Alpha, edited", "Beta, edited"],
+      );
+    }),
+  ),
+);
+
+it.effect("drops an arrow git merges cleanly onto a card main deleted, and says so", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const cards = ["a", "b", "c", "d", "e", "f"].map((id) => boardCard(id, id.toUpperCase()));
+      const cr = yield* boardChangeRequest(harness, boardFile(cards));
+      yield* cr.editBoth(
+        boardFile(cards, [boardArrow("af", "a", "f")]),
+        boardFile(cards.filter((card) => card.id !== "f")),
+      );
+      const gitAlone = yield* gitExit(cr.root, [
+        "merge-tree",
+        "--write-tree",
+        "main",
+        `cr/${cr.changeRequestId}`,
+      ]);
+      assert.equal(gitAlone, 0);
+      const preview = yield* cr.preview;
+      assert.equal(preview.status, "clean");
+      assert.equal(preview.canvases[0]?.file, "Board.canvas");
+      assert.include(preview.canvases[0]?.notes[0], "is dropped");
+      assert.deepEqual((yield* mergedBoard(cr, cr.changeRequestId)).edges, []);
+    }),
+  ),
+);
+
+it.effect("refuses a card's text edit against its delete, even where git merges both", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const cards = ["a", "b", "c", "d"].map((id) => boardCard(id, id.toUpperCase()));
+      const cr = yield* boardChangeRequest(harness, boardFile(cards));
+      yield* cr.editBoth(
+        boardFile(cards.map((card) => (card.id === "a" ? { ...card, text: "Edited" } : card))),
+        boardFile(cards.filter((card) => card.id !== "a")),
+      );
+      const preview = yield* cr.preview;
+      assert.equal(preview.status, "conflict");
+      assert.include(preview.canvases[0]?.notes[0], "edited on one side and deleted on the other");
+    }),
+  ),
+);
+
+it.effect("leaves a canvas whose JSON one side broke as a conflict, unrewritten", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const a = boardCard("a", "Alpha");
+      const cr = yield* boardChangeRequest(harness, boardFile([a]));
+      yield* cr.editBoth(boardFile([{ ...a, x: 10 }]), "{ not json");
+      const preview = yield* cr.preview;
+      assert.equal(preview.status, "conflict");
+      assert.equal(yield* read(cr.root, "Board.canvas"), "{ not json");
+    }),
+  ),
+);
+
+it.effect("reverts an amendment and drops the arrows later work drew on its cards", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const [a, b, c, d] = ["a", "b", "c", "d"].map((id) => boardCard(id, id.toUpperCase()));
+      const cr = yield* boardChangeRequest(harness, boardFile([a!, b!, c!]));
+      const added = yield* cr.saveBoard(boardFile([a!, b!, c!, d!]));
+      yield* cr.saveBoard(boardFile([a!, b!, c!, d!], [boardArrow("ad", "a", "d")]));
+      const reverted = yield* cr.wikis.revertAmendment(
+        { wikiId: cr.wikiId, changeRequestId: cr.changeRequestId, commit: added.commit },
         WikiService.person,
       );
-      yield* write(root, { "Board.canvas": card("from main") });
-      yield* git(root, ["commit", "--quiet", "-am", "Board on main"]);
-      const { mergePreview } = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
-      assert.equal(mergePreview.status, "conflict");
-      assert.deepEqual(mergePreview.conflicts, ["Board.canvas"]);
+      assert.include(reverted.canvases?.[0]?.notes[0], "is dropped");
+      const read = yield* cr.wikis.readFiles({
+        wikiId: cr.wikiId,
+        commit: reverted.commit,
+        paths: ["Board.canvas"],
+      });
+      assert.deepEqual(JSON.parse(read.files[0]?.text ?? ""), {
+        nodes: [a, b, c],
+        edges: [],
+      });
+    }),
+  ),
+);
+
+it.effect("refuses a revert that overlaps a later card, sending it to the worktree", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const a = boardCard("a", "old");
+      const cr = yield* boardChangeRequest(harness, boardFile([a]));
+      const first = yield* cr.saveBoard(boardFile([{ ...a, text: "second" }]));
+      yield* cr.saveBoard(boardFile([{ ...a, text: "third" }]));
+      const refused = yield* failure(
+        cr.wikis.revertAmendment(
+          { wikiId: cr.wikiId, changeRequestId: cr.changeRequestId, commit: first.commit },
+          WikiService.person,
+        ),
+      );
+      assert.equal(refused.reason, "conflict");
+      assert.include(refused.message, "worktree");
     }),
   ),
 );
@@ -1223,9 +1416,14 @@ it.effect("reports link types from both ends, and every type the wiki uses", () 
 );
 
 /** A change request opened by an agent, checked out in a worktree of its own. */
-const changeRequestWorktree = (harness: Harness) =>
+const changeRequestWorktree = (harness: Harness, onMain: Readonly<Record<string, string>> = {}) =>
   Effect.gen(function* () {
     const wiki = yield* registeredWiki(harness);
+    if (Object.keys(onMain).length > 0) {
+      yield* write(wiki.root, onMain);
+      yield* git(wiki.root, ["add", "."]);
+      yield* git(wiki.root, ["commit", "--quiet", "-m", "Before the change request"]);
+    }
     const opened = yield* wiki.wikis.amend(
       {
         wikiId: wiki.wikiId,

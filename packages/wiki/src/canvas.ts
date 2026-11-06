@@ -213,24 +213,30 @@ function canvasEdge(raw: Record<string, unknown>, id: string): CanvasEdge | unde
   };
 }
 
-/** What a list's entries draw as. Ids are unique here though a file's may repeat or be missing. */
-function drawn<A>(
+/** A list's entries by the ids they draw under, unique though a file's may repeat or be missing. */
+function entries(
   list: unknown,
   prefix: string,
-  read: (raw: Record<string, unknown>, id: string) => A | undefined,
-): A[] {
+): ReadonlyArray<{ readonly id: string; readonly raw: Record<string, unknown> }> {
   const seen = new Set<string>();
-  const items: A[] = [];
-  (Array.isArray(list) ? list : []).forEach((raw: unknown, position) => {
-    if (!isRecord(raw)) return;
+  return (Array.isArray(list) ? list : []).flatMap((raw: unknown, position) => {
+    if (!isRecord(raw)) return [];
     const named = typeof raw.id === "string" && raw.id !== "" ? raw.id : `${prefix}-${position}`;
     const id = seen.has(named) ? `${named}~${position}` : named;
     seen.add(id);
-    const item = read(raw, id);
-    if (item !== undefined) items.push(item);
+    return [{ id, raw }];
   });
-  return items;
 }
+
+const drawn = <A>(
+  list: unknown,
+  prefix: string,
+  read: (raw: Record<string, unknown>, id: string) => A | undefined,
+): A[] =>
+  entries(list, prefix).flatMap(({ id, raw }) => {
+    const item = read(raw, id);
+    return item === undefined ? [] : [item];
+  });
 
 /** A file's JSON as drawn: every card with what it needs, whatever the file left out. */
 export function canvasData(document: unknown): CanvasData {
@@ -283,6 +289,276 @@ function written(value: unknown, depth: number): string {
  * on one line only when everything in it is a scalar; an empty `{}` or `[]` counts as a container.
  */
 export const serializeCanvas = (document: unknown): string => written(document, 0);
+
+/** What a look's keys do to a card or arrow: anything not named here is what it says. */
+export interface CanvasLook {
+  /** As a merge's preview names it, such as "position". */
+  readonly name: string;
+  readonly keys: ReadonlyArray<string>;
+  readonly mark: "moved" | "restyled";
+}
+
+export const CANVAS_CARD_LOOKS: ReadonlyArray<CanvasLook> = [
+  { name: "position", keys: ["x", "y"], mark: "moved" },
+  { name: "size", keys: ["width", "height"], mark: "moved" },
+  { name: "colour", keys: ["color"], mark: "restyled" },
+  { name: "background", keys: ["background", "backgroundStyle"], mark: "restyled" },
+];
+
+export const CANVAS_ARROW_LOOKS: ReadonlyArray<CanvasLook> = [
+  { name: "sides", keys: ["fromSide", "toSide"], mark: "moved" },
+  { name: "colour", keys: ["color"], mark: "restyled" },
+  { name: "ends", keys: ["fromEnd", "toEnd"], mark: "restyled" },
+];
+
+/** Same JSON, whatever order its keys were written in. */
+const sorted = (_key: string, value: unknown) =>
+  isRecord(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+    : value;
+export const sameJson = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(a, sorted) === JSON.stringify(b, sorted);
+
+/** What a change does, strongest first. A moved or resized card alone is `moved`. */
+export type CanvasMark = "added" | "removed" | "text" | "restyled" | "moved";
+
+export interface CanvasChange {
+  readonly id: string;
+  readonly item: "card" | "arrow";
+  /** The strongest thing that happened to it. */
+  readonly mark: CanvasMark;
+  /** What else did, so a card can read as changed and moved. */
+  readonly also: ReadonlyArray<"restyled" | "moved">;
+  /** How a person would name it. */
+  readonly name: string;
+  /** What it said before, when that's what changed. */
+  readonly was: string | null;
+}
+
+export interface CanvasDiff {
+  readonly changes: ReadonlyArray<CanvasChange>;
+  /** Something outside the cards and arrows changed, which only the file's JSON shows. */
+  readonly rest: boolean;
+}
+
+const NAME_CHARS = 60;
+
+function brief(text: string): string {
+  const line =
+    text
+      .trim()
+      .split("\n", 1)[0]
+      ?.replace(/^#+\s*/, "")
+      .trim() ?? "";
+  return line.length > NAME_CHARS ? `${line.slice(0, NAME_CHARS - 1)}…` : line;
+}
+
+const lastPart = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+/** A card as a person would name it, for a change list or a merge's preview. */
+export function canvasCardName(card: Readonly<Record<string, unknown>>): string {
+  const code = isRecord(card.astrolabe) ? codeReference(card.astrolabe.code) : undefined;
+  const named =
+    card.type === "text"
+      ? brief(text(card.text) ?? "")
+      : card.type === "file"
+        ? `${lastPart(text(card.file) ?? "")}${text(card.subpath) ?? ""}`
+        : card.type === "link"
+          ? (code?.path ?? text(card.url) ?? "")
+          : card.type === "group"
+            ? (text(card.label) ?? "")
+            : "";
+  if (named !== "") return named;
+  if (card.type === "group") return "Unlabelled group";
+  return card.type === "text" ? "Empty card" : `${text(card.type) ?? "Unknown"} card`;
+}
+
+/** The name of an arrow, from cards read from any version that held them. */
+export function canvasArrowName(
+  arrow: Readonly<Record<string, unknown>>,
+  cardName: (id: unknown) => string,
+): string {
+  const label = text(arrow.label);
+  const line = `${cardName(arrow.fromNode)} → ${cardName(arrow.toNode)}`;
+  return label === undefined || label === "" ? line : `${line}: ${label}`;
+}
+
+/** The first line that differs, as it read before. */
+function wasLine(before: string, after: string) {
+  const lines = after.split("\n");
+  return before.split("\n").find((line, position) => line !== lines[position]) ?? before;
+}
+
+function wasText(before: Record<string, unknown>, after: Record<string, unknown>) {
+  for (const key of ["text", "file", "url", "label"]) {
+    const was = before[key];
+    if (sameJson(was, after[key])) continue;
+    if (typeof was !== "string") return "empty";
+    return brief(typeof after[key] === "string" ? wasLine(was, after[key]) : was) || "empty";
+  }
+  return null;
+}
+
+function changeOf(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  looks: ReadonlyArray<CanvasLook>,
+): Pick<CanvasChange, "mark" | "also"> | null {
+  const differs = (key: string) => !sameJson(before[key], after[key]);
+  const looked = new Set(looks.flatMap((look) => look.keys));
+  const said = [...new Set([...Object.keys(before), ...Object.keys(after)])].some(
+    (key) => !looked.has(key) && differs(key),
+  );
+  const marks = looks.filter((look) => look.keys.some(differs)).map((look) => look.mark);
+  const restyled = marks.includes("restyled");
+  const moved = marks.includes("moved");
+  if (said) {
+    return {
+      mark: "text",
+      also: [...(restyled ? (["restyled"] as const) : []), ...(moved ? (["moved"] as const) : [])],
+    };
+  }
+  if (restyled) return { mark: "restyled", also: moved ? ["moved"] : [] };
+  return moved ? { mark: "moved", also: [] } : null;
+}
+
+/**
+ * Two versions of a file's document, compared card by card and arrow by arrow. It reads the JSON
+ * and not what draws, so a key or card type this version can't show still counts as a change.
+ */
+export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
+  const was = isRecord(before) ? before : {};
+  const now = isRecord(after) ? after : {};
+  const cards = [entries(was.nodes, "node"), entries(now.nodes, "node")] as const;
+  const arrows = [entries(was.edges, "edge"), entries(now.edges, "edge")] as const;
+  const names = new Map([...cards[0], ...cards[1]].map(({ id, raw }) => [id, raw]));
+  const cardName = (id: unknown) => {
+    const card = typeof id === "string" ? names.get(id) : undefined;
+    return card === undefined ? "A missing card" : canvasCardName(card);
+  };
+  const compare = (
+    item: CanvasChange["item"],
+    [from, to]: readonly [ReturnType<typeof entries>, ReturnType<typeof entries>],
+    looks: ReadonlyArray<CanvasLook>,
+  ): CanvasChange[] => {
+    const name = (raw: Record<string, unknown>) =>
+      item === "card" ? canvasCardName(raw) : canvasArrowName(raw, cardName);
+    const earlier = new Map(from.map(({ id, raw }) => [id, raw]));
+    const later = new Set(to.map(({ id }) => id));
+    return [
+      ...to.flatMap(({ id, raw }): CanvasChange[] => {
+        const old = earlier.get(id);
+        if (old === undefined) {
+          return [{ id, item, mark: "added", also: [], name: name(raw), was: null }];
+        }
+        const change = changeOf(old, raw, looks);
+        if (change === null) return [];
+        const said = change.mark === "text" ? wasText(old, raw) : null;
+        return [{ id, item, ...change, name: name(raw), was: said }];
+      }),
+      ...from.flatMap(({ id, raw }): CanvasChange[] =>
+        later.has(id) ? [] : [{ id, item, mark: "removed", also: [], name: name(raw), was: null }],
+      ),
+    ];
+  };
+  const outside = (document: Record<string, unknown>) => ({
+    ...document,
+    nodes: undefined,
+    edges: undefined,
+  });
+  return {
+    changes: [
+      ...compare("card", cards, CANVAS_CARD_LOOKS),
+      ...compare("arrow", arrows, CANVAS_ARROW_LOOKS),
+    ],
+    rest: !sameJson(outside(was), outside(now)),
+  };
+}
+
+/** Which cards and arrows a board marks, by id: a card and an arrow may share one. */
+export interface CanvasMarks {
+  readonly cards: Readonly<Record<string, CanvasMark>>;
+  readonly arrows: Readonly<Record<string, CanvasMark>>;
+}
+
+/** A board for reviewing a change: the new version, with what it removed still drawn. */
+export interface CanvasReview {
+  readonly data: CanvasData;
+  readonly marks: CanvasMarks;
+  /** `drawn` is false for what the board can't show, such as a card type it doesn't know. */
+  readonly changes: ReadonlyArray<CanvasChange & { readonly drawn: boolean }>;
+  readonly rest: boolean;
+}
+
+/** Two versions of a file's document as one board to review. */
+export function reviewCanvas(before: unknown, after: unknown): CanvasReview {
+  const { changes, rest } = diffCanvas(before, after);
+  const was = canvasData(before);
+  const now = canvasData(after);
+  const marked = (item: CanvasChange["item"]) =>
+    Object.fromEntries(
+      changes.filter((change) => change.item === item).map(({ id, mark }) => [id, mark]),
+    );
+  const marks = { cards: marked("card"), arrows: marked("arrow") };
+  // Beneath the rest: what replaced a removed card stays on top until the removed one is picked.
+  const nodes = [...was.nodes.filter((node) => marks.cards[node.id] === "removed"), ...now.nodes];
+  const edges = [...now.edges, ...was.edges.filter((edge) => marks.arrows[edge.id] === "removed")];
+  const onBoard = new Set(nodes.map((node) => node.id));
+  const drawnArrows = new Set(
+    edges
+      .filter((edge) => onBoard.has(edge.fromNode) && onBoard.has(edge.toNode))
+      .map((edge) => edge.id),
+  );
+  return {
+    data: { nodes, edges },
+    marks,
+    changes: changes.map((change) => ({
+      ...change,
+      drawn: change.item === "card" ? onBoard.has(change.id) : drawnArrows.has(change.id),
+    })),
+    rest,
+  };
+}
+
+const MARK_ORDER: ReadonlyArray<CanvasMark> = ["added", "removed", "text", "restyled", "moved"];
+
+const MARK_WORDS: Readonly<Record<CanvasMark, string>> = {
+  added: "added",
+  removed: "removed",
+  text: "changed",
+  restyled: "restyled",
+  moved: "moved",
+};
+
+/** A change's mark in a list or on a card, capitalised for a label. */
+export const CANVAS_MARK_LABELS: Readonly<Record<CanvasMark, string>> = {
+  added: "Added",
+  removed: "Removed",
+  text: "Text",
+  restyled: "Style",
+  moved: "Moved",
+};
+
+/** A change list's rows: what to read first, and the moves, folded until asked for. */
+export function canvasChangeSections<A extends Pick<CanvasChange, "mark">>(
+  changes: ReadonlyArray<A>,
+): { readonly changed: ReadonlyArray<A>; readonly moved: ReadonlyArray<A> } {
+  return {
+    changed: MARK_ORDER.flatMap((mark) =>
+      mark === "moved" ? [] : changes.filter((change) => change.mark === mark),
+    ),
+    moved: changes.filter((change) => change.mark === "moved"),
+  };
+}
+
+/** A change list in one line, such as "2 added, 1 changed, 4 moved". */
+export function canvasChangeSummary(changes: ReadonlyArray<Pick<CanvasChange, "mark">>): string {
+  const counts = MARK_ORDER.flatMap((mark) => {
+    const count = changes.filter((change) => change.mark === mark).length;
+    return count === 0 ? [] : [`${count} ${MARK_WORDS[mark]}`];
+  });
+  return counts.length > 0 ? counts.join(", ") : "No changes to its cards or arrows";
+}
 
 /** A group's cards are those wholly inside it, its edge included. Membership is never stored. */
 export const insideGroup = (group: CanvasBounds, card: CanvasBounds): boolean =>
