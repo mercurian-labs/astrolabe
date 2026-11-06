@@ -102,13 +102,11 @@ export function tokenMarks(
   let line = doc.line(1);
   let start = 0;
   for (let at = 0; at + 4 < data.length; at += 5) {
-    const [lines, column, length, type, modifiers] = data.slice(at, at + 5) as [
-      number,
-      number,
-      number,
-      number,
-      number,
-    ];
+    const lines = data[at]!;
+    const column = data[at + 1]!;
+    const length = data[at + 2]!;
+    const type = data[at + 3]!;
+    const modifiers = data[at + 4]!;
     start = lines === 0 ? start + column : column;
     if (lines > 0) {
       lineNumber += lines;
@@ -223,7 +221,9 @@ class Tokens {
   }
 }
 
+const tokensPlugin = ViewPlugin.fromClass(Tokens);
+
 export function semanticTokens(): Extension {
   // Above the parser's marks, which draws these inside them, so their colour is the one that shows.
-  return [Prec.highest(tokensField), ViewPlugin.fromClass(Tokens)];
+  return [Prec.highest(tokensField), tokensPlugin];
 }

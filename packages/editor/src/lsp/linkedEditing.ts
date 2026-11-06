@@ -151,6 +151,8 @@ class Links {
   }
 }
 
+const linksPlugin = ViewPlugin.fromClass(Links);
+
 export function linkedEditing(): Extension {
-  return [linkedField, mirror, ViewPlugin.fromClass(Links)];
+  return [linkedField, mirror, linksPlugin];
 }

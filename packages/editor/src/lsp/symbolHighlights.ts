@@ -106,6 +106,8 @@ const theme = EditorView.baseTheme({
   },
 });
 
+const highlightsPlugin = ViewPlugin.fromClass(Highlights);
+
 export function symbolHighlights(): Extension {
-  return [highlightsField, ViewPlugin.fromClass(Highlights), theme];
+  return [highlightsField, highlightsPlugin, theme];
 }

@@ -160,9 +160,7 @@ class LineEndMessage extends WidgetType {
 
   override eq(other: LineEndMessage) {
     return (
-      other.severity === this.severity &&
-      other.message === this.message &&
-      other.more === this.more
+      other.severity === this.severity && other.message === this.message && other.more === this.more
     );
   }
 

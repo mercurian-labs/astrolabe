@@ -249,6 +249,8 @@ const theme = EditorView.baseTheme({
   ".atlas-code-lens-run:hover": { color: "var(--atlas-md-link-color, currentColor)" },
 });
 
+const lensesPlugin = ViewPlugin.fromClass(Lenses);
+
 export function codeLens(): Extension {
-  return [lineBlocks, ViewPlugin.fromClass(Lenses), theme];
+  return [lineBlocks, lensesPlugin, theme];
 }
