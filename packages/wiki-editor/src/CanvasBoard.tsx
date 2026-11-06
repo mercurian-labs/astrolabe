@@ -43,6 +43,7 @@ import {
   type CanvasCamera,
   type CanvasEdgeShape,
 } from "./canvasGeometry";
+import { drawCanvasOverview } from "./canvasOverview";
 import { CanvasMarkdown, type CanvasMarkdownHost } from "./CanvasMarkdown";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { noteSection } from "./canvasNote";
@@ -115,6 +116,9 @@ const FIT_PADDING = { fit: 8, free: 32 };
 const PAN_STEP = 60;
 /** A left-edge touch belongs to the phone's back swipe, not the board. */
 const BACK_SWIPE_EDGE = 24;
+/** More cards in view than this, and a pan would stall mounting them: they draw on one canvas. */
+const OVERVIEW_CARDS = 600;
+
 /** How far outside the frame, in screen pixels, a card stays mounted. */
 const CULL_MARGIN = 160;
 /** A press that moves further is a pan, not a click. */
@@ -575,6 +579,7 @@ interface Shown {
 }
 
 const NOTHING: Shown = { groups: [], cards: [], shapes: [], simple: false };
+const OVERVIEW: Shown = { ...NOTHING, simple: true };
 
 function inView(layout: Layout, view: CanvasBounds, simple: boolean): Shown {
   return {
@@ -618,6 +623,7 @@ export function CanvasBoard({
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const overviewRef = useRef<HTMLCanvasElement>(null);
   const [view] = useState(() => new CanvasView());
   const bounds = useMemo(() => canvasBounds(data), [data]);
   const layout = useMemo(() => layoutOf(data), [data]);
@@ -634,7 +640,12 @@ export function CanvasBoard({
   const [show] = useState(() => (camera: CanvasCamera, width: number, height: number) => {
     const window = cameraWindow(camera, width, height, CULL_MARGIN);
     const next = inView(layoutRef.current, window, camera.zoom < SIMPLE_ZOOM);
-    setShown((current) => (sameShown(current, next) ? current : next));
+    const overview = next.simple && next.cards.length > OVERVIEW_CARDS;
+    if (overview && overviewRef.current !== null) {
+      drawCanvasOverview(overviewRef.current, camera, width, height, next);
+    }
+    const mounted = overview ? OVERVIEW : next;
+    setShown((current) => (sameShown(current, mounted) ? current : mounted));
     if (next.simple) return;
     reads.files.want(next.cards.flatMap((card) => (card.type === "file" ? [card.file] : [])));
     reads.code.want(
@@ -815,6 +826,7 @@ export function CanvasBoard({
           ))}
         </div>
       </Board.Provider>
+      <canvas ref={overviewRef} className="cv-overview" hidden={shown !== OVERVIEW} />
       {mode === "free" ? (
         <div className="cv-controls">
           <button type="button" aria-label="Zoom in" onClick={() => view.zoomIn()}>

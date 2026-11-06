@@ -70,22 +70,21 @@ describe("a board of 5,000 cards", () => {
     const frames = vi.spyOn(window, "requestAnimationFrame");
     // Router off: the board asks nothing of the app around it.
     await using _screen = await render(<Frame data={grid(5000)} />, { router: false });
-    await vi.waitFor(() => expect(mountedCards()).toBeGreaterThan(0));
+    const overview = () => document.querySelector<HTMLCanvasElement>(".cv-overview");
+    await vi.waitFor(() => expect(overview()?.hidden).toBe(false));
 
-    // Fit caps at the minimum zoom, so the opening view shows part of the board, in simple form.
-    const opening = mountedCards();
-    expect(opening).toBeLessThan(5000);
-    expect(mountedEdges()).toBeLessThan(5000);
-    expect(document.querySelectorAll(".cv-simple-text").length).toBe(opening);
-    expect(document.querySelectorAll(".cv-card-body").length).toBe(0);
+    // Fit caps at the minimum zoom, and that many cards draw on one canvas, not in the DOM.
+    expect(overview()!.width).toBeGreaterThan(0);
+    expect(mountedCards()).toBe(0);
+    expect(mountedEdges()).toBe(0);
     expect(frames).not.toHaveBeenCalled();
 
     await userEvent.click(document.querySelector("[aria-label='Reset zoom']")!);
     await vi.waitFor(() =>
       expect(document.querySelectorAll(".cv-card-body").length).toBeGreaterThan(0),
     );
+    expect(overview()!.hidden).toBe(true);
     const close = mountedCards();
-    expect(close).toBeLessThan(opening);
     expect(close).toBeLessThan(20);
     const firstInView = document.querySelector("[data-card-id]")?.getAttribute("data-card-id");
 
