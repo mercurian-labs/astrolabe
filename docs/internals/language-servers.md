@@ -1,10 +1,12 @@
 # Language servers
 
-Language servers run in the environment (`apps/server/src/languageServers/`), one per language
-per checkout. The environment is each server's only LSP client: it feeds the server its
-[`Documents`](../../apps/server/src/documents/Documents.ts), one `didChange` per accepted
-update, so a collab version is the LSP version. Editors use `@codemirror/lsp-client`
-(`packages/editor/src/lsp/`) and talk LSP to the environment's gateway, never to a server.
+Language servers run in the environment (`apps/server/src/languageServers/`), per checkout: each
+language's primary server, and the companions the checkout uses, which join it on a file (Ruff on
+Python; ESLint and Tailwind on TypeScript and JavaScript). The environment is each server's only
+LSP client: it feeds the server its [`Documents`](../../apps/server/src/documents/Documents.ts),
+one `didChange` per accepted update, so a collab version is the LSP version. Editors use
+`@codemirror/lsp-client` (`packages/editor/src/lsp/`) and talk LSP to the environment's gateway,
+never to a server.
 
 ## Coordinates
 
@@ -41,6 +43,44 @@ positions land on the wrong text.
 Each editor opens its own gateway session (`languageServers.session`), so two views of one file
 are two LSP clients of the gateway; the server still sees one.
 
+## Several servers on one file
+
+The fan-out lives in the gateway, not the browser: lsp-client assumes one client per view, and
+one stream per file is what a remote client wants. A session is bound to its primary, follows that
+server's status, and speaks to whatever stands behind it.
+
+- **Each server keeps its own copy.** Documents reach each instance's `GatewayDoc` in their own
+  tick, so one request's positions are translated per server from that server's copy, and its
+  answer mapped back the same way. Only landing the editor's unconfirmed edits happens once.
+- **A companion never blocks the primary.** It starts lazily beside the open, under the same
+  trust, and whatever becomes of it shows in the status menu, not the editor. Requests reach only
+  servers running with the file open. If the primary can't run, the session behaves as it always
+  did. Agents' diagnostics wait for the primary and give companions `companionWait`; `locate` asks
+  only the primary.
+- **Activation is evidence at the checkout's root** (`activation` in the registry), read once per
+  primary instance and again on Restart, which also adds and drops holds on files already open.
+- **Holds are what keep a companion alive.** It has no sessions of its own, so idle timing sees
+  only its documents, and a hold and its record are made uninterruptibly: a session ending
+  between them would leave a server nothing stops.
+- **A publish is every server's diagnostics at the highest version any has reached.** Older ones
+  are carried forward through that copy's updates; a copy not there yet goes in as it is, and its
+  update follows within a tick. Each diagnostic names its `source`, the server's name if it gave
+  none. lsp-client drops the field, so the editor writes it into the message.
+- **Capabilities arrive late.** `initialize` comes before the open, so it can only speak for what
+  already runs. `astrolabe/capabilities` replaces the client's copy as companions come and go;
+  [`fanOut.ts`](../../apps/server/src/languageServers/fanOut.ts) has the merge and each method's
+  route. A trigger character reaches only the servers that named it: Tailwind's space would
+  otherwise open TypeScript's completions at every word.
+- **Asking several must not cost the wait for the slowest.** After `fanOutTimeout` what has come in
+  is the answer. An empty answer doesn't count, or Tailwind saying nothing would cut off a
+  TypeScript server still loading; with nothing yet, the first answer with content ends it.
+- **Completion items and code actions remember their server.** `completionItem/resolve` names
+  neither file nor server, so each item's `data` is wrapped with both.
+- **One formatter per language**, the first in the primary's `formatters` that can.
+
+ESLint and Tailwind never come from PATH: each loads the project's own ESLint or Tailwind, so a
+machine's copy brings no fit with the toolchain, and an old one breaks on today's configs.
+
 ## Where a server comes from
 
 [`registry.ts`](../../apps/server/src/languageServers/registry.ts) is data: per server, launches
@@ -49,7 +89,10 @@ then a download, because the machine's copy matches the project's toolchain (rus
 rust-analyzer, Xcode's clangd) where ours may not. A machine binary must pass its `probe`:
 rustup installs a `rust-analyzer` proxy that fails without the component. Downloads are pinned:
 npm by its registry integrity, release builds by the size and SHA-256 written in the registry,
-gopls by Go's checksum database. Bumping a release means updating its hashes there.
+gopls by Go's checksum database. Bumping a release means updating its hashes there. npm's tarball
+holds no dependencies, so a package that needs some pins exactly what its server requires
+(`dependencies`, flat in `node_modules`); `vscode-langservers-extracted` declares far more, for
+servers we don't run.
 
 ## Project trust
 

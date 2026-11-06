@@ -332,10 +332,13 @@ This Turn** in the Command Palette, switches too.
 
 ## Problems in a code file
 
-Code files show the problems their language server finds: a wavy underline, a mark beside the
-line number, and the message on hover. Astrolabe has language servers for TypeScript and
-JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer), Go (gopls), C and C++
-(clangd), and Java (jdtls). The messages of the line the
+Code files show the problems their language servers find: a wavy underline, a mark beside the
+line number, and the message on hover, naming the server that found it. Astrolabe has language
+servers for TypeScript and JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer),
+Go (gopls), C and C++ (clangd), and Java (jdtls). Others join them where they apply: Ruff on
+every Python file, ESLint when the project has an ESLint config or `eslint` in its `package.json`,
+and Tailwind CSS when it has a Tailwind config or `tailwindcss` there. After adding one to a
+project with files open, restart a language server to pick it up. The messages of the line the
 cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
 `.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
 
@@ -347,7 +350,8 @@ downloaded: install it (`brew install jdtls`, with Java 21 or newer) for Java fi
 isn't installed the header says so: click it for what to install, then **Try again**. If a server
 keeps stopping, or was paused because several ran at once, click **Restart** in the header.
 
-Clicking the server's name in the header shows its state and memory, with **Restart**, **Stop** and
+Clicking the server's name in the header lists every server on the file, a `+1` beside the name
+counting the others, with each one's state and memory, and **Restart**, **Stop** and
 **View logs**. A stopped server stays stopped until you restart it. These are commands too, for
 the file you're in; find them in the Command Palette or under `e` `L` in the keyboard menu, and
 rebind them under **Editors**:
@@ -368,18 +372,18 @@ stops a few minutes after you close its tab.
 Language servers can run a project's code, so each project starts out untrusted, once per machine.
 An untrusted project runs only the servers that never run project code and are already on the
 machine or downloaded, marked restricted in the header; the others wait, and agents' code tools
-say so. Click **Trust project** in the header to run them, downloads included. A worktree shares
+say so unless it is only ESLint or Tailwind waiting. Click **Trust project** in the header to run them, downloads included. A worktree shares
 its repository's trust. To take it back, go to **Settings → Projects → Language servers** and
 click **Revoke**: the project's servers restart restricted.
 
 **Settings → Projects → Language servers** shows what each server would run for a project and
-what is missing, without starting any. clangd reads each file's compiler flags from a
+what is missing, without starting any, and whether Ruff, ESLint and Tailwind apply and why. clangd reads each file's compiler flags from a
 `compile_commands.json`; without one it guesses, so have your build tool write one (CMake:
 `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`).
 
 ## Language features in a code file
 
-Code files also take these from their language server. Each is in the
+Code files also take these from their language servers. Each is in the
 Command Palette, and you can rebind it under **Editors**.
 
 | Key                          | Does                       | Keyboard menu | Vim     |
@@ -420,13 +424,13 @@ cancel. The rename reaches every file that uses the name, open or not, and they 
 not in the file's own undo: click **Undo** on the notice, or run Undo Rename, to put every file
 back. Edits made since are kept.
 
-Format Document reformats the file with its language server, as one step you can undo. Repository
-files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and formats the file
-first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
+Format Document reformats the file with its language server, Ruff for Python, as one step you can
+undo. Repository files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and
+formats the file first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
 this off with **Format on save** in Settings → Appearance.
 
-When the server has fixes or refactors for where the cursor rests, a light bulb shows beside the
-line. Click it, or press `mod+.`, for the list; Enter applies one. Like a rename, the environment
+When a server has fixes or refactors for where the cursor rests, a light bulb shows beside the
+line. Click it, or press `mod+.`, for every server's in one list; Enter applies one. Like a rename, the environment
 applies it to every file it touches, and the notice's **Undo** (or Undo Rename) takes it back.
 
 ## Search results and problems in one editor
