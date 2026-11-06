@@ -19,13 +19,20 @@ interface ServerCommand {
   readonly command: string;
 }
 
+interface LspPosition {
+  readonly line: number;
+  readonly character: number;
+}
+
 interface ServerLens {
-  readonly range: { readonly start: { readonly line: number; readonly character: number } };
+  readonly range: { readonly start: LspPosition; readonly end: LspPosition };
   readonly command?: ServerCommand;
 }
 
 interface Lens {
+  /** Where its range is in the text now; `lens.range` stays as the server answered. */
   pos: number;
+  end: number;
   lens: ServerLens;
   /** What the row says: this lens's command, or the last one here until it resolves. */
   shown: ServerCommand | null;
@@ -75,8 +82,14 @@ class LensRow extends WidgetType {
     super();
   }
 
+  // The same words can stand for a new list's lenses: the drawn buttons run the ones they hold.
   override eq(other: LensRow) {
-    return other.indent === this.indent && other.titles === this.titles;
+    return (
+      other.indent === this.indent &&
+      other.titles === this.titles &&
+      other.entries.length === this.entries.length &&
+      other.entries.every((entry, index) => entry === this.entries[index])
+    );
   }
 
   override toDOM(view: EditorView) {
@@ -115,6 +128,9 @@ class Lenses {
   private readonly resolves: ServerAsk;
   private lenses: Lens[] = [];
   private drawPending = false;
+  private destroyed = false;
+  /** The params of each resolve under way, which is how lsp-client cancels one. */
+  private readonly resolving = new Set<object>();
 
   constructor(private readonly view: EditorView) {
     this.list = new ServerAsk(view);
@@ -124,7 +140,10 @@ class Lenses {
 
   update(update: ViewUpdate) {
     if (update.docChanged) {
-      for (const entry of this.lenses) entry.pos = update.changes.mapPos(entry.pos, 1);
+      for (const entry of this.lenses) {
+        entry.pos = update.changes.mapPos(entry.pos, 1);
+        entry.end = Math.max(entry.pos, update.changes.mapPos(entry.end, -1));
+      }
     }
     if (update.docChanged || askAgain(update, "codeLens")) this.schedule();
     if (update.viewportChanged) {
@@ -142,11 +161,13 @@ class Lenses {
       "textDocument/codeLens",
       (plugin) => ({ textDocument: { uri: plugin.uri } }),
       (answer, mapping, plugin) => {
+        this.cancelResolves();
         const before = new Map(this.lenses.map((entry) => [entry.pos, entry.shown]));
         this.lenses = (answer ?? []).map((lens) => {
           const pos = mapping.mapPosition(plugin.uri, lens.range.start, 1);
           return {
             pos,
+            end: Math.max(pos, mapping.mapPosition(plugin.uri, lens.range.end, -1)),
             lens,
             shown: lens.command ?? before.get(pos) ?? null,
             resolved: lens.command !== undefined,
@@ -168,19 +189,34 @@ class Lenses {
     for (const entry of this.lenses) {
       if (entry.resolved || entry.resolving || entry.pos < from || entry.pos > to) continue;
       entry.resolving = true;
-      plugin.client.request<ServerLens, ServerLens | null>("codeLens/resolve", entry.lens).then(
+      // In the text now: the gateway reads a request's range as the editor has it.
+      const params = {
+        ...entry.lens,
+        range: { start: plugin.toPosition(entry.pos), end: plugin.toPosition(entry.end) },
+      };
+      this.resolving.add(params);
+      plugin.client.request<ServerLens, ServerLens | null>("codeLens/resolve", params).then(
         (lens) => {
+          this.resolving.delete(params);
+          if (this.destroyed || !this.lenses.includes(entry)) return;
           entry.resolved = true;
           entry.resolving = false;
           if (lens?.command) entry.lens = lens;
           entry.shown = lens?.command ?? null;
-          if (this.lenses.includes(entry)) this.draw();
+          this.draw();
         },
         () => {
+          this.resolving.delete(params);
           entry.resolving = false;
         },
       );
     }
+  }
+
+  private cancelResolves() {
+    const client = LSPPlugin.get(this.view)?.client;
+    for (const params of this.resolving) client?.cancelRequest(params);
+    this.resolving.clear();
   }
 
   /** Resolved lenses arrive in a burst: they land as one redraw. */
@@ -190,7 +226,7 @@ class Lenses {
     queueMicrotask(() => {
       this.drawPending = false;
       const { view } = this;
-      if (!view.dom.isConnected) return;
+      if (this.destroyed || !view.dom.isConnected) return;
       const { doc } = view.state;
       const lines = new Map<number, Lens[]>();
       for (const entry of this.lenses) {
@@ -213,8 +249,11 @@ class Lenses {
   }
 
   destroy() {
+    this.destroyed = true;
     this.list.cancel();
     this.resolves.cancel();
+    this.cancelResolves();
+    this.lenses = [];
     const { view } = this;
     // Turned off, not closed: an update can't dispatch, and the rows would outlive the setting.
     queueMicrotask(() => {

@@ -1,3 +1,4 @@
+import { Compartment, type Text } from "@codemirror/state";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { codeLens } from "./codeLens.ts";
@@ -6,6 +7,8 @@ import { environmentNavigation, type NavigationLocation } from "./navigation.ts"
 import { range, setup, URI } from "./testing.ts";
 
 const TEXT = "function add() {}\n  function deep() {}\nconst other = 1;\n";
+
+const lenses = new Compartment();
 
 const KEYS = {
   definition: [],
@@ -17,7 +20,13 @@ const KEYS = {
   outgoingCalls: [],
 };
 
-function open(resolve: (lens: any) => unknown = (lens) => lens) {
+function open(
+  resolve: (lens: any) => unknown = (lens) => lens,
+  list: (doc: Text) => unknown = (doc) => [
+    { range: range(doc, 9, 12), data: "references" },
+    { range: range(doc, 29, 33), data: "command" },
+  ],
+) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const picked: Array<readonly NavigationLocation[]> = [];
   const applied: AppliedCodeAction[] = [];
@@ -27,13 +36,7 @@ function open(resolve: (lens: any) => unknown = (lens) => lens) {
       referencesProvider: true,
     },
     answer: (method, params) => {
-      if (method === "textDocument/codeLens") {
-        const doc = editor.view.state.doc;
-        return [
-          { range: range(doc, 9, 12), data: "references" },
-          { range: range(doc, 29, 33), data: "command" },
-        ];
-      }
+      if (method === "textDocument/codeLens") return list(editor.view.state.doc);
       if (method === "codeLens/resolve") return resolve(params);
       if (method === "textDocument/references") {
         return [
@@ -47,7 +50,7 @@ function open(resolve: (lens: any) => unknown = (lens) => lens) {
       return undefined;
     },
     extensions: [
-      codeLens(),
+      lenses.of(codeLens()),
       environmentCodeActions({
         keys: [],
         host: { applied: (_view, action) => applied.push(action) },
@@ -135,6 +138,84 @@ describe("codeLens", () => {
       await vi.advanceTimersByTimeAsync(900);
       const lists = editor.sent.filter((entry) => entry.message.method === "textDocument/codeLens");
       expect(lists).toHaveLength(2);
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs a row's lens from the latest list, where its text is now", async () => {
+    const editor = open(resolved);
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(900);
+      editor.lsp.receive(
+        JSON.stringify({ jsonrpc: "2.0", method: "astrolabe/refresh", params: "codeLens" }),
+      );
+      await vi.advanceTimersByTimeAsync(900);
+      editor.type(0, "// top\n");
+      button(editor, "2 references").click();
+      await vi.advanceTimersByTimeAsync(10);
+      const asked = editor.sent.filter(
+        (entry) => entry.message.method === "textDocument/references",
+      );
+      expect(asked.at(-1)?.message.params.position).toEqual({ line: 1, character: 9 });
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("resolves a lens at its range in the text now", async () => {
+    const editor = open(resolved, () => undefined);
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(900);
+      const list = editor.sent.find((entry) => entry.message.method === "textDocument/codeLens");
+      const doc = editor.view.state.doc;
+      editor.type(0, "// top\n");
+      editor.lsp.receive(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: list?.message.id,
+          result: [{ range: range(doc, 9, 12), data: "references" }],
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      const resolve = editor.sent.find((entry) => entry.message.method === "codeLens/resolve");
+      expect(resolve?.message.params.range).toEqual({
+        start: { line: 1, character: 9 },
+        end: { line: 1, character: 12 },
+      });
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("draws nothing after it is turned off, however late an answer comes", async () => {
+    const editor = open(() => undefined);
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(900);
+      expect(rows(editor)).toHaveLength(2);
+      const resolve = editor.sent.find((entry) => entry.message.method === "codeLens/resolve");
+
+      editor.view.dispatch({ effects: lenses.reconfigure([]) });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(rows(editor)).toEqual([]);
+      const cancels = editor.sent.filter((entry) => entry.message.method === "$/cancelRequest");
+      expect(cancels.map((entry) => entry.message.params.id)).toContain(resolve?.message.id);
+
+      editor.lsp.receive(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: resolve?.message.id,
+          result: resolved(resolve?.message.params),
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(rows(editor)).toEqual([]);
     } finally {
       editor.view.destroy();
       vi.useRealTimers();
