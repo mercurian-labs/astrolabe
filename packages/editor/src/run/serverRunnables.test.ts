@@ -62,7 +62,7 @@ describe("rustRunnables", () => {
         12,
       ],
       ["suite", "tests", "cargo test --lib -- tests --nocapture", "", 8],
-      ["main", "rsfix", "cargo run --package rsfix --bin rsfix", "", 1],
+      ["main", "Run rsfix", "cargo run --package rsfix --bin rsfix", "", 1],
       ["test", "doc", "cargo test --doc -- 'doc thing' --nocapture", "", 3],
     ]);
   });

@@ -178,6 +178,7 @@ class Detection {
     if (update.docChanged) {
       this.said = this.said.map((site) => mapSite(site, update.changes));
     }
+    if (context === null) this.said = [];
     if (before !== context) this.detect();
     else if (update.docChanged || languageLoaded(update)) this.detect(QUIET_MS);
     if (update.docChanged) this.server.schedule(SERVER_QUIET_MS, () => this.ask());
@@ -263,7 +264,8 @@ class Detection {
     const { context, sites } = state.field(runField);
     if (!host || !context) return;
     const file = detectRunnables(host.path, state.doc.toString(), isCodeIn(state));
-    const lines = new Map(this.said.map((site) => [site.from, site]));
+    const said = this.said.map((site) => ({ ...site, from: state.doc.lineAt(site.from).from }));
+    const lines = new Map(said.map((site) => [site.from, site]));
     for (const item of file?.items ?? []) {
       const from = state.doc.line(item.line).from;
       if (lines.has(from) || !file) continue;

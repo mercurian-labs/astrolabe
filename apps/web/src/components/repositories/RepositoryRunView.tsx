@@ -82,7 +82,7 @@ export function RepositoryRunView({
           </TabHeader.Action>
         </TabHeader.Actions>
       </TabHeader.Root>
-      <div className="min-h-0 flex-1 px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
         <TerminalViewport
           advancedTypography={advancedTypography}
           threadRef={scopeThreadRef(environmentId, threadId)}

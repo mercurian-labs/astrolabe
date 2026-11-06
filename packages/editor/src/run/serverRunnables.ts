@@ -64,7 +64,10 @@ export function rustRunnables(answer: Json, checkout: string): readonly RustRunn
         at,
         range,
         kind: matched[1],
-        name: String(label).replace(matched[0], ""),
+        name:
+          matched[1] === "main"
+            ? String(label).replace(/^run/, "Run")
+            : String(label).replace(matched[0], ""),
         command: [
           ...[program, ...words].map(shellQuote),
           ...(after.length > 0 ? ["--", ...after.map(shellQuote)] : []),
