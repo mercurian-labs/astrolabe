@@ -344,8 +344,26 @@ own server when it has one (its TypeScript, or basedpyright in its `.venv`), the
 the machine, such as rustup's rust-analyzer or Xcode's clangd, and downloads one when neither is
 there. gopls is built with the machine's Go, so Go files need Go installed. jdtls is never
 downloaded: install it (`brew install jdtls`, with Java 21 or newer) for Java files. When a server
-isn't installed the header says so: hover it for what to install, then click **Try again**. If a
-server keeps stopping, or was paused because several ran at once, click **Restart** in the header.
+isn't installed the header says so: click it for what to install, then **Try again**. If a server
+keeps stopping, or was paused because several ran at once, click **Restart** in the header.
+
+Clicking the server's name in the header shows its state and memory, with **Restart**, **Stop** and
+**View logs**. A stopped server stays stopped until you restart it. These are commands too, for
+the file you're in; find them in the Command Palette or under `e` `L` in the keyboard menu, and
+rebind them under **Editors**:
+
+| Command                   | Keyboard menu |
+| ------------------------- | ------------- |
+| Restart language server   | `e` `L` `r`   |
+| Stop language server      | `e` `L` `s`   |
+| Trust project             | `e` `L` `t`   |
+| Check language servers    | `e` `L` `c`   |
+| View language server logs | `e` `L` `l`   |
+
+**View logs** opens a tab with what the server wrote (**Server log**), the process behind it
+(**Server info**) and every message between it and Astrolabe (**RPC trace**). Turn on **Record** to
+collect a trace. Messages can hold file contents, so a trace stays in memory on the machine and
+stops a few minutes after you close its tab.
 
 Language servers can run a project's code, so each project starts out untrusted, once per machine.
 An untrusted project runs only the servers that never run project code and are already on the

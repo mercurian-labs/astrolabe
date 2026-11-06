@@ -5,11 +5,13 @@ import {
   languageServerForPath,
   type LanguageServerStatus,
 } from "@t3tools/contracts";
+import type { Extension } from "@codemirror/state";
 import { environmentLsp, type EnvironmentLsp } from "@mercurian/editor/lsp";
 import { Atom } from "effect/reactivity";
 import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 
 import { languageServersEnvironment } from "~/state/languageServers";
+import { languageServerFile, type LanguageServerFile } from "./languageServerFile";
 
 /** A `file:` URI the environment's Node reads back to the same path. */
 function fileUri(path: string): string {
@@ -24,6 +26,8 @@ const newSessionId = () => `${Date.now().toString(36)}-${Math.random().toString(
 
 interface Binding {
   readonly lsp: EnvironmentLsp;
+  readonly file: LanguageServerFile;
+  readonly extension: Extension;
   readonly status: {
     get: () => LanguageServerStatus | null;
     subscribe: (listener: () => void) => () => void;
@@ -34,7 +38,7 @@ interface Binding {
 /**
  * Astrolabe: an editor's language server, through the environment's gateway, while the caller is
  * mounted and `enabled`. Null for files no server reads, or without the live document.
- * The caller is keyed by file: the session is made once.
+ * The caller is keyed by file: the session is made once, with `hosts` as they were then.
  */
 export function useLanguageServer(
   environmentId: EnvironmentId,
@@ -42,6 +46,7 @@ export function useLanguageServer(
   path: string,
   session: DocumentSession | null,
   enabled: boolean,
+  hosts: Pick<LanguageServerFile, "openLogs" | "openSettings">,
 ) {
   const registry = useContext(RegistryContext);
   const [binding] = useState((): Binding | null => {
@@ -79,8 +84,17 @@ export function useLanguageServer(
         },
       },
     );
+    const file: LanguageServerFile = {
+      environmentId,
+      cwd,
+      server: match.server,
+      status: () => status,
+      ...hosts,
+    };
     return {
       lsp,
+      file,
+      extension: [lsp.extension, languageServerFile.of(file)],
       follow,
       status: {
         get: () => status,
@@ -98,7 +112,7 @@ export function useLanguageServer(
     binding?.status.subscribe ?? noSubscribe,
     binding?.status.get ?? noStatus,
   );
-  return { extension: binding?.lsp.extension ?? null, status };
+  return { extension: binding?.extension ?? null, file: binding?.file ?? null, status };
 }
 
 // Mounted in place of a session for files with no language server.

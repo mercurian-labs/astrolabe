@@ -70,6 +70,17 @@ a project that was already allowed to run code.
 - **Granting is a person's act.** Agents get an error saying so and have no tool for it, and the
   RPCs take the environment maintenance scope.
 
+## Logs
+
+Each server's output and trace are kept per checkout and server, in memory, apart from the process
+and the instance, so a crash's stderr is still there after the restart or idle stop that followed.
+Lines reach a client in batches at most a few times a second, and the view hands them straight to
+an editor, because a chatty server would otherwise re-render it per line. A trace holds file
+contents, so it is off by default and has to be turned on by someone reading the logs. A hidden tab
+has no subscription (`Activity` cleans up its effects), so a trace outlives its last reader by
+`traceGrace` instead of ending at once: the person may have left the tab to make the server do
+something.
+
 ## When a file's diagnostics are final
 
 LSP doesn't say when a server has finished. Editors don't care: a later result replaces an early

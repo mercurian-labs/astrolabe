@@ -105,6 +105,7 @@ const layerFor = (
     initializeTimeout: "30 seconds",
     diagnosticsTimeout: "30 seconds",
     trusted: () => Effect.succeed(true),
+    traceGrace: 0,
     ...options,
   }).pipe(
     Layer.provideMerge(layerDocuments),
@@ -1738,5 +1739,25 @@ describe("LanguageServers logs", () => {
       yield* after.until(() => after.seen[0]);
       expect(after.seen[0]).toMatchObject({ trace: [], state: { tracing: false } });
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("keeps a trace through its reader's absence, for a tab hidden behind another", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const logs = yield* openLogs(checkout);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* service.setTrace({ cwd: checkout.cwd, server: "typescript", enabled: true });
+      yield* logs.close;
+      yield* session.request(1, "textDocument/hover", {
+        textDocument: { uri: checkout.uri },
+        position: { line: 0, character: 6 },
+      });
+      const back = yield* openLogs(checkout);
+      yield* back.until(() => back.seen[0]);
+      expect(back.seen[0]).toMatchObject({ state: { tracing: true } });
+      expect(back.seen[0]?.trace.length).toBeGreaterThan(0);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ traceGrace: "1 hour" }))),
   );
 });

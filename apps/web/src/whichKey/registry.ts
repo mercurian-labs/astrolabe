@@ -24,6 +24,7 @@ const GROUP_LABELS: Readonly<Record<string, string>> = {
 /** Names of built-in groups below the root, by their keys from it. */
 const NESTED_GROUP_LABELS: Readonly<Record<string, string>> = {
   "e g": "Go to code",
+  "e L": "Language server",
 };
 
 interface Node {

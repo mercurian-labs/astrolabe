@@ -188,6 +188,11 @@ export interface LanguageServersOptions {
   readonly fileChangeQuiet: Duration.Input;
   /** How long a save waits for its formatter. */
   readonly formatTimeout: Duration.Input;
+  /**
+   * How long a trace outlives its last reader. A tab behind another has no subscription, and
+   * the person may have gone there to make the server do what they want to see.
+   */
+  readonly traceGrace: Duration.Input;
   readonly registry: string;
   /** Defaults to `caches/language-servers` under T3 home, shared by every checkout. */
   readonly cacheDir?: string;
@@ -1513,12 +1518,18 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           offer: (event) => void Queue.offerUnsafe(events, event),
         };
         log.subscribers.add(subscriber);
+        const endIfUnread = Effect.sync(() => {
+          if (log.subscribers.size > 0) return;
+          log.onLastSubscriberGone();
+          if (!instances.has(key) && logs.get(key) === log) logs.delete(key);
+        });
         yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
             log.subscribers.delete(subscriber);
-            if (log.subscribers.size > 0) return;
-            log.onLastSubscriberGone();
-            if (!instances.has(key) && logs.get(key) === log) logs.delete(key);
+            if (log.subscribers.size > 0) return Effect.void;
+            return Duration.isZero(Duration.fromInputUnsafe(options.traceGrace))
+              ? endIfUnread
+              : fork(Effect.sleep(options.traceGrace).pipe(Effect.andThen(endIfUnread)));
           }),
         );
         const snapshot: LanguageServerLogItem = {
@@ -2503,6 +2514,7 @@ export const defaultOptions: LanguageServersOptions = {
   diagnosticsQuiet: Duration.millis(300),
   fileChangeQuiet: Duration.millis(200),
   formatTimeout: Duration.seconds(2),
+  traceGrace: Duration.minutes(5),
   registry: DEFAULT_REGISTRY,
 };
 

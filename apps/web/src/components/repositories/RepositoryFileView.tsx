@@ -35,6 +35,7 @@ import {
 } from "@mercurian/editor/lsp/code-actions";
 import { fileSave } from "./fileSave";
 import { languageServersEnvironment } from "~/state/languageServers";
+import { searchableSetting } from "../settings/settingsSearch";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { lastRename, type UndoableRename } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
@@ -42,7 +43,12 @@ import { codeContextMenu, type CodeContextMenuHost } from "@mercurian/editor/lsp
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
-import { AuthFilesystemWriteScope, type ClientSettings } from "@t3tools/contracts";
+import {
+  AuthFilesystemWriteScope,
+  type ClientSettings,
+  languageServerForPath,
+} from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { BotIcon, GitBranchIcon, WaypointsIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
 import type {
@@ -105,6 +111,7 @@ import { FileBreadcrumbs, type OutlineTrail } from "./FileBreadcrumbs";
 import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs";
 
 type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
+import { projectSettingsKey, registerLanguageServerFile } from "./languageServerFile";
 import { LanguageServerStatusEntry } from "./LanguageServerStatus";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
@@ -183,12 +190,40 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
 
   const contents = fromDisk ? (file.data?.contents ?? null) : session.text();
   const readOnly = !canWrite || fromDisk;
+  // The panes this file is in, which its local graph opens beside it in.
+  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
+  const navigate = useNavigate();
+  const openLogs = useStableCallback(() => {
+    const server = languageServerForPath(path)?.server;
+    if (server === undefined) return;
+    const key = repositoryTabKey({ kind: "language-server-logs", environmentId, cwd, server });
+    panes.update((arrangement) =>
+      allTabs(arrangement).includes(key)
+        ? activateTab(arrangement, key)
+        : openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
+    );
+  });
+  const openSettings = useStableCallback(() => {
+    const project = "projectId" in tab ? projectSettingsKey(environmentId, tab.projectId) : null;
+    void navigate({
+      to: "/settings/projects",
+      search: project === null ? {} : { project },
+      hash: searchableSetting("project-language-servers").id,
+    });
+  });
   const languageServer = useLanguageServer(
     environmentId,
     cwd,
     path,
     session,
     !fromDisk && state.status !== "failed",
+    { openLogs, openSettings: "projectId" in tab ? openSettings : null },
+  );
+  const serverFile = languageServer.file;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lets commands find this tab's server until unmount
+  useEffect(
+    () => (serverFile ? registerLanguageServerFile(tabKey, serverFile) : undefined),
+    [tabKey, serverFile],
   );
   const agentWorking = useAgentWorkingIn(tab);
   const bases = useBaseTexts(tab, !isMarkdownPath(path));
@@ -213,8 +248,6 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   });
   const baseControl = { current: currentBase, toggle: toggleBase };
   const [trail, setTrail] = useState<OutlineTrail | null>(null);
-  // The panes this file is in, which its local graph opens beside it in.
-  const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   // A definition in another file of the checkout opens as a tab in this file's pane.
   const openLocation = useStableCallback((location: NavigationLocation) => {
     const target = pathOfUri(location.uri, cwd);
@@ -366,7 +399,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           </TabHeader.Status>
         ) : null}
         {fromDisk ? null : (
-          <LanguageServerStatusEntry environmentId={environmentId} status={languageServer.status} />
+          <LanguageServerStatusEntry file={languageServer.file} status={languageServer.status} />
         )}
         <TabHeader.Status>
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}

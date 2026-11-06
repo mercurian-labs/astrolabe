@@ -29,6 +29,16 @@ import { renameSymbol } from "@mercurian/editor/lsp/rename";
 import { formatCode } from "@mercurian/editor/lsp/format";
 import { showCodeActions } from "@mercurian/editor/lsp/code-actions";
 import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
+import {
+  canMaintainLanguageServers,
+  hasLanguageServerFile,
+  languageServerFile,
+  languageServerFileOfTab,
+  restartLanguageServer,
+  stopLanguageServer,
+  trustLanguageServerProject,
+  type LanguageServerFile,
+} from "~/components/repositories/languageServerFile";
 import { lastRename } from "~/components/repositories/renameUndo";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
@@ -234,6 +244,29 @@ function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorVie
     view ? () => afterPalette(() => void run(view)) : null,
   );
 }
+
+/**
+ * A command on a language server: of the code file the key came from, else the file in front of
+ * the focused pane. `run` is null to read faint under `label`, as when nothing can be done now.
+ */
+function languageServerEntry(
+  context: AppCommandContext,
+  label: string,
+  run: (file: LanguageServerFile) => (() => void) | null,
+) {
+  const view = editorFrom(context.origin, hasLanguageServerFile);
+  const pane = context.panes ? focusedPaneOf(context.panes.controller) : null;
+  const file =
+    view?.state.facet(languageServerFile) ??
+    (pane ? languageServerFileOfTab(pane.leaf.active) : null);
+  if (!file) return entry("No language server here", null);
+  const act = run(file);
+  return entry(label, act && (() => afterPalette(act)));
+}
+
+/** Whether the server can be stopped, or trust given: only with something for it to do. */
+const maintaining = (file: LanguageServerFile, can: boolean, act: () => void) =>
+  can && canMaintainLanguageServers(file.environmentId) ? act : null;
 
 /** A change command on the code file the key came from; faint where no file shows changes. */
 function hunkEntry(command: keyof typeof HUNK_ENTRIES, origin: KeyOrigin | null): AppCommand {
@@ -487,6 +520,26 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Format document", formatCode);
     case "lsp.codeActions":
       return lspEntry(context.origin, "Show code actions", showCodeActions);
+    case "lsp.restartServer":
+      return languageServerEntry(context, "Restart language server", (file) =>
+        maintaining(file, true, () => restartLanguageServer(file)),
+      );
+    case "lsp.stopServer":
+      return languageServerEntry(context, "Stop language server", (file) => {
+        const state = file.status()?.state;
+        const running = state === "ready" || state === "starting";
+        return maintaining(file, running, () => stopLanguageServer(file));
+      });
+    case "lsp.trustProject":
+      return languageServerEntry(context, "Trust project", (file) => {
+        const status = file.status();
+        const untrusted = status?.restricted === true || status?.state === "trust-needed";
+        return maintaining(file, untrusted, () => trustLanguageServerProject(file));
+      });
+    case "lsp.checkServers":
+      return languageServerEntry(context, "Check language servers", (file) => file.openSettings);
+    case "lsp.viewLogs":
+      return languageServerEntry(context, "View language server logs", (file) => file.openLogs);
     case "file.save": {
       const view = editorFrom(context.origin, hasFileSave);
       const run = view?.state.facet(fileSave) ?? null;
