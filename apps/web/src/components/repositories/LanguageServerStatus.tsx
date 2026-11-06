@@ -1,5 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
+import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
 import type { LanguageServerStatus } from "@t3tools/contracts";
+import { Fragment } from "react";
 
 import { formatBytes } from "~/lib/formatBytes";
 import { languageServersEnvironment } from "~/state/languageServers";
@@ -43,8 +45,9 @@ const STATES: Record<LanguageServerStatus["state"], string> = {
 };
 
 /**
- * Astrolabe: a code file's language server, in its header: what runs and how it stands, as a menu
- * of what can be done to it, with the one action that moves it on when it can't run beside it.
+ * Astrolabe: a code file's language servers, in its header: its primary and how it stands, as a
+ * menu of every server on the file and what can be done to each, with the one action that moves
+ * the primary on when it can't run beside it.
  */
 export function LanguageServerStatusEntry({
   file,
@@ -67,11 +70,22 @@ function Entry({
   const canMaintain = useAtomValue(
     languageServersEnvironment.restart.permissionAtom(file.environmentId),
   );
+  const running = selectEnvironmentQueryData(
+    useAtomValue(languageServersEnvironment.statuses(file.environmentId)),
+  );
+  // Companions the checkout doesn't use have no status; Settings says why.
+  const companions = file.servers
+    .slice(1)
+    .flatMap(
+      (server) => running?.find((other) => other.cwd === file.cwd && other.server === server) ?? [],
+    );
   const { state, restricted } = status;
-  const running = state === "ready" || state === "starting";
-  const trustable = state === "trust-needed" || restricted;
+  const alive = state === "ready" || state === "starting";
+  const trustable = [status, ...companions].some(
+    (entry) => entry.state === "trust-needed" || entry.restricted,
+  );
   const nudge =
-    !canMaintain || running || state === "downloading"
+    !canMaintain || alive || state === "downloading"
       ? null
       : state === "trust-needed"
         ? { label: "Trust project", run: () => trustLanguageServerProject(file) }
@@ -86,33 +100,24 @@ function Entry({
           <span role="status">
             {LABELS[state](status.name)}
             {restricted && state !== "trust-needed" ? " (restricted)" : null}
+            {companions.length > 0 ? ` +${companions.length}` : null}
           </span>
         </MenuTrigger>
         <MenuPopup align="end">
-          <MenuGroup>
-            <MenuGroupLabel>{status.name}</MenuGroupLabel>
-            <p className="max-w-72 px-2 pb-1 text-xs text-muted-foreground">
-              {STATES[state]}
-              {restricted && state !== "trust-needed" ? ", restricted" : ""}
-              {status.memoryBytes === null ? "" : ` · ${formatBytes(status.memoryBytes)}`}
-              {status.message === null ? null : <span className="block">{status.message}</span>}
-            </p>
-          </MenuGroup>
-          <MenuSeparator />
+          {[status, ...companions].map((entry, index) => (
+            <Fragment key={entry.server}>
+              {index > 0 ? <MenuSeparator /> : null}
+              <ServerItems file={file} status={entry} canMaintain={canMaintain} />
+            </Fragment>
+          ))}
           {trustable ? (
-            <MenuItem disabled={!canMaintain} onClick={() => trustLanguageServerProject(file)}>
-              Trust project
-            </MenuItem>
+            <>
+              <MenuSeparator />
+              <MenuItem disabled={!canMaintain} onClick={() => trustLanguageServerProject(file)}>
+                Trust project
+              </MenuItem>
+            </>
           ) : null}
-          <MenuItem disabled={!canMaintain} onClick={() => restartLanguageServer(file)}>
-            Restart
-          </MenuItem>
-          {running ? (
-            <MenuItem disabled={!canMaintain} onClick={() => stopLanguageServer(file)}>
-              Stop
-            </MenuItem>
-          ) : null}
-          <MenuItem onClick={file.openLogs}>View logs</MenuItem>
         </MenuPopup>
       </Menu>
       {nudge ? (
@@ -121,5 +126,39 @@ function Entry({
         </Button>
       ) : null}
     </span>
+  );
+}
+
+function ServerItems({
+  file,
+  status,
+  canMaintain,
+}: {
+  readonly file: LanguageServerFile;
+  readonly status: LanguageServerStatus;
+  readonly canMaintain: boolean;
+}) {
+  const { server, state, restricted } = status;
+  return (
+    <>
+      <MenuGroup>
+        <MenuGroupLabel>{status.name}</MenuGroupLabel>
+        <p className="max-w-72 px-2 pb-1 text-xs text-muted-foreground">
+          {STATES[state]}
+          {restricted && state !== "trust-needed" ? ", restricted" : ""}
+          {status.memoryBytes === null ? "" : ` · ${formatBytes(status.memoryBytes)}`}
+          {status.message === null ? null : <span className="block">{status.message}</span>}
+        </p>
+      </MenuGroup>
+      <MenuItem disabled={!canMaintain} onClick={() => restartLanguageServer(file, server)}>
+        Restart
+      </MenuItem>
+      {state === "ready" || state === "starting" ? (
+        <MenuItem disabled={!canMaintain} onClick={() => stopLanguageServer(file, server)}>
+          Stop
+        </MenuItem>
+      ) : null}
+      <MenuItem onClick={() => file.openLogs(server)}>View logs</MenuItem>
+    </>
   );
 }

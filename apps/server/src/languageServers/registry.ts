@@ -517,11 +517,12 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     launches: [
       {
         name: "ESLint",
+        // Not from PATH: the server loads the project's ESLint, so a machine's old copy brings
+        // nothing and can't read today's configs.
         projectBinary: {
           path: "node_modules/vscode-langservers-extracted/bin/vscode-eslint-language-server",
           runWith: "node",
         },
-        pathCommand: "vscode-eslint-language-server",
         npm: {
           name: "vscode-langservers-extracted",
           version: "4.10.0",
@@ -588,11 +589,11 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     launches: [
       {
         name: "Tailwind CSS",
+        // Not from PATH, as with ESLint: it loads the project's Tailwind.
         projectBinary: {
           path: "node_modules/@tailwindcss/language-server/bin/tailwindcss-language-server",
           runWith: "node",
         },
-        pathCommand: "tailwindcss-language-server",
         npm: {
           name: "@tailwindcss/language-server",
           version: "0.16.0",

@@ -923,6 +923,34 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
   );
 
+  it.live("tells a server of waiting file changes before it renames", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE, { watch: [{ globPattern: "**/*.ts" }] });
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics();
+      const editor = yield* openEditor(checkout, "editor-a");
+      yield* service.filesChanged({
+        cwd: checkout.cwd,
+        changes: [{ relativePath: "src/other.ts", type: "changed" }],
+      });
+      yield* session.request(
+        1,
+        "textDocument/rename",
+        {
+          textDocument: { uri: checkout.uri },
+          position: editor.position("point"),
+          newName: "origin",
+        },
+        editor.envelope(),
+      );
+      // The quiet period is far off: only the rename can have sent this.
+      expect((yield* session.request(2, "test/watched", { count: 1 })).result).toHaveLength(1);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "1 hour" }))),
+  );
+
   it.live("tells a server of a file saved here that it doesn't have open", () =>
     Effect.gen(function* () {
       const documents = yield* Documents.Documents;

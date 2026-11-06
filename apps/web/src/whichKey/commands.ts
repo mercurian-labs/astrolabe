@@ -539,7 +539,11 @@ function astrolabeCommand(
     case "lsp.checkServers":
       return languageServerEntry(context, "Check language servers", (file) => file.openSettings);
     case "lsp.viewLogs":
-      return languageServerEntry(context, "View language server logs", (file) => file.openLogs);
+      return languageServerEntry(
+        context,
+        "View language server logs",
+        (file) => () => file.openLogs(),
+      );
     case "file.save": {
       const view = editorFrom(context.origin, hasFileSave);
       const run = view?.state.facet(fileSave) ?? null;

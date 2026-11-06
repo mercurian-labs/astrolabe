@@ -21,9 +21,13 @@ import { environmentProjects } from "~/state/projects";
 export interface LanguageServerFile {
   readonly environmentId: EnvironmentId;
   readonly cwd: string;
+  /** The file's primary server: what the commands act on, and the session's own. */
   readonly server: LanguageServerId;
+  /** The servers that can serve this file, in order; which run is up to the checkout. */
+  readonly servers: ReadonlyArray<LanguageServerId>;
   readonly status: () => LanguageServerStatus | null;
-  readonly openLogs: () => void;
+  /** A server's logs, the primary's unless told. */
+  readonly openLogs: (server?: LanguageServerId) => void;
   /** Settings → Projects at the file's project; null for a file no project owns (a wiki's). */
   readonly openSettings: (() => void) | null;
 }
@@ -53,19 +57,25 @@ export const canMaintainLanguageServers = (environmentId: EnvironmentId) =>
 
 const REPORT = { reportFailure: true, reportDefect: true };
 
-export const restartLanguageServer = (file: LanguageServerFile) =>
+export const restartLanguageServer = (
+  file: LanguageServerFile,
+  server: LanguageServerId = file.server,
+) =>
   void runAtomCommand(
     appAtomRegistry,
     languageServersEnvironment.restart,
-    { environmentId: file.environmentId, input: { cwd: file.cwd, server: file.server } },
+    { environmentId: file.environmentId, input: { cwd: file.cwd, server } },
     { ...REPORT, label: "restart language server" },
   );
 
-export const stopLanguageServer = (file: LanguageServerFile) =>
+export const stopLanguageServer = (
+  file: LanguageServerFile,
+  server: LanguageServerId = file.server,
+) =>
   void runAtomCommand(
     appAtomRegistry,
     languageServersEnvironment.stop,
-    { environmentId: file.environmentId, input: { cwd: file.cwd, server: file.server } },
+    { environmentId: file.environmentId, input: { cwd: file.cwd, server } },
     { ...REPORT, label: "stop language server" },
   );
 

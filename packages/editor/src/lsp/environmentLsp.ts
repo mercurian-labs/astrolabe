@@ -109,7 +109,11 @@ export class EnvironmentWorkspace extends Workspace {
 interface Held {
   readonly version: number;
   readonly message: {
-    params: { uri: string; version?: number; diagnostics: Array<{ range: Range }> };
+    params: {
+      uri: string;
+      version?: number;
+      diagnostics: Array<{ range: Range; message: unknown; source?: unknown }>;
+    };
   };
 }
 
@@ -127,6 +131,12 @@ const positionOf = (doc: Text, offset: number) => {
   const line = doc.lineAt(offset);
   return { line: line.number - 1, character: offset - line.from };
 };
+
+/** lsp-client keeps only a diagnostic's message, so its server's name goes in there to survive. */
+const labelled = <T extends { readonly message: unknown; readonly source?: unknown }>(item: T) =>
+  typeof item.message === "string" && typeof item.source === "string"
+    ? { ...item, message: `${item.message} (${item.source})` }
+    : item;
 
 /** Marks an editor whose file has a language server, for menus that run its features. */
 const languageServed = Facet.define<boolean>();
@@ -200,6 +210,13 @@ export function environmentLsp(options: {
     timeout: options.timeout ?? REQUEST_TIMEOUT,
     workspace: (owner) => (workspace = new EnvironmentWorkspace(owner, document)),
     extensions: [serverDiagnostics()],
+    notificationHandlers: {
+      // Companion servers join after `initialize`, and leave: this is what `client` can do now.
+      "astrolabe/capabilities": (target, capabilities) => {
+        target.serverCapabilities = capabilities as typeof target.serverCapabilities;
+        return true;
+      },
+    },
   });
   const transport: Transport = {
     send(message) {
@@ -255,7 +272,15 @@ export function environmentLsp(options: {
       // lsp-client reads positions against its synced text and drops other versions: make both now.
       client.sync();
       entry.message.params.version = file.version;
-      deliver(JSON.stringify(entry.message));
+      deliver(
+        JSON.stringify({
+          ...entry.message,
+          params: {
+            ...entry.message.params,
+            diagnostics: entry.message.params.diagnostics.map(labelled),
+          },
+        }),
+      );
     }
   };
   const stopFollowing = document.onVersion(release);

@@ -47,6 +47,7 @@ import {
   AuthFilesystemWriteScope,
   type ClientSettings,
   languageServerForPath,
+  type LanguageServerId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { BotIcon, GitBranchIcon, WaypointsIcon } from "lucide-react";
@@ -193,8 +194,8 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   const navigate = useNavigate();
-  const openLogs = useStableCallback(() => {
-    const server = languageServerForPath(path)?.server;
+  const openLogs = useStableCallback((chosen?: LanguageServerId) => {
+    const server = chosen ?? languageServerForPath(path)?.server;
     if (server === undefined) return;
     const key = repositoryTabKey({ kind: "language-server-logs", environmentId, cwd, server });
     panes.update((arrangement) =>

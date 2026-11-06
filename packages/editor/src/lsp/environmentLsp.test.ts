@@ -2,6 +2,7 @@ import { Text } from "@codemirror/state";
 import { describe, expect, it } from "vite-plus/test";
 
 import { diagnosticsUi } from "./diagnostics.ts";
+import { serverDiagnosticsAt } from "./environmentLsp.ts";
 import { range, setup, URI } from "./testing.ts";
 
 describe("environmentLsp", () => {
@@ -90,6 +91,56 @@ describe("environmentLsp", () => {
       expect(editor.view.state.doc.toString()).toBe(
         "// one\n// two\nconst mine = 0;\nlet value = 1;\n",
       );
+    } finally {
+      editor.view.destroy();
+      editor.lsp.destroy();
+    }
+  });
+
+  it("names each diagnostic's server, and keeps what code actions need as it came", async () => {
+    const editor = mount("let value = 1;\n");
+    try {
+      await editor.initialize();
+      const doc = editor.view.state.doc;
+      editor.lsp.receive(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "textDocument/publishDiagnostics",
+          params: {
+            uri: URI,
+            version: 0,
+            diagnostics: [
+              { range: range(doc, 4, 9), severity: 1, message: "unused", source: "Ruff" },
+            ],
+          },
+        }),
+        0,
+      );
+      editor.view.dispatch({ selection: { anchor: 2 } });
+      await Promise.resolve();
+      await Promise.resolve();
+      const messages = editor.view.dom.querySelectorAll(".atlas-diagnostic-message");
+      expect([...messages].map((element) => element.textContent)).toEqual(["unused (Ruff)"]);
+      expect(serverDiagnosticsAt(editor.view.state, 4, 9)[0]?.diagnostic.message).toBe("unused");
+    } finally {
+      editor.view.destroy();
+      editor.lsp.destroy();
+    }
+  });
+
+  it("takes on the capabilities the gateway reports when a companion comes or goes", async () => {
+    const editor = mount("let value = 1;\n");
+    try {
+      await editor.initialize();
+      expect(editor.lsp.client.serverCapabilities?.hoverProvider).toBeFalsy();
+      editor.lsp.receive(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "astrolabe/capabilities",
+          params: { hoverProvider: true },
+        }),
+      );
+      expect(editor.lsp.client.serverCapabilities?.hoverProvider).toBe(true);
     } finally {
       editor.view.destroy();
       editor.lsp.destroy();

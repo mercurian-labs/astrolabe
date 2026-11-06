@@ -2,7 +2,7 @@ import { RegistryContext, useAtomMount } from "@effect/atom-react";
 import type { DocumentSession } from "@t3tools/client-runtime/state/document-session";
 import {
   type EnvironmentId,
-  languageServerForPath,
+  languageServersForPath,
   type LanguageServerStatus,
 } from "@t3tools/contracts";
 import type { Extension } from "@codemirror/state";
@@ -50,8 +50,9 @@ export function useLanguageServer(
 ) {
   const registry = useContext(RegistryContext);
   const [binding] = useState((): Binding | null => {
-    const match = languageServerForPath(path);
-    if (match === null || session === null) return null;
+    const servers = languageServersForPath(path);
+    const match = servers[0];
+    if (match === undefined || session === null) return null;
     let sessionId = "";
     let status: LanguageServerStatus | null = null;
     const listeners = new Set<() => void>();
@@ -88,6 +89,7 @@ export function useLanguageServer(
       environmentId,
       cwd,
       server: match.server,
+      servers: servers.map(({ server }) => server),
       status: () => status,
       ...hosts,
     };

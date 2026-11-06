@@ -16,14 +16,15 @@ import { subscribeDynamic } from "../rpc/client.ts";
 import {
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
+  createEnvironmentRpcSubscriptionAtomFamily,
   followStreamInEnvironment,
 } from "./runtime.ts";
 
 /**
  * Astrolabe: language servers in an environment. An editor opens its own LSP session to the
- * gateway: `session` streams the server's status and messages while it is mounted, and `send`
- * carries the editor's messages, in order. Restarting, stopping, a project's trust and recording
- * a trace are permission-guarded. `check` is what each server would run for a checkout, for settings.
+ * gateway: `session` streams its primary's status and messages while mounted, and `send` carries
+ * the editor's messages, in order. `statuses` is every server the environment has. Restarting,
+ * stopping, trust and traces are guarded. `check` is what each would run for a checkout.
  */
 export function createLanguageServerEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -66,6 +67,13 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
   });
   const check = (environmentId: EnvironmentId, cwd: string) =>
     checkQuery({ environmentId, input: { cwd } });
+  const statusesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:language-servers:statuses",
+    tag: WS_METHODS.languageServersSubscribe,
+  });
+  /** Every server the environment has, for what serves one file together. */
+  const statuses = (environmentId: EnvironmentId) =>
+    statusesSubscription({ environmentId, input: {} });
 
   /**
    * A fresh atom per editor. Each subscription, a reconnect's included, is a new session with an
@@ -140,6 +148,7 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     setTrace,
     undoEdit,
     session,
+    statuses,
     problems,
     logs,
     check,

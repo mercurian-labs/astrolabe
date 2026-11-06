@@ -2358,6 +2358,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         method === "textDocument/completion" && askedDoc !== undefined && position
           ? wordBefore(askedDoc.texts.get(askedDoc.version)!, position)
           : "";
+      // A file changed moments ago is one it would otherwise rename by what it last read.
+      if (method === "textDocument/rename") flushChanges(instance);
       // A rename is applied here, at the texts the server answers about.
       const seen =
         method === "textDocument/rename" || method === "textDocument/codeAction"

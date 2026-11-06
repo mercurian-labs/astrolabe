@@ -31,6 +31,7 @@ const SOURCES: Record<NonNullable<LanguageServerCheck["source"]>, string> = {
 };
 
 const describe = (check: LanguageServerCheck) => {
+  if (check.companion?.active === false) return check.companion.reason;
   switch (check.state) {
     case "found":
       return `${check.name}, ${SOURCES[check.source ?? "path"]}: ${check.executable}`;
@@ -115,6 +116,15 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
     };
   });
   const servers = checkouts.find((checkout) => checkout.checks !== null)?.checks ?? [];
+  // Each language's companions follow its primary.
+  const rows = servers
+    .filter((server) => server.companion === null)
+    .flatMap((primary) => [
+      primary,
+      ...servers.filter(
+        (server) => server.companion !== null && server.languages === primary.languages,
+      ),
+    ]);
   const waiting = checkouts.some((checkout) => checkout.waiting);
   const prefix = (member: Checkout) =>
     members.length > 1 && member.environmentLabel !== null ? `${member.environmentLabel}: ` : "";
@@ -142,10 +152,10 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
           />
         ),
       )}
-      {servers.map((server) => (
+      {rows.map((server) => (
         <SettingsRow
           key={server.server}
-          title={server.languages}
+          title={server.companion === null ? server.languages : server.name}
           description={
             <span>
               {checkouts.map(({ member, trusted, checks, failed }) => {
@@ -160,12 +170,17 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
                         : checks === null
                           ? "Checking…"
                           : "Unavailable on this machine."}
-                    {check?.state === "found" && trusted === false ? (
+                    {check?.companion?.active === true ? (
+                      <span className="block text-muted-foreground">{check.companion.reason}</span>
+                    ) : null}
+                    {check?.state === "found" &&
+                    trusted === false &&
+                    check.companion?.active !== false ? (
                       <span className="block text-muted-foreground">
                         Runs restricted until this project is trusted.
                       </span>
                     ) : null}
-                    {check?.message ? (
+                    {check?.message && check.companion?.active !== false ? (
                       <span className="block text-muted-foreground">{check.message}</span>
                     ) : null}
                   </span>

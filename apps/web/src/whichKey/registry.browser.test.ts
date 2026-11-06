@@ -514,6 +514,7 @@ describe("a language server's commands", () => {
     environmentId: "env" as EnvironmentId,
     cwd: "/tmp/app",
     server: "typescript",
+    servers: ["typescript"],
     status: () => status(patch),
     openLogs: vi.fn(),
     openSettings: vi.fn(),
