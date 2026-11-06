@@ -31,6 +31,7 @@ import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { WikiHostBridge } from "../wiki/WikiHostService.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 
 /**
@@ -163,6 +164,7 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const wikis = yield* WikiService.WikiService;
+  const wikiHost = yield* WikiHostBridge;
   const settings = yield* ServerSettings.ServerSettingsService;
   const eventStore = yield* EventStore.EventStoreV2;
   const storePath = path.join(config.stateDir, "change-groups.json");
@@ -316,8 +318,10 @@ const make = Effect.gen(function* () {
       for (const member of group.members) {
         if (member.ref.kind !== "wiki-change-request" || member.state !== "open") continue;
         const { wikiId, changeRequestId } = member.ref;
-        yield* wikis
-          .merge({ wikiId, changeRequestId: changeRequestId as WikiChangeRequestId })
+        yield* (wikiHost.merge ?? wikis.merge)({
+          wikiId,
+          changeRequestId: changeRequestId as WikiChangeRequestId,
+        })
           .pipe(
             Effect.tap(() =>
               Effect.logInfo("Merged a change group's documentation with its code", {

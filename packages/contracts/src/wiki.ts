@@ -5,6 +5,7 @@ import * as SchemaGetter from "effect/SchemaGetter";
 import {
   IsoDateTime,
   NonNegativeInt,
+  PositiveInt,
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -45,6 +46,32 @@ export const WikiMirrorStatus = Schema.Struct({
 });
 export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
+/** How the wiki's main line stands against the host's, as of the last sync. */
+export const WikiHostRelation = Schema.Literals(["up-to-date", "ahead", "diverged"]);
+export type WikiHostRelation = typeof WikiHostRelation.Type;
+
+/**
+ * A host wiki's main line lives on a git host, reached through one of its folder's remotes.
+ * The backing project is what pull requests are read and merged through.
+ */
+export const WikiHostStatus = Schema.Struct({
+  projectId: ProjectId,
+  remote: TrimmedNonEmptyString,
+  lastSyncedAt: Schema.NullOr(IsoDateTime),
+  lastSyncedCommit: Schema.NullOr(Schema.String),
+  relation: Schema.NullOr(WikiHostRelation),
+  lastError: Schema.NullOr(Schema.String),
+});
+export type WikiHostStatus = typeof WikiHostStatus.Type;
+
+/** The pull request that is a host wiki's change request. */
+export const WikiPullRequestLink = Schema.Struct({
+  repository: TrimmedNonEmptyString,
+  number: PositiveInt,
+  url: TrimmedNonEmptyString,
+});
+export type WikiPullRequestLink = typeof WikiPullRequestLink.Type;
+
 /**
  * Tiles a wiki's maps can draw on. Their addresses can carry access tokens, so they stay on the
  * server: never in the wiki's files, its mirror, or what agents read.
@@ -75,6 +102,8 @@ const WikiSummaryFields = {
   /** The repositories this wiki is linked to; their threads are told it holds their plans. */
   projectIds: Schema.Array(ProjectId),
   mirror: Schema.NullOr(WikiMirrorStatus),
+  /** Absent from an older server, which has no host wikis. */
+  host: Schema.optionalKey(Schema.NullOr(WikiHostStatus)),
   /** The first is what maps draw on. Absent from an older server and from agents' list. */
   mapBackgrounds: Schema.optionalKey(Schema.Array(WikiMapBackground)),
   openChangeRequests: NonNegativeInt,
@@ -468,6 +497,10 @@ export const WikiChangeRequest = Schema.Struct({
   updatedAt: IsoDateTime,
   mergedCommit: Schema.NullOr(Schema.String),
   amendments: Schema.Array(WikiAmendmentSummary),
+  /** On a host wiki, once opened. Absent from an older server. */
+  pullRequest: Schema.optionalKey(Schema.NullOr(WikiPullRequestLink)),
+  /** The head the host last received; differing from `head` means work not yet published. */
+  pushedHead: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type WikiChangeRequest = typeof WikiChangeRequest.Type;
 
@@ -632,6 +665,13 @@ export const WikiSetMapBackgroundsInput = Schema.Struct({
   backgrounds: Schema.Array(WikiMapBackground),
 });
 export type WikiSetMapBackgroundsInput = typeof WikiSetMapBackgroundsInput.Type;
+
+export const WikiConnectHostInput = Schema.Struct({
+  wikiId: WikiId,
+  /** A remote of the wiki's folder; `origin` when omitted. */
+  remote: Schema.optional(TrimmedNonEmptyString),
+});
+export type WikiConnectHostInput = typeof WikiConnectHostInput.Type;
 
 export const WikiSetProjectLinkInput = Schema.Struct({
   wikiId: WikiId,

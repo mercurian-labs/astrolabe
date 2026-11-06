@@ -247,6 +247,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as TriageService from "./triage/TriageService.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as WikiHostService from "./wiki/WikiHostService.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
@@ -1242,6 +1243,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
   Effect.gen(function* () {
     const wikis = yield* WikiService.WikiService;
+    const wikiHosts = yield* WikiHostService.WikiHostService;
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
@@ -1290,12 +1292,16 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
       [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
-      [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
-      [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikis.setChangeRequestStatus(input),
+      [WS_METHODS.wikiMerge]: (input) => wikiHosts.merge(input),
+      [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikiHosts.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
       [WS_METHODS.wikiSetMapBackgrounds]: (input) => wikis.setMapBackgrounds(input),
       [WS_METHODS.wikiSetProjectLink]: (input) => wikis.setProjectLink(input),
       [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
+      [WS_METHODS.wikiConnectHost]: (input) => wikiHosts.connect(input),
+      [WS_METHODS.wikiDisconnectHost]: (input) => wikiHosts.disconnect(input),
+      [WS_METHODS.wikiSyncHost]: (input) => wikiHosts.sync(input),
+      [WS_METHODS.wikiPublishChangeRequest]: (input) => wikiHosts.publish(input),
       [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),
       [WS_METHODS.documentsPush]: (input) => documents.push(input),
       // Astrolabe: saving goes through the language servers, which format first when asked.
@@ -3417,6 +3423,7 @@ export const layer = Layer.unwrap(
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const npmRelease = yield* NpmRelease.NpmRelease;
     const pullRequests = yield* PullRequestService.PullRequestService;
+    const wikiHosts = yield* WikiHostService.WikiHostService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
     const peerLinks = yield* PeerLinks.PeerLinks;
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
@@ -3494,6 +3501,7 @@ export const layer = Layer.unwrap(
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
               // Share server-lifetime PR caches so WS mutations invalidate every client's HTTP diffs.
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
+              Layer.provide(Layer.succeed(WikiHostService.WikiHostService, wikiHosts)),
               Layer.provide(OtlpEndpointCheck.layer),
               Layer.provide(
                 Layer.succeed(

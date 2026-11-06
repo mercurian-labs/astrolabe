@@ -422,6 +422,7 @@ import {
   WikiError,
   WikiEvent,
   WikiIndexResult,
+  WikiConnectHostInput,
   WikiListResult,
   WikiMergeResult,
   WikiNoteInput,
@@ -681,6 +682,10 @@ export const WS_METHODS = {
   wikiSetMapBackgrounds: "wiki.setMapBackgrounds",
   wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
+  wikiConnectHost: "wiki.connectHost",
+  wikiDisconnectHost: "wiki.disconnectHost",
+  wikiSyncHost: "wiki.syncHost",
+  wikiPublishChangeRequest: "wiki.publishChangeRequest",
 
   // Astrolabe: open repository files, with the environment as their authority.
   documentsSubscribe: "documents.subscribe",
@@ -2279,6 +2284,30 @@ const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiConnectHostRpc = Rpc.make(WS_METHODS.wikiConnectHost, {
+  payload: WikiConnectHostInput,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiDisconnectHostRpc = Rpc.make(WS_METHODS.wikiDisconnectHost, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSyncHostRpc = Rpc.make(WS_METHODS.wikiSyncHost, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiPublishChangeRequestRpc = Rpc.make(WS_METHODS.wikiPublishChangeRequest, {
+  payload: WikiChangeRequestTarget,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 // Astrolabe: subscribing holds the document open; leaving the stream is closing it.
 const WsDocumentsSubscribeRpc = Rpc.make(WS_METHODS.documentsSubscribe, {
   payload: DocumentSubscribeInput,
@@ -2759,6 +2788,10 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiSetMapBackgroundsRpc,
   WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
+  WsWikiConnectHostRpc,
+  WsWikiDisconnectHostRpc,
+  WsWikiSyncHostRpc,
+  WsWikiPublishChangeRequestRpc,
   WsDocumentsSubscribeRpc,
   WsDocumentsPushRpc,
   WsDocumentsSaveRpc,

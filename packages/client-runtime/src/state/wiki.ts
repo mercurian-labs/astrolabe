@@ -178,5 +178,21 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:mirror:push",
       tag: WS_METHODS.wikiPushMirror,
     }),
+    connectHost: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:host:connect",
+      tag: WS_METHODS.wikiConnectHost,
+    }),
+    disconnectHost: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:host:disconnect",
+      tag: WS_METHODS.wikiDisconnectHost,
+    }),
+    syncHost: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:host:sync",
+      tag: WS_METHODS.wikiSyncHost,
+    }),
+    publishChangeRequest: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:change-request:publish",
+      tag: WS_METHODS.wikiPublishChangeRequest,
+    }),
   };
 }

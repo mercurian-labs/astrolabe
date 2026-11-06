@@ -55,6 +55,7 @@ import {
 import * as RunFinalizationService from "./RunFinalizationService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import { userFacingDatabaseErrorMessage } from "./UserFacingErrors.ts";
+import { WikiHostBridge } from "../wiki/WikiHostService.ts";
 
 export interface ProviderEventRoutingState {
   readonly ownedThreadIds: ReadonlySet<ThreadId>;
@@ -615,6 +616,7 @@ export const layer: Layer.Layer<
     const previewAgentActivity = yield* PreviewAgentActivity.PreviewAgentActivity;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
+    const wikiHost = yield* WikiHostBridge;
 
     const writeFinalRunEvents = Effect.fn("RunExecutionService.writeFinalRunEvents")(
       function* (input: {
@@ -879,6 +881,7 @@ export const layer: Layer.Layer<
         // Startup failure and stream shutdown can report the same attempt.
         const refreshAfterTurn = yield* Effect.cached(
           finalizationObserver.refreshAfterTurn(input.appThread.projectId).pipe(
+            Effect.andThen(wikiHost.publishThread(input.run.threadId)),
             Effect.catchCause((cause) =>
               Effect.logWarning("failed to refresh pull requests after run termination", {
                 threadId: input.run.threadId,

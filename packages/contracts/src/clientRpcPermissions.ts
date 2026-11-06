@@ -57,6 +57,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.wikiSetMapBackgrounds]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiSetProjectLink]: AuthSourceControlWriteScope,
   [WS_METHODS.wikiPushMirror]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiConnectHost]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiDisconnectHost]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiSyncHost]: AuthSourceControlWriteScope,
+  [WS_METHODS.wikiPublishChangeRequest]: AuthSourceControlWriteScope,
   // Astrolabe: document edits are file writes.
   [WS_METHODS.documentsPush]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsSave]: AuthFilesystemWriteScope,
