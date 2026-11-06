@@ -5,6 +5,7 @@ import type {
   EnvironmentId,
   LanguageServerId,
   LanguageServerStatus,
+  LanguageServerToolchainKind,
   ProjectId,
 } from "@t3tools/contracts";
 
@@ -23,8 +24,8 @@ export interface LanguageServerFile {
   readonly cwd: string;
   /** The file's primary server: what the commands act on, and the session's own. */
   readonly server: LanguageServerId;
-  /** The servers that can serve this file, in order; which run is up to the checkout. */
-  readonly servers: ReadonlyArray<LanguageServerId>;
+  /** The toolchain a server on this file reads, which people can choose. */
+  readonly toolchain: LanguageServerToolchainKind | null;
   readonly status: () => LanguageServerStatus | null;
   /** A server's logs, the primary's unless told. */
   readonly openLogs: (server?: LanguageServerId) => void;
@@ -77,6 +78,36 @@ export const stopLanguageServer = (
     languageServersEnvironment.stop,
     { environmentId: file.environmentId, input: { cwd: file.cwd, server } },
     { ...REPORT, label: "stop language server" },
+  );
+
+/** Turns a server on for this project, however it came to be off. */
+export const turnOnLanguageServer = (file: LanguageServerFile, server: LanguageServerId) =>
+  void runAtomCommand(
+    appAtomRegistry,
+    languageServersEnvironment.updateSettings,
+    {
+      environmentId: file.environmentId,
+      input: {
+        cwd: file.cwd,
+        change: { type: "enabled", scope: "project", server, enabled: true },
+      },
+    },
+    { ...REPORT, label: "turn on language server" },
+  );
+
+/** A checkout's interpreter; null goes back to finding one automatically. */
+export const selectInterpreter = (
+  target: Pick<LanguageServerFile, "environmentId" | "cwd">,
+  path: string | null,
+) =>
+  void runAtomCommand(
+    appAtomRegistry,
+    languageServersEnvironment.updateSettings,
+    {
+      environmentId: target.environmentId,
+      input: { cwd: target.cwd, change: { type: "toolchain", kind: "python", path } },
+    },
+    { ...REPORT, label: "select interpreter" },
   );
 
 export const trustLanguageServerProject = (file: LanguageServerFile) =>

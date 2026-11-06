@@ -1160,7 +1160,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Language servers",
     to: "/settings/projects",
     searchTerms: [
-      "lsp language server python rust go c c++ cpp clangd gopls rust-analyzer basedpyright pyright typescript diagnostics completion compile_commands virtualenv venv trust trusted revoke restricted",
+      "lsp language server python rust go c c++ cpp clangd gopls rust-analyzer basedpyright pyright typescript diagnostics completion compile_commands virtualenv venv trust trusted revoke restricted add custom own server binary arguments environment initialization options configuration turn off disable order primary",
     ],
   },
   {

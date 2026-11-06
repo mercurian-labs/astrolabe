@@ -21,10 +21,9 @@ import {
 } from "./runtime.ts";
 
 /**
- * Astrolabe: language servers in an environment. An editor opens its own LSP session to the
- * gateway: `session` streams its primary's status and messages while mounted, and `send` carries
- * the editor's messages, in order. `statuses` is every server the environment has. Restarting,
- * stopping, trust and traces are guarded. `check` is what each would run for a checkout.
+ * Astrolabe: language servers in an environment. Each editor opens its own LSP session to the
+ * gateway: `session` streams its status and messages, and `send` carries the editor's, in order.
+ * `statuses` is every server, `check` what each would run, `routes` which serve which files.
  */
 export function createLanguageServerEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -55,6 +54,10 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     label: "environment-data:language-servers:revoke-project-trust",
     tag: WS_METHODS.languageServersRevokeProjectTrust,
   });
+  const updateSettings = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:update-settings",
+    tag: WS_METHODS.languageServersUpdateSettings,
+  });
   const setTrace = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:language-servers:set-trace",
     tag: WS_METHODS.languageServersSetTrace,
@@ -73,6 +76,19 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     // A picker's query per keystroke: none of them is worth keeping.
     idleTtlMs: 0,
   });
+  const toolchains = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:toolchains",
+    tag: WS_METHODS.languageServersToolchains,
+    // Folders come and go, and it's read only to choose from.
+    idleTtlMs: 0,
+  });
+  const routesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:language-servers:routes",
+    tag: WS_METHODS.languageServersRoutes,
+  });
+  /** What serves each kind of file in a checkout, which only its environment knows. */
+  const routes = (environmentId: EnvironmentId, cwd: string) =>
+    routesSubscription({ environmentId, input: { cwd } });
   const statusesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
     label: "environment-data:language-servers:statuses",
     tag: WS_METHODS.languageServersSubscribe,
@@ -151,9 +167,12 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     stop,
     trustProject,
     revokeProjectTrust,
+    updateSettings,
     setTrace,
     undoEdit,
     session,
+    routes,
+    toolchains,
     statuses,
     problems,
     logs,

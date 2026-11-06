@@ -514,7 +514,7 @@ describe("a language server's commands", () => {
     environmentId: "env" as EnvironmentId,
     cwd: "/tmp/app",
     server: "typescript",
-    servers: ["typescript"],
+    toolchain: null,
     status: () => status(patch),
     openLogs: vi.fn(),
     openSettings: vi.fn(),
@@ -568,6 +568,11 @@ describe("a language server's commands", () => {
     expect(appCommand("lsp.trustProject", restricted).disabled).toBe(false);
     appCommand("lsp.stopServer", restricted).run();
     await vi.waitFor(() => expect(vi.mocked(stopLanguageServer)).toHaveBeenCalled());
+
+    // Off in settings: settings are the way back, so Restart doesn't pretend to be.
+    const off = from(fileWith({ state: "disabled" }));
+    expect(appCommand("lsp.restartServer", off).disabled).toBe(true);
+    expect(appCommand("lsp.stopServer", off).disabled).toBe(true);
   });
 
   it("reach Settings and the logs, and a wiki's file has no project's settings", async () => {

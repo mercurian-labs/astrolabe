@@ -2824,10 +2824,10 @@ describe("LanguageServers settings", () => {
       expect(yield* checkout.starts).toBe(1);
 
       yield* set(checkout.cwd, {
-        type: "server",
+        type: "enabled",
         scope: "project",
         server: "typescript",
-        override: {},
+        enabled: true,
       });
       yield* session.state("ready");
       expect(yield* checkout.starts).toBe(2);

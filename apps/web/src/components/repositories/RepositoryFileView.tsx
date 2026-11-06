@@ -51,7 +51,6 @@ import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import {
   AuthFilesystemWriteScope,
   type ClientSettings,
-  languageServerForPath,
   type LanguageServerId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -208,9 +207,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   const navigate = useNavigate();
-  const openLogs = useStableCallback((chosen?: LanguageServerId) => {
-    const server = chosen ?? languageServerForPath(path)?.server;
-    if (server === undefined) return;
+  const openLogs = useStableCallback((server: LanguageServerId) => {
     const key = repositoryTabKey({ kind: "language-server-logs", environmentId, cwd, server });
     panes.update((arrangement) =>
       allTabs(arrangement).includes(key)
@@ -441,7 +438,11 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           </TabHeader.Status>
         ) : null}
         {fromDisk ? null : (
-          <LanguageServerStatusEntry file={languageServer.file} status={languageServer.status} />
+          <LanguageServerStatusEntry
+            file={languageServer.file}
+            status={languageServer.status}
+            servers={languageServer.servers}
+          />
         )}
         <TabHeader.Status>
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
@@ -652,6 +653,7 @@ function FileEditor({
     keys: new Compartment(),
     language: new Compartment(),
     readOnly: new Compartment(),
+    server: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
   const [initial] = useState(() => ({
@@ -709,7 +711,7 @@ function FileEditor({
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           outline({ onPath: initial.outlinePath }),
           importLineExtension,
-          initial.languageServer ?? [],
+          compartments.server.of(initial.languageServer ?? []),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
             session?.changed();
@@ -760,6 +762,14 @@ function FileEditor({
     view.dispatch({ effects: compartments.vim.reconfigure(vim ? vimExtension() : []) });
   }, [compartments, vim]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves the CodeMirror view to the client of the server settings put on this file
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view || (compartments.server.get(view.state) ?? null) === languageServer) return;
+    view.dispatch({ effects: compartments.server.reconfigure(languageServer ?? []) });
+  }, [compartments, languageServer]);
+
+  const serverUi = languageServer !== null;
   // The find bar's, change, editing and save keys follow the keybindings; wrapping, folds, the find bar
   // and shown changes stay.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- carries rebound keys into the CodeMirror view
@@ -775,7 +785,7 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer
+        serverUi
           ? languageServerUi(lspKeys, diagnosticKeys, initial, {
               hintTypes,
               hintParameters,
@@ -800,6 +810,7 @@ function FileEditor({
   }, [
     compartments,
     initial,
+    serverUi,
     findKeys,
     hunkKeys,
     editingKeys,

@@ -42,6 +42,7 @@ import {
   trustLanguageServerProject,
   type LanguageServerFile,
 } from "~/components/repositories/languageServerFile";
+import { openInterpreterPicker } from "~/components/repositories/InterpreterPicker";
 import { lastRename } from "~/components/repositories/renameUndo";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
@@ -530,7 +531,7 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Show code actions", showCodeActions);
     case "lsp.restartServer":
       return languageServerEntry(context, "Restart language server", (file) =>
-        maintaining(file, true, () => restartLanguageServer(file)),
+        maintaining(file, file.status()?.state !== "disabled", () => restartLanguageServer(file)),
       );
     case "lsp.stopServer":
       return languageServerEntry(context, "Stop language server", (file) => {
@@ -551,6 +552,10 @@ function astrolabeCommand(
         context,
         "View language server logs",
         (file) => () => file.openLogs(),
+      );
+    case "lsp.selectInterpreter":
+      return languageServerEntry(context, "Select Python interpreter", (file) =>
+        maintaining(file, file.toolchain === "python", () => openInterpreterPicker(file)),
       );
     case "file.save": {
       const view = editorFrom(context.origin, hasFileSave);

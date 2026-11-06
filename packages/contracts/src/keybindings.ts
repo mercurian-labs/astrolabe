@@ -83,6 +83,7 @@ const LANGUAGE_SERVER_KEYBINDING_COMMANDS = [
   "lsp.trustProject",
   "lsp.checkServers",
   "lsp.viewLogs",
+  "lsp.selectInterpreter",
   "lsp.projectSymbols",
   "lsp.toggleInlayHints",
   "lsp.toggleInlineDiagnostics",

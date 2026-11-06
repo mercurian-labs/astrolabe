@@ -284,6 +284,13 @@ export const LanguageServerSettingsChange = Schema.Union([
     server: LanguageServerId,
     override: LanguageServerOverride,
   }),
+  /** Just whether it runs, keeping the rest of its settings. */
+  Schema.Struct({
+    type: Schema.Literal("enabled"),
+    scope: LanguageServerSettingsScope,
+    server: LanguageServerId,
+    enabled: Schema.Boolean,
+  }),
   /** Empty goes back to the language's usual order. */
   Schema.Struct({
     type: Schema.Literal("order"),

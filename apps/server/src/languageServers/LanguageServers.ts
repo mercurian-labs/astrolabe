@@ -2058,7 +2058,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       const unknown = change.order.find((server) => !servers.includes(server));
       if (unknown !== undefined) return yield* invalid(`${unknown} doesn't serve that language.`);
     }
-    if (change.type === "server" && specOf(change.server) === undefined) {
+    if ((change.type === "server" || change.type === "enabled") && !specOf(change.server)) {
       return yield* invalid(`${change.server} isn't a language server here.`);
     }
     yield* settings
@@ -2086,6 +2086,14 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
                       : { ...others, [change.server]: change.override },
                 };
               });
+            case "enabled":
+              return inLayer(change.scope, (layer) => ({
+                ...layer,
+                servers: {
+                  ...layer.servers,
+                  [change.server]: { ...layer.servers[change.server], enabled: change.enabled },
+                },
+              }));
             case "order":
               return inLayer(change.scope, (layer) => {
                 const { [change.language]: _replaced, ...others } = layer.order;
