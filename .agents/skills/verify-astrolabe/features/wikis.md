@@ -175,6 +175,22 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   page draws only the base (`showBase` in `protocol.ts`, the same `BaseBlock`); a `View` header
   menu (iOS only, as every header button) appears with two or more views and ticks the one shown.
   A row's name opens its note on top; Back returns to the base.
+- **Canvas review** (`wiki/WikiCanvasReview.tsx`, the logic in `packages/wiki/src/canvas.ts` and
+  `canvasMerge.ts`, the pass in `WikiService.mergeTrees`): seed a change request and main with
+  worktree edits to one `.canvas`. A changed canvas shows a board with marks and a change list, not
+  a JSON diff; **JSON** swaps to the diff and back. Check each mark (Added, Removed, Text, Moved,
+  Style), including on an arrow, in dark mode and the Mercurian theme. A row focuses and selects
+  its card; a removed card under a new one comes up on top. Moves are folded. The wheel scrolls the
+  page until the board is clicked. Merge: adjacent cards merge clean; an arrow onto a card main
+  deleted shows under **Merging decides these** and is gone from main afterwards; a card edited
+  here and deleted there is a conflict naming the card, whose advice says worktree, not amend;
+  saving the worktree to agree with main clears it. Revert an amendment that later work drew an
+  arrow on: a toast says the arrow was dropped. Invalid JSON on a side is a conflict and the file is
+  left as it was.
+- **Canvas review on the phone** (`WikiCanvasReviewRouteScreen.tsx`, `WikiCanvasChanges.tsx`): the
+  change request's row shows a count such as `2 added, 1 moved`, and a deleted canvas's row opens
+  too. It opens the board with marks and the list below; a row selects its card. A conflict says it
+  can't be settled from the phone, and the notes show under the merge card.
 - **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): a `.canvas`
   lists as `button "<name>, canvas, <wiki>"` with "Canvas · read only", and opens in `WikiDocument`
   from the list, a change request's documents, links in notes and a base's rows, subtitle

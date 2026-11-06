@@ -54,6 +54,10 @@ On the phone, drag to pan and pinch to zoom. Tap a card to select it, and tap ag
 
 A file card can narrow a note to a heading or block, or pin a base to one view, as in Obsidian. A card linking to code marks when its file has changed or gone at the project's head, and never changes itself.
 
+A canvas in a change request opens as a board with marks on what changed: added, removed, text, moved and restyled. The list beside it names each change, and clicking a row focuses that card. Moves are folded at the end of the list, removed cards stay on the board so you can see what went, and **JSON** shows the file's raw diff. Click the board once to pan it with the wheel; until then the wheel scrolls the page. On the phone, tap a canvas in the change request to see the same board with the list below it.
+
+Merging a change request merges a canvas card by card, so two people's edits to different cards never clash. Text changed in the same card merges by sentence. Where both sides moved, resized or recoloured a card, the change being merged wins. An arrow whose card goes in the merge goes with it, and deleting a card beats moving it. The change request says beforehand what merging will decide, and a revert says what it decided. A card edited on one side and deleted on the other, the same sentence changed on both sides, or JSON that doesn't read is a conflict. To settle one, put the change request in a worktree, edit the file in Obsidian or any editor so the clashing cards agree with main, and use **Save edits to the change request**. To keep a card main deleted, give it a new `id` there. The phone shows a conflict but can't settle it.
+
 A file card or a link in a text card counts as a backlink, and a link in a text card to something unwritten is a red link. Arrows never count as links. Renaming a note updates the canvases that show it. Link to a canvas with its extension, as `[[Board.canvas]]`: `[[Board]]` doesn't find it. `![[Board.canvas]]` on a line of its own shows a picture of the board, and clicking it opens the canvas.
 
 Search finds what cards say, and agents read a canvas as an outline of its cards, groups and arrows.
