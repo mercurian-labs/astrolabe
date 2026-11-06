@@ -128,6 +128,19 @@ export function tokenMarks(
   return Decoration.set(ranges, true);
 }
 
+/** `data` with `edits` made; copied, since a delta can be too long to spread into a call. */
+function withEdits(data: readonly number[], edits: NonNullable<TokensAnswer["edits"]>) {
+  const next: number[] = [];
+  let at = 0;
+  for (const edit of edits.toSorted((a, b) => a.start - b.start)) {
+    for (; at < edit.start; at++) next.push(data[at]!);
+    for (const value of edit.data ?? []) next.push(value);
+    at = edit.start + edit.deleteCount;
+  }
+  for (; at < data.length; at++) next.push(data[at]!);
+  return next;
+}
+
 const setTokens = StateEffect.define<DecorationSet>();
 
 const tokensField = StateField.define<DecorationSet>({
@@ -141,7 +154,7 @@ const tokensField = StateField.define<DecorationSet>({
 
 class Tokens {
   private readonly ask: ServerAsk;
-  private last: { readonly resultId: string; data: number[] } | null = null;
+  private last: { readonly resultId: string; readonly data: readonly number[] } | null = null;
 
   constructor(private readonly view: EditorView) {
     this.ask = new ServerAsk(view);
@@ -181,7 +194,10 @@ class Tokens {
       }),
       (answer, mapping, plugin) => {
         const data = this.dataOf(answer);
-        if (data === null) return;
+        if (data === null) {
+          if (previous !== null) this.request();
+          return;
+        }
         const changes = mapping.getMapping(plugin.uri);
         const marks = tokenMarks(view.state, asked, provider.legend, data, (offset) =>
           changes ? changes.mapPos(offset, 1) : offset,
@@ -189,7 +205,9 @@ class Tokens {
         view.dispatch({ effects: setTokens.of(marks) });
       },
       () => {
+        // With nothing left to build on, this asks for the whole file, and once only.
         this.last = null;
+        if (previous !== null) this.request();
       },
     );
   }
@@ -200,14 +218,11 @@ class Tokens {
       this.last = null;
       return null;
     }
-    let data: number[];
+    let data: readonly number[];
     if (answer.edits && this.last) {
-      data = this.last.data;
-      for (const edit of answer.edits.toSorted((a, b) => b.start - a.start)) {
-        data.splice(edit.start, edit.deleteCount, ...(edit.data ?? []));
-      }
+      data = withEdits(this.last.data, answer.edits);
     } else if (answer.data) {
-      data = [...answer.data];
+      data = answer.data;
     } else {
       this.last = null;
       return null;

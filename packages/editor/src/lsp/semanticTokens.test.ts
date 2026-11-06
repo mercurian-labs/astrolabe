@@ -116,6 +116,67 @@ describe("semanticTokens", () => {
     }
   });
 
+  it("takes a delta too long to spread into a call, and builds on it next time", async () => {
+    let round = 0;
+    const editor = open(
+      (method) => {
+        if (method === "textDocument/semanticTokens/full") return { resultId: "1", data: DATA };
+        round += 1;
+        const data = round === 1 ? new Array(1_000_000).fill(0) : [];
+        return {
+          resultId: String(round + 1),
+          edits: [{ start: DATA.length, deleteCount: 0, data }],
+        };
+      },
+      { delta: true },
+    );
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(1100);
+      for (const _edit of [1, 2]) {
+        editor.type(editor.view.state.doc.length, "\n");
+        await vi.advanceTimersByTimeAsync(1100);
+      }
+      expect(requests(editor).at(-1)?.message.params.previousResultId).toBe("2");
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks for the whole file when a delta fails, and only once", async () => {
+    let full = 0;
+    const editor = open(
+      (method) => {
+        if (method !== "textDocument/semanticTokens/full") return undefined;
+        full += 1;
+        return { resultId: String(full), data: full === 1 ? [] : DATA };
+      },
+      { delta: true },
+    );
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(1100);
+      editor.type(editor.view.state.doc.length, "\n");
+      await vi.advanceTimersByTimeAsync(1100);
+      const delta = requests(editor).at(-1)!.message;
+      expect(delta.method).toBe("textDocument/semanticTokens/full/delta");
+      editor.lsp.receive(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: delta.id,
+          error: { code: -32801, message: "Content modified" },
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(requests(editor)).toHaveLength(3);
+      expect(editor.view.dom.querySelectorAll(".tok-className")).toHaveLength(2);
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it("leaves a large file to the parser", async () => {
     const editor = open(() => ({ data: DATA }), true, `${"// long\n".repeat(70_000)}`);
     try {
