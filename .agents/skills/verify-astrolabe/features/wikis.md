@@ -96,8 +96,22 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Mod-click on a wikilink follows it in the same tab, unless the target is open in
   another tab (that one comes forward) or the note has unsaved edits (it opens in a
   new tab). Clicking inside a pane focuses it.
-- **Vim**: with Vim keybindings on, notes edit with Vim and `:w` opens Save to change
-  request (vim-mode.md). The keyboard menu's `w` group opens Wikis and the finder,
+- **Drafts**: nothing in a document saves by hand. The first edit on main starts one draft per
+  wiki (`wiki.autosave` with no `changeRequestId`), and main's folder doesn't change. The tab key
+  stays on main: a document reads from the draft once the draft holds it
+  (`wikiDocumentScope`), with no remount, so the caret stays put. The header's `Main` becomes a
+  pill, `Draft · N documents`, on every document of that wiki; its menu has Open draft, Make it a
+  change request… (title prefilled `Edit <document>`), Move to another one… (target and document
+  checkboxes; a target whose agent is mid-turn is disabled), and Discard… (a confirm). The Wikis
+  sidebar gets a `Draft · N documents` row above Open changes, which doesn't count it; Changes gets
+  **Your drafts** above Wiki changes, and a discarded one sits on Merged and closed as "discarded
+  draft" with **Reopen draft**. The draft's tab offers the three ways out in place of Close and
+  Merge. **Wiki: Open your draft** in the palette opens it. Status text after the title: `Saving…`,
+  `Saved`, `Not saved`, `Saves when the turn ends`, `Saves once this runs` (a base whose edit can't
+  run). A failed save shows an alert with **Try again** and keeps trying; only then does leaving
+  ask. A document in a merged or closed change request is read only.
+- **Vim**: with Vim keybindings on, notes edit with Vim and `:w` saves now
+  (vim-mode.md). The keyboard menu's `w` group opens Wikis and the finder,
   and `:e <name>` in the Command Palette opens a document.
 - **Find and symbols**: in a note Cmd+F opens CodeMirror's find bar (`.cm-search`, focus in
   `input[name=search]`, a replace row; Cmd+Enter replaces all), read-only notes too, and
@@ -155,7 +169,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   card kind: text with Mermaid and math, note with `subpath`, image, PDF, audio, video, base with a
   pinned view, nested canvas as a minimap, missing file, link (selecting mounts an iframe), code
   with a staleness mark. **Jump to group** in the tab and the palette. New canvas: type a name in
-  the Finder, pick **New canvas**, **Create canvas** saves it to a change request. `![[Board.canvas]]`
+  the Finder, pick **New canvas**, **Create canvas** lands it in the draft with no dialog. `![[Board.canvas]]`
   in a note draws a thumbnail that opens it; Mermaid draws in ordinary notes. Invalid JSON shows the
   error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
 - **Agents on a canvas** (`packages/wiki/src/canvasEdits.ts`, `canvasPlace.ts`, the transform in
@@ -222,12 +236,13 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
   view; its header has `Edit the document`/`Stop editing` (iOS exposes them as `button "Edit"`/`"Done"`;
   not on read-only skill maps), and
-  once edited `Save to a change request` and `Document actions` › Discard edits. Save opens
-  the "Save to change request" sheet: New change request or an open one, `Change request
-  title` (captioned "Title" on iOS), `What changed`, then Save (`Save when the turn ends` while the agent works). A
+  there is no Save: the subtitle reads `Saving…` then `Saved`, or `saves when the turn ends`
+  while an agent works. With a draft a bar in place of Main (`Draft · N documents`) opens the "Your
+  draft" sheet: `Change request title` and Make it a change request, Move with its documents, and
+  Discard. A
   change request (route `WikiChangeRequest`, from the Changes tab) has `Change
   request actions` (on iOS the ⋯ button is named after the change request; Merge into main,
-  Close/Reopen, and Open thread when it has one), "Amendments (N)" with
+  Close/Reopen, and Open thread when it has one; a draft's offers the sheet instead of Merge and Close), "Amendments (N)" with
   `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
   stays on the computer. Walk it on an iPhone with test-t3-mobile.
 
@@ -272,6 +287,27 @@ returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row
 `location.reload()` keeps the arrangement and the histories
 (`JSON.parse(localStorage['astrolabe:workspace-tab-history:v1'])`) and expands every group. Save
 a screenshot of the section.
+
+### Walk drafts
+
+1. Open a note on main and type. Within about two seconds the header reads Saved, `Main` is the
+   pill `Draft · 1 document`, the caret hasn't moved, and `git -C <wiki> log main` is unchanged.
+2. Keep typing over a few pauses, then open the draft: one amendment. Edit a second note, and
+   the pill reads 2 documents, with two amendments; a third note on main still shows main's text.
+3. Reload. The pill and your text are still there.
+4. In a base, edit a cell, then rename a view. No Save anywhere; a board's card moves and stays.
+   New canvas's **Create canvas** adds to the draft.
+5. Stop the dev server mid-typing (by its tracked PID), keep typing: `Not saved`, the alert, and it
+   lands by itself after restart. Leaving while it shows asks first.
+6. Make it a change request: the tab stays on the note, now inside it; the next edit on main starts
+   a new draft. Move one of two documents into an open change request. Discard, then reopen from
+   Merged and closed. Reopen with a newer draft open: refused, saying why.
+7. Merge something else to main that clashes: the draft's tab and the pill's menu say so, and it
+   still saves.
+8. In an agent's change request mid-turn: `Saves when the turn ends`, and it lands when it ends.
+9. Two clients on one note: each one's text lands in the other, attributed "You, elsewhere", and
+   neither is overwritten.
+10. Phone: the same, from Edit; no Save, the bar opens the sheet, and backgrounding the app saves.
 
 ## Gotchas
 

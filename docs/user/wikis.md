@@ -22,17 +22,17 @@ Documents are listed newest first. Above them, **Open changes** counts the wiki'
 
 In a note, ⌘-click a wikilink to follow it in the same tab. Search in the sidebar narrows its list to the documents whose name holds what you type. **New document** starts one: type its name and choose **Write**.
 
-When you change a note, **Save to change request** keeps your edit in a change request instead of writing it into the wiki directly. Closing a tab with unsaved edits asks first.
+Edits save by themselves a moment after you stop typing, into [your draft](#drafts), never into the wiki directly. A document you open from a change request saves into that change request. If a save fails, the document says so and keeps trying, and leaving it asks first.
 
 ## Bases
 
 A base is a saved question over every file in a wiki's repository: which files, filtered, sorted and grouped by their properties, links and formulas, with summaries such as a column's sum or earliest date. It uses Obsidian's Bases format, and gives the same results as Obsidian 1.14: a base written in Obsidian works here and the other way round. Its results are worked out each time you look, never stored, so a base keeps up as the wiki grows. A useful shape for an index note is a hand-ordered list of the notes to read first, then a base listing everything else in the area.
 
-To make one, write a `base` code block in a note, or embed a `.base` file with `![[Name.base]]` (or `![[Name.base#View]]` for one view) on a line of its own, and save it to a change request. A `.base` file made in Obsidian and committed to the wiki's repository lists among its documents and opens as its view. Click a row's name to open it: a note or base at the wiki's top level opens as a document, and any other file, such as an image or a note in a folder, opens as a file. Give notes properties with YAML frontmatter at the top (`status: open`), which bases can filter, sort and show. Agents read a base's rows, and can write bases into a change request like any note.
+To make one, write a `base` code block in a note, or embed a `.base` file with `![[Name.base]]` (or `![[Name.base#View]]` for one view) on a line of its own. A `.base` file made in Obsidian and committed to the wiki's repository lists among its documents and opens as its view. Click a row's name to open it: a note or base at the wiki's top level opens as a document, and any other file, such as an image or a note in a folder, opens as a file. Give notes properties with YAML frontmatter at the top (`status: open`), which bases can filter, sort and show. Agents read a base's rows, and can write bases into a change request like any note.
 
 A view shows as a table, cards (with a cover image from a property), a list, a board with a column per group, or a map. A map places each file at the coordinates in the property you choose (`"48.85837, 2.294481"`, or a two-item list), as Obsidian's Maps plugin does, on OpenFreeMap's tiles unless the wiki or the view names others; it needs the internet to draw. **Map backgrounds** on a wiki's page in **Settings → Wikis** holds the tiles its maps use: the first is the default, and a map can switch between several. Backgrounds stay on the server, so an address with an access key never reaches the wiki's files or its mirror. A view that names its own tiles keeps them, and those are saved in the `.base` file. On the phone, a map lists its places instead.
 
-A `.base` file's tab edits in place, as in Obsidian: switch, add, rename and delete views, change a view's layout, sort, filter, group and shown properties, add formulas, rename and summarize columns from their headings, edit a note's property in its cell, drag a board's card to another column, and add notes with New, which fills in what the view's filters and column ask for. Changes show at once and stay unsaved until you save them to a change request; main changes only when it merges. Only notes at the wiki's top level edit this way. On the phone, a `.base` file's cells edit the same way, a board's card moves with the column picker on it, and its view settings are read only.
+A `.base` file's tab edits in place, as in Obsidian: switch, add, rename and delete views, change a view's layout, sort, filter, group and shown properties, add formulas, rename and summarize columns from their headings, edit a note's property in its cell, drag a board's card to another column, and add notes with New, which fills in what the view's filters and column ask for. Changes show at once and save by themselves, like a note's; main changes only when a change request merges. Only notes at the wiki's top level edit this way. On the phone, a `.base` file's cells edit the same way, a board's card moves with the column picker on it, and its view settings are read only.
 
 When an agent renames a note, names in bases that link to it or compare a file's name with it follow the new name. Obsidian's own rename leaves bases alone, so a base whose names no longer match any note, or any link, is listed as a problem in the wiki's settings and in change requests.
 
@@ -44,7 +44,7 @@ Bases support Obsidian's whole language: filters, formulas, every function, regu
 
 A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web, desktop and the phone, and agents change them through change requests. You can't drag cards here yet.
 
-To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then save it to a change request. To draw on it, ask an agent, or edit the file in Obsidian or any editor in that change request's worktree. You can also [keep a canvas from a thread](html-renders.md#canvases).
+To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then choose **Create canvas**. It starts in your draft. To draw on it, make the draft a change request and ask an agent to work in it, or edit the file in Obsidian or any editor in that change request's worktree. You can also [keep a canvas from a thread](html-renders.md#canvases).
 
 An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a group can grow to fit a new card. Its changes land on a change request, never on main. A canvas open in that change request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the change request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
 
@@ -80,9 +80,25 @@ Obsidian keeps these links working and shows the `@` word as you wrote it, inclu
 
 A document can open beside a conversation, and a conversation beside a document. **Document** in a pane's New tab (its **+**) finds or writes one in that tab's place. A change request's **Open thread** shows its thread's conversation after the chat in front.
 
+## Drafts
+
+Your first edit on a wiki's main line starts your draft, a change request that has no name yet. Everything else you edit there collects in it, notes, bases and canvases alike, and main doesn't change. You have one draft per wiki, the same one on every device connected to that computer, and only you see it.
+
+While you have a draft, the pill where a document says **Main** reads **Draft** and how many documents it holds. A document in the draft shows your edits; any other shows main, until you edit it. Your draft is also listed apart at the top of a wiki in the sidebar and in **Changes**. Reopening the app finds it where you left it.
+
+Open the pill to:
+
+- **Make it a change request**: give it a title, and it becomes an ordinary change request you can merge. A draft has to be one before it merges.
+- **Move to another one**: add all of it, or the documents you pick, to an open change request as one amendment. If the two clash, nothing moves and you're told which files.
+- **Discard**: closes it, and your documents go back to main. To get it back, find it under **Merged and closed** in **Changes** and reopen it. You can't reopen one while another draft is open.
+
+Saves of one document in a sitting count as one amendment. Moving to another document, stopping for a while, or an agent's amendment landing starts a new one.
+
+If main moves while you work, your draft keeps your edits, and any clash shows in the draft and in the pill's menu, as it would for a change request. While an agent is mid-turn in a change request you're editing, your edits wait, the document says so, and they save when the turn ends. Agents never write to a draft.
+
 ## Change requests
 
-Change requests are listed in **Changes** in the icon rail, beside your pull requests: open ones first, then a folded **Merged and closed** shelf. When the Wikis filter picks a single wiki, **Open changes** in Wikis narrows them to that wiki. Each opens as a tab, and its documents open beside it.
+Change requests are listed in **Changes** in the icon rail, beside your pull requests: drafts first, then open ones, then a folded **Merged and closed** shelf. When the Wikis filter picks a single wiki, **Open changes** in Wikis narrows them to that wiki. Each opens as a tab, and its documents open beside it.
 
 Nothing reaches a wiki without someone merging it. Every edit, yours or an agent's, lands as an amendment in a change request. The change request shows each amendment, what it changed, and whether it merges cleanly. You can revert any single amendment, close a change request, reopen it, or merge it. Only you merge; agents cannot.
 
@@ -104,7 +120,7 @@ Agents in any thread can read, search and amend your wikis. Their amendments go 
 
 To point an agent at a note, type `[[` in a thread's message and pick the note; the agent reads it. Notes from the project's linked wikis come first. While the project has no linked wiki, the list also offers to link one.
 
-When an agent amends a note you have open in that change request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type while the agent's turn is running is saved to the change request when the turn ends.
+When an agent amends a note you have open in that change request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type or change while the agent's turn is running saves to the change request when the turn ends.
 
 ## Keep a copy elsewhere
 

@@ -133,7 +133,7 @@ export function WikiNoteEditor({
   readonly renderCanvasEmbed?: (target: string) => ReactNode;
   /** A ```mermaid block's diagram, from its source; it shows until the block is edited. */
   readonly renderMermaid?: (source: string) => ReactNode;
-  /** Vim's `:w`: saves the note, as Save to change request does. */
+  /** Vim's `:w`: saves the note now, rather than after the usual pause. */
   readonly onWrite?: () => void;
   /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
   readonly linkTypes: ReadonlyArray<string>;
@@ -160,7 +160,7 @@ export function WikiNoteEditor({
     vimNormalModeFont,
     outline(),
     agentChangeBar(),
-    appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
+    appVimKeys(() => ({ label: "Save now", run: () => writeRef.current?.() })),
     linkTools.extension,
   ]);
   const [readOnlyExtensions] = useState(() => [...READ_ONLY_EXTENSIONS, linkTools.extension]);
