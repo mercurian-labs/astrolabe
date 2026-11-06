@@ -60,15 +60,16 @@ export type CanvasCodeStatus = "current" | "changed" | "gone" | "unknown";
 
 /** A wiki's file a board shows but can't fetch itself: only the host can reach its bytes. */
 export type CanvasAsset =
-  | { readonly kind: "image" | "pdf" | "audio" | "video"; readonly path: string }
+  | { readonly kind: "pdf"; readonly path: string }
+  | { readonly kind: "image" | "audio" | "video"; readonly path: string }
   | { readonly kind: "background"; readonly path: string; readonly style: string | undefined };
 
-/** An asset drawn at the address its host found for it. */
+/** An asset drawn at the address its host found for it. A PDF needs a viewer only a host has. */
 export function CanvasAssetView({
   asset,
   url,
 }: {
-  readonly asset: CanvasAsset;
+  readonly asset: Exclude<CanvasAsset, { readonly kind: "pdf" }>;
   readonly url: string;
 }) {
   switch (asset.kind) {
@@ -78,8 +79,6 @@ export function CanvasAssetView({
       return <audio className="cv-asset-media" src={url} controls preload="metadata" />;
     case "video":
       return <video className="cv-asset-media" src={url} controls preload="metadata" />;
-    case "pdf":
-      return <iframe className="cv-asset-frame" src={url} title={asset.path} sandbox="" />;
     case "background":
       return (
         <div

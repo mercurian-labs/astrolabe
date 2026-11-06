@@ -25,6 +25,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { wikiEnvironment } from "~/state/wiki";
+import { BrowserDocumentFrame } from "../files/BrowserDocumentFrame";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -64,7 +65,17 @@ function WikiAsset({
     commit,
     path: asset.path,
   });
-  return state._tag === "Success" ? <CanvasAssetView asset={asset} url={state.url} /> : null;
+  if (state._tag !== "Success") return null;
+  return asset.kind === "pdf" ? (
+    <BrowserDocumentFrame
+      src={state.url}
+      title={asset.path}
+      pdf
+      documentKey={`${commit}:${asset.path}`}
+    />
+  ) : (
+    <CanvasAssetView asset={asset} url={state.url} />
+  );
 }
 
 function CanvasBoardPane({

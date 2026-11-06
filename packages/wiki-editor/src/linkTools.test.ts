@@ -1,7 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vite-plus/test";
 
-import { noteExcerpt, typeSuggestions } from "./linkTools";
+import { noteExcerpt, nameSuggestions, typeSuggestions } from "./linkTools";
 
 describe("noteExcerpt", () => {
   it("quotes a note's text without its frontmatter, title, code or markup", () => {
@@ -28,6 +28,27 @@ describe("noteExcerpt", () => {
     const excerpt = noteExcerpt(`${"word ".repeat(100)}\n`);
     expect(excerpt.endsWith("…")).toBe(true);
     expect(excerpt.length).toBeLessThanOrEqual(241);
+  });
+});
+
+describe("nameSuggestions", () => {
+  const at = (before: string, after = "") =>
+    nameSuggestions({ state: EditorState.create({ doc: before + after }), pos: before.length }, [
+      "Alpha",
+      "Board.canvas",
+    ]);
+
+  it("offers the wiki's documents on a link's name", () => {
+    expect(at("See [[")).toMatchObject({ from: 6 });
+    expect(at("See [[Bo", "]]")?.from).toBe(6);
+    expect(at("[[")?.options.map((option) => option.label)).toEqual(["Alpha", "Board.canvas"]);
+  });
+
+  it("stays out of a link's heading, its display text, and everything else", () => {
+    expect(at("[[Alpha#")).toBeNull();
+    expect(at("[[Alpha|")).toBeNull();
+    expect(at("[Alpha")).toBeNull();
+    expect(at("[[Alpha]] and")).toBeNull();
   });
 });
 
