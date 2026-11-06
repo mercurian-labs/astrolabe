@@ -90,6 +90,7 @@ export function useWikiCanvasHost({
   environmentId,
   wikiId,
   changeRequestId,
+  draftId,
   commit,
   onOpenNote,
   onOpenFile,
@@ -100,6 +101,8 @@ export function useWikiCanvasHost({
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** Where a card looks for a file the board's commit doesn't have. */
+  readonly draftId?: WikiChangeRequestId | undefined;
   readonly commit: string;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenFile?: ((path: string) => void) | undefined;
@@ -142,8 +145,23 @@ export function useWikiCanvasHost({
   const openNote = useStableCallback(onOpenNote);
   const openFile = useStableCallback((path: string) => onOpenFile?.(path));
   const readFiles = useStableCallback(async (paths: ReadonlyArray<string>) => {
-    const result = await runFiles({ environmentId, input: { wikiId, commit, paths: [...paths] } });
-    return result._tag === "Success" ? result.value.files : [];
+    const read = async (
+      from: { commit: string } | { changeRequestId: WikiChangeRequestId },
+      wanted: ReadonlyArray<string>,
+    ) => {
+      const result = await runFiles({
+        environmentId,
+        input: { wikiId, ...from, paths: [...wanted] },
+      });
+      return result._tag === "Success" ? result.value.files : [];
+    };
+    const found = await read({ commit }, paths);
+    const missing = found.filter((file) => !file.exists).map((file) => file.file);
+    if (draftId === undefined || missing.length === 0) return found;
+    const drafted = new Map(
+      (await read({ changeRequestId: draftId }, missing)).map((file) => [file.file, file]),
+    );
+    return found.map((file) => drafted.get(file.file) ?? file);
   });
   const readCodeStatus = useStableCallback(
     async (references: ReadonlyArray<Required<Omit<CanvasCodeReference, "lines">>>) => {

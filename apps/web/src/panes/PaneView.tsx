@@ -786,12 +786,22 @@ export const PaneView = memo(function PaneView({
   useEffect(() => {
     const pane = section.current;
     if (!pane) return;
+    // A sidebar's document dropped on an editable board goes on the board, not in a tab.
+    const forBoard = (event: globalThis.DragEvent, item: { readonly place?: unknown }) =>
+      item.place !== undefined &&
+      event.target instanceof Element &&
+      event.target.closest("[data-takes-documents]") !== null;
     const onDragEnter = (event: globalThis.DragEvent) => {
-      if (currentDrag()) event.stopPropagation();
+      const item = currentDrag();
+      if (item && !forBoard(event, item)) event.stopPropagation();
     };
     const onDragOver = (event: globalThis.DragEvent) => {
       const item = currentDrag();
       if (!item) return;
+      if (forBoard(event, item)) {
+        if (latest.current.target) setTarget(null);
+        return;
+      }
       event.stopPropagation();
       const next = dropTargetAt(
         pane,
@@ -814,7 +824,7 @@ export const PaneView = memo(function PaneView({
     };
     const onDrop = (event: globalThis.DragEvent) => {
       const item = currentDrag();
-      if (!item) return;
+      if (!item || forBoard(event, item)) return;
       event.stopPropagation();
       const { leaf: current } = latest.current;
       const drop = dropTargetAt(

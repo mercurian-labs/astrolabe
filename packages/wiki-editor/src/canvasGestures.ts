@@ -81,6 +81,8 @@ export interface CanvasGestureHost {
   readonly openMenu: (clientX: number, clientY: number, target: Element) => void;
   readonly closeOverlays: () => void;
   readonly openFileCard: (id: string) => void;
+  /** Follows a link card drawn too small to hold a link of its own. */
+  readonly followSmallLink: (id: string) => boolean;
   readonly editCard: (id: string) => void;
   readonly editGroupLabel: (id: string) => void;
   readonly editArrowLabel: (id: string) => void;
@@ -928,6 +930,7 @@ export class CanvasGestures {
       host.openFileCard(id);
       return;
     }
+    if (press.touch && press.wasSelected && !double && host.followSmallLink(id)) return;
     host.select({ cards: new Set([id]), arrow: null });
     host.raise(id);
     if (editable && (double || press.wasSelected)) host.editCard(id);

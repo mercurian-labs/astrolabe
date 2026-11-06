@@ -180,8 +180,10 @@
 .cv-board[data-mode="free"] .cv-card-content:not([data-live]) > * {
   pointer-events: none;
 }
+/* Above the grips around a selected card, which would otherwise take every press on the name. */
 .cv-card-label {
   position: absolute;
+  z-index: 2;
   bottom: 100%;
   left: 0;
   max-width: 100%;
@@ -462,6 +464,7 @@ span.cv-wikilink {
 }
 .cv-group-label {
   position: absolute;
+  z-index: 2;
   bottom: 100%;
   left: 0;
   max-width: 100%;
@@ -556,7 +559,7 @@ span.cv-wikilink {
 
 .cv-controls {
   position: absolute;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   right: 12px;
   display: flex;
   flex-direction: column;

@@ -189,6 +189,7 @@ function NoteTab({
           wikiId={tab.wikiId}
           file={tab.name}
           changeRequestId={scope}
+          cardsFrom={draft?.changeRequestId}
           savesTo={tab.changeRequestId}
           parent={parent}
           renderDraftPill={renderDraftPill}
@@ -254,8 +255,6 @@ function ChangeRequestTab({
   readonly tab: Extract<WikiTab, { kind: "change-request" }>;
   readonly nav: WikiTabNav;
 }) {
-  const { changeRequests: all } = useChangeRequests(tab.environmentId, tab.wikiId);
-  const status = all?.find((entry) => entry.changeRequestId === tab.changeRequestId)?.status;
   const { openThread, openPullRequest } = nav;
   return (
     <WikiChangeRequestView
@@ -263,14 +262,13 @@ function ChangeRequestTab({
       wikiId={tab.wikiId}
       changeRequestId={tab.changeRequestId}
       onOpenNote={(name) =>
-        // An open change request's files read inside it; a merged or closed one's from main.
         nav.open(
           wikiTabKey({
             kind: "note",
             environmentId: tab.environmentId,
             wikiId: tab.wikiId,
             name,
-            changeRequestId: status === "open" ? tab.changeRequestId : undefined,
+            changeRequestId: tab.changeRequestId,
           }),
         )
       }

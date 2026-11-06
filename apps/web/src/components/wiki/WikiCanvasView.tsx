@@ -52,6 +52,7 @@ function CanvasBoardPane({
   environmentId,
   wikiId,
   changeRequestId,
+  cardsFrom,
   savesTo,
   file,
   commit,
@@ -70,6 +71,8 @@ function CanvasBoardPane({
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** A person's draft, which can hold notes that a board read from main doesn't. */
+  readonly cardsFrom: WikiChangeRequestId | undefined;
   readonly savesTo: WikiChangeRequestId | undefined;
   readonly file: string;
   readonly commit: string;
@@ -90,6 +93,7 @@ function CanvasBoardPane({
     environmentId,
     wikiId,
     changeRequestId,
+    draftId: cardsFrom,
     commit,
     onOpenNote,
     onOpenFile,
@@ -172,6 +176,7 @@ export default function WikiCanvasPage({
   wikiId,
   file,
   changeRequestId,
+  cardsFrom,
   savesTo,
   parent,
   renderDraftPill,
@@ -187,6 +192,7 @@ export default function WikiCanvasPage({
   readonly file: string;
   /** The change request the canvas reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly cardsFrom: WikiChangeRequestId | undefined;
   /** The change request the tab is in; none saves to the draft. */
   readonly savesTo: WikiChangeRequestId | undefined;
   /** Where the canvas is read from, as the tab header names it. */
@@ -369,6 +375,7 @@ export default function WikiCanvasPage({
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        cardsFrom={cardsFrom}
         savesTo={savesTo}
         file={file}
         commit={files.commit}

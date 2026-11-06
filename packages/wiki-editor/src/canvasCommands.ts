@@ -109,6 +109,8 @@ export interface CanvasCommandAccess {
   readonly pick: (request: CanvasPickerRequest) => Promise<CanvasPicked | null>;
   readonly prompt: (request: CanvasPromptRequest) => Promise<string | null>;
   readonly notify: (message: string) => void;
+  /** A file changed without the board's own commit moving. */
+  readonly reread: (file: string) => void;
   readonly element: (id: string) => HTMLElement | null;
   readonly openExport: () => void;
 }
@@ -566,6 +568,7 @@ export class CanvasCommands {
   async newNote(node: CanvasFileNode) {
     const failure = await this.#board.host().writeNote?.(node.file, "");
     if (failure) this.#board.notify(failure);
+    else this.#board.reread(node.file);
   }
 
   async #fileText(file: string) {

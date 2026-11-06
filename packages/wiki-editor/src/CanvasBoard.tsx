@@ -1329,6 +1329,10 @@ export function CanvasBoard({
             setDialog({ kind: "prompt", request, done: resolve });
           }),
         notify: setNotice,
+        reread: (file) => {
+          reads.files.invalidate();
+          reads.files.want([file]);
+        },
         element: (id) =>
           live.world?.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`) ?? null,
         openExport: () => setDialog({ kind: "export" }),
@@ -1351,7 +1355,7 @@ export function CanvasBoard({
         setMenu({ label: "Connection", items: arrowMenu(commands, edge, at), ...place });
         return;
       }
-      const hit = target.closest(".cv-card, .cv-group-label");
+      const hit = target.closest(".cv-card, .cv-group-label, .cv-handle");
       const id = hit?.closest("[data-card-id]")?.getAttribute("data-card-id") ?? null;
       const node = id === null ? undefined : live.layout.byId.get(id);
       if (node !== undefined) {
@@ -1448,6 +1452,13 @@ export function CanvasBoard({
         openFileCard: (id) => {
           const node = live.layout.byId.get(id);
           if (node?.type === "file") live.host.onOpenLink?.(node.file);
+        },
+        followSmallLink: (id) => {
+          const node = live.layout.byId.get(id);
+          const simple = live.world?.closest(".cv-board")?.hasAttribute("data-simple") ?? false;
+          if (node?.type !== "link" || !simple) return false;
+          live.host.onOpenUrl?.(node.url);
+          return true;
         },
         editCard: (id) => commands.editCard(id),
         editGroupLabel: (id) => setEditing({ kind: "group", id }),
@@ -1602,14 +1613,17 @@ export function CanvasBoard({
       const { attachFile } = live.host;
       if (attachFile === undefined) return;
       const paths: string[] = [];
+      const refused: string[] = [];
       for (const file of files) {
         const name =
           file.name === "" || file.name === "image.png" ? pastedImageName(file.type) : file.name;
         const base64 = toBase64(new Uint8Array(await file.arrayBuffer()));
         const saved = await attachFile(name, base64);
         if (saved !== null) paths.push(saved);
+        else refused.push(name);
       }
       commands.placeFiles(paths, at);
+      if (refused.length > 0) setNotice(`Couldn't add ${refused.join(", ")} to this wiki.`);
     },
     [commands, live],
   );
@@ -1871,10 +1885,9 @@ export function CanvasBoard({
         }
       : {};
 
-  useRestoreFocus(
-    useCallback(() => boardRef.current, []),
-    menu !== null || dialog !== null || selection.cards.size > 0 || selection.arrow !== null,
-  );
+  const board = useCallback(() => boardRef.current, []);
+  useRestoreFocus(board, menu !== null || dialog !== null);
+  useRestoreFocus(board, selection.cards.size > 0 || selection.arrow !== null);
 
   // What's selected can go in a commit from elsewhere: the toolbar goes with it.
   const gone =
@@ -1908,6 +1921,7 @@ export function CanvasBoard({
       data-mode={mode}
       data-simple={shown.simple || undefined}
       data-editable={editable || undefined}
+      data-takes-documents={(editable && mode === "free") || undefined}
       data-card-names={settings.cardNames}
       role="group"
       aria-label={label}
@@ -2026,7 +2040,9 @@ export function CanvasBoard({
                 setMenu({
                   label: "Canvas settings",
                   x: (rect?.width ?? 0) - 240,
-                  y: 12,
+                  y:
+                    (boardRef.current?.querySelector(".cv-controls")?.getBoundingClientRect().top ??
+                      12) - (rect?.top ?? 0),
                   items: [
                     {
                       label: "Snap to grid",
@@ -2253,7 +2269,15 @@ function SelectionToolbar({
         <div className="cv-toolbar-list" role="menu" aria-label="Align">
           {arrangementEntries((kind) => commands.arrange(kind)).map((entry) =>
             entry === "separator" ? null : (
-              <button key={entry.label} type="button" role="menuitem" onClick={entry.run}>
+              <button
+                key={entry.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  entry.run?.();
+                  setPopover(null);
+                }}
+              >
                 {entry.label}
               </button>
             ),
