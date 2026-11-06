@@ -9,6 +9,7 @@ import { type ReactNode, useContext, useEffect, useState, useSyncExternalStore }
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { openTab } from "~/panes/arrangement";
+import { recordJump } from "~/panes/jumpHistory";
 import { PanesHostContext } from "~/panes/panesHost";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { projectContentSearchPage } from "~/state/projects";
@@ -44,7 +45,7 @@ const REPLACE_CONFIRM_FILES = 10;
 type Checkout = Pick<RepositorySearchTab, "environmentId" | "projectId" | "cwd">;
 
 /** Opens a file of the checkout at a line, in the panes the view is in. */
-function useOpenFile(checkout: Checkout) {
+function useOpenFile(tabKey: string, checkout: Checkout) {
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   return (path: string, line: number) => {
     const { environmentId, projectId, cwd } = checkout;
@@ -55,6 +56,7 @@ function useOpenFile(checkout: Checkout) {
       checkout: { cwd },
       path,
     });
+    recordJump(tabKey, key);
     panes.update((next) => openTab(next, key));
     repositoryFileReveal.request(key, line);
   };
@@ -94,7 +96,7 @@ export function RepositorySearchView({
 }) {
   const { environmentId, cwd, search } = tab;
   const registry = useContext(RegistryContext);
-  const openFile = useOpenFile(tab);
+  const openFile = useOpenFile(tabKey, tab);
   const { multibuffer, canWrite, saveState } = useMultibuffer({
     tabKey,
     environmentId,
@@ -304,7 +306,7 @@ export function RepositoryProblemsView({
   readonly tab: RepositoryProblemsTab;
 }) {
   const { environmentId, cwd } = tab;
-  const openFile = useOpenFile(tab);
+  const openFile = useOpenFile(tabKey, tab);
   const { multibuffer, canWrite, saveState } = useMultibuffer({
     tabKey,
     environmentId,
@@ -417,7 +419,7 @@ export function RepositoryLocationsView({
   readonly tab: RepositoryLocationsTab;
 }) {
   const { environmentId, cwd } = tab;
-  const openFile = useOpenFile(tab);
+  const openFile = useOpenFile(tabKey, tab);
   const { multibuffer, canWrite, saveState } = useMultibuffer({
     tabKey,
     environmentId,

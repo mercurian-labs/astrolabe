@@ -87,6 +87,7 @@ import { useEnvironmentScope } from "~/state/session";
 import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
 import { activateTab, allTabs, openTab } from "~/panes/arrangement";
+import { recordJump, trackJumpCursor } from "~/panes/jumpHistory";
 import { leafWithTab } from "~/panes/tree";
 import { toastManager } from "../ui/toast";
 import { openLocationPicker, pathOfUri } from "../outline/LocationPicker";
@@ -269,6 +270,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       return;
     }
     const key = repositoryTabKey({ ...tab, path: target });
+    recordJump(tabKey, key);
     panes.update((arrangement) =>
       allTabs(arrangement).includes(key)
         ? activateTab(arrangement, key)
@@ -290,6 +292,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
         return openLocationPicker(view, title, locations, cwd);
       }
       const key = locationsTabKey(tab, list);
+      recordJump(tabKey, key);
       panes.update((arrangement) =>
         openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
       );
@@ -298,6 +301,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   const [navigation] = useState<NavigationHost>(() => ({
     open: openLocation,
     pick: pickLocation,
+    jumping: () => recordJump(tabKey, tabKey),
     nothing: (title) =>
       toastManager.add({
         type: "info",
@@ -351,6 +355,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           locations: result.places,
           edit: { edits: result.edits, files, undoLabel: labels.undo, undo },
         });
+        recordJump(tabKey, key);
         panes.update((arrangement) =>
           openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
         );
@@ -648,6 +653,7 @@ function FileEditor({
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
   const [initial] = useState(() => ({
+    tabKey,
     environmentId: checkout.environmentId,
     cwd: checkout.cwd,
     file,
@@ -720,6 +726,11 @@ function FileEditor({
       writable: () =>
         session !== null && session.getState().status === "open" && !view.state.readOnly,
     });
+    const stopCursor = trackJumpCursor(initial.tabKey, () => {
+      const { head } = view.state.selection.main;
+      const line = view.state.doc.lineAt(head);
+      return { line: line.number, column: head - line.from + 1 };
+    });
     const stopLighting = followImportLine(view, initial.file);
     let cancelled = false;
     const language = markdown ? null : codeLanguageFor(initial.path);
@@ -731,6 +742,7 @@ function FileEditor({
     return () => {
       cancelled = true;
       unregister();
+      stopCursor();
       stopLighting();
       session?.detach();
       view.destroy();

@@ -41,6 +41,8 @@ export interface NavigationHost {
   ) => void;
   /** Says a call hierarchy found nothing, which `title` names. */
   readonly nothing: (title: string) => void;
+  /** The cursor is about to jump within this file. */
+  readonly jumping: () => void;
 }
 
 const navigationHost = Facet.define<NavigationHost, NavigationHost | null>({
@@ -129,6 +131,7 @@ function placesOf(
 export function goToLocation(view: EditorView, location: NavigationLocation) {
   if (location.here) {
     const { from, to } = location.here;
+    view.state.facet(navigationHost)?.jumping();
     view.dispatch({
       selection: EditorSelection.range(from, to),
       effects: EditorView.scrollIntoView(from, { y: "center" }),
@@ -150,6 +153,7 @@ function show(
   const here = places.flatMap((place) => (place.here ? [place.here] : []));
   const lines = here.map((range) => view.state.doc.lineAt(range.from).number);
   if (here.length === places.length && Math.max(...lines) - Math.min(...lines) <= CLOSE_LINES) {
+    view.state.facet(navigationHost)?.jumping();
     view.dispatch({
       selection: EditorSelection.create(
         here.map((range) => EditorSelection.range(range.from, range.to)),

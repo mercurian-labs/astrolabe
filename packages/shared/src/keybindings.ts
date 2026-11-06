@@ -226,6 +226,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // Some browsers keep plain F6 for their own toolbars; mod+F6 reaches the page in all of them.
   { key: "mod+f6", command: "workspace.focusNext" },
   { key: "mod+shift+f6", command: "workspace.focusPrevious" },
+  // Astrolabe: in a code file the keys below indent, so Back and Forward have keys of their own.
+  { key: "ctrl+-", command: "navigation.back", when: "codeEditorFocus" },
+  { key: "ctrl+shift+-", command: "navigation.forward", when: "codeEditorFocus" },
   { key: "mod+[", command: "navigation.back", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+]", command: "navigation.forward", when: "!terminalFocus && !codeEditorFocus" },
   { key: "mod+j", command: "terminal.toggle" },

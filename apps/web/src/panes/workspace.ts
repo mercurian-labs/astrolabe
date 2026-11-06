@@ -21,6 +21,7 @@ import {
   parseChatSurfaceKey,
   parseChatTabKey,
 } from "~/sectionTabs/sectionTabs";
+import { repositoryFileReveal } from "~/components/repositories/repositoryFileReveal";
 import {
   dropHistoryTarget,
   historyTarget,
@@ -31,6 +32,7 @@ import {
   type HistoryDirection,
   type TabHistories,
 } from "~/tabNavigation.logic";
+import { jumpHistory, jumpSpot } from "./jumpHistory";
 import {
   activateTab,
   allTabs,
@@ -719,6 +721,18 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const active = key ?? focusedPane(arrangement).active;
     const pane = leafWithTab(arrangement.root, active);
     if (!pane || !navigatesInPlace(active)) return;
+    const jump = jumpHistory.take(direction, jumpSpot(active));
+    if (jump) {
+      update((before) =>
+        leafWithTab(before.root, jump.tabKey)
+          ? activateTab(before, jump.tabKey)
+          : openTab(before, jump.tabKey, pane.id),
+      );
+      if (jump.line !== undefined) {
+        repositoryFileReveal.request(jump.tabKey, jump.line, jump.column);
+      }
+      return;
+    }
     let tabHistories = histories;
     let goTo = historyTarget(tabHistories, active, direction);
     // Entries gone from between can leave the tab's own key nearest, which leads nowhere.
@@ -759,7 +773,10 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     // Reads the panes first: the first read loads the histories with them.
     const { arrangement } = current();
     const active = key ?? focusedPane(arrangement).active;
-    return navigatesInPlace(active) && historyTarget(histories, active, direction) !== null;
+    return (
+      navigatesInPlace(active) &&
+      (jumpHistory.can(direction, active) || historyTarget(histories, active, direction) !== null)
+    );
   };
 
   const close = (key: string) =>
@@ -1131,11 +1148,18 @@ export function useTabOwner(key: string): string | null {
  * Whether the tab `key` (the focused pane's tab in front when omitted) has anything back (or
  * forward) to show.
  */
+const subscribeToHistory = (listener: () => void) => {
+  const stopPanes = workspace.store.subscribe(listener);
+  const stopJumps = jumpHistory.subscribe(listener);
+  return () => {
+    stopPanes();
+    stopJumps();
+  };
+};
+
 export function useWorkspaceTabHistory(key?: string) {
-  const canGoBack = useSyncExternalStore(workspace.store.subscribe, () =>
-    workspace.canStep("back", key),
-  );
-  const canGoForward = useSyncExternalStore(workspace.store.subscribe, () =>
+  const canGoBack = useSyncExternalStore(subscribeToHistory, () => workspace.canStep("back", key));
+  const canGoForward = useSyncExternalStore(subscribeToHistory, () =>
     workspace.canStep("forward", key),
   );
   return { canGoBack, canGoForward };

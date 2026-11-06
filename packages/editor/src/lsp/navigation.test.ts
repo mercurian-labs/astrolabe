@@ -76,6 +76,7 @@ async function open(
           open: (location) => opened.push(location),
           pick: (_view, title, locations, kind) => picked.push({ title, locations, kind }),
           nothing: (title) => nothing.push(title),
+          jumping: () => undefined,
         },
       }),
       extra.vim ? vimMode(noHistory) : [],

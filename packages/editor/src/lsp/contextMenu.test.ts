@@ -68,6 +68,7 @@ describe("codeContextMenu", () => {
             open: (location) => opened.push(location),
             pick: () => undefined,
             nothing: () => undefined,
+            jumping: () => undefined,
           },
         }),
         codeContextMenu(host),

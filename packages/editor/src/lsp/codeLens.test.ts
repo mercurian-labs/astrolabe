@@ -58,6 +58,7 @@ function open(resolve: (lens: any) => unknown = (lens) => lens) {
           open: () => undefined,
           pick: (_view, _title, locations) => picked.push(locations),
           nothing: () => undefined,
+          jumping: () => undefined,
         },
       }),
     ],
