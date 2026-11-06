@@ -7,7 +7,7 @@ import {
   StateField,
   type Text,
 } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
+import type { EditorView, ViewUpdate } from "@codemirror/view";
 import {
   LSPClient,
   LSPPlugin,
@@ -146,6 +146,20 @@ export function hasLanguageServer(state: EditorState): boolean {
   return state.facet(languageServed).length > 0;
 }
 
+/** What may have changed behind an editor's answers: the servers, or one kind of answer. */
+export type ServerRefresh = "servers" | "inlayHints" | "codeLens" | "semanticTokens";
+
+const serverRefresh = StateEffect.define<ServerRefresh>();
+
+/** Whether `update` says to ask again for answers of `kind`. */
+export function askAgain(update: ViewUpdate, kind: Exclude<ServerRefresh, "servers">): boolean {
+  return update.transactions.some((transaction) =>
+    transaction.effects.some(
+      (effect) => effect.is(serverRefresh) && (effect.value === kind || effect.value === "servers"),
+    ),
+  );
+}
+
 /** A diagnostic as the server sent it (code actions need its `code`), where it is in the text. */
 export interface ServerDiagnostic {
   readonly from: number;
@@ -205,6 +219,11 @@ export function environmentLsp(options: {
   const { document, channel } = options;
   const handlers = new Set<(message: string) => void>();
   let workspace: EnvironmentWorkspace | null = null;
+  const refresh = (kind: ServerRefresh) => {
+    for (const file of workspace?.files ?? []) {
+      file.view.dispatch({ effects: serverRefresh.of(kind) });
+    }
+  };
   const client = new LSPClient({
     rootUri: options.rootUri,
     timeout: options.timeout ?? REQUEST_TIMEOUT,
@@ -214,6 +233,11 @@ export function environmentLsp(options: {
       // Companion servers join after `initialize`, and leave: this is what `client` can do now.
       "astrolabe/capabilities": (target, capabilities) => {
         target.serverCapabilities = capabilities as typeof target.serverCapabilities;
+        refresh("servers");
+        return true;
+      },
+      "astrolabe/refresh": (_target, kind) => {
+        refresh(kind as ServerRefresh);
         return true;
       },
     },
@@ -302,6 +326,10 @@ export function environmentLsp(options: {
       if (attached) return;
       attached = true;
       client.connect(transport);
+      void client.initializing.then(
+        () => refresh("servers"),
+        () => undefined,
+      );
     },
     reset: () => {
       held.clear();

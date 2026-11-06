@@ -449,6 +449,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["formatter prettier language server code repository file save mod+s"],
   },
   {
+    id: "inlay-hints",
+    title: "Inlay hints",
+    to: "/settings/appearance",
+    searchTerms: ["type parameter names language server code repository file editor inline"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",

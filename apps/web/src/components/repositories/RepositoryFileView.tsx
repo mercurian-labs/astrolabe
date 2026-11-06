@@ -16,6 +16,7 @@ import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
+import { inlayHints } from "@mercurian/editor/lsp/inlay-hints";
 import {
   environmentNavigation,
   type GoToKind,
@@ -158,6 +159,10 @@ const FILE_EDITOR_THEME = EditorView.theme({
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
+const selectInlayHintTypes = (settings: ClientSettings) =>
+  settings.inlayHints && settings.inlayHintTypes;
+const selectInlayHintParameters = (settings: ClientSettings) =>
+  settings.inlayHints && settings.inlayHintParameters;
 
 /**
  * A repository file in the wiki editor, as the environment's live document: it saves your edits
@@ -609,6 +614,8 @@ function FileEditor({
   const saveKeys = useFileSaveKeys();
   const wordWrap = useClientSettings(selectWordWrap);
   const formatOnSave = useClientSettings(selectFormatOnSave);
+  const hintTypes = useClientSettings(selectInlayHintTypes);
+  const hintParameters = useClientSettings(selectInlayHintParameters);
   // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
   const save = useStableCallback(() => {
     const view = viewRef.current;
@@ -739,7 +746,12 @@ function FileEditor({
         inFileSearch({ keys: findKeys }),
         isMarkdownPath(initial.path) ? [] : gitChanges({ keys: hunkKeys }),
         codeEditing({ keys: editingKeys, softWrap: wrap }),
-        initial.languageServer ? languageServerUi(lspKeys, diagnosticKeys, initial) : [],
+        initial.languageServer
+          ? languageServerUi(lspKeys, diagnosticKeys, initial, {
+              hintTypes,
+              hintParameters,
+            })
+          : [],
         "session" in initial.source
           ? keymap.of(
               saveKeys.map((key) => ({
@@ -753,7 +765,18 @@ function FileEditor({
           : [],
       ]),
     });
-  }, [compartments, initial, findKeys, hunkKeys, editingKeys, diagnosticKeys, lspKeys, saveKeys]);
+  }, [
+    compartments,
+    initial,
+    findKeys,
+    hunkKeys,
+    editingKeys,
+    diagnosticKeys,
+    lspKeys,
+    saveKeys,
+    hintTypes,
+    hintParameters,
+  ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the read-only state to the CodeMirror view
   useEffect(() => {
@@ -802,9 +825,13 @@ function languageServerUi(
     readonly rename: RenameHost;
     readonly codeActions: CodeActionHost;
   },
+  shown: { readonly hintTypes: boolean; readonly hintParameters: boolean },
 ): Extension {
   return [
     diagnosticsUi({ keys: diagnosticKeys }),
+    shown.hintTypes || shown.hintParameters
+      ? inlayHints({ types: shown.hintTypes, parameters: shown.hintParameters })
+      : [],
     environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
     environmentHover({
       keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },

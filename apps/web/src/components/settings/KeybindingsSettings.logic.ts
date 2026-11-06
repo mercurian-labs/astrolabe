@@ -437,6 +437,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "lsp.trustProject": "Trust Project",
   "lsp.checkServers": "Check Language Servers",
   "lsp.viewLogs": "View Language Server Logs",
+  "lsp.toggleInlayHints": "Toggle Inlay Hints",
   "file.save": "Save File",
   "multibuffer.expand": "Show More Lines Around Excerpt",
   "multibuffer.openExcerpt": "Open Excerpt in Its File",

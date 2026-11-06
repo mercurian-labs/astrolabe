@@ -32,6 +32,7 @@ export const ROUTES: ReadonlyMap<string, Route> = new Map([
   ["textDocument/signatureHelp", first("signatureHelpProvider")],
   ["textDocument/formatting", first("documentFormattingProvider")],
   ["textDocument/rangeFormatting", first("documentRangeFormattingProvider")],
+  ["textDocument/inlayHint", first("inlayHintProvider")],
   ["textDocument/completion", { capability: "completionProvider", fan: "all" }],
   ["textDocument/codeAction", { capability: "codeActionProvider", fan: "all" }],
 ]);

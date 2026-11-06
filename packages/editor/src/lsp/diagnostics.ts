@@ -7,7 +7,15 @@ import {
   previousDiagnostic,
   setDiagnosticsEffect,
 } from "@codemirror/lint";
-import { EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  keymap,
+  ViewPlugin,
+  type ViewUpdate,
+  WidgetType,
+} from "@codemirror/view";
 
 import { lineBlocks, setLineBlocks } from "../blocks/lineBlocks.ts";
 
@@ -134,7 +142,106 @@ const cursorMessages = ViewPlugin.fromClass(
   },
 );
 
+const SEVERITY_RANK: Readonly<Record<Diagnostic["severity"], number>> = {
+  error: 0,
+  warning: 1,
+  info: 2,
+  hint: 3,
+};
+
+class LineEndMessage extends WidgetType {
+  constructor(
+    readonly severity: Diagnostic["severity"],
+    readonly message: string,
+    readonly more: number,
+  ) {
+    super();
+  }
+
+  override eq(other: LineEndMessage) {
+    return (
+      other.severity === this.severity &&
+      other.message === this.message &&
+      other.more === this.more
+    );
+  }
+
+  override toDOM() {
+    const outer = document.createElement("span");
+    outer.className = `atlas-inline-diagnostic atlas-diagnostic-${this.severity}`;
+    outer.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.textContent = this.more > 0 ? `${this.message} (+${this.more})` : this.message;
+    outer.append(text);
+    return outer;
+  }
+
+  override ignoreEvent() {
+    return false;
+  }
+}
+
+/** Each visible line's worst diagnostic, as a message after its text. */
+function lineEndMessages(view: EditorView): DecorationSet {
+  const { state } = view;
+  const lines = new Map<number, { worst: Diagnostic; count: number }>();
+  forEachDiagnostic(state, (diagnostic, from, to) => {
+    if (!view.visibleRanges.some((range) => range.from <= to && range.to >= from)) return;
+    const { number } = state.doc.lineAt(from);
+    const line = lines.get(number);
+    if (!line) lines.set(number, { worst: diagnostic, count: 1 });
+    else {
+      line.count += 1;
+      if (SEVERITY_RANK[diagnostic.severity] < SEVERITY_RANK[line.worst.severity]) {
+        line.worst = diagnostic;
+      }
+    }
+  });
+  const ranges = [...lines].map(([number, { worst, count }]) =>
+    Decoration.widget({
+      widget: new LineEndMessage(worst.severity, worst.message.split("\n", 1)[0]!, count - 1),
+      side: 1,
+    }).range(state.doc.line(number).to),
+  );
+  const marks = [...lines.keys()].map((number) =>
+    Decoration.line({ class: "atlas-inline-diagnostic-line" }).range(state.doc.line(number).from),
+  );
+  return Decoration.set([...ranges, ...marks], true);
+}
+
+const inlineMessages = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = lineEndMessages(view);
+    }
+
+    update(update: ViewUpdate) {
+      const diagnosed = update.transactions.some((tr) =>
+        tr.effects.some((effect) => effect.is(setDiagnosticsEffect)),
+      );
+      if (update.docChanged || update.viewportChanged || diagnosed) {
+        this.decorations = lineEndMessages(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
 const theme = EditorView.baseTheme({
+  // The message takes no width and its line clips it, so it never moves or wraps the text.
+  ".atlas-inline-diagnostic-line": { overflow: "clip" },
+  ".atlas-inline-diagnostic": {
+    display: "inline-block",
+    width: "0",
+    whiteSpace: "pre",
+    verticalAlign: "baseline",
+    fontFamily: "var(--atlas-md-font-ui, inherit)",
+    fontSize: "0.85em",
+    pointerEvents: "none",
+  },
+  ".atlas-inline-diagnostic > span": { marginLeft: "2em", opacity: "0.8" },
   ".atlas-diagnostic-messages": {
     padding: "1px 0 3px",
     fontFamily: "var(--atlas-md-font-ui, inherit)",
@@ -148,12 +255,17 @@ const theme = EditorView.baseTheme({
   },
 });
 
-export function diagnosticsUi(options: { readonly keys: DiagnosticKeys }): Extension {
+export function diagnosticsUi(options: {
+  readonly keys: DiagnosticKeys;
+  /** Each line's worst message after its text. */
+  readonly inline?: boolean;
+}): Extension {
   return [
     shown.of(true),
     lineBlocks,
     lintGutter(),
     cursorMessages,
+    options.inline ? inlineMessages : [],
     theme,
     keymap.of([
       ...options.keys.next.map((key) => ({ key, run: nextDiagnostic })),

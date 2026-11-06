@@ -29,6 +29,7 @@ import { renameSymbol } from "@mercurian/editor/lsp/rename";
 import { formatCode } from "@mercurian/editor/lsp/format";
 import { showCodeActions } from "@mercurian/editor/lsp/code-actions";
 import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
+import { getClientSettings, updateClientSettings } from "~/hooks/useSettings";
 import {
   canMaintainLanguageServers,
   hasLanguageServerFile,
@@ -548,6 +549,12 @@ function astrolabeCommand(
       const view = editorFrom(context.origin, hasFileSave);
       const run = view?.state.facet(fileSave) ?? null;
       return entry(run ? "Save file" : "No file to save here", run);
+    }
+    case "lsp.toggleInlayHints": {
+      const on = getClientSettings().inlayHints;
+      return entry(on ? "Hide inlay hints" : "Show inlay hints", () =>
+        updateClientSettings({ inlayHints: !on }),
+      );
     }
     case "lsp.undoRename": {
       const rename = lastRename.get();

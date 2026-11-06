@@ -143,6 +143,7 @@ const handle = (message) => {
           codeActionProvider: { resolveProvider: true },
           executeCommandProvider: { commands: ["fake.removeLine"] },
           referencesProvider: true,
+          inlayHintProvider: true,
           completionProvider: {
             resolveProvider: true,
             triggerCharacters: config.triggerCharacters ?? ["."],
@@ -283,6 +284,30 @@ const handle = (message) => {
         : [];
       if (method === "textDocument/references") return reply([...found, ...outside]);
       return reply(outside.length > 0 ? outside : found.slice(0, 1));
+    }
+    case "textDocument/inlayHint": {
+      // After each `point`, a type its click writes.
+      const { text } = docs.get(params.textDocument.uri);
+      const from = offsetOf(text, params.range.start);
+      const to = offsetOf(text, params.range.end);
+      return reply(
+        occurrences(text, "point")
+          .map((offset) => offset + "point".length)
+          .filter((offset) => from <= offset && offset <= to)
+          .map((offset) => ({
+            position: positionOf(text, offset),
+            label: ": Point",
+            kind: 1,
+            textEdits: [{ range: rangeOf(text, offset, offset), newText: ": Point" }],
+          })),
+      );
+    }
+    case "test/refresh": {
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, () => {});
+      reply(null);
+      write({ id: askId, method: params.method });
+      return;
     }
     case "textDocument/formatting": {
       // Formatting puts one space after each comma; `formatDelay` (ms) makes it slow.

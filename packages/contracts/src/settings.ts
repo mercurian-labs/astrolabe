@@ -493,6 +493,11 @@ export const ClientSettingsSchema = Schema.Struct({
   vimModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Astrolabe: saving a code file (mod+s, `:w`) formats it with its language server first.
   formatOnSave: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Astrolabe: what a code file's language server draws in the text. Servers always offer it all,
+  // so these are this client's to choose.
+  inlayHints: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  inlayHintTypes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  inlayHintParameters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Astrolabe: Vim's j and k move by screen line (as gj and gk) without a count. Off by default,
   // as Vim's are.
   vimScreenLinesEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1834,6 +1839,9 @@ export const ClientSettingsPatch = Schema.Struct({
   // Astrolabe: Vim keys in the composer and notes.
   vimModeEnabled: Schema.optionalKey(Schema.Boolean),
   formatOnSave: Schema.optionalKey(Schema.Boolean),
+  inlayHints: Schema.optionalKey(Schema.Boolean),
+  inlayHintTypes: Schema.optionalKey(Schema.Boolean),
+  inlayHintParameters: Schema.optionalKey(Schema.Boolean),
   vimScreenLinesEnabled: Schema.optionalKey(Schema.Boolean),
   // Astrolabe: Space as the keyboard menu's leader key.
   spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),

@@ -441,6 +441,51 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("answers inlay hints where the editor has the text, and asks it again on a refresh", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const hints = () =>
+        session.request(
+          ++requests,
+          "textDocument/inlayHint",
+          {
+            textDocument: { uri: checkout.uri },
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: 5, character: 0 },
+            },
+          },
+          editor.envelope(),
+        );
+      let requests = 0;
+      const atOpen = yield* hints();
+      expect(atOpen.result.map((hint: any) => hint.position)).toEqual([
+        editor.position("point", 5),
+        editor.position("= point", 7),
+      ]);
+
+      // An agent's line the editor hasn't received pushes one down and adds one it can't place.
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "const point2 = point;\n" }));
+      const behind = yield* hints();
+      expect(behind.result.map((hint: any) => hint.position)).toEqual([
+        editor.position("point", 5),
+        editor.position("= point", 7),
+      ]);
+      expect(behind.result[0].textEdits[0].range.start).toEqual(editor.position("point", 5));
+
+      yield* session.request(++requests, "test/refresh", {
+        method: "workspace/inlayHint/refresh",
+      });
+      expect(yield* session.notification("astrolabe/refresh")).toMatchObject({
+        params: "inlayHints",
+      });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("lands the editor's unconfirmed edits before answering", () =>
     Effect.gen(function* () {
       const checkout = yield* makeCheckout(SOURCE);
@@ -1095,6 +1140,9 @@ describe("LanguageServers", () => {
         null,
         { python: { pythonPath: python }, fake: { level: "strict" } },
       ]);
+      // A server that never asks hears them anyway.
+      const state = yield* session.request(2, "test/state", {});
+      expect(state.result.received).toContain("workspace/didChangeConfiguration");
     }).pipe(
       Effect.scoped,
       Effect.provide(

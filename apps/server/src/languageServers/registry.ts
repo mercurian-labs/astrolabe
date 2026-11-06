@@ -142,6 +142,26 @@ const TYPESCRIPT_NATIVE = "@typescript/typescript-{platform}-{arch}";
 
 const RUST_ANALYZER_RELEASE =
   "https://github.com/rust-lang/rust-analyzer/releases/download/2026-11-02";
+// What TypeScript's servers offer once told to. Offering costs nothing: an editor asks for hints
+// and lenses only when its settings show them, and the kinds it wants are chosen there.
+const TYPESCRIPT_FEATURES = {
+  inlayHints: {
+    parameterNames: { enabled: "all", suppressWhenArgumentMatchesName: true },
+    parameterTypes: { enabled: true },
+    variableTypes: { enabled: true, suppressWhenTypeMatchesName: true },
+    propertyDeclarationTypes: { enabled: true },
+    functionLikeReturnTypes: { enabled: true },
+    enumMemberValues: { enabled: true },
+  },
+  referencesCodeLens: { enabled: true },
+  implementationsCodeLens: { enabled: true },
+};
+const TYPESCRIPT_SETTINGS = {
+  "js/ts": TYPESCRIPT_FEATURES,
+  typescript: TYPESCRIPT_FEATURES,
+  javascript: TYPESCRIPT_FEATURES,
+};
+
 const CLANGD_RELEASE = "https://github.com/clangd/clangd/releases/download/23.1.0";
 const RUFF_RELEASE = "https://github.com/astral-sh/ruff/releases/download/0.17.4";
 
@@ -158,6 +178,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
         toolchain: { package: "typescript", minMajor: 7 },
         projectBinary: { path: `node_modules/${TYPESCRIPT_NATIVE}/lib/tsc`, runWith: "native" },
         args: ["--lsp", "--stdio"],
+        settings: TYPESCRIPT_SETTINGS,
         restrictedSafe: false,
       },
       {
@@ -178,6 +199,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
         },
         args: ["--stdio"],
         initializationOptions: { tsserver: { path: "{toolchain}/lib/tsserver.js" } },
+        settings: TYPESCRIPT_SETTINGS,
         restrictedSafe: false,
       },
       {
@@ -317,6 +339,19 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
           licence: "BSD-3-Clause",
         },
         args: [],
+        settings: {
+          gopls: {
+            hints: {
+              assignVariableTypes: true,
+              compositeLiteralFields: true,
+              compositeLiteralTypes: true,
+              constantValues: true,
+              functionTypeParameters: true,
+              parameterNames: true,
+              rangeVariableTypes: true,
+            },
+          },
+        },
         // Loads packages through `go list`, which can run the module's toolchain directives.
         restrictedSafe: false,
       },

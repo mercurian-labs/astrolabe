@@ -481,6 +481,7 @@ const CLIENT_CAPABILITIES = {
     implementation: {},
     typeDefinition: {},
     references: {},
+    inlayHint: {},
     codeAction: {
       codeActionLiteralSupport: {
         codeActionKind: {
@@ -510,6 +511,7 @@ const CLIENT_CAPABILITIES = {
     workspaceFolders: true,
     applyEdit: true,
     didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
+    inlayHint: { refreshSupport: true },
   },
   window: { workDoneProgress: false, showMessage: {} },
 };
@@ -1073,6 +1075,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const logMessage = (log: ServerLog, source: "log" | "message", params: Json) =>
     log.line(source, String(params?.message ?? ""), LOG_SEVERITIES[params?.type]);
 
+  /** A server's refresh is a request of it; each editor showing its answers asks again. */
+  const refreshSessions = (instance: Instance, kind: string) => {
+    const reached = new Set(instance.sessions.values());
+    for (const doc of instance.docs.values()) {
+      for (const session of doc.sessions) reached.add(session);
+    }
+    for (const session of reached) sendTo(session, { method: "astrolabe/refresh", params: kind });
+    return null;
+  };
+
   const onRequestFromServer = (instance: Instance) => (method: string, params: Json) => {
     switch (method) {
       case "workspace/configuration":
@@ -1104,6 +1116,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         return null;
       case "window/workDoneProgress/create":
         return null;
+      case "workspace/inlayHint/refresh":
+        return refreshSessions(instance, "inlayHints");
       case "workspace/applyEdit":
         return new Promise((resolve) =>
           Queue.offerUnsafe(instance.serverEdits, {
@@ -1261,6 +1275,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return yield* Scope.close(processScope, Exit.void);
     }
     connection.value.notify("initialized", {});
+    // typescript-language-server only ever hears settings this way; the rest ask again.
+    if (Object.keys(instance.settings).length > 0) {
+      connection.value.notify("workspace/didChangeConfiguration", { settings: instance.settings });
+    }
     const answer = init.value.value as Json;
     const capabilities = answer?.capabilities ?? {};
     const version = answer?.serverInfo?.version;

@@ -164,6 +164,20 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
     case "textDocument/rangeFormatting":
       for (const edit of Array.isArray(result) ? result : []) mapEdit(m, edit, true);
       return result;
+    case "textDocument/inlayHint":
+      return (Array.isArray(result) ? result : []).flatMap((hint: Json) => {
+        const offset = fromPosition(m.from, hint.position);
+        // In text the editor lacks a hint has no place; its next ask finds that text received.
+        if (!m.rangeSafe(offset, offset)) return [];
+        hint.position = toPosition(m.to, m.point(offset, 1));
+        try {
+          for (const edit of hint.textEdits ?? []) mapEdit(m, edit, true);
+        } catch (error) {
+          if (!(error instanceof Unrepresentable)) throw error;
+          delete hint.textEdits;
+        }
+        return [hint];
+      });
     case "textDocument/prepareRename":
       if (result.start) return mapRange(m, result, false);
       if (result.range) result.range = mapRange(m, result.range, false);

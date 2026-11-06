@@ -95,6 +95,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e L t", command: "lsp.trustProject" },
   { key: "menu e L c", command: "lsp.checkServers" },
   { key: "menu e L l", command: "lsp.viewLogs" },
+  { key: "menu e L h", command: "lsp.toggleInlayHints" },
   { key: "menu e v", command: "multibuffer.problems" },
   { key: "menu e x", command: "multibuffer.expand" },
   { key: "menu e k", command: "multibuffer.openExcerpt" },
