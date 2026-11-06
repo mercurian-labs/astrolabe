@@ -80,7 +80,9 @@ another chat's linked tabs. A chat never takes another chat's place: one not ope
 a new tab after the chat in front, since replacing a chat would close it and its linked tabs. A pane's content has `contain: layout
 paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
 built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
-(`useChatOwner`).
+(`useChatOwner`). It also caps every `z-index` inside the pane: a desktop browser page lives at the
+app root, so it draws above the whole pane, and a control laid over the page can be neither seen nor
+clicked. Put such controls beside the page, as the floating preview's bar does.
 
 ## React Compiler
 
