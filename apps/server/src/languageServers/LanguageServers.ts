@@ -256,6 +256,8 @@ export interface LanguageServersOptions {
    * nothing for a file and its real results a moment later.
    */
   readonly diagnosticsQuiet: Duration.Input;
+  /** How long a `quietUnchanged` server's silence must last to mean nothing changed. */
+  readonly silenceAfter: Duration.Input;
   /** How long a server's file changes wait for more before it hears of them. */
   readonly fileChangeQuiet: Duration.Input;
   /** How long a save waits for its formatter. */
@@ -462,6 +464,11 @@ interface Instance {
   collecting: Array<LanguageServerAppliedEdit> | null;
   /** The process's `workspace/didChangeWatchedFiles` registrations, by id. */
   readonly watchers: Map<string, ReadonlyArray<FileWatcher>>;
+  /**
+   * A `quietUnchanged` server's last word by file, open or not: reopening a file gets none from
+   * it, and Marksman speaks of every file in the project from the start.
+   */
+  readonly lastSaid: Map<string, ReadonlyArray<Json>>;
   /** File changes waiting out a burst, by path; `changesGeneration` restarts the wait. */
   readonly changes: Map<string, WatchedFileChange["type"]>;
   changesGeneration: number;
@@ -982,6 +989,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   const clearDiagnostics = (instance: Instance) => {
     forgetProblems(instance);
+    instance.lastSaid.clear();
     for (const doc of instance.docs.values()) {
       if (doc.latest === null) continue;
       doc.latest = { version: doc.version, diagnostics: [] };
@@ -1031,8 +1039,11 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           if (retry) doc.dirty = true;
           continue;
         }
-        if (result.report?.kind === "full" && Array.isArray(result.report.items)) {
-          doc.pulled = result.report.items;
+        const full = result.report?.kind === "full" && Array.isArray(result.report.items);
+        if (full) doc.pulled = result.report.items;
+        // LuaLS says `unchanged` to every pull and pushes only what it finds, so a clean file
+        // would otherwise never count as checked.
+        if (full || result.report?.kind === "unchanged") {
           setDiagnostics(instance, doc, { version, diagnostics: [...doc.pulled, ...doc.pushed] });
         }
       } while (doc.dirty);
@@ -1097,6 +1108,11 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       doc.pulled = [];
       doc.pushed = [];
       openOnServer(instance, doc);
+      const said = instance.lastSaid.get(doc.uri);
+      if (said !== undefined) {
+        doc.pushed = said;
+        setDiagnostics(instance, doc, { version: doc.version, diagnostics: said });
+      }
     } else if (item.type === "updates") {
       const running = instance.running;
       const open = running !== null && doc.openOn === running.generation;
@@ -1280,6 +1296,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     if (method === "window/logMessage") return logMessage(instance.log, "log", params);
     if (method === "window/showMessage") return logMessage(instance.log, "message", params);
     if (method !== "textDocument/publishDiagnostics" || typeof params?.uri !== "string") return;
+    if (instance.spec.quietUnchanged === true && Array.isArray(params.diagnostics)) {
+      instance.lastSaid.set(params.uri, params.diagnostics);
+    }
     const doc = [...instance.docs.values()].find((candidate) => candidate.uri === params.uri);
     if (doc === undefined || !Array.isArray(params.diagnostics)) return;
     const version = typeof params.version === "number" ? params.version : doc.version;
@@ -1758,6 +1777,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       serverEdits: yield* Queue.unbounded<ServerEdit>(),
       collecting: null,
       watchers: new Map(),
+      lastSaid: new Map(),
       changes: new Map(),
       changesGeneration: 0,
       running: null,
@@ -3388,16 +3408,28 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     { instance, doc }: Held,
     synced: { readonly loadId: string; readonly version: number },
   ) {
-    yield* until(
-      doc,
-      () =>
-        doc.loadId !== synced.loadId ||
-        (!instance.loading &&
-          !doc.pulling &&
-          doc.version >= synced.version &&
-          doc.latest !== null &&
-          doc.latest.version >= synced.version),
-    );
+    const arrived = () =>
+      doc.loadId !== synced.loadId ||
+      (!instance.loading &&
+        !doc.pulling &&
+        doc.version >= synced.version &&
+        doc.latest !== null &&
+        doc.latest.version >= synced.version);
+    if (instance.spec.quietUnchanged === true) {
+      yield* until(doc, () => doc.loadId !== synced.loadId || doc.version >= synced.version);
+      // An answer on the file means its project has loaded; only then does silence say anything.
+      yield* (
+        instance.running?.connection
+          .request("textDocument/documentSymbol", { textDocument: { uri: doc.uri } })
+          .response.pipe(Effect.ignore) ?? Effect.void
+      );
+      yield* until(doc, arrived).pipe(Effect.timeoutOption(options.silenceAfter));
+      if (!arrived()) {
+        const version = doc.version;
+        setDiagnostics(instance, doc, { version, diagnostics: diagnosticsAt(doc, version) });
+      }
+    }
+    yield* until(doc, arrived);
     for (let seen = -1; seen !== doc.published;) {
       seen = doc.published;
       yield* Effect.sleep(options.diagnosticsQuiet);
@@ -3752,6 +3784,7 @@ export const defaultOptions: LanguageServersOptions = {
   initializeTimeout: Duration.minutes(1),
   diagnosticsTimeout: Duration.minutes(1),
   diagnosticsQuiet: Duration.millis(300),
+  silenceAfter: Duration.seconds(2),
   fileChangeQuiet: Duration.millis(200),
   formatTimeout: Duration.seconds(2),
   fanOutTimeout: Duration.seconds(1),

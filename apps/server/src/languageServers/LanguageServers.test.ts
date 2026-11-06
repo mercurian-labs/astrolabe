@@ -323,6 +323,7 @@ const agentEdit = Effect.fn("agentEdit")(function* (
 });
 
 const SOURCE = "const point = makePoint(1, 2);\nexport const label = point;\n";
+const quiet = { pushes: { after: 0 }, quietUnchanged: true };
 
 describe("LanguageServers", () => {
   it.live("starts a server only when a file opens, and stops it when nothing uses it", () =>
@@ -1297,6 +1298,48 @@ describe("LanguageServers", () => {
         "from the build",
       ]);
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("takes a pull answered `unchanged` as a look at that version, for a clean file", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE, { unchanged: true });
+      const answer = yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      expect(answer.diagnostics).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ diagnosticsTimeout: "2 seconds" }))),
+  );
+
+  it.live("tells an agent nothing changed when a server stays quiet about a file", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const clean = yield* makeCheckout(SOURCE, quiet);
+      const first = yield* service.diagnostics({ cwd: clean.cwd, relativePath: FILE });
+      expect(first.diagnostics).toEqual([]);
+
+      const checkout = yield* makeCheckout(`const bad = 1;\n`, quiet);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics((message) => message.params.diagnostics.length === 1);
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "\n" }));
+      const edited = yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      expect(edited.diagnostics.map(({ line }) => line)).toEqual([2]);
+
+      // Closed and opened again, the server still has nothing new to say.
+      const reopened = yield* makeCheckout(`const bad = 1;\n`, quiet);
+      const asked = { cwd: reopened.cwd, relativePath: FILE };
+      expect((yield* service.diagnostics(asked)).diagnostics).toHaveLength(1);
+      expect((yield* service.diagnostics(asked)).diagnostics).toHaveLength(1);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: { typescript: { ...fakeSpec(fakeLaunch), quietUnchanged: true } },
+          diagnosticsTimeout: "2 seconds",
+          silenceAfter: "50 millis",
+        }),
+      ),
+    ),
   );
 
   it.live("lists a checkout's problems, keeps a closed file's until its server stops", () =>

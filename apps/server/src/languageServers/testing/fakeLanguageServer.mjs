@@ -1,7 +1,7 @@
-// A language server for tests, configured by `fake-server.json` in its working directory.
-// `pushes` publishes instead of answering pulls, nothing at first and the real ones `pushes.after`
-// ms later; `quiescentOn` answers pulls with nothing until that file exists, then reports it
-// finished; `chatter` writes that many stderr lines at startup. Every "bad" is an error diagnostic.
+// A language server for tests, configured by `fake-server.json`. `pushes` publishes instead of
+// answering pulls, nothing at first and the real ones `pushes.after` ms later; `quiescentOn` answers
+// pulls with nothing until that file exists; `unchanged` answers every pull so; `quietUnchanged`
+// publishes only what differs; `chatter` writes that many stderr lines. Every "bad" is an error.
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 
@@ -17,6 +17,7 @@ const startsLog = role === undefined ? "starts.log" : `starts-${role}.log`;
 NodeFS.appendFileSync(startsLog, "start\n");
 const starts = NodeFS.readFileSync(startsLog, "utf8").trim().split("\n").length;
 const word = config.word ?? "bad";
+const lastSaid = new Map();
 
 const docs = new Map();
 const received = [];
@@ -89,8 +90,14 @@ const publish = (uri, version, diagnostics) =>
   write({ method: "textDocument/publishDiagnostics", params: { uri, version, diagnostics } });
 
 const pushDiagnostics = (uri, version) => {
-  publish(uri, version, []);
-  setTimeout(() => publish(uri, version, diagnosticsOf(docs.get(uri).text)), config.pushes.after);
+  if (!config.quietUnchanged) publish(uri, version, []);
+  setTimeout(() => {
+    const diagnostics = diagnosticsOf(docs.get(uri).text);
+    const said = JSON.stringify(diagnostics);
+    if (config.quietUnchanged && said === (lastSaid.get(uri) ?? "[]")) return;
+    lastSaid.set(uri, said);
+    publish(uri, version, diagnostics);
+  }, config.pushes.after);
 };
 
 if (config.quiescentOn) {
@@ -255,6 +262,7 @@ const handle = (message) => {
       docs.delete(params.textDocument.uri);
       return;
     case "textDocument/diagnostic": {
+      if (config.unchanged) return reply({ kind: "unchanged", resultId: "same" });
       const { text } = docs.get(params.textDocument.uri);
       const loading = config.quiescentOn && !NodeFS.existsSync(config.quiescentOn);
       return reply({ kind: "full", items: loading ? [] : diagnosticsOf(text) });

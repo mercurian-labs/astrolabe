@@ -136,6 +136,11 @@ export interface LanguageServerSpec {
   readonly writes?: ReadonlyArray<string>;
   /** Stops treating a file as the project's once it closes, until told the file exists. */
   readonly forgetsClosedFiles?: boolean;
+  /**
+   * Publishes only what differs from its last, so a clean file or an edit that changes no
+   * problem gets no word at all, and an agent has to stop waiting for one.
+   */
+  readonly quietUnchanged?: boolean;
   /** Said in settings when the checkout has none of `unless` (relative paths). */
   readonly hint?: { readonly unless: ReadonlyArray<string>; readonly message: string };
   /** For a language's primary: who may format its files, in order. Without it, the primary. */
