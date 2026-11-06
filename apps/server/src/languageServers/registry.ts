@@ -147,14 +147,14 @@ const RUST_ANALYZER_RELEASE =
 const TYPESCRIPT_FEATURES = {
   inlayHints: {
     // TypeScript 7's own names.
-    parameterNames: { enabled: "all", suppressWhenArgumentMatchesName: true },
+    parameterNames: { enabled: "literals", suppressWhenArgumentMatchesName: true },
     parameterTypes: { enabled: true },
     variableTypes: { enabled: true, suppressWhenTypeMatchesName: true },
     propertyDeclarationTypes: { enabled: true },
     functionLikeReturnTypes: { enabled: true },
     enumMemberValues: { enabled: true },
     // tsserver's, through typescript-language-server.
-    includeInlayParameterNameHints: "all",
+    includeInlayParameterNameHints: "literals",
     includeInlayParameterNameHintsWhenArgumentMatchesName: false,
     includeInlayFunctionParameterTypeHints: true,
     includeInlayVariableTypeHints: true,
