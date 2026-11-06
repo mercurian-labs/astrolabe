@@ -14,7 +14,11 @@ When a flow, an architecture, or a set of dependencies is easier to see than to 
 
 The expand button opens the canvas in the right panel, where you can drag and scroll to pan, pinch or Ctrl-scroll to zoom, and use **Fit** to see the whole board. On the phone, tap a canvas to do the same.
 
-A canvas stays in its thread and is deleted with it. Canvases use the open JSON Canvas format.
+A canvas stays in its thread and is deleted with it, unless you keep it. **Keep**, beside the expand button or on the phone's board, asks for a wiki and a name and saves the canvas there as it looks in the thread, in a change request you can merge or close. Closing it discards the copy and leaves the thread's canvas alone. To have an agent do it, ask.
+
+A kept code card is a link to that file at a commit your remote has, so it works outside Astrolabe too. If the thread's commit isn't pushed, the link goes to the nearest commit that is, and Keep tells you the code there may differ. A card becomes plain text, naming the file and commit, if the file isn't in a pushed commit or the repository has no remote, or on a server such as Bitbucket Data Center that has no such link.
+
+Canvases use the open JSON Canvas format.
 
 ## MCP apps
 

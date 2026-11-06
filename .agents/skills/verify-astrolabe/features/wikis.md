@@ -158,6 +158,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   the Finder, pick **New canvas**, **Create canvas** saves it to a change request. `![[Board.canvas]]`
   in a note draws a thumbnail that opens it; Mermaid draws in ordinary notes. Invalid JSON shows the
   error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
+- **Agents on a canvas** (`packages/wiki/src/canvasEdits.ts`, `canvasPlace.ts`, the transform in
+  `WikiService.transform`): ask an agent to add to a canvas with the board open in its change
+  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates; `astrolabe_wiki_amend`
+  refuses and names the transform. No existing card moves, unless a group had to grow, and its
+  cards stay. The camera stays; each changed card highlights once (`.cv-flash`, gone after about a
+  second, nothing repainting at rest), then keeps its mark until the change request is merged or
+  closed. On main there are no marks. The tool row's **Open canvas** opens the board in that change
+  request. Search by card text returns `cards`, not line numbers.
 - **Bases** (`wiki/WikiBaseView.tsx`; engine `packages/wiki/src/bases.ts`, server
   `WikiService.query` / `wiki.query`, agents `astrolabe_wiki_query`): a `.base` file lists as a
   document named `<name>.base` (no links line in its hover card) and opens as a tab labelled
@@ -191,7 +199,9 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   change request's row shows a count such as `2 added, 1 moved`, and a deleted canvas's row opens
   too. It opens the board with marks and the list below; a row selects its card. A conflict says it
   can't be settled from the phone, and the notes show under the merge card.
-- **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): a `.canvas`
+- **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): an agent's
+  change shows in the feed as a row, `Changed the canvas <name>`, that opens it in the change
+  request, with the same marks and one highlight per commit. A `.canvas`
   lists as `button "<name>, canvas, <wiki>"` with "Canvas · read only", and opens in `WikiDocument`
   from the list, a change request's documents, links in notes and a base's rows, subtitle
   `<wiki> · Main · Canvas · read only`, with a `Jump to group` header menu when it has labelled

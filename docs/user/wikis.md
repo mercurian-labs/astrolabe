@@ -42,9 +42,11 @@ Bases support Obsidian's whole language: filters, formulas, every function, regu
 
 ## Canvases
 
-A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web, desktop and the phone; a canvas can't be changed here yet.
+A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web, desktop and the phone, and agents change them through change requests. You can't drag cards here yet.
 
-To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then save it to a change request. To add cards, edit the file in Obsidian or any editor in that change request's worktree.
+To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then save it to a change request. To draw on it, ask an agent, or edit the file in Obsidian or any editor in that change request's worktree. You can also [keep a canvas from a thread](html-renders.md#canvases).
+
+An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a group can grow to fit a new card. Its changes land on a change request, never on main. A canvas open in that change request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the change request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
 
 Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, ⇧1 fits the board, and ⇧2 zooms to the selected card. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the top of its tab or the command palette.
 
@@ -60,7 +62,7 @@ Merging a change request merges a canvas card by card, so two people's edits to 
 
 A file card or a link in a text card counts as a backlink, and a link in a text card to something unwritten is a red link. Arrows never count as links. Renaming a note updates the canvases that show it. Link to a canvas with its extension, as `[[Board.canvas]]`: `[[Board]]` doesn't find it. `![[Board.canvas]]` on a line of its own shows a picture of the board, and clicking it opens the canvas.
 
-Search finds what cards say, and agents read a canvas as an outline of its cards, groups and arrows.
+Agents read a canvas as an outline of its cards, groups and arrows, and their search finds the cards that say something.
 
 ## Link types
 

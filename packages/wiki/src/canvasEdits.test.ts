@@ -360,6 +360,18 @@ describe("canvasPlace", () => {
     expect(placed.n).toMatchObject({ x: 280, y: 60 });
   });
 
+  it("takes the gap nearest `near` in a group", () => {
+    const nodes = [
+      { ...rect(0, 0, "g"), type: "group", width: 1000, height: 800 },
+      rect(40, 80, "first"),
+      rect(700, 500, "last"),
+    ];
+    const { placed } = canvasPlace(nodes, {
+      cards: [{ id: "n", width: 250, height: 60, in: "g", near: "last" }],
+    });
+    expect(placed.n).toMatchObject({ x: 280, y: 640 });
+  });
+
   it("grows a group away from what stands beside it, and its holder with it", () => {
     const outer = { ...rect(-100, -100, "outer"), type: "group", width: 600, height: 500 };
     const inner = { ...rect(0, 0, "g"), type: "group", width: 300, height: 200 };

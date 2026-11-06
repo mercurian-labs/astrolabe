@@ -373,7 +373,7 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
     if (nodeOf(id).type !== "group") {
       throw new CanvasEditError(`"${card.in}" isn't a group, so nothing can go in it.`);
     }
-    return { ...card, in: id, near: undefined };
+    return { ...card, in: id };
   });
   const aroundNew = new Map<string, string>();
   const groups = [...newGroups.values()].map((group) => {

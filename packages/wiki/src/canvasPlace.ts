@@ -639,19 +639,19 @@ export function canvasPlace(
       return each === groupId || (rect !== undefined && insideGroup(rect, group));
     };
     if (members.length <= GROUP_SCAN_LIMIT) {
-      const xs = [left, ...members.map((rect) => rect.x + rect.width + CROSS_GAP)].sort(
-        (a, b) => a - b,
-      );
-      const ys = [top, ...members.map((rect) => rect.y + rect.height + CROSS_GAP)].sort(
-        (a, b) => a - b,
-      );
-      for (const rawY of ys) {
-        for (const rawX of xs) {
-          const rect = { x: snap(rawX), y: snap(rawY), width, height };
-          if (rect.x + width <= right && rect.y + height <= bottom && isClear(rect, holds)) {
-            put(card.id, rect);
-            return;
-          }
+      const xs = [left, ...members.map((rect) => rect.x + rect.width + CROSS_GAP)];
+      const ys = [top, ...members.map((rect) => rect.y + rect.height + CROSS_GAP)];
+      const anchor = card.near === undefined ? undefined : rects.get(card.near);
+      const reach = (rect: CanvasBounds) =>
+        anchor === undefined ? 0 : Math.abs(rect.x - anchor.x) + Math.abs(rect.y - anchor.y);
+      // Nearest `near` first, then in reading order.
+      const spots = ys
+        .flatMap((y) => xs.map((x) => ({ x: snap(x), y: snap(y), width, height })))
+        .sort((a, b) => reach(a) - reach(b) || a.y - b.y || a.x - b.x);
+      for (const rect of spots) {
+        if (rect.x + width <= right && rect.y + height <= bottom && isClear(rect, holds)) {
+          put(card.id, rect);
+          return;
         }
       }
     }
