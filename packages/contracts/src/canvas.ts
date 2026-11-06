@@ -5,6 +5,8 @@ import * as Schema from "effect/Schema";
 export const CANVAS_SHOW_TOOL_NAME = "astrolabe_canvas_show";
 const CANVAS_SHOW_MAX_CARDS = 200;
 const CANVAS_MAX_EDITS = 500;
+/** Selecting a whole board and nudging it is one edit per card. */
+const CANVAS_MAX_HAND_EDITS = 50_000;
 
 export const CanvasShowColor = Schema.Literals([
   "red",
@@ -69,10 +71,9 @@ export const CanvasShowInput = Schema.Struct({
 });
 export type CanvasShowInput = typeof CanvasShowInput.Type;
 
-// Hand editing's move, resize and reorder belong beside these, in `CanvasEdit` only: an agent says
-// what is on a board, and its place is decided for it. These merge into one object when advertised
-// (see `advertisedJsonSchema`), so a field means one thing throughout and each op's rules live on
-// `edits`.
+// An agent says what is on a board, and its place is decided for it: only `CanvasEdit` moves cards.
+// These merge into one object when advertised (see `advertisedJsonSchema`), so a field means one
+// thing throughout and each op's rules live on `edits`.
 const said = (description: string) => Schema.NonEmptyString.annotate({ description });
 const card = said(
   "A card's or group's id, as a read shows it in [brackets], or a ref from this call.",
@@ -149,24 +150,56 @@ const CanvasAgentEdits = [
 export const CanvasAgentEdit = Schema.Union(CanvasAgentEdits);
 export type CanvasAgentEdit = typeof CanvasAgentEdit.Type;
 
-export const CanvasEdit = Schema.Union(CanvasAgentEdits);
+const JsonKeys = Schema.Record(Schema.String, Schema.Unknown);
+const point = { x: Schema.Finite, y: Schema.Finite };
+
+/** A person's edits: they place cards by hand, by id. A list holds these or an agent's, not both. */
+const CanvasHandEdits = [
+  Schema.Struct({ op: Schema.Literal("move"), card: Schema.String, ...point }),
+  Schema.Struct({
+    op: Schema.Literal("resize"),
+    card: Schema.String,
+    ...point,
+    width: Schema.Finite,
+    height: Schema.Finite,
+  }),
+  Schema.Struct({
+    op: Schema.Literal("reorder"),
+    cards: Schema.Array(Schema.String),
+    at: Schema.optional(Schema.Array(Schema.Int)),
+  }),
+  Schema.Struct({ op: Schema.Literal("set-card"), card: Schema.String, keys: JsonKeys }),
+  Schema.Struct({
+    op: Schema.Literal("put-card"),
+    node: JsonKeys,
+    at: Schema.optional(Schema.Int),
+  }),
+  Schema.Struct({ op: Schema.Literal("remove-card"), card: Schema.String }),
+  Schema.Struct({ op: Schema.Literal("set-arrow"), arrow: Schema.String, keys: JsonKeys }),
+  Schema.Struct({
+    op: Schema.Literal("put-arrow"),
+    edge: JsonKeys,
+    at: Schema.optional(Schema.Int),
+  }),
+  Schema.Struct({ op: Schema.Literal("remove-arrow"), arrow: Schema.String }),
+] as const;
+
+export const CanvasEdit = Schema.Union([...CanvasAgentEdits, ...CanvasHandEdits]);
 export type CanvasEdit = typeof CanvasEdit.Type;
 
-const canvasTransform = <Edit extends Schema.Top>(edit: Edit) =>
+const canvasTransform = <Edit extends Schema.Top>(edit: Edit, maxEdits: number) =>
   Schema.Struct({
     kind: Schema.Literal("canvas"),
     file: said("The canvas's file name, with .canvas."),
-    edits: Schema.Array(edit)
-      .check(Schema.isMinLength(1), Schema.isMaxLength(CANVAS_MAX_EDITS))
-      .annotate({
-        description:
-          "In order, all or none. create: first, for a new canvas. delete: alone. add: ref, and one of text, url or file. edit: card, and what it now says. remove: card; its arrows go, a group's cards stay. connect, disconnect: from, to. label: a group as card, or an arrow as from and to; no label clears it. group: ref, label, around. color: as label.",
-      }),
+    edits: Schema.Array(edit).check(Schema.isMinLength(1), Schema.isMaxLength(maxEdits)).annotate({
+      description:
+        "In order, all or none. create: first, for a new canvas. delete: alone. add: ref, and one of text, url or file. edit: card, and what it now says. remove: card; its arrows go, a group's cards stay. connect, disconnect: from, to. label: a group as card, or an arrow as from and to; no label clears it. group: ref, label, around. color: as label.",
+    }),
   });
 
 /** Changes to one canvas, as an agent sends them. */
-export const WikiCanvasAgentTransform = canvasTransform(CanvasAgentEdit);
-export const WikiCanvasTransform = canvasTransform(CanvasEdit);
+export const WikiCanvasAgentTransform = canvasTransform(CanvasAgentEdit, CANVAS_MAX_EDITS);
+export const WikiCanvasTransform = canvasTransform(CanvasEdit, CANVAS_MAX_HAND_EDITS);
 
 /** Where a canvas's code cards point, kept so a saved card can pin that code. */
 export const CanvasShowCode = Schema.Struct({

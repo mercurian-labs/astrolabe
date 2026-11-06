@@ -15,6 +15,10 @@
     "./canvas": {
       "types": "./src/canvas.ts",
       "import": "./src/canvas.ts"
+    },
+    "./canvas-edits": {
+      "types": "./src/canvasEdits.ts",
+      "import": "./src/canvasEdits.ts"
     }
   },
   "scripts": {

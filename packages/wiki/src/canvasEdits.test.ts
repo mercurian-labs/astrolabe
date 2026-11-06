@@ -3,7 +3,13 @@ import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import { parseCanvas, serializeCanvas, type CanvasBounds } from "./canvas.ts";
-import { applyCanvasEdits, type CanvasEdit } from "./canvasEdits.ts";
+import {
+  applyCanvasEdits,
+  applyCanvasHandEdits,
+  CanvasEditError,
+  type CanvasEdit,
+  type CanvasHandEdit,
+} from "./canvasEdits.ts";
 import { canvasPlace } from "./canvasPlace.ts";
 
 const fixture = (name: string) =>
@@ -432,5 +438,124 @@ describe("canvasPlace", () => {
     });
     expect(placed.a).toMatchObject({ x: 0, y: 0 });
     expect(overlaps(placed.a ?? ORIGIN, placed.b ?? ORIGIN)).toBe(false);
+  });
+});
+
+describe("a person's edits", () => {
+  const roundTrip = (source: string, edits: ReadonlyArray<CanvasHandEdit>) => {
+    const { document, inverse } = applyCanvasHandEdits(read(source).document, edits);
+    return { after: serializeCanvas(document), undone: applyInverse(document, inverse) };
+  };
+  const applyInverse = (document: unknown, inverse: ReadonlyArray<CanvasHandEdit>) =>
+    serializeCanvas(applyCanvasHandEdits(document, inverse).document);
+  const SURVIVORS = board(
+    [
+      card("a", 0.5, 10, { future: { kept: true } }),
+      { id: "strange", type: "hologram", x: 5, y: 5, width: 10, height: 10, depth: 3 },
+      card("b", 300, 0),
+    ],
+    [
+      { id: "e1", fromNode: "a", toNode: "b", style: "dashed" },
+      { id: "e2", fromNode: "a", toNode: "gone" },
+    ],
+  );
+
+  it.each<[string, ReadonlyArray<CanvasHandEdit>]>([
+    ["a move", [{ op: "move", card: "a", x: 20, y: 40 }]],
+    ["a resize", [{ op: "resize", card: "a", x: 0, y: 0, width: 60, height: 60 }]],
+    ["a colour", [{ op: "set-card", card: "a", keys: { color: "3" } }]],
+    ["a raise", [{ op: "reorder", cards: ["a"] }]],
+    ["a removal with its arrows", [{ op: "remove-card", card: "a" }]],
+    ["a new card", [{ op: "put-card", node: card("c", 1, 1) }]],
+    ["an arrow's label", [{ op: "set-arrow", arrow: "e1", keys: { label: "x" } }]],
+    ["an arrow's removal", [{ op: "remove-arrow", arrow: "e1" }]],
+    ["a new arrow", [{ op: "put-arrow", edge: { id: "e3", fromNode: "b", toNode: "a" } }]],
+    [
+      "two removals, undone to their places",
+      [
+        { op: "remove-card", card: "a" },
+        { op: "remove-card", card: "b" },
+      ],
+    ],
+  ])("%s undoes back to the same bytes, unknowns and all", (_name, edits) => {
+    const { after, undone } = roundTrip(SURVIVORS, edits);
+    expect(after).not.toBe(SURVIVORS);
+    expect(undone).toBe(SURVIVORS);
+  });
+
+  it("writes a file Obsidian reads, leaving what it doesn't name as it was", () => {
+    const { source } = apply(SURVIVORS, [{ op: "move", card: "b", x: 20, y: 40 }]);
+    const nodes = read(source).document as { nodes: ReadonlyArray<Record<string, unknown>> };
+    expect(nodes.nodes[0]).toMatchObject({ x: 0.5, future: { kept: true } });
+    expect(nodes.nodes[1]).toMatchObject({ type: "hologram", depth: 3 });
+    expect(source).toContain('"style":"dashed"');
+    expect(source).toContain('{"id":"e2","fromNode":"a","toNode":"gone"}');
+  });
+
+  it("keeps a card's keys in the order the file has them", () => {
+    const { source } = apply(board([card("a", 0, 0, { color: "1", extra: true })]), [
+      { op: "move", card: "a", x: 20, y: 40 },
+      { op: "set-card", card: "a", keys: { color: null } },
+    ]);
+    expect(source).toContain('{"id":"a","type":"text","text":"a","x":20,"y":40,');
+    expect(source).not.toContain('"color"');
+  });
+
+  it("skips what's gone from the head, so a save never fails on someone else's delete", () => {
+    const { source } = apply(board([card("a", 0, 0)]), [
+      { op: "move", card: "gone", x: 1, y: 1 },
+      { op: "remove-card", card: "gone" },
+      { op: "remove-arrow", arrow: "gone" },
+      { op: "set-arrow", arrow: "gone", keys: { label: "x" } },
+      { op: "move", card: "a", x: 40, y: 0 },
+    ]);
+    expect(read(source).data.nodes[0]).toMatchObject({ x: 40 });
+  });
+
+  it("replays a put by id, so a save sent twice leaves one card", () => {
+    const put: CanvasHandEdit = { op: "put-card", node: card("c", 1, 1) };
+    const { source } = apply(board([card("a", 0, 0)]), [put, put]);
+    expect(read(source).data.nodes.map((node) => node.id)).toEqual(["a", "c"]);
+  });
+
+  it("moves a dragged card to the top, and undo restores its place in the file", () => {
+    const three = board([card("a", 0, 0), card("b", 0, 0), card("c", 0, 0)]);
+    const raised = applyCanvasHandEdits(read(three).document, [
+      { op: "reorder", cards: ["a", "b"] },
+    ]);
+    const order = (document: unknown) =>
+      (document as { nodes: ReadonlyArray<{ id: string }> }).nodes.map(({ id }) => id);
+    expect(order(raised.document)).toEqual(["c", "a", "b"]);
+    expect(order(applyCanvasHandEdits(raised.document, raised.inverse).document)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("removes an arrow with its card, and only that one", () => {
+    const { source } = apply(SURVIVORS, [{ op: "remove-card", card: "b" }]);
+    expect(read(source).data.edges.map((edge) => edge.id)).toEqual(["e2"]);
+  });
+
+  it("refuses a list that mixes a person's edits with an agent's", () => {
+    expect(() =>
+      apply(board([card("a", 0, 0)]), [
+        { op: "move", card: "a", x: 1, y: 1 },
+        { op: "remove", card: "a" },
+      ]),
+    ).toThrow(CanvasEditError);
+  });
+
+  it("handles a whole board in one list without slowing per card", () => {
+    const nodes = Array.from({ length: 5000 }, (_, index) => card(`n${index}`, index, 0));
+    const start = read(board(nodes)).document;
+    const removed = applyCanvasHandEdits(
+      start,
+      nodes.map(({ id }) => ({ op: "remove-card", card: id })),
+    );
+    expect(serializeCanvas(applyCanvasHandEdits(removed.document, removed.inverse).document)).toBe(
+      serializeCanvas(start),
+    );
   });
 });

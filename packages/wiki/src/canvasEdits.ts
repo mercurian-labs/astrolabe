@@ -21,8 +21,8 @@ interface ArrowEnds {
   readonly to?: string | undefined;
 }
 
-/** Hand editing adds move, resize and reorder here; an agent's list never holds them. */
-export type CanvasEdit =
+/** What an agent says: what is on a board, never where. */
+type CanvasStructureEdit =
   | { readonly op: "create" }
   | { readonly op: "delete" }
   | {
@@ -76,6 +76,55 @@ export type CanvasEdit =
       readonly color?: CanvasEditColor | undefined;
     } & ArrowEnds);
 
+/**
+ * What a person's hands do to a board. Each names a card or arrow by id and replays on whatever the
+ * head holds by then: one that's gone since is skipped, and the rest of the file stays its bytes.
+ * `keys` set a card's or arrow's JSON keys, where null removes one, so nothing it doesn't name is
+ * touched. Whole cards and arrows are as the file holds them, unknown keys included.
+ */
+export type CanvasHandEdit =
+  | { readonly op: "move"; readonly card: string; readonly x: number; readonly y: number }
+  | {
+      readonly op: "resize";
+      readonly card: string;
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    }
+  /** To the top of the board in this order; with `at`, each back to its place in the file. */
+  | {
+      readonly op: "reorder";
+      readonly cards: ReadonlyArray<string>;
+      readonly at?: ReadonlyArray<number> | undefined;
+    }
+  | {
+      readonly op: "set-card";
+      readonly card: string;
+      readonly keys: Readonly<Record<string, unknown>>;
+    }
+  /** A whole card: new, or in place of the one with its id. `at` is its place in the file. */
+  | {
+      readonly op: "put-card";
+      readonly node: Readonly<Record<string, unknown>>;
+      readonly at?: number | undefined;
+    }
+  /** The card, and the arrows on it. */
+  | { readonly op: "remove-card"; readonly card: string }
+  | {
+      readonly op: "set-arrow";
+      readonly arrow: string;
+      readonly keys: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly op: "put-arrow";
+      readonly edge: Readonly<Record<string, unknown>>;
+      readonly at?: number | undefined;
+    }
+  | { readonly op: "remove-arrow"; readonly arrow: string };
+
+export type CanvasEdit = CanvasStructureEdit | CanvasHandEdit;
+
 export class CanvasEditError extends Error {
   override readonly name = "CanvasEditError";
 }
@@ -93,6 +142,20 @@ type Raw = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is Raw =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const HAND_OPS: ReadonlySet<string> = new Set([
+  "move",
+  "resize",
+  "reorder",
+  "set-card",
+  "put-card",
+  "remove-card",
+  "set-arrow",
+  "put-arrow",
+  "remove-arrow",
+]);
+
+const isHandEdit = (edit: CanvasEdit): edit is CanvasHandEdit => HAND_OPS.has(edit.op);
 
 const hash32 = (text: string, seed: number) => {
   let hash = seed;
@@ -137,6 +200,233 @@ function withKey(raw: Raw, key: string, value: unknown): Raw {
 
 const presetOf = (color: CanvasEditColor) => CANVAS_PRESETS[color] ?? color;
 
+const given = (list: unknown): unknown[] => (Array.isArray(list) ? [...list] : []);
+
+/** A list's entries by id, as drawn: the place each holds in the file. */
+function placesIn(list: ReadonlyArray<unknown>, prefix: string) {
+  const places = new Map(list.map((raw, position) => [raw, position]));
+  return new Map(
+    canvasEntries(list, prefix).map(({ id, raw }) => [id, places.get(raw) ?? -1] as const),
+  );
+}
+
+/** `list` with each of `items` at the place it names, in one pass however many there are. */
+function insertedAt(
+  list: ReadonlyArray<unknown>,
+  items: ReadonlyArray<{ readonly at: number; readonly raw: unknown }>,
+) {
+  const sorted = [...items].sort((a, b) => a.at - b.at);
+  const merged: unknown[] = [];
+  let taken = 0;
+  let next = 0;
+  while (taken < sorted.length || next < list.length) {
+    const item = sorted[taken];
+    if (item !== undefined && (item.at <= merged.length || next >= list.length)) {
+      merged.push(item.raw);
+      taken += 1;
+    } else {
+      merged.push(list[next]);
+      next += 1;
+    }
+  }
+  return merged;
+}
+
+const idOf = (raw: Readonly<Record<string, unknown>>) => (typeof raw.id === "string" ? raw.id : "");
+
+const keyChanges = (raw: Raw, keys: Readonly<Record<string, unknown>>) =>
+  Object.fromEntries(Object.keys(keys).map((key) => [key, raw[key] ?? null]));
+
+export interface CanvasHandOutcome {
+  /** The document with the edits in. Whatever they didn't touch is the same object. */
+  readonly document: Record<string, unknown>;
+  /** What undoes them, in order, on the document they produced. */
+  readonly inverse: ReadonlyArray<CanvasHandEdit>;
+}
+
+/**
+ * Applies a person's edits to a parsed document, and works out what undoes them. Pure, and the
+ * same on the server and in the client that drew them, so what lands is what was shown.
+ */
+export function applyCanvasHandEdits(
+  document: unknown,
+  edits: ReadonlyArray<CanvasHandEdit>,
+): CanvasHandOutcome {
+  if (!isRecord(document)) throw new CanvasEditError("This file doesn't hold a canvas.");
+  let nodes = given(document.nodes);
+  let edges = given(document.edges);
+  let nodeAt = placesIn(nodes, "node");
+  let edgeAt = placesIn(edges, "edge");
+  // Removing leaves a hole, closed at the end or before anything that counts places.
+  const closeHoles = () => {
+    if (nodes.includes(undefined)) {
+      nodes = nodes.filter((node) => node !== undefined);
+      nodeAt = placesIn(nodes, "node");
+    }
+    if (edges.includes(undefined)) {
+      edges = edges.filter((edge) => edge !== undefined);
+      edgeAt = placesIn(edges, "edge");
+    }
+  };
+  let arrowsOn: Map<unknown, Set<number>> | null = null;
+  const arrowIndex = () => {
+    if (arrowsOn !== null) return arrowsOn;
+    const index = new Map<unknown, Set<number>>();
+    edges.forEach((edge, position) => {
+      if (!isRecord(edge)) return;
+      for (const end of [edge.fromNode, edge.toNode]) {
+        const on = index.get(end);
+        if (on === undefined) index.set(end, new Set([position]));
+        else on.add(position);
+      }
+    });
+    arrowsOn = index;
+    return index;
+  };
+
+  const restored: Array<Extract<CanvasHandEdit, { op: "put-card" | "put-arrow" }>> = [];
+  const others: CanvasHandEdit[] = [];
+
+  const patch = (id: string, keys: Readonly<Record<string, unknown>>) => {
+    const position = nodeAt.get(id);
+    if (position === undefined) return;
+    const before = nodes[position] as Raw;
+    others.push({ op: "set-card", card: id, keys: keyChanges(before, keys) });
+    nodes[position] = Object.entries(keys).reduce(
+      (raw, [key, value]) => withKey(raw, key, value),
+      before,
+    );
+  };
+
+  const removeArrow = (position: number) => {
+    const raw = edges[position];
+    if (!isRecord(raw)) return;
+    restored.push({ op: "put-arrow", edge: raw, at: position });
+    edges[position] = undefined;
+  };
+
+  /** Consecutive whole cards put back at their places, as one insert. */
+  const putRun = (start: number) => {
+    let end = start;
+    const items: Array<{ readonly at: number; readonly raw: Raw }> = [];
+    for (; end < edits.length; end++) {
+      const edit = edits[end];
+      if (edit?.op !== "put-card" || edit.at === undefined || nodeAt.has(idOf(edit.node))) break;
+      items.push({ at: edit.at, raw: edit.node });
+      others.push({ op: "remove-card", card: idOf(edit.node) });
+    }
+    closeHoles();
+    nodes = insertedAt(nodes, items);
+    nodeAt = placesIn(nodes, "node");
+    return end;
+  };
+
+  for (let index = 0; index < edits.length;) {
+    const edit = edits[index] as CanvasHandEdit;
+    switch (edit.op) {
+      case "move":
+        patch(edit.card, { x: edit.x, y: edit.y });
+        break;
+      case "resize":
+        patch(edit.card, { x: edit.x, y: edit.y, width: edit.width, height: edit.height });
+        break;
+      case "set-card":
+        patch(edit.card, edit.keys);
+        break;
+      case "reorder": {
+        closeHoles();
+        const moving = edit.cards.flatMap((card, order) => {
+          const position = nodeAt.get(card);
+          return position === undefined ? [] : [{ card, position, order }];
+        });
+        if (moving.length === 0) break;
+        others.push({
+          op: "reorder",
+          cards: moving.map(({ card }) => card),
+          at: moving.map(({ position }) => position),
+        });
+        const leaving = new Set(moving.map(({ position }) => position));
+        const rest = nodes.filter((_, position) => !leaving.has(position));
+        const raws = moving.map(({ position }) => nodes[position]);
+        nodes =
+          edit.at === undefined
+            ? [...rest, ...raws]
+            : insertedAt(
+                rest,
+                raws.map((raw, order) => ({ at: edit.at?.[order] ?? rest.length, raw })),
+              );
+        nodeAt = placesIn(nodes, "node");
+        break;
+      }
+      case "put-card": {
+        const id = idOf(edit.node);
+        const position = nodeAt.get(id);
+        if (position !== undefined) {
+          others.push({ op: "put-card", node: nodes[position] as Raw });
+          nodes[position] = edit.node;
+        } else if (edit.at !== undefined) {
+          index = putRun(index);
+          continue;
+        } else {
+          others.push({ op: "remove-card", card: id });
+          nodeAt.set(id, nodes.length);
+          nodes.push(edit.node);
+        }
+        break;
+      }
+      case "remove-card": {
+        const position = nodeAt.get(edit.card);
+        if (position === undefined) break;
+        const raw = nodes[position] as Raw;
+        restored.push({ op: "put-card", node: raw, at: position });
+        const stored = raw.id ?? edit.card;
+        for (const arrow of arrowIndex().get(stored) ?? []) removeArrow(arrow);
+        nodes[position] = undefined;
+        nodeAt.delete(edit.card);
+        break;
+      }
+      case "set-arrow": {
+        const position = edgeAt.get(edit.arrow);
+        if (position === undefined) break;
+        const before = edges[position] as Raw;
+        others.push({ op: "set-arrow", arrow: edit.arrow, keys: keyChanges(before, edit.keys) });
+        edges[position] = Object.entries(edit.keys).reduce(
+          (raw, [key, value]) => withKey(raw, key, value),
+          before,
+        );
+        break;
+      }
+      case "put-arrow": {
+        const id = idOf(edit.edge);
+        const position = edgeAt.get(id);
+        if (position !== undefined) {
+          others.push({ op: "put-arrow", edge: edges[position] as Raw });
+          edges[position] = edit.edge;
+          break;
+        }
+        others.push({ op: "remove-arrow", arrow: id });
+        closeHoles();
+        const place = Math.min(edit.at ?? edges.length, edges.length);
+        edges = [...edges.slice(0, place), edit.edge, ...edges.slice(place)];
+        edgeAt = placesIn(edges, "edge");
+        arrowsOn = null;
+        break;
+      }
+      case "remove-arrow": {
+        const position = edgeAt.get(edit.arrow);
+        if (position === undefined) break;
+        removeArrow(position);
+        edgeAt.delete(edit.arrow);
+        break;
+      }
+    }
+    index += 1;
+  }
+  closeHoles();
+  restored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  return { document: { ...document, nodes, edges }, inverse: [...restored, ...others.reverse()] };
+}
+
 function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, seed: string) {
   const parsed = parseCanvas(source);
   if (!parsed.ok) {
@@ -144,7 +434,16 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
   }
   const { document } = parsed;
   if (!isRecord(document)) throw new CanvasEditError(`${file} doesn't hold a canvas.`);
-  const given = (list: unknown): unknown[] => (Array.isArray(list) ? [...list] : []);
+  if (edits.some(isHandEdit)) {
+    if (!edits.every(isHandEdit)) {
+      throw new CanvasEditError("A person's edits and an agent's can't share a list.");
+    }
+    return {
+      source: serializeCanvas(applyCanvasHandEdits(document, edits).document),
+      cards: {},
+      notes: [],
+    };
+  }
   const nodes = given(document.nodes);
   const edges = given(document.edges);
 
@@ -220,7 +519,7 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
     newGroups.delete(id);
   };
 
-  const apply = (edit: CanvasEdit) => {
+  const apply = (edit: CanvasStructureEdit) => {
     switch (edit.op) {
       case "create":
         throw new CanvasEditError("`create` starts a new canvas, so it comes first in the list.");
@@ -365,7 +664,7 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
       }
     }
   };
-  for (const edit of edits) apply(edit);
+  for (const edit of edits as ReadonlyArray<CanvasStructureEdit>) apply(edit);
 
   const cards = [...newCards.values()].map((card) => {
     if (card.in === undefined) return card;
