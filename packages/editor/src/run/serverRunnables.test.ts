@@ -81,9 +81,9 @@ describe("rustRunnables", () => {
 
 describe("goTestLenses", () => {
   const range = { start: { line: 4, character: 0 }, end: { line: 4, character: 4 } };
-  const lens = (args: object, command = "gopls.run_tests") => ({
+  const lens = (args: object, command = "gopls.run_tests", title = "run test") => ({
     range,
-    command: { title: "run test", command, arguments: [{ URI: "file:///a_test.go", ...args }] },
+    command: { title, command, arguments: [{ URI: "file:///a_test.go", ...args }] },
   });
 
   it("reads one test or benchmark from each lens", () => {
@@ -92,6 +92,7 @@ describe("goTestLenses", () => {
         lens({ Tests: ["TestAdd"], Benchmarks: null }),
         lens({ Tests: null, Benchmarks: ["BenchmarkAdd"] }),
         lens({ Tests: [], Benchmarks: ["BenchmarkA", "BenchmarkB"] }),
+        lens({ Tests: null, Benchmarks: ["BenchmarkAdd"] }, undefined, "run file benchmarks"),
         lens({ Tests: ["TestAdd"] }, "gopls.tidy"),
         { range },
       ]),

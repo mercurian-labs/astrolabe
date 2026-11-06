@@ -509,6 +509,28 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("answers a server's runnables in the editor's coordinates", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// one\n// two\n" }));
+      const runnables = yield* session.request(
+        1,
+        "experimental/runnables",
+        { textDocument: { uri: checkout.uri } },
+        editor.envelope(),
+      );
+      expect(runnables.result).toHaveLength(2);
+      for (const { location } of runnables.result) {
+        expect(editor.slice(location.targetRange)).toBe("point");
+        expect(editor.slice(location.targetSelectionRange)).toBe("point");
+      }
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("refuses linked ranges in text the editor has not received", () =>
     Effect.gen(function* () {
       const checkout = yield* makeCheckout(SOURCE);
@@ -1204,6 +1226,117 @@ describe("LanguageServers", () => {
       expect(saved.result).toEqual([checkout.uri]);
     }).pipe(Effect.scoped, Effect.provide(layerFor({ fileChangeQuiet: "50 millis" }))),
   );
+
+  describe("run context", () => {
+    const contextOf = (cwd: string, path: string) =>
+      Effect.flatMap(LanguageServers.LanguageServers, (service) =>
+        service.runContext({ cwd, path }),
+      );
+
+    it.live("reads a file's nearest manifest and its tools, running nothing", () =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout(SOURCE);
+        const { cwd } = checkout;
+        yield* checkout.write("crates/core/Cargo.toml", "[package]\n");
+        expect(yield* contextOf(cwd, "crates/core/src/lib.rs")).toMatchObject({
+          trusted: true,
+          root: "crates/core",
+        });
+        expect(yield* contextOf(cwd, "other/src/lib.rs")).toMatchObject({ root: "" });
+
+        yield* checkout.write("svc/go.mod", "module svc\n");
+        expect(yield* contextOf(cwd, "svc/pkg/a_test.go")).toMatchObject({ root: "svc" });
+
+        yield* checkout.write("api/pyproject.toml", "");
+        yield* checkout.write(".venv/bin/python", "");
+        expect(yield* contextOf(cwd, "api/tests/test_a.py")).toMatchObject({
+          root: "api",
+          python: `${cwd}/.venv/bin/python`,
+        });
+
+        yield* checkout.write("package.json", '{"devDependencies":{"vitest":"^3"}}');
+        yield* checkout.write("pnpm-lock.yaml", "");
+        yield* checkout.write("packages/a/package.json", '{"name":"a"}');
+        yield* checkout.write("packages/b/package.json", '{"scripts":{"test":"jest --ci"}}');
+        yield* checkout.write("packages/c/package.json", '{"scripts":{"test":"node --test"}}');
+        yield* checkout.write("packages/d/package.json", "not json");
+        expect(yield* contextOf(cwd, "packages/a/src/a.test.ts")).toMatchObject({
+          root: "",
+          testRunner: "vitest",
+          packageRunner: "pnpm exec",
+        });
+        expect(yield* contextOf(cwd, "packages/b/b.test.ts")).toMatchObject({
+          root: "packages/b",
+          testRunner: "jest",
+        });
+        expect(yield* contextOf(cwd, "packages/c/c.test.js")).toMatchObject({
+          root: "packages/c",
+          testRunner: "node",
+        });
+        expect(yield* contextOf(cwd, "packages/d/d.test.js")).toMatchObject({
+          root: "",
+          testRunner: "vitest",
+        });
+
+        yield* checkout.write("java/pom.xml", "<project/>");
+        expect(yield* contextOf(cwd, "java/src/A.java")).toMatchObject({
+          root: "java",
+          buildTool: "maven",
+          buildCommand: "mvn",
+        });
+        yield* checkout.write("java/mvnw", "");
+        expect(yield* contextOf(cwd, "java/src/A.java")).toMatchObject({ buildCommand: "./mvnw" });
+
+        yield* checkout.write("build.gradle", "");
+        yield* checkout.write("gradlew", "");
+        yield* checkout.write("app/core/build.gradle.kts", "");
+        expect(yield* contextOf(cwd, "app/core/src/A.java")).toMatchObject({
+          root: "app/core",
+          buildTool: "gradle",
+          buildCommand: "../../gradlew",
+        });
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("uses the chosen interpreter while it's there", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* checkout.write(".venv/bin/python", "");
+        yield* checkout.write("envs-a/bin/python", "");
+        yield* checkout.write("envs-a/pyvenv.cfg", "version = 3.11.4\n");
+        const chosen = `${checkout.cwd}/envs-a/bin/python`;
+        yield* service.updateSettings({
+          cwd: checkout.cwd,
+          change: { type: "toolchain", kind: "python", path: chosen },
+        });
+        expect(yield* contextOf(checkout.cwd, "test_a.py")).toMatchObject({ python: chosen });
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("says nothing of an untrusted checkout but that it is", () =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* checkout.write("Cargo.toml", "");
+        yield* checkout.write(".venv/bin/python", "");
+        yield* checkout.write("package.json", '{"devDependencies":{"vitest":"^3"}}');
+        expect(yield* contextOf(checkout.cwd, "a.test.ts")).toMatchObject({
+          trusted: false,
+          root: "",
+          testRunner: null,
+        });
+        expect((yield* contextOf(checkout.cwd, "a.py")).python).not.toContain(".venv");
+      }).pipe(Effect.scoped, Effect.provide(layerFor({ trusted: () => Effect.succeed(false) }))),
+    );
+
+    it.live("refuses a path out of the checkout", () =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout(SOURCE);
+        const refused = yield* contextOf(checkout.cwd, "../other/package.json").pipe(Effect.flip);
+        expect(refused.reason).toBe("unsupported");
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+  });
 
   it.live("answers a server's settings by section, with the checkout's virtual environment", () =>
     Effect.gen(function* () {

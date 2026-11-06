@@ -89,6 +89,17 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     // Folders come and go, and it's read only to choose from.
     idleTtlMs: 0,
   });
+  const runContext = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:run-context",
+    tag: WS_METHODS.languageServersRunContext,
+    // Trust and manifests change from elsewhere: a file reads it afresh when it opens.
+    idleTtlMs: 0,
+  });
+  /** The same read, for the moment something is about to run. */
+  const readRunContext = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:read-run-context",
+    tag: WS_METHODS.languageServersRunContext,
+  });
   const routesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
     label: "environment-data:language-servers:routes",
     tag: WS_METHODS.languageServersRoutes,
@@ -181,6 +192,8 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     routes,
     settings,
     toolchains,
+    runContext,
+    readRunContext,
     statuses,
     problems,
     logs,

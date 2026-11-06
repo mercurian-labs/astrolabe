@@ -413,6 +413,25 @@ const handle = (message) => {
         })),
       );
     }
+    case "experimental/runnables": {
+      // One per `point`, shaped as rust-analyzer answers.
+      const { text } = docs.get(params.textDocument.uri);
+      return reply(
+        occurrences(text, "point").map((offset) => {
+          const range = rangeOf(text, offset, offset + "point".length);
+          return {
+            label: "test point",
+            kind: "cargo",
+            location: {
+              targetUri: params.textDocument.uri,
+              targetRange: range,
+              targetSelectionRange: range,
+            },
+            args: { cargoArgs: ["test"], executableArgs: [] },
+          };
+        }),
+      );
+    }
     case "codeLens/resolve":
       return reply({
         ...params,

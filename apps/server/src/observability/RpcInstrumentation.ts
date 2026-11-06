@@ -258,6 +258,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.languageServersProblems]: "languageServers",
   [WS_METHODS.languageServersRoutes]: "languageServers",
   [WS_METHODS.languageServersToolchains]: "languageServers",
+  [WS_METHODS.languageServersRunContext]: "languageServers",
   [WS_METHODS.languageServersSettings]: "languageServers",
   [WS_METHODS.languageServersUpdateSettings]: "languageServers",
   [WS_METHODS.wikiList]: "wiki",

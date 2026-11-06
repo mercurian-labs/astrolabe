@@ -129,6 +129,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.languageServersProblems]: AuthFilesystemReadScope,
   [WS_METHODS.languageServersRoutes]: AuthFilesystemReadScope,
   [WS_METHODS.languageServersToolchains]: AuthFilesystemReadScope,
+  [WS_METHODS.languageServersRunContext]: AuthFilesystemReadScope,
   [WS_METHODS.languageServersLogs]: AuthFilesystemReadScope,
   // Astrolabe: what Settings edits can hold tokens.
   [WS_METHODS.languageServersSettings]: AuthEnvironmentMaintainScope,

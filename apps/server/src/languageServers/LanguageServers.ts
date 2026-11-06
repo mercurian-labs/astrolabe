@@ -41,6 +41,8 @@ import {
   type LanguageServerSettings,
   type LanguageServerStatus,
   type LanguageServerTarget,
+  type LanguageServerRunContext,
+  type LanguageServerRunContextInput,
   type LanguageServerToolchains,
   type LanguageServerUpdateSettingsInput,
   primaryLanguageServerRoute,
@@ -119,6 +121,7 @@ import {
   wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
+import { NO_RUN_TOOLS, readRunTools } from "./runContext.ts";
 import {
   customServerId,
   customSpec,
@@ -224,6 +227,10 @@ export class LanguageServers extends Context.Service<
     readonly toolchains: (
       cwd: string,
     ) => Effect.Effect<LanguageServerToolchains, LanguageServerError>;
+    /** What a file's run commands are built from, read without running anything. */
+    readonly runContext: (
+      input: LanguageServerRunContextInput,
+    ) => Effect.Effect<LanguageServerRunContext, LanguageServerError>;
     /** What people set, values and all, for maintainers to edit. */
     readonly settings: (cwd: string) => Effect.Effect<LanguageServerSettings, LanguageServerError>;
     /** Stores a change to what people set; only the servers it affects restart. */
@@ -2109,6 +2116,22 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     };
   });
 
+  const runContext: LanguageServers["Service"]["runContext"] = Effect.fn(
+    "LanguageServers.runContext",
+  )(function* ({ cwd, path: relativePath }) {
+    yield* assertProject(cwd);
+    if (path.isAbsolute(relativePath) || relativePath.split("/").includes("..")) {
+      return yield* failure("unsupported", "That file is not in this checkout.");
+    }
+    if (!(yield* isTrusted(cwd))) {
+      return { ...NO_RUN_TOOLS, trusted: false, python: installer.pythonOnPath };
+    }
+    const tools = yield* readRunTools(cwd, relativePath);
+    const selected = settings.get().toolchains[cwd]?.python ?? null;
+    const python = yield* installer.activePython(cwd, selected);
+    return { ...tools, trusted: true, python: python ?? installer.pythonOnPath };
+  }, Effect.provideContext(processServices));
+
   /** What one change reaches: the checkouts whose servers or routes may differ after it. */
   const affectedBy = Effect.fn("LanguageServers.affectedBy")(function* (
     input: LanguageServerUpdateSettingsInput,
@@ -3771,6 +3794,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     problems: problemsOf,
     routes,
     toolchains,
+    runContext,
     settings: readSettings,
     updateSettings,
     save,

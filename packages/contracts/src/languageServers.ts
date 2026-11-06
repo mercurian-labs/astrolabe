@@ -386,6 +386,29 @@ export const LanguageServerToolchainOption = Schema.Struct({
 });
 export type LanguageServerToolchainOption = typeof LanguageServerToolchainOption.Type;
 
+export const LanguageServerRunContextInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  /** A file of the checkout, relative to it. */
+  path: TrimmedNonEmptyString,
+});
+export type LanguageServerRunContextInput = typeof LanguageServerRunContextInput.Type;
+
+/** What a client builds a file's run commands from. Running is running the project's code. */
+export const LanguageServerRunContext = Schema.Struct({
+  trusted: Schema.Boolean,
+  /** The nearest manifest's folder, within the checkout; "" at its root. */
+  root: Schema.String,
+  /** The checkout's chosen or found interpreter, else the one to find on PATH. */
+  python: Schema.String,
+  testRunner: Schema.NullOr(Schema.Literals(["vitest", "jest", "node", "vp"])),
+  /** What runs a package's own binary: "npx", "pnpm exec". */
+  packageRunner: Schema.String,
+  buildTool: Schema.NullOr(Schema.Literals(["maven", "gradle"])),
+  /** The project's wrapper where it has one: "./mvnw", "../gradlew", "mvn". */
+  buildCommand: Schema.NullOr(Schema.String),
+});
+export type LanguageServerRunContext = typeof LanguageServerRunContext.Type;
+
 /** A checkout's toolchain of one kind: what's here, what was chosen, and what servers get. */
 export const LanguageServerToolchains = Schema.Struct({
   kind: LanguageServerToolchainKind,

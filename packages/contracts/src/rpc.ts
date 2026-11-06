@@ -510,6 +510,8 @@ import {
   LanguageServerTarget,
   LanguageServerRoutes,
   LanguageServerRoutesInput,
+  LanguageServerRunContext,
+  LanguageServerRunContextInput,
   LanguageServerSettings,
   LanguageServerSettingsInput,
   LanguageServerToolchains,
@@ -728,6 +730,7 @@ export const WS_METHODS = {
   languageServersProblems: "languageServers.problems",
   languageServersRoutes: "languageServers.routes",
   languageServersToolchains: "languageServers.toolchains",
+  languageServersRunContext: "languageServers.runContext",
   languageServersSettings: "languageServers.settings",
   languageServersUpdateSettings: "languageServers.updateSettings",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -2445,6 +2448,13 @@ const WsLanguageServersToolchainsRpc = Rpc.make(WS_METHODS.languageServersToolch
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
+/** What a file's run commands are built from, which only the environment can see. */
+const WsLanguageServersRunContextRpc = Rpc.make(WS_METHODS.languageServersRunContext, {
+  payload: LanguageServerRunContextInput,
+  success: LanguageServerRunContext,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 /** Settings with their values, for the form that edits them. */
 const WsLanguageServersSettingsRpc = Rpc.make(WS_METHODS.languageServersSettings, {
   payload: LanguageServerSettingsInput,
@@ -2876,6 +2886,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsLanguageServersProblemsRpc,
   WsLanguageServersRoutesRpc,
   WsLanguageServersToolchainsRpc,
+  WsLanguageServersRunContextRpc,
   WsLanguageServersSettingsRpc,
   WsLanguageServersUpdateSettingsRpc,
 ).middleware(RpcScopeAuthorization);

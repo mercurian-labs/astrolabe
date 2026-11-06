@@ -444,6 +444,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
         args: [],
         settings: {
           gopls: {
+            // A code file's run markers read these; nothing shows them as lenses.
+            codelenses: { test: true },
             hints: {
               assignVariableTypes: true,
               compositeLiteralFields: true,

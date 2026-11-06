@@ -183,6 +183,13 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
     case "codeLens/resolve":
       if (result.range) result.range = mapRange(m, result.range, false);
       return result;
+    case "experimental/runnables":
+      for (const { location } of Array.isArray(result) ? result : []) {
+        if (location?.targetUri !== uri) continue;
+        location.targetRange = mapRange(m, location.targetRange, false);
+        location.targetSelectionRange = mapRange(m, location.targetSelectionRange, false);
+      }
+      return result;
     case "textDocument/linkedEditingRange":
       result.ranges = result.ranges?.map((range: Json) => mapRange(m, range, true));
       return result;

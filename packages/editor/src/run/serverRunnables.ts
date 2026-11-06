@@ -88,13 +88,14 @@ export const isRunLens = (command: { readonly command: string }) =>
   command.command === GO_RUN_TESTS;
 
 /**
- * gopls's test lenses. One per test or benchmark; the lens over a whole file's benchmarks is left
- * to the markers on each.
+ * gopls's test lenses, one per test or benchmark. Its "run file benchmarks" lens sits on the
+ * `package` line, naming them all, so one benchmark alone would read as that line's.
  */
 export function goTestLenses(lenses: Json): readonly GoTestLens[] {
   if (!Array.isArray(lenses)) return [];
   return lenses.flatMap((lens: Json): GoTestLens[] => {
     if (lens?.command?.command !== GO_RUN_TESTS || !lens.range) return [];
+    if (/\bfile\b/.test(String(lens.command.title))) return [];
     const { Tests: tests, Benchmarks: benchmarks } = lens.command.arguments?.[0] ?? {};
     const test = Array.isArray(tests) ? tests : [];
     const benchmark = Array.isArray(benchmarks) ? benchmarks : [];
