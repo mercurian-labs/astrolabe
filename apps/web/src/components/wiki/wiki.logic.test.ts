@@ -115,7 +115,10 @@ describe("summarizeHost", () => {
     );
     expect(summarizeHost(host, ago)).toEqual({ tone: "ok", label: "Synced now" });
     expect(summarizeHost({ ...host, relation: "ahead" }, ago).tone).toBe("warning");
-    expect(summarizeHost({ ...host, relation: "behind" }, ago).tone).toBe("warning");
+    expect(summarizeHost({ ...host, relation: "behind", lastError: "edits" }, ago)).toEqual({
+      tone: "warning",
+      label: "Main is behind the host",
+    });
     expect(summarizeHost({ ...host, relation: "diverged" }, ago).tone).toBe("error");
     expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
       "Sync failed",

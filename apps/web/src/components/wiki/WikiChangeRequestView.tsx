@@ -424,9 +424,7 @@ function HostPullRequest({
           <p className="truncate">{`${pullRequest.repository} #${pullRequest.number}`}</p>
         )}
         {unpublished ? (
-          <p className="text-muted-foreground">
-            Unpublished work goes up when the agent's turn ends.
-          </p>
+          <p className="text-muted-foreground">Some of this isn't on the host yet.</p>
         ) : null}
       </div>
       {unpublished ? (

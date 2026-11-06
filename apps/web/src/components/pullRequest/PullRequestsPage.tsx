@@ -669,12 +669,10 @@ export function PullRequestsPage() {
   const hostedKeys = useHostedPullRequestKeys(
     changeRequestKind === "all" && search.host === undefined && scopedProjectId === undefined,
   );
-  const knownEntries = ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []);
   const { entries, groups, entriesByStatsKey, heldPullRequestsBySurface } = pullRequestGroups({
-    known:
-      hostedKeys.size === 0
-        ? knownEntries
-        : knownEntries.filter((entry) => !hostedKeys.has(hostedPullRequestKey(entry))),
+    known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
+    hidden:
+      hostedKeys.size === 0 ? undefined : (entry) => hostedKeys.has(hostedPullRequestKey(entry)),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
     involvement: search.involvement,

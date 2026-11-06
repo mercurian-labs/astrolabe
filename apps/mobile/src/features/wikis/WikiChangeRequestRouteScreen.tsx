@@ -275,7 +275,7 @@ export function WikiChangeRequestRouteScreen({
               </Text>
               {unpublished ? (
                 <Text className="text-sm text-foreground-muted">
-                  Unpublished work goes up when the agent's turn ends.
+                  Some of this isn't on the host yet.
                 </Text>
               ) : null}
             </Card>

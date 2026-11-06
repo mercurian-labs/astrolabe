@@ -221,13 +221,19 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
               ? "Change requests are this repository's pull requests. Agents' work is published when their turn ends, and everyone with access to the repository can review and merge it."
               : "Connects to this folder's origin remote. The main line moves to that repository, its history is pushed if the host doesn't have it, and change requests become pull requests. Replaces the mirror."
           }
-          status={<WikiMirrorBadge wiki={wiki} />}
+          status={
+            host ? <WikiMirrorBadge wiki={wiki} /> : <Badge variant="outline">Not connected</Badge>
+          }
         />
       </SettingsSection>
       {host?.lastError ? (
-        <Alert variant="error">
+        <Alert variant={host.relation === "behind" ? "warning" : "error"}>
           <TriangleAlertIcon />
-          <AlertTitle>The last sync didn't finish</AlertTitle>
+          <AlertTitle>
+            {host.relation === "behind"
+              ? "This folder is behind the host"
+              : "The last sync didn't finish"}
+          </AlertTitle>
           <AlertDescription>{host.lastError}</AlertDescription>
         </Alert>
       ) : null}

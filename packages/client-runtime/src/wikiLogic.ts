@@ -123,10 +123,11 @@ export function summarizeHost(
   formatAgo: (iso: string) => string,
 ): { readonly tone: MirrorTone; readonly label: string } {
   if (host == null) return { tone: "none", label: "Not connected" };
+  // Being held behind is the sync working as designed; its `lastError` says why.
+  if (host.relation === "behind") return { tone: "warning", label: "Main is behind the host" };
   if (host.lastError) return { tone: "error", label: "Sync failed" };
   if (host.relation === "diverged") return { tone: "error", label: "Main has diverged" };
   if (host.relation === "ahead") return { tone: "warning", label: "Main is ahead of the host" };
-  if (host.relation === "behind") return { tone: "warning", label: "Main is behind the host" };
   if (host.lastSyncedAt) return { tone: "ok", label: `Synced ${formatAgo(host.lastSyncedAt)}` };
   return { tone: "pending", label: "Not synced yet" };
 }

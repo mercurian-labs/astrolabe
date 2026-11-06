@@ -1431,7 +1431,7 @@ const make = Effect.gen(function* () {
     );
 
   /** Moves main from `from` to `to`, and the folder that has main checked out with it. */
-  const moveMain = (wiki: WikiRecord, from: string, to: string) =>
+  const moveMain = (wiki: WikiRecord, from: string, to: string, what: "merge" | "sync" = "merge") =>
     moveWithCheckout(
       wiki,
       mainRef(wiki),
@@ -1450,10 +1450,12 @@ const make = Effect.gen(function* () {
         ),
       ),
       {
-        busy: (paths) =>
-          paths.length
-            ? `Local edits in the wiki folder overlap this merge: ${paths.join(", ")}. Commit or set them aside, then merge again.`
-            : "Local edits in the wiki folder overlap this merge. Commit or set them aside, then merge again.",
+        busy: (paths) => {
+          const where = paths.length ? `: ${paths.join(", ")}` : "";
+          return what === "merge"
+            ? `Local edits in the wiki folder overlap this merge${where}. Commit or set them aside, then merge again.`
+            : `Local edits in the wiki folder overlap what's new on the host${where}. Commit or set them aside, and the wiki catches up.`;
+        },
         stale: (rolledBack, cause) =>
           new WikiError({
             reason: "stale",
@@ -2512,7 +2514,7 @@ const make = Effect.gen(function* () {
             } else if (remoteMain !== undefined) {
               if (yield* isAncestor(wiki.root, local, remoteMain)) {
                 // The folder's unsaved edits hold main back until they are dealt with.
-                busy = yield* moveMain(wiki, local, remoteMain).pipe(
+                busy = yield* moveMain(wiki, local, remoteMain, "sync").pipe(
                   Effect.as(null),
                   Effect.catchIf(
                     (error) => error.reason === "checkout-busy",
