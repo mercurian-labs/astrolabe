@@ -22,6 +22,7 @@ import { wikiBaseTitle, wikiDocumentSubtitle } from "./document/wikiDocument.log
 import type { WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
+import { WikiBelowHeader } from "./document/WikiBelowHeader";
 import { WikiNotice } from "./document/WikiNotice";
 import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
 import type { WikiDocumentParams } from "./wikiRoutes";
@@ -222,29 +223,31 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
           </Toolbar.Menu>
         </Toolbar>
       ) : null}
-      {draft !== null && (routeChangeRequestId === undefined || viewing?.draft) ? (
-        <WikiDraftBar
-          environmentId={environmentId}
-          draft={draft}
-          changeRequests={all ?? []}
-          flush={autosave.flush}
-          drop={() => {
-            setEdits([]);
-            autosave.cancel();
-          }}
-          onLanded={(id, files) => {
-            // The document on screen follows where its edits went.
-            if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
-          }}
-        />
-      ) : null}
-      {status.kind === "failed" ? (
-        <WikiNotice
-          text={`Your changes aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
-          action="Try again"
-          onAction={autosave.retry}
-        />
-      ) : null}
+      <WikiBelowHeader>
+        {draft !== null && (routeChangeRequestId === undefined || viewing?.draft) ? (
+          <WikiDraftBar
+            environmentId={environmentId}
+            draft={draft}
+            changeRequests={all ?? []}
+            flush={autosave.flush}
+            drop={() => {
+              setEdits([]);
+              autosave.cancel();
+            }}
+            onLanded={(id, files) => {
+              // The document on screen follows where its edits went.
+              if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
+            }}
+          />
+        ) : null}
+        {status.kind === "failed" ? (
+          <WikiNotice
+            text={`Your changes aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
+            action="Try again"
+            onAction={autosave.retry}
+          />
+        ) : null}
+      </WikiBelowHeader>
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} />
     </View>
   );

@@ -7,6 +7,7 @@ import {
 } from "@mercurian/wiki/canvas";
 import { useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 
@@ -69,6 +70,7 @@ export function WikiCanvasChanges({
   readonly onPick: (id: string) => void;
 }) {
   const [movesOpen, setMovesOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const { changed, moved } = canvasChangeSections(review.changes);
   const rows: ReadonlyArray<Change | typeof FOLD> = [
     ...changed,
@@ -79,6 +81,7 @@ export function WikiCanvasChanges({
     <View className="bg-screen" style={{ maxHeight: "40%" }}>
       <FlatList
         data={rows}
+        contentContainerStyle={{ paddingBottom: insets.bottom }}
         keyExtractor={(row) => (row === FOLD ? FOLD : `${row.item}:${row.id}`)}
         ListHeaderComponent={
           <Text className="px-4 py-2 text-xs font-t3-medium text-foreground-muted">

@@ -158,8 +158,8 @@ export function wikiDocumentFooter(entry: WikiDocumentEntry): {
             : `In “${first.title}”`,
     };
   }
-  if (entry.base) return { inChange: false, text: "Base · read only" };
-  if (entry.canvas) return { inChange: false, text: "Canvas · read only" };
+  if (entry.base) return { inChange: false, text: "Base" };
+  if (entry.canvas) return { inChange: false, text: "Canvas" };
   const links = entry.links === 1 ? "1 link" : `${entry.links} links`;
   return {
     inChange: false,

@@ -62,6 +62,7 @@ import { useEditorTheme } from "./document/useEditorTheme";
 import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
+import { WikiBelowHeader } from "./document/WikiBelowHeader";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiCanvasChanges } from "./WikiCanvasChanges";
@@ -269,11 +270,27 @@ export function WikiCanvasScreen({
       environmentId,
       input: { wikiId, ...(revision === null ? scope : { commit: revision }), paths: [...paths] },
     });
+    // A note made from a missing card sits in the draft, not at the board's commit.
+    const missing =
+      result._tag === "Success" && draft !== null
+        ? result.value.files.filter((each) => !each.exists).map((each) => each.file)
+        : [];
+    const drafted =
+      missing.length === 0 || draft === null
+        ? null
+        : await runFiles({
+            environmentId,
+            input: { wikiId, changeRequestId: draft.changeRequestId, paths: missing },
+          });
+    const inDraft = new Map(
+      drafted?._tag === "Success" ? drafted.value.files.map((each) => [each.file, each]) : [],
+    );
     const files =
       result._tag === "Success"
-        ? result.value.files.map((each) =>
-            cardFile(each.file, { exists: each.exists, text: each.text }),
-          )
+        ? result.value.files.map((each) => {
+            const read = inDraft.get(each.file) ?? each;
+            return cardFile(read.file, { exists: read.exists, text: read.text });
+          })
         : [];
     for (const message of filesReadMessages(requestId, files)) editor.current?.send(message);
   };
@@ -641,19 +658,21 @@ export function WikiCanvasScreen({
           </Toolbar.Menu>
         </Toolbar>
       ) : null}
-      {draft !== null &&
-      review === undefined &&
-      (routeChangeRequestId === undefined || viewing?.draft) ? (
-        <WikiDraftBar
-          environmentId={environmentId}
-          draft={draft}
-          changeRequests={all ?? []}
-          onLanded={(id, files) => {
-            // The document on screen follows where its edits went.
-            if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
-          }}
-        />
-      ) : null}
+      <WikiBelowHeader>
+        {draft !== null &&
+        review === undefined &&
+        (routeChangeRequestId === undefined || viewing?.draft) ? (
+          <WikiDraftBar
+            environmentId={environmentId}
+            draft={draft}
+            changeRequests={all ?? []}
+            onLanded={(id, files) => {
+              // The document on screen follows where its edits went.
+              if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
+            }}
+          />
+        ) : null}
+      </WikiBelowHeader>
       {body()}
       <WikiBaseQueries
         sources={baseSources}

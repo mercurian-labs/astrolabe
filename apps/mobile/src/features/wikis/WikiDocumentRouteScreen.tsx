@@ -40,6 +40,7 @@ import {
 } from "./document/WikiBaseQueries";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
+import { WikiBelowHeader } from "./document/WikiBelowHeader";
 import { WikiNotice } from "./document/WikiNotice";
 import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
 import { WikiBaseScreen } from "./WikiBaseScreen";
@@ -343,40 +344,44 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     <View className="flex-1 bg-screen">
       {header}
       {toolbar}
-      {routeChangeRequestId === undefined || viewing?.draft ? (
-        draft !== null ? (
-          <WikiDraftBar
-            environmentId={environmentId}
-            draft={draft}
-            changeRequests={all ?? []}
-            flush={autosave.flush}
-            drop={autosave.cancel}
-            onLanded={(id, files) => {
-              // The document on screen follows where its edits went.
-              if (filesHoldDocument(files, name)) navigation.setParams({ changeRequestId: id });
-            }}
+      <WikiBelowHeader>
+        {routeChangeRequestId === undefined || viewing?.draft ? (
+          draft !== null ? (
+            <WikiDraftBar
+              environmentId={environmentId}
+              draft={draft}
+              changeRequests={all ?? []}
+              flush={autosave.flush}
+              drop={autosave.cancel}
+              onLanded={(id, files) => {
+                // The document on screen follows where its edits went.
+                if (filesHoldDocument(files, name)) navigation.setParams({ changeRequestId: id });
+              }}
+            />
+          ) : null
+        ) : null}
+        {pageError !== null ? (
+          <WikiNotice text={`This document couldn't be shown: ${pageError}`} />
+        ) : status.kind === "failed" ? (
+          <WikiNotice
+            text={`Your edits aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
+            action="Try again"
+            onAction={autosave.retry}
           />
-        ) : null
-      ) : null}
-      {pageError !== null ? (
-        <WikiNotice text={`This document couldn't be shown: ${pageError}`} />
-      ) : status.kind === "failed" ? (
-        <WikiNotice
-          text={`Your edits aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
-          action="Try again"
-          onAction={autosave.retry}
-        />
-      ) : status.kind === "waiting-for-turn" ? (
-        <WikiNotice text="Your edit saves when the agent's turn ends." />
-      ) : changedUnderneath ? (
-        <WikiNotice
-          text="This document changed while you were editing. Your edits are kept, and they save over it unless you load the new version."
-          action="Load new version"
-          onAction={() => editor.current?.send({ type: "loadChanged" })}
-        />
-      ) : !data.exists ? (
-        <WikiNotice text={`No document is called ${name} yet. Write it, and it saves by itself.`} />
-      ) : null}
+        ) : status.kind === "waiting-for-turn" ? (
+          <WikiNotice text="Your edit saves when the agent's turn ends." />
+        ) : changedUnderneath ? (
+          <WikiNotice
+            text="This document changed while you were editing. Your edits are kept, and they save over it unless you load the new version."
+            action="Load new version"
+            onAction={() => editor.current?.send({ type: "loadChanged" })}
+          />
+        ) : !data.exists ? (
+          <WikiNotice
+            text={`No document is called ${name} yet. Write it, and it saves by itself.`}
+          />
+        ) : null}
+      </WikiBelowHeader>
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} />
       <WikiBaseQueries
         sources={baseSources}

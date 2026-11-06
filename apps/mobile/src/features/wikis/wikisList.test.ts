@@ -51,6 +51,7 @@ const changeRequest = (
     status,
     updatedAt,
     amendments,
+    files: [...new Set(amendments.flatMap((amendment) => amendment.files))],
   }) as unknown as WikiChangeRequest;
 
 const overviews: WikiOverview[] = [
@@ -197,11 +198,11 @@ describe("wiki filters and footers", () => {
     expect(wikiDocumentFooter(byName("Inbox")).text).toBe("0 links");
     expect(wikiDocumentFooter({ ...byName("Inbox"), name: "Tasks.base", base: true })).toEqual({
       inChange: false,
-      text: "Base · read only",
+      text: "Base",
     });
     expect(wikiDocumentFooter({ ...byName("Inbox"), name: "Board.canvas", canvas: true })).toEqual({
       inChange: false,
-      text: "Canvas · read only",
+      text: "Canvas",
     });
     expect(wikiDocumentFooter({ ...byName("Inbox"), links: 1, backlinks: 4 }).text).toBe(
       "1 link · linked from 4",
