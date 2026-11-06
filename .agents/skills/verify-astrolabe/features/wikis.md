@@ -146,6 +146,18 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   the note that opens `WikiDocument` (`ThreadFeed.tsx`).
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
+- **Canvases** (`wiki/WikiCanvasView.tsx`, the board in `packages/wiki-editor/src/CanvasBoard.tsx`,
+  the format in `packages/wiki/src/canvas.ts`): a `.canvas` is a document named by its file, with a
+  `Waypoints` icon in the sidebar and Finder. Its tab reads as **Canvas**, **Read only**. Walk: fit
+  on open; `Zoom in`, `Reset zoom`, `Fit the board in view`, `Zoom out`; ⇧1 and ⇧2; below 0.3 text
+  cards become a lines glyph; a first click selects (`data-selected`) and only then is content
+  live (`data-live`). `[data-card-id]` counts what's mounted, and it must follow the view. Every
+  card kind: text with Mermaid and math, note with `subpath`, image, PDF, audio, video, base with a
+  pinned view, nested canvas as a minimap, missing file, link (selecting mounts an iframe), code
+  with a staleness mark. **Jump to group** in the tab and the palette. New canvas: type a name in
+  the Finder, pick **New canvas**, **Create canvas** saves it to a change request. `![[Board.canvas]]`
+  in a note draws a thumbnail that opens it; Mermaid draws in ordinary notes. Invalid JSON shows the
+  error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
 - **Bases** (`wiki/WikiBaseView.tsx`; engine `packages/wiki/src/bases.ts`, server
   `WikiService.query` / `wiki.query`, agents `astrolabe_wiki_query`): a `.base` file lists as a
   document named `<name>.base` (no links line in its hover card) and opens as a tab labelled

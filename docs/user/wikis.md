@@ -1,12 +1,12 @@
 # Wikis
 
-A wiki is a folder of linked notes that you and your agents keep together: plain markdown files, one idea per note, joined by `[[wikilinks]]`. It lives on your computer as a git repository, and every change to it is reviewed before it lands.
+A wiki is a folder of linked notes that you and your agents keep together: plain markdown files, one idea per note, joined by `[[wikilinks]]`, with bases and canvases beside them. It lives on your computer as a git repository, and every change to it is reviewed before it lands.
 
 ## Add a wiki
 
 Open **Wikis** in the icon rail, or pick a document from **Search** (⌘K twice), which finds every wiki's documents from anywhere in the app. The sidebar lists documents in place of threads. Its filter narrows the list to one or several wikis, or to the documents an open change request touches (**Has changes**, also a one-tap pill under the title while any document has changes), and holds **Add a wiki**, which works like adding a project: start a new wiki, choose a git repository you already have, or clone one. **Add wiki** in the command palette and **Add a wiki** in **Settings → Wikis** do the same. **Settings → Wikis** lists every wiki; the gear on a wiki's row in the filter opens its page there, with its folder, linked projects, mirror, map backgrounds, and removing it.
 
-Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them, and `.base` files are [bases](#bases), which can list every file in the repository. A wiki is not a project: no thread works in its folder. Agents reach it from threads in your projects, and every change they make goes to a change request.
+Notes are the repository's top-level `.md` files. `README.md`, `AGENTS.md` and `CLAUDE.md` are left out, files named `*.skillmap.md` are skill maps, which arrange notes and teach agents how to work in them, `.base` files are [bases](#bases), which can list every file in the repository, and `.canvas` files are [canvases](#canvases). A wiki is not a project: no thread works in its folder. Agents reach it from threads in your projects, and every change they make goes to a change request.
 
 ## Link a wiki to a project
 
@@ -39,6 +39,22 @@ When an agent renames a note, names in bases that link to it or compare a file's
 As in Obsidian, a base with no filters lists every file: notes in every folder, other bases, canvases and attachments. Folders starting with a dot, such as `.git` and `.obsidian`, are left out. Add a filter such as `file.ext == "md"` or `file.inFolder("projects")` to narrow it. A file's created and modified times are those of the first and last commit that changed it.
 
 Bases support Obsidian's whole language: filters, formulas, every function, regular expressions, summaries, `groupBy` and `groupOrder`. Two details catch people out, in Obsidian too. A property's `displayName` is keyed by its full id (`note.status`, `formula.total`), and a bare `status` is ignored. And `Average` divides by every row, a missing value counting as nothing. A base that names a function or property that doesn't exist says so instead of showing results.
+
+## Canvases
+
+A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. Astrolabe reads canvases on web and desktop; a canvas can't be changed here yet, and the phone doesn't list them.
+
+To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then save it to a change request. To add cards, edit the file in Obsidian or any editor in that change request's worktree.
+
+Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, ⇧1 fits the board, and ⇧2 zooms to the selected card. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the top of its tab or the command palette.
+
+Click a card to select it, and its content becomes live: links open, a note scrolls, a web page loads, and media plays. Double-click a file card's name to open the file. A web page that refuses to be framed stays blank on its card, so open it from the link instead.
+
+A file card can narrow a note to a heading or block, or pin a base to one view, as in Obsidian. A card linking to code marks when its file has changed or gone at the project's head, and never changes itself.
+
+A file card or a link in a text card counts as a backlink, and a link in a text card to something unwritten is a red link. Arrows never count as links. Renaming a note updates the canvases that show it. Link to a canvas with its extension, as `[[Board.canvas]]`: `[[Board]]` doesn't find it. `![[Board.canvas]]` on a line of its own shows a picture of the board, and clicking it opens the canvas.
+
+Search finds what cards say, and agents read a canvas as an outline of its cards, groups and arrows.
 
 ## Link types
 
