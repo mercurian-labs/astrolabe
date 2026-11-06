@@ -23,7 +23,10 @@ import type { RepositoryLanguageServerLogsTab } from "./repositoryTabs";
 
 type Panel = "log" | "trace" | "info";
 
-const timeOf = (at: number) => new Date(at).toISOString().slice(11, 23);
+const timeOf = (at: number) => {
+  const date = new Date(at);
+  return `${date.toTimeString().slice(0, 8)}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+};
 
 const SOURCES: Record<LanguageServerLogLine["source"], string> = {
   stderr: "stderr",
