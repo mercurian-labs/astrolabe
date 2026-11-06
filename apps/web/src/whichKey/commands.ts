@@ -264,7 +264,7 @@ function languageServerEntry(
   return entry(label, act && (() => afterPalette(act)));
 }
 
-/** Whether the server can be stopped, or trust given: only with something for it to do. */
+/** `act` where it applies (`can`) and this client may maintain the environment's servers. */
 const maintaining = (file: LanguageServerFile, can: boolean, act: () => void) =>
   can && canMaintainLanguageServers(file.environmentId) ? act : null;
 
