@@ -1,18 +1,22 @@
+import { useAtomValue } from "@effect/atom-react";
 import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
 import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { canvasViewFromToolItem } from "@t3tools/client-runtime/canvasViews";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
+import { Toolbar } from "../../components/ui/Toolbar";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { orchestrationEnvironment } from "../../state/orchestration";
 import { useEnvironmentQuery } from "../../state/query";
 import { fileRoutePathSegments } from "../files/filePath";
+import { wikiEnvironment } from "../../state/wiki";
 import { useEditorTheme } from "../wikis/document/useEditorTheme";
 import { WikiEditorWebView, type WikiEditorHandle } from "../wikis/document/WikiEditorWebView";
+import { KeepCanvasSheet } from "./KeepCanvasSheet";
 
 type ThreadCanvasScreenProps = StaticScreenProps<{
   readonly environmentId: string;
@@ -35,6 +39,10 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   const theme = useEditorTheme();
   const editor = useRef<WikiEditorHandle>(null);
   const camera = useRef<CanvasCamera | null>(null);
+  const [keeping, setKeeping] = useState(false);
+  const canKeep = useAtomValue(
+    wikiEnvironment.keepCanvas.permissionAtom(EnvironmentId.make(environmentId)),
+  );
 
   const initialCommands = useCallback((): WikiEditorCommand[] => {
     const commands: WikiEditorCommand[] = [{ type: "theme", theme }];
@@ -74,7 +82,25 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   return (
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions options={{ title: view?.title ?? "Canvas" }} />
+      {view !== undefined && canKeep ? (
+        <Toolbar placement="right">
+          <Toolbar.Button
+            label="Keep"
+            accessibilityLabel={`Keep ${view.title} in a wiki`}
+            onPress={() => setKeeping(true)}
+          />
+        </Toolbar>
+      ) : null}
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} fixed />
+      {keeping && view !== undefined ? (
+        <KeepCanvasSheet
+          environmentId={EnvironmentId.make(environmentId)}
+          threadId={ThreadId.make(threadId)}
+          itemId={TurnItemId.make(itemId)}
+          title={view.title}
+          onClose={() => setKeeping(false)}
+        />
+      ) : null}
     </View>
   );
 }
