@@ -781,7 +781,8 @@ function FileEditor({
       writable: () =>
         session !== null && session.getState().status === "open" && !view.state.readOnly,
       save: async () => {
-        if (session?.getState().unsaved) await session.save();
+        if (!session?.getState().unsaved) return true;
+        return (await session.save())?.ok === true;
       },
     });
     const stopCursor = trackJumpCursor(initial.tabKey, () => {

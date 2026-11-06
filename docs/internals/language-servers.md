@@ -211,10 +211,25 @@ no tool.
   output in progress messages. `codelenses.test` is on for the markers; `codeLens.ts` leaves those
   rows out.
 - **Files have no thread, and terminals are keyed by one.** A run's terminal takes `run:<checkout>`
-  as its thread id, which nothing resolves to a thread, so nothing ends it for us:
-  `RunTabsSync` closes it when its tab goes. Left open it would hold its worktree (`terminal` hold).
-  Its id comes from the file and the test, not the command, so a command that changes (an
+  as its thread id, which nothing resolves to a thread, so nothing ends it for us: `RunTabsSync`
+  closes it when its tab goes, and a close the connection dropped goes again on reconnect. That
+  retry dies with the page, so worktrees don't count on it: one at its prompt holds nothing, and
+  both cleanup paths end it (`isIdleRunTerminal`). One with something running holds like any
+  terminal. Its id comes from the file and the test, not the command, so a command that changes (an
   interpreter chosen, rust-analyzer arriving) keeps the tab and its output.
+- **A command goes to a line editor, so quoting isn't enough.** Quotes guard the shell's parser, and
+  keys act before it: Ctrl-U erases what was typed, so a test name holding one can run anything
+  after it. A name or path with a control or invisible character gets no marker, and `paste` on
+  `terminal.write` strips controls again. The manager brackets a paste only for a shell that asked
+  (`?2004h`), because bash before 5.1, PowerShell and cmd read the markers as keys. Quoting follows
+  the shell the environment's terminals start, which only it knows: fish reads `\\` inside single
+  quotes, PowerShell runs a quoted path only after `&`, and cmd can't quote `"` or `%`, so those get
+  no marker there.
+- **Running again waits for the old run to stop.** Typing over a process feeds its stdin. The
+  environment notices a new process about a second late, so a run typed just now counts as running
+  though it hasn't said. One that outlives its interrupt is reported in the tab, and nothing is typed.
+- **Markers off means no background work.** Nothing scans or asks a server. Run at cursor reads the
+  text when it's run, so it has no server's answer: rust-analyzer's fuller command needs the markers.
 - **The marker isn't the check.** It's hidden when untrusted, but a marker or Run last can outlive
   trust, so `startRun` reads it again. The environment doesn't enforce it: a terminal runs whatever
   it's told, and whoever holds the terminal scope could type this themselves.

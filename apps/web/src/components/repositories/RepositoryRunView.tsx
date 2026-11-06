@@ -17,7 +17,7 @@ import { useEnvironmentScope } from "~/state/session";
 import { useKnownTerminalSessions } from "~/state/terminalSessions";
 import { TerminalViewport } from "../ThreadTerminalDrawer";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { type RunTab, runTerminalOf, startRun, stopRun } from "./runTabs";
+import { runNotices, type RunTab, runTerminalOf, startRun, stopRun } from "./runTabs";
 
 const noop = () => undefined;
 
@@ -45,6 +45,7 @@ export function RepositoryRunView({
   const visible = useSyncExternalStore(workspace.store.subscribe, () =>
     leaves(workspace.arrangement().root).some((leaf) => leaf.active === tabKey),
   );
+  const notice = useSyncExternalStore(runNotices.subscribe, () => runNotices.get(terminalId));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
@@ -82,6 +83,14 @@ export function RepositoryRunView({
           </TabHeader.Action>
         </TabHeader.Actions>
       </TabHeader.Root>
+      {notice === null ? null : (
+        <p
+          role="status"
+          className="shrink-0 border-b border-border bg-warning-surface px-3 py-1.5 text-xs text-warning-foreground"
+        >
+          {notice}
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
         <TerminalViewport
           advancedTypography={advancedTypography}

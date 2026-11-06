@@ -556,7 +556,12 @@ Palette and rebindable under **Editors**, with no shortcut at first:
 | Run at cursor | `e` `R` `r`   | `gR` |
 | Run last      | `e` `R` `l`   | `gL` |
 
-Turn the markers off with **Run markers** in Settings → Appearance. The commands still work.
+A test whose name holds a control character can't be run from here, so it shows no marker. Nothing
+runs if the file can't be saved, and a run that ignores the interrupt is left alone, with a note in
+its tab, rather than typed over.
+
+Turn the markers off with **Run markers** in Settings → Appearance. The commands still work, reading
+the file when you run them.
 
 ## Search results and problems in one editor
 

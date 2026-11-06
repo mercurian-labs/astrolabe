@@ -1,6 +1,8 @@
 import { selectEnvironmentQueryData, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
-import { ThreadId, type EnvironmentId } from "@t3tools/contracts";
+import { isRunnableText } from "@mercurian/editor/run/command";
+import { runTerminalThreadId, ThreadId, type EnvironmentId } from "@t3tools/contracts";
 
+import { environmentCatalog } from "~/connection/catalog";
 import {
   activateTab,
   allTabs,
@@ -15,7 +17,7 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { terminalEnvironment } from "~/state/terminal";
 import { toastManager } from "../ui/toast";
-import { openFileEditor } from "./openFileEditors";
+import { saveOpenFile } from "./openFileEditors";
 import { parseRepositoryTabKey, repositoryTabKey, type RepositoryTab } from "./repositoryTabs";
 
 /**
@@ -28,6 +30,9 @@ type RunIdentity = Pick<RunTab, "environmentId" | "cwd" | "path" | "name">;
 
 const RUN_WEIGHT = 0.4;
 const INTERRUPT = "\u0003";
+// The environment notices a process within about a second of it starting.
+const UNSEEN_MS = 2_000;
+const STOP_BOUND_MS = 5_000;
 const REPORT = { reportFailure: true, reportDefect: true };
 
 function hashed(text: string, seed: number): string {
@@ -42,7 +47,7 @@ function hashed(text: string, seed: number): string {
 export function runTerminalOf(tab: RunIdentity & Pick<RunTab, "directory">) {
   const named = `${tab.path}\0${tab.name}`;
   return {
-    threadId: ThreadId.make(`run:${tab.cwd}`),
+    threadId: ThreadId.make(runTerminalThreadId(tab.cwd)),
     terminalId: `run-${hashed(named, 2_166_136_261)}${hashed(named, 5_381)}`,
     cwd: tab.directory === "" ? tab.cwd : `${tab.cwd}/${tab.directory}`,
     worktreePath: tab.cwd,
@@ -95,49 +100,123 @@ export function closedRuns(before: readonly string[], after: readonly string[]) 
     .filter((run) => !open.some((other) => sameRun(run, other)));
 }
 
-export function closeRunTerminal(tab: RunTab) {
-  const { threadId, terminalId } = runTerminalOf(tab);
-  void runAtomCommand(
-    appAtomRegistry,
-    terminalEnvironment.close,
-    {
-      environmentId: tab.environmentId,
-      input: { threadId, terminalId, deleteHistory: true },
-    },
-    { reportFailure: false, reportDefect: true, label: "close run terminal" },
-  );
+// Closes a connection dropped, kept to send again when the environment is back.
+const unclosed = new Map<EnvironmentId, Map<string, RunTab>>();
+const watching = new Map<EnvironmentId, () => void>();
+
+function retryWhenConnected(environmentId: EnvironmentId) {
+  if (watching.has(environmentId)) return;
+  const generation = environmentCatalog.sessionGenerationAtom(environmentId);
+  const seen = appAtomRegistry.get(generation);
+  const stop = appAtomRegistry.subscribe(generation, (next) => {
+    if (next === seen) return;
+    watching.delete(environmentId);
+    stop();
+    const tabs = [...(unclosed.get(environmentId)?.values() ?? [])];
+    unclosed.delete(environmentId);
+    tabs.forEach(closeRunTerminal);
+  });
+  watching.set(environmentId, stop);
 }
 
-const writeToRun = (tab: RunTab, data: string) => {
+export async function closeRunTerminal(tab: RunTab) {
+  const { environmentId } = tab;
+  const { threadId, terminalId } = runTerminalOf(tab);
+  const closed = await runAtomCommand(
+    appAtomRegistry,
+    terminalEnvironment.close,
+    { environmentId, input: { threadId, terminalId, deleteHistory: true } },
+    { reportFailure: false, reportDefect: true, label: "close run terminal" },
+  );
+  if (closed._tag === "Success") return;
+  const tabs = unclosed.get(environmentId) ?? new Map<string, RunTab>();
+  unclosed.set(environmentId, tabs.set(terminalId, tab));
+  retryWhenConnected(environmentId);
+}
+
+const writeToRun = (tab: RunTab, data: string, paste?: true) => {
   const { threadId, terminalId } = runTerminalOf(tab);
   return runAtomCommand(
     appAtomRegistry,
     terminalEnvironment.write,
-    { environmentId: tab.environmentId, input: { threadId, terminalId, data } },
+    {
+      environmentId: tab.environmentId,
+      input: { threadId, terminalId, data, ...(paste ? { paste } : {}) },
+    },
     { ...REPORT, label: "run" },
   );
 };
 
 export const stopRun = (tab: RunTab) => void writeToRun(tab, INTERRUPT);
 
+const metadataAtom = (environmentId: EnvironmentId) =>
+  terminalEnvironment.metadata({ environmentId, input: null });
+
 function isRunning(environmentId: EnvironmentId, terminalId: string) {
-  const terminals = selectEnvironmentQueryData(
-    appAtomRegistry.get(terminalEnvironment.metadata({ environmentId, input: null })),
-  );
-  return terminals?.some(
-    (terminal) => terminal.terminalId === terminalId && terminal.hasRunningSubprocess,
+  const terminals = selectEnvironmentQueryData(appAtomRegistry.get(metadataAtom(environmentId)));
+  return (
+    terminals?.some(
+      (terminal) => terminal.terminalId === terminalId && terminal.hasRunningSubprocess,
+    ) === true
   );
 }
 
-let last: { readonly tab: RunTab; readonly fileKey: string | null } | null = null;
+/** Waits for the terminal to say it's idle, not before `after` ms; false if it never does. */
+const idleWithin = (environmentId: EnvironmentId, terminalId: string, after: number) =>
+  new Promise<boolean>((resolve) => {
+    const earliest = Date.now() + after;
+    const finish = (idle: boolean) => {
+      clearTimeout(bound);
+      clearTimeout(settled);
+      stop();
+      resolve(idle);
+    };
+    const check = () => {
+      if (Date.now() >= earliest && !isRunning(environmentId, terminalId)) finish(true);
+    };
+    const bound = setTimeout(() => finish(false), STOP_BOUND_MS);
+    const settled = setTimeout(check, after);
+    const stop = appAtomRegistry.subscribe(metadataAtom(environmentId), check);
+    check();
+  });
 
-export const lastRun = { get: () => last?.tab ?? null };
+const typedAt = new Map<string, number>();
+
+/** Interrupts what's running; a run typed just now may be too new for the environment to know. */
+async function stopWhatsRunning(tab: RunTab, terminalId: string) {
+  const unseenFor = (typedAt.get(terminalId) ?? 0) + UNSEEN_MS - Date.now();
+  const running = isRunning(tab.environmentId, terminalId);
+  if (!running && unseenFor <= 0) return true;
+  await writeToRun(tab, INTERRUPT);
+  return idleWithin(tab.environmentId, terminalId, running ? 0 : unseenFor);
+}
+
+const notices = new Map<string, string>();
+const noticeListeners = new Set<() => void>();
+
+function setNotice(terminalId: string, notice: string | null) {
+  if (notice === null) notices.delete(terminalId);
+  else notices.set(terminalId, notice);
+  for (const listener of noticeListeners) listener();
+}
+
+/** What a run's tab should say about why it didn't start. */
+export const runNotices = {
+  get: (terminalId: string) => notices.get(terminalId) ?? null,
+  subscribe(listener: () => void) {
+    noticeListeners.add(listener);
+    return () => void noticeListeners.delete(listener);
+  },
+};
+
+let last: { readonly tab: RunTab; readonly fileKey: string | null } | null = null;
 
 const starting = new Set<string>();
 
 /**
- * Saves the file, puts the run where it shows and types its command into its terminal, stopping
- * what it was doing first. Trust is read now: a run can come long after its marker was drawn.
+ * Saves the file, puts the run where it shows, stops what its terminal was doing and types its
+ * command. Trust and what can be typed are read now: a run can come long after its marker, and a
+ * tab's key can come from storage.
  */
 export async function startRun(
   tab: RunTab,
@@ -164,8 +243,24 @@ export async function startRun(
       });
       return;
     }
+    if (!isRunnableText(tab.command, context.value.shell)) {
+      toastManager.add({
+        type: "warning",
+        title: "This can't run here",
+        description: "Its command has text a terminal would act on.",
+      });
+      return;
+    }
     last = { tab, fileKey };
-    await openFileEditor(environmentId, tab.cwd, tab.path)?.save();
+    if (!(await saveOpenFile(environmentId, tab.cwd, tab.path))) {
+      toastManager.add({
+        type: "error",
+        title: "Nothing ran",
+        description: `${tab.path} couldn't be saved, so a run would use its old text.`,
+      });
+      return;
+    }
+    setNotice(terminal.terminalId, null);
     panes.update((arrangement) => placeRunTab(arrangement, tab, fileKey));
     const { threadId, terminalId, cwd, worktreePath } = terminal;
     const opened = await runAtomCommand(
@@ -175,8 +270,13 @@ export async function startRun(
       { ...REPORT, label: "open run terminal" },
     );
     if (opened._tag !== "Success") return;
-    const interrupt = isRunning(environmentId, terminalId) ? INTERRUPT : "";
-    await writeToRun(tab, `${interrupt}${tab.command}\r`);
+    if (!(await stopWhatsRunning(tab, terminalId))) {
+      setNotice(terminalId, "It's still running after an interrupt, so this run didn't start.");
+      return;
+    }
+    await writeToRun(tab, tab.command, true);
+    await writeToRun(tab, "\r");
+    typedAt.set(terminalId, Date.now());
   } finally {
     starting.delete(terminal.terminalId);
   }
