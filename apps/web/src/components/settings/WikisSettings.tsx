@@ -15,7 +15,12 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { useOpenWiki } from "../wiki/useOpenWiki";
-import { describeIndexError, summarizeMirror, type MirrorTone } from "../wiki/wiki.logic";
+import {
+  describeIndexError,
+  summarizeHost,
+  summarizeMirror,
+  type MirrorTone,
+} from "../wiki/wiki.logic";
 import { WikiMirrorDialog } from "../wiki/WikiDialogs";
 import { useWikiCommand, useWikiOverviews } from "../wiki/wikiEnvironment";
 import { WikiProjectLinks } from "../wiki/WikiLinks";
@@ -37,7 +42,10 @@ const MIRROR_BADGE: Record<MirrorTone, "outline" | "success" | "warning" | "erro
   };
 
 function WikiMirrorBadge({ wiki }: { readonly wiki: WikiSummary }) {
-  const summary = summarizeMirror(wiki.mirror, formatRelativeTimeLabel);
+  const summary =
+    wiki.host == null
+      ? summarizeMirror(wiki.mirror, formatRelativeTimeLabel)
+      : summarizeHost(wiki.host, formatRelativeTimeLabel);
   if (summary.tone === "none") return null;
   return <Badge variant={MIRROR_BADGE[summary.tone]}>{summary.label}</Badge>;
 }
@@ -147,6 +155,106 @@ function BackToWikis() {
   );
 }
 
+/** Where the wiki's main line lives: this machine, or a repository on a git host. */
+function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
+  const { environmentId, wiki } = overview;
+  const canConnect = useAtomValue(wikiEnvironment.connectHost.permissionAtom(environmentId));
+  const connect = useWikiCommand(wikiEnvironment.connectHost, "Couldn't connect to the host");
+  const disconnect = useWikiCommand(wikiEnvironment.disconnectHost, "Couldn't disconnect");
+  const sync = useWikiCommand(wikiEnvironment.syncHost, "Couldn't sync with the host");
+  const [busy, setBusy] = useState(false);
+  const host = wiki.host ?? null;
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    await action();
+    setBusy(false);
+  };
+  const input = { wikiId: wiki.wikiId };
+  const disconnectWiki = async () => {
+    const confirmed = await ensureLocalApi().dialogs.confirm(
+      `Disconnect “${wiki.name}” from its git host? It becomes a local wiki. The repository and its pull requests stay on the host, and this folder keeps its history.`,
+    );
+    if (confirmed) await run(() => disconnect({ environmentId, input }));
+  };
+  return (
+    <>
+      <SettingsSection
+        title="Git host"
+        headerAction={
+          <div className="flex items-center gap-2">
+            {host ? (
+              <>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={!canConnect || busy}
+                  onClick={() => void run(() => sync({ environmentId, input }))}
+                >
+                  Sync now
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={!canConnect || busy}
+                  onClick={() => void disconnectWiki()}
+                >
+                  Disconnect
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={!canConnect || busy}
+                onClick={() => void run(() => connect({ environmentId, input }))}
+              >
+                Connect
+              </Button>
+            )}
+          </div>
+        }
+      >
+        <SettingsRow
+          title={host ? `Main line on ${host.remote}` : "Keep this wiki on a git host"}
+          description={
+            host
+              ? "Change requests are this repository's pull requests. Agents' work is published when their turn ends, and everyone with access to the repository can review and merge it."
+              : "Connects to this folder's origin remote. The main line moves to that repository, its history is pushed if the host doesn't have it, and change requests become pull requests. Replaces the mirror."
+          }
+          status={<WikiMirrorBadge wiki={wiki} />}
+        />
+      </SettingsSection>
+      {host?.lastError ? (
+        <Alert variant="error">
+          <TriangleAlertIcon />
+          <AlertTitle>The last sync didn't finish</AlertTitle>
+          <AlertDescription>{host.lastError}</AlertDescription>
+        </Alert>
+      ) : null}
+      {host?.relation === "diverged" ? (
+        <Alert variant="error">
+          <TriangleAlertIcon />
+          <AlertTitle>This folder's main line has left the host's</AlertTitle>
+          <AlertDescription>
+            Each side has commits the other lacks. Bring them together in git; Astrolabe won't
+            overwrite either.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {host?.relation === "ahead" ? (
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertTitle>This folder has commits the host doesn't</AlertTitle>
+          <AlertDescription>
+            They were committed here directly. Push them in git, or open a change request with them,
+            so they reach the main line.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </>
+  );
+}
+
 function WikiPage({ overview }: { readonly overview: WikiOverview }) {
   const { environmentId, wiki, index } = overview;
   const navigate = useNavigate();
@@ -218,47 +326,56 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
           description="Agents can reach any wiki through their tools. A link is what tells them to look here first. Unlinking stops new threads hearing about it; a thread that already heard keeps what it knows."
         />
       </FoldedSettingsSection>
-      <SettingsSection
-        title="Mirror"
-        headerAction={
-          <div className="flex items-center gap-2">
-            {wiki.mirror ? (
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={!canPush}
-                onClick={() => void pushMirror({ environmentId, input: { wikiId: wiki.wikiId } })}
-              >
-                Push now
-              </Button>
-            ) : null}
-            <Button size="xs" variant="outline" onClick={() => setMirrorOpen(true)}>
-              {wiki.mirror ? "Edit" : "Set up a mirror"}
-            </Button>
-          </div>
-        }
-      >
-        <SettingsRow
-          title={wiki.mirror ? <span className="break-all">{wiki.mirror.url}</span> : mirror.label}
-          description="After every merge, the main line and its history are pushed here. It is a copy: changes made on it directly are replaced by the next push."
-          status={<WikiMirrorBadge wiki={wiki} />}
-        />
-      </SettingsSection>
-      {wiki.mirror?.lastError ? (
-        <Alert variant="error">
-          <TriangleAlertIcon />
-          <AlertTitle>The last push to the mirror failed</AlertTitle>
-          <AlertDescription>{wiki.mirror.lastError}</AlertDescription>
-        </Alert>
-      ) : null}
-      {mirror.tone === "warning" ? (
-        <Alert variant="warning">
-          <TriangleAlertIcon />
-          <AlertTitle>A push overwrote the mirror</AlertTitle>
-          <AlertDescription>
-            Commits made on the mirror directly were replaced by this wiki's main line.
-          </AlertDescription>
-        </Alert>
+      <WikiHostSection overview={overview} />
+      {wiki.host == null ? (
+        <>
+          <SettingsSection
+            title="Mirror"
+            headerAction={
+              <div className="flex items-center gap-2">
+                {wiki.mirror ? (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={!canPush}
+                    onClick={() =>
+                      void pushMirror({ environmentId, input: { wikiId: wiki.wikiId } })
+                    }
+                  >
+                    Push now
+                  </Button>
+                ) : null}
+                <Button size="xs" variant="outline" onClick={() => setMirrorOpen(true)}>
+                  {wiki.mirror ? "Edit" : "Set up a mirror"}
+                </Button>
+              </div>
+            }
+          >
+            <SettingsRow
+              title={
+                wiki.mirror ? <span className="break-all">{wiki.mirror.url}</span> : mirror.label
+              }
+              description="After every merge, the main line and its history are pushed here. It is a copy: changes made on it directly are replaced by the next push."
+              status={<WikiMirrorBadge wiki={wiki} />}
+            />
+          </SettingsSection>
+          {wiki.mirror?.lastError ? (
+            <Alert variant="error">
+              <TriangleAlertIcon />
+              <AlertTitle>The last push to the mirror failed</AlertTitle>
+              <AlertDescription>{wiki.mirror.lastError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {mirror.tone === "warning" ? (
+            <Alert variant="warning">
+              <TriangleAlertIcon />
+              <AlertTitle>A push overwrote the mirror</AlertTitle>
+              <AlertDescription>
+                Commits made on the mirror directly were replaced by this wiki's main line.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+        </>
       ) : null}
       <WikiMapBackgrounds environmentId={environmentId} wiki={wiki} />
       <SettingsSection title="Danger">

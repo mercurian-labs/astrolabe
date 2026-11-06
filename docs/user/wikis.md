@@ -82,6 +82,18 @@ To point an agent at a note, type `[[` in a thread's message and pick the note; 
 
 When an agent amends a note you have open in that change request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type while the agent's turn is running is saved to the change request when the turn ends.
 
+## Keep a wiki on a git host
+
+A wiki can live in a repository on GitHub, GitLab, Bitbucket, Forgejo, GitCafe or Azure DevOps, so everyone with access to the repository works in it. On a wiki's page in **Settings → Wikis**, choose **Connect** under **Git host**. Astrolabe uses the folder's `origin` remote and pushes the wiki's history if the repository doesn't have it yet.
+
+On a connected wiki, change requests are the repository's pull requests. An agent's work goes up when its turn ends, as a draft where the host has drafts, and your own edits go up as you save them. **Merge** merges the pull request on the host, under the repository's own rules. Comments and approvals happen in the pull request, in Astrolabe or on the host. What each host offers depends on the host.
+
+Astrolabe picks up what happens on the host about once a minute, or when you choose **Sync now**. If you have unsaved edits overlapping a change on the main line, your wiki's page says so and the wiki catches up once they're dealt with.
+
+Merging keeps each amendment on the main line. A repository that only allows squash merges joins them into one commit, so they can't be reverted one at a time afterwards. A pull request merged on the host's own site uses the host's plain line merge, so conflicts Astrolabe could have settled stop it there.
+
+**Disconnect** makes it a local wiki again. The repository and its pull requests stay on the host.
+
 ## Keep a copy elsewhere
 
 Under **Mirror** on a wiki's page in **Settings → Wikis**, set a git remote, such as a repository you own on GitHub. After every merge, Astrolabe pushes the wiki's main line and its full history there, so you always have a complete copy. The mirror is a copy only: changes made to it directly are replaced by the next push, and the wiki tells you when that happens.

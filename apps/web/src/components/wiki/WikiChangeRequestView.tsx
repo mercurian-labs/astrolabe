@@ -1,8 +1,10 @@
 import type {
   EnvironmentId,
+  ProjectId,
   ThreadId,
   ThreadPullRequestLink,
   WikiAmendmentSummary,
+  WikiChangeRequest,
   WikiChangeRequestId,
   WikiFileChange,
   WikiId,
@@ -40,8 +42,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   describeIndexError,
   describeWikiFailure,
+  hasUnpublishedWork,
   mergeBlockedReason,
   noteNameOfFile,
+  wikiPullRequestHost,
 } from "./wiki.logic";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
@@ -70,7 +74,8 @@ export function WikiChangeRequestView({
     wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const wikiName = wikis.data?.wikis.find((wiki) => wiki.wikiId === wikiId)?.name ?? null;
+  const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
+  const wikiName = wiki?.name ?? null;
   const navigate = useNavigate();
   // Astrolabe: the pull requests of the thread that wrote it (see `changeRequestPullRequests`).
   const threadId = detail.data?.changeRequest.threadId ?? null;
@@ -81,8 +86,9 @@ export function WikiChangeRequestView({
     wikiEnvironment.setChangeRequestStatus.permissionAtom(environmentId),
   );
   const merge = useWikiCommand(wikiEnvironment.merge, "Couldn't merge");
+  const publish = useWikiCommand(wikiEnvironment.publishChangeRequest, "Couldn't publish");
   const setStatus = useWikiCommand(wikiEnvironment.setChangeRequestStatus, "Couldn't update");
-  const [busy, setBusy] = useState<"merge" | "status" | null>(null);
+  const [busy, setBusy] = useState<"merge" | "status" | "publish" | null>(null);
 
   const frame = (title: string, header: ReactNode, body: ReactNode) => (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -137,6 +143,12 @@ export function WikiChangeRequestView({
     await merge({ environmentId, input: target });
     setBusy(null);
   };
+  const runPublish = async () => {
+    setBusy("publish");
+    await publish({ environmentId, input: target });
+    setBusy(null);
+  };
+
   const runStatus = async (status: "open" | "closed") => {
     setBusy("status");
     await setStatus({ environmentId, input: { ...target, status } });
@@ -199,6 +211,17 @@ export function WikiChangeRequestView({
             : null}
         </p>
 
+        {wiki?.host != null ? (
+          <HostPullRequest
+            projectId={wiki.host.projectId}
+            environmentId={environmentId}
+            changeRequest={changeRequest}
+            busy={busy !== null}
+            canPublish={canMerge}
+            onPublish={() => void runPublish()}
+            {...(onOpenPullRequest ? { onOpen: onOpenPullRequest } : {})}
+          />
+        ) : null}
         <LinkedPullRequests
           links={pullRequestLinks}
           status={changeRequest.status}
@@ -361,6 +384,69 @@ function LinkedPullRequests({
             </Button>
           </AlertDescription>
         </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+/** On a host wiki: the pull request this is, and any work the host hasn't received yet. */
+function HostPullRequest({
+  environmentId,
+  projectId,
+  changeRequest,
+  busy,
+  canPublish,
+  onPublish,
+  onOpen,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly changeRequest: WikiChangeRequest;
+  readonly busy: boolean;
+  readonly canPublish: boolean;
+  readonly onPublish: () => void;
+  readonly onOpen?: (target: FullPullRequestTarget) => void;
+}) {
+  const pullRequest = changeRequest.pullRequest ?? null;
+  const host = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);
+  const unpublished = hasUnpublishedWork(changeRequest);
+  if (pullRequest === null && !unpublished) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+      <PullRequestGlyph.pullRequest className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        {pullRequest === null ? (
+          <p>Not on the host yet</p>
+        ) : (
+          <p className="truncate">{`${pullRequest.repository} #${pullRequest.number}`}</p>
+        )}
+        {unpublished ? (
+          <p className="text-muted-foreground">
+            Unpublished work goes up when the agent's turn ends.
+          </p>
+        ) : null}
+      </div>
+      {unpublished ? (
+        <Button size="xs" variant="outline" disabled={!canPublish || busy} onClick={onPublish}>
+          Publish now
+        </Button>
+      ) : null}
+      {pullRequest !== null && host !== null && onOpen ? (
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() =>
+            onOpen({
+              environmentId,
+              projectId,
+              host,
+              repository: pullRequest.repository,
+              number: pullRequest.number,
+            })
+          }
+        >
+          Open pull request
+        </Button>
       ) : null}
     </div>
   );

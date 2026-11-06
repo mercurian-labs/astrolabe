@@ -74,6 +74,9 @@ import {
   type PullRequestsSearch,
 } from "./usePullRequestListView";
 import { pullRequestGroups, pullRequestListEntryId } from "./pullRequestListGroups.logic";
+import { useChangeRequestKind } from "../changeRequests/changeRequestKind";
+import { hostedPullRequestKey } from "../wiki/wiki.logic";
+import { useHostedPullRequestKeys } from "../wiki/wikiEnvironment";
 import { PullRequestListEmptyState } from "./PullRequestListEmptyState";
 import { PullRequestListGhost } from "./PullRequestGhosts";
 import type { PullRequestRowTarget } from "./PullRequestRow";
@@ -661,8 +664,17 @@ export function PullRequestsPage() {
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const changeRequestKind = useChangeRequestKind();
+  // Astrolabe: where the wiki changes list beside these, a host wiki's change shows once, there.
+  const hostedKeys = useHostedPullRequestKeys(
+    changeRequestKind === "all" && search.host === undefined && scopedProjectId === undefined,
+  );
+  const knownEntries = ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []);
   const { entries, groups, entriesByStatsKey, heldPullRequestsBySurface } = pullRequestGroups({
-    known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
+    known:
+      hostedKeys.size === 0
+        ? knownEntries
+        : knownEntries.filter((entry) => !hostedKeys.has(hostedPullRequestKey(entry))),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
     involvement: search.involvement,

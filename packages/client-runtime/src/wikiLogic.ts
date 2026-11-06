@@ -1,6 +1,7 @@
 import type {
   WikiChangeRequest,
   WikiChangeRequestId,
+  WikiHostStatus,
   WikiIndexError,
   WikiMergePreview,
   WikiMirrorStatus,
@@ -115,6 +116,49 @@ export function summarizeMirror(
   }
   return { tone: "pending", label: "Mirror not pushed yet" };
 }
+
+/** A host wiki's state in one short phrase and tone, for its settings. */
+export function summarizeHost(
+  host: WikiHostStatus | null | undefined,
+  formatAgo: (iso: string) => string,
+): { readonly tone: MirrorTone; readonly label: string } {
+  if (host == null) return { tone: "none", label: "Not connected" };
+  if (host.lastError) return { tone: "error", label: "Sync failed" };
+  if (host.relation === "diverged") return { tone: "error", label: "Main has diverged" };
+  if (host.relation === "ahead") return { tone: "warning", label: "Main is ahead of the host" };
+  if (host.lastSyncedAt) return { tone: "ok", label: `Synced ${formatAgo(host.lastSyncedAt)}` };
+  return { tone: "pending", label: "Not synced yet" };
+}
+
+/** Whether a change request holds work the host has not received. */
+export const hasUnpublishedWork = (changeRequest: WikiChangeRequest): boolean =>
+  changeRequest.status === "open" &&
+  changeRequest.amendments.length > 0 &&
+  changeRequest.pushedHead !== changeRequest.head;
+
+/** The host a pull request's link names; Hermes has no `URL.canParse`, so this reads the text. */
+export function wikiPullRequestHost(url: string): string | null {
+  return /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * The pull requests that are a host wiki's own change requests, as `<repository>#<number>`, so a
+ * list showing those change requests leaves their pull requests out and shows each change once.
+ */
+export function hostedPullRequestKeys(
+  changeRequests: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">>,
+): ReadonlySet<string> {
+  return new Set(
+    changeRequests.flatMap(({ pullRequest }) =>
+      pullRequest == null ? [] : [hostedPullRequestKey(pullRequest)],
+    ),
+  );
+}
+
+export const hostedPullRequestKey = (pullRequest: {
+  readonly repository: string;
+  readonly number: number;
+}): string => `${pullRequest.repository.toLowerCase()}#${pullRequest.number}`;
 
 /** The actor the server records for edits made from the app, as opposed to an agent's model. */
 export const PERSON_ACTOR = "You";

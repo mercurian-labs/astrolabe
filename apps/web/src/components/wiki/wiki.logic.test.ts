@@ -6,13 +6,18 @@ import {
   defaultSaveTarget,
   describeIndexError,
   describeWikiFailure,
+  hasUnpublishedWork,
+  hostedPullRequestKey,
+  hostedPullRequestKeys,
   isTurnRunning,
   latestAmendmentFor,
   mapTilesFor,
   mergeBlockedReason,
   parseWikiSearch,
   queuedSaveStep,
+  summarizeHost,
   summarizeMirror,
+  wikiPullRequestHost,
 } from "./wiki.logic";
 
 describe("parseWikiSearch", () => {
@@ -89,6 +94,64 @@ describe("describeWikiFailure", () => {
     expect(describeWikiFailure({ _tag: "WikiError", reason: "invalid", message: "Bad name" })).toBe(
       "Bad name",
     );
+  });
+});
+
+describe("summarizeHost", () => {
+  const ago = () => "now";
+  const host = {
+    projectId: "project-1" as never,
+    remote: "origin",
+    lastSyncedAt: "2026-10-02T00:00:00.000Z",
+    lastSyncedCommit: "abc",
+    relation: "up-to-date" as const,
+    lastError: null,
+  };
+  it("puts what needs a person first", () => {
+    expect(summarizeHost(null, ago).tone).toBe("none");
+    expect(summarizeHost(undefined, ago).tone).toBe("none");
+    expect(summarizeHost({ ...host, lastSyncedAt: null, relation: null }, ago).tone).toBe(
+      "pending",
+    );
+    expect(summarizeHost(host, ago)).toEqual({ tone: "ok", label: "Synced now" });
+    expect(summarizeHost({ ...host, relation: "ahead" }, ago).tone).toBe("warning");
+    expect(summarizeHost({ ...host, relation: "diverged" }, ago).tone).toBe("error");
+    expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
+      "Sync failed",
+    );
+  });
+});
+
+describe("host wiki change requests", () => {
+  const changeRequest = (head: string, pushedHead: string | null, amendments = 1) =>
+    ({
+      status: "open",
+      head,
+      pushedHead,
+      amendments: Array.from({ length: amendments }),
+    }) as never;
+
+  it("calls work unpublished only when there is some and the host lacks it", () => {
+    expect(hasUnpublishedWork(changeRequest("a", null))).toBe(true);
+    expect(hasUnpublishedWork(changeRequest("b", "a"))).toBe(true);
+    expect(hasUnpublishedWork(changeRequest("a", "a"))).toBe(false);
+    expect(hasUnpublishedWork(changeRequest("a", null, 0))).toBe(false);
+  });
+
+  it("matches a pull request whatever the case of its repository", () => {
+    const keys = hostedPullRequestKeys([
+      { pullRequest: { repository: "Acme/Handbook", number: 4, url: "" } },
+      { pullRequest: null },
+      {},
+    ]);
+    expect(keys.size).toBe(1);
+    expect(keys.has(hostedPullRequestKey({ repository: "acme/handbook", number: 4 }))).toBe(true);
+    expect(keys.has(hostedPullRequestKey({ repository: "acme/handbook", number: 5 }))).toBe(false);
+  });
+
+  it("reads the host from a pull request's link", () => {
+    expect(wikiPullRequestHost("https://GitHub.com/acme/handbook/pull/4")).toBe("github.com");
+    expect(wikiPullRequestHost("not a link")).toBeNull();
   });
 });
 

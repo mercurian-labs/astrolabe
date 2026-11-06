@@ -6,8 +6,10 @@ import {
 import {
   describeIndexError,
   describeWikiFailure,
+  hasUnpublishedWork,
   mergeBlockedReason,
   noteNameOfFile,
+  wikiPullRequestHost,
 } from "@t3tools/client-runtime/wikiLogic";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -78,7 +80,9 @@ export function WikiChangeRequestRouteScreen({
     wikiEnvironment.changeRequest({ environmentId, input: target }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const wikiName = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId)?.name ?? null;
+  const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
+  const wikiName = wiki?.name ?? null;
+  const hostProjectId = wiki?.host?.projectId ?? null;
   const canMerge = useAtomValue(wikiEnvironment.merge.permissionAtom(environmentId));
   const canSetStatus = useAtomValue(
     wikiEnvironment.setChangeRequestStatus.permissionAtom(environmentId),
@@ -88,6 +92,7 @@ export function WikiChangeRequestRouteScreen({
   const thread = useThreadShell(writer === null ? null : scopeThreadRef(environmentId, writer));
   const pullRequestLinks = thread?.pullRequests ?? NO_LINKS;
   const merge = useWikiAction(wikiEnvironment.merge);
+  const publish = useWikiAction(wikiEnvironment.publishChangeRequest);
   const setStatus = useWikiAction(wikiEnvironment.setChangeRequestStatus);
   const [busy, setBusy] = useState(false);
 
@@ -116,6 +121,9 @@ export function WikiChangeRequestRouteScreen({
   const blocked = mergeBlockedReason({ canWrite: canMerge, preview: mergePreview });
   const errors = (open ? mergePreview.errors : detail.data.errors).map(describeIndexError);
   const threadId = changeRequest.threadId;
+  const pullRequest = changeRequest.pullRequest ?? null;
+  const pullRequestHost = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);
+  const unpublished = hostProjectId !== null && hasUnpublishedWork(changeRequest);
 
   // Merging the docs before the code is allowed, after saying so.
   const waiting = unmergedPullRequests(pullRequestLinks);
@@ -124,7 +132,9 @@ export function WikiChangeRequestRouteScreen({
     Dialog.confirm({
       title: "Merge into main?",
       message: [
-        `“${changeRequest.title}” is written into ${wikiName ?? "the wiki"}'s folder and pushed to its mirror.`,
+        hostProjectId !== null
+          ? `“${changeRequest.title}” is merged on the host, under the repository's rules.`
+          : `“${changeRequest.title}” is written into ${wikiName ?? "the wiki"}'s folder and pushed to its mirror.`,
         waiting.length > 0
           ? `${waiting.length === 1 ? "Pull request" : "Pull requests"} ${waiting.map((link) => `#${link.number}`).join(", ")} ${waiting.length === 1 ? "hasn't" : "haven't"} merged yet, so these docs would describe code that isn't on main.`
           : null,
@@ -172,6 +182,17 @@ export function WikiChangeRequestRouteScreen({
               onPress={confirmMerge}
             >
               <Toolbar.Label>Merge into main</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ) : null}
+          {unpublished ? (
+            <Toolbar.MenuAction
+              icon="arrow.up.circle"
+              disabled={!canMerge}
+              onPress={() =>
+                void act(() => publish({ environmentId, input: target }), "Couldn't publish")
+              }
+            >
+              <Toolbar.Label>Publish now</Toolbar.Label>
             </Toolbar.MenuAction>
           ) : null}
           {open ? (
@@ -230,6 +251,33 @@ export function WikiChangeRequestRouteScreen({
               .join(" · ")}
           </Text>
         </View>
+        {hostProjectId !== null && pullRequest !== null && pullRequestHost !== null ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              navigation.dispatch(
+                StackActions.push("PullRequest", {
+                  environmentId: route.params.environmentId,
+                  projectId: String(hostProjectId),
+                  repository: pullRequest.repository,
+                  number: pullRequest.number,
+                  host: pullRequestHost,
+                }),
+              )
+            }
+          >
+            <Card>
+              <Text className="text-sm text-foreground">
+                {`${pullRequest.repository} #${pullRequest.number}`}
+              </Text>
+              {unpublished ? (
+                <Text className="text-sm text-foreground-muted">
+                  Unpublished work goes up when the agent's turn ends.
+                </Text>
+              ) : null}
+            </Card>
+          </Pressable>
+        ) : null}
         {thread ? (
           <LinkedPullRequests
             links={pullRequestLinks}
