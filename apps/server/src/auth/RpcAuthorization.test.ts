@@ -94,6 +94,8 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.languageServersSend,
       WS_METHODS.languageServersProblems,
       WS_METHODS.languageServersLogs,
+      WS_METHODS.languageServersRoutes,
+      WS_METHODS.languageServersToolchains,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
     }
@@ -130,6 +132,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.languageServersTrustProject,
       WS_METHODS.languageServersRevokeProjectTrust,
       WS_METHODS.languageServersSetTrace,
+      WS_METHODS.languageServersUpdateSettings,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
       expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthEnvironmentMaintainScope]);

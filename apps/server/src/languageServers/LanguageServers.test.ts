@@ -17,9 +17,12 @@ import type {
   LanguageServerId,
   LanguageServerLogItem,
   LanguageServerProblemsItem,
+  LanguageServerRoutes,
   LanguageServerSessionItem,
+  LanguageServerSettingsChange,
   LanguageServerStatus,
 } from "@t3tools/contracts";
+import { primaryLanguageServerRoute } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -1138,8 +1141,23 @@ describe("LanguageServers", () => {
             executable: `${checkout.cwd}/fake-server.mjs`,
             message: "No compile_commands.json.",
             companion: null,
+            off: false,
+            language: "typescript",
+            overrides: [],
+            replacedBy: [],
           },
         ],
+        settings: {
+          machine: { servers: {}, order: {} },
+          project: { servers: {}, order: {} },
+          custom: [],
+        },
+        projectFile: {
+          path: ".astrolabe/language-servers.json",
+          read: false,
+          problem: null,
+        },
+        settingsProblem: null,
       });
       yield* checkout.write("build/compile_commands.json", "[]");
       expect((yield* service.check(checkout.cwd)).servers[0]?.message).toBeNull();
@@ -2494,11 +2512,14 @@ describe("LanguageServers project trust", () => {
 });
 
 /** A server's log subscription: each item, and the lines and trace entries so far. */
-const openLogs = Effect.fn("openLogs")(function* (checkout: Checkout) {
+const openLogs = Effect.fn("openLogs")(function* (
+  checkout: Checkout,
+  server: LanguageServerId = "typescript",
+) {
   const service = yield* LanguageServers.LanguageServers;
   const items = yield* Queue.unbounded<LanguageServerLogItem, Cause.Done | LanguageServerError>();
   const fiber = yield* service
-    .logs({ cwd: checkout.cwd, server: "typescript" })
+    .logs({ cwd: checkout.cwd, server })
     .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
   const seen: Array<LanguageServerLogItem> = [];
   const lines = () => seen.flatMap((item) => item.lines);
@@ -2512,6 +2533,796 @@ const openLogs = Effect.fn("openLogs")(function* (checkout: Checkout) {
       }
     });
   return { seen, lines, trace, until, close: Fiber.interrupt(fiber) };
+});
+
+describe("LanguageServers settings", () => {
+  const set = (cwd: string, change: LanguageServerSettingsChange) =>
+    Effect.flatMap(LanguageServers.LanguageServers, (service) =>
+      service.updateSettings({ cwd, change }),
+    );
+  const stateOf = (session: Effect.Success<ReturnType<typeof openSession>>, id: number) =>
+    session.request(id, "test/state", {}).pipe(Effect.map((answer) => answer.result));
+  const routesIn = (cwd: string) =>
+    Effect.flatMap(LanguageServers.LanguageServers, (service) =>
+      service.routes(cwd).pipe(Stream.runHead, Effect.map(Option.getOrThrow)),
+    );
+  const pythonSpecs = {
+    basedpyright: {
+      ...companionSpec("basedpyright", {
+        usesToolchain: "python",
+        formatters: ["ruff", "basedpyright"],
+      }),
+      launches: [
+        {
+          ...fakeLaunch,
+          name: "basedpyright",
+          args: ["--role=basedpyright"],
+          settings: { python: { pythonPath: "{python}" } },
+        },
+      ],
+    },
+    ruff: companionSpec("ruff"),
+  };
+  const CUSTOM = {
+    name: "My Lang",
+    command: process.execPath,
+    env: {},
+    languageIds: { foo: "foolang" },
+    rootFiles: [],
+    replaces: false,
+  };
+  const customFor = (checkout: Checkout) => ({
+    ...CUSTOM,
+    args: [`${checkout.cwd}/fake-server.mjs`, "--role=mine"],
+  });
+
+  it.live("passes a server's settings, and shows what changed them and where from", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "typescript",
+        override: {
+          args: ["--role=typed"],
+          env: { FAKE_SETTING: "machine" },
+          initializationOptions: { from: "machine", kept: true },
+          settings: { fake: { level: "loose", extra: 1 } },
+        },
+      });
+      yield* session.state("starting");
+      yield* session.state("ready");
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "project",
+        server: "typescript",
+        override: { env: { FAKE_SETTING: "project" }, initializationOptions: { from: "project" } },
+      });
+      yield* session.state("starting");
+      yield* session.state("ready");
+
+      const state = yield* stateOf(session, 1);
+      expect(state.args).toEqual(["--role=typed"]);
+      expect(state.env).toBe("project");
+      expect(state.initializationOptions).toEqual({ from: "project", kept: true });
+      const answer = yield* session.request(2, "test/configuration", {
+        items: [{ section: "fake" }],
+      });
+      expect(answer.result).toEqual([{ level: "loose", extra: 1 }]);
+      const { servers, settings } = yield* service.check(checkout.cwd);
+      expect(servers[0]?.overrides).toEqual([
+        { field: "args", source: "machine" },
+        { field: "env", source: "machine" },
+        { field: "initializationOptions", source: "machine" },
+        { field: "settings", source: "machine" },
+        { field: "env", source: "project" },
+        { field: "initializationOptions", source: "project" },
+      ]);
+      expect(settings.project.servers.typescript?.env).toEqual({ FAKE_SETTING: "project" });
+
+      // A project's settings stop at its own repository.
+      const other = yield* makeCheckout(SOURCE);
+      const elsewhere = yield* openSession(other);
+      yield* elsewhere.state("ready");
+      expect((yield* stateOf(elsewhere, 1)).env).toBe("machine");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: {
+            typescript: fakeSpec({ ...fakeLaunch, settings: { fake: { level: "strict" } } }),
+          },
+        }),
+      ),
+    ),
+  );
+
+  it.live("runs the binary someone chose, and only in a trusted project", () =>
+    withMachineServer((specs) =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        const session = yield* openSession(checkout);
+        expect((yield* session.state("ready")).restricted).toBe(true);
+        // What was safe without someone's arguments is no longer known to be.
+        yield* set(checkout.cwd, {
+          type: "server",
+          scope: "machine",
+          server: "typescript",
+          override: { binary: process.execPath, args: [`${checkout.cwd}/fake-server.mjs`] },
+        });
+        expect((yield* session.state("trust-needed")).message).toContain("can run code");
+        yield* service.trustProject(checkout.cwd);
+        expect(yield* session.state("ready")).toMatchObject({ source: "path" });
+        const [check] = (yield* service.check(checkout.cwd)).servers;
+        expect(check).toMatchObject({ executable: process.execPath, state: "found" });
+        yield* set(checkout.cwd, {
+          type: "server",
+          scope: "machine",
+          server: "typescript",
+          override: { binary: "/nowhere/server" },
+        });
+        expect((yield* session.state("missing")).message).toBe("No fake server here.");
+      }).pipe(Effect.scoped, Effect.provide(layerFor({ specs, trusted: undefined }))),
+    ),
+  );
+
+  it.live("restarts only the servers a change reaches", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { checkout } = yield* openWithCompanions("let bad;\n", {});
+      const eslint = yield* openSession(checkout, "eslint");
+      const startsOf = (role: string) =>
+        fileSystem
+          .readFileString(`${checkout.cwd}/starts-${role}.log`)
+          .pipe(Effect.map((log) => log.trim().split("\n").length));
+      expect(yield* checkout.starts).toBe(1);
+
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "eslint",
+        override: { settings: { validate: "off" } },
+      });
+      yield* eslint.state("starting");
+      yield* eslint.state("ready");
+      expect(yield* startsOf("eslint")).toBe(2);
+      expect(yield* startsOf("tailwindcss")).toBe(1);
+      expect(yield* checkout.starts).toBe(1);
+
+      // The same settings again reach nothing.
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "eslint",
+        override: { settings: { validate: "off" } },
+      });
+      expect(yield* startsOf("eslint")).toBe(2);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("refuses what isn't a server or a language's own, and changes nothing", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const refused = (change: LanguageServerSettingsChange) =>
+        set(checkout.cwd, change).pipe(
+          Effect.flip,
+          Effect.map((error) => error.reason),
+        );
+      expect(
+        yield* refused({
+          type: "server",
+          scope: "machine",
+          server: "custom:nobody",
+          override: { enabled: false },
+        }),
+      ).toBe("invalid");
+      expect(
+        yield* refused({
+          type: "order",
+          scope: "machine",
+          language: "typescript",
+          order: ["basedpyright"],
+        }),
+      ).toBe("invalid");
+      expect(
+        yield* refused({
+          type: "custom",
+          id: null,
+          server: { ...customFor(checkout), languageIds: { "no/slash": "x" } },
+        }),
+      ).toBe("invalid");
+      expect(
+        yield* refused({
+          type: "custom",
+          id: null,
+          server: { ...customFor(checkout), command: "relative/server" },
+        }),
+      ).toBe("invalid");
+      expect(
+        yield* refused({ type: "toolchain", kind: "python", path: "/usr/bin/not-listed" }),
+      ).toBe("invalid");
+      expect((yield* service.check(checkout.cwd)).settings).toMatchObject({
+        machine: { servers: {}, order: {} },
+        custom: [],
+      });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("leaves everything alone when its own file can't be read, and says so", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const { settingsProblem } = yield* service.check(checkout.cwd);
+      expect(settingsProblem).toContain("can't be read");
+      const failed = yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "typescript",
+        override: { enabled: false },
+      }).pipe(Effect.flip);
+      expect(failed.message).toContain("can't be read");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.unwrap(
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
+            const folder = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-bad-" });
+            yield* fileSystem.writeFileString(
+              `${folder}/language-server-settings.json`,
+              "{ not json",
+            );
+            return layerFor({ cacheDir: `${folder}/language-servers` });
+          }).pipe(Effect.provide(NodeServices.layer)),
+        ),
+      ),
+    ),
+  );
+
+  it.live("shows a server turned off as off, to everyone, until it's turned on", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout("let bad;\n");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics((message) => message.params.diagnostics.length > 0);
+
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "project",
+        server: "typescript",
+        override: { enabled: false },
+      });
+      yield* session.diagnostics((message) => message.params.diagnostics.length === 0);
+      expect(yield* session.state("disabled")).toMatchObject({
+        message: "Off in settings.",
+        memoryBytes: null,
+      });
+      expect(yield* checkout.starts).toBe(1);
+      expect((yield* service.check(checkout.cwd)).servers[0]).toMatchObject({
+        off: true,
+        overrides: [{ field: "enabled", source: "project" }],
+      });
+      expect((yield* routesIn(checkout.cwd)).extensions.ts?.[0]).toMatchObject({
+        server: "typescript",
+        off: true,
+      });
+      const asked = yield* service
+        .diagnostics({ cwd: checkout.cwd, relativePath: FILE })
+        .pipe(Effect.flip);
+      expect(asked).toMatchObject({ reason: "not-running" });
+      expect(asked.message).toContain("off in the user's settings");
+      // Restart can't get past settings: they're the way back.
+      yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      yield* statuses((list) => list[0]?.state === "disabled");
+      expect(yield* checkout.starts).toBe(1);
+
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "project",
+        server: "typescript",
+        override: {},
+      });
+      yield* session.state("ready");
+      expect(yield* checkout.starts).toBe(2);
+      yield* session.diagnostics((message) => message.params.diagnostics.length > 0);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("drops a companion turned off, and lets the language lead with who's left", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const { checkout } = yield* openWithCompanions("let bad;\nlet worse;\n", {
+        roles: { eslint: { word: "worse", source: "eslint" }, tailwindcss: { word: "worst" } },
+      });
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "eslint",
+        override: { enabled: false },
+      });
+      const list = yield* statuses((all) =>
+        all.some((status) => status.server === "eslint" && status.state === "disabled"),
+      );
+      expect(list.find((status) => status.server === "typescript")?.state).toBe("ready");
+      const checked = yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      expect(checked.diagnostics.map((diagnostic) => diagnostic.source)).toEqual(["fake"]);
+
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "typescript",
+        override: { enabled: false },
+      });
+      const routes = (yield* routesIn(checkout.cwd)).extensions.ts ?? [];
+      expect(primaryLanguageServerRoute(routes)?.server).toBe("tailwindcss");
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("runs a language's servers in the order chosen, and tells those following", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout("x = 1\n");
+      yield* checkout.write("main.py", "bad = 1\n");
+      const order = () =>
+        routesIn(checkout.cwd).pipe(
+          Effect.map(({ extensions }) => extensions.py?.map((route) => route.server)),
+        );
+      expect(yield* order()).toEqual(["basedpyright", "ruff"]);
+      const seen = yield* Queue.unbounded<LanguageServerRoutes>();
+      yield* service.routes(checkout.cwd).pipe(
+        Stream.runForEach((routes) => Queue.offer(seen, routes)),
+        Effect.forkScoped,
+      );
+      yield* Queue.take(seen);
+      yield* set(checkout.cwd, {
+        type: "order",
+        scope: "machine",
+        language: "basedpyright",
+        order: ["ruff", "basedpyright"],
+      });
+      const next = yield* Queue.take(seen);
+      expect(next.extensions.py?.map((route) => route.server)).toEqual(["ruff", "basedpyright"]);
+      expect((yield* service.check(checkout.cwd)).servers.map((check) => check.server)).toEqual([
+        "ruff",
+        "basedpyright",
+      ]);
+      // A session on the new primary still has the language's other server beside it.
+      const session = yield* openSession(checkout, "ruff");
+      yield* session.state("ready");
+      yield* session.open(NodeURL.pathToFileURL(`${checkout.cwd}/main.py`).href);
+      yield* statuses((list) =>
+        list.some((status) => status.server === "basedpyright" && status.state === "ready"),
+      );
+      // A project's order takes over from the machine's.
+      yield* set(checkout.cwd, {
+        type: "order",
+        scope: "project",
+        language: "basedpyright",
+        order: ["basedpyright", "ruff"],
+      });
+      expect(yield* order()).toEqual(["basedpyright", "ruff"]);
+      yield* set(checkout.cwd, {
+        type: "order",
+        scope: "project",
+        language: "basedpyright",
+        order: [],
+      });
+      expect(yield* order()).toEqual(["ruff", "basedpyright"]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: pythonSpecs }))),
+  );
+
+  it.live("asks the next server when the one leading a language can't find a symbol", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE, {
+        roles: { eslint: { without: ["definitionProvider"] } },
+      });
+      yield* checkout.write("eslint.config.js", "");
+      yield* set(checkout.cwd, {
+        type: "order",
+        scope: "machine",
+        language: "typescript",
+        order: ["eslint", "typescript"],
+      });
+      const { locations } = yield* service.locate({
+        cwd: checkout.cwd,
+        relativePath: FILE,
+        line: 2,
+        symbol: "point",
+        kind: "definition",
+      });
+      expect(locations[0]).toMatchObject({ path: FILE, line: 1 });
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withEslint }))),
+  );
+
+  it.live("doesn't let a server the checkout has no use for lead its language", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      yield* set(checkout.cwd, {
+        type: "order",
+        scope: "machine",
+        language: "typescript",
+        order: ["eslint", "typescript"],
+      });
+      const routes = (yield* routesIn(checkout.cwd)).extensions.ts ?? [];
+      expect(routes.map((route) => route.server)).toEqual(["typescript"]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withEslint }))),
+  );
+
+  describe("in a checkout's own file", () => {
+    const FILE_PATH = ".astrolabe/language-servers.json";
+    const ours = (settings: object) => JSON.stringify({ servers: { typescript: { settings } } });
+
+    it.live("reads it only once the project is trusted", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* checkout.write(FILE_PATH, ours({ fake: { level: "file" } }));
+        const before = yield* service.check(checkout.cwd);
+        expect(before.projectFile).toMatchObject({ read: false, problem: null });
+        expect(before.servers[0]?.overrides).toEqual([]);
+        yield* service.trustProject(checkout.cwd);
+        const after = yield* service.check(checkout.cwd);
+        expect(after.projectFile.read).toBe(true);
+        expect(after.servers[0]?.overrides).toEqual([{ field: "settings", source: "file" }]);
+      }).pipe(Effect.scoped, Effect.provide(layerFor({ trusted: undefined }))),
+    );
+
+    it.live("ranks it above machine settings and below the project's", () =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* checkout.write(
+          FILE_PATH,
+          ours({ fake: { level: "file", seen: "file" }, only: "file" }),
+        );
+        yield* set(checkout.cwd, {
+          type: "server",
+          scope: "machine",
+          server: "typescript",
+          override: { settings: { fake: { level: "machine", seen: "machine" } } },
+        });
+        yield* set(checkout.cwd, {
+          type: "server",
+          scope: "project",
+          server: "typescript",
+          override: { settings: { fake: { level: "project" } } },
+        });
+        const session = yield* openSession(checkout);
+        yield* session.state("ready");
+        const answer = yield* session.request(1, "test/configuration", {
+          items: [{ section: "fake" }, { section: "only" }],
+        });
+        expect(answer.result).toEqual([{ level: "project", seen: "file" }, "file"]);
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("shows a bad file in Settings and the status, and is otherwise ignored", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        const bad = [
+          ["{ nope", "isn't valid JSON"],
+          ['{"servers":{"nobody":{}}}', '"nobody", which isn\'t a language server'],
+          ['{"servers":{"typescript":{"binary":"/evil"}}}', '"binary"'],
+          ['{"servers":{"typescript":{"command":"/evil"}}}', '"command"'],
+          ['{"servers":{"typescript":{"args":["--evil"]}}}', '"args"'],
+          ['{"servers":{"typescript":{"env":{"A":"b"}}}}', '"env"'],
+          ['{"servers":{"typescript":{"settings":3}}}', "must be objects"],
+          ['{"servers":{},"custom":[]}', '"custom"'],
+        ] as const;
+        for (const [text, says] of bad) {
+          yield* checkout.write(FILE_PATH, text);
+          const { projectFile, servers } = yield* service.check(checkout.cwd);
+          expect(projectFile.problem).toContain(says);
+          expect(servers[0]?.overrides).toEqual([]);
+        }
+        const session = yield* openSession(checkout);
+        const ready = yield* session.state("ready");
+        expect(ready.message).toContain(FILE_PATH);
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("applies a change to it, restarting the servers it reaches", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        const session = yield* openSession(checkout);
+        yield* session.state("ready");
+        yield* checkout.write(FILE_PATH, ours({ fake: { level: "file" } }));
+        yield* service.filesChanged({
+          cwd: checkout.cwd,
+          changes: [{ relativePath: FILE_PATH, type: "created" }],
+        });
+        yield* session.state("starting");
+        yield* session.state("ready");
+        const answer = yield* session.request(1, "test/configuration", {
+          items: [{ section: "fake" }],
+        });
+        expect(answer.result).toEqual([{ level: "file" }]);
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+  });
+
+  describe("for a server of someone's own", () => {
+    const foo = (checkout: Checkout) => NodeURL.pathToFileURL(`${checkout.cwd}/src/app.foo`).href;
+
+    it.live("serves an extension nothing else does, for editors, agents and logs alike", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* checkout.write("src/app.foo", "let bad;\n");
+        expect((yield* routesIn(checkout.cwd)).extensions.foo).toBeUndefined();
+        yield* set(checkout.cwd, { type: "custom", id: null, server: customFor(checkout) });
+        const routes = (yield* routesIn(checkout.cwd)).extensions.foo ?? [];
+        expect(routes).toEqual([
+          {
+            server: "custom:my-lang",
+            name: "My Lang",
+            languageId: "foolang",
+            off: false,
+            toolchain: null,
+          },
+        ]);
+        const session = yield* openSession(checkout, "custom:my-lang");
+        yield* session.state("ready");
+        yield* session.open(foo(checkout));
+        const published = yield* session.diagnostics(
+          (message) => message.params.diagnostics.length > 0,
+        );
+        expect(published.params.diagnostics[0].range.start.line).toBe(0);
+        const state = yield* stateOf(session, 1);
+        expect(state.docs[foo(checkout)].languageId).toBe("foolang");
+        const checked = yield* service.diagnostics({
+          cwd: checkout.cwd,
+          relativePath: "src/app.foo",
+        });
+        expect(checked.diagnostics).toHaveLength(1);
+        const logs = yield* openLogs(checkout, "custom:my-lang");
+        yield* logs.until(() => logs.lines().find((line) => line.text === "fake is starting"));
+        const { servers } = yield* service.check(checkout.cwd);
+        expect(servers.at(-1)).toMatchObject({
+          server: "custom:my-lang",
+          state: "found",
+          language: null,
+          languages: ".foo",
+        });
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("replaces the default on its extensions, or joins it, and leaves when removed", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout("let bad;\n");
+        const order = () =>
+          routesIn(checkout.cwd).pipe(
+            Effect.map(({ extensions }) => extensions.ts?.map((route) => route.server)),
+          );
+        const server = {
+          ...customFor(checkout),
+          languageIds: { ".TS": "typescript" },
+          replaces: true,
+        };
+        yield* set(checkout.cwd, { type: "custom", id: null, server });
+        const id = "custom:my-lang";
+        expect(yield* order()).toEqual([id, "eslint"]);
+        expect((yield* routesIn(checkout.cwd)).extensions.mts?.[0]?.server).toBe("typescript");
+        const { servers } = yield* service.check(checkout.cwd);
+        expect(servers.find((check) => check.server === "typescript")?.replacedBy).toEqual([
+          "My Lang",
+        ]);
+
+        const session = yield* openSession(checkout, id);
+        yield* session.state("ready");
+        yield* session.open(checkout.uri);
+        yield* session.diagnostics((message) => message.params.diagnostics.length > 0);
+
+        yield* set(checkout.cwd, {
+          type: "custom",
+          id,
+          server: { ...server, name: "Renamed", replaces: false },
+        });
+        yield* session.state("starting");
+        expect((yield* session.state("ready")).name).toBe("Renamed");
+        expect(yield* order()).toEqual(["typescript", "eslint", id]);
+
+        yield* set(checkout.cwd, { type: "removeCustom", id });
+        const stopped = yield* session.state("disabled");
+        expect(stopped.memoryBytes).toBeNull();
+        expect(yield* order()).toEqual(["typescript", "eslint"]);
+        // Anything still bound to it hears it can't be had.
+        const gone = yield* service
+          .session({ cwd: checkout.cwd, server: "custom:nobody", sessionId: "gone" })
+          .pipe(Stream.runHead, Effect.flip);
+        expect(gone.reason).toBe("unsupported");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerFor({
+            specs: { ...fakeSpecs, eslint: companionSpec("eslint") },
+          }),
+        ),
+      ),
+    );
+
+    it.live("runs only in a trusted project", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* set(checkout.cwd, { type: "custom", id: null, server: customFor(checkout) });
+        const session = yield* openSession(checkout, "custom:my-lang");
+        expect((yield* session.state("trust-needed")).message).toContain("can run code");
+        expect((yield* service.check(checkout.cwd)).servers.at(-1)).toMatchObject({
+          state: "trust",
+          executable: null,
+        });
+        yield* service.trustProject(checkout.cwd);
+        yield* session.state("ready");
+      }).pipe(Effect.scoped, Effect.provide(layerFor({ trusted: undefined }))),
+    );
+
+    it.live("shows a start that fails, and its logs", () =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout(SOURCE, { roles: { mine: { crashTimes: 99 } } });
+        yield* set(checkout.cwd, { type: "custom", id: null, server: customFor(checkout) });
+        const logs = yield* openLogs(checkout, "custom:my-lang");
+        const session = yield* openSession(checkout, "custom:my-lang");
+        expect((yield* session.state("failed")).message).toContain("boom");
+        yield* logs.until(() => logs.lines().find((line) => line.text === "boom"));
+
+        yield* set(checkout.cwd, {
+          type: "custom",
+          id: "custom:my-lang",
+          server: { ...customFor(checkout), command: "/nowhere/server" },
+        });
+        expect((yield* session.state("missing")).message).toContain("/nowhere/server");
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+
+    it.live("runs only where its root files are, when it names any", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        yield* set(checkout.cwd, {
+          type: "custom",
+          id: null,
+          server: { ...customFor(checkout), rootFiles: ["foo.toml"] },
+        });
+        expect((yield* routesIn(checkout.cwd)).extensions.foo).toBeUndefined();
+        expect((yield* service.check(checkout.cwd)).servers.at(-1)?.companion).toEqual({
+          active: false,
+          reason: "Not active: no foo.toml at this checkout's root.",
+        });
+        yield* checkout.write("foo.toml", "");
+        yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+        expect((yield* routesIn(checkout.cwd)).extensions.foo?.[0]?.server).toBe("custom:my-lang");
+      }).pipe(Effect.scoped, Effect.provide(layerFor())),
+    );
+  });
+
+  describe("choosing a toolchain", () => {
+    it.live(
+      "passes the chosen interpreter to the server reading it, and goes back to automatic",
+      () =>
+        Effect.gen(function* () {
+          const service = yield* LanguageServers.LanguageServers;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const checkout = yield* makeCheckout("x = 1\n");
+          yield* checkout.write("main.py", "bad = 1\n");
+          yield* checkout.write(".venv/bin/python", "");
+          yield* checkout.write(".venv/pyvenv.cfg", "home = /x\nuv = 0.5\nversion_info = 3.12.1\n");
+          yield* checkout.write("envs-a/bin/python", "");
+          yield* checkout.write("envs-a/pyvenv.cfg", "version = 3.11.4\n");
+          const automatic = `${checkout.cwd}/.venv/bin/python`;
+          const chosen = `${checkout.cwd}/envs-a/bin/python`;
+          // Never run: a checkout's interpreter is its code.
+          yield* fileSystem.writeFileString(chosen, "#!/bin/sh\ntouch ran\n");
+          yield* fileSystem.chmod(chosen, 0o755);
+
+          const found = yield* service.toolchains(checkout.cwd);
+          expect(found).toMatchObject({
+            kind: "python",
+            selected: null,
+            trusted: true,
+            active: { path: automatic, label: ".venv (uv)", version: "3.12.1" },
+          });
+          expect(found.options.slice(0, 2)).toEqual([
+            { path: automatic, label: ".venv (uv)", version: "3.12.1" },
+            { path: chosen, label: "envs-a", version: "3.11.4" },
+          ]);
+
+          const session = yield* openSession(checkout, "basedpyright");
+          yield* session.state("ready");
+          const pythonPath = (id: number) =>
+            session
+              .request(id, "test/configuration", { items: [{ section: "python" }] })
+              .pipe(Effect.map((answer) => answer.result[0].pythonPath));
+          yield* session.open(NodeURL.pathToFileURL(`${checkout.cwd}/main.py`).href);
+          yield* statuses((list) => list.filter((status) => status.state === "ready").length === 2);
+          expect(yield* pythonPath(1)).toBe(automatic);
+
+          yield* service.updateSettings({
+            cwd: checkout.cwd,
+            change: { type: "toolchain", kind: "python", path: chosen },
+          });
+          yield* session.state("starting");
+          yield* session.state("ready");
+          expect(yield* pythonPath(2)).toBe(chosen);
+          expect(yield* checkout.starts).toBe(0);
+          const startsOf = (role: string) =>
+            fileSystem
+              .readFileString(`${checkout.cwd}/starts-${role}.log`)
+              .pipe(Effect.map((log) => log.trim().split("\n").length));
+          expect(yield* startsOf("basedpyright")).toBe(2);
+          expect(yield* startsOf("ruff")).toBe(1);
+          expect(yield* service.toolchains(checkout.cwd)).toMatchObject({
+            selected: chosen,
+            active: { path: chosen },
+          });
+
+          yield* service.updateSettings({
+            cwd: checkout.cwd,
+            change: { type: "toolchain", kind: "python", path: null },
+          });
+          yield* session.state("starting");
+          yield* session.state("ready");
+          expect(yield* pythonPath(3)).toBe(automatic);
+          expect(yield* fileSystem.exists(`${checkout.cwd}/ran`)).toBe(false);
+        }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: pythonSpecs }))),
+    );
+
+    it.live("tells nothing of a chosen interpreter while the project isn't trusted", () =>
+      withMachineServer((specs) =>
+        Effect.gen(function* () {
+          const service = yield* LanguageServers.LanguageServers;
+          const checkout = yield* makeCheckout("x = 1\n");
+          yield* checkout.write(".venv/bin/python", "");
+          const chosen = `${checkout.cwd}/.venv/bin/python`;
+          yield* service.updateSettings({
+            cwd: checkout.cwd,
+            change: { type: "toolchain", kind: "python", path: chosen },
+          });
+          expect(yield* service.toolchains(checkout.cwd)).toMatchObject({
+            selected: chosen,
+            trusted: false,
+            active: null,
+          });
+          const session = yield* openSession(checkout, "basedpyright");
+          yield* session.state("ready");
+          const answer = yield* session.request(1, "test/configuration", {
+            items: [{ section: "python" }],
+          });
+          expect(answer.result[0]).toEqual({});
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            layerFor({
+              specs: {
+                basedpyright: {
+                  ...specs.typescript!,
+                  id: "basedpyright",
+                  usesToolchain: "python",
+                  launches: [
+                    {
+                      ...specs.typescript!.launches[1]!,
+                      settings: { python: { pythonPath: "{python}" } },
+                    },
+                  ],
+                },
+              },
+              trusted: undefined,
+            }),
+          ),
+        ),
+      ),
+    );
+  });
 });
 
 describe("LanguageServers logs", () => {

@@ -20,6 +20,7 @@ const word = config.word ?? "bad";
 
 const docs = new Map();
 const received = [];
+let initializationOptions;
 const slow = new Map();
 // The server's own requests to the client, by id: what to do with each answer.
 const asked = new Map();
@@ -115,6 +116,7 @@ const handle = (message) => {
   }
   switch (method) {
     case "initialize": {
+      initializationOptions = params.initializationOptions;
       if (starts <= (config.crashTimes ?? 0)) {
         process.stderr.write("boom\n", () => process.exit(1));
         return;
@@ -230,6 +232,7 @@ const handle = (message) => {
       docs.set(params.textDocument.uri, {
         version: params.textDocument.version,
         text: params.textDocument.text,
+        languageId: params.textDocument.languageId,
       });
       if (config.pushes) pushDiagnostics(params.textDocument.uri, params.textDocument.version);
       return;
@@ -548,6 +551,9 @@ const handle = (message) => {
       return reply({
         docs: Object.fromEntries(docs),
         received,
+        initializationOptions,
+        args: process.argv.slice(2),
+        env: process.env.FAKE_SETTING,
       });
     default:
       if (id !== undefined && method !== undefined) {

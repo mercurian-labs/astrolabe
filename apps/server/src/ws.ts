@@ -1320,6 +1320,9 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.languageServersSend]: (input) => languageServers.send(input),
       [WS_METHODS.languageServersUndoEdit]: (input) => languageServers.undoEdit(input),
       [WS_METHODS.languageServersProblems]: (input) => languageServers.problems(input.cwd),
+      [WS_METHODS.languageServersRoutes]: (input) => languageServers.routes(input.cwd),
+      [WS_METHODS.languageServersToolchains]: (input) => languageServers.toolchains(input.cwd),
+      [WS_METHODS.languageServersUpdateSettings]: (input) => languageServers.updateSettings(input),
     });
   }),
 );

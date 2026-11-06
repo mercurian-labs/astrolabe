@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - file URLs are converted synchronously, between writes.
 import { ChangeSet, Text } from "@codemirror/state";
 import {
+  type BuiltInLanguageServerId,
   type CodeLocation,
   type CodeLocationKind,
   type CodeLocations,
@@ -22,18 +23,24 @@ import {
   type LanguageServerSetTraceInput,
   type LanguageServerUndoEditInput,
   type LanguageServerUndoEditResult,
+  isBuiltInLanguageServerId,
   isCompanionLanguageServer,
   languageServerForPath,
-  languageServersForPath,
+  languageServerLanguage,
+  languageServerRoutesForPath,
   LanguageServerError,
-  type LanguageServerForPath,
-  type LanguageServerId,
+  LanguageServerId,
   type LanguageServerProblemsItem,
+  type LanguageServerRoute,
+  type LanguageServerRoutes,
   type LanguageServerSendInput,
   type LanguageServerSessionInput,
   type LanguageServerSessionItem,
   type LanguageServerStatus,
   type LanguageServerTarget,
+  type LanguageServerToolchains,
+  type LanguageServerUpdateSettingsInput,
+  primaryLanguageServerRoute,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -50,6 +57,7 @@ import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -107,6 +115,20 @@ import {
   wordBefore,
 } from "./positions.ts";
 import { LANGUAGE_SERVERS, type LanguageServerSpec } from "./registry.ts";
+import {
+  customServerId,
+  customSpec,
+  effectiveSettings,
+  EMPTY_LAYER,
+  makeLanguageServerSettings,
+  normalizeCustomServer,
+  orderOf,
+  parseProjectFile,
+  PROJECT_FILE,
+  type ProjectFileSettings,
+  routesFor,
+  withSettings,
+} from "./settings.ts";
 import { makeProjectTrust } from "./trust.ts";
 import {
   type FileWatcher,
@@ -188,6 +210,16 @@ export class LanguageServers extends Context.Service<
     }) => Effect.Effect<CodeLocations, LanguageServerError>;
     /** A checkout's problems in every file a server has checked, then each file's changes. */
     readonly problems: (cwd: string) => Stream.Stream<LanguageServerProblemsItem>;
+    /** What serves each kind of file in a checkout, then the whole table when it changes. */
+    readonly routes: (cwd: string) => Stream.Stream<LanguageServerRoutes, LanguageServerError>;
+    /** The interpreters a checkout could use, none of them run to find out. */
+    readonly toolchains: (
+      cwd: string,
+    ) => Effect.Effect<LanguageServerToolchains, LanguageServerError>;
+    /** Stores a change to what people set; only the servers it affects restart. */
+    readonly updateSettings: (
+      input: LanguageServerUpdateSettingsInput,
+    ) => Effect.Effect<void, LanguageServerError>;
   }
 >()("t3/languageServers/LanguageServers") {}
 
@@ -197,7 +229,7 @@ export interface FilesChangedInput {
 }
 
 export interface LanguageServersOptions {
-  readonly specs: Readonly<Partial<Record<LanguageServerId, LanguageServerSpec>>>;
+  readonly specs: Readonly<Partial<Record<BuiltInLanguageServerId, LanguageServerSpec>>>;
   /** No documents and no sessions for this long stops a server. */
   readonly idleTimeout: Duration.Input;
   /**
@@ -399,7 +431,10 @@ interface Instance {
   readonly cwd: string;
   /** `cwd` with links resolved, as servers often name files (`/private/var` on macOS). */
   readonly realCwd: string;
-  readonly spec: LanguageServerSpec;
+  /** As settings had it at its last start. */
+  spec: LanguageServerSpec;
+  /** What it was last started with, to tell whether a change of settings reaches it. */
+  config: string;
   readonly lock: Semaphore.Semaphore;
   readonly scope: Scope.Closeable;
   status: LanguageServerStatus;
@@ -423,8 +458,6 @@ interface Instance {
   changesGeneration: number;
   /** Called on each status change, for those waiting on one. */
   readonly statusWatchers: Set<() => void>;
-  /** For a primary: whether the checkout uses each companion, as of its last Restart. */
-  readonly activation: Map<LanguageServerId, boolean>;
   /** Kept apart from the process and the instance: a crash's output outlives both. */
   readonly log: ServerLog;
   /** The last launch. */
@@ -437,6 +470,9 @@ interface Instance {
   crashes: number;
   lastUsed: number;
 }
+
+const OFF_IN_SETTINGS = "Off in settings.";
+const isLanguageServerId = Schema.is(LanguageServerId);
 
 const failure = (reason: LanguageServerError["reason"], message: string, cause?: unknown) =>
   new LanguageServerError({ reason, message, ...(cause === undefined ? {} : { cause }) });
@@ -719,6 +755,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     repositoryOf: installer.repositoryOf,
   });
   const isTrusted = options.trusted ?? trust.isTrusted;
+  const settings = yield* makeLanguageServerSettings({
+    file: path.join(path.dirname(cacheDir), "language-server-settings.json"),
+  });
   const readMemory = options.readMemory ?? (yield* makeMemoryReader());
   const processServices = yield* Effect.context<
     ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
@@ -733,6 +772,11 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   /** Keys of logs whose last reader left within `traceGrace`: a hidden tab comes back to them. */
   const lingering = new Map<string, number>();
   const logs = new Map<string, ServerLog>();
+  /** Each checkout's routes; a checkout is known here before it has an instance. */
+  const routeTables = new Map<string, LanguageServerRoutes>();
+  const routeEvents = yield* PubSub.unbounded<{ readonly cwd: string }>();
+  /** A trust key costs a few git commands, and checkouts don't change repository. */
+  const projectKeys = new Map<string, string>();
   let editCount = 0;
   let clock = 0;
 
@@ -1255,6 +1299,123 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const failWith = (instance: Instance, message: string) =>
     setStatus(instance, { state: "failed", message, memoryBytes: null });
 
+  const setDisabled = (instance: Instance) =>
+    setStatus(instance, {
+      state: "disabled",
+      message: OFF_IN_SETTINGS,
+      source: null,
+      restricted: false,
+      memoryBytes: null,
+    });
+
+  /** A server by id, as the registry or settings define it. */
+  const specOf = (server: LanguageServerId): LanguageServerSpec | undefined => {
+    if (isBuiltInLanguageServerId(server)) return options.specs[server];
+    const custom = settings.get().custom.find(({ id }) => id === server);
+    return custom === undefined ? undefined : customSpec(custom);
+  };
+
+  const projectKeyOf = Effect.fn("LanguageServers.projectKey")(function* (cwd: string) {
+    const known = projectKeys.get(cwd);
+    if (known !== undefined) return known;
+    const key = yield* trust.keyOf(cwd);
+    projectKeys.set(cwd, key);
+    return key;
+  });
+
+  /** Machine-wide settings and the project's, with no git to ask when no project has any. */
+  const layersOf = Effect.fn("LanguageServers.layers")(function* (cwd: string) {
+    const { machine, projects } = settings.get();
+    if (Object.keys(projects).length === 0) return [machine, EMPTY_LAYER] as const;
+    const key = yield* projectKeyOf(cwd);
+    return [machine, Object.hasOwn(projects, key) ? projects[key]! : EMPTY_LAYER] as const;
+  });
+
+  /** The checkout's own file, which only a trusted project has read. */
+  const readProjectFile = Effect.fn("LanguageServers.readProjectFile")(function* (cwd: string) {
+    const text = yield* fileSystem.readFileString(path.join(cwd, PROJECT_FILE)).pipe(Effect.option);
+    if (Option.isNone(text)) return { found: false as const };
+    const parsed = parseProjectFile(
+      text.value,
+      (server) => isLanguageServerId(server) && specOf(server) !== undefined,
+    );
+    return { found: true as const, parsed };
+  });
+
+  /** How a server runs in a checkout now; `text` is what a change is noticed by. */
+  const configOf = Effect.fn("LanguageServers.config")(function* (
+    cwd: string,
+    server: LanguageServerId,
+    trusted: boolean,
+  ) {
+    const [machine, project] = yield* layersOf(cwd);
+    const file = trusted ? yield* readProjectFile(cwd) : { found: false as const };
+    const parsed = file.found ? file.parsed : null;
+    const problem = parsed !== null && "problem" in parsed ? parsed.problem : null;
+    const fromFile: ProjectFileSettings["servers"] =
+      parsed !== null && "servers" in parsed ? parsed.servers : {};
+    const effective = effectiveSettings([
+      { source: "machine", override: machine.servers[server] },
+      { source: "file", override: Object.hasOwn(fromFile, server) ? fromFile[server] : undefined },
+      { source: "project", override: project.servers[server] },
+    ]);
+    const base = specOf(server);
+    const spec = base === undefined ? null : withSettings(base, effective);
+    const python =
+      base?.usesToolchain === "python" ? (settings.get().toolchains[cwd]?.python ?? null) : null;
+    const { off, overrides } = effective;
+    return {
+      spec,
+      off,
+      overrides,
+      python,
+      problem,
+      text: stringifyJson({ spec, off, python, problem }),
+    };
+  });
+
+  /** Reads a checkout's routes, telling those following it when they changed. */
+  const loadRoutes = Effect.fn("LanguageServers.loadRoutes")(function* (cwd: string) {
+    const layers = yield* layersOf(cwd);
+    const { custom } = settings.get();
+    const inactive = new Set<LanguageServerId>();
+    const specs = [
+      ...Object.values(options.specs).filter((spec) => spec !== undefined),
+      ...custom.map(customSpec),
+    ];
+    for (const spec of specs) {
+      if (spec.activation === undefined) continue;
+      if (!(yield* installer.activationOf(cwd, spec)).active) inactive.add(spec.id);
+    }
+    const isOff = (server: LanguageServerId) =>
+      effectiveSettings(
+        layers.map((layer) => ({ source: "machine", override: layer.servers[server] })),
+      ).off;
+    const next = routesFor({
+      specs: options.specs,
+      custom,
+      orderOf: (language) => orderOf(language, layers),
+      isOff,
+      isActive: (server) => !inactive.has(server),
+    });
+    const known = routeTables.get(cwd);
+    routeTables.set(cwd, next);
+    if (known !== undefined && stringifyJson(known) !== stringifyJson(next)) {
+      PubSub.publishUnsafe(routeEvents, { cwd });
+    }
+    return next;
+  }, Effect.provideContext(processServices));
+
+  const routesOf = (cwd: string) =>
+    Effect.suspend(() => {
+      const known = routeTables.get(cwd);
+      return known === undefined ? loadRoutes(cwd) : Effect.succeed(known);
+    });
+
+  /** A file's servers as last read; a checkout with an instance has always been read. */
+  const routesOn = (cwd: string, relativePath: string) =>
+    languageServerRoutesForPath(relativePath, routeTables.get(cwd) ?? { extensions: {} });
+
   /** Resolves the binary (downloading if allowed), spawns it and initializes it. */
   const startProcess: (instance: Instance) => Effect.Effect<void> = Effect.fn(
     "LanguageServers.startProcess",
@@ -1262,9 +1423,14 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const generation = ++instance.generation;
     if (Deferred.isDoneUnsafe(instance.ready)) instance.ready = Deferred.makeUnsafe();
     const trusted = yield* isTrusted(instance.cwd);
+    const config = yield* configOf(instance.cwd, instance.spec.id, trusted);
+    instance.config = config.text;
+    if (config.spec === null || config.off) return yield* setDisabled(instance);
+    const spec = config.spec;
+    instance.spec = spec;
     yield* setStatus(instance, { state: "starting", message: null, restricted: !trusted });
     let resolution = yield* installer
-      .resolve(instance.cwd, instance.spec, trusted)
+      .resolve(instance.cwd, spec, trusted, config.python)
       .pipe(
         Effect.catch((error) =>
           Effect.succeed({ type: "unavailable" as const, message: error.message }),
@@ -1287,7 +1453,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       if (downloaded !== null) return yield* failWith(instance, downloaded);
       if (instance.generation !== generation) return;
       resolution = yield* installer
-        .resolve(instance.cwd, instance.spec, trusted)
+        .resolve(instance.cwd, spec, trusted, config.python)
         .pipe(
           Effect.catch((error) =>
             Effect.succeed({ type: "unavailable" as const, message: error.message }),
@@ -1307,9 +1473,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const server = resolution.server;
     instance.launched = server;
     yield* setStatus(instance, { state: "starting", name: server.name, source: server.source });
-    if (instance.spec.writes !== undefined) {
-      yield* installer.excludeFromGit(instance.cwd, instance.spec.writes);
-    }
+    if (spec.writes !== undefined) yield* installer.excludeFromGit(instance.cwd, spec.writes);
     const processScope = yield* Scope.fork(instance.scope);
     instance.processScope = processScope;
     instance.settings = server.settings;
@@ -1324,7 +1488,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         tracing: () => instance.log.tracing,
         onMessage: instance.log.trace,
       },
-    ).pipe(Scope.provide(processScope), Effect.option);
+    ).pipe(
+      Scope.provide(processScope),
+      Effect.tapError((cause) =>
+        Effect.sync(() =>
+          instance.log.line("environment", `Could not start ${server.binary}: ${cause.message}`),
+        ),
+      ),
+      Effect.option,
+    );
     if (Option.isNone(connection)) {
       instance.processScope = null;
       yield* Scope.close(processScope, Exit.void);
@@ -1376,7 +1548,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     };
     instance.running = running;
     for (const doc of instance.docs.values()) openOnServer(instance, doc);
-    yield* setStatus(instance, { state: "ready", message: null });
+    yield* setStatus(instance, { state: "ready", message: config.problem });
     Deferred.doneUnsafe(instance.ready, Exit.succeed(running));
     yield* fork(checkMemory);
   }, Effect.provideContext(processServices));
@@ -1470,7 +1642,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       if (bytes !== instance.status.memoryBytes) yield* setStatus(instance, { memoryBytes: bytes });
     }
     const primaryRank = (instance: Instance) =>
-      isCompanionLanguageServer(instance.spec.id) ? 0 : 1;
+      isCompanionLanguageServer(instance.spec.id) || instance.spec.joins === true ? 0 : 1;
     const byPreference = running.toSorted(
       (a, b) => primaryRank(a) - primaryRank(b) || a.lastUsed - b.lastUsed,
     );
@@ -1519,7 +1691,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const key = `${target.cwd}\0${target.server}`;
     const existing = instances.get(key);
     if (existing !== undefined) return existing;
-    const spec = options.specs[target.server];
+    const spec = specOf(target.server);
     if (spec === undefined) {
       return yield* failure("unsupported", "That language server is not available here.");
     }
@@ -1527,6 +1699,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const realCwd = yield* fileSystem
       .realPath(target.cwd)
       .pipe(Effect.orElseSucceed(() => target.cwd));
+    // Evidence for a companion may have appeared since this checkout last had a server.
+    yield* loadRoutes(target.cwd);
     const again = instances.get(key);
     if (again !== undefined) return again;
     const instance: Instance = {
@@ -1534,6 +1708,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       cwd: target.cwd,
       realCwd,
       spec,
+      config: "",
       lock: yield* Semaphore.make(1),
       scope: yield* Scope.fork(serviceScope),
       status: {
@@ -1558,7 +1733,6 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       loading: false,
       settings: {},
       statusWatchers: new Set(),
-      activation: new Map(),
       log: logOf(key),
       launched: null,
       ready: Deferred.makeUnsafe(),
@@ -1630,21 +1804,64 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         instance.scope,
       );
       // Someone restarting may just have added the config that makes a companion apply.
-      for (const primary of instances.values()) {
-        if (primary.cwd !== target.cwd) continue;
-        primary.activation.clear();
-        for (const session of primary.sessions.values()) {
-          for (const [relativePath, file] of session.open) {
-            yield* fork(syncCompanions(session, relativePath, file), session.scope);
-          }
-        }
-      }
+      yield* loadRoutes(target.cwd);
+      yield* syncCheckout(target.cwd);
     },
   );
+
+  /** Brings every open file's companions in a checkout in line with its routes. */
+  const syncCheckout = Effect.fn("LanguageServers.syncCheckout")(function* (cwd: string) {
+    for (const primary of instances.values()) {
+      if (primary.cwd !== cwd) continue;
+      for (const session of primary.sessions.values()) {
+        for (const [relativePath, file] of session.open) {
+          yield* fork(syncCompanions(session, relativePath, file), session.scope);
+        }
+      }
+    }
+  });
+
+  /** After settings change: new routes, and a restart for each server they reach, no others. */
+  const reconfigure = Effect.fn("LanguageServers.reconfigure")(function* (
+    cwds: ReadonlyArray<string>,
+  ) {
+    for (const cwd of cwds) yield* loadRoutes(cwd);
+    for (const instance of instances.values()) {
+      if (!cwds.includes(instance.cwd)) continue;
+      const trusted = yield* isTrusted(instance.cwd);
+      const config = yield* configOf(instance.cwd, instance.spec.id, trusted);
+      if (config.text === instance.config) continue;
+      if (config.spec === null || config.off) {
+        instance.config = config.text;
+        yield* fork(
+          instance.lock.withPermit(
+            stopProcess(instance).pipe(
+              Effect.andThen(setDisabled(instance)),
+              Effect.andThen(scheduleIdle(instance)),
+            ),
+          ),
+          instance.scope,
+        );
+        continue;
+      }
+      const { state } = instance.status;
+      // A stopped or capped one takes the new settings when it next starts.
+      if (state === "stopped" || state === "capped") continue;
+      instance.crashes = 0;
+      yield* fork(
+        instance.lock.withPermit(
+          stopProcess(instance).pipe(Effect.andThen(startProcess(instance))),
+        ),
+        instance.scope,
+      );
+    }
+    for (const cwd of cwds) yield* syncCheckout(cwd);
+  });
 
   const stop: LanguageServers["Service"]["stop"] = Effect.fn("LanguageServers.stop")(
     function* (target) {
       const instance = yield* existing(target);
+      if (instance.status.state === "disabled") return;
       yield* instance.lock.withPermit(
         stopProcess(instance).pipe(
           Effect.andThen(
@@ -1660,16 +1877,35 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   ) {
     yield* assertProject(cwd);
     const trusted = yield* isTrusted(cwd);
-    const specs = Object.values(options.specs).filter((spec) => spec !== undefined);
+    const layers = yield* layersOf(cwd);
+    const { custom } = settings.get();
+    const builtIn = Object.values(options.specs).filter((spec) => spec !== undefined);
+    const languageOf = (spec: LanguageServerSpec) =>
+      isBuiltInLanguageServerId(spec.id) ? languageServerLanguage(spec.id) : null;
+    const position = (spec: LanguageServerSpec) => {
+      const language = languageOf(spec);
+      if (language === null) return [builtIn.length, 0];
+      const order = orderOf(language, layers) as ReadonlyArray<LanguageServerId>;
+      const at = order.indexOf(spec.id);
+      return [builtIn.findIndex(({ id }) => id === language), at < 0 ? order.length : at] as const;
+    };
+    const specs = [...builtIn, ...custom.map(customSpec)].toSorted((a, b) => {
+      const [languageA = 0, rankA = 0] = position(a);
+      const [languageB = 0, rankB = 0] = position(b);
+      return languageA - languageB || rankA - rankB;
+    });
+    const projectFile = trusted ? yield* readProjectFile(cwd) : { found: false as const };
     const servers = yield* Effect.forEach(
       specs,
-      Effect.fnUntraced(function* (spec): Effect.fn.Return<
+      Effect.fnUntraced(function* (defined): Effect.fn.Return<
         LanguageServerCheck,
         never,
         FileSystem.FileSystem | Path.Path
       > {
+        const config = yield* configOf(cwd, defined.id, trusted);
+        const spec = config.spec ?? defined;
         const resolution = yield* installer
-          .resolve(cwd, spec, trusted)
+          .resolve(cwd, spec, trusted, config.python)
           .pipe(
             Effect.catch((error) =>
               Effect.succeed({ type: "unavailable" as const, message: error.message }),
@@ -1678,6 +1914,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const hinted = spec.hint;
         const hint =
           hinted === undefined ||
+          config.python !== null ||
           (yield* Effect.forEach(hinted.unless, (file) =>
             fileSystem.exists(path.join(cwd, file)).pipe(Effect.orElseSucceed(() => false)),
           )).some(Boolean)
@@ -1686,9 +1923,21 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const base = {
           server: spec.id,
           languages: spec.languages,
-          companion: isCompanionLanguageServer(spec.id)
-            ? yield* installer.activationOf(cwd, spec)
-            : null,
+          companion:
+            isCompanionLanguageServer(spec.id) || spec.activation !== undefined
+              ? yield* installer.activationOf(cwd, spec)
+              : null,
+          off: config.off,
+          language: languageOf(spec),
+          overrides: config.overrides,
+          replacedBy: custom.flatMap(({ name, languageIds, replaces }) =>
+            replaces &&
+            Object.keys(languageIds).some(
+              (extension) => languageServerForPath(`file.${extension}`)?.server === spec.id,
+            )
+              ? [name]
+              : [],
+          ),
         };
         switch (resolution.type) {
           case "ready":
@@ -1731,8 +1980,170 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       }),
       { concurrency: "unbounded" },
     );
-    return { trusted, servers };
+    const [machine, project] = layers;
+    const parsed = projectFile.found ? projectFile.parsed : null;
+    return {
+      trusted,
+      servers,
+      settings: { machine, project, custom },
+      projectFile: {
+        path: PROJECT_FILE,
+        read: projectFile.found,
+        problem: parsed !== null && "problem" in parsed ? parsed.problem : null,
+      },
+      settingsProblem: settings.problem(),
+    };
   }, Effect.provideContext(processServices));
+
+  const toolchains: LanguageServers["Service"]["toolchains"] = Effect.fn(
+    "LanguageServers.toolchains",
+  )(function* (cwd) {
+    yield* assertProject(cwd);
+    const trusted = yield* isTrusted(cwd);
+    const selected = settings.get().toolchains[cwd]?.python ?? null;
+    const options = yield* installer.pythonInterpreters(cwd);
+    const active = trusted ? yield* installer.activePython(cwd, selected) : null;
+    return {
+      kind: "python",
+      selected,
+      active:
+        active === null
+          ? null
+          : (options.find((option) => option.path === active) ?? {
+              path: active,
+              label: active,
+              version: null,
+            }),
+      trusted,
+      options,
+    };
+  });
+
+  /** What one change reaches: the checkouts whose servers or routes may differ after it. */
+  const affectedBy = Effect.fn("LanguageServers.affectedBy")(function* (
+    input: LanguageServerUpdateSettingsInput,
+  ) {
+    const { cwd, change } = input;
+    const known = [...new Set([cwd, ...routeTables.keys()])];
+    if (change.type === "toolchain") return [cwd];
+    if (change.type === "custom" || change.type === "removeCustom") return known;
+    if (change.scope === "machine") return known;
+    const project = yield* projectKeyOf(cwd);
+    const keys = yield* Effect.forEach(known, projectKeyOf);
+    return known.filter((_, index) => keys[index] === project);
+  });
+
+  const updateSettings: LanguageServers["Service"]["updateSettings"] = Effect.fn(
+    "LanguageServers.updateSettings",
+  )(function* (input) {
+    const { cwd, change } = input;
+    yield* assertProject(cwd);
+    const invalid = (message: string) => failure("invalid", message);
+    // Known before the write, and with it: a project's first setting decides `layersOf`.
+    const project = yield* projectKeyOf(cwd);
+    if (change.type === "toolchain" && change.path !== null) {
+      const listed = yield* installer.pythonInterpreters(cwd);
+      if (!listed.some((option) => option.path === change.path)) {
+        return yield* invalid("That interpreter isn't one found for this checkout.");
+      }
+    }
+    if (change.type === "order") {
+      const servers = Object.values(options.specs).flatMap((spec) =>
+        spec !== undefined &&
+        isBuiltInLanguageServerId(spec.id) &&
+        languageServerLanguage(spec.id) === change.language
+          ? [spec.id]
+          : [],
+      );
+      const unknown = change.order.find((server) => !servers.includes(server));
+      if (unknown !== undefined) return yield* invalid(`${unknown} doesn't serve that language.`);
+    }
+    if (change.type === "server" && specOf(change.server) === undefined) {
+      return yield* invalid(`${change.server} isn't a language server here.`);
+    }
+    yield* settings
+      .update((current) =>
+        Effect.gen(function* () {
+          const inLayer = (
+            scope: "machine" | "project",
+            edit: (layer: typeof EMPTY_LAYER) => typeof EMPTY_LAYER,
+          ) => {
+            if (scope === "machine") return { ...current, machine: edit(current.machine) };
+            const layer = Object.hasOwn(current.projects, project)
+              ? current.projects[project]!
+              : EMPTY_LAYER;
+            return { ...current, projects: { ...current.projects, [project]: edit(layer) } };
+          };
+          switch (change.type) {
+            case "server":
+              return inLayer(change.scope, (layer) => {
+                const { [change.server]: _replaced, ...others } = layer.servers;
+                return {
+                  ...layer,
+                  servers:
+                    Object.keys(change.override).length === 0
+                      ? others
+                      : { ...others, [change.server]: change.override },
+                };
+              });
+            case "order":
+              return inLayer(change.scope, (layer) => {
+                const { [change.language]: _replaced, ...others } = layer.order;
+                return {
+                  ...layer,
+                  order:
+                    change.order.length === 0
+                      ? others
+                      : { ...others, [change.language]: change.order },
+                };
+              });
+            case "custom": {
+              const fields = normalizeCustomServer(change.server);
+              if ("problem" in fields) return yield* Effect.fail(fields.problem);
+              if (change.id !== null && !current.custom.some((custom) => custom.id === change.id)) {
+                return yield* Effect.fail("That language server has been removed.");
+              }
+              const id = change.id ?? customServerId(fields.name, current.custom);
+              return {
+                ...current,
+                custom: [...current.custom.filter((custom) => custom.id !== id), { id, ...fields }],
+              };
+            }
+            case "removeCustom":
+              return {
+                ...current,
+                custom: current.custom.filter((custom) => custom.id !== change.id),
+              };
+            case "toolchain": {
+              const { [cwd]: _replaced, ...others } = current.toolchains;
+              return {
+                ...current,
+                toolchains:
+                  change.path === null ? others : { ...others, [cwd]: { python: change.path } },
+              };
+            }
+          }
+        }),
+      )
+      .pipe(Effect.mapError(invalid));
+    yield* reconfigure(yield* affectedBy(input));
+  }, Effect.provideContext(processServices));
+
+  const routes: LanguageServers["Service"]["routes"] = (cwd) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        yield* assertProject(cwd);
+        const subscription = yield* PubSub.subscribe(routeEvents);
+        const first = yield* routesOf(cwd);
+        return Stream.concat(
+          Stream.succeed(first),
+          Stream.fromSubscription(subscription).pipe(
+            Stream.filter((event) => event.cwd === cwd),
+            Stream.map(() => routeTables.get(cwd) ?? first),
+          ),
+        );
+      }),
+    );
 
   const changeTrust = Effect.fn("LanguageServers.changeTrust")(function* (
     cwd: string,
@@ -1747,7 +2158,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       if ((yield* trust.keyOf(instance.cwd)) !== project) continue;
       const { state, restricted } = instance.status;
       // A stopped or capped one takes the new trust when it next starts.
-      if (state === "stopped" || state === "capped") continue;
+      if (state === "stopped" || state === "capped" || state === "disabled") continue;
       if (state === "ready" && restricted === !trusted) continue;
       instance.crashes = 0;
       yield* fork(
@@ -1790,7 +2201,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const logsOf: LanguageServers["Service"]["logs"] = (target) =>
     Stream.unwrap(
       Effect.gen(function* () {
-        if (options.specs[target.server] === undefined) {
+        if (specOf(target.server) === undefined) {
           return yield* failure("unsupported", "That language server is not available here.");
         }
         yield* assertProject(target.cwd);
@@ -2237,16 +2648,22 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const openOn = (primary: Instance, relativePath: string) =>
     [
       primary,
-      ...languageServersForPath(relativePath)
-        .filter(({ server }) => server !== primary.spec.id)
+      ...routesOn(primary.cwd, relativePath)
+        .filter(({ server, off }) => !off && server !== primary.spec.id)
         .flatMap(({ server }) => instances.get(`${primary.cwd}\0${server}`) ?? []),
     ].filter((instance) => {
       const openGeneration = instance.docs.get(relativePath)?.openOn;
       return instance.running !== null && openGeneration === instance.running.generation;
     });
 
-  const formatterOrder = (primary: Instance, serving: ReadonlyArray<Instance>) => {
-    const order = primary.spec.formatters ?? [];
+  const formatterOrder = (
+    primary: Instance,
+    relativePath: string,
+    serving: ReadonlyArray<Instance>,
+  ) => {
+    // The language's own list, whoever leads it now.
+    const usual = languageServerForPath(relativePath)?.server;
+    const order = primary.spec.formatters ?? (usual && options.specs[usual]?.formatters) ?? [];
     const rank = (instance: Instance) => {
       const at = order.indexOf(instance.spec.id);
       return at < 0 ? order.length : at;
@@ -2254,32 +2671,18 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     return serving.toSorted((a, b) => rank(a) - rank(b));
   };
 
-  /** The companions a checkout uses for this file, as read at its primary's last Restart. */
-  const activeCompanions = Effect.fn("LanguageServers.activeCompanions")(function* (
-    primary: Instance,
-    relativePath: string,
-  ) {
-    const [first, ...companions] = languageServersForPath(relativePath);
-    const active: Array<LanguageServerForPath> = [];
-    if (first?.server !== primary.spec.id) return active;
-    for (const companion of companions) {
-      const spec = options.specs[companion.server];
-      if (spec === undefined) continue;
-      let known = primary.activation.get(spec.id);
-      if (known === undefined) {
-        known = (yield* installer.activationOf(primary.cwd, spec)).active;
-        primary.activation.set(spec.id, known);
-      }
-      if (known) active.push(companion);
-    }
-    return active;
-  });
+  /** The companions on this file with this primary: a stale session's has none. */
+  const activeCompanions = (primary: Instance, relativePath: string) => {
+    const routes = routesOn(primary.cwd, relativePath);
+    if (primaryLanguageServerRoute(routes)?.server !== primary.spec.id) return [];
+    return routes.filter(({ server, off }) => !off && server !== primary.spec.id);
+  };
 
   /** Started and held at once: a companion with no file would have nothing to stop it. */
   const holdCompanion = (
     primary: Instance,
     relativePath: string,
-    { server, languageId }: LanguageServerForPath,
+    { server, languageId }: LanguageServerRoute,
   ) =>
     use({ cwd: primary.cwd, server }).pipe(
       Effect.flatMap((instance) =>
@@ -2325,7 +2728,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     file: OpenFile,
   ) {
     const { primary } = session;
-    const wanted = yield* activeCompanions(primary, relativePath);
+    const wanted = activeCompanions(primary, relativePath);
     const isHeld = (server: LanguageServerId) =>
       file.held.some((held) => held.instance.spec.id === server);
     for (const held of file.held.slice(1)) {
@@ -2361,7 +2764,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   });
 
   const serverRank = (relativePath: string, instance: Instance) =>
-    languageServersForPath(relativePath).findIndex(({ server }) => server === instance.spec.id);
+    routesOn(instance.cwd, relativePath).findIndex(({ server }) => server === instance.spec.id);
 
   const onSessionNotification = Effect.fn("LanguageServers.sessionNotification")(function* (
     session: Session,
@@ -2374,7 +2777,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const relativePath = relativePathOf(primary, uri);
         if (relativePath === null || session.open.has(relativePath)) return;
         const languageId =
-          languageServerForPath(relativePath)?.languageId ?? message.params.textDocument.languageId;
+          routesOn(primary.cwd, relativePath).find(({ server }) => server === primary.spec.id)
+            ?.languageId ?? message.params.textDocument.languageId;
         const file: OpenFile = { uri, held: [] };
         session.open.set(relativePath, file);
         const doc = yield* holdDoc(primary, relativePath, String(languageId));
@@ -2647,7 +3051,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
     const route = ROUTES.get(method);
     const reachable = relativePath === null ? [] : openOn(primary, relativePath);
-    const ordered = FORMATTING_METHODS.has(method) ? formatterOrder(primary, reachable) : reachable;
+    const ordered =
+      FORMATTING_METHODS.has(method) && relativePath !== null
+        ? formatterOrder(primary, relativePath, reachable)
+        : reachable;
     const capable =
       route === undefined
         ? []
@@ -2840,6 +3247,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     switch (status.state) {
       case "stopped":
         return failure("not-running", "The language server was stopped; restart it in Astrolabe.");
+      case "disabled":
+        return failure("not-running", "The language server is off in the user's settings.");
       case "trust-needed":
         return failure(
           "trust-needed",
@@ -2879,7 +3288,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     primary: Instance,
     relativePath: string,
   ) {
-    const wanted = yield* activeCompanions(primary, relativePath);
+    const wanted = activeCompanions(primary, relativePath);
     const held = yield* Effect.forEach(wanted, (companion) =>
       Effect.acquireRelease(holdCompanion(primary, relativePath, companion), ({ instance, doc }) =>
         releaseDoc(instance, doc),
@@ -2909,13 +3318,24 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     }
   });
 
-  const diagnostics: LanguageServers["Service"]["diagnostics"] = Effect.fn(
-    "LanguageServers.diagnostics",
-  )(function* (input) {
-    const match = languageServerForPath(input.relativePath);
+  /** What runs on a file for an agent, in order, primary first. */
+  const primaryOn = Effect.fn("LanguageServers.primaryOn")(function* (
+    cwd: string,
+    relativePath: string,
+  ) {
+    const table = yield* routesOf(cwd);
+    const routes = languageServerRoutesForPath(relativePath, table);
+    const match = primaryLanguageServerRoute(routes);
     if (match === null) {
       return yield* failure("unsupported", "No language server reads this kind of file.");
     }
+    return { match, routes };
+  });
+
+  const diagnostics: LanguageServers["Service"]["diagnostics"] = Effect.fn(
+    "LanguageServers.diagnostics",
+  )(function* (input) {
+    const { match } = yield* primaryOn(input.cwd, input.relativePath);
     const instance = yield* use({ cwd: input.cwd, server: match.server });
     yield* assertUsable(instance);
     return yield* Effect.scoped(
@@ -2962,91 +3382,104 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   const locate: LanguageServers["Service"]["locate"] = Effect.fn("LanguageServers.locate")(
     function* (input) {
-      const match = languageServerForPath(input.relativePath);
-      if (match === null) {
-        return yield* failure("unsupported", "No language server reads this kind of file.");
-      }
-      const instance = yield* use({ cwd: input.cwd, server: match.server });
-      yield* assertUsable(instance);
-      const { method, capability } = LOCATE_METHODS[input.kind];
-      return yield* Effect.scoped(
-        Effect.gen(function* () {
-          const doc = yield* Effect.acquireRelease(
-            holdDoc(instance, input.relativePath, match.languageId),
-            (held) => releaseDoc(instance, held),
-          );
-          yield* until(doc, () => doc.loadId !== null || !instance.docs.has(input.relativePath));
-          if (doc.loadId === null) {
-            return yield* failure("document", `'${input.relativePath}' could not be opened.`);
-          }
-          const synced = yield* documents
-            .sync({ cwd: instance.cwd, relativePath: input.relativePath })
-            .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
-          const running = yield* readyForAgent(instance);
-          if (!running.capabilities?.[capability]) {
-            return yield* failure(
-              "unsupported",
-              `The language server cannot find ${input.kind} here.`,
-            );
-          }
-          yield* until(
-            doc,
-            () =>
-              doc.loadId !== synced.loadId ||
-              (doc.version >= synced.version && doc.openOn !== null),
-          );
-          const text = doc.texts.get(doc.version)!;
-          if (input.line > text.lines) {
-            return yield* failure(
-              "document",
-              `'${input.relativePath}' has ${text.lines} lines, not ${input.line}.`,
-            );
-          }
-          const lineText = text.line(input.line).text;
-          const character =
-            input.column !== undefined
-              ? input.column - 1
-              : input.symbol !== undefined
-                ? lineText.indexOf(input.symbol)
-                : 0;
-          if (character < 0) {
-            return yield* failure(
-              "document",
-              `'${input.symbol}' is not on line ${input.line} of '${input.relativePath}'.`,
-            );
-          }
-          if (instance.running !== running) {
-            return yield* failure("failed", "The language server restarted; try again.");
-          }
-          const { response } = running.connection.request(method, {
-            textDocument: { uri: doc.uri },
-            position: { line: input.line - 1, character },
-            ...(input.kind === "references" ? { context: { includeDeclaration: true } } : {}),
-          });
-          const answer = yield* response.pipe(
-            Effect.mapError((error) => failure("failed", error.message, error)),
-          );
-          const all = locationsOf(answer);
-          const listed = all.slice(0, LOCATIONS_LISTED);
-          return {
-            locations: yield* describeLocations(instance, listed),
-            truncated: all.length > listed.length,
-          };
-        }),
-      ).pipe(
-        Effect.timeoutOrElse({
-          duration: options.diagnosticsTimeout,
-          orElse: () =>
-            Effect.fail(
-              failure(
-                "timeout",
-                "The language server is still loading the project. Try again shortly.",
-              ),
+      const { match, routes } = yield* primaryOn(input.cwd, input.relativePath);
+      const later = routes.filter(({ server, off }) => !off && server !== match.server);
+      // A language can lead with a server that doesn't navigate; the next that does answers.
+      return yield* locateOn(match, input).pipe(
+        Effect.catchIf(
+          (error) => error.reason === "unsupported" && later.length > 0,
+          (error) =>
+            Effect.firstSuccessOf(later.map((route) => locateOn(route, input))).pipe(
+              Effect.mapError(() => error),
             ),
-        }),
+        ),
       );
     },
   );
+
+  const locateOn = Effect.fn("LanguageServers.locateOn")(function* (
+    match: LanguageServerRoute,
+    input: Parameters<LanguageServers["Service"]["locate"]>[0],
+  ) {
+    const instance = yield* use({ cwd: input.cwd, server: match.server });
+    yield* assertUsable(instance);
+    const { method, capability } = LOCATE_METHODS[input.kind];
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const doc = yield* Effect.acquireRelease(
+          holdDoc(instance, input.relativePath, match.languageId),
+          (held) => releaseDoc(instance, held),
+        );
+        yield* until(doc, () => doc.loadId !== null || !instance.docs.has(input.relativePath));
+        if (doc.loadId === null) {
+          return yield* failure("document", `'${input.relativePath}' could not be opened.`);
+        }
+        const synced = yield* documents
+          .sync({ cwd: instance.cwd, relativePath: input.relativePath })
+          .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
+        const running = yield* readyForAgent(instance);
+        if (!running.capabilities?.[capability]) {
+          return yield* failure(
+            "unsupported",
+            `The language server cannot find ${input.kind} here.`,
+          );
+        }
+        yield* until(
+          doc,
+          () =>
+            doc.loadId !== synced.loadId || (doc.version >= synced.version && doc.openOn !== null),
+        );
+        const text = doc.texts.get(doc.version)!;
+        if (input.line > text.lines) {
+          return yield* failure(
+            "document",
+            `'${input.relativePath}' has ${text.lines} lines, not ${input.line}.`,
+          );
+        }
+        const lineText = text.line(input.line).text;
+        const character =
+          input.column !== undefined
+            ? input.column - 1
+            : input.symbol !== undefined
+              ? lineText.indexOf(input.symbol)
+              : 0;
+        if (character < 0) {
+          return yield* failure(
+            "document",
+            `'${input.symbol}' is not on line ${input.line} of '${input.relativePath}'.`,
+          );
+        }
+        if (instance.running !== running) {
+          return yield* failure("failed", "The language server restarted; try again.");
+        }
+        const { response } = running.connection.request(method, {
+          textDocument: { uri: doc.uri },
+          position: { line: input.line - 1, character },
+          ...(input.kind === "references" ? { context: { includeDeclaration: true } } : {}),
+        });
+        const answer = yield* response.pipe(
+          Effect.mapError((error) => failure("failed", error.message, error)),
+        );
+        const all = locationsOf(answer);
+        const listed = all.slice(0, LOCATIONS_LISTED);
+        return {
+          locations: yield* describeLocations(instance, listed),
+          truncated: all.length > listed.length,
+        };
+      }),
+    ).pipe(
+      Effect.timeoutOrElse({
+        duration: options.diagnosticsTimeout,
+        orElse: () =>
+          Effect.fail(
+            failure(
+              "timeout",
+              "The language server is still loading the project. Try again shortly.",
+            ),
+          ),
+      }),
+    );
+  });
 
   /** Tells the server of the waiting changes it watches, except to files it has open here. */
   const flushChanges = (instance: Instance) => {
@@ -3078,6 +3511,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   const filesChanged: LanguageServers["Service"]["filesChanged"] = (input) =>
     Effect.suspend(() => {
+      const projectFileChanged = input.changes.some(
+        ({ relativePath }) => relativePath === PROJECT_FILE,
+      );
       const watching = [...instances.values()].filter((instance) => instance.cwd === input.cwd);
       return Effect.forEach(
         watching,
@@ -3098,6 +3534,14 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           );
         },
         { discard: true },
+      ).pipe(
+        Effect.andThen(
+          projectFileChanged && routeTables.has(input.cwd)
+            ? reconfigure([input.cwd]).pipe(
+                Effect.ignore({ log: "Warn", message: "Could not re-read a project's settings." }),
+              )
+            : Effect.void,
+        ),
       );
     });
 
@@ -3118,13 +3562,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const formatForSave = Effect.fn("LanguageServers.formatForSave")(function* (
     input: DocumentSaveInput & { readonly format: NonNullable<DocumentSaveInput["format"]> },
   ) {
-    const match = languageServerForPath(input.relativePath);
+    const match = primaryLanguageServerRoute(routesOn(input.cwd, input.relativePath));
     const primary = match && instances.get(`${input.cwd}\0${match.server}`);
     if (!primary) return;
     // Only a file an editor holds open here has a running server and the text it formats.
-    const formatter = formatterOrder(primary, openOn(primary, input.relativePath)).find(
-      (instance) => instance.running?.capabilities?.documentFormattingProvider,
-    );
+    const formatter = formatterOrder(
+      primary,
+      input.relativePath,
+      openOn(primary, input.relativePath),
+    ).find((instance) => instance.running?.capabilities?.documentFormattingProvider);
     const doc = formatter?.docs.get(input.relativePath);
     const running = formatter?.running;
     if (!doc || !running || doc.loadId !== input.loadId) return;
@@ -3187,6 +3633,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   return LanguageServers.of({
     problems: problemsOf,
+    routes,
+    toolchains,
+    updateSettings,
     save,
     filesChanged,
     locate,

@@ -1,4 +1,8 @@
-import type { LanguageServerId } from "@t3tools/contracts";
+import type {
+  BuiltInLanguageServerId,
+  LanguageServerId,
+  LanguageServerToolchainKind,
+} from "@t3tools/contracts";
 
 /**
  * Language servers as data: which to run for a checkout, where its binary comes from, its
@@ -87,11 +91,16 @@ export interface Launch {
   readonly go?: GoSource;
   /** `{data}` is a folder of the server's own for this checkout, under the cache. */
   readonly args: ReadonlyArray<string>;
+  /** Over the environment's own. */
+  readonly env?: Readonly<Record<string, string>>;
+  /** What a person named in settings: it runs wherever the name leads, and isn't second-guessed. */
+  readonly chosen?: boolean;
   /** `{toolchain}` is replaced by the toolchain's folder. */
   readonly initializationOptions?: unknown;
   /**
    * The answers to the server's `workspace/configuration`, by section. `{python}` is the
-   * checkout's virtual environment interpreter; a value naming one the checkout lacks is left out.
+   * interpreter chosen for the checkout, or its virtual environment's; a value naming one the
+   * checkout lacks is left out.
    * `{rootUri}` and `{rootName}` are the checkout's.
    */
   readonly settings?: Readonly<Record<string, unknown>>;
@@ -122,6 +131,10 @@ export interface LanguageServerSpec {
   readonly hint?: { readonly unless: ReadonlyArray<string>; readonly message: string };
   /** For a language's primary: who may format its files, in order. Without it, the primary. */
   readonly formatters?: ReadonlyArray<LanguageServerId>;
+  /** The toolchain it reads, whose choice restarts it. */
+  readonly usesToolchain?: LanguageServerToolchainKind;
+  /** Added in settings to run beside a language's servers, so it goes first past the memory budget. */
+  readonly joins?: boolean;
   /**
    * For a companion: what shows the checkout uses it, read at its root. Without it, every
    * checkout does.
@@ -175,7 +188,7 @@ const TYPESCRIPT_SETTINGS = {
 const CLANGD_RELEASE = "https://github.com/clangd/clangd/releases/download/23.1.0";
 const RUFF_RELEASE = "https://github.com/astral-sh/ruff/releases/download/0.17.4";
 
-export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerSpec>> = {
+export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, LanguageServerSpec>> = {
   typescript: {
     id: "typescript",
     name: "TypeScript",
@@ -240,6 +253,7 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     },
     // basedpyright has no formatter of its own today; a later one must not fight Ruff's.
     formatters: ["ruff", "basedpyright"],
+    usesToolchain: "python",
     launches: [
       {
         name: "basedpyright",

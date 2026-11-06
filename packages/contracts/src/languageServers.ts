@@ -10,7 +10,7 @@ import { DocumentChangeSetJson, DocumentClientId, DocumentLoadId } from "./docum
  * `languageServers.send`, one session per editor however many servers stand behind it.
  */
 
-export const LanguageServerId = Schema.Literals([
+export const BuiltInLanguageServerId = Schema.Literals([
   "typescript",
   "basedpyright",
   "rust-analyzer",
@@ -21,65 +21,78 @@ export const LanguageServerId = Schema.Literals([
   "eslint",
   "tailwindcss",
 ]);
+export type BuiltInLanguageServerId = typeof BuiltInLanguageServerId.Type;
+
+/** A server someone added in settings: `custom:` and a slug of its name. */
+export const CustomLanguageServerId = Schema.TemplateLiteral(["custom:", Schema.String]).check(
+  Schema.isPattern(/^custom:[a-z0-9][a-z0-9-]{0,63}$/),
+);
+export type CustomLanguageServerId = typeof CustomLanguageServerId.Type;
+
+export const LanguageServerId = Schema.Union([BuiltInLanguageServerId, CustomLanguageServerId]);
 export type LanguageServerId = typeof LanguageServerId.Type;
 
+export const isBuiltInLanguageServerId = Schema.is(BuiltInLanguageServerId);
+
 /** Each primary server's file extensions, and the LSP language id it opens each with. */
-const LANGUAGE_IDS: Readonly<Partial<Record<LanguageServerId, Readonly<Record<string, string>>>>> =
-  {
-    typescript: {
-      ts: "typescript",
-      mts: "typescript",
-      cts: "typescript",
-      tsx: "typescriptreact",
-      js: "javascript",
-      mjs: "javascript",
-      cjs: "javascript",
-      jsx: "javascriptreact",
-    },
-    basedpyright: { py: "python", pyi: "python" },
-    "rust-analyzer": { rs: "rust" },
-    gopls: { go: "go" },
-    clangd: {
-      c: "c",
-      // clangd reads a header's language from the compile commands, not this id.
-      h: "cpp",
-      cc: "cpp",
-      cpp: "cpp",
-      cxx: "cpp",
-      "c++": "cpp",
-      hh: "cpp",
-      hpp: "cpp",
-      hxx: "cpp",
-      "h++": "cpp",
-      ipp: "cpp",
-      tpp: "cpp",
-      m: "objective-c",
-      mm: "objective-cpp",
-    },
-    jdtls: { java: "java" },
-  };
+const LANGUAGE_IDS: Readonly<
+  Partial<Record<BuiltInLanguageServerId, Readonly<Record<string, string>>>>
+> = {
+  typescript: {
+    ts: "typescript",
+    mts: "typescript",
+    cts: "typescript",
+    tsx: "typescriptreact",
+    js: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    jsx: "javascriptreact",
+  },
+  basedpyright: { py: "python", pyi: "python" },
+  "rust-analyzer": { rs: "rust" },
+  gopls: { go: "go" },
+  clangd: {
+    c: "c",
+    // clangd reads a header's language from the compile commands, not this id.
+    h: "cpp",
+    cc: "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    "c++": "cpp",
+    hh: "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
+    "h++": "cpp",
+    ipp: "cpp",
+    tpp: "cpp",
+    m: "objective-c",
+    mm: "objective-cpp",
+  },
+  jdtls: { java: "java" },
+};
 
 /** The extensions each companion joins the primary on, in the order they follow it. */
-const COMPANION_EXTENSIONS: ReadonlyArray<readonly [LanguageServerId, ReadonlySet<string>]> = [
-  ["ruff", new Set(["py", "pyi"])],
-  ["eslint", new Set(["ts", "mts", "cts", "tsx", "js", "mjs", "cjs", "jsx"])],
-  ["tailwindcss", new Set(["ts", "tsx", "js", "jsx"])],
-];
+const COMPANION_EXTENSIONS: ReadonlyArray<readonly [BuiltInLanguageServerId, ReadonlySet<string>]> =
+  [
+    ["ruff", new Set(["py", "pyi"])],
+    ["eslint", new Set(["ts", "mts", "cts", "tsx", "js", "mjs", "cjs", "jsx"])],
+    ["tailwindcss", new Set(["ts", "tsx", "js", "jsx"])],
+  ];
 
 const SERVER_FOR_EXTENSION: ReadonlyMap<
   string,
-  { readonly server: LanguageServerId; readonly languageId: string }
+  { readonly server: BuiltInLanguageServerId; readonly languageId: string }
 > = new Map(
   Object.entries(LANGUAGE_IDS).flatMap(([server, extensions]) =>
     Object.entries(extensions).map(
       ([extension, languageId]) =>
-        [extension, { server: server as LanguageServerId, languageId }] as const,
+        [extension, { server: server as BuiltInLanguageServerId, languageId }] as const,
     ),
   ),
 );
 
 export interface LanguageServerForPath {
-  readonly server: LanguageServerId;
+  readonly server: BuiltInLanguageServerId;
   readonly languageId: string;
 }
 
@@ -89,13 +102,20 @@ const extensionOf = (path: string) => {
   return dot <= 0 ? null : name.slice(dot + 1).toLowerCase();
 };
 
-/** The server that answers for a file, and the LSP language id it opens it with; null for none. */
+/** The extensions built-in servers read, for what lists them all. */
+export const languageServerExtensions = () => [...SERVER_FOR_EXTENSION.keys()];
+
+/**
+ * The server that answers for a file by default, and the LSP language id it opens it with; null
+ * for none. An environment's settings can change this: `languageServerRoutesForPath` is what
+ * runs. Clients use it until their environment has said.
+ */
 export function languageServerForPath(path: string): LanguageServerForPath | null {
   const extension = extensionOf(path);
   return extension === null ? null : (SERVER_FOR_EXTENSION.get(extension) ?? null);
 }
 
-/** Every server that can serve a file, primary first; a checkout may not activate them all. */
+/** Every built-in server that can serve a file, primary first; a checkout may not use them all. */
 export function languageServersForPath(path: string): ReadonlyArray<LanguageServerForPath> {
   const primary = languageServerForPath(path);
   if (primary === null) return [];
@@ -112,9 +132,56 @@ export function languageServersForPath(path: string): ReadonlyArray<LanguageServ
 export const isCompanionLanguageServer = (server: LanguageServerId) =>
   COMPANION_EXTENSIONS.some(([companion]) => companion === server);
 
+/** The server leading a built-in's language by default: itself, or a companion's primary. */
+export const languageServerLanguage = (server: BuiltInLanguageServerId) => {
+  const joined = COMPANION_EXTENSIONS.find(([companion]) => companion === server)?.[1];
+  const [extension] = joined ?? [];
+  return extension === undefined ? server : (SERVER_FOR_EXTENSION.get(extension)?.server ?? server);
+};
+
+export const LanguageServerToolchainKind = Schema.Literals(["python"]);
+export type LanguageServerToolchainKind = typeof LanguageServerToolchainKind.Type;
+
+/** A server on a kind of file in one checkout, as its environment's settings have it. */
+export const LanguageServerRoute = Schema.Struct({
+  server: LanguageServerId,
+  name: Schema.String,
+  languageId: Schema.String,
+  /** Turned off in settings: it doesn't run, and says so. */
+  off: Schema.Boolean,
+  /** The toolchain it reads, which people can choose. */
+  toolchain: Schema.NullOr(LanguageServerToolchainKind),
+});
+export type LanguageServerRoute = typeof LanguageServerRoute.Type;
+
+/** What serves each file extension in a checkout, primary first. */
+export const LanguageServerRoutes = Schema.Struct({
+  extensions: Schema.Record(Schema.String, Schema.Array(LanguageServerRoute)),
+});
+export type LanguageServerRoutes = typeof LanguageServerRoutes.Type;
+
+export const LanguageServerRoutesInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
+export type LanguageServerRoutesInput = typeof LanguageServerRoutesInput.Type;
+
+export function languageServerRoutesForPath(
+  path: string,
+  routes: LanguageServerRoutes,
+): ReadonlyArray<LanguageServerRoute> {
+  const extension = extensionOf(path);
+  return extension !== null && Object.hasOwn(routes.extensions, extension)
+    ? (routes.extensions[extension] ?? [])
+    : [];
+}
+
+/** The server a file's session binds to: the first one on, or the first to show as off. */
+export const primaryLanguageServerRoute = (routes: ReadonlyArray<LanguageServerRoute>) =>
+  routes.find((route) => !route.off) ?? routes[0] ?? null;
+
 export const LanguageServerState = Schema.Literals([
   /** The project isn't trusted, and this server needs a download or runs its code. */
   "trust-needed",
+  /** Turned off in settings, which is the way back. */
+  "disabled",
   "downloading",
   "starting",
   "ready",
@@ -152,7 +219,124 @@ export const LanguageServerTarget = Schema.Struct({
 });
 export type LanguageServerTarget = typeof LanguageServerTarget.Type;
 
-/** What each language server would run for a checkout, without starting or downloading it. */
+const ENVIRONMENT_VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ShortString = Schema.String.check(Schema.isMaxLength(4096));
+const LanguageServerEnv = Schema.Record(
+  Schema.String.check(Schema.isPattern(ENVIRONMENT_VARIABLE)),
+  ShortString,
+);
+const LanguageServerJson = Schema.Record(Schema.String, Schema.Unknown);
+const LanguageServerArgs = Schema.Array(ShortString).check(Schema.isMaxLength(100));
+
+/** One server's settings at one scope; what's left out comes from the scope below. */
+export const LanguageServerOverride = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  /** A path, or a name on PATH, in place of how the server is normally found. */
+  binary: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(4096))),
+  /** In place of its usual arguments. */
+  args: Schema.optionalKey(LanguageServerArgs),
+  env: Schema.optionalKey(LanguageServerEnv),
+  /** Merged over what the server is normally started with. */
+  initializationOptions: Schema.optionalKey(LanguageServerJson),
+  /** Merged over its answers to `workspace/configuration`. */
+  settings: Schema.optionalKey(LanguageServerJson),
+});
+export type LanguageServerOverride = typeof LanguageServerOverride.Type;
+
+/** Settings at one scope. `servers` and `order` are keyed by server id, checked as they're set. */
+export const LanguageServerSettingsLayer = Schema.Struct({
+  servers: Schema.Record(Schema.String, LanguageServerOverride),
+  /** A language's servers, primary first, by the server that leads it by default. */
+  order: Schema.Record(Schema.String, Schema.Array(BuiltInLanguageServerId)),
+});
+export type LanguageServerSettingsLayer = typeof LanguageServerSettingsLayer.Type;
+
+/** A server someone added in settings. No code: it runs in trusted projects only. */
+export const CustomLanguageServerFields = Schema.Struct({
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(80)),
+  /** A path, or a name on PATH. */
+  command: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+  args: LanguageServerArgs,
+  env: LanguageServerEnv,
+  /** Each file extension it serves, and the LSP language id it opens those files with. */
+  languageIds: Schema.Record(Schema.String, TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
+  /** When set, it runs only in checkouts with one of these at their root. */
+  rootFiles: Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
+  /** Takes the default server's place on its extensions, or else runs beside it. */
+  replaces: Schema.Boolean,
+});
+export type CustomLanguageServerFields = typeof CustomLanguageServerFields.Type;
+
+export const CustomLanguageServer = Schema.Struct({
+  id: CustomLanguageServerId,
+  ...CustomLanguageServerFields.fields,
+});
+export type CustomLanguageServer = typeof CustomLanguageServer.Type;
+
+export const LanguageServerSettingsScope = Schema.Literals(["machine", "project"]);
+export type LanguageServerSettingsScope = typeof LanguageServerSettingsScope.Type;
+
+export const LanguageServerSettingsChange = Schema.Union([
+  /** Replaces a server's settings at a scope; an empty one clears them. */
+  Schema.Struct({
+    type: Schema.Literal("server"),
+    scope: LanguageServerSettingsScope,
+    server: LanguageServerId,
+    override: LanguageServerOverride,
+  }),
+  /** Empty goes back to the language's usual order. */
+  Schema.Struct({
+    type: Schema.Literal("order"),
+    scope: LanguageServerSettingsScope,
+    language: BuiltInLanguageServerId,
+    order: Schema.Array(BuiltInLanguageServerId),
+  }),
+  /** Adds a server, or edits the one `id` names. */
+  Schema.Struct({
+    type: Schema.Literal("custom"),
+    id: Schema.NullOr(CustomLanguageServerId),
+    server: CustomLanguageServerFields,
+  }),
+  Schema.Struct({ type: Schema.Literal("removeCustom"), id: CustomLanguageServerId }),
+  /** This checkout's choice; null goes back to finding one automatically. */
+  Schema.Struct({
+    type: Schema.Literal("toolchain"),
+    kind: LanguageServerToolchainKind,
+    path: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(4096))),
+  }),
+]);
+export type LanguageServerSettingsChange = typeof LanguageServerSettingsChange.Type;
+
+export const LanguageServerUpdateSettingsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  change: LanguageServerSettingsChange,
+});
+export type LanguageServerUpdateSettingsInput = typeof LanguageServerUpdateSettingsInput.Type;
+
+export const LanguageServerToolchainsInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
+export type LanguageServerToolchainsInput = typeof LanguageServerToolchainsInput.Type;
+
+export const LanguageServerToolchainOption = Schema.Struct({
+  path: Schema.String,
+  /** ".venv", "pyenv 3.12.1". */
+  label: Schema.String,
+  /** Null when it can't be read without running it. */
+  version: Schema.NullOr(Schema.String),
+});
+export type LanguageServerToolchainOption = typeof LanguageServerToolchainOption.Type;
+
+/** A checkout's toolchain of one kind: what's here, what was chosen, and what servers get. */
+export const LanguageServerToolchains = Schema.Struct({
+  kind: LanguageServerToolchainKind,
+  /** Null: found automatically. */
+  selected: Schema.NullOr(Schema.String),
+  /** Null: servers look for one themselves. Always null in a project that isn't trusted. */
+  active: Schema.NullOr(LanguageServerToolchainOption),
+  trusted: Schema.Boolean,
+  options: Schema.Array(LanguageServerToolchainOption),
+});
+export type LanguageServerToolchains = typeof LanguageServerToolchains.Type;
+
 /** Names across a checkout's files, from its running servers or, without any, its code index. */
 export const ProjectSymbolsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -183,6 +367,17 @@ export const ProjectSymbols = Schema.Struct({
 });
 export type ProjectSymbols = typeof ProjectSymbols.Type;
 
+/** Where a setting came from: settings at either scope, or the checkout's own file. */
+export const LanguageServerSettingSource = Schema.Literals(["machine", "project", "file"]);
+export type LanguageServerSettingSource = typeof LanguageServerSettingSource.Type;
+
+export const LanguageServerOverrideEntry = Schema.Struct({
+  field: Schema.Literals(["enabled", "binary", "args", "env", "initializationOptions", "settings"]),
+  source: LanguageServerSettingSource,
+});
+export type LanguageServerOverrideEntry = typeof LanguageServerOverrideEntry.Type;
+
+/** What each language server would run for a checkout, without starting or downloading it. */
 export const LanguageServerCheckInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
 export type LanguageServerCheckInput = typeof LanguageServerCheckInput.Type;
 
@@ -204,13 +399,42 @@ export const LanguageServerCheck = Schema.Struct({
   message: Schema.NullOr(Schema.String),
   /** For a companion: whether this checkout uses it, and what says so. Null for a primary. */
   companion: Schema.NullOr(Schema.Struct({ active: Schema.Boolean, reason: Schema.String })),
+  /** Turned off in settings. */
+  off: Schema.Boolean,
+  /** The server leading its language by default; null for one added in settings. */
+  language: Schema.NullOr(BuiltInLanguageServerId),
+  /** What settings change about it, and where each came from. */
+  overrides: Schema.Array(LanguageServerOverrideEntry),
+  /** Servers added in settings that take its place on some of its files. */
+  replacedBy: Schema.Array(Schema.String),
 });
 export type LanguageServerCheck = typeof LanguageServerCheck.Type;
+
+/** A checkout's own `.astrolabe/language-servers.json`. */
+export const LanguageServerProjectFile = Schema.Struct({
+  /** Repository-relative. */
+  path: Schema.String,
+  /** Read: it's there and the project is trusted. */
+  read: Schema.Boolean,
+  /** Why it's ignored, when it can't be used. */
+  problem: Schema.NullOr(Schema.String),
+});
+export type LanguageServerProjectFile = typeof LanguageServerProjectFile.Type;
 
 export const LanguageServerCheckResult = Schema.Struct({
   /** Whether the checkout's project is trusted on this environment. */
   trusted: Schema.Boolean,
+  /** Each language's servers in the order they run, primary first. */
   servers: Schema.Array(LanguageServerCheck),
+  /** What Settings edits. */
+  settings: Schema.Struct({
+    machine: LanguageServerSettingsLayer,
+    project: LanguageServerSettingsLayer,
+    custom: Schema.Array(CustomLanguageServer),
+  }),
+  projectFile: LanguageServerProjectFile,
+  /** The environment's settings file can't be read: nothing it says applies. */
+  settingsProblem: Schema.NullOr(Schema.String),
 });
 export type LanguageServerCheckResult = typeof LanguageServerCheckResult.Type;
 
@@ -466,6 +690,8 @@ export const LanguageServerErrorReason = Schema.Literals([
   "unsupported",
   "trust-needed",
   "not-running",
+  /** Refused input from Settings; the message says what's wrong. */
+  "invalid",
   "failed",
   "timeout",
   /** The session is gone or never existed: open it again. */

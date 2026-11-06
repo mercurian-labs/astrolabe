@@ -31,6 +31,7 @@ import {
 } from "./registry.ts";
 import { parseJson } from "./json.ts";
 import { readTar, type TarFile } from "./tar.ts";
+import { checkoutInterpreters, findPythonInterpreters } from "./toolchains.ts";
 
 /**
  * Finding a language server's binary, in the ruled order: the project's own (or one installed on
@@ -87,13 +88,6 @@ const PROBE_TIMEOUT = Duration.seconds(10);
 const GO_INSTALL_TIMEOUT = Duration.minutes(10);
 const VERSION = /\d+\.\d+(?:\.\d+)?/;
 const GO_INSTALLS = ["/usr/local/go/bin/go", "/opt/homebrew/bin/go"];
-/** Where a checkout's virtual environment keeps its interpreter, tried in order. */
-const PYTHON_INTERPRETERS = [
-  ".venv/bin/python",
-  "venv/bin/python",
-  ".venv/Scripts/python.exe",
-  "venv/Scripts/python.exe",
-];
 
 const PACKAGE_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 
@@ -237,9 +231,8 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
         Effect.orElseSucceed(() => null),
       );
       // macOS's /usr/bin developer tools are shims that offer to install Xcode's tools when run.
-      if (onPath !== null && !(platform === "darwin" && onPath.startsWith("/usr/bin/"))) {
-        candidates.push(onPath);
-      }
+      const shim = platform === "darwin" && onPath?.startsWith("/usr/bin/") === true;
+      if (onPath !== null && (launch.chosen === true || !shim)) candidates.push(onPath);
     }
     for (const file of candidates) {
       if (!(yield* exists(file))) continue;
@@ -265,13 +258,27 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     };
   });
 
+  /** The checkout's virtual environment's interpreter, or null without one. */
   const pythonOf = Effect.fn("LanguageServers.pythonOf")(function* (cwd: string) {
-    for (const interpreter of PYTHON_INTERPRETERS) {
-      const file = path.join(cwd, interpreter);
+    for (const file of checkoutInterpreters(path, cwd)) {
       if (yield* exists(file)) return file;
     }
     return null;
   });
+
+  /** The interpreter a checkout's servers are told of: the chosen one while it's still there. */
+  const activePython = Effect.fn("LanguageServers.activePython")(function* (
+    cwd: string,
+    chosen: string | null,
+  ) {
+    return chosen !== null && (yield* exists(chosen)) ? chosen : yield* pythonOf(cwd);
+  });
+
+  const pythonInterpreters = (cwd: string) =>
+    findPythonInterpreters({ cwd, home, platform, environment }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
 
   /** What a launch downloads on this machine, or null when it has nothing for it. */
   const downloadOf = Effect.fn("LanguageServers.downloadOf")(function* (launch: Launch) {
@@ -316,13 +323,14 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     spec: LanguageServerSpec,
     trusted: boolean,
     probing: boolean,
+    chosenPython: string | null,
   ) {
-    const python = trusted ? yield* pythonOf(cwd) : null;
+    const python = trusted ? yield* activePython(cwd, chosenPython) : null;
     const rootUri = NodeURL.pathToFileURL(cwd).href;
     const data = path.join(
       options.cacheDir,
       "data",
-      spec.id,
+      spec.id.replace(":", "-"),
       NodeCrypto.createHash("sha256").update(cwd).digest("hex").slice(0, 16),
     );
     for (const listed of spec.launches) {
@@ -362,6 +370,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
         type: "ready",
         server: {
           ...found,
+          env: { ...found.env, ...launch.env },
           binary,
           name: name(packageVersion),
           source,
@@ -418,12 +427,13 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     cwd: string,
     spec: LanguageServerSpec,
     trusted: boolean,
+    chosenPython: string | null = null,
   ) {
-    const allowed = yield* walk(cwd, spec, trusted, true);
+    const allowed = yield* walk(cwd, spec, trusted, true, chosenPython);
     if (trusted || allowed.type === "ready") return allowed;
     // What trust would bring, unprobed: a probe runs in the checkout, and rustup's proxy obeys
     // the checkout's toolchain file.
-    const wanted = yield* walk(cwd, spec, true, false);
+    const wanted = yield* walk(cwd, spec, true, false, chosenPython);
     switch (wanted.type) {
       case "ready":
         return {
@@ -730,7 +740,10 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     const wanted = activation.packages.join(" or ");
     return {
       active: false,
-      reason: `Not active: no ${activation.description} or ${wanted} in package.json.`,
+      reason:
+        activation.packages.length === 0
+          ? `Not active: no ${activation.files.join(" or ")} at this checkout's root.`
+          : `Not active: no ${activation.description} or ${wanted} in package.json.`,
     };
   });
 
@@ -799,7 +812,15 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     return worktrees.includes(own) ? path.resolve(cwd, commonDir) : null;
   });
 
-  return { resolve, download, excludeFromGit, repositoryOf, activationOf };
+  return {
+    resolve,
+    download,
+    excludeFromGit,
+    repositoryOf,
+    activationOf,
+    activePython,
+    pythonInterpreters,
+  };
 });
 
 export type Installer = Effect.Success<ReturnType<typeof makeInstaller>>;

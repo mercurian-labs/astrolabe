@@ -24,6 +24,7 @@ import {
 
 const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = {
   "trust-needed": (name) => `${name} needs this project trusted`,
+  disabled: (name) => `${name}: Off in settings`,
   downloading: (name) => `Downloading ${name}…`,
   starting: (name) => `${name} starting…`,
   ready: (name) => name,
@@ -35,6 +36,7 @@ const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = 
 
 const STATES: Record<LanguageServerStatus["state"], string> = {
   "trust-needed": "Waiting for this project to be trusted",
+  disabled: "Off in settings",
   downloading: "Downloading",
   starting: "Starting",
   ready: "Running",

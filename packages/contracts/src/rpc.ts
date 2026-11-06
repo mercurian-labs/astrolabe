@@ -507,9 +507,14 @@ import {
   LanguageServerSetTraceInput,
   LanguageServerStatus,
   LanguageServerTarget,
+  LanguageServerRoutes,
+  LanguageServerRoutesInput,
+  LanguageServerToolchains,
+  LanguageServerToolchainsInput,
   LanguageServerTrustInput,
   LanguageServerUndoEditInput,
   LanguageServerUndoEditResult,
+  LanguageServerUpdateSettingsInput,
 } from "./languageServers.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
@@ -718,6 +723,9 @@ export const WS_METHODS = {
   languageServersSend: "languageServers.send",
   languageServersUndoEdit: "languageServers.undoEdit",
   languageServersProblems: "languageServers.problems",
+  languageServersRoutes: "languageServers.routes",
+  languageServersToolchains: "languageServers.toolchains",
+  languageServersUpdateSettings: "languageServers.updateSettings",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
   scheduledTasksSetEnabled: "scheduledTasks.setEnabled",
@@ -2418,6 +2426,27 @@ const WsLanguageServersUndoEditRpc = Rpc.make(WS_METHODS.languageServersUndoEdit
 });
 
 /** A checkout's problems now, then each file's as it changes. */
+/** What serves each kind of file in a checkout, then the whole table on each change. */
+const WsLanguageServersRoutesRpc = Rpc.make(WS_METHODS.languageServersRoutes, {
+  payload: LanguageServerRoutesInput,
+  success: LanguageServerRoutes,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** The interpreters a checkout could use; running none of them to find out. */
+const WsLanguageServersToolchainsRpc = Rpc.make(WS_METHODS.languageServersToolchains, {
+  payload: LanguageServerToolchainsInput,
+  success: LanguageServerToolchains,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Changes what runs: only the servers it affects restart. */
+const WsLanguageServersUpdateSettingsRpc = Rpc.make(WS_METHODS.languageServersUpdateSettings, {
+  payload: LanguageServerUpdateSettingsInput,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 const WsLanguageServersProblemsRpc = Rpc.make(WS_METHODS.languageServersProblems, {
   payload: LanguageServerProblemsInput,
   success: LanguageServerProblemsItem,
@@ -2834,6 +2863,9 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsLanguageServersSessionRpc,
   WsLanguageServersSendRpc,
   WsLanguageServersProblemsRpc,
+  WsLanguageServersRoutesRpc,
+  WsLanguageServersToolchainsRpc,
+  WsLanguageServersUpdateSettingsRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);
