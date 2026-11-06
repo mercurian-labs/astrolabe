@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
+import { withCanvasOutlines } from "../../../wiki/wikiViews.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
@@ -117,7 +118,9 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
     ),
   ),
   astrolabe_wiki_change_request: McpToolAccess.reads((input) =>
-    read((wikis, threadId) => wikis.changeRequestsGet({ ...target(input), threadId })),
+    read((wikis, threadId) =>
+      wikis.changeRequestsGet({ ...target(input), threadId }).pipe(Effect.map(withCanvasOutlines)),
+    ),
   ),
   // Amendments belong to the calling thread's change request; only a live thread may write.
   astrolabe_wiki_amend: McpToolAccess.actsAsCaller((input) =>

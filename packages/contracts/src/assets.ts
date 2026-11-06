@@ -31,6 +31,13 @@ export const AssetResource = Schema.Union([
     cwd: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
     path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
   }),
+  // A wiki's file as a commit holds it, so what exists only in a change request still shows.
+  Schema.TaggedStruct("wiki-file", {
+    wikiId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+    changeRequestId: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
+    commit: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
+    path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
+  }),
   Schema.TaggedStruct("attachment", {
     attachmentId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
     fileName: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(255))),
@@ -190,7 +197,9 @@ export class AssetPreviewTypeValidationError extends Schema.TaggedError<AssetPre
   },
 ) {
   override get message(): string {
-    return this.resource._tag === "media-file" || this.resource._tag === "draft-workspace-file"
+    return this.resource._tag === "media-file" ||
+      this.resource._tag === "draft-workspace-file" ||
+      this.resource._tag === "wiki-file"
       ? "Only images, videos, audio, HTML, and PDF files can be previewed."
       : "Only browser documents and images can be previewed.";
   }

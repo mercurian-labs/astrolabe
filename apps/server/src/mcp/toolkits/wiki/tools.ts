@@ -51,10 +51,12 @@ const WikiListTool = Tool.make("astrolabe_wiki_list", {
 const WikiReadTool = Tool.make("astrolabe_wiki_read", {
   ...shared,
   description:
-    "Read one note's full markdown and its outgoing and incoming links. A name that is linked to but not written yet returns exists:false. Your own unmerged amendments are visible here.",
+    "Read one note's full markdown and its outgoing and incoming links. A canvas (Name.canvas) reads as an outline of its cards, groups and arrows. A name that is linked to but not written yet returns exists:false. Your own unmerged amendments are visible here.",
   parameters: Schema.Struct({
     wiki,
-    name: Schema.NonEmptyString.annotate({ description: "The note's name, without .md." }),
+    name: Schema.NonEmptyString.annotate({
+      description: "The note's name, without .md, or a canvas's file name, with .canvas.",
+    }),
     changeRequestId: readFrom,
   }),
   success: WikiNoteResult,
@@ -65,7 +67,7 @@ const WikiReadTool = Tool.make("astrolabe_wiki_read", {
 const WikiSearchTool = Tool.make("astrolabe_wiki_search", {
   ...shared,
   description:
-    "Find notes whose name or text contains a phrase (case-insensitive). Returns note names with a few matching lines each; read a note for its full text.",
+    "Find notes and canvases whose name or text contains a phrase (case-insensitive). Returns their names with a few matching lines each; read one for its full text.",
   parameters: Schema.Struct({ wiki, query: TrimmedNonEmptyString, changeRequestId: readFrom }),
   success: Schema.Struct({
     commit: Schema.String,
@@ -228,7 +230,7 @@ const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
 const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
   ...shared,
   description:
-    "Review your thread's change request on a wiki (or a named one): its amendments, every changed note before and after, whether it merges cleanly into main, and the index errors it leaves.",
+    "Review your thread's change request on a wiki (or a named one): its amendments, every changed note before and after (a canvas as its outline), whether it merges cleanly into main, and the index errors it leaves.",
   parameters: Schema.Struct({
     wiki,
     changeRequestId: Schema.optional(

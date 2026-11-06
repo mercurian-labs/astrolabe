@@ -116,6 +116,17 @@ export function createWikiEnvironmentAtoms<R, E>(
       tag: WS_METHODS.wikiQuery,
       refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
     }),
+    /** Files by path, any depth, at a commit; a board's canvas and the notes its cards show. */
+    files: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:files",
+      tag: WS_METHODS.wikiReadFiles,
+      refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
+    }),
+    /** How code cards' files compare with their project's head. */
+    codeStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:code-status",
+      tag: WS_METHODS.wikiCodeStatus,
+    }),
     changeRequests,
     changeRequest: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:wiki:change-request",

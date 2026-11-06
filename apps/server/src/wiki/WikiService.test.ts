@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ProjectId, ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
+import { CommandId, ProjectId, ThreadId, type WikiError, WikiId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -25,12 +25,19 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as WikiService from "./WikiService.ts";
 import { WikiRegistryJson } from "./wikiStorage.ts";
+import { withCanvasOutlines } from "./wikiViews.ts";
+
+const CODE_REPOSITORY = {
+  canonicalKey: "example.test/acme/code",
+  locator: { source: "git-remote" as const, remoteName: "origin", remoteUrl: "git@example.test:a" },
+};
 
 const layerEnrichment = ProjectEnrichmentService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
-        resolve: () => Effect.succeed(null),
+        // Only the folder a code card's test names sits in a repository with a remote.
+        resolve: (cwd) => Effect.succeed(cwd.endsWith("/code") ? CODE_REPOSITORY : null),
       }),
       Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
         resolvePath: () => Effect.succeed(null),
@@ -615,6 +622,278 @@ it.effect("refuses a merge that conflicts with main", () =>
       const refused = yield* failure(wikis.merge({ wikiId, changeRequestId: id }));
       assert.equal(refused.reason, "conflict");
       assert.include(refused.message, "Beta.md");
+    }),
+  ),
+);
+
+it.effect("sends a canvas both sides changed to a conflict, never the Markdown merge", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const card = (text: string) => JSON.stringify({ nodes: [{ id: "a", type: "text", text }] });
+      yield* write(root, { "Board.canvas": card("old") });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Board"]);
+      const opened = yield* wikis.amend(
+        { wikiId, message: "Open", changes: { "Beta.md": "# Beta\n\nGrows.\n" } },
+        agent("thread-a"),
+      );
+      const { changeRequestId } = opened.changeRequest;
+      const worktree = yield* harness.folder("worktree");
+      yield* git(root, ["worktree", "add", "--quiet", worktree, `cr/${changeRequestId}`]);
+      yield* write(worktree, { "Board.canvas": card("from the change request") });
+      yield* wikis.saveWorktree(
+        { wikiId, changeRequestId, message: "Board in the CR" },
+        WikiService.person,
+      );
+      yield* write(root, { "Board.canvas": card("from main") });
+      yield* git(root, ["commit", "--quiet", "-am", "Board on main"]);
+      const { mergePreview } = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      assert.equal(mergePreview.status, "conflict");
+      assert.deepEqual(mergePreview.conflicts, ["Board.canvas"]);
+    }),
+  ),
+);
+
+it.effect("refuses a canvas in an amendment, while a worktree and a revert still land one", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis, changeRequestId, worktree } = yield* changeRequestWorktree(harness);
+      const refused = yield* failure(
+        wikis.amend(
+          { wikiId, message: "Draw", changes: { "Board.canvas": "{}" } },
+          agent("thread-a"),
+        ),
+      );
+      assert.equal(refused.reason, "invalid");
+      assert.include(refused.message, "Board.canvas is a canvas");
+
+      yield* write(worktree, { "Board.canvas": '{"nodes":[],"edges":[]}' });
+      const saved = yield* wikis.saveWorktree(
+        { wikiId, changeRequestId, message: "Hand edit" },
+        WikiService.person,
+      );
+      const reverted = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: saved.commit },
+        WikiService.person,
+      );
+      const read = yield* wikis.readFiles({
+        wikiId,
+        commit: reverted.commit,
+        paths: ["Board.canvas"],
+      });
+      assert.equal(read.files[0]?.exists, false);
+    }),
+  ),
+);
+
+it.effect("reads any file at a commit, and a change request's own at its head", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "deep/er/Note.md": "# Deep\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Deep"]);
+      const first = yield* git(root, ["rev-parse", "HEAD"]);
+      const created = yield* wikis.transform(
+        {
+          wikiId,
+          message: "New board",
+          transform: { kind: "canvas-create", file: "Board.canvas" },
+        },
+        agent("thread-a"),
+      );
+      const { changeRequestId } = created.changeRequest;
+
+      const onMain = yield* wikis.readFiles({
+        wikiId,
+        paths: ["deep/er/Note.md", "DEEP/ER/note.md", "Board.canvas"],
+      });
+      assert.equal(onMain.commit, first);
+      assert.deepEqual(
+        onMain.files.map((file) => [file.exists, file.file, file.text]),
+        [
+          [true, "deep/er/Note.md", "# Deep\n"],
+          [true, "deep/er/Note.md", "# Deep\n"],
+          [false, "Board.canvas", null],
+        ],
+      );
+      const inChange = yield* wikis.readFiles({
+        wikiId,
+        changeRequestId,
+        paths: ["Board.canvas"],
+      });
+      assert.equal(inChange.files[0]?.text, '{\n\t"nodes":[],\n\t"edges":[]\n}');
+      const pinned = yield* wikis.readFiles({ wikiId, commit: first, paths: ["Board.canvas"] });
+      assert.equal(pinned.files[0]?.exists, false);
+
+      assert.deepEqual(yield* wikis.locateFile({ wikiId, path: "deep/er/note.md" }), {
+        root,
+        commit: first,
+        path: "deep/er/Note.md",
+      });
+      assert.equal(
+        (yield* failure(wikis.locateFile({ wikiId, path: "Board.canvas" }))).reason,
+        "not-found",
+      );
+      assert.equal(
+        (yield* wikis.locateFile({ wikiId, changeRequestId, path: "Board.canvas" })).commit,
+        created.commit,
+      );
+      assert.equal(
+        (yield* failure(wikis.readFiles({ wikiId, commit: "--all", paths: ["Alpha.md"] }))).reason,
+        "not-found",
+      );
+    }),
+  ),
+);
+
+it.effect("reads a binary file as present but not as text", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      yield* fileSystem
+        .writeFile(path.join(root, "pic.png"), new Uint8Array([0x89, 0x50, 0x00, 0xff]))
+        .pipe(Effect.orDie);
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Picture"]);
+      const read = yield* wikis.readFiles({ wikiId, paths: ["pic.png"] });
+      assert.deepEqual(read.files, [
+        { path: "pic.png", exists: true, file: "pic.png", size: 4, text: null },
+      ]);
+    }),
+  ),
+);
+
+it.effect("indexes a canvas beside the notes, for links, search and agents' reads", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "Board.canvas": JSON.stringify({
+          nodes: [
+            { id: "a", type: "text", text: "Links [[Alpha]] and [[Ghost]]", x: 10, y: 20 },
+            { id: "b", type: "file", file: "Beta.md", x: 400, y: 20 },
+          ],
+          edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses" }],
+        }),
+        "Index.md": "# Index\n\nSee [[Board.canvas]] and [[Board]].\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Board"]);
+
+      const index = yield* wikis.index({ wikiId });
+      assert.deepEqual(
+        index.canvases.map(({ file, outgoing, incoming }) => [file, outgoing, incoming]),
+        [["Board.canvas", 3, 1]],
+      );
+      assert.notOk(index.notes.some((note) => note.file === "Board.canvas"));
+      assert.deepEqual(
+        index.unresolved.map((entry) => entry.name),
+        ["Board", "Ghost"],
+      );
+      assert.equal(index.notes.find((note) => note.name === "Beta")?.incoming, 2);
+      assert.deepInclude(index.links, { from: "Board.canvas", to: "Beta" });
+
+      const note = yield* wikis.readNote({ wikiId, name: "Board.canvas" });
+      assert.isTrue(note.exists);
+      assert.include(note.source, "[a] Links [[Alpha]] and [[Ghost]]");
+      assert.include(note.source, "[a] -> [b]: uses");
+      assert.notInclude(note.source, '"x"');
+      assert.deepEqual(note.incoming, ["Index"]);
+      assert.isFalse((yield* wikis.readNote({ wikiId, name: "Board" })).exists);
+
+      const links = yield* wikis.links({ wikiId, name: "Beta" });
+      assert.include(links.backlinks, "Board.canvas");
+      const fromIndex = yield* wikis.links({ wikiId, name: "Index" });
+      assert.deepEqual(
+        fromIndex.outgoing.map(({ target, unresolved }) => [target, unresolved]),
+        [
+          ["Board.canvas", false],
+          ["Board", true],
+        ],
+      );
+
+      const search = yield* wikis.search({ wikiId, query: "links [[alpha" });
+      assert.deepEqual(search.matches, [
+        { name: "Board.canvas", lines: [{ line: 2, text: "[a] Links [[Alpha]] and [[Ghost]]" }] },
+      ]);
+    }),
+  ),
+);
+
+it.effect("renames a note across a canvas, and shows agents an outline in review", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "Board.canvas": JSON.stringify({
+          nodes: [
+            { id: "b", type: "file", file: "Beta.md", subpath: "#Top" },
+            { id: "w", type: "weird", kept: true },
+          ],
+          edges: [],
+        }),
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Board"]);
+      const renamed = yield* wikis.transform(
+        {
+          wikiId,
+          message: "Rename",
+          transform: { kind: "rename", from: "Beta", to: "Gamma" },
+        },
+        agent("thread-a"),
+      );
+      const { changeRequestId } = renamed.changeRequest;
+      const detail = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      const board = detail.files.find((file) => file.file === "Board.canvas");
+      assert.include(board?.after ?? "", '"file":"Gamma.md","subpath":"#Top"');
+      assert.include(board?.after ?? "", '"type":"weird","kept":true');
+      const outline = withCanvasOutlines(detail).files.find((file) => file.file === "Board.canvas");
+      assert.include(outline?.after ?? "", "[b] File: Gamma.md#Top");
+      assert.notInclude(outline?.after ?? "", "{");
+    }),
+  ),
+);
+
+it.effect("compares a code card's file at its commit with the project's head", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const wikis = yield* WikiService.WikiService;
+      const root = yield* harness.folder("code");
+      yield* git(root, ["init", "--quiet", "--initial-branch=main"]);
+      yield* write(root, { "kept.ts": "a\n", "changed.ts": "a\n", "gone.ts": "a\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Code"]);
+      const pinned = yield* git(root, ["rev-parse", "HEAD"]);
+      yield* write(root, { "changed.ts": "b\n" });
+      yield* git(root, ["rm", "--quiet", "gone.ts"]);
+      yield* git(root, ["commit", "--quiet", "-am", "Later"]);
+      const repository = CODE_REPOSITORY.canonicalKey;
+      yield* projects.bootstrap({
+        commandId: CommandId.make("cmd-code"),
+        projectId: ProjectId.make("project-code"),
+        title: "Code",
+        workspaceRoot: root,
+      });
+      const reference = (path: string, commit = pinned) => ({ repository, commit, path });
+      assert.deepEqual(
+        (yield* wikis.codeStatus({
+          references: [
+            reference("kept.ts"),
+            reference("changed.ts"),
+            reference("gone.ts"),
+            reference("never.ts"),
+            reference("kept.ts", "0".repeat(40)),
+            { repository: "elsewhere", commit: pinned, path: "kept.ts" },
+          ],
+        })).statuses,
+        ["current", "changed", "gone", "unknown", "unknown", "unknown"],
+      );
     }),
   ),
 );

@@ -1282,6 +1282,8 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
       [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
       [WS_METHODS.wikiQuery]: (input) => wikis.query(input),
+      [WS_METHODS.wikiReadFiles]: (input) => wikis.readFiles(input),
+      [WS_METHODS.wikiCodeStatus]: (input) => wikis.codeStatus(input),
       [WS_METHODS.wikiChangeRequestsList]: (input) => wikis.changeRequestsList(input),
       [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
       [WS_METHODS.wikiChangeRequestsOpen]: (input) =>
@@ -1338,6 +1340,7 @@ const layerWsUpstreamRpc = (
       const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
       const projectStore = yield* ProjectStore.ProjectStoreV2;
       const projectService = yield* ProjectService.ProjectService;
+      const wikiFiles = yield* WikiService.WikiService;
       const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const scratchThreadPromotion = yield* ScratchThreadPromotion.ScratchThreadPromotion;
       const eventLoopMonitor = yield* EventLoopMonitor.EventLoopMonitor;
@@ -2986,6 +2989,18 @@ const layerWsUpstreamRpc = (
                 resource: input.resource,
                 workspaceRoot: input.resource.cwd,
               });
+            }
+            if (input.resource._tag === "wiki-file") {
+              const wikiBlob = yield* wikiFiles.locateFile(input.resource).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new AssetWorkspaceContextResolutionError({
+                      resource: input.resource,
+                      cause,
+                    }),
+                ),
+              );
+              return yield* issueAssetUrl({ resource: input.resource, wikiBlob });
             }
             if (input.resource._tag === "project-favicon") {
               const project = yield* projectStore

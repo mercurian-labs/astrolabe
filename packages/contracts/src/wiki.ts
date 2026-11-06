@@ -158,6 +158,14 @@ export const WikiBaseSummary = Schema.Struct({
   editedAt: Schema.optional(IsoDateTime),
 });
 
+/** A `.canvas` file: a board of cards, in Obsidian's format. */
+export const WikiCanvasSummary = Schema.Struct({
+  file: Schema.String,
+  outgoing: NonNegativeInt,
+  incoming: NonNegativeInt,
+  editedAt: Schema.optional(IsoDateTime),
+});
+
 /** Reads come from a change request's head when one is named, else from the main line. */
 export const WikiReadScope = Schema.Struct({
   wikiId: WikiId,
@@ -172,12 +180,13 @@ export const WikiIndexResult = Schema.Struct({
   wikiId: WikiId,
   commit: Schema.String,
   notes: Schema.Array(WikiNoteSummary),
-  /** Every note-to-note link, by note name, so a client can draw the wiki's graph. */
+  /** Every link between documents, by name, so a client can draw the wiki's graph. */
   links: Schema.Array(WikiLinkEdge),
   /** Every `@` type the wiki's links use; what suggests one, never a list of allowed types. */
   linkTypes: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   maps: Schema.Array(WikiMapSummary),
   bases: Schema.Array(WikiBaseSummary).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  canvases: Schema.Array(WikiCanvasSummary).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   unresolved: Schema.Array(WikiUnresolved),
   errors: Schema.Array(WikiIndexError),
 });
@@ -202,6 +211,58 @@ export const WikiNoteResult = Schema.Struct({
   incoming: Schema.Array(Schema.String),
 });
 export type WikiNoteResult = typeof WikiNoteResult.Type;
+
+const WIKI_READ_FILES_MAX = 64;
+
+/** Files by path, any depth, at a commit: `commit` when named, else as other reads choose. */
+export const WikiReadFilesInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  commit: Schema.optional(TrimmedNonEmptyString),
+  paths: Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(WIKI_READ_FILES_MAX)),
+});
+export type WikiReadFilesInput = typeof WikiReadFilesInput.Type;
+
+export const WikiFileRead = Schema.Struct({
+  /** As asked for. A path differing only by case still finds its file, as a wiki's links do. */
+  path: Schema.String,
+  exists: Schema.Boolean,
+  /** The path as the repository holds it. */
+  file: Schema.String,
+  size: NonNegativeInt,
+  /** Null for a file that isn't text, or is too large to read here. */
+  text: Schema.NullOr(Schema.String),
+});
+export type WikiFileRead = typeof WikiFileRead.Type;
+
+export const WikiReadFilesResult = Schema.Struct({
+  commit: Schema.String,
+  files: Schema.Array(WikiFileRead),
+});
+export type WikiReadFilesResult = typeof WikiReadFilesResult.Type;
+
+/** Code a card cites, pinned to a commit, as asked about at a project's head. */
+export const WikiCodeReference = Schema.Struct({
+  repository: TrimmedNonEmptyString,
+  commit: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+});
+export type WikiCodeReference = typeof WikiCodeReference.Type;
+
+export const WikiCodeStatusInput = Schema.Struct({
+  references: Schema.Array(WikiCodeReference).check(Schema.isMaxLength(WIKI_READ_FILES_MAX)),
+});
+export type WikiCodeStatusInput = typeof WikiCodeStatusInput.Type;
+
+/** How a project's head compares; `unknown` with no such project, or not this commit. */
+export const WikiCodeStatus = Schema.Literals(["current", "changed", "gone", "unknown"]);
+export type WikiCodeStatus = typeof WikiCodeStatus.Type;
+
+export const WikiCodeStatusResult = Schema.Struct({
+  /** One per reference, in order. */
+  statuses: Schema.Array(WikiCodeStatus),
+});
+export type WikiCodeStatusResult = typeof WikiCodeStatusResult.Type;
 
 /**
  * Runs one view of a base: a `.base` file or a note's first ```base block, named by `base`,
@@ -575,6 +636,8 @@ export const WikiTransform = Schema.Union([
   ...WikiMechanicalTransforms,
   /** Edits made from a base's view, landed on the change request's head as one amendment. */
   Schema.Struct({ kind: Schema.Literal("base-edits"), edits: Schema.Array(WikiBaseEdit) }),
+  /** A new, empty canvas. */
+  Schema.Struct({ kind: Schema.Literal("canvas-create"), file: TrimmedNonEmptyString }),
 ]);
 export type WikiTransform = typeof WikiTransform.Type;
 

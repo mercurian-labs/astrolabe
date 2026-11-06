@@ -28,7 +28,9 @@ import {
   applyBaseEdits,
   applyChanges,
   corpusWithChanges,
+  isCanvasFile,
   isHidden,
+  key,
   type BaseCorpus,
 } from "@mercurian/wiki";
 import {
@@ -43,6 +45,9 @@ import {
   type WikiChangeRequestListResult,
   type WikiChangeRequestOpenInput,
   type WikiChangeRequestTarget,
+  type WikiCodeStatus,
+  type WikiCodeStatusInput,
+  type WikiCodeStatusResult,
   type WikiCreateInput,
   WikiError,
   type WikiEvent,
@@ -54,6 +59,8 @@ import {
   type WikiNoteResult,
   type WikiQueryInput,
   type WikiQueryResult,
+  type WikiReadFilesInput,
+  type WikiReadFilesResult,
   type WikiRegisterInput,
   type WikiRevertInput,
   type WikiSaveWorktreeInput,
@@ -84,6 +91,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { parseWorktreeList } from "../worktrees/worktreeList.ts";
@@ -207,6 +215,24 @@ export class WikiService extends Context.Service<
     readonly query: (
       input: WikiReadTarget & Omit<WikiQueryInput, "wikiId" | "changeRequestId">,
     ) => Effect.Effect<WikiQueryResult, WikiError>;
+    /** Files by path, any depth, read at a commit. Too many at once is a caller's mistake. */
+    readonly readFiles: (
+      input: WikiReadTarget & Omit<WikiReadFilesInput, "wikiId" | "changeRequestId">,
+    ) => Effect.Effect<WikiReadFilesResult, WikiError>;
+    /** Where to read a file's bytes, once it is known to exist at that commit. */
+    readonly locateFile: (input: {
+      readonly wikiId: string;
+      readonly changeRequestId?: string;
+      readonly commit?: string;
+      readonly path: string;
+    }) => Effect.Effect<
+      { readonly root: string; readonly commit: string; readonly path: string },
+      WikiError
+    >;
+    /** How code cards' pinned files compare with their project's head. */
+    readonly codeStatus: (
+      input: WikiCodeStatusInput,
+    ) => Effect.Effect<WikiCodeStatusResult, WikiError>;
     readonly changeRequestsList: (
       input: WikiChangeRequestListInput,
     ) => Effect.Effect<WikiChangeRequestListResult, WikiError>;
@@ -253,6 +279,10 @@ export class WikiService extends Context.Service<
 
 /** The most rows a base query returns, for a view and for an agent's context alike. */
 const QUERY_ROWS = 200;
+
+/** The largest file `readFiles` returns text for; a board reads many at once. */
+const READ_TEXT_BYTES = 2 * 1024 * 1024;
+const PROJECT_PAGE = 200;
 
 // Product commits never run the user's hooks or ask to sign; git never prompts.
 const PRODUCT_GIT_CONFIG = [
@@ -361,6 +391,7 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const crypto = yield* Crypto.Crypto;
+  const projects = yield* ProjectService.ProjectService;
 
   const events = yield* PubSub.sliding<WikiEvent>(256);
   const registryPath = path.join(config.stateDir, "wikis.json");
@@ -372,6 +403,7 @@ const make = Effect.gen(function* () {
   const metadataRecords = lru<ChangeRequestRecord>(512);
   const editTimes = lru<WikiFileTimes>(24);
   const corpora = lru<BaseCorpus>(8);
+  const fileListings = lru<ReturnType<typeof parseFileListing>>(8);
 
   const newId = crypto.randomUUIDv4().pipe(
     Effect.orDie,
@@ -642,7 +674,8 @@ const make = Effect.gen(function* () {
     conflicts.forEach((file, position) => {
       const [ancestor, ours, theirs] = sides.slice(position * 3, position * 3 + 3);
       const outcome =
-        ancestor != null && ours != null && theirs != null
+        // Never the Markdown merge: it would read a canvas's JSON as prose.
+        ancestor != null && ours != null && theirs != null && !isCanvasFile(file)
           ? mergeMarkdown(ancestor, ours, theirs)
           : ({ status: "conflict" } as const);
       if (outcome.status === "merged") resolved[file] = outcome.text;
@@ -1264,8 +1297,20 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  const amend: WikiService["Service"]["amend"] = (input, author) =>
-    amendWith(input, author, (files, stamp) => planAmendment(files, input.changes, stamp));
+  // Here, not in `planAmendment`: a revert and a saved worktree still pass through that.
+  const amend: WikiService["Service"]["amend"] = (input, author) => {
+    const canvas = Object.keys(input.changes).find(isCanvasFile);
+    if (canvas !== undefined) {
+      return Effect.fail(
+        new WikiError({
+          reason: "invalid",
+          message: `${canvas} is a canvas, which astrolabe_wiki_amend can't write. Read it with astrolabe_wiki_read, and tell the person what it needs: changing a canvas isn't possible yet.`,
+          wikiId: input.wikiId,
+        }),
+      );
+    }
+    return amendWith(input, author, (files, stamp) => planAmendment(files, input.changes, stamp));
+  };
 
   const transform: WikiService["Service"]["transform"] = (input, author) =>
     amendWith(input, author, (files, stamp) =>
@@ -1676,13 +1721,25 @@ const make = Effect.gen(function* () {
     return times;
   });
 
+  /** Every file at `commit`, at any depth. */
+  const fileListingAt = Effect.fn("WikiService.fileListingAt")(function* (
+    wiki: WikiRecord,
+    commit: string,
+  ) {
+    const cached = fileListings.get(commit);
+    if (cached !== undefined) return cached;
+    const listing = parseFileListing(
+      (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
+    );
+    fileListings.set(commit, listing);
+    return listing;
+  });
+
   /** Every file at `commit` as a base lists them; only notes and canvases are read. */
   const corpusAt = Effect.fn("WikiService.corpusAt")(function* (wiki: WikiRecord, commit: string) {
     const cached = corpora.get(commit);
     if (cached !== undefined) return cached;
-    const listing = parseFileListing(
-      (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
-    ).filter((entry) => !isHidden(entry.file));
+    const listing = (yield* fileListingAt(wiki, commit)).filter((entry) => !isHidden(entry.file));
     const readable = listing.filter((entry) => /\.(md|canvas)$/i.test(entry.file));
     const contents = yield* readObjects(
       wiki.root,
@@ -1778,6 +1835,143 @@ const make = Effect.gen(function* () {
         }),
       input.changeRequestId,
     );
+
+  /** The commit a file read sees: the one named, once it's known to be a commit here. */
+  const fileCommit = Effect.fn("WikiService.fileCommit")(function* (
+    wiki: WikiRecord,
+    target: WikiReadTarget & { readonly commit?: string | undefined },
+  ) {
+    if (target.commit === undefined) return yield* readCommit(wiki, target);
+    const commit = /^[0-9a-f]{4,64}$/i.test(target.commit)
+      ? yield* revParse(wiki.root, target.commit)
+      : undefined;
+    if (commit !== undefined) return commit;
+    return yield* new WikiError({ reason: "not-found", message: "No commit has this id here." });
+  });
+
+  const readFiles: WikiService["Service"]["readFiles"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const commit = yield* fileCommit(wiki, input);
+          const listing = yield* fileListingAt(wiki, commit);
+          const exact = new Map(listing.map((entry) => [entry.file, entry]));
+          const byKey = new Map(listing.map((entry) => [key(entry.file), entry]));
+          const found = input.paths.map((path) => exact.get(path) ?? byKey.get(key(path)));
+          const readable = found.flatMap((entry) =>
+            entry !== undefined && entry.size <= READ_TEXT_BYTES ? [entry] : [],
+          );
+          const contents = yield* readObjects(
+            wiki.root,
+            readable.map((entry) => entry.oid),
+          );
+          const texts = new Map(readable.map((entry, position) => [entry.oid, contents[position]]));
+          return {
+            commit,
+            files: input.paths.map((path, position) => {
+              const entry = found[position];
+              const text = entry === undefined ? undefined : texts.get(entry.oid);
+              return {
+                path,
+                exists: entry !== undefined,
+                file: entry?.file ?? path,
+                size: entry?.size ?? 0,
+                // Bytes that aren't text decode to something, but never without a NUL or a U+FFFD.
+                text: text == null || /[\0\uFFFD]/.test(text) ? null : text,
+              };
+            }),
+          };
+        }),
+      input.changeRequestId,
+    );
+
+  const locateFile: WikiService["Service"]["locateFile"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const commit = yield* fileCommit(wiki, {
+          wikiId: wiki.wikiId,
+          commit: input.commit,
+          ...(input.changeRequestId === undefined
+            ? {}
+            : { changeRequestId: WikiChangeRequestId.make(input.changeRequestId) }),
+        });
+        const entry = (yield* fileListingAt(wiki, commit)).find(
+          ({ file }) => file === input.path || key(file) === key(input.path),
+        );
+        if (entry === undefined) {
+          return yield* new WikiError({
+            reason: "not-found",
+            message: `${input.path} isn't in this wiki at that commit.`,
+          });
+        }
+        return { root: wiki.root, commit, path: entry.file };
+      }),
+    );
+
+  /** Each active project, by the repository it checks out. */
+  const projectRoots = Effect.gen(function* () {
+    const roots = new Map<string, string>();
+    const readFrom = (cursor: number): Effect.Effect<void, ProjectService.ProjectOperationError> =>
+      projects.listPage({ cursor, limit: PROJECT_PAGE }).pipe(
+        Effect.flatMap(({ projects: page, nextCursor }) => {
+          for (const project of page) {
+            const repository = project.repositoryIdentity?.canonicalKey;
+            if (repository && !roots.has(repository)) roots.set(repository, project.workspaceRoot);
+          }
+          return nextCursor === null ? Effect.void : readFrom(nextCursor);
+        }),
+      );
+    yield* readFrom(0);
+    return roots;
+  });
+
+  /** Blob ids for `<rev>:<path>` specs, null for what isn't there; a bad rev only reads as that. */
+  const blobIds = (cwd: string, specs: ReadonlyArray<string>) =>
+    runGit("catFileCheck", cwd, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], {
+      stdin: `${specs.join("\n")}\n`,
+    }).pipe(
+      Effect.map((result) =>
+        result.stdout
+          .split("\n")
+          .slice(0, specs.length)
+          .map((line) => {
+            const [oid, type] = line.split(" ");
+            return type === "blob" && oid !== undefined ? oid : null;
+          }),
+      ),
+    );
+
+  const codeStatus: WikiService["Service"]["codeStatus"] = Effect.fn("WikiService.codeStatus")(
+    function* (input) {
+      const roots = yield* projectRoots.pipe(
+        Effect.mapError(
+          (cause) =>
+            new WikiError({ reason: "invalid", message: "Projects couldn't be read.", cause }),
+        ),
+      );
+      const statuses: WikiCodeStatus[] = input.references.map(() => "unknown");
+      const byRoot = new Map<string, number[]>();
+      input.references.forEach((reference, position) => {
+        const root = roots.get(reference.repository);
+        if (root !== undefined) byRoot.set(root, [...(byRoot.get(root) ?? []), position]);
+      });
+      for (const [root, positions] of byRoot) {
+        const references = positions.flatMap((position) => input.references[position] ?? []);
+        const blobs = yield* blobIds(root, [
+          ...references.map(({ commit, path }) => `${commit}:${path}`),
+          ...references.map(({ path }) => `HEAD:${path}`),
+        ]).pipe(Effect.orElseSucceed((): ReadonlyArray<string | null> => []));
+        positions.forEach((position, index) => {
+          const pinned = blobs[index];
+          const head = blobs[references.length + index];
+          if (pinned == null) return;
+          statuses[position] = head == null ? "gone" : head === pinned ? "current" : "changed";
+        });
+      }
+      return { statuses };
+    },
+  );
 
   const orient: WikiService["Service"]["orient"] = (input) =>
     readAt(input, (_wiki, commit, snapshot) => {
@@ -2257,6 +2451,9 @@ const make = Effect.gen(function* () {
     readNote,
     search,
     query,
+    readFiles,
+    locateFile,
+    codeStatus,
     orient,
     links,
     changeRequestsList,

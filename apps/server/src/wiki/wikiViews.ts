@@ -7,7 +7,10 @@
 import {
   backlinks,
   baseBlocks,
+  canvasSourceOutline,
   findMap,
+  isCanvasFile,
+  isDocumentLink,
   key,
   noteName,
   support,
@@ -17,14 +20,19 @@ import {
   type WikiFiles,
   type WikiIndex,
 } from "@mercurian/wiki";
-import type { WikiId, WikiIndexResult, WikiNoteResult, WikiQueryInput } from "@t3tools/contracts";
+import type {
+  WikiChangeRequestDetail,
+  WikiId,
+  WikiIndexResult,
+  WikiNoteResult,
+  WikiQueryInput,
+} from "@t3tools/contracts";
 
-/** Each distinct link target of a note, as first written, compared case-insensitively. */
+/** Each distinct link target of a note or canvas, as first written, compared case-insensitively. */
 const outgoingTargets = (index: WikiIndex, name: string): ReadonlyArray<string> => {
-  const note = index.notes.get(key(name));
-  if (!note) return [];
+  const links = (index.notes.get(key(name)) ?? index.canvases.get(key(name)))?.links ?? [];
   const seen = new Map<string, string>();
-  for (const link of note.links)
+  for (const link of links)
     if (!seen.has(key(link.target))) seen.set(key(link.target), link.target);
   return [...seen.values()];
 };
@@ -38,22 +46,34 @@ export const indexResult = (
   const incoming = new Map<string, Set<string>>();
   const links: Array<{ from: string; to: string }> = [];
   const linkTypes = new Set<string>();
+  const follow = (name: string) => {
+    const targets = outgoingTargets(index, name);
+    for (const target of targets) {
+      links.push({ from: name, to: target });
+      const sources = incoming.get(key(target)) ?? new Set<string>();
+      sources.add(key(name));
+      incoming.set(key(target), sources);
+    }
+    return targets;
+  };
   const notes = [...index.notes.values()].map((note) => {
-    const targets = outgoingTargets(index, note.name);
+    const targets = follow(note.name);
     for (const link of typedLinks(note.source, note.links)) {
       for (const type of link.types) linkTypes.add(type);
-    }
-    for (const target of targets) {
-      links.push({ from: note.name, to: target });
-      const sources = incoming.get(key(target)) ?? new Set<string>();
-      sources.add(key(note.name));
-      incoming.set(key(target), sources);
     }
     const editedAt = editTimes.get(note.file);
     return {
       name: note.name,
       file: note.file,
       outgoing: targets.length,
+      ...(editedAt === undefined ? {} : { editedAt }),
+    };
+  });
+  const canvases = [...index.canvases.values()].map(({ file }) => {
+    const editedAt = editTimes.get(file);
+    return {
+      file,
+      outgoing: follow(file).length,
       ...(editedAt === undefined ? {} : { editedAt }),
     };
   });
@@ -67,6 +87,10 @@ export const indexResult = (
       const editedAt = editTimes.get(file);
       return editedAt === undefined ? { file } : { file, editedAt };
     }),
+    canvases: canvases.map((canvas) => ({
+      ...canvas,
+      incoming: incoming.get(key(canvas.file))?.size ?? 0,
+    })),
     maps: [...index.maps].map(([file, map]) => ({
       file,
       name: map.name,
@@ -79,7 +103,7 @@ export const indexResult = (
   };
 };
 
-/** A note, or any other wiki document such as a skill map, read by name. */
+/** A note, or any other wiki document such as a skill map, read by name. A canvas reads as its outline. */
 export const noteResult = (
   wikiId: WikiId,
   commit: string,
@@ -87,6 +111,19 @@ export const noteResult = (
   files: WikiFiles,
   requested: string,
 ): WikiNoteResult => {
+  const canvas = index.canvases.get(key(requested));
+  if (canvas !== undefined) {
+    return {
+      wikiId,
+      commit,
+      name: canvas.file,
+      file: canvas.file,
+      exists: true,
+      source: canvasSourceOutline(canvas.file, canvas.source),
+      outgoing: outgoingTargets(index, canvas.file),
+      incoming: backlinks(index, canvas.file),
+    };
+  }
   const name = noteName(requested);
   const note = index.notes.get(key(name));
   const document =
@@ -165,7 +202,8 @@ export interface WikiLinksResult {
 }
 
 export const linksResult = (index: WikiIndex, requested: string): WikiLinksResult => {
-  const name = noteName(requested);
+  const canvas = index.canvases.get(key(requested));
+  const name = canvas?.file ?? noteName(requested);
   const note = index.notes.get(key(name));
   const typed = note ? typedLinks(note.source, note.links) : [];
   const typedBacklinks = [...index.notes.values()].flatMap((source) => {
@@ -176,10 +214,10 @@ export const linksResult = (index: WikiIndex, requested: string): WikiLinksResul
   });
   return {
     name: note?.name ?? name,
-    exists: note !== undefined,
+    exists: note !== undefined || canvas !== undefined,
     outgoing: outgoingTargets(index, name).map((target) => ({
       target,
-      unresolved: !index.notes.has(key(target)),
+      unresolved: !isDocumentLink(index, target),
       types: typed.find((link) => key(link.target) === key(target))?.types ?? [],
     })),
     backlinks: backlinks(index, name),
@@ -262,12 +300,22 @@ export interface WikiSearchResult {
   readonly truncated: boolean;
 }
 
-/** Case-insensitive substring search over note names and text, bounded for an agent's context. */
+/**
+ * Case-insensitive substring search over document names and text, bounded for an agent's context.
+ * A canvas is searched as its outline, so a match's line is one `astrolabe_wiki_read` returns.
+ */
 export const searchNotes = (index: WikiIndex, query: string): WikiSearchResult => {
   const needle = query.toLowerCase();
   const matches: Array<WikiSearchResult["matches"][number]> = [];
   let truncated = false;
-  for (const note of index.notes.values()) {
+  const documents = [
+    ...index.notes.values(),
+    ...[...index.canvases.values()].map(({ file, source }) => ({
+      name: file,
+      source: canvasSourceOutline(file, source),
+    })),
+  ];
+  for (const note of documents) {
     const lines: Array<{ line: number; text: string }> = [];
     let more = false;
     note.source.split("\n").forEach((text, position) => {
@@ -291,3 +339,14 @@ export const searchNotes = (index: WikiIndex, query: string): WikiSearchResult =
   }
   return { matches, truncated };
 };
+
+/** A change request as agents review it: a canvas's files as outlines, not coordinates. */
+export const withCanvasOutlines = (detail: WikiChangeRequestDetail): WikiChangeRequestDetail => ({
+  ...detail,
+  files: detail.files.map((change) => {
+    if (!isCanvasFile(change.file)) return change;
+    const outline = (source: string | null) =>
+      source === null ? null : canvasSourceOutline(change.file, source);
+    return { ...change, before: outline(change.before), after: outline(change.after) };
+  }),
+});

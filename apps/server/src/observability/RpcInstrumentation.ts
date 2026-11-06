@@ -259,6 +259,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiIndex]: "wiki",
   [WS_METHODS.wikiReadNote]: "wiki",
   [WS_METHODS.wikiQuery]: "wiki",
+  [WS_METHODS.wikiReadFiles]: "wiki",
+  [WS_METHODS.wikiCodeStatus]: "wiki",
   [WS_METHODS.wikiChangeRequestsList]: "wiki",
   [WS_METHODS.wikiChangeRequestsGet]: "wiki",
   [WS_METHODS.wikiChangeRequestsOpen]: "wiki",

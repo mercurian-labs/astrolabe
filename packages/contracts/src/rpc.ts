@@ -426,8 +426,12 @@ import {
   WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
+  WikiCodeStatusInput,
+  WikiCodeStatusResult,
   WikiQueryInput,
   WikiQueryResult,
+  WikiReadFilesInput,
+  WikiReadFilesResult,
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
@@ -668,6 +672,8 @@ export const WS_METHODS = {
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
   wikiQuery: "wiki.query",
+  wikiReadFiles: "wiki.readFiles",
+  wikiCodeStatus: "wiki.codeStatus",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
@@ -2201,6 +2207,18 @@ const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiReadFilesRpc = Rpc.make(WS_METHODS.wikiReadFiles, {
+  payload: WikiReadFilesInput,
+  success: WikiReadFilesResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiCodeStatusRpc = Rpc.make(WS_METHODS.wikiCodeStatus, {
+  payload: WikiCodeStatusInput,
+  success: WikiCodeStatusResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
   payload: WikiChangeRequestListInput,
   success: WikiChangeRequestListResult,
@@ -2746,6 +2764,8 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
   WsWikiQueryRpc,
+  WsWikiReadFilesRpc,
+  WsWikiCodeStatusRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
   WsWikiChangeRequestsOpenRpc,

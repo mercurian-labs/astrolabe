@@ -272,7 +272,7 @@ const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
 // One per server: it holds each wiki's write lock, the event stream, and index caches.
-const layerWikiServiceProvided = WikiService.layer;
+const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProjectService));
 const layerCodeIndexProvided = CodeIndex.layer.pipe(
   Layer.provide(Layer.mergeAll(layerProjectService, layerWikiServiceProvided)),
   Layer.provide(GitVcsDriver.layer),
