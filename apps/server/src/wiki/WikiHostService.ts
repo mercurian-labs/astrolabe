@@ -1,8 +1,6 @@
 /**
- * Host wikis: a wiki whose main line is a repository on a git host and whose change requests are
- * that host's pull requests. Everything host-shaped goes through the provider drivers and
- * `PullRequestService`, so every host works the same way and offers what its driver offers.
- * `WikiService` keeps the git half and holds no knowledge of pull requests.
+ * Host wikis: main lines on a git host, change requests as its pull requests. Everything
+ * host-shaped goes through the provider drivers, so each host offers what its driver offers.
  *
  * @module WikiHostService
  */
@@ -34,6 +32,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -49,7 +48,12 @@ import * as WikiService from "./WikiService.ts";
 /** How often host wikis pick up what happened on the host. */
 const SWEEP_INTERVAL = "1 minute";
 /** Unpublished work older than this missed its turn's end; the sweep publishes it. */
-const UNPUBLISHED_GRACE_MS = 5 * 60_000;
+const UNPUBLISHED_GRACE_MS = 15 * 60_000;
+/**
+ * Each read is a host API call per open change request, so most sweeps ask only when main moved,
+ * which any merge does; a pull request closed on the host waits for every Nth sweep.
+ */
+const FULL_SWEEP_EVERY = 5;
 /** How long a closed pull request is watched for being reopened on the host. */
 const CLOSED_WATCH_MS = 7 * 24 * 60 * 60_000;
 
@@ -129,6 +133,9 @@ const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
 
   const jobs = yield* Queue.unbounded<Job>();
+  const sweeps = yield* Ref.make(0);
+  // A slow host must not stack sweeps up ahead of the work queued behind them.
+  const sweepQueued = yield* Ref.make(false);
   // Listing then creating is what stops one change request opening two pull requests.
   const opening = yield* Semaphore.make(1);
 
@@ -138,22 +145,6 @@ const make = Effect.gen(function* () {
           new WikiError({ reason: "invalid", message: "This wiki is not connected to a host." }),
         )
       : Effect.succeed(wiki.host);
-
-  const changeRequest = (input: WikiChangeRequestTarget) =>
-    wikis.changeRequestsList({ wikiId: input.wikiId }).pipe(
-      Effect.map(({ changeRequests }) =>
-        changeRequests.find((entry) => entry.changeRequestId === input.changeRequestId),
-      ),
-      Effect.filterOrFail(
-        (found): found is WikiChangeRequest => found !== undefined,
-        () =>
-          new WikiError({
-            reason: "not-found",
-            message: "No change request has this id in this wiki.",
-            changeRequestId: input.changeRequestId,
-          }),
-      ),
-    );
 
   const refOf = (projectId: ProjectId, link: WikiPullRequestLink): PullRequestRef => ({
     projectId,
@@ -259,11 +250,23 @@ const make = Effect.gen(function* () {
     function* (input) {
       const wiki = yield* wikis.get(input.wikiId);
       const host = yield* hostOf(wiki);
-      const pushed = yield* wikis.pushChangeRequest(input);
+      // A reviewer's commit on the host and an amendment here: bring them together, then push.
+      const pushed = yield* wikis.pushChangeRequest(input).pipe(
+        Effect.catchIf(
+          (error) => error.reason === "stale",
+          () =>
+            wikis
+              .syncFromHost(input.wikiId)
+              .pipe(
+                Effect.andThen(wikis.adoptHostBranch(input)),
+                Effect.andThen(wikis.pushChangeRequest(input)),
+              ),
+        ),
+      );
       if (pushed.pullRequest != null || pushed.amendments.length === 0) return pushed;
       return yield* opening.withPermits(1)(
         Effect.gen(function* () {
-          const current = yield* changeRequest(input);
+          const current = yield* wikis.changeRequest(input);
           return current.pullRequest != null
             ? current
             : yield* openPullRequest(wiki, host.projectId, current);
@@ -272,16 +275,22 @@ const make = Effect.gen(function* () {
     },
   );
 
-  /** Follows one change request's pull request; what moved on the host is the host's to say. */
+  /**
+   * Follows one change request's pull request. This asks the driver rather than
+   * `PullRequestService`, whose reads answer from a cache that nothing here would ever refresh
+   * for a merge made on the host's site.
+   */
   const settle = Effect.fn("WikiHostService.settle")(function* (
-    projectId: ProjectId,
+    wiki: WikiSummary,
     entry: WikiChangeRequest,
   ) {
     if (entry.pullRequest == null) return;
     const target = { wikiId: entry.wikiId, changeRequestId: entry.changeRequestId };
-    const { state } = yield* pullRequests
-      .summary(refOf(projectId, entry.pullRequest))
-      .pipe(Effect.mapError(hostError("The pull request could not be read from the host.")));
+    const failed = hostError("The pull request could not be read from the host.");
+    const provider = yield* providers.resolve({ cwd: wiki.root }).pipe(Effect.mapError(failed));
+    const { state } = yield* provider
+      .getChangeRequest({ cwd: wiki.root, reference: String(entry.pullRequest.number) })
+      .pipe(Effect.mapError(failed));
     if (state === "merged") {
       yield* wikis.recordHostMerge(target);
     } else if (state !== entry.status) {
@@ -289,17 +298,38 @@ const make = Effect.gen(function* () {
     }
   });
 
-  const syncWiki = Effect.fn("WikiHostService.syncWiki")(function* (wikiId: WikiId) {
+  /** One stuck change request must not hold up the others, or the wiki's sync. */
+  const isolated = (wikiId: WikiId, title: string, effect: Effect.Effect<unknown, WikiError>) =>
+    effect.pipe(
+      Effect.asVoid,
+      Effect.catch((error) =>
+        wikis
+          .recordHostError(wikiId, `${title}: ${error.message}`)
+          .pipe(
+            Effect.andThen(
+              Effect.logWarning("A wiki change request could not follow the host").pipe(
+                Effect.annotateLogs({ wikiId, cause: error }),
+              ),
+            ),
+          ),
+      ),
+    );
+
+  const syncWiki = Effect.fn("WikiHostService.syncWiki")(function* (wikiId: WikiId, full: boolean) {
     const wiki = yield* wikis.get(wikiId);
-    const host = yield* hostOf(wiki);
+    yield* hostOf(wiki);
+    const before = wiki.host?.lastSyncedCommit ?? null;
     yield* wikis.syncFromHost(wikiId);
+    const after = (yield* wikis.get(wikiId)).host?.lastSyncedCommit ?? null;
     const { changeRequests } = yield* wikis.changeRequestsList({ wikiId });
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const age = (entry: WikiChangeRequest) => now - Date.parse(entry.updatedAt);
-    for (const entry of changeRequests) {
-      if (entry.status === "merged") continue;
-      if (entry.status === "closed" && age(entry) > CLOSED_WATCH_MS) continue;
-      yield* settle(host.projectId, entry);
+    if (full || before !== after) {
+      for (const entry of changeRequests) {
+        if (entry.status === "merged") continue;
+        if (entry.status === "closed" && age(entry) > CLOSED_WATCH_MS) continue;
+        yield* isolated(wikiId, entry.title, settle(wiki, entry));
+      }
     }
     const unpublished = changeRequests.filter(
       (entry) =>
@@ -309,20 +339,33 @@ const make = Effect.gen(function* () {
         age(entry) > UNPUBLISHED_GRACE_MS,
     );
     for (const entry of unpublished) {
-      yield* publish({ wikiId, changeRequestId: entry.changeRequestId });
+      yield* isolated(
+        wikiId,
+        entry.title,
+        publish({ wikiId, changeRequestId: entry.changeRequestId }),
+      );
     }
   });
 
   /** Syncs one wiki for a person who asked; the failure reaches them and the wiki records it. */
   const syncRecording = (wikiId: WikiId) =>
-    syncWiki(wikiId).pipe(
-      Effect.tapError((error) =>
-        wikis.recordHostError(wikiId, error.message).pipe(Effect.ignore),
-      ),
+    syncWiki(wikiId, true).pipe(
+      Effect.tapError((error) => wikis.recordHostError(wikiId, error.message).pipe(Effect.ignore)),
     );
 
   const sync: WikiHostService["Service"]["sync"] = (input) =>
     syncRecording(input.wikiId).pipe(Effect.andThen(wikis.get(input.wikiId)));
+
+  /** Leaves a project with threads in it: it is someone's work now. */
+  const deleteBackingProject = (projectId: ProjectId) =>
+    crypto.randomUUIDv4().pipe(
+      Effect.flatMap((uuid) =>
+        projects.delete({ commandId: CommandId.make(`wiki-host-remove:${uuid}`), projectId }),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logInfo("A wiki's project stayed behind").pipe(Effect.annotateLogs({ cause })),
+      ),
+    );
 
   const connect: WikiHostService["Service"]["connect"] = Effect.fn("WikiHostService.connect")(
     function* (input) {
@@ -335,7 +378,7 @@ const make = Effect.gen(function* () {
           ),
         );
       const uuid = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
-      const { project } = yield* projects
+      const { project, created } = yield* projects
         .bootstrap({
           commandId: CommandId.make(`wiki-host-connect:${uuid}`),
           projectId: ProjectId.make(uuid),
@@ -344,10 +387,14 @@ const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError(hostError("The wiki's project could not be created.")));
       const mirror = wiki.mirror;
-      yield* wikis.setHost(input.wikiId, {
-        projectId: project.id,
-        remote: input.remote ?? "origin",
-      });
+      const removeProject = created ? deleteBackingProject(project.id) : Effect.void;
+      yield* wikis
+        .setHost(input.wikiId, {
+          projectId: project.id,
+          remote: input.remote ?? "origin",
+          createdProject: created || (wiki.host?.createdProject ?? false),
+        })
+        .pipe(Effect.tapError(() => removeProject));
       const undo = wikis
         .setHost(input.wikiId, null)
         .pipe(
@@ -356,6 +403,7 @@ const make = Effect.gen(function* () {
               ? Effect.void
               : wikis.setMirror({ wikiId: input.wikiId, url: mirror.url }),
           ),
+          Effect.andThen(removeProject),
           Effect.ignore,
         );
       const settled = wikis.syncFromHost(input.wikiId).pipe(
@@ -382,15 +430,21 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const disconnect: WikiHostService["Service"]["disconnect"] = (input) =>
-    wikis.setHost(input.wikiId, null);
+  const disconnect: WikiHostService["Service"]["disconnect"] = Effect.fn(
+    "WikiHostService.disconnect",
+  )(function* (input) {
+    const host = (yield* wikis.get(input.wikiId)).host;
+    const summary = yield* wikis.setHost(input.wikiId, null);
+    if (host?.createdProject === true) yield* deleteBackingProject(host.projectId);
+    return summary;
+  });
 
   const merge: WikiHostService["Service"]["merge"] = Effect.fn("WikiHostService.merge")(
     function* (input) {
       const wiki = yield* wikis.get(input.wikiId);
       if (wiki.host == null) return yield* wikis.merge(input);
       const { projectId } = wiki.host;
-      yield* syncWiki(input.wikiId);
+      yield* wikis.syncFromHost(input.wikiId);
       const published = yield* publish(input);
       if (published.pullRequest == null) {
         return yield* new WikiError({
@@ -434,7 +488,7 @@ const make = Effect.gen(function* () {
     "WikiHostService.setChangeRequestStatus",
   )(function* (input) {
     const wiki = yield* wikis.get(input.wikiId);
-    const entry = yield* changeRequest(input);
+    const entry = yield* wikis.changeRequest(input);
     if (wiki.host != null && entry.pullRequest != null && entry.status !== input.status) {
       const ref = refOf(wiki.host.projectId, entry.pullRequest);
       const action = input.status === "open" ? "reopen" : "close";
@@ -493,16 +547,20 @@ const make = Effect.gen(function* () {
     wikiId: WikiId,
     changeRequestId: WikiChangeRequestId,
   ) {
-    const entry = yield* changeRequest({ wikiId, changeRequestId });
+    const entry = yield* wikis.changeRequest({ wikiId, changeRequestId });
     if (entry.status !== "open") return;
     if (entry.amendments.at(-1)?.actor !== WikiService.person.actor) return;
     yield* publish({ wikiId, changeRequestId });
   });
 
-  const sweep: WikiHostService["Service"]["sweep"] = wikis.hosted.pipe(
-    Effect.flatMap((hosted) =>
-      Effect.forEach(hosted, (wikiId) => quietly(wikiId, syncWiki(wikiId)), { discard: true }),
-    ),
+  const sweep: WikiHostService["Service"]["sweep"] = Effect.gen(function* () {
+    const count = yield* Ref.updateAndGet(sweeps, (value) => value + 1);
+    yield* Effect.forEach(
+      yield* wikis.hosted,
+      (wikiId) => quietly(wikiId, syncWiki(wikiId, count % FULL_SWEEP_EVERY === 0)),
+      { discard: true },
+    );
+  }).pipe(
     Effect.catch((cause) =>
       Effect.logWarning("Wiki host sweep failed").pipe(Effect.annotateLogs({ cause })),
     ),
@@ -511,7 +569,7 @@ const make = Effect.gen(function* () {
   const run = (job: Job): Effect.Effect<void> => {
     switch (job.kind) {
       case "sweep":
-        return sweep;
+        return Ref.set(sweepQueued, false).pipe(Effect.andThen(sweep));
       case "thread":
         return publishForThread(job.threadId).pipe(
           Effect.catch((cause) =>
@@ -528,19 +586,25 @@ const make = Effect.gen(function* () {
   // One worker keeps pushes and sweeps from racing each other for no gain.
   yield* forkParked(Queue.take(jobs).pipe(Effect.flatMap(run), Effect.forever));
   yield* forkParked(
-    Queue.offer(jobs, { kind: "sweep" }).pipe(Effect.repeat(Schedule.spaced(SWEEP_INTERVAL))),
+    Ref.getAndSet(sweepQueued, true).pipe(
+      Effect.flatMap((queued) => (queued ? Effect.void : Queue.offer(jobs, { kind: "sweep" }))),
+      Effect.repeat(Schedule.spaced(SWEEP_INTERVAL)),
+    ),
   );
   yield* forkParked(
     wikis.subscribe.pipe(
-      Stream.runForEach((event) =>
-        event.kind === "amended" && event.changeRequestId !== null
-          ? Queue.offer(jobs, {
-              kind: "edited",
-              wikiId: event.wikiId,
-              changeRequestId: event.changeRequestId,
-            })
-          : Effect.void,
-      ),
+      Stream.runForEach((event) => {
+        const { changeRequestId, wikiId } = event;
+        if (event.kind !== "amended" || changeRequestId === null) return Effect.void;
+        return wikis.hosted.pipe(
+          Effect.flatMap((hosted) =>
+            hosted.includes(wikiId)
+              ? Queue.offer(jobs, { kind: "edited", wikiId, changeRequestId })
+              : Effect.void,
+          ),
+          Effect.ignore,
+        );
+      }),
     ),
   );
 

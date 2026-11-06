@@ -1,9 +1,7 @@
 /**
- * Wikis: git repositories of linked markdown notes whose registered folder is main's
- * hand-editable checkout. Changes reach main only via change requests built on a private index;
- * merges use git's two-tree checkout, which refuses to overwrite local edits. One writer per wiki
- * on this machine. A host wiki's main line also moves on its git host, so this service exposes
- * the git half of that here and `WikiHostService` owns everything that talks to the host.
+ * Wikis: git repositories of linked markdown notes whose folder is main's hand-editable checkout.
+ * Changes reach main via change requests; merges use git's two-tree checkout, which refuses to
+ * overwrite local edits. One writer per wiki here; `WikiHostService` owns the git host's side.
  *
  * @module WikiService
  */
@@ -259,7 +257,11 @@ export class WikiService extends Context.Service<
     /** Makes `remote` the wiki's main line, or with null makes it local again; drops a mirror. */
     readonly setHost: (
       wikiId: WikiId,
-      host: { readonly projectId: ProjectId; readonly remote: string } | null,
+      host: {
+        readonly projectId: ProjectId;
+        readonly remote: string;
+        readonly createdProject: boolean;
+      } | null,
     ) => Effect.Effect<WikiSummary, WikiError>;
     /** Fetches the host, fast-forwards main and the open change requests, and records how it went. */
     readonly syncFromHost: (wikiId: WikiId) => Effect.Effect<WikiHostRelation, WikiError>;
@@ -274,8 +276,16 @@ export class WikiService extends Context.Service<
     readonly pushChangeRequest: (
       input: WikiChangeRequestTarget,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** Merges the host's copy of a change request into this one, when both have moved. */
+    readonly adoptHostBranch: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
     /** Merges main into a change request with the markdown merge, so the host merges it cleanly. */
     readonly reconcileChangeRequest: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** One change request, without reading the rest of the wiki's. */
+    readonly changeRequest: (
       input: WikiChangeRequestTarget,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
     readonly recordPullRequest: (
@@ -404,6 +414,7 @@ const make = Effect.gen(function* () {
   const registryLock = yield* Semaphore.make(1);
   const registryCache = yield* Ref.make<WikiRegistry | undefined>(undefined);
   const wikiLocks = new Map<string, Semaphore.Semaphore>();
+  const fetchLocks = new Map<string, Semaphore.Semaphore>();
   const snapshots = lru<Snapshot>(24);
   const amendmentLogs = lru<WikiChangeRequest["amendments"]>(128);
   const metadataRecords = lru<ChangeRequestRecord>(512);
@@ -2349,19 +2360,37 @@ const make = Effect.gen(function* () {
         }
         const next = yield* locked(
           wiki,
-          replaceWiki({
-            ...wiki,
-            mirror: host === null ? wiki.mirror : null,
-            host:
-              host === null
-                ? null
-                : {
-                    ...host,
-                    lastSyncedAt: null,
-                    lastSyncedCommit: null,
-                    relation: null,
-                    lastError: null,
-                  },
+          Effect.gen(function* () {
+            // Links name pull requests on this host; a later host would read them as its own.
+            if (host === null) {
+              const now = yield* DateTime.now;
+              for (const stored of yield* readChangeRequests(wiki)) {
+                if (stored.record.pullRequest === null || stored.record.status === "merged") {
+                  continue;
+                }
+                yield* recordChangeRequest(
+                  wiki,
+                  stored,
+                  { ...stored.record, pullRequest: null, pushedHead: null },
+                  "Disconnect from the host",
+                  identity(person.actor, now),
+                );
+              }
+            }
+            return yield* replaceWiki({
+              ...wiki,
+              mirror: host === null ? wiki.mirror : null,
+              host:
+                host === null
+                  ? null
+                  : {
+                      ...host,
+                      lastSyncedAt: null,
+                      lastSyncedCommit: null,
+                      relation: null,
+                      lastError: null,
+                    },
+            });
           }),
         );
         yield* publish("mirror", wiki.wikiId, null);
@@ -2376,11 +2405,10 @@ const make = Effect.gen(function* () {
         : replaceHost(wiki, (host) => ({ ...host, lastError: message })),
     );
 
+  const trackedHostRoot = (remote: string) => `refs/wiki/host/${remote}/`;
+
   /** What the host holds under main and `cr/`, read without fetching. */
-  const hostRefs = Effect.fn("WikiService.hostRefs")(function* (
-    wiki: WikiRecord,
-    remote: string,
-  ) {
+  const hostRefs = Effect.fn("WikiService.hostRefs")(function* (wiki: WikiRecord, remote: string) {
     const listed = yield* gitOut(
       "lsRemoteHost",
       wiki.root,
@@ -2428,30 +2456,42 @@ const make = Effect.gen(function* () {
     wiki: WikiRecord,
     remote: string,
   ) {
-    const trackingRoot = `refs/wiki/host/${remote}/`;
+    const trackingRoot = trackedHostRoot(remote);
     const tracking = (ref: string) => `${trackingRoot}${ref.slice("refs/heads/".length)}`;
-    const refs = yield* hostRefs(wiki, remote);
-    const known = yield* gitOut("forEachTracked", wiki.root, [
-      "for-each-ref",
-      "--format=%(refname) %(objectname)",
-      trackingRoot,
-    ]);
-    const tracked = new Map(known.split("\n").map((line) => line.split(" ") as [string, string]));
-    if ([...refs].some(([ref, oid]) => tracked.get(tracking(ref)) !== oid)) {
-      yield* runGit(
-        "fetchHost",
-        wiki.root,
-        [
-          "fetch",
-          "--no-tags",
-          "--no-write-fetch-head",
-          remote,
-          ...[...refs.keys()].map((ref) => `+${ref}:${tracking(ref)}`),
-        ],
-        { timeoutMs: REMOTE_TIMEOUT_MS },
-      );
+    let lock = fetchLocks.get(wiki.wikiId);
+    if (lock === undefined) {
+      lock = Semaphore.makeUnsafe(1);
+      fetchLocks.set(wiki.wikiId, lock);
     }
-    return refs;
+    // Two fetches into one tracking ref would fail each other on git's ref lock.
+    return yield* lock.withPermits(1)(
+      Effect.gen(function* () {
+        const refs = yield* hostRefs(wiki, remote);
+        const known = yield* gitOut("forEachTracked", wiki.root, [
+          "for-each-ref",
+          "--format=%(refname) %(objectname)",
+          trackingRoot,
+        ]);
+        const tracked = new Map(
+          known.split("\n").map((line) => line.split(" ") as [string, string]),
+        );
+        if ([...refs].some(([ref, oid]) => tracked.get(tracking(ref)) !== oid)) {
+          yield* runGit(
+            "fetchHost",
+            wiki.root,
+            [
+              "fetch",
+              "--no-tags",
+              "--no-write-fetch-head",
+              remote,
+              ...[...refs.keys()].map((ref) => `+${ref}:${tracking(ref)}`),
+            ],
+            { timeoutMs: REMOTE_TIMEOUT_MS },
+          );
+        }
+        return refs;
+      }),
+    );
   });
 
   const syncFromHost: WikiService["Service"]["syncFromHost"] = (wikiId) =>
@@ -2483,6 +2523,8 @@ const make = Effect.gen(function* () {
                   main = remoteMain;
                   relation = "up-to-date";
                   yield* publish("main-moved", wiki.wikiId, null);
+                } else {
+                  relation = "behind";
                 }
               } else if (!(yield* isAncestor(wiki.root, remoteMain, local))) {
                 relation = "diverged";
@@ -2582,6 +2624,66 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
+  const adoptHostBranch: WikiService["Service"]["adoptHostBranch"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const host = yield* requireHost(wiki);
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            yield* requireOpen(stored);
+            const hostHead = yield* revParse(
+              wiki.root,
+              `${trackedHostRoot(host.remote)}cr/${input.changeRequestId}`,
+            );
+            if (hostHead === undefined || (yield* isAncestor(wiki.root, hostHead, stored.head))) {
+              return yield* view(wiki, stored);
+            }
+            const { tree, conflicts } = yield* mergeIntoMain(wiki, hostHead, stored.head);
+            if (tree === null) {
+              return yield* new WikiError({
+                reason: "conflict",
+                message: `This change request and its copy on the host conflict in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then publish again.`,
+              });
+            }
+            const now = yield* DateTime.now;
+            const env = identity(person.actor, now);
+            const commit = yield* commitTree(
+              wiki.root,
+              tree,
+              [stored.head, hostHead],
+              `Reconcile with the host's copy\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
+              env,
+            );
+            const main = yield* mainTip(wiki);
+            const base = yield* gitOut("adoptBase", wiki.root, ["merge-base", main, commit]);
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              { ...stored.record, base, updatedAt: DateTime.formatIso(now) },
+              "Reconcile change request",
+              env,
+              commit,
+            );
+            yield* publish("amended", wiki.wikiId, stored.record.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  const changeRequest: WikiService["Service"]["changeRequest"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        loadChangeRequest(wiki, input.changeRequestId).pipe(
+          Effect.flatMap((stored) => view(wiki, stored)),
+        ),
+      input.changeRequestId,
+    );
+
   const reconcileChangeRequest: WikiService["Service"]["reconcileChangeRequest"] = (input) =>
     withWiki(
       input.wikiId,
@@ -2663,7 +2765,8 @@ const make = Effect.gen(function* () {
               {
                 ...stored.record,
                 status: "merged",
-                mergedCommit: yield* mainTip(wiki),
+                // The host's main: unsaved edits here can hold this folder's back.
+                mergedCommit: wiki.host?.lastSyncedCommit ?? (yield* mainTip(wiki)),
                 updatedAt: DateTime.formatIso(now),
               },
               "Merge change request",
@@ -2686,6 +2789,8 @@ const make = Effect.gen(function* () {
     recordHostError,
     pushMainToHost,
     pushChangeRequest,
+    adoptHostBranch,
+    changeRequest,
     reconcileChangeRequest,
     recordPullRequest,
     recordHostMerge,

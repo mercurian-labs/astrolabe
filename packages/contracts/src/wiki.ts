@@ -47,7 +47,7 @@ export const WikiMirrorStatus = Schema.Struct({
 export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
 /** How the wiki's main line stands against the host's, as of the last sync. */
-export const WikiHostRelation = Schema.Literals(["up-to-date", "ahead", "diverged"]);
+export const WikiHostRelation = Schema.Literals(["up-to-date", "behind", "ahead", "diverged"]);
 export type WikiHostRelation = typeof WikiHostRelation.Type;
 
 /**
@@ -61,6 +61,8 @@ export const WikiHostStatus = Schema.Struct({
   lastSyncedCommit: Schema.NullOr(Schema.String),
   relation: Schema.NullOr(WikiHostRelation),
   lastError: Schema.NullOr(Schema.String),
+  /** Whether connecting made the backing project, so disconnecting can take it away again. */
+  createdProject: Schema.optionalKey(Schema.Boolean),
 });
 export type WikiHostStatus = typeof WikiHostStatus.Type;
 

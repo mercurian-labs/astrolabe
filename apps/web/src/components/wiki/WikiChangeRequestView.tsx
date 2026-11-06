@@ -85,6 +85,9 @@ export function WikiChangeRequestView({
   const canSetStatus = useAtomValue(
     wikiEnvironment.setChangeRequestStatus.permissionAtom(environmentId),
   );
+  const canPublish = useAtomValue(
+    wikiEnvironment.publishChangeRequest.permissionAtom(environmentId),
+  );
   const merge = useWikiCommand(wikiEnvironment.merge, "Couldn't merge");
   const publish = useWikiCommand(wikiEnvironment.publishChangeRequest, "Couldn't publish");
   const setStatus = useWikiCommand(wikiEnvironment.setChangeRequestStatus, "Couldn't update");
@@ -217,7 +220,7 @@ export function WikiChangeRequestView({
             environmentId={environmentId}
             changeRequest={changeRequest}
             busy={busy !== null}
-            canPublish={canMerge}
+            canPublish={canPublish}
             onPublish={() => void runPublish()}
             {...(onOpenPullRequest ? { onOpen: onOpenPullRequest } : {})}
           />

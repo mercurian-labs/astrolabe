@@ -87,6 +87,9 @@ export function WikiChangeRequestRouteScreen({
   const canSetStatus = useAtomValue(
     wikiEnvironment.setChangeRequestStatus.permissionAtom(environmentId),
   );
+  const canPublish = useAtomValue(
+    wikiEnvironment.publishChangeRequest.permissionAtom(environmentId),
+  );
   // Astrolabe: the pull requests of the thread that wrote it (see `wikiPullRequests`).
   const writer = detail.data?.changeRequest.threadId ?? null;
   const thread = useThreadShell(writer === null ? null : scopeThreadRef(environmentId, writer));
@@ -187,7 +190,7 @@ export function WikiChangeRequestRouteScreen({
           {unpublished ? (
             <Toolbar.MenuAction
               icon="arrow.up.circle"
-              disabled={!canMerge}
+              disabled={!canPublish}
               onPress={() =>
                 void act(() => publish({ environmentId, input: target }), "Couldn't publish")
               }

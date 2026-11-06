@@ -67,7 +67,7 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
       }),
     ),
     Effect.map((result) => result.stdout.trim()),
-    Effect.provide(ProcessRunner.layer),
+    Effect.provide(ProcessRunner.layer.pipe(Layer.provide(NodeServices.layer))),
     Effect.orDie,
   );
 
@@ -76,6 +76,7 @@ interface FakePull {
   readonly head: string;
   state: PullRequestState;
   isDraft: boolean;
+  mergedThroughService: boolean;
 }
 
 /** A git host: a bare repository, its pull requests, and a clone that merges them for real. */
@@ -109,8 +110,12 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
     });
   const layerPullRequests = Layer.mock(PullRequestService.PullRequestService)({
     refreshAfterTurn: () => Effect.void,
+    // Like the real service, this answers from its cache unless a mutation went through it.
     summary: (input) =>
-      Effect.sync(() => ({ state: pullFor(input.number).state }) as PullRequestSummary),
+      Effect.sync(() => {
+        const pull = pullFor(input.number);
+        return { state: pull.mergedThroughService ? "merged" : "open" } as PullRequestSummary;
+      }),
     detail: (input) =>
       Effect.gen(function* () {
         const pull = pullFor(input.number);
@@ -128,7 +133,10 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
           action: input.action,
           ...(input.mergeMethod === undefined ? {} : { method: input.mergeMethod }),
         });
-        if (input.action === "merge") yield* mergePull(pull);
+        if (input.action === "merge") {
+          yield* mergePull(pull);
+          pull.mergedThroughService = true;
+        }
         if (input.action === "draft") pull.isDraft = true;
         if (input.action === "close") pull.state = "closed";
         if (input.action === "reopen") pull.state = "open";
@@ -141,6 +149,8 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
           .filter((pull) => pull.head === input.headSelector && pull.state === "open")
           .map((pull) => ({ number: pull.number, url: pullUrl(pull.number) })),
       ),
+    getChangeRequest: (input: { readonly reference: string }) =>
+      Effect.sync(() => ({ state: pullFor(Number(input.reference)).state })),
     createChangeRequest: (input: { readonly headSelector: string }) =>
       Effect.gen(function* () {
         const pull: FakePull = {
@@ -148,6 +158,7 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
           head: input.headSelector,
           state: "open",
           isDraft: false,
+          mergedThroughService: false,
         };
         host.pulls.push(pull);
         yield* Queue.offer(host.opened, pull);
@@ -155,6 +166,7 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
   };
   const layerRegistry = Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
     resolve: () => Effect.succeed(provider as never),
+    resolveLink: () => undefined,
   });
   const layerProjects = RuntimeLayer.layerProjectService;
   return WikiHostService.layer.pipe(
@@ -316,6 +328,7 @@ it.effect("sync fast-forwards main, and unsaved edits hold it back without losin
       yield* write("Home.md", "# Home\n\nMine, unsaved.\n\nSecond.\n");
       const held = yield* hosts.sync({ wikiId });
       assert.isNotNull(held.host?.lastError ?? null);
+      assert.equal(held.host?.relation, "behind");
       assert.include(yield* git(root, ["show", "HEAD:Home.md"]), "From the host.");
       yield* git(root, ["checkout", "--quiet", "--", "Home.md"]);
       const clear = yield* hosts.sync({ wikiId });
@@ -561,12 +574,94 @@ it.effect("a change request follows work added on the host, and a push never ove
       assert.equal(followed?.pushedHead, hostHead);
       assert.notEqual(followed?.head, published.head);
 
-      // Both sides move: the push is refused rather than replacing the teammate's commit.
+      // Both sides move: publishing brings them together and replaces nothing.
       yield* amendment(fixture, "Two.md");
       const moved = yield* addOnHost("More from the teammate");
-      const refused = yield* Effect.flip(hosts.publish(target));
-      assert.equal(refused.reason, "stale");
-      assert.equal(yield* git(fixture.bare, ["rev-parse", branch]), moved);
+      const merged = yield* hosts.publish(target);
+      assert.equal(merged.pushedHead, merged.head);
+      assert.equal(yield* git(fixture.bare, ["rev-parse", branch]), merged.head);
+      yield* git(fixture.bare, ["merge-base", "--is-ancestor", moved, branch]);
+      assert.deepEqual(merged.amendments.map((entry) => entry.subject).toSorted(), [
+        "Add One.md",
+        "Add Two.md",
+        "More from the teammate",
+        "Teammate's work",
+      ]);
+    }),
+  ),
+);
+
+it.effect("a change request stuck on the host holds up neither the sync nor another's merge", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { clone, hosts, root, wikis, wikiId } = fixture;
+      const stuck = yield* wikis.amend(
+        { wikiId, message: "Mine", changes: { "Shared.md": "# Mine\n" } },
+        agent("thread-a"),
+      );
+      const stuckTarget = { wikiId, changeRequestId: stuck.changeRequest.changeRequestId };
+      yield* hosts.publish(stuckTarget);
+      const branch = `cr/${stuckTarget.changeRequestId}`;
+      yield* git(clone, ["fetch", "--quiet", "origin"]);
+      yield* git(clone, ["checkout", "--quiet", "-B", branch, `origin/${branch}`]);
+      yield* Effect.flatMap(FileSystem.FileSystem, (fileSystem) =>
+        fileSystem.writeFileString(`${clone}/Shared.md`, "# Theirs\n"),
+      ).pipe(Effect.orDie);
+      yield* git(clone, ["add", "."]);
+      yield* git(clone, ["commit", "--quiet", "-m", "Theirs"]);
+      yield* git(clone, ["push", "--quiet", "origin", `HEAD:${branch}`]);
+      yield* wikis.amend(
+        {
+          wikiId,
+          changeRequestId: stuckTarget.changeRequestId,
+          message: "Mine again",
+          changes: { "Shared.md": "# Mine, again\n" },
+        },
+        agent("thread-a"),
+      );
+      const refused = yield* Effect.flip(hosts.publish(stuckTarget));
+      assert.equal(refused.reason, "conflict");
+
+      const other = yield* amendment(fixture, "Other.md", "thread-b");
+      const merged = yield* hosts.merge({ wikiId, changeRequestId: other.changeRequestId });
+      assert.equal(merged.changeRequest.status, "merged");
+      assert.equal(yield* git(root, ["rev-parse", "main"]), merged.commit);
+    }),
+  ),
+);
+
+it.effect("a merge held back by unsaved edits still records the host's merge", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { bare, hosts, root, wikiId, write } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      yield* write("One.md", "# Mine, unsaved\n");
+      const merged = yield* hosts.merge({ wikiId, changeRequestId: changeRequest.changeRequestId });
+      assert.equal(merged.commit, yield* git(bare, ["rev-parse", "main"]));
+      assert.notEqual(yield* git(root, ["rev-parse", "main"]), merged.commit);
+    }),
+  ),
+);
+
+it.effect("disconnecting forgets pull requests, and takes away a project it made", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { host, hosts, root, wikis, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      yield* hosts.publish(target);
+      yield* hosts.disconnect({ wikiId });
+      const unlinked = yield* wikis.changeRequest(target);
+      assert.isNull(unlinked.pullRequest ?? null);
+      assert.isNull(unlinked.pushedHead ?? null);
+      const projects = yield* ProjectService.ProjectService;
+      assert.equal((yield* projects.getByWorkspaceRoot(root))._tag, "None");
+
+      // Reconnecting finds the pull request that is still open rather than opening another.
+      yield* hosts.connect({ wikiId });
+      const relinked = yield* hosts.publish(target);
+      assert.equal(relinked.pullRequest?.number, 1);
+      assert.lengthOf(host.pulls, 1);
     }),
   ),
 );

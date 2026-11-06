@@ -115,6 +115,7 @@ describe("summarizeHost", () => {
     );
     expect(summarizeHost(host, ago)).toEqual({ tone: "ok", label: "Synced now" });
     expect(summarizeHost({ ...host, relation: "ahead" }, ago).tone).toBe("warning");
+    expect(summarizeHost({ ...host, relation: "behind" }, ago).tone).toBe("warning");
     expect(summarizeHost({ ...host, relation: "diverged" }, ago).tone).toBe("error");
     expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
       "Sync failed",
@@ -140,13 +141,22 @@ describe("host wiki change requests", () => {
 
   it("matches a pull request whatever the case of its repository", () => {
     const keys = hostedPullRequestKeys([
-      { pullRequest: { repository: "Acme/Handbook", number: 4, url: "" } },
+      {
+        pullRequest: {
+          repository: "Acme/Handbook",
+          number: 4,
+          url: "https://github.com/Acme/Handbook/pull/4",
+        },
+      },
       { pullRequest: null },
       {},
     ]);
     expect(keys.size).toBe(1);
-    expect(keys.has(hostedPullRequestKey({ repository: "acme/handbook", number: 4 }))).toBe(true);
-    expect(keys.has(hostedPullRequestKey({ repository: "acme/handbook", number: 5 }))).toBe(false);
+    const key = (host: string, number: number) =>
+      hostedPullRequestKey({ host, repository: "acme/handbook", number });
+    expect(keys.has(key("github.com", 4))).toBe(true);
+    expect(keys.has(key("github.com", 5))).toBe(false);
+    expect(keys.has(key("gitlab.example.com", 4))).toBe(false);
   });
 
   it("reads the host from a pull request's link", () => {

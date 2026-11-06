@@ -126,6 +126,7 @@ export function summarizeHost(
   if (host.lastError) return { tone: "error", label: "Sync failed" };
   if (host.relation === "diverged") return { tone: "error", label: "Main has diverged" };
   if (host.relation === "ahead") return { tone: "warning", label: "Main is ahead of the host" };
+  if (host.relation === "behind") return { tone: "warning", label: "Main is behind the host" };
   if (host.lastSyncedAt) return { tone: "ok", label: `Synced ${formatAgo(host.lastSyncedAt)}` };
   return { tone: "pending", label: "Not synced yet" };
 }
@@ -142,7 +143,7 @@ export function wikiPullRequestHost(url: string): string | null {
 }
 
 /**
- * The pull requests that are a host wiki's own change requests, as `<repository>#<number>`, so a
+ * The pull requests that are a host wiki's own change requests, as `<host>/<repository>#<number>`, so a
  * list showing those change requests leaves their pull requests out and shows each change once.
  */
 export function hostedPullRequestKeys(
@@ -150,15 +151,25 @@ export function hostedPullRequestKeys(
 ): ReadonlySet<string> {
   return new Set(
     changeRequests.flatMap(({ pullRequest }) =>
-      pullRequest == null ? [] : [hostedPullRequestKey(pullRequest)],
+      pullRequest == null
+        ? []
+        : [
+            hostedPullRequestKey({
+              host: wikiPullRequestHost(pullRequest.url) ?? "",
+              repository: pullRequest.repository,
+              number: pullRequest.number,
+            }),
+          ],
     ),
   );
 }
 
 export const hostedPullRequestKey = (pullRequest: {
+  readonly host: string;
   readonly repository: string;
   readonly number: number;
-}): string => `${pullRequest.repository.toLowerCase()}#${pullRequest.number}`;
+}): string =>
+  `${pullRequest.host.toLowerCase()}/${pullRequest.repository.toLowerCase()}#${pullRequest.number}`;
 
 /** The actor the server records for edits made from the app, as opposed to an agent's model. */
 export const PERSON_ACTOR = "You";
