@@ -91,9 +91,8 @@ class Authority {
 const shared = vi.hoisted(() => ({
   authority: null as unknown,
   routes: null as unknown,
-  runContext: null as unknown,
   started: [] as unknown[],
-  runContextAtom: {} as unknown,
+  runContextAtom: null as unknown,
 }));
 const authority = () => shared.authority as Authority;
 
@@ -144,14 +143,20 @@ vi.mock(import("~/state/session"), async (original) => ({
   ...(await original()),
   useEnvironmentScope: (() => true) as never,
 }));
-vi.mock(import("~/state/query"), async (original) => ({
-  ...(await original()),
-  useEnvironmentQuery: ((atom: unknown) => ({
-    isSuccess: false,
-    error: null,
-    data: atom !== null && atom === shared.runContextAtom ? shared.runContext : null,
-  })) as never,
-}));
+vi.mock(import("~/state/query"), async (original) => {
+  const { useAtomValue } = await import("@effect/atom-react");
+  const { Atom } = await import("effect/reactivity");
+  const nothing = Atom.make(null);
+  return {
+    ...(await original()),
+    // The run context stays an atom: a query's answer re-renders the file on its own.
+    useEnvironmentQuery: ((atom: Atom.Atom<unknown> | null) => ({
+      isSuccess: false,
+      error: null,
+      data: useAtomValue(atom !== null && atom === shared.runContextAtom ? atom : nothing),
+    })) as never,
+  };
+});
 vi.mock(import("~/state/entities"), async (original) => ({
   ...(await original()),
   useProject: (() => null) as never,
@@ -178,9 +183,10 @@ const tab = {
 
 function setup(text: string) {
   shared.authority = new Authority(text);
-  shared.runContext = null;
   shared.started = [];
-  shared.runContextAtom = Atom.make(AsyncResult.initial());
+  const runContext = Atom.make<unknown>(null);
+  shared.runContextAtom = runContext;
+  return runContext;
 }
 
 const RUST_TAB = { ...tab, path: "src/main.rs" };
@@ -260,9 +266,14 @@ describe("RepositoryFileView", () => {
     expect(view.state.doc.toString()).toContain("typed");
   });
 
-  it("marks what can run once the project is trusted, moving no text, and runs it", async () => {
-    setup("fn main() {}\n");
-    await using screen = await render(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+  it("marks what can run while the project is trusted, moving no text, and runs it", async () => {
+    const runContext = setup("fn main() {}\n");
+    const registry = AtomRegistry.make();
+    await using screen = await render(
+      <RegistryContext.Provider value={registry}>
+        <RepositoryFileView tabKey="file" tab={RUST_TAB} />
+      </RegistryContext.Provider>,
+    );
     const text = screen.getByRole("textbox");
     await expect.element(text).toHaveTextContent("fn main() {}");
     const left = () => text.element().getBoundingClientRect().left;
@@ -271,12 +282,7 @@ describe("RepositoryFileView", () => {
     const before = left();
     expect(marker()).toBeNull();
 
-    shared.runContext = { ...TRUSTED, trusted: false };
-    await screen.rerender(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
-    await vi.waitFor(() => expect(marker()).toBeNull());
-
-    shared.runContext = TRUSTED;
-    await screen.rerender(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+    await act(() => registry.set(runContext, TRUSTED));
     await vi.waitFor(() => expect(marker()?.title).toBe("cargo run"));
     expect(left()).toBe(before);
 
@@ -292,14 +298,24 @@ describe("RepositoryFileView", () => {
         command: "cargo run",
       },
     ]);
+
+    await act(() => registry.set(runContext, { ...TRUSTED, trusted: false }));
+    await vi.waitFor(() => expect(marker()).toBeNull());
+    expect(left()).toBe(before);
   });
 
   it("takes the markers away with the setting, and brings them back", async () => {
-    setup("fn main() {}\n");
-    shared.runContext = TRUSTED;
+    const runContext = setup("fn main() {}\n");
+    const registry = AtomRegistry.make();
+    registry.set(runContext, TRUSTED);
+    using _keep = { [Symbol.dispose]: registry.mount(runContext) };
     const { runMarkers } = getClientSettings();
     using _setting = { [Symbol.dispose]: () => updateClientSettings({ runMarkers }) };
-    await using screen = await render(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+    await using screen = await render(
+      <RegistryContext.Provider value={registry}>
+        <RepositoryFileView tabKey="file" tab={RUST_TAB} />
+      </RegistryContext.Provider>,
+    );
     const marker = () => document.querySelector(".atlas-run-marker");
     await vi.waitFor(() => expect(marker()).not.toBeNull());
 
