@@ -298,7 +298,7 @@ export function WikiWorktreePicker({ overview }: { readonly overview: WikiOvervi
   const openChangeRequest = useAtomCommand(wikiEnvironment.openChangeRequest);
   const target = worktreesOfWiki(overview);
   const changeRequests = (overview.changeRequests ?? []).filter(
-    (changeRequest) => changeRequest.status === "open",
+    (changeRequest) => changeRequest.status === "open" && !changeRequest.draft,
   );
   const needle = query.trim().toLowerCase();
   const shown = changeRequests.filter((changeRequest) =>

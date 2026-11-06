@@ -89,6 +89,84 @@ export function defaultSaveTarget(
     : null;
 }
 
+/** Everything a change request's amendments touch, in the order they did. */
+export const changeRequestFiles = (
+  changeRequest: Pick<WikiChangeRequest, "amendments">,
+): ReadonlyArray<string> => [
+  ...new Set(changeRequest.amendments.flatMap((amendment) => amendment.files)),
+];
+
+/** The draft a wiki's change requests hold for the person reading them, unless it is empty. */
+export function wikiDraft(
+  changeRequests: ReadonlyArray<WikiChangeRequest> | null | undefined,
+): WikiChangeRequest | null {
+  return (
+    changeRequests?.find(
+      ({ draft, status, amendments }) => draft && status === "open" && amendments.length > 0,
+    ) ?? null
+  );
+}
+
+/** Whether `files` hold a document, by the name a tab opens it under. */
+export function filesHoldDocument(files: ReadonlyArray<string>, name: string): boolean {
+  const wanted = noteKey(name);
+  return files.some((file) => {
+    const document = wikiDocumentName(file);
+    return document !== null && noteKey(document) === wanted;
+  });
+}
+
+/**
+ * The change request a document reads from: the one its tab names, else the draft when the draft
+ * holds it, else none (main). A tab on main never rekeys for this, so nothing remounts as a first
+ * save lands, and a reload finds the draft again with nothing kept on the device.
+ */
+export function wikiDocumentScope(input: {
+  readonly tabChangeRequestId: WikiChangeRequestId | undefined;
+  readonly draft: WikiChangeRequest | null;
+  readonly name: string;
+}): WikiChangeRequestId | undefined {
+  if (input.tabChangeRequestId !== undefined) return input.tabChangeRequestId;
+  if (input.draft !== null && filesHoldDocument(changeRequestFiles(input.draft), input.name)) {
+    return input.draft.changeRequestId;
+  }
+  return undefined;
+}
+
+/** Where a person's edit to a document can't go: a change request that merged or closed. */
+export function isSettledChangeRequest(
+  changeRequest: Pick<WikiChangeRequest, "status"> | undefined,
+): boolean {
+  return changeRequest !== undefined && changeRequest.status !== "open";
+}
+
+/** A draft's pill. */
+export function draftLabel(draft: Pick<WikiChangeRequest, "amendments">): string {
+  const documents = changeRequestFiles(draft).length;
+  return `Draft · ${documents} ${documents === 1 ? "document" : "documents"}`;
+}
+
+/** The open change requests a draft can move into: never a draft. */
+export const draftMoveTargets = (
+  changeRequests: ReadonlyArray<WikiChangeRequest> | null | undefined,
+): ReadonlyArray<WikiChangeRequest> =>
+  (changeRequests ?? []).filter(({ draft, status }) => !draft && status === "open");
+
+const PERMANENT_SAVE_FAILURES = new Set(["invalid", "not-found", "conflict", "checkout-busy"]);
+
+/** A save's failure as the autosave store reads it. */
+export function wikiSaveFailure(failure: unknown): {
+  readonly ok: false;
+  readonly message: string;
+  readonly retry: boolean;
+} {
+  return {
+    ok: false,
+    message: describeWikiFailure(failure),
+    retry: !(isWikiError(failure) && PERMANENT_SAVE_FAILURES.has(failure.reason)),
+  };
+}
+
 /** Why Merge cannot run, or null when it can. */
 export function mergeBlockedReason(input: {
   readonly canWrite: boolean;

@@ -78,6 +78,26 @@ describe("wikiListEntries", () => {
     expect(documents.find((document) => document.name === "New")?.changes).toHaveLength(0);
   });
 
+  it("lists a draft apart from the change requests, and on the documents it holds", () => {
+    const draft = {
+      ...changeRequest("cr-draft", "Edit Old", "open", "2026-10-06T00:00:00Z", ["Old.md"]),
+      draft: true,
+    };
+    const empty = { ...draft, changeRequestId: "cr-empty" as WikiChangeRequestId, amendments: [] };
+    const entries = wikiListEntries(
+      [{ ...overviews[0]!, changeRequests: [draft, empty, ...overviews[0]!.changeRequests!] }],
+      null,
+    );
+    expect(entries.drafts.map((entry) => entry.changeRequest.changeRequestId)).toEqual([
+      "cr-draft",
+    ]);
+    expect(entries.changes.map((entry) => entry.changeRequest.changeRequestId)).toEqual([
+      "cr-open",
+    ]);
+    const old = entries.documents.find((document) => document.name === "Old");
+    expect(old?.changes.map((change) => change.changeRequestId)).toEqual(["cr-draft", "cr-open"]);
+  });
+
   it("keeps to the filtered wiki", () => {
     const { changes, documents } = wikiListEntries(
       overviews,

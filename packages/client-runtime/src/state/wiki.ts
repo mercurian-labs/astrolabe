@@ -157,6 +157,18 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:transform",
       tag: WS_METHODS.wikiTransform,
     }),
+    autosave: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:autosave",
+      tag: WS_METHODS.wikiAutosave,
+    }),
+    promoteDraft: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:draft:promote",
+      tag: WS_METHODS.wikiDraftPromote,
+    }),
+    moveDraft: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:draft:move",
+      tag: WS_METHODS.wikiDraftMove,
+    }),
     keepCanvas: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:keep-canvas",
       tag: WS_METHODS.wikiKeepCanvas,

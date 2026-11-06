@@ -145,6 +145,8 @@ describe("WikiBaseResults", () => {
         editing={{
           file: "Open.base",
           edits: [],
+          savedCommit: null,
+          onRuns: vi.fn(),
           view: null,
           onPickView: vi.fn(),
           onEdit,

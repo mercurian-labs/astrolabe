@@ -7,14 +7,9 @@ import {
 import { CanvasBoard, type CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
 import { useAtomValue } from "@effect/atom-react";
 import { changeRequestCanvasReview } from "@t3tools/client-runtime/wikiLogic";
-import type {
-  EnvironmentId,
-  WikiChangeRequest,
-  WikiChangeRequestId,
-  WikiId,
-} from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { TabHeader } from "~/panes/TabHeader";
 import { useEnvironmentQuery } from "~/state/query";
@@ -28,7 +23,6 @@ import { describeWikiFailure, documentTitle } from "./wiki.logic";
 import { registerWikiCanvasBoard, type WikiCanvasGroup } from "./wikiCanvasBoards";
 import { useWikiCommand } from "./wikiEnvironment";
 import { useWikiCanvasHost } from "./wikiCanvasHost";
-import { SaveToChangeRequestDialog, type SaveTarget } from "./WikiSaveDialog";
 
 function CanvasBoardPane({
   tabKey,
@@ -118,8 +112,8 @@ const EMPTY_GROUPS: ReadonlyArray<WikiCanvasGroup> = [];
 /**
  * A `.canvas` file in its own tab, read from main or a change request, and refreshed per commit
  * with its camera kept. In a change request it marks what that changes, so an agent's work shows
- * as it lands. Reading only: nothing here writes the file, and a canvas that doesn't exist yet is
- * started in a change request.
+ * as it lands. Reading only, for now: a canvas that doesn't exist yet starts in the person's draft,
+ * or the change request the tab is in, with no Save anywhere, as hand edits will land too.
  */
 export default function WikiCanvasPage({
   tabKey,
@@ -127,9 +121,9 @@ export default function WikiCanvasPage({
   wikiId,
   file,
   changeRequestId,
+  savesTo,
   parent,
-  openChangeRequests,
-  onSaved,
+  draftPill,
   onOpenNote,
   onOpenFile,
   onOpenTab,
@@ -138,11 +132,14 @@ export default function WikiCanvasPage({
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly file: string;
+  /** The change request the canvas reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** The change request the tab is in; none saves to the draft. */
+  readonly savesTo: WikiChangeRequestId | undefined;
   /** Where the canvas is read from, as the tab header names it. */
   readonly parent: string;
-  readonly openChangeRequests: ReadonlyArray<WikiChangeRequest>;
-  readonly onSaved: (changeRequestId: WikiChangeRequestId) => void;
+  /** The draft's pill in the header's place for `parent`, when there's a draft. */
+  readonly draftPill?: ReactNode;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenFile: ((path: string) => void) | undefined;
   readonly onOpenTab: (key: string) => void;
@@ -163,16 +160,20 @@ export default function WikiCanvasPage({
   const review = changeRequestCanvasReview(detail.data, file, text);
   const title = documentTitle(file);
   const [creating, setCreating] = useState(false);
-  const canCreate = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
-  const transform = useWikiCommand(wikiEnvironment.transform, "Couldn't start the canvas");
-  const create = async (target: SaveTarget, message: string): Promise<string | null> => {
-    const outcome = await transform({
+  const canCreate = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const autosave = useWikiCommand(wikiEnvironment.autosave, "Couldn't start the canvas");
+  const create = async () => {
+    setCreating(true);
+    await autosave({
       environmentId,
-      input: { wikiId, message, transform: { kind: "canvas-create", file }, ...target },
+      input: {
+        wikiId,
+        ...(savesTo === undefined ? {} : { changeRequestId: savesTo }),
+        document: file,
+        write: { kind: "transform", transform: { kind: "canvas-create", file } },
+      },
     });
-    if (!outcome.ok) return outcome.message ?? "The save was cancelled.";
-    onSaved(outcome.value.changeRequest.changeRequestId);
-    return null;
+    setCreating(false);
   };
 
   const body = () => {
@@ -195,10 +196,15 @@ export default function WikiCanvasPage({
         <Empty>
           <EmptyHeader>
             <EmptyTitle>No canvas is called {title} yet</EmptyTitle>
-            <EmptyDescription>Start it in a change request.</EmptyDescription>
+            <EmptyDescription>
+              {savesTo === undefined
+                ? "It starts in your draft."
+                : "It starts in this change request."}
+            </EmptyDescription>
           </EmptyHeader>
           {canCreate ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button size="sm" disabled={creating} onClick={() => void create()}>
+              {creating ? <Spinner /> : null}
               Create canvas
             </Button>
           ) : null}
@@ -249,26 +255,12 @@ export default function WikiCanvasPage({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
-        <TabHeader.Title label="Canvas" parent={parent}>
+        <TabHeader.Title label="Canvas" parent={parent} parentControl={draftPill}>
           {title}
         </TabHeader.Title>
         <TabHeader.Status>Read only</TabHeader.Status>
       </TabHeader.Root>
       {body()}
-      {creating ? (
-        <SaveToChangeRequestDialog
-          environmentId={environmentId}
-          subject={title}
-          openChangeRequests={openChangeRequests}
-          viewing={changeRequestId}
-          onClose={() => setCreating(false)}
-          onSave={async (target, message) => {
-            const error = await create(target, message);
-            if (error === null) setCreating(false);
-            return error;
-          }}
-        />
-      ) : null}
     </div>
   );
 }

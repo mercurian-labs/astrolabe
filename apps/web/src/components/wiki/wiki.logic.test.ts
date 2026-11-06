@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { WikiChangeRequestId } from "@t3tools/contracts";
 
 import {
   authorColor,
-  defaultSaveTarget,
   describeIndexError,
   describeWikiFailure,
   isTurnRunning,
@@ -13,7 +11,6 @@ import {
   mergeConflictAdvice,
   wikiDocumentName,
   parseWikiSearch,
-  queuedSaveStep,
   summarizeMirror,
 } from "./wiki.logic";
 
@@ -29,17 +26,6 @@ describe("parseWikiSearch", () => {
       }),
     ).toEqual({ environmentId: "env-1", note: "Graph theory" });
     expect(parseWikiSearch({ changeRequest: "cr-1" })).toEqual({ changeRequest: "cr-1" });
-  });
-});
-
-describe("defaultSaveTarget", () => {
-  const open = [{ changeRequestId: "cr-1" as WikiChangeRequestId }];
-  it("saves into the open change request being viewed", () => {
-    expect(defaultSaveTarget(open, "cr-1" as WikiChangeRequestId)).toBe("cr-1");
-  });
-  it("opens a new one from main or from a change request that is no longer open", () => {
-    expect(defaultSaveTarget(open, undefined)).toBeNull();
-    expect(defaultSaveTarget(open, "cr-2" as WikiChangeRequestId)).toBeNull();
   });
 });
 
@@ -163,13 +149,6 @@ describe("live authors and queued saves", () => {
     expect(isTurnRunning("idle")).toBe(false);
     expect(isTurnRunning("completed")).toBe(false);
     expect(isTurnRunning(undefined)).toBe(false);
-  });
-  it("waits while the turn runs and commits once it ends, once", () => {
-    const queued = { changeRequestId: "cr-1" as WikiChangeRequestId, message: "Edit" };
-    expect(queuedSaveStep({ queued, turnRunning: true, committing: false })).toBe("wait");
-    expect(queuedSaveStep({ queued, turnRunning: false, committing: false })).toBe("commit");
-    expect(queuedSaveStep({ queued, turnRunning: false, committing: true })).toBe("idle");
-    expect(queuedSaveStep({ queued: null, turnRunning: false, committing: false })).toBe("idle");
   });
 });
 

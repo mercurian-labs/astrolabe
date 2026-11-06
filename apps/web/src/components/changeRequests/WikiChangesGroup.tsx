@@ -32,11 +32,14 @@ import {
 const SELECTION_SECTION = "change-requests:wikis";
 const NO_KEYS: readonly string[] = [];
 
-const isOpenChange = (item: WikiChangeItem) => item.changeRequest.status === "open";
+const isOpenChange = (item: WikiChangeItem) =>
+  item.changeRequest.status === "open" && !item.changeRequest.draft;
+const isDraft = (item: WikiChangeItem) =>
+  item.changeRequest.status === "open" && item.changeRequest.draft;
 
 /**
- * Wiki change requests as their own group in the Change Requests sidebar: open ones as cards, then
- * merged and closed ones on a folded shelf. They follow the section's project filter (one wiki or
+ * Wiki change requests as their own group in the Change Requests sidebar: the person's drafts, open
+ * ones as cards, then merged and closed ones on a folded shelf. They follow the section's project filter (one wiki or
  * all) and search (by title); a click shows one in the focused pane's front tab, like a PR row.
  */
 export function WikiChangesGroup({
@@ -50,6 +53,7 @@ export function WikiChangesGroup({
   const { overviews } = useWikiOverviews();
   const [scope, setScope] = changeRequestWikiScope.useScope(overviews);
   const focusedKey = useWorkspaceFocusedKey();
+  const [draftsExpanded, setDraftsExpanded] = useState(true);
   const [openExpanded, setOpenExpanded] = useState(true);
   const [settledExpanded, setSettledExpanded] = useState(false);
   const lists = wikiSidebarItems(overviews, scope);
@@ -59,8 +63,11 @@ export function WikiChangesGroup({
         entry.kind === "change" ? [entry.item] : [],
       )
     : null;
+  const drafts = matches ? matches.filter(isDraft) : lists.drafts;
   const open = matches ? matches.filter(isOpenChange) : lists.changes;
-  const settled = matches ? matches.filter((item) => !isOpenChange(item)) : lists.settled;
+  const settled = matches
+    ? matches.filter((item) => item.changeRequest.status !== "open")
+    : lists.settled;
   const scoped =
     overviews.find(
       (overview) => wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
@@ -68,6 +75,7 @@ export function WikiChangesGroup({
 
   const shown = useRef<readonly string[]>([]);
   const shownItems = [
+    ...(draftsExpanded ? drafts : []),
     ...(openExpanded ? open : []),
     ...(settledExpanded || searching ? settled : []),
   ];
@@ -132,8 +140,8 @@ export function WikiChangesGroup({
   };
 
   const none =
-    (lists.changes.length === 0 && lists.settled.length === 0) ||
-    (searching && open.length === 0 && settled.length === 0);
+    (lists.drafts.length === 0 && lists.changes.length === 0 && lists.settled.length === 0) ||
+    (searching && drafts.length === 0 && open.length === 0 && settled.length === 0);
   if (none) {
     if (!alone) return null;
     return (
@@ -163,6 +171,20 @@ export function WikiChangesGroup({
         aria-label="Wiki changes"
         className="relative flex flex-col gap-px pb-2"
       >
+        {drafts.length > 0 ? (
+          <>
+            <li className="mx-0.5 flex h-8 list-none items-center gap-1">
+              <CountedSectionHeader
+                onClick={() => setDraftsExpanded((expanded) => !expanded)}
+                expanded={draftsExpanded}
+                tone="muted"
+                label="Your drafts"
+                count={drafts.length}
+              />
+            </li>
+            {draftsExpanded ? drafts.map(row) : null}
+          </>
+        ) : null}
         <li className="mx-0.5 flex h-8 list-none items-center gap-1">
           <CountedSectionHeader
             onClick={() => setOpenExpanded((expanded) => !expanded)}

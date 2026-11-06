@@ -75,6 +75,7 @@ import {
   TextSearchIcon,
   UserPlusIcon,
   WaypointsIcon,
+  FilePenLineIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
@@ -110,6 +111,7 @@ import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
+import { wikiEnvironment } from "../state/wiki";
 import { serverEnvironment } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
@@ -258,6 +260,8 @@ import { readPullRequestListPreferences } from "~/components/pullRequest/pullReq
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 // Astrolabe: the palette as Vim's ex line, and Search finding wiki documents.
+import { showChangeRequestTab } from "~/components/pullRequest/pullRequestWorkspace";
+import { wikiDraft } from "~/components/wiki/wiki.logic";
 import { wikiCanvasBoard } from "~/components/wiki/wikiCanvasBoards";
 import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
 import { useFocusedWikiTab } from "~/components/wiki/wikiPanes";
@@ -534,6 +538,15 @@ function OpenCommandPaletteDialog(props: {
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
   const currentView = viewStack.at(-1)?.view ?? null;
   const focusedWikiTab = useFocusedWikiTab();
+  const focusedWikiChanges = useEnvironmentQuery(
+    focusedWikiTab === null
+      ? null
+      : wikiEnvironment.changeRequests({
+          environmentId: focusedWikiTab.environmentId,
+          input: { wikiId: focusedWikiTab.wikiId },
+        }),
+  );
+  const focusedWikiDraft = wikiDraft(focusedWikiChanges.data?.changeRequests);
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
@@ -1307,6 +1320,23 @@ function OpenCommandPaletteDialog(props: {
     focusedWikiTab !== null && isCanvasTab(focusedWikiTab)
       ? wikiCanvasBoard(wikiTabKey(focusedWikiTab))
       : undefined;
+  // Astrolabe: the way to the draft of the wiki in front, whose tab holds its ways out.
+  if (focusedWikiDraft !== null && focusedWikiTab !== null) {
+    const draftTab = wikiTabKey({
+      kind: "change-request",
+      environmentId: focusedWikiTab.environmentId,
+      wikiId: focusedWikiTab.wikiId,
+      changeRequestId: focusedWikiDraft.changeRequestId,
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:wiki-open-draft",
+      searchTerms: ["draft", "open draft", "make change request", "move draft", "discard draft"],
+      title: "Wiki: Open your draft",
+      icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
+      run: async () => showChangeRequestTab(draftTab, "new-tab"),
+    });
+  }
   if (canvasBoard !== undefined && canvasBoard.groups.length > 0) {
     actionItems.push({
       kind: "submenu",

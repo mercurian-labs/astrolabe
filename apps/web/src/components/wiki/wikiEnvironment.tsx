@@ -5,11 +5,12 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
+import { wikiSaveFailure } from "@t3tools/client-runtime/wikiLogic";
 import { useAtomValue } from "@effect/atom-react";
 
 import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { wikiOverviewsAtom } from "~/state/wiki";
+import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
 import { toastManager } from "../ui/toast";
 import { describeWikiFailure } from "./wiki.logic";
 
@@ -46,6 +47,18 @@ export function useWikiOverviews(enabled = true): {
   return {
     overviews: lists.flatMap((list) => list ?? []),
     loading: lists.some((list) => list === null),
+  };
+}
+
+/** Lands an autosave, reading a failure as the autosave store does. */
+export function useWikiAutosaveCommand() {
+  const run = useAtomCommand(wikiEnvironment.autosave, { reportFailure: false });
+  return async (value: Parameters<typeof run>[0]) => {
+    const result = await run(value);
+    if (result._tag === "Success") return { ok: true as const, value: result.value };
+    return isAtomCommandInterrupted(result)
+      ? { ok: false as const, message: "The save was cancelled.", retry: true }
+      : wikiSaveFailure(squashAtomCommandFailure(result));
   };
 }
 

@@ -105,7 +105,13 @@ import {
 } from "../ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { documentTitle, isCanvasName, isTurnRunning, noteNameOfFile } from "./wiki.logic";
+import {
+  documentTitle,
+  draftLabel,
+  isCanvasName,
+  isTurnRunning,
+  noteNameOfFile,
+} from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
@@ -218,6 +224,7 @@ export function WikiSidebar() {
     readonly wiki: { readonly wikiId: WikiId };
   }) => inKeptWiki({ environmentId: item.environmentId, wikiId: item.wiki.wikiId });
   const changes = allLists.changes.filter(inKeptWikiOf);
+  const drafts = allLists.drafts.filter(inKeptWikiOf);
   const changedCount = allLists.documents.filter(
     (document) => inKeptWikiOf(document) && document.changes.length > 0,
   ).length;
@@ -238,6 +245,7 @@ export function WikiSidebar() {
     documents: allLists.documents.filter(
       (document) => keeps(document) || document === focusedDocument,
     ),
+    drafts: [],
     changes: [],
     settled: [],
   };
@@ -398,8 +406,25 @@ export function WikiSidebar() {
   const mainRows = (overview: WikiOverview) => {
     const wikiChanges = changes.filter((change) => sameWiki(overview, change));
     const wikiDocuments = documents.filter((document) => sameWiki(overview, document));
+    const wikiDraft = drafts.find((draft) => sameWiki(overview, draft));
     return (
       <>
+        {wikiDraft !== undefined ? (
+          <li className="mx-0.5 list-none">
+            <button
+              type="button"
+              className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              onClick={(event) =>
+                open(wikiSidebarEntryTab({ kind: "change", item: wikiDraft }), event)
+              }
+            >
+              <FilePenLineIcon aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {draftLabel(wikiDraft.changeRequest)}
+              </span>
+            </button>
+          </li>
+        ) : null}
         {wikiChanges.length > 0 ? (
           <li className="mx-0.5 list-none">
             <button
@@ -440,7 +465,7 @@ export function WikiSidebar() {
             onOpen={open}
           />
         ))}
-        {wikiDocuments.length === 0 && wikiChanges.length === 0 ? (
+        {wikiDocuments.length === 0 && wikiChanges.length === 0 && wikiDraft === undefined ? (
           <SidebarRowsNote>
             {filterActive ? "No documents match these filters" : "No documents yet"}
           </SidebarRowsNote>
@@ -1369,7 +1394,7 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
               key={entry.changeRequestId}
               icon={<FilePenLineIcon className={DETAIL_ICON_CLASS} />}
             >
-              {`In “${entry.title}”`}
+              {entry.draft ? "In your draft" : `In “${entry.title}”`}
             </DetailLine>
           ))}
         </ThreadHoverCard>
@@ -1443,7 +1468,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
     const StatusGlyph = merged ? PullRequestGlyph.merged : PullRequestGlyph.closed;
     return (
       <CardRow
-        label={`${changeRequest.title}, ${merged ? "merged" : "closed"} change request in ${item.wiki.name}`}
+        label={`${changeRequest.title}, ${changeRequest.draft ? "discarded draft" : `${merged ? "merged" : "closed"} change request`} in ${item.wiki.name}`}
         active={active}
         selected={selected}
         tab={tab}
@@ -1462,7 +1487,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
   }
   return (
     <CardRow
-      label={`${changeRequest.title}, change request in ${item.wiki.name}`}
+      label={`${changeRequest.title}, ${changeRequest.draft ? "your draft" : "change request"} in ${item.wiki.name}`}
       active={active}
       selected={selected}
       tab={tab}
@@ -1489,7 +1514,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
           className="size-3 shrink-0 text-muted-foreground/40"
         />
         <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-          {`${amendments} ${amendments === 1 ? "amendment" : "amendments"} · ${item.files.length} ${item.files.length === 1 ? "document" : "documents"}`}
+          {`${changeRequest.draft ? "Draft · " : ""}${amendments} ${amendments === 1 ? "amendment" : "amendments"} · ${item.files.length} ${item.files.length === 1 ? "document" : "documents"}`}
         </span>
         {actors.length > 0 ? (
           <span className="shrink-0 truncate text-sidebar-muted-foreground/70">
@@ -1521,8 +1546,12 @@ function WikiChangeDetails({
     changeRequest.status === "merged"
       ? "Merged"
       : changeRequest.status === "closed"
-        ? "Closed"
-        : "Open";
+        ? changeRequest.draft
+          ? "Discarded draft"
+          : "Closed"
+        : changeRequest.draft
+          ? "Draft"
+          : "Open";
   const listed = item.files.slice(0, DOCUMENTS_LISTED);
   const more = item.files.length - listed.length;
   return (

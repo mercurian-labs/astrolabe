@@ -1,6 +1,55 @@
+import type { WikiChangeRequest, WikiChangeRequestId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeRequestCanvasReview, keepCanvasName } from "./wikiLogic.ts";
+import {
+  changeRequestCanvasReview,
+  draftLabel,
+  keepCanvasName,
+  wikiDocumentScope,
+  wikiDraft,
+  wikiSaveFailure,
+} from "./wikiLogic.ts";
+
+describe("drafts", () => {
+  const draft = (files: ReadonlyArray<string>, status = "open") =>
+    ({
+      changeRequestId: "draft-1",
+      draft: true,
+      status,
+      amendments: files.length === 0 ? [] : [{ files }],
+    }) as unknown as WikiChangeRequest;
+  const scope = (name: string, tabChangeRequestId?: WikiChangeRequestId) =>
+    wikiDocumentScope({ tabChangeRequestId, draft: draft(["Alpha.md", "Tasks.base"]), name });
+
+  it("finds a wiki's draft, passing over an empty, closed or ordinary one", () => {
+    const ordinary = { draft: false, status: "open", amendments: [{ files: ["A.md"] }] };
+    expect(wikiDraft([ordinary as unknown as WikiChangeRequest])).toBeNull();
+    expect(wikiDraft([draft([])])).toBeNull();
+    expect(wikiDraft([draft(["A.md"], "closed")])).toBeNull();
+    expect(wikiDraft([draft(["A.md"])])?.changeRequestId).toBe("draft-1");
+  });
+
+  it("reads a document from its tab's change request, else the draft if it holds it, else main", () => {
+    expect(scope("alpha")).toBe("draft-1");
+    expect(scope("Tasks.base")).toBe("draft-1");
+    expect(scope("Beta")).toBeUndefined();
+    expect(scope("Alpha", "cr-1" as WikiChangeRequestId)).toBe("cr-1");
+  });
+
+  it("counts the documents a draft holds", () => {
+    expect(draftLabel(draft(["A.md"]))).toBe("Draft · 1 document");
+    expect(draftLabel(draft(["A.md", "B.md"]))).toBe("Draft · 2 documents");
+  });
+
+  it("retries a save unless the failure says it can't help", () => {
+    const failure = (reason: string) => ({ _tag: "WikiError", reason, message: "No." });
+    expect(wikiSaveFailure(failure("stale")).retry).toBe(true);
+    expect(wikiSaveFailure(failure("git-failed")).retry).toBe(true);
+    expect(wikiSaveFailure(new Error("Socket closed")).retry).toBe(true);
+    expect(wikiSaveFailure(failure("invalid")).retry).toBe(false);
+    expect(wikiSaveFailure(failure("checkout-busy")).retry).toBe(false);
+  });
+});
 
 describe("keepCanvasName", () => {
   it.each([

@@ -15,6 +15,8 @@ import type {
 
 /** How long a board's camera rests before the app hears where it is. */
 const CAMERA_REPORT_MS = 250;
+/** How often the app hears that the person is typing. */
+const EDIT_REPORT_MS = 500;
 
 /** Compared as a wiki compares names. */
 export const documentKey = (name: string) => name.normalize("NFC").toLowerCase();
@@ -85,6 +87,24 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
   const stopReporting = buffer.subscribe(() => {
     if (!applying) report();
   });
+
+  // Typing crosses the bridge at a walking pace: the app only needs to know it hasn't stopped.
+  let editTimer: ReturnType<typeof setTimeout> | undefined;
+  let editedSince = false;
+  const reportEdit = () => {
+    if (editTimer !== undefined) {
+      editedSince = true;
+      return;
+    }
+    post({ type: "edited" });
+    editTimer = setTimeout(() => {
+      editTimer = undefined;
+      if (!editedSince) return;
+      editedSince = false;
+      reportEdit();
+    }, EDIT_REPORT_MS);
+  };
+  const stopReportingEdits = buffer.onEdit(reportEdit);
 
   // The ```base blocks on screen, by source: asked for once each, then kept current by the app.
   const bases = new Map<string, WikiEditorBase>();
@@ -203,7 +223,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
   const apply = (command: WikiEditorCommand) => {
     switch (command.type) {
       case "receive":
-        buffer.receive(command.source, command.author);
+        buffer.receive(command.source, command.author, command.commit ?? null);
         // Outside a running turn a write is the whole turn: it settles at once.
         if (!command.turnRunning) buffer.endTurn();
         return;
@@ -214,7 +234,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         setState({ theme: command.theme });
         return;
       case "markSaved":
-        buffer.markSaved(command.text);
+        buffer.markSaved(command.text, command.commit ?? null);
         return;
       case "discard":
         buffer.discard();
@@ -223,7 +243,12 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         buffer.loadChanged();
         return;
       case "requestText":
-        post({ type: "text", requestId: command.requestId, text: buffer.current() });
+        post({
+          type: "text",
+          requestId: command.requestId,
+          text: buffer.current(),
+          ...(buffer.version() === null ? {} : { commit: buffer.version() ?? "" }),
+        });
         return;
       case "showBase":
         setState({ base: command.source, baseEditable: command.editable === true });
@@ -318,6 +343,8 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     },
     dispose() {
       clearTimeout(cameraTimer);
+      clearTimeout(editTimer);
+      stopReportingEdits();
       stopReporting();
       buffer.release();
     },

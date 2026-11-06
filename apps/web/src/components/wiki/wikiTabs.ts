@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 
-import { documentTitle, isCanvasName, noteKey } from "./wiki.logic";
+import { changeRequestFiles, documentTitle, isCanvasName, noteKey, wikiDraft } from "./wiki.logic";
 
 /**
  * What a tab in the Wikis area shows: a note, read from main or inside a change request, or a
@@ -163,10 +163,13 @@ export function wikiSidebarItems(
   overviews: ReadonlyArray<WikiOverview>,
   scope: string | null,
 ): {
+  /** The person's drafts, apart from the change requests. */
+  readonly drafts: ReadonlyArray<WikiChangeItem>;
   readonly changes: ReadonlyArray<WikiChangeItem>;
   readonly documents: ReadonlyArray<WikiDocumentItem>;
   readonly settled: ReadonlyArray<WikiChangeItem>;
 } {
+  const drafts: WikiChangeItem[] = [];
   const changes: WikiChangeItem[] = [];
   const documents: WikiDocumentItem[] = [];
   const settled: WikiChangeItem[] = [];
@@ -174,7 +177,7 @@ export function wikiSidebarItems(
     const { environmentId, wiki } = overview;
     if (scope !== null && wikiScopeKey(environmentId, wiki.wikiId) !== scope) continue;
     const open = (overview.changeRequests ?? [])
-      .filter((changeRequest) => changeRequest.status === "open")
+      .filter((changeRequest) => changeRequest.status === "open" && !changeRequest.draft)
       .toSorted((a, b) => newestFirst(a.updatedAt, b.updatedAt));
     const item = (changeRequest: WikiChangeRequest): WikiChangeItem => ({
       key: wikiTabKey({
@@ -186,13 +189,17 @@ export function wikiSidebarItems(
       environmentId,
       wiki,
       changeRequest,
-      files: [...new Set(changeRequest.amendments.flatMap((amendment) => amendment.files))],
+      files: changeRequestFiles(changeRequest),
     });
     for (const changeRequest of overview.changeRequests ?? []) {
       if (changeRequest.status !== "open") settled.push(item(changeRequest));
     }
     const openItems = open.map(item);
     changes.push(...openItems);
+    const draft = wikiDraft(overview.changeRequests);
+    const draftItem = draft === null ? null : item(draft);
+    if (draftItem !== null) drafts.push(draftItem);
+    const changing = draftItem === null ? openItems : [draftItem, ...openItems];
     // A base and a canvas are documents too, opened by their file names.
     const bases = (overview.index?.bases ?? []).map((base) => ({
       name: base.file,
@@ -224,7 +231,7 @@ export function wikiSidebarItems(
         links: note.outgoing,
         backlinks: note.incoming,
         editedAt: note.editedAt ?? null,
-        changes: openItems
+        changes: changing
           .filter((change) => change.files.includes(note.file))
           .map((change) => change.changeRequest),
       });
@@ -233,7 +240,7 @@ export function wikiSidebarItems(
   changes.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
   settled.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
   documents.sort((a, b) => newestFirst(a.editedAt, b.editedAt) || a.name.localeCompare(b.name));
-  return { changes, documents, settled };
+  return { drafts, changes, documents, settled };
 }
 
 /** One row of the sidebar's search results: a document or a change request. */
@@ -255,6 +262,7 @@ export function searchWikiSidebarItems(
   const change = (item: WikiChangeItem): WikiSidebarEntry[] =>
     noteKey(item.changeRequest.title).includes(needle) ? [{ kind: "change", item }] : [];
   return [
+    ...lists.drafts.flatMap(change),
     ...lists.changes.flatMap(change),
     ...lists.documents.flatMap((item): WikiSidebarEntry[] =>
       noteKey(item.name).includes(needle) ? [{ kind: "document", item }] : [],

@@ -1,10 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type {
-  EnvironmentId,
-  ScopedThreadRef,
-  WikiChangeRequestId,
-  WikiId,
-} from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, WikiChangeRequest, WikiId } from "@t3tools/contracts";
 import {
   FilePenLineIcon,
   FileTextIcon,
@@ -24,10 +19,13 @@ import { useNumberWhenOpened } from "../repositories/worktreeNumbering";
 import { WorktreeNumber } from "../repositories/WorktreeNumber";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
+import { Empty } from "../ui/empty";
+import { Spinner } from "../ui/spinner";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
-import { documentTitle } from "./wiki.logic";
-import { WikiNoteView } from "./WikiNoteView";
+import { documentTitle, filesHoldDocument, wikiDocumentScope, wikiDraft } from "./wiki.logic";
+import { WikiDraftPill } from "./WikiDraftPill";
+import { WikiNoteView, type WikiDraftEdits } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
 import {
   changeRequestBranch,
@@ -37,6 +35,8 @@ import {
   wikiTabKey,
   type WikiTab,
 } from "./wikiTabs";
+
+const NO_CHANGE_REQUESTS: ReadonlyArray<WikiChangeRequest> = [];
 
 // The board brings the Markdown parser; a wiki with no canvas open shouldn't load it.
 const WikiCanvasPage = lazy(() => import("./WikiCanvasView"));
@@ -97,7 +97,7 @@ function useChangeRequests(environmentId: EnvironmentId, wikiId: WikiId) {
   const list = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
   );
-  return list.data?.changeRequests ?? null;
+  return { changeRequests: list.data?.changeRequests ?? null, failed: list.error !== null };
 }
 
 function NoteTab({
@@ -109,14 +109,49 @@ function NoteTab({
   readonly tab: Extract<WikiTab, { kind: "note" }>;
   readonly nav: WikiTabNav;
 }) {
-  const all = useChangeRequests(tab.environmentId, tab.wikiId);
+  const { changeRequests: all, failed } = useChangeRequests(tab.environmentId, tab.wikiId);
   const overviews = useAtomValue(wikiEnvironment.overview(tab.environmentId));
   const { target, holder } = useChangeRequestWorktree(tab);
   // A change request's document is something opened in its worktree.
   useNumberWhenOpened(target, holder);
-  const openChangeRequests = (all ?? []).filter((changeRequest) => changeRequest.status === "open");
   const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
   const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
+  const draft = wikiDraft(all);
+  const scope = wikiDocumentScope({
+    tabChangeRequestId: tab.changeRequestId,
+    draft,
+    name: tab.name,
+  });
+  const parent =
+    tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request");
+  const renderDraftPill = (edits?: WikiDraftEdits) => {
+    // A tab inside a change request stays there; only main, or the draft itself, is its pill's.
+    const shown = tab.changeRequestId === undefined ? draft : changeRequest?.draft ? draft : null;
+    if (shown === null) return null;
+    return (
+      <WikiDraftPill
+        environmentId={tab.environmentId}
+        draft={shown}
+        changeRequests={all ?? NO_CHANGE_REQUESTS}
+        {...(edits ?? {})}
+        onOpen={() =>
+          nav.open(
+            wikiTabKey({
+              kind: "change-request",
+              environmentId: tab.environmentId,
+              wikiId: tab.wikiId,
+              changeRequestId: shown.changeRequestId,
+            }),
+          )
+        }
+        onLanded={(changeRequestId, files) => {
+          // The document on screen follows where its edits went.
+          if (!filesHoldDocument(files, tab.name)) return;
+          nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId }), { rekey: true });
+        }}
+      />
+    );
+  };
   // A file that is no wiki document opens as a file, on the line the tab reads.
   const branch =
     tab.changeRequestId === undefined
@@ -135,6 +170,15 @@ function NoteTab({
               path,
             }),
           );
+  // Waits for the list to say whether a draft holds this, or a draft's document would first draw
+  // from main and then seem to change.
+  if (all === null && !failed) {
+    return (
+      <Empty>
+        <Spinner size="md" tone="muted" />
+      </Empty>
+    );
+  }
   if (isCanvasTab(tab)) {
     return (
       <Suspense fallback={null}>
@@ -143,20 +187,10 @@ function NoteTab({
           environmentId={tab.environmentId}
           wikiId={tab.wikiId}
           file={tab.name}
-          changeRequestId={tab.changeRequestId}
-          parent={
-            tab.changeRequestId === undefined
-              ? "Main"
-              : (changeRequest?.title ?? "A change request")
-          }
-          openChangeRequests={openChangeRequests}
-          onSaved={(savedTo: WikiChangeRequestId) => {
-            if (savedTo !== tab.changeRequestId) {
-              nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), {
-                rekey: true,
-              });
-            }
-          }}
+          changeRequestId={scope}
+          savesTo={tab.changeRequestId}
+          parent={parent}
+          draftPill={renderDraftPill()}
           onOpenNote={(name) => nav.replace(tabKey, wikiTabKey({ ...tab, name }))}
           onOpenFile={openFile}
           onOpenTab={nav.open}
@@ -170,18 +204,12 @@ function NoteTab({
         environmentId={tab.environmentId}
         wikiId={tab.wikiId}
         file={tab.name}
-        changeRequestId={tab.changeRequestId}
-        parent={
-          tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request")
-        }
-        openChangeRequests={openChangeRequests}
+        changeRequestId={scope}
+        savesTo={tab.changeRequestId}
+        changeRequests={all ?? NO_CHANGE_REQUESTS}
+        parent={parent}
+        renderDraftPill={renderDraftPill}
         registerUnsaved={registerUnsaved}
-        onSaved={(savedTo: WikiChangeRequestId) => {
-          // Saved from main, the base now reads inside the change request it was saved to.
-          if (savedTo !== tab.changeRequestId) {
-            nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), { rekey: true });
-          }
-        }}
         onOpenNote={(name) => {
           const next = wikiTabKey({ ...tab, name });
           if (hasUnsavedEdits(tabKey)) nav.open(next);
@@ -196,19 +224,16 @@ function NoteTab({
       environmentId={tab.environmentId}
       wikiId={tab.wikiId}
       name={tab.name}
-      changeRequestId={tab.changeRequestId}
-      openChangeRequests={openChangeRequests}
+      changeRequestId={scope}
+      savesTo={tab.changeRequestId}
+      changeRequests={all ?? NO_CHANGE_REQUESTS}
+      location={parent}
+      renderDraftPill={renderDraftPill}
       onOpenNote={(name) => {
         const next = wikiTabKey({ ...tab, name });
         // A link opens in place, as in Obsidian, unless that would drop unsaved edits.
         if (hasUnsavedEdits(tabKey)) nav.open(next);
         else nav.replace(tabKey, next);
-      }}
-      onSaved={(savedTo: WikiChangeRequestId) => {
-        // Saved from main, the note now reads inside the change request it was saved to.
-        if (savedTo !== tab.changeRequestId) {
-          nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), { rekey: true });
-        }
       }}
       registerUnsaved={registerUnsaved}
     />
@@ -222,7 +247,7 @@ function ChangeRequestTab({
   readonly tab: Extract<WikiTab, { kind: "change-request" }>;
   readonly nav: WikiTabNav;
 }) {
-  const all = useChangeRequests(tab.environmentId, tab.wikiId);
+  const { changeRequests: all } = useChangeRequests(tab.environmentId, tab.wikiId);
   const status = all?.find((entry) => entry.changeRequestId === tab.changeRequestId)?.status;
   const { openThread, openPullRequest } = nav;
   return (

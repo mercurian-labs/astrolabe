@@ -3,6 +3,7 @@ import type {
   ThreadId,
   ThreadPullRequestLink,
   WikiAmendmentSummary,
+  WikiChangeRequest,
   WikiChangeRequestId,
   WikiFileChange,
   WikiId,
@@ -47,6 +48,7 @@ import {
   mergeConflictAdvice,
   noteNameOfFile,
 } from "./wiki.logic";
+import { useWikiDraftActions } from "./WikiDraftPill";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
 
@@ -79,6 +81,10 @@ export function WikiChangeRequestView({
     wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const list = useEnvironmentQuery(
+    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
+  const changeRequests = list.data?.changeRequests ?? NO_CHANGE_REQUESTS;
   const wikiName = wikis.data?.wikis.find((wiki) => wiki.wikiId === wikiId)?.name ?? null;
   const navigate = useNavigate();
   // Astrolabe: the pull requests of the thread that wrote it (see `changeRequestPullRequests`).
@@ -160,7 +166,13 @@ export function WikiChangeRequestView({
   return frame(
     changeRequest.title,
     <>
-      <TabHeader.Status>{STATUS_LABEL[changeRequest.status]}</TabHeader.Status>
+      <TabHeader.Status>
+        {changeRequest.draft
+          ? changeRequest.status === "open"
+            ? "Draft"
+            : "Discarded draft"
+          : STATUS_LABEL[changeRequest.status]}
+      </TabHeader.Status>
       <TabHeader.Actions>
         {changeRequest.threadId ? (
           <TabHeader.Action
@@ -172,7 +184,7 @@ export function WikiChangeRequestView({
             <MessagesSquareIcon className="size-4" />
           </TabHeader.Action>
         ) : null}
-        {open ? (
+        {open && !changeRequest.draft ? (
           <TabHeader.Action
             label="Close change request"
             disabled={!canSetStatus || busy !== null}
@@ -182,14 +194,20 @@ export function WikiChangeRequestView({
           </TabHeader.Action>
         ) : changeRequest.status === "closed" ? (
           <TabHeader.Action
-            label="Reopen change request"
+            label={changeRequest.draft ? "Reopen draft" : "Reopen change request"}
             disabled={!canSetStatus || busy !== null}
             onClick={() => void runStatus("open")}
           >
             {busy === "status" ? <Spinner /> : <PullRequestGlyph.reopen className="size-4" />}
           </TabHeader.Action>
         ) : null}
-        {open ? (
+        {open && changeRequest.draft ? (
+          <DraftActions
+            environmentId={environmentId}
+            draft={changeRequest}
+            changeRequests={changeRequests}
+          />
+        ) : open ? (
           <MergeButton
             blocked={blocked}
             busy={busy === "merge"}
@@ -292,7 +310,31 @@ export function WikiChangeRequestView({
   );
 }
 
+/** A draft's ways out, where an open change request's Close and Merge sit. */
+function DraftActions(input: {
+  readonly environmentId: EnvironmentId;
+  readonly draft: WikiChangeRequest;
+  readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
+}) {
+  const actions = useWikiDraftActions(input);
+  return (
+    <>
+      <Button variant="ghost" size="sm" disabled={!actions.canAct} onClick={actions.discard}>
+        Discard
+      </Button>
+      <Button variant="ghost" size="sm" disabled={!actions.canAct} onClick={actions.move}>
+        Move to another one
+      </Button>
+      <Button size="sm" disabled={!actions.canAct} onClick={actions.promote}>
+        Make it a change request
+      </Button>
+      {actions.dialogs}
+    </>
+  );
+}
+
 const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
+const NO_CHANGE_REQUESTS: ReadonlyArray<WikiChangeRequest> = [];
 const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
 /**

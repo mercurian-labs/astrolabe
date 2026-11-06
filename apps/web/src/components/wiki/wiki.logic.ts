@@ -31,13 +31,18 @@ export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
 
 // Shared with the mobile app.
 export {
+  changeRequestFiles,
+  filesHoldDocument,
   documentTitle,
+  draftLabel,
   isCanvasName,
+  isSettledChangeRequest,
+  wikiDocumentScope,
+  wikiDraft,
   wikiDocumentName,
   noteKey,
   wikiDocumentNames,
   noteNameOfFile,
-  defaultSaveTarget,
   mergeBlockedReason,
   mergeConflictAdvice,
   describeIndexError,
@@ -47,9 +52,7 @@ export {
   isTurnRunning,
   latestAmendmentFor,
   authorColor,
-  queuedSaveStep,
   type MirrorTone,
-  type QueuedWikiSave,
 } from "@t3tools/client-runtime/wikiLogic";
 
 /** A map's tiles, picked as Obsidian does: the view's own, else a background, else the default. */

@@ -33,8 +33,24 @@ describe("the wiki editor page", () => {
     expect(events).toEqual([
       { type: "state", dirty: false, changedUnderneath: false },
       { type: "state", dirty: true, changedUnderneath: false },
+      { type: "edited" },
       { type: "text", requestId: 7, text: "# A\nmore!" },
     ]);
+  });
+
+  it("says the person is typing at a walking pace, and when they stop", () => {
+    vi.useFakeTimers();
+    using _clock = { [Symbol.dispose]: () => vi.useRealTimers() };
+    const { page: editor, events } = page();
+    editor.handle({ type: "receive", source: "a", author: null, turnRunning: false });
+    const { text } = editor.buffer.getSnapshot().session!;
+    for (let keystroke = 0; keystroke < 10; keystroke += 1) text.insert(0, "b");
+    const edits = () => events.filter((event) => event.type === "edited").length;
+    expect(edits()).toBe(1);
+    vi.advanceTimersByTime(500);
+    expect(edits()).toBe(2);
+    vi.advanceTimersByTime(1_000);
+    expect(edits()).toBe(2);
   });
 
   it("lands an author's version live beside the person's edits, then settles on save", () => {

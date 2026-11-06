@@ -124,12 +124,14 @@ export type WikiEditorCommand =
       readonly author: WikiEditorAuthor | null;
       /** While the author's turn runs, its writes stay one reviewable change. */
       readonly turnRunning: boolean;
+      /** The commit it was read at. */
+      readonly commit?: string | undefined;
     }
   /** Reading follows links on a tap; editing types. A skill map is never editable. */
   | { readonly type: "mode"; readonly mode: "read" | "edit" }
   | { readonly type: "theme"; readonly theme: WikiEditorTheme }
-  /** The edits were saved as `text`: the next read should bring it back. */
-  | { readonly type: "markSaved"; readonly text: string }
+  /** The edits were saved as `text`, at `commit`: the next read should bring it back. */
+  | { readonly type: "markSaved"; readonly text: string; readonly commit?: string | undefined }
   | { readonly type: "discard" }
   /** Drops the edits for the version that changed underneath them. */
   | { readonly type: "loadChanged" }
@@ -223,7 +225,15 @@ export type WikiEditorEvent =
   | { readonly type: "openCode"; readonly code: CanvasCodeReference; readonly url: string }
   /** A wiki file the page can't play itself. */
   | { readonly type: "openFile"; readonly path: string }
-  | { readonly type: "text"; readonly requestId: number; readonly text: string }
+  /** The buffer's text, and the commit it last took in. */
+  | {
+      readonly type: "text";
+      readonly requestId: number;
+      readonly text: string;
+      readonly commit?: string | undefined;
+    }
+  /** The person typed. Sent at most a couple of times a second, so the app can autosave. */
+  | { readonly type: "edited" }
   /** A ```base block is on screen: the app runs it and keeps its view current. */
   | { readonly type: "queryBase"; readonly source: string }
   /** A link's preview is open: the app reads its note and keeps it current. */
@@ -375,8 +385,15 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
       return typeof value.path === "string" ? { type: "openFile", path: value.path } : null;
     case "text":
       return typeof value.requestId === "number" && typeof value.text === "string"
-        ? { type: "text", requestId: value.requestId, text: value.text }
+        ? {
+            type: "text",
+            requestId: value.requestId,
+            text: value.text,
+            ...(typeof value.commit === "string" ? { commit: value.commit } : {}),
+          }
         : null;
+    case "edited":
+      return { type: "edited" };
     case "queryBase":
       return typeof value.source === "string" ? { type: "queryBase", source: value.source } : null;
     case "readNote":
@@ -427,6 +444,7 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         source: value.source,
         author: readAuthor(value.author),
         turnRunning: value.turnRunning,
+        ...(typeof value.commit === "string" ? { commit: value.commit } : {}),
       };
     case "mode":
       return value.mode === "read" || value.mode === "edit"

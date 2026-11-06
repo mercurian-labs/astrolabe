@@ -1,13 +1,13 @@
 import type { EnvironmentId, WikiChangeRequest, WikiId, WikiSummary } from "@t3tools/contracts";
 
 import type { WikiOverview } from "./state/wiki.ts";
-import { documentTitle, noteKey } from "./wikiLogic.ts";
+import { changeRequestFiles, documentTitle, noteKey, wikiDraft } from "./wikiLogic.ts";
 
 /**
- * Astrolabe: the Wikis list, as the thread list is one list across projects: every open
- * change request, then every document (notes, `.base` and `.canvas` files), then the merged and closed
- * change requests (the shelf a closed one is reopened from), each newest first, across every
- * wiki on every server.
+ * Astrolabe: the Wikis list, as the thread list is one list across projects: the person's drafts,
+ * every open change request, then every document (notes, `.base` and `.canvas` files), then the
+ * merged and closed change requests (the shelf a closed one is reopened from), each newest first,
+ * across every wiki on every server.
  */
 
 /** A document in the list: a note, a `.base` or a `.canvas` file, on its wiki's main line. */
@@ -45,6 +45,8 @@ export interface WikiChangeEntry {
 }
 
 export interface WikiListEntries {
+  /** The person's drafts, one a wiki at most, apart from the change requests. */
+  readonly drafts: ReadonlyArray<WikiChangeEntry>;
   readonly changes: ReadonlyArray<WikiChangeEntry>;
   readonly documents: ReadonlyArray<WikiDocumentEntry>;
   readonly settled: ReadonlyArray<WikiChangeEntry>;
@@ -61,6 +63,7 @@ export function wikiListEntries(
   overviews: ReadonlyArray<WikiOverview>,
   scope: string | null,
 ): WikiListEntries {
+  const drafts: WikiChangeEntry[] = [];
   const changes: WikiChangeEntry[] = [];
   const documents: WikiDocumentEntry[] = [];
   const settled: WikiChangeEntry[] = [];
@@ -73,14 +76,22 @@ export function wikiListEntries(
       environmentId,
       wiki,
       changeRequest,
-      files: [...new Set(changeRequest.amendments.flatMap((amendment) => amendment.files))],
+      files: changeRequestFiles(changeRequest),
     });
     const open: WikiChangeEntry[] = [];
     for (const changeRequest of changeRequests ?? []) {
-      (changeRequest.status === "open" ? open : settled).push(entry(changeRequest));
+      if (changeRequest.status === "open") {
+        if (!changeRequest.draft) open.push(entry(changeRequest));
+      } else {
+        settled.push(entry(changeRequest));
+      }
     }
     open.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
     changes.push(...open);
+    const draft = wikiDraft(changeRequests);
+    const draftEntry = draft === null ? null : entry(draft);
+    if (draftEntry !== null) drafts.push(draftEntry);
+    const changing = draftEntry === null ? open : [draftEntry, ...open];
     const notes = (index?.notes ?? []).map((note) => ({ ...note, base: false, canvas: false }));
     const bases = (index?.bases ?? []).map((base) => ({
       name: base.file,
@@ -111,7 +122,7 @@ export function wikiListEntries(
         links: note.outgoing,
         backlinks: note.incoming,
         editedAt: note.editedAt ?? null,
-        changes: open
+        changes: changing
           .filter((change) => change.files.includes(note.file))
           .map((change) => change.changeRequest),
       });
@@ -120,7 +131,7 @@ export function wikiListEntries(
   changes.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
   settled.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
   documents.sort((a, b) => newestFirst(a.editedAt, b.editedAt) || a.name.localeCompare(b.name));
-  return { changes, documents, settled };
+  return { drafts, changes, documents, settled };
 }
 
 /**
@@ -132,6 +143,7 @@ export function searchWikiListEntries(entries: WikiListEntries, query: string): 
   if (needle === "") return entries;
   const matches = (change: WikiChangeEntry) => noteKey(change.changeRequest.title).includes(needle);
   return {
+    drafts: entries.drafts.filter(matches),
     changes: entries.changes.filter(matches),
     documents: entries.documents.filter((document) => noteKey(document.name).includes(needle)),
     settled: entries.settled.filter(matches),

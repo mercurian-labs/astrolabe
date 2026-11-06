@@ -35,6 +35,16 @@ export function withEdit(
   return [...edits, edit];
 }
 
+/**
+ * `edit` added behind the first `sent` edits, which are on their way to the server as they stand,
+ * so it can't fold into one of them.
+ */
+export const withUnsentEdit = (
+  edits: ReadonlyArray<WikiBaseEdit>,
+  sent: number,
+  edit: WikiBaseEdit,
+): ReadonlyArray<WikiBaseEdit> => [...edits.slice(0, sent), ...withEdit(edits.slice(sent), edit)];
+
 const noteKey = (property: string) =>
   property.startsWith("note.") ? property.slice("note.".length) : property;
 

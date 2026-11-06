@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isEditableNote, newNoteProperties, withEdit } from "./wikiBaseEdits.ts";
+import { isEditableNote, newNoteProperties, withEdit, withUnsentEdit } from "./wikiBaseEdits.ts";
 
 describe("withEdit", () => {
+  it("leaves edits on their way to the server as they are", () => {
+    const edit = (value: string) =>
+      ({ kind: "property", file: "A.md", property: "status", value }) as const;
+    expect(withUnsentEdit([edit("open")], 1, edit("done"))).toEqual([edit("open"), edit("done")]);
+    expect(withUnsentEdit([edit("open")], 0, edit("done"))).toEqual([edit("done")]);
+  });
+
   it("folds repeated settings of one view into one edit", () => {
     const first = withEdit([], {
       kind: "view",

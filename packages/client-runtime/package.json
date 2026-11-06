@@ -164,6 +164,10 @@
       "types": "./src/changeGroups.ts",
       "default": "./src/changeGroups.ts"
     },
+    "./wikiAutosave": {
+      "types": "./src/wikiAutosave.ts",
+      "default": "./src/wikiAutosave.ts"
+    },
     "./wikiLogic": {
       "types": "./src/wikiLogic.ts",
       "default": "./src/wikiLogic.ts"
