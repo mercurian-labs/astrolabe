@@ -148,6 +148,7 @@ const handle = (message) => {
           linkedEditingRangeProvider: true,
           callHierarchyProvider: true,
           codeLensProvider: { resolveProvider: true },
+          workspaceSymbolProvider: true,
           semanticTokensProvider: {
             legend: { tokenTypes: ["variable"], tokenModifiers: [] },
             full: { delta: true },
@@ -409,6 +410,21 @@ const handle = (message) => {
           arguments: [params.data.uri, params.range.start.line],
         },
       });
+    case "workspace/symbol":
+      // `symbols` lists the names it knows, each in `src/<name>.ts` at line 3.
+      return reply(
+        (config.symbols ?? [])
+          .filter((name) => name.includes(params.query))
+          .map((name) => ({
+            name,
+            kind: 12,
+            containerName: role ?? "primary",
+            location: {
+              uri: new URL(`src/${name}.ts`, `file://${process.cwd()}/`).href,
+              range: rangeOf("\n\n  x", 4, 5),
+            },
+          })),
+      );
     case "test/refresh": {
       const askId = `fake-${++askedCount}`;
       asked.set(askId, () => {});

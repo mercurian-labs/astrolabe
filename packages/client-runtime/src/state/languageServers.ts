@@ -67,6 +67,12 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
   });
   const check = (environmentId: EnvironmentId, cwd: string) =>
     checkQuery({ environmentId, input: { cwd } });
+  const projectSymbols = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:project-symbols",
+    tag: WS_METHODS.languageServersProjectSymbols,
+    // A picker's query per keystroke: none of them is worth keeping.
+    idleTtlMs: 0,
+  });
   const statusesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
     label: "environment-data:language-servers:statuses",
     tag: WS_METHODS.languageServersSubscribe,
@@ -152,5 +158,6 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     problems,
     logs,
     check,
+    projectSymbols,
   };
 }

@@ -12,6 +12,9 @@ import {
   type FileDiagnostics,
   type LanguageServerAppliedEdit,
   type LanguageServerEditPlace,
+  type ProjectSymbol,
+  type ProjectSymbols,
+  type ProjectSymbolsInput,
   type LanguageServerCheck,
   type LanguageServerCheckResult,
   type LanguageServerInfo,
@@ -159,6 +162,8 @@ export class LanguageServers extends Context.Service<
      * as it is.
      */
     readonly save: (input: DocumentSaveInput) => Effect.Effect<DocumentSaveResult, DocumentError>;
+    /** Names across a checkout, from every server already running there that can say. */
+    readonly projectSymbols: (input: ProjectSymbolsInput) => Effect.Effect<ProjectSymbols>;
     /** Puts back the files of an edit the environment applied (a rename), as far as it can. */
     readonly undoEdit: (
       input: LanguageServerUndoEditInput,
@@ -245,6 +250,7 @@ const DIAGNOSTICS_LISTED = 200;
 /** Applied edits kept for undo; older ones can no longer be undone. */
 const EDITS_KEPT = 20;
 const LOCATIONS_LISTED = 200;
+const SYMBOLS_LISTED = 200;
 const PREVIEW_LENGTH = 200;
 /** Places an applied edit lists; a huge rename's answer stays small, and says how many in all. */
 const EDIT_PLACES_LISTED = 200;
@@ -549,6 +555,7 @@ const CLIENT_CAPABILITIES = {
     workspaceFolders: true,
     applyEdit: true,
     didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
+    symbol: {},
     inlayHint: { refreshSupport: true },
     semanticTokens: { refreshSupport: true },
     codeLens: { refreshSupport: true },
@@ -570,6 +577,36 @@ const settingsSection = (settings: Readonly<Record<string, unknown>>, section: u
   }
   return value ?? null;
 };
+
+/** LSP's `SymbolKind`, from 1. */
+const SYMBOL_KINDS = [
+  "file",
+  "module",
+  "namespace",
+  "package",
+  "class",
+  "method",
+  "property",
+  "field",
+  "constructor",
+  "enum",
+  "interface",
+  "function",
+  "variable",
+  "constant",
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+  "key",
+  "null",
+  "enum member",
+  "struct",
+  "event",
+  "operator",
+  "type parameter",
+];
 
 const severityName = (severity: unknown): FileDiagnostic["severity"] =>
   severity === 2 ? "warning" : severity === 3 ? "info" : severity === 4 ? "hint" : "error";
@@ -2423,6 +2460,57 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
   });
 
+  const projectSymbols: LanguageServers["Service"]["projectSymbols"] = Effect.fn(
+    "LanguageServers.projectSymbols",
+  )(function* (input) {
+    const asked = [...instances.values()].flatMap((instance): Array<Asked> => {
+      const running = instance.running;
+      if (instance.cwd !== input.cwd || !running?.capabilities?.workspaceSymbolProvider) return [];
+      const request = running.connection.request("workspace/symbol", { query: input.query });
+      return [
+        {
+          instance,
+          doc: undefined,
+          context: null,
+          query: "",
+          seen: null,
+          cancel: () => running.connection.cancel(request.id),
+          response: request.response.pipe(
+            Effect.map((result) => ({ ok: true as const, result: result as Json })),
+            Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+          ),
+        },
+      ];
+    });
+    const answers = asked.length === 0 ? [] : yield* gather(asked);
+    const seen = new Set<string>();
+    const found = answers.flatMap(({ request, answer }) =>
+      answer.ok && Array.isArray(answer.result)
+        ? answer.result.flatMap((symbol: Json): Array<ProjectSymbol> => {
+            const uri = symbol?.location?.uri;
+            const path = typeof uri === "string" ? relativePathOf(request.instance, uri) : null;
+            if (path === null || typeof symbol.name !== "string") return [];
+            const start = symbol.location.range?.start;
+            const line = (start?.line ?? 0) + 1;
+            const key = `${path}\0${line}\0${symbol.name}`;
+            if (seen.has(key)) return [];
+            seen.add(key);
+            return [
+              {
+                name: symbol.name,
+                kind: SYMBOL_KINDS[symbol.kind - 1] ?? "symbol",
+                container: typeof symbol.containerName === "string" ? symbol.containerName : null,
+                path,
+                line,
+                column: (start?.character ?? 0) + 1,
+              },
+            ];
+          })
+        : [],
+    );
+    return { symbols: found.slice(0, SYMBOLS_LISTED), truncated: found.length > SYMBOLS_LISTED };
+  });
+
   const forward = Effect.fn("LanguageServers.forward")(function* (
     primary: Instance,
     session: Session,
@@ -3103,6 +3191,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     filesChanged,
     locate,
     undoEdit,
+    projectSymbols,
     subscribe: SubscriptionRef.changes(statuses),
     check,
     restart,

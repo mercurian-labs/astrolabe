@@ -69,6 +69,7 @@ describe("codeContextMenu", () => {
             pick: () => undefined,
             nothing: () => undefined,
             jumping: () => undefined,
+            projectSymbols: () => undefined,
           },
         }),
         codeContextMenu(host),

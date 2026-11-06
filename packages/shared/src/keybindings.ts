@@ -207,6 +207,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // Astrolabe: the outline picker of a repository file or wiki note; mod+shift+o stays
   // `chat.new` everywhere else.
   { key: "mod+shift+o", command: "outline.open", when: "outlineFocus" },
+  // Astrolabe: names across the project of the repository tab in front.
+  { key: "mod+alt+o", command: "lsp.projectSymbols", when: "!terminalFocus" },
   // Astrolabe: Ctrl+H/J/K/L move focus between the sidebar and the panes, as Vim's and tmux's
   // window keys do, only while nothing is being typed into (a field, an editor, a terminal):
   // there they stay the editor's. Early, so where `mod` is Ctrl the terminal (mod+j) and the

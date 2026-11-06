@@ -43,6 +43,8 @@ export interface NavigationHost {
   readonly nothing: (title: string) => void;
   /** The cursor is about to jump within this file. */
   readonly jumping: () => void;
+  /** Opens the search for names across the project, where the file has one. */
+  readonly projectSymbols: () => void;
 }
 
 const navigationHost = Facet.define<NavigationHost, NavigationHost | null>({
@@ -320,6 +322,12 @@ export function environmentNavigation(options: {
           })),
       ),
     ),
-    lspVimKeys(COMMANDS),
+    lspVimKeys({
+      ...COMMANDS,
+      projectSymbols: () => {
+        options.host.projectSymbols();
+        return true;
+      },
+    }),
   ];
 }

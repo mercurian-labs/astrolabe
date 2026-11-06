@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { DocumentChangeSetJson, DocumentClientId, DocumentLoadId } from "./documents.ts";
 
 /**
@@ -153,6 +153,36 @@ export const LanguageServerTarget = Schema.Struct({
 export type LanguageServerTarget = typeof LanguageServerTarget.Type;
 
 /** What each language server would run for a checkout, without starting or downloading it. */
+/** Names across a checkout's files, from its running servers or, without any, its code index. */
+export const ProjectSymbolsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  /** A wiki's folder has no code index. */
+  projectId: Schema.optional(ProjectId),
+  query: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+});
+export type ProjectSymbolsInput = typeof ProjectSymbolsInput.Type;
+
+export const ProjectSymbol = Schema.Struct({
+  name: Schema.String,
+  /** A language's own word for it: `function`, `class`, `struct`. */
+  kind: Schema.String,
+  /** What holds it: a method's class. */
+  container: Schema.NullOr(Schema.String),
+  /** Repository-relative. */
+  path: Schema.String,
+  line: PositiveInt,
+  /** From 1; lines from the code index name no column. */
+  column: PositiveInt,
+});
+export type ProjectSymbol = typeof ProjectSymbol.Type;
+
+export const ProjectSymbols = Schema.Struct({
+  symbols: Schema.Array(ProjectSymbol),
+  /** Only the first are listed. */
+  truncated: Schema.Boolean,
+});
+export type ProjectSymbols = typeof ProjectSymbols.Type;
+
 export const LanguageServerCheckInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
 export type LanguageServerCheckInput = typeof LanguageServerCheckInput.Type;
 

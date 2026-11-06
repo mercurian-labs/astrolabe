@@ -89,6 +89,7 @@ describe("RPC authorization scopes", () => {
     for (const method of [
       WS_METHODS.languageServersSubscribe,
       WS_METHODS.languageServersCheck,
+      WS_METHODS.languageServersProjectSymbols,
       WS_METHODS.languageServersSession,
       WS_METHODS.languageServersSend,
       WS_METHODS.languageServersProblems,

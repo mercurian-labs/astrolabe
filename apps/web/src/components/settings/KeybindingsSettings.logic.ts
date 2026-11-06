@@ -418,6 +418,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "hunk.previous": "Previous Change",
   "hunk.toggleBase": "Compare With HEAD or This Turn",
   "outline.open": "Go to Symbol in File",
+  "lsp.projectSymbols": "Go to Symbol in Project",
   "diagnostic.next": "Next Problem",
   "diagnostic.previous": "Previous Problem",
   "lsp.complete": "Show Completions",

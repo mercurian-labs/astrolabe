@@ -52,6 +52,7 @@ import { diffBaseControl, hasDiffBaseControl } from "~/components/repositories/f
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { codeEditingCommandOf } from "~/editorKeybindings";
 import { openOutlinePicker } from "~/components/outline/OutlinePicker";
+import { projectSymbolsOpener } from "~/components/outline/ProjectSymbolPicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import { focusedChatOf, workspace } from "~/panes/workspace";
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
@@ -578,6 +579,10 @@ function astrolabeCommand(
         view ? "Go to symbol" : "No file to outline",
         view ? () => afterPalette(() => openOutlinePicker(view)) : null,
       );
+    }
+    case "lsp.projectSymbols": {
+      const open = projectSymbolsOpener(panes?.controller ?? null);
+      return entry(open ? "Go to symbol in project" : "No project in front", open);
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));

@@ -91,6 +91,7 @@ import { recordJump, trackJumpCursor } from "~/panes/jumpHistory";
 import { leafWithTab } from "~/panes/tree";
 import { toastManager } from "../ui/toast";
 import { openLocationPicker, pathOfUri } from "../outline/LocationPicker";
+import { projectSymbolsOpener } from "../outline/ProjectSymbolPicker";
 import { navigationList } from "./multibuffer/multibufferInputs";
 import { locationsTabKey } from "./multibuffer/openMultibuffer";
 import { useVimScreenLines } from "~/vimScreenLines";
@@ -302,6 +303,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     open: openLocation,
     pick: pickLocation,
     jumping: () => recordJump(tabKey, tabKey),
+    projectSymbols: () => projectSymbolsOpener(panes)?.(),
     nothing: (title) =>
       toastManager.add({
         type: "info",

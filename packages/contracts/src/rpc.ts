@@ -494,6 +494,8 @@ import {
 } from "./documents.ts";
 import {
   LanguageServerCheckInput,
+  ProjectSymbols,
+  ProjectSymbolsInput,
   LanguageServerCheckResult,
   LanguageServerError,
   LanguageServerLogItem,
@@ -705,6 +707,7 @@ export const WS_METHODS = {
   // Astrolabe: language servers in the environment, and the gateway browsers reach them through.
   languageServersSubscribe: "languageServers.subscribe",
   languageServersCheck: "languageServers.check",
+  languageServersProjectSymbols: "languageServers.projectSymbols",
   languageServersRestart: "languageServers.restart",
   languageServersStop: "languageServers.stop",
   languageServersTrustProject: "languageServers.trustProject",
@@ -2346,6 +2349,13 @@ const WsLanguageServersCheckRpc = Rpc.make(WS_METHODS.languageServersCheck, {
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
+/** Finds names across a checkout; asks only servers already running. */
+const WsLanguageServersProjectSymbolsRpc = Rpc.make(WS_METHODS.languageServersProjectSymbols, {
+  payload: ProjectSymbolsInput,
+  success: ProjectSymbols,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 /** Starts it again, also after a stop, a cap or giving up. */
 const WsLanguageServersRestartRpc = Rpc.make(WS_METHODS.languageServersRestart, {
   payload: LanguageServerTarget,
@@ -2813,6 +2823,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsCodeIndexClearRpc,
   WsLanguageServersSubscribeRpc,
   WsLanguageServersCheckRpc,
+  WsLanguageServersProjectSymbolsRpc,
   WsLanguageServersRestartRpc,
   WsLanguageServersUndoEditRpc,
   WsLanguageServersStopRpc,

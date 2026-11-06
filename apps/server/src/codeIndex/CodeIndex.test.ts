@@ -451,6 +451,11 @@ it.effect("answers a project in a subfolder in paths relative to its folder", ()
         helper.definitions.map((definition) => definition.path),
         ["src/helper.ts"],
       );
+      const byPart = yield* harness.index.symbols({ projectId: PROJECT, cwd, query: "HELP" });
+      assert.deepStrictEqual(
+        byPart.symbols.map((symbol) => [symbol.name, symbol.path]),
+        [["helper", "src/helper.ts"]],
+      );
       assert.deepStrictEqual(helper.uses.map((use) => [use.path, use.line, use.kind]).toSorted(), [
         ["../web/src/view.ts", 1, "imports"],
         ["../web/src/view.ts", 2, "calls"],

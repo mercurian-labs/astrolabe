@@ -1651,6 +1651,40 @@ describe("LanguageServers with companions on a file", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
   );
 
+  it.live("finds symbols across the servers running in a checkout, each once", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const { checkout } = yield* openWithCompanions(SOURCE, {
+        symbols: ["addTotal", "other"],
+        roles: { eslint: { symbols: ["addTotal", "addOne"] }, tailwindcss: { symbols: [] } },
+      });
+      const found = yield* service.projectSymbols({ cwd: checkout.cwd, query: "add" });
+      expect(found).toEqual({
+        symbols: [
+          {
+            name: "addTotal",
+            kind: "function",
+            container: "primary",
+            path: "src/addTotal.ts",
+            line: 3,
+            column: 3,
+          },
+          {
+            name: "addOne",
+            kind: "function",
+            container: "eslint",
+            path: "src/addOne.ts",
+            line: 3,
+            column: 3,
+          },
+        ],
+        truncated: false,
+      });
+      const elsewhere = yield* service.projectSymbols({ cwd: "/not/this/one", query: "add" });
+      expect(elsewhere.symbols).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
   it.live("merges completions and resolves each item on the server that made it", () =>
     Effect.gen(function* () {
       const { checkout, session } = yield* openWithCompanions(SOURCE, {

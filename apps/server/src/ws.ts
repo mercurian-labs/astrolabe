@@ -251,6 +251,7 @@ import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
 import * as LanguageServers from "./languageServers/LanguageServers.ts";
+import { searchProjectSymbols } from "./languageServers/projectSymbols.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
@@ -1306,6 +1307,8 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.documentsUndoReplaceAll]: (input) => documents.undoReplaceAll(input),
       [WS_METHODS.languageServersSubscribe]: (_input) => languageServers.subscribe,
       [WS_METHODS.languageServersCheck]: (input) => languageServers.check(input.cwd),
+      [WS_METHODS.languageServersProjectSymbols]: (input) =>
+        searchProjectSymbols(languageServers, codeIndex, input),
       [WS_METHODS.languageServersRestart]: (input) => languageServers.restart(input),
       [WS_METHODS.languageServersStop]: (input) => languageServers.stop(input),
       [WS_METHODS.languageServersTrustProject]: (input) => languageServers.trustProject(input.cwd),
