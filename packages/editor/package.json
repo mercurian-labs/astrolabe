@@ -87,6 +87,10 @@
       "types": "./src/lsp/contextMenu.ts",
       "default": "./src/lsp/contextMenu.ts"
     },
+    "./lsp/linked-editing": {
+      "types": "./src/lsp/linkedEditing.ts",
+      "default": "./src/lsp/linkedEditing.ts"
+    },
     "./lsp/symbol-highlights": {
       "types": "./src/lsp/symbolHighlights.ts",
       "default": "./src/lsp/symbolHighlights.ts"

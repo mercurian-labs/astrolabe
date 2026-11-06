@@ -494,6 +494,31 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("refuses linked ranges in text the editor has not received", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const ranges = (id: number) =>
+        session.request(
+          id,
+          "textDocument/linkedEditingRange",
+          { textDocument: { uri: checkout.uri }, position: editor.position("point", 1) },
+          editor.envelope(),
+        );
+      const fine = yield* ranges(1);
+      expect(fine.result.ranges.map((range: any) => editor.slice(range))).toEqual([
+        "point",
+        "point",
+      ]);
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "const point2 = point;\n" }));
+      const behind = yield* ranges(2);
+      expect(behind.error.code).toBe(ContentModified);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("lands the editor's unconfirmed edits before answering", () =>
     Effect.gen(function* () {
       const checkout = yield* makeCheckout(SOURCE);

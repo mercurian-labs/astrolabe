@@ -145,6 +145,7 @@ const handle = (message) => {
           referencesProvider: true,
           inlayHintProvider: true,
           documentHighlightProvider: true,
+          linkedEditingRangeProvider: true,
           completionProvider: {
             resolveProvider: true,
             triggerCharacters: config.triggerCharacters ?? ["."],
@@ -313,6 +314,15 @@ const handle = (message) => {
           kind: index === 0 ? 3 : 2,
         })),
       );
+    }
+    case "textDocument/linkedEditingRange": {
+      const { text } = docs.get(params.textDocument.uri);
+      const target = wordAt(text, offsetOf(text, params.position)).word;
+      return reply({
+        ranges: occurrences(text, target).map((offset) =>
+          rangeOf(text, offset, offset + target.length),
+        ),
+      });
     }
     case "test/refresh": {
       const askId = `fake-${++askedCount}`;

@@ -483,6 +483,7 @@ const CLIENT_CAPABILITIES = {
     references: {},
     inlayHint: {},
     documentHighlight: {},
+    linkedEditingRange: {},
     codeAction: {
       codeActionLiteralSupport: {
         codeActionKind: {

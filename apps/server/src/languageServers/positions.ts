@@ -169,6 +169,9 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
         highlight.range = mapRange(m, highlight.range, false);
       }
       return result;
+    case "textDocument/linkedEditingRange":
+      result.ranges = result.ranges?.map((range: Json) => mapRange(m, range, true));
+      return result;
     case "textDocument/inlayHint":
       return (Array.isArray(result) ? result : []).flatMap((hint: Json) => {
         const offset = fromPosition(m.from, hint.position);

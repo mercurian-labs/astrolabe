@@ -17,6 +17,7 @@ import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
 import { inlayHints } from "@mercurian/editor/lsp/inlay-hints";
+import { linkedEditing } from "@mercurian/editor/lsp/linked-editing";
 import { symbolHighlights } from "@mercurian/editor/lsp/symbol-highlights";
 import {
   environmentNavigation,
@@ -842,6 +843,7 @@ function languageServerUi(
       ? inlayHints({ types: shown.hintTypes, parameters: shown.hintParameters })
       : [],
     symbolHighlights(),
+    linkedEditing(),
     environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
     environmentHover({
       keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },
