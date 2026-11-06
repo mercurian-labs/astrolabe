@@ -4,9 +4,10 @@ import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchema
 import { DocumentChangeSetJson, DocumentClientId, DocumentLoadId } from "./documents.ts";
 
 /**
- * Astrolabe: language servers run in the environment, one per language per checkout. The
- * environment is their only LSP client and feeds them its open documents; browsers speak LSP to
- * its gateway over `languageServers.session` and `languageServers.send`.
+ * Astrolabe: language servers run in the environment, per checkout: a language's primary server,
+ * and the companions that join it on a file. The environment is their only LSP client and feeds
+ * them its open documents; browsers speak LSP to its gateway over `languageServers.session` and
+ * `languageServers.send`, one session per editor however many servers stand behind it.
  */
 
 export const LanguageServerId = Schema.Literals([
@@ -16,43 +17,54 @@ export const LanguageServerId = Schema.Literals([
   "gopls",
   "clangd",
   "jdtls",
+  "ruff",
+  "eslint",
+  "tailwindcss",
 ]);
 export type LanguageServerId = typeof LanguageServerId.Type;
 
-/** Each server's file extensions, and the LSP language id it opens each with. */
-const LANGUAGE_IDS: Readonly<Record<LanguageServerId, Readonly<Record<string, string>>>> = {
-  typescript: {
-    ts: "typescript",
-    mts: "typescript",
-    cts: "typescript",
-    tsx: "typescriptreact",
-    js: "javascript",
-    mjs: "javascript",
-    cjs: "javascript",
-    jsx: "javascriptreact",
-  },
-  basedpyright: { py: "python", pyi: "python" },
-  "rust-analyzer": { rs: "rust" },
-  gopls: { go: "go" },
-  clangd: {
-    c: "c",
-    // clangd reads a header's language from the compile commands, not this id.
-    h: "cpp",
-    cc: "cpp",
-    cpp: "cpp",
-    cxx: "cpp",
-    "c++": "cpp",
-    hh: "cpp",
-    hpp: "cpp",
-    hxx: "cpp",
-    "h++": "cpp",
-    ipp: "cpp",
-    tpp: "cpp",
-    m: "objective-c",
-    mm: "objective-cpp",
-  },
-  jdtls: { java: "java" },
-};
+/** Each primary server's file extensions, and the LSP language id it opens each with. */
+const LANGUAGE_IDS: Readonly<Partial<Record<LanguageServerId, Readonly<Record<string, string>>>>> =
+  {
+    typescript: {
+      ts: "typescript",
+      mts: "typescript",
+      cts: "typescript",
+      tsx: "typescriptreact",
+      js: "javascript",
+      mjs: "javascript",
+      cjs: "javascript",
+      jsx: "javascriptreact",
+    },
+    basedpyright: { py: "python", pyi: "python" },
+    "rust-analyzer": { rs: "rust" },
+    gopls: { go: "go" },
+    clangd: {
+      c: "c",
+      // clangd reads a header's language from the compile commands, not this id.
+      h: "cpp",
+      cc: "cpp",
+      cpp: "cpp",
+      cxx: "cpp",
+      "c++": "cpp",
+      hh: "cpp",
+      hpp: "cpp",
+      hxx: "cpp",
+      "h++": "cpp",
+      ipp: "cpp",
+      tpp: "cpp",
+      m: "objective-c",
+      mm: "objective-cpp",
+    },
+    jdtls: { java: "java" },
+  };
+
+/** The extensions each companion joins the primary on, in the order they follow it. */
+const COMPANION_EXTENSIONS: ReadonlyArray<readonly [LanguageServerId, ReadonlySet<string>]> = [
+  ["ruff", new Set(["py", "pyi"])],
+  ["eslint", new Set(["ts", "mts", "cts", "tsx", "js", "mjs", "cjs", "jsx"])],
+  ["tailwindcss", new Set(["ts", "tsx", "js", "jsx"])],
+];
 
 const SERVER_FOR_EXTENSION: ReadonlyMap<
   string,
@@ -66,16 +78,39 @@ const SERVER_FOR_EXTENSION: ReadonlyMap<
   ),
 );
 
-/** The server that serves a file, and the LSP language id it opens it with; null for none. */
-export function languageServerForPath(
-  path: string,
-): { readonly server: LanguageServerId; readonly languageId: string } | null {
+export interface LanguageServerForPath {
+  readonly server: LanguageServerId;
+  readonly languageId: string;
+}
+
+const extensionOf = (path: string) => {
   const name = path.slice(path.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
-  if (dot <= 0) return null;
-  // `.d.ts` files are part of the project the server already loads.
-  return SERVER_FOR_EXTENSION.get(name.slice(dot + 1).toLowerCase()) ?? null;
+  return dot <= 0 ? null : name.slice(dot + 1).toLowerCase();
+};
+
+/** The server that answers for a file, and the LSP language id it opens it with; null for none. */
+export function languageServerForPath(path: string): LanguageServerForPath | null {
+  const extension = extensionOf(path);
+  return extension === null ? null : (SERVER_FOR_EXTENSION.get(extension) ?? null);
 }
+
+/** Every server that can serve a file, primary first; a checkout may not activate them all. */
+export function languageServersForPath(path: string): ReadonlyArray<LanguageServerForPath> {
+  const primary = languageServerForPath(path);
+  if (primary === null) return [];
+  const extension = extensionOf(path) ?? "";
+  return [
+    primary,
+    ...COMPANION_EXTENSIONS.filter(([, extensions]) => extensions.has(extension)).map(
+      ([server]) => ({ server, languageId: primary.languageId }),
+    ),
+  ];
+}
+
+/** Whether a server joins a primary on its files, rather than serving a language itself. */
+export const isCompanionLanguageServer = (server: LanguageServerId) =>
+  COMPANION_EXTENSIONS.some(([companion]) => companion === server);
 
 export const LanguageServerState = Schema.Literals([
   /** The project isn't trusted, and this server needs a download or runs its code. */
@@ -137,6 +172,8 @@ export const LanguageServerCheck = Schema.Struct({
   executable: Schema.NullOr(Schema.String),
   /** Why it's missing, what downloading fetches, or what the checkout lacks for it. */
   message: Schema.NullOr(Schema.String),
+  /** For a companion: whether this checkout uses it, and what says so. Null for a primary. */
+  companion: Schema.NullOr(Schema.Struct({ active: Schema.Boolean, reason: Schema.String })),
 });
 export type LanguageServerCheck = typeof LanguageServerCheck.Type;
 

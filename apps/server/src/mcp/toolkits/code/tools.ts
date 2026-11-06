@@ -97,8 +97,7 @@ const CodeMapTool = Tool.make("astrolabe_code_map", {
   .annotate(Tool.Destructive, false);
 
 /** "TypeScript and JavaScript, Python, Rust, Go, or C and C++". */
-const SERVED_LANGUAGES = Object.values(LANGUAGE_SERVERS)
-  .map((spec) => spec.languages)
+const SERVED_LANGUAGES = [...new Set(Object.values(LANGUAGE_SERVERS).map((spec) => spec.languages))]
   .join(", ")
   .replace(/, ([^,]*)$/, ", or $1");
 
@@ -110,7 +109,7 @@ const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
     ProjectService.ProjectService,
     LanguageServers.LanguageServers,
   ],
-  description: `The errors and warnings each file's language server reports for ${SERVED_LANGUAGES} files at your thread's checkout, as the files are now: everything you wrote before the call is included. Use it after editing to check those files instead of type-checking or building the whole project. Lines and columns count from 1. The first call in a checkout can take a while as the project loads. Paths are repository-relative.`,
+  description: `The errors and warnings each file's language servers report for ${SERVED_LANGUAGES} files at your thread's checkout, as the files are now: everything you wrote before the call is included. Use it after editing to check those files instead of type-checking or building the whole project. Lines and columns count from 1. The first call in a checkout can take a while as the project loads. Paths are repository-relative.`,
   parameters: Schema.Struct({
     paths: Schema.Array(Text)
       .check(Schema.isMinLength(1), Schema.isMaxLength(20))

@@ -18,8 +18,11 @@ import {
   type LanguageServerSetTraceInput,
   type LanguageServerUndoEditInput,
   type LanguageServerUndoEditResult,
+  isCompanionLanguageServer,
   languageServerForPath,
+  languageServersForPath,
   LanguageServerError,
+  type LanguageServerForPath,
   type LanguageServerId,
   type LanguageServerProblemsItem,
   type LanguageServerSendInput,
@@ -53,6 +56,16 @@ import * as NodeURL from "node:url";
 import * as ServerConfig from "../config.ts";
 import * as Documents from "../documents/Documents.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
+import {
+  FORMATTING_METHODS,
+  hasContent,
+  hearsCompletion,
+  mergeCapabilities,
+  mergeCompletions,
+  originOf,
+  ROUTES,
+  tagCompletions,
+} from "./fanOut.ts";
 import {
   connect,
   ContentModified,
@@ -98,8 +111,9 @@ import {
 import { changeSetOf, editsByFile } from "./workspaceEdits.ts";
 
 /**
- * One server per language per checkout, and the environment as its only LSP client; see
- * docs/internals/language-servers.md for how browsers reach it through the gateway.
+ * Per checkout, a language's server and the companions that join it on a file, with the
+ * environment as their only LSP client; see docs/internals/language-servers.md for how browsers
+ * reach them through the gateway.
  */
 export class LanguageServers extends Context.Service<
   LanguageServers,
@@ -126,14 +140,18 @@ export class LanguageServers extends Context.Service<
       input: LanguageServerSessionInput,
     ) => Stream.Stream<LanguageServerSessionItem, LanguageServerError>;
     readonly send: (input: LanguageServerSendInput) => Effect.Effect<void, LanguageServerError>;
-    /** Diagnostics for a file as it is now: a write made before the call is in them. */
+    /**
+     * Diagnostics for a file as it is now: a write made before the call is in them. Those of a
+     * companion join in when it is ready within `companionWait`.
+     */
     readonly diagnostics: (input: {
       readonly cwd: string;
       readonly relativePath: string;
     }) => Effect.Effect<FileDiagnostics, LanguageServerError>;
     /**
-     * The documents' save, formatting the file first when asked and a server can. A formatter
-     * slower than `formatTimeout` is skipped: the file saves as it is.
+     * The documents' save, formatting the file first when asked and a server can, by its
+     * language's one formatter. A formatter slower than `formatTimeout` is skipped: the file saves
+     * as it is.
      */
     readonly save: (input: DocumentSaveInput) => Effect.Effect<DocumentSaveResult, DocumentError>;
     /** Puts back the files of an edit the environment applied (a rename), as far as it can. */
@@ -147,7 +165,7 @@ export class LanguageServers extends Context.Service<
     readonly filesChanged: (input: FilesChangedInput) => Effect.Effect<void>;
     /**
      * Where the symbol at a file's line and column (from 1) is defined, or used, as the file is
-     * now: a write made before the call is in it.
+     * now, asking its primary server: a write made before the call is in it.
      */
     readonly locate: (input: {
       readonly cwd: string;
@@ -172,7 +190,10 @@ export interface LanguageServersOptions {
   readonly specs: Readonly<Partial<Record<LanguageServerId, LanguageServerSpec>>>;
   /** No documents and no sessions for this long stops a server. */
   readonly idleTimeout: Duration.Input;
-  /** Resident memory every server may use together; past it the least recently used stop. */
+  /**
+   * Resident memory every server may use together; past it companions stop before primaries,
+   * the least recently used first.
+   */
   readonly memoryBudgetBytes: number;
   readonly memorySampleInterval: Duration.Input;
   /** Waits before each restart after a crash; one more crash than there are delays gives up. */
@@ -188,6 +209,13 @@ export interface LanguageServersOptions {
   readonly fileChangeQuiet: Duration.Input;
   /** How long a save waits for its formatter. */
   readonly formatTimeout: Duration.Input;
+  /**
+   * How long a request asked of several servers waits for them all. After it, what has come in
+   * is the answer, or the first thing to come in if nothing has.
+   */
+  readonly fanOutTimeout: Duration.Input;
+  /** How long an agent's diagnostics wait for companions, past their primary. */
+  readonly companionWait: Duration.Input;
   /**
    * How long a trace outlives its last reader. A tab behind another has no subscription, and
    * the person may have gone there to make the server do what they want to see.
@@ -267,6 +295,8 @@ interface GatewayDoc {
   pulling: boolean;
   dirty: boolean;
   readonly waiters: Set<() => void>;
+  /** The sessions showing this document's diagnostics. */
+  readonly sessions: Set<Session>;
   readonly scope: Scope.Closeable;
 }
 
@@ -294,24 +324,44 @@ interface AppliedEdit {
 }
 
 interface PendingForward {
-  serverId: number | null;
+  /** Cancels each server request in flight for this one. */
+  readonly inFlight: Set<() => void>;
+  cancelled: boolean;
   fiber: Fiber.Fiber<void> | null;
+}
+
+interface Held {
+  readonly instance: Instance;
+  readonly doc: GatewayDoc;
+}
+
+/** A file a session has open. */
+interface OpenFile {
+  /** As the client named it. */
+  readonly uri: string;
+  /** On the primary first, then each active companion in server order. */
+  readonly held: Array<Held>;
+}
+
+/** A code action offered, as its server gave it, and the texts it is about. */
+interface OfferedAction {
+  readonly action: Json;
+  readonly instance: Instance;
+  readonly seen: ReadonlyMap<string, ServerText>;
 }
 
 interface Session {
   readonly id: string;
+  /** Bound for life: the server the client connected to, whose status it follows. */
+  readonly primary: Instance;
   readonly queue: Queue.Queue<LanguageServerSessionItem>;
-  /** Uris as the client named them, by path. */
-  readonly open: Map<string, string>;
+  readonly open: Map<string, OpenFile>;
   readonly pending: Map<number | string, PendingForward>;
   readonly scope: Scope.Closeable;
-  /** The file of the last completion list: `completionItem/resolve` names no document. */
-  completionPath: string | null;
-  /** The last code actions offered, as the server gave them, and the texts they are about. */
-  codeActions: {
-    readonly actions: ReadonlyArray<Json>;
-    readonly seen: ReadonlyMap<string, ServerText>;
-  } | null;
+  /** The last code actions offered, merged. */
+  codeActions: ReadonlyArray<OfferedAction> | null;
+  /** The capabilities the client was last told, as JSON; null before `initialize`. */
+  advertised: string | null;
 }
 
 interface Running {
@@ -319,6 +369,8 @@ interface Running {
   readonly connection: LspConnection;
   readonly capabilities: Json;
   readonly pull: boolean;
+  /** Takes each change as the whole text, having said it can't take ranges. */
+  readonly fullSync: boolean;
   /** What the server says it is, from its `initialize` answer. */
   readonly version: string | null;
 }
@@ -357,6 +409,8 @@ interface Instance {
   changesGeneration: number;
   /** Called on each status change, for those waiting on one. */
   readonly statusWatchers: Set<() => void>;
+  /** For a primary: whether the checkout uses each companion, as of its last Restart. */
+  readonly activation: Map<LanguageServerId, boolean>;
   /** Kept apart from the process and the instance: a crash's output outlives both. */
   readonly log: ServerLog;
   /** The last launch. */
@@ -374,6 +428,22 @@ const failure = (reason: LanguageServerError["reason"], message: string, cause?:
   new LanguageServerError({ reason, message, ...(cause === undefined ? {} : { cause }) });
 
 const errorMessage = (error: ResponseError) => ({ code: error.code, message: error.message });
+
+type ServerAnswer =
+  | { readonly ok: true; readonly result: Json }
+  | { readonly ok: false; readonly error: ResponseError };
+
+/** A request written to one server: its answer, and how to read that answer back. */
+interface Asked {
+  readonly instance: Instance;
+  readonly doc: GatewayDoc | undefined;
+  readonly context: Translation | null;
+  readonly query: string;
+  /** The texts an answer that edits (a rename, code actions) is about. */
+  readonly seen: ReadonlyMap<string, ServerText> | null;
+  readonly cancel: () => void;
+  readonly response: Effect.Effect<ServerAnswer>;
+}
 
 /** What the gateway asks of a server: everything `@codemirror/lsp-client` can use, and pulls. */
 const CLIENT_CAPABILITIES = {
@@ -553,7 +623,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     Scope.close(scope, Exit.void),
   );
   const instances = new Map<string, Instance>();
-  const sessions = new Map<string, { readonly instance: Instance; readonly session: Session }>();
+  const sessions = new Map<string, Session>();
   const statuses = yield* SubscriptionRef.make<ReadonlyArray<LanguageServerStatus>>([]);
   const applied = new Map<string, AppliedEdit>();
   /** Keys of logs whose last reader left within `traceGrace`: a hidden tab comes back to them. */
@@ -581,6 +651,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         Queue.offerUnsafe(session.queue, { type: "status", status: instance.status });
       }
       for (const watcher of instance.statusWatchers) watcher();
+      for (const doc of instance.docs.values()) {
+        for (const session of doc.sessions) advertise(session);
+      }
       instance.log.stateChanged();
       return instances.get(instance.key) === instance ? publishList() : Effect.void;
     });
@@ -595,50 +668,62 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     });
   };
 
-  /** A document's latest diagnostics, carried to its current version, as tools list them. */
-  const listedDiagnostics = (doc: GatewayDoc): FileDiagnostics => {
-    const latest = doc.latest ?? { version: doc.version, diagnostics: [] };
-    const text = doc.texts.get(latest.version) ?? doc.texts.get(doc.version);
-    const current = doc.texts.get(doc.version);
-    // Pulled before the latest edits: carry them to the version reported.
-    const items =
-      latest.version === doc.version || text === undefined || current === undefined
-        ? latest.diagnostics
-        : mapDiagnostics(
-            structuredClone(latest.diagnostics),
-            forwardMapper(
-              text,
-              current,
-              doc.updates
-                .slice(latest.version - doc.oldest)
-                .reduce((all, update) => all.compose(update.changes), ChangeSet.empty(text.length)),
-            ),
-          );
-    const listed = items.slice(0, DIAGNOSTICS_LISTED).map((item: Json): FileDiagnostic => ({
-      severity: severityName(item.severity),
-      line: (item.range?.start?.line ?? 0) + 1,
-      column: (item.range?.start?.character ?? 0) + 1,
-      endLine: (item.range?.end?.line ?? 0) + 1,
-      endColumn: (item.range?.end?.character ?? 0) + 1,
-      message: String(
-        typeof item.message === "string" ? item.message : (item.message?.value ?? ""),
+  /** A document's latest diagnostics carried to `version`; as they are if it isn't there yet. */
+  const diagnosticsAt = (doc: GatewayDoc, version: number): ReadonlyArray<Json> => {
+    const latest = doc.latest;
+    if (latest === null) return [];
+    const text = doc.texts.get(latest.version);
+    const target = doc.texts.get(version);
+    if (latest.version === version || text === undefined || target === undefined) {
+      return latest.diagnostics;
+    }
+    return mapDiagnostics(
+      structuredClone(latest.diagnostics),
+      forwardMapper(
+        text,
+        target,
+        doc.updates
+          .slice(latest.version - doc.oldest, version - doc.oldest)
+          .reduce((all, update) => all.compose(update.changes), ChangeSet.empty(text.length)),
       ),
-      ...(item.code === undefined || item.code === null ? {} : { code: String(item.code) }),
-      ...(typeof item.source === "string" ? { source: item.source } : {}),
-    }));
+    );
+  };
+
+  const toFileDiagnostic = (item: Json): FileDiagnostic => ({
+    severity: severityName(item.severity),
+    line: (item.range?.start?.line ?? 0) + 1,
+    column: (item.range?.start?.character ?? 0) + 1,
+    endLine: (item.range?.end?.line ?? 0) + 1,
+    endColumn: (item.range?.end?.character ?? 0) + 1,
+    message: String(typeof item.message === "string" ? item.message : (item.message?.value ?? "")),
+    ...(item.code === undefined || item.code === null ? {} : { code: String(item.code) }),
+    ...(typeof item.source === "string" ? { source: item.source } : {}),
+  });
+
+  /**
+   * One file's diagnostics from these documents (of one file, on several servers), carried to the
+   * latest version, as tools list them. The first document's load decides: a reload reaches each
+   * copy in turn.
+   */
+  const listedDiagnostics = (docs: ReadonlyArray<GatewayDoc>): FileDiagnostics => {
+    const first = docs[0]!;
+    const current = docs.filter((doc) => doc.loadId === first.loadId);
+    const version = Math.max(...current.map((doc) => doc.version));
+    const items = current.flatMap((doc) => diagnosticsAt(doc, version));
+    const listed = items.slice(0, DIAGNOSTICS_LISTED).map(toFileDiagnostic);
     return {
-      path: doc.relativePath,
-      version: doc.version,
+      path: first.relativePath,
+      version,
       diagnostics: listed,
       truncated: items.length > listed.length,
     };
   };
 
-  // Astrolabe: each checkout's latest problems by file, kept after a file closes until its
-  // server stops, for the problems view.
+  // Astrolabe: each checkout's latest problems by file and server, kept after a file closes until
+  // its server stops, for the problems view.
   const problems = new Map<
     string,
-    { readonly instance: string; readonly cwd: string; readonly file: FileDiagnostics }
+    { readonly cwd: string; readonly byServer: Map<string, FileDiagnostics> }
   >();
   const problemEvents = yield* PubSub.unbounded<{
     readonly cwd: string;
@@ -646,52 +731,94 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   }>();
   const problemKey = (cwd: string, relativePath: string) => `${path.resolve(cwd)}\0${relativePath}`;
 
+  /** A file's problems across its servers; `path` and `version` come from `fallback` for none. */
+  const mergedProblems = (
+    files: ReadonlyArray<FileDiagnostics>,
+    fallback: FileDiagnostics,
+  ): FileDiagnostics => {
+    const diagnostics = files.flatMap((file) => file.diagnostics);
+    return {
+      path: fallback.path,
+      version: Math.max(fallback.version, ...files.map((file) => file.version)),
+      diagnostics: diagnostics.slice(0, DIAGNOSTICS_LISTED),
+      truncated:
+        diagnostics.length > DIAGNOSTICS_LISTED || files.some((file) => file.truncated === true),
+    };
+  };
+
+  /** Records one server's problems for a file, or their end, and tells the problems view. */
+  const setProblems = (instance: Instance, file: FileDiagnostics) => {
+    const cwd = path.resolve(instance.cwd);
+    const key = problemKey(instance.cwd, file.path);
+    const known = problems.get(key);
+    if (file.diagnostics.length === 0 && !known?.byServer.has(instance.key)) return;
+    const entry = known ?? { cwd, byServer: new Map() };
+    if (file.diagnostics.length === 0) entry.byServer.delete(instance.key);
+    else entry.byServer.set(instance.key, file);
+    if (entry.byServer.size === 0) problems.delete(key);
+    else problems.set(key, entry);
+    PubSub.publishUnsafe(problemEvents, {
+      cwd,
+      file: mergedProblems([...entry.byServer.values()], file),
+    });
+  };
+
   const noteProblems = (instance: Instance, doc: GatewayDoc) => {
     // Closing a file nobody holds clears it for its editors; its problems stay listed.
     if (doc.holders === 0) return;
-    const file = listedDiagnostics(doc);
-    const key = problemKey(instance.cwd, doc.relativePath);
-    const known = problems.get(key);
-    if (file.diagnostics.length === 0) {
-      if (known === undefined) return;
-      problems.delete(key);
-    } else problems.set(key, { instance: instance.key, cwd: path.resolve(instance.cwd), file });
-    PubSub.publishUnsafe(problemEvents, { cwd: path.resolve(instance.cwd), file });
+    setProblems(instance, listedDiagnostics([doc]));
   };
 
   /** Forgets a stopped server's problems for files it no longer has open. */
   const forgetProblems = (instance: Instance) => {
-    for (const [key, entry] of problems) {
-      if (entry.instance !== instance.key || instance.docs.has(entry.file.path)) continue;
-      problems.delete(key);
-      PubSub.publishUnsafe(problemEvents, {
-        cwd: path.resolve(instance.cwd),
-        file: { ...entry.file, diagnostics: [], truncated: false },
-      });
+    for (const { byServer } of problems.values()) {
+      const file = byServer.get(instance.key);
+      if (file === undefined || instance.docs.has(file.path)) continue;
+      setProblems(instance, { ...file, diagnostics: [], truncated: false });
     }
+  };
+
+  /** What a session's client should show for a file: every server's, at the latest version. */
+  const publishDiagnostics = (session: Session, relativePath: string) => {
+    const file = session.open.get(relativePath);
+    const first = file?.held[0]?.doc;
+    if (file === undefined || first === undefined) return;
+    const docs = file.held
+      .map((held) => held.doc)
+      .filter((doc) => doc.latest !== null && doc.loadId === first.loadId);
+    const version = Math.max(-1, ...docs.map((doc) => doc.latest!.version));
+    const at = version < 0 ? first.version : version;
+    sendTo(
+      session,
+      {
+        method: "textDocument/publishDiagnostics",
+        params: {
+          uri: file.uri,
+          version: at,
+          diagnostics: docs.flatMap((doc) => diagnosticsAt(doc, at)),
+        },
+      },
+      at,
+    );
   };
 
   const fanOutDiagnostics = (instance: Instance, doc: GatewayDoc) => {
     noteProblems(instance, doc);
-    const latest = doc.latest ?? { version: doc.version, diagnostics: [] };
-    for (const session of instance.sessions.values()) {
-      const uri = session.open.get(doc.relativePath);
-      if (uri === undefined) continue;
-      sendTo(
-        session,
-        {
-          method: "textDocument/publishDiagnostics",
-          params: { uri, version: latest.version, diagnostics: latest.diagnostics },
-        },
-        latest.version,
-      );
-    }
+    for (const session of doc.sessions) publishDiagnostics(session, doc.relativePath);
   };
 
   const setDiagnostics = (instance: Instance, doc: GatewayDoc, published: PublishedDiagnostics) => {
     doc.published += 1;
     if (doc.latest !== null && doc.latest.version > published.version) return;
-    doc.latest = published;
+    doc.latest = {
+      version: published.version,
+      // Merged with other servers', a diagnostic has to say whose it is.
+      diagnostics: published.diagnostics.map((diagnostic) =>
+        typeof diagnostic?.source === "string"
+          ? diagnostic
+          : { ...diagnostic, source: instance.spec.name },
+      ),
+    };
     fanOutDiagnostics(instance, doc);
     for (const wake of doc.waiters) wake();
   };
@@ -835,7 +962,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           // Each change's range is in the text before it; from the end, the earlier ones hold.
           running.connection.notify("textDocument/didChange", {
             textDocument: { uri: doc.uri, version: doc.version },
-            contentChanges: contentChanges.reverse(),
+            contentChanges: running.fullSync
+              ? [{ text: next.toString() }]
+              : contentChanges.reverse(),
           });
         }
       }
@@ -883,6 +1012,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         pulling: false,
         dirty: false,
         waiters: new Set(),
+        sessions: new Set(),
         scope: yield* Scope.fork(instance.scope),
       };
       doc = created;
@@ -1117,6 +1247,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       connection: connection.value,
       capabilities,
       pull: capabilities?.diagnosticProvider != null,
+      fullSync: (capabilities?.textDocumentSync?.change ?? capabilities?.textDocumentSync) === 1,
       version: typeof version === "string" ? version : null,
     };
     instance.running = running;
@@ -1200,7 +1331,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     yield* publishList();
   });
 
-  /** Over the budget, the least recently used servers stop until the rest fit; never the newest. */
+  /**
+   * Over the budget, servers stop until the rest fit: companions, which only add to a file, then
+   * the least recently used; never the last of those, the newest primary if there is one.
+   */
   const checkMemory: Effect.Effect<void> = Effect.gen(function* () {
     const running = [...instances.values()].filter((instance) => instance.running !== null);
     if (running.length === 0) return;
@@ -1211,8 +1345,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       total += bytes ?? 0;
       if (bytes !== instance.status.memoryBytes) yield* setStatus(instance, { memoryBytes: bytes });
     }
-    const byAge = running.toSorted((a, b) => a.lastUsed - b.lastUsed);
-    for (const instance of byAge.slice(0, -1)) {
+    const primaryRank = (instance: Instance) =>
+      isCompanionLanguageServer(instance.spec.id) ? 0 : 1;
+    const byPreference = running.toSorted(
+      (a, b) => primaryRank(a) - primaryRank(b) || a.lastUsed - b.lastUsed,
+    );
+    for (const instance of byPreference.slice(0, -1)) {
       if (total <= options.memoryBudgetBytes) break;
       total -= instance.status.memoryBytes ?? 0;
       yield* instance.lock.withPermit(
@@ -1296,6 +1434,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       loading: false,
       settings: {},
       statusWatchers: new Set(),
+      activation: new Map(),
       log: logOf(key),
       launched: null,
       ready: Deferred.makeUnsafe(),
@@ -1366,6 +1505,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         ),
         instance.scope,
       );
+      // Someone restarting may just have added the config that makes a companion apply.
+      for (const primary of instances.values()) {
+        if (primary.cwd !== target.cwd) continue;
+        primary.activation.clear();
+        for (const session of primary.sessions.values()) {
+          for (const [relativePath, file] of session.open) {
+            yield* fork(syncCompanions(session, relativePath, file), session.scope);
+          }
+        }
+      }
     },
   );
 
@@ -1410,7 +1559,13 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           )).some(Boolean)
             ? null
             : hinted.message;
-        const base = { server: spec.id, languages: spec.languages };
+        const base = {
+          server: spec.id,
+          languages: spec.languages,
+          companion: isCompanionLanguageServer(spec.id)
+            ? yield* installer.activationOf(cwd, spec)
+            : null,
+        };
         switch (resolution.type) {
           case "ready":
             return {
@@ -1586,7 +1741,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   /** Replaces the server's uris for this session's documents with the session's own. */
   const toSessionUris = (instance: Instance, session: Session, value: Json): Json => {
     const uris = new Map<string, string>();
-    for (const [relativePath, uri] of session.open) {
+    for (const [relativePath, { uri }] of session.open) {
       const doc = instance.docs.get(relativePath);
       if (doc !== undefined && doc.uri !== uri) uris.set(doc.uri, uri);
     }
@@ -1872,22 +2027,22 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   };
 
   /**
-   * Applies one of the code actions last offered to the session: its edit through the
-   * environment, as a rename's, then its command, whose own edits the server sends back here.
+   * Applies one of the code actions last offered to the session on the server that offered it:
+   * its edit through the environment, as a rename's, then its command, whose own edits the server
+   * sends back here.
    */
   const applyCodeAction = Effect.fn("LanguageServers.applyCodeAction")(function* (
-    instance: Instance,
     session: Session,
     index: unknown,
   ) {
-    const running = yield* Deferred.await(instance.ready);
-    const offered = session.codeActions;
-    const chosen = typeof index === "number" ? offered?.actions[index] : undefined;
-    if (offered === null || chosen === undefined) {
+    const offered = typeof index === "number" ? session.codeActions?.[index] : undefined;
+    const running = offered?.instance.running;
+    if (offered === undefined || running === null || running === undefined) {
       return { error: contentModified("The code actions changed; ask for them again.") };
     }
+    const { instance, seen } = offered;
     session.codeActions = null;
-    let action: Json = chosen;
+    let action: Json = offered.action;
     const isCommand = typeof action.command === "string";
     if (
       !isCommand &&
@@ -1896,13 +2051,11 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     ) {
       action = yield* running.connection
         .request("codeAction/resolve", action)
-        .response.pipe(Effect.orElseSucceed(() => chosen));
+        .response.pipe(Effect.orElseSucceed(() => offered.action));
     }
     const done: Array<LanguageServerAppliedEdit> = [];
     if (action.edit) {
-      const edit = yield* applyWorkspaceEdit(instance, action.edit, offered.seen).pipe(
-        Effect.option,
-      );
+      const edit = yield* applyWorkspaceEdit(instance, action.edit, seen).pipe(Effect.option);
       if (Option.isNone(edit))
         return { error: { code: -32603, message: "The edit could not be applied." } };
       done.push(edit.value);
@@ -1923,37 +2076,171 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     return { result: { applied: mergeApplied(done) } };
   });
 
+  /** The servers on a file, those a request can reach now: running, with the file open. */
+  const openOn = (primary: Instance, relativePath: string) =>
+    [
+      primary,
+      ...languageServersForPath(relativePath)
+        .filter(({ server }) => server !== primary.spec.id)
+        .flatMap(({ server }) => instances.get(`${primary.cwd}\0${server}`) ?? []),
+    ].filter((instance) => {
+      const openGeneration = instance.docs.get(relativePath)?.openOn;
+      return instance.running !== null && openGeneration === instance.running.generation;
+    });
+
+  const formatterOrder = (primary: Instance, serving: ReadonlyArray<Instance>) => {
+    const order = primary.spec.formatters ?? [];
+    const rank = (instance: Instance) => {
+      const at = order.indexOf(instance.spec.id);
+      return at < 0 ? order.length : at;
+    };
+    return serving.toSorted((a, b) => rank(a) - rank(b));
+  };
+
+  /** The companions a checkout uses for this file, as read at its primary's last Restart. */
+  const activeCompanions = Effect.fn("LanguageServers.activeCompanions")(function* (
+    primary: Instance,
+    relativePath: string,
+  ) {
+    const [first, ...companions] = languageServersForPath(relativePath);
+    const active: Array<LanguageServerForPath> = [];
+    if (first?.server !== primary.spec.id) return active;
+    for (const companion of companions) {
+      const spec = options.specs[companion.server];
+      if (spec === undefined) continue;
+      let known = primary.activation.get(spec.id);
+      if (known === undefined) {
+        known = (yield* installer.activationOf(primary.cwd, spec)).active;
+        primary.activation.set(spec.id, known);
+      }
+      if (known) active.push(companion);
+    }
+    return active;
+  });
+
+  /** Started and held at once: a companion with no file would have nothing to stop it. */
+  const holdCompanion = (
+    primary: Instance,
+    relativePath: string,
+    { server, languageId }: LanguageServerForPath,
+  ) =>
+    use({ cwd: primary.cwd, server }).pipe(
+      Effect.flatMap((instance) =>
+        holdDoc(instance, relativePath, languageId).pipe(
+          Effect.map((doc): Held => ({ instance, doc })),
+        ),
+      ),
+      Effect.uninterruptible,
+    );
+
+  /** What the servers behind a session can do for its client, now. */
+  const sessionCapabilities = (session: Session) => {
+    const serving = new Set([
+      session.primary,
+      ...[...session.open.values()].flatMap((file) => file.held.map((held) => held.instance)),
+    ]);
+    const { diagnosticProvider: _pulledHere, ...merged } = mergeCapabilities(
+      [...serving].flatMap((instance) => instance.running?.capabilities ?? []),
+    );
+    // Editors send no document changes: the servers have the environment's copy.
+    return { ...merged, textDocumentSync: { openClose: true, change: 0 } };
+  };
+
+  /** Companions start after `initialize`, so a client hears what they add when they come. */
+  const advertise = (session: Session) => {
+    if (session.advertised === null) return;
+    const capabilities = sessionCapabilities(session);
+    const text = stringifyJson(capabilities);
+    if (text === session.advertised) return;
+    session.advertised = text;
+    sendTo(session, { method: "astrolabe/capabilities", params: capabilities });
+  };
+
+  const release = (session: Session, { instance, doc }: Held) => {
+    doc.sessions.delete(session);
+    return releaseDoc(instance, doc);
+  };
+
+  /** Holds a file on each active companion, lazily starting it, and lets go of the others. */
+  const syncCompanions = Effect.fn("LanguageServers.syncCompanions")(function* (
+    session: Session,
+    relativePath: string,
+    file: OpenFile,
+  ) {
+    const { primary } = session;
+    const wanted = yield* activeCompanions(primary, relativePath);
+    const isHeld = (server: LanguageServerId) =>
+      file.held.some((held) => held.instance.spec.id === server);
+    for (const held of file.held.slice(1)) {
+      if (wanted.some(({ server }) => server === held.instance.spec.id)) continue;
+      file.held.splice(file.held.indexOf(held), 1);
+      yield* release(session, held);
+      publishDiagnostics(session, relativePath);
+    }
+    for (const companion of wanted) {
+      if (isHeld(companion.server)) continue;
+      yield* holdCompanion(primary, relativePath, companion).pipe(
+        Effect.flatMap(({ instance, doc }) => {
+          // Closed, or held by a Restart's sync, while this one waited.
+          if (session.open.get(relativePath) !== file || isHeld(companion.server)) {
+            return releaseDoc(instance, doc);
+          }
+          doc.sessions.add(session);
+          file.held.push({ instance, doc });
+          file.held.sort(
+            (a, b) => serverRank(relativePath, a.instance) - serverRank(relativePath, b.instance),
+          );
+          if (doc.latest !== null) publishDiagnostics(session, relativePath);
+          return Effect.void;
+        }),
+        // Whole or not at all: nothing else would let go of a hold it didn't record.
+        Effect.uninterruptible,
+      );
+    }
+    advertise(session);
+  });
+
+  const serverRank = (relativePath: string, instance: Instance) =>
+    languageServersForPath(relativePath).findIndex(({ server }) => server === instance.spec.id);
+
   const onSessionNotification = Effect.fn("LanguageServers.sessionNotification")(function* (
-    instance: Instance,
     session: Session,
     message: Json,
   ) {
+    const { primary } = session;
     const uri = message.params?.textDocument?.uri;
     switch (message.method) {
       case "textDocument/didOpen": {
-        const relativePath = relativePathOf(instance, uri);
+        const relativePath = relativePathOf(primary, uri);
         if (relativePath === null || session.open.has(relativePath)) return;
         const languageId =
           languageServerForPath(relativePath)?.languageId ?? message.params.textDocument.languageId;
-        session.open.set(relativePath, uri);
-        const doc = yield* holdDoc(instance, relativePath, String(languageId));
-        if (doc.latest !== null) fanOutDiagnostics(instance, doc);
+        const file: OpenFile = { uri, held: [] };
+        session.open.set(relativePath, file);
+        const doc = yield* holdDoc(primary, relativePath, String(languageId));
+        doc.sessions.add(session);
+        file.held.push({ instance: primary, doc });
+        if (doc.latest !== null) publishDiagnostics(session, relativePath);
+        // Apart from the open: a companion costs the primary nothing, however it fares.
+        yield* fork(syncCompanions(session, relativePath, file), session.scope);
         return;
       }
       case "textDocument/didClose": {
-        const relativePath = relativePathOf(instance, uri);
-        if (relativePath === null || !session.open.has(relativePath)) return;
+        const relativePath = relativePathOf(primary, uri);
+        const file = relativePath === null ? undefined : session.open.get(relativePath);
+        if (relativePath === null || file === undefined) return;
         session.open.delete(relativePath);
-        const doc = instance.docs.get(relativePath);
-        if (doc !== undefined) yield* releaseDoc(instance, doc);
+        yield* Effect.forEach(file.held, (held) => release(session, held), { discard: true });
+        advertise(session);
         return;
       }
       case "$/cancelRequest": {
         const id = message.params?.id;
         const pending = session.pending.get(id);
         if (pending === undefined) return;
-        if (pending.serverId !== null) {
-          instance.running?.connection.cancel(pending.serverId);
+        pending.cancelled = true;
+        if (pending.inFlight.size > 0) {
+          for (const cancel of pending.inFlight) cancel();
           return;
         }
         session.pending.delete(id);
@@ -1961,39 +2248,83 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         sendTo(session, { id, error: { code: RequestCancelled, message: "Cancelled" } });
         return;
       }
-      // didChange is never needed: the server has the environment's documents. The rest are
-      // the client's lifecycle, which the gateway already ran with the server.
+      // didChange is never needed: the servers have the environment's documents. The rest are
+      // the client's lifecycle, which the gateway already ran with each server.
       default:
         return;
     }
   });
 
+  /**
+   * Waits for answers to `asked`, in its order. Past `fanOutTimeout` a slow server gives way: what
+   * has come in is the answer, or the first answer with something in it when nothing has.
+   */
+  const gather = Effect.fnUntraced(function* (asked: ReadonlyArray<Asked>) {
+    const done = Deferred.makeUnsafe<void>();
+    const answers = new Map<Asked, ServerAnswer>();
+    let expired = false;
+    let useful = false;
+    const settle = () => {
+      if (answers.size === asked.length || (expired && useful)) {
+        Deferred.doneUnsafe(done, Exit.void);
+      }
+    };
+    yield* Effect.forEach(
+      asked,
+      (request) =>
+        request.response.pipe(
+          Effect.map((answer) => {
+            answers.set(request, answer);
+            if (answer.ok && hasContent(answer.result)) useful = true;
+            settle();
+          }),
+          Effect.forkChild({ startImmediately: true }),
+        ),
+      { discard: true },
+    );
+    yield* Effect.sleep(options.fanOutTimeout).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          expired = true;
+          settle();
+        }),
+      ),
+      Effect.forkChild({ startImmediately: true }),
+    );
+    yield* Deferred.await(done);
+    return asked.flatMap((request) => {
+      const answer = answers.get(request);
+      if (answer !== undefined) return [{ request, answer }];
+      request.cancel();
+      return [];
+    });
+  });
+
   const forward = Effect.fn("LanguageServers.forward")(function* (
-    instance: Instance,
+    primary: Instance,
     session: Session,
     message: Json,
     state: LanguageServerSendInput["document"],
     pending: PendingForward,
   ) {
-    const running = yield* Deferred.await(instance.ready);
+    yield* Deferred.await(primary.ready);
     const method: string = message.method;
     const clientUri = message.params?.textDocument?.uri;
-    const relativePath =
-      method === "completionItem/resolve"
-        ? session.completionPath
-        : relativePathOf(instance, clientUri);
-    const doc = relativePath === null ? undefined : instance.docs.get(relativePath);
-    if (doc !== undefined && state !== undefined) {
+    const resolving = method === "completionItem/resolve" ? originOf(message.params) : null;
+    const params = resolving?.item ?? message.params;
+    const relativePath = resolving?.origin.path ?? relativePathOf(primary, clientUri);
+    const doc = relativePath === null ? undefined : primary.docs.get(relativePath);
+    if (doc !== undefined && relativePath !== null && state !== undefined) {
       // A file just opened: its text may still be on its way from Documents.
-      yield* until(doc, () => doc.loadId !== null || instance.docs.get(doc.relativePath) !== doc);
+      yield* until(doc, () => doc.loadId !== null || primary.docs.get(doc.relativePath) !== doc);
       if (state.loadId !== doc.loadId)
         return { error: contentModified("The document was reloaded.") };
       if (state.unconfirmed.length > 0) {
         // Landing the editor's unsent edits first means the document and LSP streams need no
-        // ordering: collab drops the ones it already took.
+        // ordering: collab drops the ones it already took. Once, however many servers follow.
         const pushed = yield* documents
           .push({
-            cwd: instance.cwd,
+            cwd: primary.cwd,
             relativePath: doc.relativePath,
             loadId: state.loadId,
             version: state.version,
@@ -2003,102 +2334,204 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         if (Option.isNone(pushed)) return { error: contentModified("The edits did not fit.") };
         yield* until(doc, () => doc.version >= pushed.value.version || doc.loadId !== state.loadId);
       }
+      // Each copy hears of an update in its own time; the primary's has what the editor sent.
+      for (const { docs } of openOn(primary, relativePath)) {
+        const other = docs.get(relativePath);
+        if (other === undefined || other === doc) continue;
+        yield* until(other, () => other.version >= doc.version || other.loadId !== doc.loadId);
+      }
     }
-    // From here to the write, nothing yields: the server must get the request at the version
-    // the positions were mapped to.
-    const translated = translateRequest(doc, state, message.params);
-    if ("error" in translated) return translated;
-    if (instance.running !== running) return { error: contentModified("The server restarted.") };
-    const position = translated.params?.position;
-    const query =
-      method === "textDocument/completion" && doc !== undefined && position
-        ? wordBefore(doc.texts.get(doc.version)!, position)
-        : "";
-    if (method === "textDocument/completion") session.completionPath = relativePath;
-    // A rename is applied here, at the texts the server answers about.
-    const seen =
-      method === "textDocument/rename" || method === "textDocument/codeAction"
-        ? serverTexts(instance)
-        : null;
-    const request = running.connection.request(method, translated.params);
-    pending.serverId = request.id;
-    const answer = yield* request.response.pipe(
-      Effect.map((result) => ({ ok: true as const, result: result as Json })),
-      Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
-    );
-    if (!answer.ok) return { error: errorMessage(answer.error) };
-    if (seen !== null && method === "textDocument/codeAction") {
-      // The editor gets titles; the actions stay here, in the server's coordinates, to apply.
-      const actions: Array<Json> = Array.isArray(answer.result) ? answer.result : [];
-      session.codeActions = { actions, seen };
+
+    /**
+     * Sends the request to one server, positions read from that server's copy. Synchronous on
+     * purpose, from reading the copy to the write: the server must get the request at the version
+     * the positions were mapped to.
+     */
+    const ask = (instance: Instance): Asked | { readonly error: Json } => {
+      const askedDoc = relativePath === null ? undefined : instance.docs.get(relativePath);
+      const translated = translateRequest(askedDoc, state, params);
+      if ("error" in translated) return translated;
+      const running = instance.running;
+      if (running === null) return { error: contentModified("The server restarted.") };
+      const position = translated.params?.position;
+      const query =
+        method === "textDocument/completion" && askedDoc !== undefined && position
+          ? wordBefore(askedDoc.texts.get(askedDoc.version)!, position)
+          : "";
+      // A rename is applied here, at the texts the server answers about.
+      const seen =
+        method === "textDocument/rename" || method === "textDocument/codeAction"
+          ? serverTexts(instance)
+          : null;
+      const request = running.connection.request(method, translated.params);
+      const cancel = () => running.connection.cancel(request.id);
+      pending.inFlight.add(cancel);
       return {
-        result: actions.map((action, index) => ({
-          index,
-          title: String(action?.title ?? ""),
-          ...(typeof action?.kind === "string" ? { kind: action.kind } : {}),
-          ...(action?.isPreferred === true ? { isPreferred: true } : {}),
-          ...(action?.disabled?.reason ? { disabled: String(action.disabled.reason) } : {}),
-        })),
-      };
-    }
-    if (seen !== null) {
-      if (answer.result == null) return { result: null };
-      const done = yield* applyWorkspaceEdit(instance, answer.result, seen).pipe(
-        Effect.map((edit) => ({ result: { applied: edit } })),
-        Effect.catch((error) =>
-          Effect.succeed({ error: { code: -32603, message: error.message } }),
+        instance,
+        doc: askedDoc,
+        context: translated.context,
+        query,
+        seen,
+        cancel,
+        response: request.response.pipe(
+          Effect.map((result) => ({ ok: true as const, result: result as Json })),
+          Effect.catch((error) => Effect.succeed({ ok: false as const, error })),
+          Effect.ensuring(Effect.sync(() => pending.inFlight.delete(cancel))),
         ),
-      );
-      return done;
+      };
+    };
+
+    const mapped = (asked: Asked, result: Json) =>
+      mapAnswer(method, result, asked.doc, asked.context, asked.query);
+
+    const finish = Effect.fnUntraced(function* (asked: Asked, result: Json) {
+      if (asked.seen !== null) {
+        if (result == null) return { result: null };
+        return yield* applyWorkspaceEdit(asked.instance, result, asked.seen).pipe(
+          Effect.map((edit) => ({ result: { applied: edit } })),
+          Effect.catch((error) =>
+            Effect.succeed({ error: { code: -32603, message: error.message } }),
+          ),
+        );
+      }
+      const answer = mapped(asked, result);
+      if ("error" in answer) return answer;
+      if (resolving !== null) {
+        const [item] = tagCompletions({ items: [answer.result] }, resolving.origin).items;
+        return { result: item };
+      }
+      const uris = toSessionUris(asked.instance, session, answer.result);
+      if (!LOCATION_METHODS.has(method)) return { result: uris };
+      return { result: yield* withPreviews(asked.instance, uris, clientUri) };
+    });
+
+    if (resolving !== null) {
+      const origin = instances.get(`${primary.cwd}\0${resolving.origin.server}`);
+      if (!origin?.running?.capabilities?.completionProvider?.resolveProvider) {
+        return { result: message.params };
+      }
+      const asked = ask(origin);
+      if ("error" in asked) return asked;
+      const answer = yield* asked.response;
+      return answer.ok
+        ? yield* finish(asked, answer.result)
+        : { error: errorMessage(answer.error) };
     }
-    const mapped = mapAnswer(method, answer.result, doc, translated.context, query);
-    if ("error" in mapped) return mapped;
-    if (method === "textDocument/completion") return { result: mapped.result };
-    const result = toSessionUris(instance, session, mapped.result);
-    if (!LOCATION_METHODS.has(method)) return { result };
-    return { result: yield* withPreviews(instance, result, clientUri) };
+
+    const route = ROUTES.get(method);
+    const reachable = relativePath === null ? [] : openOn(primary, relativePath);
+    const ordered = FORMATTING_METHODS.has(method) ? formatterOrder(primary, reachable) : reachable;
+    const capable =
+      route === undefined
+        ? []
+        : ordered.filter(
+            ({ running }) =>
+              running?.capabilities?.[route.capability] &&
+              (method !== "textDocument/completion" ||
+                hearsCompletion(running.capabilities, params)),
+          );
+    // Nobody claims it: the primary answers, as it would with no companions.
+    const targets = capable.length === 0 ? [primary] : capable;
+
+    if (route?.fan === "all") {
+      const asked = targets.map(ask);
+      const live = asked.flatMap((request) => ("error" in request ? [] : [request]));
+      if (live.length === 0) return asked[0] as { readonly error: Json };
+      const answers = yield* gather(live);
+      const failure = answers.flatMap(({ answer }) =>
+        answer.ok ? [] : [{ error: errorMessage(answer.error) }],
+      )[0];
+      if (method === "textDocument/codeAction") {
+        // The editor gets titles; the actions stay here, in each server's coordinates, to apply.
+        const offered = answers.flatMap(({ request, answer }) =>
+          answer.ok && Array.isArray(answer.result)
+            ? answer.result.map((action: Json) => ({
+                action,
+                instance: request.instance,
+                seen: request.seen!,
+              }))
+            : [],
+        );
+        if (offered.length === 0 && failure !== undefined) return failure;
+        session.codeActions = offered;
+        return {
+          result: offered.map(({ action }, index) => ({
+            index,
+            title: String(action?.title ?? ""),
+            ...(typeof action?.kind === "string" ? { kind: action.kind } : {}),
+            ...(action?.isPreferred === true ? { isPreferred: true } : {}),
+            ...(action?.disabled?.reason ? { disabled: String(action.disabled.reason) } : {}),
+          })),
+        };
+      }
+      const lists: Array<Json> = [];
+      let refused: { readonly error: Json } | undefined;
+      for (const { request, answer } of answers) {
+        if (!answer.ok) continue;
+        const list = mapped(request, answer.result);
+        if ("error" in list) refused ??= list;
+        else if (list.result != null) {
+          lists.push(
+            tagCompletions(list.result, {
+              server: request.instance.spec.id,
+              path: relativePath ?? "",
+            }),
+          );
+        }
+      }
+      if (lists.length === 0) return failure ?? refused ?? { result: null };
+      return { result: mergeCompletions(lists) };
+    }
+
+    const asking = route?.fan === "hover" ? targets : targets.slice(0, 1);
+    let failed: { readonly error: Json } | null = null;
+    for (const instance of asking) {
+      if (pending.cancelled) break;
+      const asked = ask(instance);
+      if ("error" in asked) {
+        failed ??= asked;
+        continue;
+      }
+      const answer = yield* asked.response;
+      if (!answer.ok) {
+        failed ??= { error: errorMessage(answer.error) };
+      } else if (answer.result != null || asking.length === 1) {
+        return yield* finish(asked, answer.result);
+      }
+    }
+    return failed ?? { result: null };
   });
 
-  const browserCapabilities = (capabilities: Json) => {
-    const { diagnosticProvider: _pulledHere, ...rest } = capabilities ?? {};
-    // Editors send no document changes: the server has the environment's copy.
-    return { ...rest, textDocumentSync: { openClose: true, change: 0 } };
-  };
-
-  /** The client's own lifecycle requests are the gateway's to answer; the rest go to the server. */
+  /** The client's own lifecycle requests are the gateway's to answer; the rest go to the servers. */
   const answer = Effect.fn("LanguageServers.answer")(function* (
-    instance: Instance,
     session: Session,
     message: Json,
     state: LanguageServerSendInput["document"],
     pending: PendingForward,
   ) {
+    const { primary } = session;
     if (message.method === "shutdown") return { result: null };
     if (message.method === "astrolabe/applyCodeAction") {
-      return yield* applyCodeAction(instance, session, message.params?.index);
+      return yield* applyCodeAction(session, message.params?.index);
     }
     if (message.method !== "initialize") {
-      return yield* forward(instance, session, message, state, pending);
+      return yield* forward(primary, session, message, state, pending);
     }
-    const running = yield* Deferred.await(instance.ready);
-    return {
-      result: {
-        capabilities: browserCapabilities(running.capabilities),
-        serverInfo: { name: instance.status.name },
-      },
-    };
+    yield* Deferred.await(primary.ready);
+    const capabilities = sessionCapabilities(session);
+    session.advertised = stringifyJson(capabilities);
+    return { result: { capabilities, serverInfo: { name: primary.status.name } } };
   });
 
   const onSessionRequest = Effect.fn("LanguageServers.sessionRequest")(function* (
-    instance: Instance,
     session: Session,
     message: Json,
     state: LanguageServerSendInput["document"],
   ) {
     const id = message.id;
-    const pending: PendingForward = { serverId: null, fiber: null };
+    const pending: PendingForward = { inFlight: new Set(), cancelled: false, fiber: null };
     session.pending.set(id, pending);
-    const fiber = yield* answer(instance, session, message, state, pending).pipe(
+    const fiber = yield* answer(session, message, state, pending).pipe(
       Effect.flatMap((reply) =>
         Effect.sync(() => {
           if (session.pending.get(id) !== pending) return;
@@ -2127,26 +2560,27 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const queue = yield* Queue.unbounded<LanguageServerSessionItem>();
         const opened: Session = {
           id: input.sessionId,
+          primary: instance,
           queue,
           open: new Map(),
           pending: new Map(),
           scope: yield* Scope.fork(instance.scope),
-          completionPath: null,
           codeActions: null,
+          advertised: null,
         };
         instance.sessions.set(opened.id, opened);
-        sessions.set(opened.id, { instance, session: opened });
+        sessions.set(opened.id, opened);
         Queue.offerUnsafe(queue, { type: "status", status: instance.status });
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
             sessions.delete(opened.id);
             instance.sessions.delete(opened.id);
             yield* Scope.close(opened.scope, Exit.void);
-            for (const relativePath of opened.open.keys()) {
-              const doc = instance.docs.get(relativePath);
-              if (doc !== undefined) yield* releaseDoc(instance, doc);
-            }
+            const files = [...opened.open.values()];
             opened.open.clear();
+            for (const file of files) {
+              yield* Effect.forEach(file.held, (held) => release(opened, held), { discard: true });
+            }
             yield* scheduleIdle(instance);
           }),
         );
@@ -2156,17 +2590,17 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
   const send: LanguageServers["Service"]["send"] = Effect.fn("LanguageServers.send")(
     function* (input) {
-      const entry = sessions.get(input.sessionId);
-      if (entry === undefined) return yield* failure("no-session", "That session is not open.");
+      const session = sessions.get(input.sessionId);
+      if (session === undefined) return yield* failure("no-session", "That session is not open.");
       const message: Json = parseJson(input.message);
       if (typeof message !== "object" || message === null || typeof message.method !== "string") {
         return;
       }
-      entry.instance.lastUsed = ++clock;
+      session.primary.lastUsed = ++clock;
       if (message.id === undefined || message.id === null) {
-        return yield* onSessionNotification(entry.instance, entry.session, message);
+        return yield* onSessionNotification(session, message);
       }
-      yield* onSessionRequest(entry.instance, entry.session, message, input.document);
+      yield* onSessionRequest(session, message, input.document);
     },
   );
 
@@ -2209,6 +2643,41 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       }),
     );
 
+  /** The file on each active companion until the scope ends; one that can't be had is skipped. */
+  const holdCompanions = Effect.fn("LanguageServers.holdCompanions")(function* (
+    primary: Instance,
+    relativePath: string,
+  ) {
+    const wanted = yield* activeCompanions(primary, relativePath);
+    const held = yield* Effect.forEach(wanted, (companion) =>
+      Effect.acquireRelease(holdCompanion(primary, relativePath, companion), ({ instance, doc }) =>
+        releaseDoc(instance, doc),
+      ).pipe(Effect.option),
+    );
+    return held.flatMap((one) => (Option.isSome(one) ? [one.value] : []));
+  });
+
+  /** Until a document's diagnostics at `synced` have come in and publishes have stopped. */
+  const settled = Effect.fnUntraced(function* (
+    { instance, doc }: Held,
+    synced: { readonly loadId: string; readonly version: number },
+  ) {
+    yield* until(
+      doc,
+      () =>
+        doc.loadId !== synced.loadId ||
+        (!instance.loading &&
+          !doc.pulling &&
+          doc.version >= synced.version &&
+          doc.latest !== null &&
+          doc.latest.version >= synced.version),
+    );
+    for (let seen = -1; seen !== doc.published;) {
+      seen = doc.published;
+      yield* Effect.sleep(options.diagnosticsQuiet);
+    }
+  });
+
   const diagnostics: LanguageServers["Service"]["diagnostics"] = Effect.fn(
     "LanguageServers.diagnostics",
   )(function* (input) {
@@ -2224,6 +2693,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           holdDoc(instance, input.relativePath, match.languageId),
           (held) => releaseDoc(instance, held),
         );
+        // Beside the primary's own start, not after it: the wait for them is short.
+        const companions = yield* holdCompanions(instance, input.relativePath);
         yield* until(doc, () => doc.loadId !== null || !instance.docs.has(input.relativePath));
         if (doc.loadId === null) {
           return yield* failure("document", `'${input.relativePath}' could not be opened.`);
@@ -2232,21 +2703,17 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           .sync({ cwd: instance.cwd, relativePath: input.relativePath })
           .pipe(Effect.mapError((cause) => failure("document", cause.message, cause)));
         yield* readyForAgent(instance);
-        yield* until(
+        yield* settled({ instance, doc }, synced);
+        yield* Effect.forEach(
+          companions,
+          (held) =>
+            readyForAgent(held.instance).pipe(Effect.andThen(settled(held, synced)), Effect.ignore),
+          { concurrency: "unbounded", discard: true },
+        ).pipe(Effect.timeoutOption(options.companionWait));
+        return listedDiagnostics([
           doc,
-          () =>
-            doc.loadId !== synced.loadId ||
-            (!instance.loading &&
-              !doc.pulling &&
-              doc.version >= synced.version &&
-              doc.latest !== null &&
-              doc.latest.version >= synced.version),
-        );
-        for (let seen = -1; seen !== doc.published;) {
-          seen = doc.published;
-          yield* Effect.sleep(options.diagnosticsQuiet);
-        }
-        return listedDiagnostics(doc);
+          ...companions.flatMap((held) => (held.instance.running === null ? [] : [held.doc])),
+        ]);
       }),
     ).pipe(
       Effect.timeoutOrElse({
@@ -2421,21 +2888,15 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     input: DocumentSaveInput & { readonly format: NonNullable<DocumentSaveInput["format"]> },
   ) {
     const match = languageServerForPath(input.relativePath);
-    if (match === null) return;
-    const instance = instances.get(`${input.cwd}\0${match.server}`);
-    const doc = instance?.docs.get(input.relativePath);
-    const running = instance?.running;
+    const primary = match && instances.get(`${input.cwd}\0${match.server}`);
+    if (!primary) return;
     // Only a file an editor holds open here has a running server and the text it formats.
-    if (
-      !instance ||
-      !doc ||
-      !running ||
-      doc.loadId !== input.loadId ||
-      doc.openOn !== running.generation
-    ) {
-      return;
-    }
-    if (!running.capabilities?.documentFormattingProvider) return;
+    const formatter = formatterOrder(primary, openOn(primary, input.relativePath)).find(
+      (instance) => instance.running?.capabilities?.documentFormattingProvider,
+    );
+    const doc = formatter?.docs.get(input.relativePath);
+    const running = formatter?.running;
+    if (!doc || !running || doc.loadId !== input.loadId) return;
     const version = doc.version;
     const text = doc.texts.get(version)!;
     const request = running.connection.request("textDocument/formatting", {
@@ -2479,7 +2940,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const subscription = yield* PubSub.subscribe(problemEvents);
         const files = [...problems.values()]
           .filter((entry) => entry.cwd === root)
-          .map((entry) => entry.file);
+          .map(({ byServer }) => {
+            const known = [...byServer.values()];
+            return mergedProblems(known, known[0]!);
+          });
         return Stream.concat(
           Stream.succeed<LanguageServerProblemsItem>({ type: "snapshot", files }),
           Stream.fromSubscription(subscription).pipe(
@@ -2522,6 +2986,8 @@ export const defaultOptions: LanguageServersOptions = {
   diagnosticsQuiet: Duration.millis(300),
   fileChangeQuiet: Duration.millis(200),
   formatTimeout: Duration.seconds(2),
+  fanOutTimeout: Duration.seconds(1),
+  companionWait: Duration.seconds(2),
   traceGrace: Duration.minutes(5),
   registry: DEFAULT_REGISTRY,
 };

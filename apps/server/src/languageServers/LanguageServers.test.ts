@@ -14,6 +14,7 @@ import type {
   DocumentStreamItem,
   LanguageServerDocumentState,
   LanguageServerError,
+  LanguageServerId,
   LanguageServerLogItem,
   LanguageServerProblemsItem,
   LanguageServerSessionItem,
@@ -153,12 +154,15 @@ type Item = LanguageServerSessionItem;
 let sessionCount = 0;
 
 /** A client's LSP session: what it sends, and the items it waits for. */
-const openSession = Effect.fn("openSession")(function* (checkout: Checkout) {
+const openSession = Effect.fn("openSession")(function* (
+  checkout: Checkout,
+  server: LanguageServerId = "typescript",
+) {
   const service = yield* LanguageServers.LanguageServers;
   const sessionId = `session-${++sessionCount}`;
   const items = yield* Queue.unbounded<Item, Cause.Done | LanguageServerError>();
   const fiber = yield* service
-    .session({ cwd: checkout.cwd, server: "typescript", sessionId })
+    .session({ cwd: checkout.cwd, server, sessionId })
     .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
   // The session always opens with its status; once it has, sends reach it.
   const buffered: Array<Item> = [yield* Queue.take(items)];
@@ -217,6 +221,11 @@ const openSession = Effect.fn("openSession")(function* (checkout: Checkout) {
       send({
         method: "textDocument/didOpen",
         params: { textDocument: { uri, languageId: "typescript", version: 0, text: "" } },
+      }),
+    notification: (method: string) =>
+      next((item) => {
+        const message = parsed(item);
+        return message?.method === method ? message : undefined;
       }),
     close: Fiber.interrupt(fiber),
   };
@@ -677,7 +686,8 @@ describe("LanguageServers", () => {
       );
       expect(completion.result.isIncomplete).toBe(true);
       expect(completion.result.items).toHaveLength(200);
-      expect(completion.result.items[0]).toEqual({ label: "item0", sortText: "0000" });
+      expect(completion.result.items[0]).toMatchObject({ label: "item0", sortText: "0000" });
+      expect(completion.result.items[0].documentation).toBeUndefined();
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
@@ -968,6 +978,7 @@ describe("LanguageServers", () => {
             source: "project",
             executable: `${checkout.cwd}/fake-server.mjs`,
             message: "No compile_commands.json.",
+            companion: null,
           },
         ],
       });
@@ -1181,6 +1192,44 @@ const registryServing = (licence: string, bytes: Uint8Array) => {
   );
 };
 
+/** A registry of several packages, each file served under its package's name. */
+const registryServingPackages = (
+  packages: Record<string, Uint8Array>,
+  licences: Record<string, string> = {},
+) =>
+  HttpClient.make((request) => {
+    const name = /registry[^/]*\/([^/]+)/.exec(request.url)?.[1] ?? "";
+    const bytes = packages[name]!;
+    const integrity = `sha512-${NodeCrypto.createHash("sha512").update(bytes).digest("base64")}`;
+    return Effect.succeed(
+      HttpClientResponse.fromWeb(
+        request,
+        request.url.endsWith(".tgz")
+          ? new Response(bytes)
+          : Response.json({
+              license: licences[name] ?? "MIT",
+              dist: { tarball: `https://registry.test/${name}/-/${name}.tgz`, integrity },
+            }),
+      ),
+    );
+  });
+
+const dependencySpecs = {
+  typescript: fakeSpec({
+    name: "Fake",
+    npm: {
+      name: "fake-server",
+      version: "1.0.0",
+      licence: "MIT",
+      entry: "server.mjs",
+      runWith: "node",
+      dependencies: { "fake-dep": "2.0.0" },
+    },
+    args: [],
+    restrictedSafe: true,
+  }),
+};
+
 const downloadSpecs = (licence: string) => ({
   typescript: fakeSpec({
     name: "Fake",
@@ -1246,7 +1295,7 @@ const releaseServing = (bytes: Uint8Array) =>
 /** A release whose build for this machine is `bytes`, pinned as `pinned` (its own by default). */
 const releaseSpecs = (
   bytes: Uint8Array,
-  format: "gz" | "zip",
+  format: "gz" | "zip" | "tgz",
   pinned: Uint8Array = bytes,
   entry?: string,
 ) => ({
@@ -1278,6 +1327,500 @@ const releaseSpecs = (
 
 /** A native executable that runs the fake server with the Node on PATH. */
 const nativeFakeServer = `#!/usr/bin/env node\nimport(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`;
+
+/** A server of several on a file, the fake with `--role=<id>`. */
+const companionSpec = (
+  id: LanguageServerId,
+  extra: Partial<LanguageServerSpec> = {},
+  launch: Partial<LanguageServerSpec["launches"][number]> = {},
+): LanguageServerSpec => ({
+  ...fakeSpec({ ...fakeLaunch, name: id, args: [`--role=${id}`], ...launch }),
+  id,
+  name: id,
+  ...extra,
+});
+
+const withEslint = {
+  ...fakeSpecs,
+  eslint: companionSpec("eslint", {
+    activation: { files: ["eslint.config.js"], packages: ["eslint"], description: "ESLint config" },
+  }),
+};
+const withBoth = { ...withEslint, tailwindcss: companionSpec("tailwindcss") };
+
+const openedDiagnostics = (message: { params: { diagnostics: Array<any> } }) =>
+  message.params.diagnostics
+    .map((diagnostic) => `${diagnostic.source}:${diagnostic.range.start.line}`)
+    .toSorted();
+
+/** A checkout with both companions on, and a session with its file open once they are ready. */
+const openWithCompanions = Effect.fn("openWithCompanions")(function* (
+  text: string,
+  config: Record<string, unknown>,
+) {
+  const checkout = yield* makeCheckout(text, config);
+  yield* checkout.write("eslint.config.js", "");
+  const session = yield* openSession(checkout);
+  yield* session.state("ready");
+  yield* session.request(1000, "initialize", { capabilities: {} });
+  yield* session.open(checkout.uri);
+  yield* statuses(
+    (list) =>
+      list.filter((status) => status.cwd === checkout.cwd && status.state === "ready").length === 3,
+  );
+  return { checkout, session };
+});
+
+describe("LanguageServers with companions on a file", () => {
+  const roles = {
+    eslint: { word: "worse", source: "eslint", pushes: { after: 0 } },
+    tailwindcss: { word: "worst", source: null, fullSync: true },
+  };
+
+  it.live("publishes every server's diagnostics as one, carrying the older ones forward", () =>
+    Effect.gen(function* () {
+      const { checkout, session } = yield* openWithCompanions(
+        "let bad = 1;\nlet worse = 2;\nlet worst = 3;\n",
+        { roles },
+      );
+      const opened = yield* session.diagnostics(
+        (message) => message.params.diagnostics.length === 3,
+      );
+      // A server that names no source is labelled with its own name.
+      expect(openedDiagnostics(opened)).toEqual(["eslint:1", "fake:0", "tailwindcss:2"]);
+      // The primary and Tailwind check the new text; ESLint here checked only the file it opened.
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// one\n// two\n" }));
+      const carried = yield* session.diagnostics(
+        (message) =>
+          message.params.version === 1 &&
+          openedDiagnostics(message).join() === "eslint:3,fake:2,tailwindcss:4",
+      );
+      expect(carried.version).toBe(1);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("clears only the stopped server's diagnostics and problems", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const { checkout, session } = yield* openWithCompanions("let bad, worse;\n", {
+        roles: { eslint: { word: "worse", source: "eslint" }, tailwindcss: { word: "unused" } },
+      });
+      yield* session.diagnostics((message) => message.params.diagnostics.length === 2);
+      const items = yield* Queue.unbounded<LanguageServerProblemsItem, Cause.Done>();
+      yield* service.problems(checkout.cwd).pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+      expect(yield* Queue.take(items)).toMatchObject({
+        type: "snapshot",
+        files: [{ path: FILE, diagnostics: [{}, {}] }],
+      });
+      yield* service.stop({ cwd: checkout.cwd, server: "eslint" });
+      const left = yield* session.diagnostics((message) => message.params.diagnostics.length === 1);
+      expect(left.params.diagnostics[0].source).toBe("fake");
+      expect(yield* Queue.take(items)).toMatchObject({
+        type: "file",
+        file: { path: FILE, diagnostics: [{ source: "fake" }] },
+      });
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("merges completions and resolves each item on the server that made it", () =>
+    Effect.gen(function* () {
+      const { checkout, session } = yield* openWithCompanions(SOURCE, {
+        completions: ["alpha"],
+        roles: {
+          eslint: { without: ["completionProvider"] },
+          tailwindcss: {
+            completions: ["beta"],
+            incomplete: true,
+            triggerCharacters: [" "],
+          },
+        },
+      });
+      const editor = yield* openEditor(checkout, "editor-a");
+      const ask = (id: number, context?: object) =>
+        session.request(
+          id,
+          "textDocument/completion",
+          {
+            textDocument: { uri: checkout.uri },
+            position: editor.position("const"),
+            ...(context === undefined ? {} : { context }),
+          },
+          editor.envelope(),
+        );
+      const merged = yield* ask(1);
+      expect(merged.result.isIncomplete).toBe(true);
+      expect(merged.result.items.map((item: any) => item.label)).toEqual(["alpha", "beta"]);
+      const beta = yield* session.request(
+        2,
+        "completionItem/resolve",
+        merged.result.items[1],
+        editor.envelope(),
+      );
+      expect(beta.result.documentation).toBe("About beta from tailwindcss");
+      const alpha = yield* session.request(
+        3,
+        "completionItem/resolve",
+        merged.result.items[0],
+        editor.envelope(),
+      );
+      expect(alpha.result.documentation).toBe("About alpha");
+      // Another server's trigger character means nothing to this one.
+      const triggered = yield* ask(4, { triggerKind: 2, triggerCharacter: " " });
+      expect(triggered.result.items.map((item: any) => item.label)).toEqual(["beta"]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("merges code actions and applies each on the server that offered it", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { checkout, session } = yield* openWithCompanions("let bad, worse;\n", {
+        roles: {
+          eslint: { word: "worse", source: "eslint", replacement: "better" },
+          tailwindcss: { word: "unused" },
+        },
+      });
+      const editor = yield* openEditor(checkout, "editor-a");
+      const published = yield* session.diagnostics(
+        (message) => message.params.diagnostics.length === 2,
+      );
+      const offered = yield* session.request(
+        1,
+        "textDocument/codeAction",
+        {
+          textDocument: { uri: checkout.uri },
+          range: published.params.diagnostics[0].range,
+          context: { diagnostics: published.params.diagnostics },
+        },
+        editor.envelope(),
+      );
+      const titles = offered.result.map((action: any) => action.title);
+      expect(titles).toContain("Replace bad with good");
+      expect(titles).toContain("Replace worse with better");
+      const applied = yield* session.request(2, "astrolabe/applyCodeAction", {
+        index: titles.indexOf("Replace worse with better"),
+      });
+      expect(applied.result.applied).toMatchObject({ files: [FILE] });
+      expect(yield* fileSystem.readFileString(`${checkout.cwd}/${FILE}`)).toBe(
+        "let bad, better;\n",
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("returns what is in when a server is slow, and cancels it", () =>
+    Effect.gen(function* () {
+      const { checkout, session } = yield* openWithCompanions("let bad;\n", {
+        roles: { eslint: { slow: ["textDocument/codeAction"] } },
+      });
+      const editor = yield* openEditor(checkout, "editor-a");
+      const published = yield* session.diagnostics(
+        (message) => message.params.diagnostics.length > 0,
+      );
+      const offered = yield* session.request(
+        1,
+        "textDocument/codeAction",
+        {
+          textDocument: { uri: checkout.uri },
+          range: published.params.diagnostics[0].range,
+          context: { diagnostics: published.params.diagnostics },
+        },
+        editor.envelope(),
+      );
+      expect(offered.result.map((action: any) => action.title)).toContain("Replace bad with good");
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth, fanOutTimeout: 50 }))),
+  );
+
+  it.live("cancels every server a request went to", () =>
+    Effect.gen(function* () {
+      const { checkout, session } = yield* openWithCompanions("let bad;\n", {
+        slow: ["textDocument/codeAction"],
+      });
+      yield* session.send({
+        id: 1,
+        method: "textDocument/codeAction",
+        params: {
+          textDocument: { uri: checkout.uri },
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+          },
+          context: { diagnostics: [] },
+        },
+      });
+      yield* session.send({ method: "$/cancelRequest", params: { id: 1 } });
+      // Only once all three have given up: nothing else ends the wait here.
+      expect((yield* session.answer(1)).error.code).toBe(RequestCancelled);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth, fanOutTimeout: "1 hour" }))),
+  );
+
+  it.live("tries the next server when the first has nothing to show on hover", () =>
+    Effect.gen(function* () {
+      const { checkout, session } = yield* openWithCompanions(SOURCE, {
+        hoverNull: true,
+        roles: {
+          eslint: { without: ["hoverProvider"] },
+          tailwindcss: { hoverNull: false },
+        },
+      });
+      const editor = yield* openEditor(checkout, "editor-a");
+      const hover = yield* session.request(
+        1,
+        "textDocument/hover",
+        { textDocument: { uri: checkout.uri }, position: editor.position("makePoint", 2) },
+        editor.envelope(),
+      );
+      expect(hover.result.contents).toBe("tailwindcss: makePoint");
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("keeps the primary whole when a companion fails or is missing", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout("let bad;\n", {
+        roles: { eslint: { crashTimes: 99 } },
+      });
+      yield* checkout.write("eslint.config.js", "");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const published = yield* session.diagnostics(
+        (message) => message.params.diagnostics.length > 0,
+      );
+      expect(openedDiagnostics(published)).toEqual(["fake:0"]);
+      const list = yield* statuses((all) => all.some((status) => status.state === "failed"));
+      expect(list.find((status) => status.server === "typescript")?.state).toBe("ready");
+      expect(list.find((status) => status.server === "eslint")?.state).toBe("failed");
+      yield* statuses((all) => all.some((status) => status.state === "missing"));
+      const checked = yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      expect(checked.diagnostics.map((diagnostic) => diagnostic.source)).toEqual(["fake"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: {
+            ...withEslint,
+            tailwindcss: {
+              ...companionSpec("tailwindcss"),
+              launches: [{ name: "Nothing", args: [], restrictedSafe: true }],
+            },
+          },
+        }),
+      ),
+    ),
+  );
+
+  it.live("holds an untrusted project's companion back while its primary runs restricted", () =>
+    withMachineServer((specs) =>
+      Effect.gen(function* () {
+        const checkout = yield* makeCheckout("let bad;\n");
+        yield* checkout.write("eslint.config.js", "");
+        const session = yield* openSession(checkout);
+        expect((yield* session.state("ready")).restricted).toBe(true);
+        yield* session.open(checkout.uri);
+        yield* session.diagnostics((message) => message.params.diagnostics.length > 0);
+        yield* statuses((list) => list.some((status) => status.state === "trust-needed"));
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerFor({
+            specs: {
+              ...specs,
+              eslint: companionSpec("eslint", {}, { restrictedSafe: false }),
+            },
+            trusted: () => Effect.succeed(false),
+          }),
+        ),
+      ),
+    ),
+  );
+
+  it.live("joins only the files a companion serves", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      yield* checkout.write("eslint.config.js", "");
+      yield* checkout.write("src/other.mts", SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri.replace("main.ts", "other.mts"));
+      const list = yield* statuses((all) => all.length === 2);
+      expect(list.map((status) => status.server)).toEqual(["typescript", "eslint"]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("lets go of companions on close and session end, so they stop with their files", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const { checkout, session } = yield* openWithCompanions("let bad;\n", {});
+      yield* session.send({
+        method: "textDocument/didClose",
+        params: { textDocument: { uri: checkout.uri } },
+      });
+      // The primary stays while its session does; a companion has only its files.
+      expect((yield* statuses((list) => list.length === 1))[0]?.server).toBe("typescript");
+      yield* session.open(checkout.uri);
+      yield* statuses((list) => list.length === 3);
+      yield* session.close;
+      yield* statuses((list) => list.length === 0);
+      // An agent's check holds them only while it runs.
+      yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      yield* statuses((list) => list.length === 0);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth, idleTimeout: 0 }))),
+  );
+
+  it.live("activates a companion on the checkout's evidence, read again on Restart", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout("let bad;\n");
+      const companionOf = (server: LanguageServerId) =>
+        service
+          .check(checkout.cwd)
+          .pipe(
+            Effect.map(
+              ({ servers }) => servers.find((check) => check.server === server)?.companion,
+            ),
+          );
+      expect(yield* companionOf("typescript")).toBeNull();
+      expect(yield* companionOf("tailwindcss")).toMatchObject({ active: true });
+      expect(yield* companionOf("eslint")).toEqual({
+        active: false,
+        reason: "Not active: no ESLint config or eslint in package.json.",
+      });
+
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* statuses((list) => list.length === 2);
+      expect((yield* statuses(() => true)).map((status) => status.server)).not.toContain("eslint");
+
+      // Evidence added while the file is open counts from the next Restart, without reopening.
+      yield* checkout.write(
+        "package.json",
+        JSON.stringify({ devDependencies: { eslint: "^9.0.0" } }),
+      );
+      expect(yield* companionOf("eslint")).toEqual({
+        active: true,
+        reason: "Found eslint in package.json.",
+      });
+      yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      yield* statuses((list) => list.some((status) => status.server === "eslint"));
+
+      // And its going lets the companion go.
+      yield* checkout.write("package.json", "{}");
+      yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      yield* statuses((list) => !list.some((status) => status.server === "eslint"));
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth, idleTimeout: 0 }))),
+  );
+
+  it.live("tells the client what a companion adds once it runs", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE, {
+        without: ["hoverProvider"],
+        roles: { tailwindcss: { without: [], triggerCharacters: [" "] } },
+      });
+      yield* checkout.write("eslint.config.js", "");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      const init = yield* session.request(1, "initialize", { capabilities: {} });
+      expect(init.result.capabilities.hoverProvider).toBeUndefined();
+      expect(init.result.capabilities.completionProvider.triggerCharacters).toEqual(["."]);
+      yield* session.open(checkout.uri);
+      for (;;) {
+        const told = yield* session.notification("astrolabe/capabilities");
+        if (told.params.completionProvider.triggerCharacters.length < 2) continue;
+        expect(told.params.hoverProvider).toBe(true);
+        expect(told.params.textDocumentSync).toEqual({ openClose: true, change: 0 });
+        expect(told.params.diagnosticProvider).toBeUndefined();
+        expect(told.params.completionProvider.triggerCharacters).toEqual([".", " "]);
+        break;
+      }
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
+  it.live("gives an agent a ready companion's diagnostics, and doesn't wait for a slow one", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout("let bad, worse, worst;\n", {
+        roles: {
+          eslint: { word: "worse", source: "eslint" },
+          // Never answers `initialize`.
+          tailwindcss: { word: "worst", waitFor: "never" },
+        },
+      });
+      yield* checkout.write("eslint.config.js", "");
+      const checked = yield* service.diagnostics({ cwd: checkout.cwd, relativePath: FILE });
+      expect(checked.diagnostics.map((diagnostic) => diagnostic.source)).toEqual([
+        "fake",
+        "eslint",
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth, companionWait: 500 }))),
+  );
+
+  it.live("uses one formatter, the first its language names that can", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout("", { roles: { ruff: { formatInsert: "_" } } });
+      yield* checkout.write("src/main.py", "a,b\n");
+      const uri = checkout.uri.replace("main.ts", "main.py");
+      const session = yield* openSession(checkout, "basedpyright");
+      yield* session.state("ready");
+      yield* session.open(uri);
+      yield* statuses((list) => list.filter((status) => status.state === "ready").length === 2);
+      const formatted = yield* session.request(1, "textDocument/formatting", {
+        textDocument: { uri },
+        options: { tabSize: 2, insertSpaces: true },
+      });
+      expect(formatted.result.map((edit: any) => edit.newText)).toEqual(["_"]);
+
+      const documents = yield* Documents.Documents;
+      const items = yield* Queue.unbounded<DocumentStreamItem, Cause.Done | DocumentError>();
+      yield* documents
+        .subscribe({ cwd: checkout.cwd, relativePath: "src/main.py" })
+        .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
+      const first = yield* Queue.take(items);
+      if (first.type !== "snapshot") throw new Error("expected a snapshot");
+      yield* service.save({
+        cwd: checkout.cwd,
+        relativePath: "src/main.py",
+        loadId: first.loadId,
+        format: { tabSize: 2, insertSpaces: true },
+      });
+      expect(yield* fileSystem.readFileString(`${checkout.cwd}/src/main.py`)).toBe("a,_b\n");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: {
+            basedpyright: { ...fakeSpec(fakeLaunch), id: "basedpyright", formatters: ["ruff"] },
+            ruff: companionSpec("ruff"),
+          },
+        }),
+      ),
+    ),
+  );
+
+  it.live("stops companions before primaries past the memory budget", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout("let bad;\n");
+      yield* checkout.write("eslint.config.js", "");
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const list = yield* statuses(
+        (all) => all.filter((status) => status.state === "capped").length === 2,
+      );
+      expect(list.find((status) => status.server === "typescript")?.state).toBe("ready");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: withBoth,
+          memoryBudgetBytes: 1.5 * 1024 ** 3,
+          readMemory: (pids) => Effect.succeed(new Map(pids.map((pid) => [pid, 1024 ** 3]))),
+        }),
+      ),
+    ),
+  );
+});
 
 describe("LanguageServers for servers with quirks", () => {
   it.live("tells a server that forgets closed files that the file still exists", () =>
@@ -1342,6 +1885,9 @@ describe("LanguageServers with nothing to run", () => {
 });
 
 describe("LanguageServers downloads", () => {
+  // The tar helper's top folder is `package/`, which is what a release's dropped folder stands for.
+  const tarred = tarball({ "fake-server": nativeFakeServer });
+
   const archive = tarball({
     "server.mjs": `await import(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`,
     "package.json": '{"name":"fake-server","version":"1.0.0","license":"MIT"}',
@@ -1361,6 +1907,51 @@ describe("LanguageServers downloads", () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(layerFor({ specs: downloadSpecs("MIT") }, registryServing("MIT", archive))),
+    ),
+  );
+
+  it.live("unpacks the dependencies a package pins beside it, each checked as it was", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      expect((yield* session.state("ready")).source).toBe("cache");
+      yield* session.open(checkout.uri);
+      const config = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      expect(
+        yield* fileSystem.readFileString(
+          `${config.providerStatusCacheDir}/language-servers/fake-server@1.0.0/node_modules/fake-dep/index.js`,
+        ),
+      ).toBe("dependency");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: dependencySpecs },
+          registryServingPackages({
+            "fake-server": archive,
+            "fake-dep": tarball({ "index.js": "dependency" }),
+          }),
+        ),
+      ),
+    ),
+  );
+
+  it.live("refuses a pinned dependency under a licence outside the allowlist", () =>
+    Effect.gen(function* () {
+      const session = yield* openSession(yield* makeCheckout(SOURCE));
+      expect((yield* session.state("failed")).message).toContain("fake-dep");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: dependencySpecs },
+          registryServingPackages(
+            { "fake-server": archive, "fake-dep": tarball({ "index.js": "dependency" }) },
+            { "fake-dep": "MPL-2.0" },
+          ),
+        ),
+      ),
     ),
   );
 
@@ -1397,6 +1988,16 @@ describe("LanguageServers downloads", () => {
           releaseServing(NodeZlib.gzipSync(nativeFakeServer)),
         ),
       ),
+    ),
+  );
+
+  it.live("unpacks a tarred release build, dropping its top folder", () =>
+    Effect.gen(function* () {
+      const session = yield* openSession(yield* makeCheckout(SOURCE));
+      expect((yield* session.state("ready")).source).toBe("cache");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(layerFor({ specs: releaseSpecs(tarred, "tgz") }, releaseServing(tarred))),
     ),
   );
 

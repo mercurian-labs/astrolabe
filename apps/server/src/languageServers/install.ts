@@ -15,6 +15,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeCrypto from "node:crypto";
+import * as NodeURL from "node:url";
 import * as NodeZlib from "node:zlib";
 
 import { openZipArchive } from "../zipArchive.ts";
@@ -29,7 +30,7 @@ import {
   type ReleaseSource,
 } from "./registry.ts";
 import { parseJson } from "./json.ts";
-import { readTar } from "./tar.ts";
+import { readTar, type TarFile } from "./tar.ts";
 
 /**
  * Finding a language server's binary, in the ruled order: the project's own (or one installed on
@@ -93,6 +94,8 @@ const PYTHON_INTERPRETERS = [
   ".venv/Scripts/python.exe",
   "venv/Scripts/python.exe",
 ];
+
+const PACKAGE_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 
 const cacheFolder = (download: Download) => {
   const [name, version] =
@@ -315,6 +318,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     probing: boolean,
   ) {
     const python = trusted ? yield* pythonOf(cwd) : null;
+    const rootUri = NodeURL.pathToFileURL(cwd).href;
     const data = path.join(
       options.cacheDir,
       "data",
@@ -362,7 +366,11 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           name: name(packageVersion),
           source,
           initializationOptions: fill(launch.initializationOptions ?? {}, { toolchain }),
-          settings: fill(launch.settings ?? {}, { python }) as Record<string, unknown>,
+          settings: fill(launch.settings ?? {}, {
+            python,
+            rootUri,
+            rootName: path.basename(cwd),
+          }) as Record<string, unknown>,
           reportsQuiescence: listed.reportsQuiescence === true,
         },
       });
@@ -461,16 +469,13 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     );
   });
 
-  /** An npm package, after checking its licence and integrity. */
-  const downloadNpm = Effect.fn("LanguageServers.downloadNpm")(function* (
-    npm: NpmSource,
-    folder: string,
-  ) {
-    const metadataUrl = `${options.registry}/${npm.name.replace("/", "%2f")}/${npm.version}`;
+  /** One npm package's files, after checking its licence and integrity. */
+  const fetchNpm = Effect.fn("LanguageServers.fetchNpm")(function* (name: string, version: string) {
+    const metadataUrl = `${options.registry}/${name.replace("/", "%2f")}/${version}`;
     const metadata = yield* http.execute(HttpClientRequest.get(metadataUrl)).pipe(
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.flatMap((response) => response.json),
-      Effect.mapError(failed(`Could not read ${npm.name} from the npm registry.`)),
+      Effect.mapError(failed(`Could not read ${name} from the npm registry.`)),
     );
     const record = metadata as {
       readonly license?: unknown;
@@ -479,7 +484,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     // Verified upstream: the registry's own record must carry an allowed licence too.
     if (!licenceAllowed(record.license)) {
       return yield* new InstallError({
-        message: `${npm.name} ${npm.version} is published under a licence we don't download.`,
+        message: `${name} ${version} is published under a licence we don't download.`,
       });
     }
     const tarball = record.dist?.tarball;
@@ -489,30 +494,65 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
       typeof integrity !== "string" ||
       !integrity.startsWith("sha512-")
     ) {
-      return yield* new InstallError({ message: `${npm.name} has no verifiable download.` });
+      return yield* new InstallError({ message: `${name} has no verifiable download.` });
     }
     const bytes = yield* http.execute(HttpClientRequest.get(tarball)).pipe(
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.flatMap((response) => response.arrayBuffer),
       Effect.map((buffer) => new Uint8Array(buffer)),
-      Effect.mapError(failed(`Downloading ${npm.name} failed.`)),
+      Effect.mapError(failed(`Downloading ${name} failed.`)),
     );
     const digest = NodeCrypto.createHash("sha512").update(bytes).digest("base64");
     if (`sha512-${digest}` !== integrity) {
-      return yield* new InstallError({ message: `${npm.name} failed its integrity check.` });
+      return yield* new InstallError({ message: `${name} failed its integrity check.` });
     }
-    const files = yield* Effect.try({
+    return yield* Effect.try({
       try: () => readTar(NodeZlib.gunzipSync(bytes)),
-      catch: failed(`${npm.name}'s archive could not be read.`),
+      catch: failed(`${name}'s archive could not be read.`),
     });
+  });
+
+  const writeFiles = Effect.fn("LanguageServers.writeFiles")(function* (
+    folder: string,
+    files: ReadonlyArray<TarFile>,
+    label: string,
+  ) {
+    yield* Effect.forEach(
+      files,
+      (file) => {
+        const target = path.join(folder, file.path);
+        return fileSystem
+          .makeDirectory(path.dirname(target), { recursive: true })
+          .pipe(
+            Effect.andThen(
+              fileSystem.writeFile(target, file.data, { mode: file.mode & 0o755 || 0o644 }),
+            ),
+            Effect.mapError(failed(`Could not unpack ${label}.`)),
+          );
+      },
+      { discard: true },
+    );
+  });
+
+  /** An npm package and the dependencies it pins, all fetched before any is unpacked. */
+  const downloadNpm = Effect.fn("LanguageServers.downloadNpm")(function* (
+    npm: NpmSource,
+    folder: string,
+  ) {
+    const files = yield* fetchNpm(npm.name, npm.version);
+    const dependencies = yield* Effect.forEach(
+      Object.entries(npm.dependencies ?? {}),
+      ([name, version]) =>
+        fetchNpm(name, version).pipe(Effect.map((fetched) => ({ name, fetched }))),
+      { concurrency: 4 },
+    );
     yield* install(folder, npm.name, npm.version, (staging) =>
       Effect.gen(function* () {
-        for (const file of files) {
-          const target = path.join(staging, file.path);
-          yield* fileSystem.makeDirectory(path.dirname(target), { recursive: true });
-          yield* fileSystem.writeFile(target, file.data, { mode: file.mode & 0o755 || 0o644 });
+        yield* writeFiles(staging, files, npm.name);
+        for (const { name, fetched } of dependencies) {
+          yield* writeFiles(path.join(staging, "node_modules", name), fetched, name);
         }
-      }).pipe(Effect.mapError(failed(`Could not unpack ${npm.name}.`))),
+      }),
     );
   });
 
@@ -573,6 +613,15 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           yield* fileSystem
             .writeFile(executable, unpacked, { mode: 0o755 })
             .pipe(Effect.mapError(failed(`Could not unpack ${release.name}.`)));
+        } else if (asset.format === "tgz") {
+          const bytes = yield* fileSystem
+            .readFile(archive)
+            .pipe(Effect.mapError(failed(`Could not unpack ${release.name}.`)));
+          const files = yield* Effect.try({
+            try: () => readTar(NodeZlib.gunzipSync(bytes)),
+            catch: failed(`${release.name}'s download could not be read.`),
+          });
+          yield* writeFiles(staging, files, release.name);
         } else {
           yield* unzip(archive, staging, release.name);
         }
@@ -655,6 +704,36 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     );
   });
 
+  /** Why a checkout does or doesn't use a companion: the first evidence, or what would be. */
+  const activationOf = Effect.fn("LanguageServers.activationOf")(function* (
+    cwd: string,
+    spec: LanguageServerSpec,
+  ) {
+    const activation = spec.activation;
+    if (activation === undefined) {
+      return { active: true, reason: `Runs on every ${spec.languages} file.` };
+    }
+    for (const file of activation.files) {
+      if (yield* exists(path.join(cwd, file))) return { active: true, reason: `Found ${file}.` };
+    }
+    const manifest = (yield* readJson(path.join(cwd, "package.json"))) as Record<
+      string,
+      unknown
+    > | null;
+    for (const name of activation.packages) {
+      const declared = PACKAGE_SECTIONS.some((section) => {
+        const packages = manifest?.[section];
+        return typeof packages === "object" && packages !== null && name in packages;
+      });
+      if (declared) return { active: true, reason: `Found ${name} in package.json.` };
+    }
+    const wanted = activation.packages.join(" or ");
+    return {
+      active: false,
+      reason: `Not active: no ${activation.description} or ${wanted} in package.json.`,
+    };
+  });
+
   /** Fetches what a resolution asked for into the cache. */
   const download = Effect.fn("LanguageServers.download")(function* (wanted: Download) {
     const [label, licence] =
@@ -720,7 +799,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     return worktrees.includes(own) ? path.resolve(cwd, commonDir) : null;
   });
 
-  return { resolve, download, excludeFromGit, repositoryOf };
+  return { resolve, download, excludeFromGit, repositoryOf, activationOf };
 });
 
 export type Installer = Effect.Success<ReturnType<typeof makeInstaller>>;

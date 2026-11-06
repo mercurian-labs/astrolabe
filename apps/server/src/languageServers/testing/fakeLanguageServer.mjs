@@ -5,11 +5,18 @@
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 
-const config = NodeFS.existsSync("fake-server.json")
+// One server of several on a file: `roles[name]` overrides the config, and `word` (what it
+// reports), `source`, `without` (capabilities it lacks), `hoverNull`, `completions`, `replacement`,
+// `formatInsert` and `slow` (methods answered only when cancelled) tell it from the others.
+const role = process.argv.find((arg) => arg.startsWith("--role="))?.slice("--role=".length);
+const shared = NodeFS.existsSync("fake-server.json")
   ? JSON.parse(NodeFS.readFileSync("fake-server.json", "utf8"))
   : {};
-NodeFS.appendFileSync("starts.log", "start\n");
-const starts = NodeFS.readFileSync("starts.log", "utf8").trim().split("\n").length;
+const config = role === undefined ? shared : { ...shared, ...shared.roles?.[role] };
+const startsLog = role === undefined ? "starts.log" : `starts-${role}.log`;
+NodeFS.appendFileSync(startsLog, "start\n");
+const starts = NodeFS.readFileSync(startsLog, "utf8").trim().split("\n").length;
+const word = config.word ?? "bad";
 
 const docs = new Map();
 const received = [];
@@ -69,12 +76,12 @@ const occurrences = (text, word) => {
 };
 
 const diagnosticsOf = (text) =>
-  occurrences(text, "bad").map((offset) => ({
-    range: rangeOf(text, offset, offset + 3),
+  occurrences(text, word).map((offset) => ({
+    range: rangeOf(text, offset, offset + word.length),
     severity: 1,
-    message: "bad is not allowed",
+    message: `${word} is not allowed`,
     code: 7,
-    source: "fake",
+    ...(config.source === null ? {} : { source: config.source ?? "fake" }),
   }));
 
 const publish = (uri, version, diagnostics) =>
@@ -102,6 +109,10 @@ const handle = (message) => {
     asked.delete(id);
     return;
   }
+  if (config.slow?.includes(method)) {
+    slow.set(id, true);
+    return;
+  }
   switch (method) {
     case "initialize": {
       if (starts <= (config.crashTimes ?? 0)) {
@@ -114,25 +125,31 @@ const handle = (message) => {
       write({ method: "window/logMessage", params: { type: 3, message: "fake is starting" } });
       write({ method: "window/showMessage", params: { type: 2, message: "fake wants a look" } });
       const answer = () => {
-        reply({
-          serverInfo: { name: "fake", version: "9.9.9" },
-          capabilities: {
-            textDocumentSync: config.save ? { openClose: true, change: 2, save: true } : 2,
-            ...(config.pushes
-              ? {}
-              : {
-                  diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
-                }),
-            hoverProvider: true,
-            renameProvider: true,
-            definitionProvider: true,
-            documentFormattingProvider: true,
-            codeActionProvider: { resolveProvider: true },
-            executeCommandProvider: { commands: ["fake.removeLine"] },
-            referencesProvider: true,
-            completionProvider: { resolveProvider: true, triggerCharacters: ["."] },
+        const capabilities = {
+          textDocumentSync: config.fullSync
+            ? 1
+            : config.save
+              ? { openClose: true, change: 2, save: true }
+              : 2,
+          ...(config.pushes
+            ? {}
+            : {
+                diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
+              }),
+          hoverProvider: true,
+          renameProvider: true,
+          definitionProvider: true,
+          documentFormattingProvider: true,
+          codeActionProvider: { resolveProvider: true },
+          executeCommandProvider: { commands: ["fake.removeLine"] },
+          referencesProvider: true,
+          completionProvider: {
+            resolveProvider: true,
+            triggerCharacters: config.triggerCharacters ?? ["."],
           },
-        });
+        };
+        for (const capability of config.without ?? []) delete capabilities[capability];
+        reply({ serverInfo: { name: "fake", version: "9.9.9" }, capabilities });
       };
       if (config.waitFor && !NodeFS.existsSync(config.waitFor)) {
         let answered = false;
@@ -209,6 +226,11 @@ const handle = (message) => {
     case "textDocument/didChange": {
       const doc = docs.get(params.textDocument.uri);
       for (const change of params.contentChanges) {
+        if (config.fullSync) {
+          if (change.range) throw new Error("This server takes whole texts.");
+          doc.text = change.text;
+          continue;
+        }
         const from = offsetOf(doc.text, change.range.start);
         const to = offsetOf(doc.text, change.range.end);
         doc.text = doc.text.slice(0, from) + change.text + doc.text.slice(to);
@@ -225,30 +247,36 @@ const handle = (message) => {
       return reply({ kind: "full", items: loading ? [] : diagnosticsOf(text) });
     }
     case "textDocument/hover": {
+      if (config.hoverNull) return reply(null);
       const { text } = docs.get(params.textDocument.uri);
-      const { from, to, word } = wordAt(text, offsetOf(text, params.position));
+      const hovered = wordAt(text, offsetOf(text, params.position));
       // A word named `huge` answers with more than a hover may carry.
-      const contents = word === "huge" ? `\`\`\`ts\n${"x".repeat(200_000)}\n\`\`\`` : word;
-      return reply({ contents, range: rangeOf(text, from, to) });
+      const contents =
+        hovered.word === "huge"
+          ? `\`\`\`ts\n${"x".repeat(200_000)}\n\`\`\``
+          : role === undefined
+            ? hovered.word
+            : `${role}: ${hovered.word}`;
+      return reply({ contents, range: rangeOf(text, hovered.from, hovered.to) });
     }
     case "textDocument/definition":
     case "textDocument/references": {
       // A word's definition is its first use; `elsewhere` in the config places one in another
       // file, given as a path in the checkout and the 0-based line and character there.
       const { text } = docs.get(params.textDocument.uri);
-      const { word } = wordAt(text, offsetOf(text, params.position));
-      const found = occurrences(text, word).map((offset) => ({
+      const target = wordAt(text, offsetOf(text, params.position)).word;
+      const found = occurrences(text, target).map((offset) => ({
         uri: params.textDocument.uri,
-        range: rangeOf(text, offset, offset + word.length),
+        range: rangeOf(text, offset, offset + target.length),
       }));
-      const elsewhere = config.elsewhere?.[word];
+      const elsewhere = config.elsewhere?.[target];
       const outside = elsewhere
         ? [
             {
               uri: new URL(elsewhere.path, `file://${process.cwd()}/`).href,
               range: {
                 start: { line: elsewhere.line, character: elsewhere.character },
-                end: { line: elsewhere.line, character: elsewhere.character + word.length },
+                end: { line: elsewhere.line, character: elsewhere.character + target.length },
               },
             },
           ]
@@ -261,7 +289,7 @@ const handle = (message) => {
       const { text } = docs.get(params.textDocument.uri);
       const edits = [...text.matchAll(/,(?! )/g)].map((match) => ({
         range: rangeOf(text, match.index + 1, match.index + 1),
-        newText: " ",
+        newText: config.formatInsert ?? " ",
       }));
       if (config.formatDelay) setTimeout(() => reply(edits), config.formatDelay);
       else reply(edits);
@@ -270,11 +298,11 @@ const handle = (message) => {
     case "textDocument/codeAction": {
       // Each "bad" diagnostic offers a fix that needs resolving, and a command that edits.
       const actions = (params.context?.diagnostics ?? []).flatMap((diagnostic) =>
-        diagnostic.message !== "bad is not allowed"
+        diagnostic.message !== `${word} is not allowed`
           ? []
           : [
               {
-                title: "Replace bad with good",
+                title: `Replace ${word} with ${config.replacement ?? "good"}`,
                 kind: "quickfix",
                 isPreferred: true,
                 data: { uri: params.textDocument.uri, range: diagnostic.range },
@@ -291,7 +319,13 @@ const handle = (message) => {
     case "codeAction/resolve":
       return reply({
         ...params,
-        edit: { changes: { [params.data.uri]: [{ range: params.data.range, newText: "good" }] } },
+        edit: {
+          changes: {
+            [params.data.uri]: [
+              { range: params.data.range, newText: config.replacement ?? "good" },
+            ],
+          },
+        },
       });
     case "workspace/executeCommand": {
       const [uri, line] = params.arguments;
@@ -317,10 +351,10 @@ const handle = (message) => {
     }
     case "textDocument/rename": {
       const { text } = docs.get(params.textDocument.uri);
-      const { word } = wordAt(text, offsetOf(text, params.position));
+      const target = wordAt(text, offsetOf(text, params.position)).word;
       const editsIn = (fileText) =>
-        occurrences(fileText, word).map((offset) => ({
-          range: rangeOf(fileText, offset, offset + word.length),
+        occurrences(fileText, target).map((offset) => ({
+          range: rangeOf(fileText, offset, offset + target.length),
           newText: params.newName,
         }));
       const changes = { [params.textDocument.uri]: editsIn(text) };
@@ -333,18 +367,20 @@ const handle = (message) => {
     }
     case "textDocument/completion":
       return reply({
-        isIncomplete: false,
-        items: Array.from({ length: 500 }, (_, index) => ({
-          label: `item${index}`,
-          sortText: String(index).padStart(4, "0"),
-          documentation: "x".repeat(100),
-        })),
+        isIncomplete: config.incomplete === true,
+        items:
+          config.completions?.map((label) => ({ label })) ??
+          Array.from({ length: 500 }, (_, index) => ({
+            label: `item${index}`,
+            sortText: String(index).padStart(4, "0"),
+            documentation: "x".repeat(100),
+          })),
       });
     case "completionItem/resolve":
       // An auto-import: the edit lands at the top of the file the completion list was for.
       return reply({
         ...params,
-        documentation: `About ${params.label}`,
+        documentation: `About ${params.label}${role === undefined ? "" : ` from ${role}`}`,
         additionalTextEdits: [
           {
             range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },

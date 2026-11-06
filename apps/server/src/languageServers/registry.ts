@@ -22,6 +22,11 @@ export interface NpmSource {
   readonly entry: string;
   /** `node` runs `entry` as a script; `native` runs it directly. */
   readonly runWith: "node" | "native";
+  /**
+   * What `entry` needs at run time, exactly pinned and unpacked side by side in `node_modules`.
+   * npm's tarball holds none of them; each is checked like the package itself.
+   */
+  readonly dependencies?: Readonly<Record<string, string>>;
 }
 
 /** One platform's release file, pinned by its size and SHA-256. */
@@ -29,8 +34,11 @@ export interface ReleaseAsset {
   readonly url: string;
   readonly bytes: number;
   readonly sha256: string;
-  /** `gz` is the executable itself, gzipped; `zip` unpacks whole and runs `entry`. */
-  readonly format: "gz" | "zip";
+  /**
+   * `gz` is the executable itself, gzipped; `zip` and `tgz` unpack whole and run `entry` (the
+   * release's name by default). A `tgz`'s top folder is dropped.
+   */
+  readonly format: "gz" | "zip" | "tgz";
   readonly entry?: string;
 }
 
@@ -84,6 +92,7 @@ export interface Launch {
   /**
    * The answers to the server's `workspace/configuration`, by section. `{python}` is the
    * checkout's virtual environment interpreter; a value naming one the checkout lacks is left out.
+   * `{rootUri}` and `{rootName}` are the checkout's.
    */
   readonly settings?: Readonly<Record<string, unknown>>;
   /**
@@ -111,6 +120,22 @@ export interface LanguageServerSpec {
   readonly forgetsClosedFiles?: boolean;
   /** Said in settings when the checkout has none of `unless` (relative paths). */
   readonly hint?: { readonly unless: ReadonlyArray<string>; readonly message: string };
+  /** For a language's primary: who may format its files, in order. Without it, the primary. */
+  readonly formatters?: ReadonlyArray<LanguageServerId>;
+  /**
+   * For a companion: what shows the checkout uses it, read at its root. Without it, every
+   * checkout does.
+   */
+  readonly activation?: Activation;
+}
+
+export interface Activation {
+  /** Any of these files. */
+  readonly files: ReadonlyArray<string>;
+  /** Or any of these in package.json's dependencies of any kind. */
+  readonly packages: ReadonlyArray<string>;
+  /** "an ESLint config", as in "no ESLint config or eslint in package.json". */
+  readonly description: string;
 }
 
 const TYPESCRIPT_NATIVE = "@typescript/typescript-{platform}-{arch}";
@@ -118,6 +143,7 @@ const TYPESCRIPT_NATIVE = "@typescript/typescript-{platform}-{arch}";
 const RUST_ANALYZER_RELEASE =
   "https://github.com/rust-lang/rust-analyzer/releases/download/2026-11-02";
 const CLANGD_RELEASE = "https://github.com/clangd/clangd/releases/download/23.1.0";
+const RUFF_RELEASE = "https://github.com/astral-sh/ruff/releases/download/0.17.4";
 
 export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerSpec>> = {
   typescript: {
@@ -180,6 +206,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
       unless: [".venv", "venv"],
       message: "No .venv or venv here: imports resolve against the Python on PATH.",
     },
+    // basedpyright has no formatter of its own today; a later one must not fight Ruff's.
+    formatters: ["ruff", "basedpyright"],
     launches: [
       {
         name: "basedpyright",
@@ -394,6 +422,186 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
           "{data}",
         ],
         // Imports Maven and Gradle builds, which run their plugins and build scripts.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  ruff: {
+    id: "ruff",
+    name: "Ruff",
+    languages: "Python",
+    missing: "Ruff could not be found or downloaded.",
+    launches: [
+      {
+        name: "Ruff",
+        projectBinary: { path: ".venv/bin/ruff", runWith: "native" },
+        pathCommand: "ruff",
+        probe: ["--version"],
+        release: {
+          name: "ruff",
+          version: "0.17.4",
+          licence: "MIT",
+          host: "GitHub",
+          // Linux builds are musl: static, so they run on any distribution.
+          assets: {
+            "darwin-arm64": {
+              url: `${RUFF_RELEASE}/ruff-aarch64-apple-darwin.tar.gz`,
+              bytes: 9350605,
+              sha256: "6ef8b3a7fd5294f5e8384ceb29784a6f5657da0853824312b1d2cef53aef17af",
+              format: "tgz",
+            },
+            "darwin-x64": {
+              url: `${RUFF_RELEASE}/ruff-x86_64-apple-darwin.tar.gz`,
+              bytes: 10165222,
+              sha256: "0475a156ae8d73ba3386c90207804a72b3d7002ceb9dbca38dabc5d84aa95c9b",
+              format: "tgz",
+            },
+            "linux-arm64": {
+              url: `${RUFF_RELEASE}/ruff-aarch64-unknown-linux-musl.tar.gz`,
+              bytes: 9608470,
+              sha256: "71491cf93242d1bde15dcc628fd105f27c54738bef6b94050b9363ba6795f97e",
+              format: "tgz",
+            },
+            "linux-x64": {
+              url: `${RUFF_RELEASE}/ruff-x86_64-unknown-linux-musl.tar.gz`,
+              bytes: 10433557,
+              sha256: "d1d6ec9ce1ce0c01e23532a157a677077ba1f82f7cd2cde6f0bd75e65f85df93",
+              format: "tgz",
+            },
+            "win32-arm64": {
+              url: `${RUFF_RELEASE}/ruff-aarch64-pc-windows-msvc.zip`,
+              bytes: 9831205,
+              sha256: "44f5ca139d81e85fdc92c03ce759c30af834f6afaea22be449683b9e638e6b86",
+              format: "zip",
+              entry: "ruff.exe",
+            },
+            "win32-x64": {
+              url: `${RUFF_RELEASE}/ruff-x86_64-pc-windows-msvc.zip`,
+              bytes: 10234551,
+              sha256: "d37f57c7a0cfb8ed5a39adc96f7a0a63767b3c5abe4629c4c84e33c06da46885",
+              format: "zip",
+              entry: "ruff.exe",
+            },
+          },
+        },
+        args: ["server"],
+        // Written in Rust with no plugins: its configuration names rules and paths, never code to
+        // load, and `ruff server` runs no subprocess. The project's own binary needs trust.
+        restrictedSafe: true,
+      },
+    ],
+  },
+  eslint: {
+    id: "eslint",
+    name: "ESLint",
+    languages: "TypeScript and JavaScript",
+    missing: "ESLint's language server could not be found or downloaded.",
+    activation: {
+      files: [
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
+        ".eslintrc",
+        ".eslintrc.js",
+        ".eslintrc.cjs",
+        ".eslintrc.json",
+        ".eslintrc.yaml",
+        ".eslintrc.yml",
+      ],
+      packages: ["eslint"],
+      description: "ESLint config",
+    },
+    launches: [
+      {
+        name: "ESLint",
+        projectBinary: {
+          path: "node_modules/vscode-langservers-extracted/bin/vscode-eslint-language-server",
+          runWith: "node",
+        },
+        pathCommand: "vscode-eslint-language-server",
+        npm: {
+          name: "vscode-langservers-extracted",
+          version: "4.10.0",
+          licence: "MIT",
+          entry: "bin/vscode-eslint-language-server",
+          runWith: "node",
+          // What the ESLint server of that package requires; its other servers are not used.
+          dependencies: {
+            "core-js": "3.51.0",
+            "regenerator-runtime": "0.13.11",
+            semver: "7.8.6",
+            "vscode-jsonrpc": "9.0.3",
+            "vscode-languageserver": "10.1.2",
+            "vscode-languageserver-protocol": "3.18.4",
+            "vscode-languageserver-textdocument": "1.0.16",
+            "vscode-languageserver-types": "3.18.4",
+            "vscode-uri": "3.2.0",
+          },
+        },
+        args: ["--stdio"],
+        // The server asks for these with no section; it treats most as required. `useFlatConfig`
+        // stays unset so it follows what the project's ESLint does.
+        settings: {
+          validate: "on",
+          run: "onType",
+          format: false,
+          quiet: false,
+          onIgnoredFiles: "off",
+          nodePath: null,
+          options: {},
+          rulesCustomizations: [],
+          workingDirectory: { mode: "auto" },
+          workspaceFolder: { uri: "{rootUri}", name: "{rootName}" },
+          experimental: {},
+          problems: { shortenToSingleLine: false },
+          codeAction: {
+            disableRuleComment: { enable: true, location: "separateLine" },
+            showDocumentation: { enable: true },
+          },
+          codeActionOnSave: { enable: false, mode: "all" },
+        },
+        // Loads the project's ESLint, its config and its plugins.
+        restrictedSafe: false,
+      },
+    ],
+  },
+  tailwindcss: {
+    id: "tailwindcss",
+    name: "Tailwind CSS",
+    languages: "TypeScript and JavaScript",
+    missing: "Tailwind's language server could not be found or downloaded.",
+    activation: {
+      files: [
+        "tailwind.config.js",
+        "tailwind.config.cjs",
+        "tailwind.config.mjs",
+        "tailwind.config.ts",
+        "tailwind.config.cts",
+        "tailwind.config.mts",
+      ],
+      packages: ["tailwindcss"],
+      description: "Tailwind config",
+    },
+    launches: [
+      {
+        name: "Tailwind CSS",
+        projectBinary: {
+          path: "node_modules/@tailwindcss/language-server/bin/tailwindcss-language-server",
+          runWith: "node",
+        },
+        pathCommand: "tailwindcss-language-server",
+        npm: {
+          name: "@tailwindcss/language-server",
+          version: "0.16.0",
+          licence: "MIT",
+          entry: "bin/tailwindcss-language-server",
+          runWith: "node",
+        },
+        args: ["--stdio"],
+        // Loads the project's config and its plugins, which are code.
         restrictedSafe: false,
       },
     ],
