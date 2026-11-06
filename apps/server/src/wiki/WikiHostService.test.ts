@@ -12,10 +12,12 @@ import {
   type WikiId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
@@ -369,9 +371,17 @@ it.effect("publishing pushes the branch and opens one pull request, a draft for 
 
       const second = yield* amendment(fixture, "Two.md");
       assert.equal(second.changeRequestId, first.changeRequestId);
+      // An open view has to hear that the work went up, or it keeps saying it hasn't.
+      const told = yield* fixture.wikis.subscribe.pipe(
+        Stream.filter((event) => event.kind === "status"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true }),
+      );
       const republished = yield* hosts.publish(target);
       assert.equal(republished.pushedHead, republished.head);
       assert.lengthOf(host.pulls, 1);
+      assert.equal((yield* Fiber.join(told))[0]?.changeRequestId, first.changeRequestId);
     }),
   ),
 );

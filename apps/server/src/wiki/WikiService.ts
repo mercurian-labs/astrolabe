@@ -2640,6 +2640,7 @@ const make = Effect.gen(function* () {
                 "Publish change request",
                 identity(person.actor, now),
               );
+              yield* publish("status", wiki.wikiId, input.changeRequestId);
               return yield* view(wiki, next);
             }),
           );
