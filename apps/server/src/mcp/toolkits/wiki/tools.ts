@@ -51,7 +51,7 @@ const WikiListTool = Tool.make("astrolabe_wiki_list", {
 const WikiReadTool = Tool.make("astrolabe_wiki_read", {
   ...shared,
   description:
-    "Read one note's full markdown and its outgoing and incoming links. A canvas (Name.canvas) reads as an outline of its cards, groups and arrows. A name that is linked to but not written yet returns exists:false. Your own unmerged amendments are visible here.",
+    "Read one note's full markdown and its outgoing and incoming links. A canvas (Name.canvas) reads as an outline of its cards, groups and arrows, with the ids that change them. A name that is linked to but not written yet returns exists:false. Your own unmerged amendments are visible here.",
   parameters: Schema.Struct({
     wiki,
     name: Schema.NonEmptyString.annotate({
@@ -67,7 +67,7 @@ const WikiReadTool = Tool.make("astrolabe_wiki_read", {
 const WikiSearchTool = Tool.make("astrolabe_wiki_search", {
   ...shared,
   description:
-    "Find notes and canvases whose name or text contains a phrase (case-insensitive). Returns their names with a few matching lines each; read one for its full text.",
+    "Find notes and canvases whose name or text contains a phrase (case-insensitive). Returns their names with a few matching lines each, or a canvas's matching cards with their ids; read one for its full text.",
   parameters: Schema.Struct({ wiki, query: TrimmedNonEmptyString, changeRequestId: readFrom }),
   success: Schema.Struct({
     commit: Schema.String,
@@ -212,7 +212,7 @@ const MERGE_RULE =
 
 const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
   ...shared,
-  description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed file is its complete new content: a note's markdown, or a base's YAML in Obsidian's Bases format (a saved question astrolabe_wiki_query runs); null deletes it. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the change request, the commit, and the index errors standing after the amendment.`,
+  description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed file is its complete new content: a note's markdown, or a base's YAML in Obsidian's Bases format (a saved question astrolabe_wiki_query runs); null deletes it. A canvas is never written here: use astrolabe_wiki_transform. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the change request, the commit, and the index errors standing after the amendment.`,
   parameters: Schema.Struct({
     ...writeTarget,
     changes: Schema.Record(Schema.String, Schema.NullOr(Schema.String)).annotate({
@@ -225,7 +225,7 @@ const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
 
 const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
   ...shared,
-  description: `Apply a mechanical wiki change as one amendment: rename a note (rewriting every link to it, in notes and in bases), add or remove a skill-map edge, fill a red link with a new note placed on a map, or resolve a map warning. ${MERGE_RULE}`,
+  description: `Apply a mechanical wiki change as one amendment: rename a note or canvas (rewriting every link to it, in notes and in bases), add or remove a skill-map edge, fill a red link with a new note placed on a map, resolve a map warning, or change a canvas with kind "canvas". For a canvas, send what changes, never coordinates or its JSON: new cards are placed for you, in and near steer them, and nothing on the board moves. Read it first for its ids. ${MERGE_RULE}`,
   parameters: Schema.Struct({ ...writeTarget, transform: WikiAgentTransform }),
   success: WikiAmendResult,
 }).annotate(Tool.Destructive, false);

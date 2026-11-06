@@ -55,9 +55,12 @@ export type CanvasEdit =
       readonly color?: CanvasEditColor | undefined;
     }
   | { readonly op: "disconnect"; readonly from: string; readonly to: string }
-  | ({ readonly op: "label"; readonly group?: string | undefined } & ArrowEnds & {
-        readonly label: string | null;
-      })
+  /** Names a group, or an arrow by its ends; no `label` clears it. */
+  | ({
+      readonly op: "label";
+      readonly card?: string | undefined;
+      readonly label?: string | undefined;
+    } & ArrowEnds)
   | {
       readonly op: "group";
       readonly ref: string;
@@ -66,9 +69,12 @@ export type CanvasEdit =
       readonly around?: ReadonlyArray<string> | undefined;
       readonly near?: string | undefined;
     }
-  | ({ readonly op: "color"; readonly card?: string | undefined } & ArrowEnds & {
-        readonly color: CanvasEditColor | null;
-      });
+  /** Names a card, or an arrow by its ends; no `color` clears it. */
+  | ({
+      readonly op: "color";
+      readonly card?: string | undefined;
+      readonly color?: CanvasEditColor | undefined;
+    } & ArrowEnds);
 
 export class CanvasEditError extends Error {
   override readonly name = "CanvasEditError";
@@ -334,20 +340,21 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         return;
       }
       case "label": {
-        if (edit.group !== undefined) {
-          const id = known(edit.group);
+        const label = edit.label ?? null;
+        if (edit.card !== undefined) {
+          const id = known(edit.card);
           const raw = nodeOf(id);
           if (raw.type !== "group") {
-            throw new CanvasEditError(`"${edit.group}" isn't a group; edit a card's text instead.`);
+            throw new CanvasEditError(`"${edit.card}" isn't a group; edit a card's text instead.`);
           }
-          writeNode(id, withKey(raw, "label", edit.label));
+          writeNode(id, withKey(raw, "label", label));
         } else {
-          writeArrows(arrowsNamed(edit), "label", edit.label);
+          writeArrows(arrowsNamed(edit), "label", label);
         }
         return;
       }
       case "color": {
-        const color = edit.color === null ? null : presetOf(edit.color);
+        const color = edit.color === undefined ? null : presetOf(edit.color);
         if (edit.card !== undefined) {
           const id = known(edit.card);
           writeNode(id, withKey(nodeOf(id), "color", color));

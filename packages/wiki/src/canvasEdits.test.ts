@@ -184,10 +184,10 @@ describe("applyCanvasEdits", () => {
       [{ id: "e", fromNode: "a", toNode: "b", label: "old" }],
     );
     const { source: after } = apply(source, [
-      { op: "label", group: "g", label: "New" },
-      { op: "label", from: "a", to: "b", label: null },
+      { op: "label", card: "g", label: "New" },
+      { op: "label", from: "a", to: "b" },
       { op: "color", card: "a", color: "green" },
-      { op: "color", card: "b", color: null },
+      { op: "color", card: "b" },
       { op: "color", from: "a", to: "b", color: "cyan" },
     ]);
     const { nodes, edges } = JSON.parse(after ?? "");
