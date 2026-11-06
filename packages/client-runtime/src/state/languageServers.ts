@@ -2,6 +2,7 @@ import {
   WS_METHODS,
   type EnvironmentId,
   type LanguageServerLogItem,
+  type LanguageServerLogsInput,
   type LanguageServerProblemsItem,
   type LanguageServerSendInput,
   type LanguageServerSessionItem,
@@ -76,6 +77,12 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     // A picker's query per keystroke: none of them is worth keeping.
     idleTtlMs: 0,
   });
+  const settings = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:settings",
+    tag: WS_METHODS.languageServersSettings,
+    // Values that can be tokens stay no longer than the form that shows them.
+    idleTtlMs: 0,
+  });
   const toolchains = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:language-servers:toolchains",
     tag: WS_METHODS.languageServersToolchains,
@@ -140,7 +147,7 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
   /** A server's logs while mounted: each item as it arrives, again after a reconnect. */
   const logs = (
     environmentId: EnvironmentId,
-    target: LanguageServerTarget,
+    target: LanguageServerLogsInput,
     onItem: (item: LanguageServerLogItem) => void,
   ) =>
     runtime.atom(
@@ -172,6 +179,7 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     undoEdit,
     session,
     routes,
+    settings,
     toolchains,
     statuses,
     problems,

@@ -137,6 +137,15 @@ describe("RPC authorization scopes", () => {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
       expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthEnvironmentMaintainScope]);
     }
+    // Settings' values can be tokens, though `check` beside them is a plain read.
+    expect(requiredScopeForRpcMethod(WS_METHODS.languageServersSettings)).toBe(
+      AuthEnvironmentMaintainScope,
+    );
+    const logs = { cwd: "/repo", server: "typescript" };
+    expect(clientRpcRequiredScopes(WS_METHODS.languageServersLogs, logs)).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersLogs, { ...logs, full: true }),
+    ).toEqual([AuthEnvironmentMaintainScope]);
   });
 
   it("rejects unknown RPC method names", () => {

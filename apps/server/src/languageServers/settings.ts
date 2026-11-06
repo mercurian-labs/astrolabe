@@ -66,10 +66,13 @@ const EMPTY_FILE: LanguageServerSettingsFile = {
 export const makeLanguageServerSettings = Effect.fn("LanguageServers.makeSettings")(
   function* (options: { readonly file: string }) {
     const fileSystem = yield* FileSystem.FileSystem;
-    const text = yield* fileSystem.readFileString(options.file).pipe(Effect.option);
-    const stored = Option.isNone(text)
-      ? Option.some(EMPTY_FILE)
-      : decodeFile(parseJson(text.value));
+    // Only a file that isn't there is empty: one we can't read still holds someone's settings.
+    const stored = yield* fileSystem.readFileString(options.file).pipe(
+      Effect.map((text) => decodeFile(parseJson(text))),
+      Effect.catch((error) =>
+        Effect.succeed(error.reason._tag === "NotFound" ? Option.some(EMPTY_FILE) : Option.none()),
+      ),
+    );
     const problem = Option.isNone(stored)
       ? `${options.file} can't be read, so none of it applies. Fix or remove it, then restart.`
       : null;
@@ -174,6 +177,10 @@ export const effectiveSettings = (
 
 const hasSeparator = (command: string) => /[\\/]/.test(command);
 
+/** A name on PATH or a full path: a relative one would mean a different file per checkout. */
+export const isRunnableCommand = (command: string) =>
+  !hasSeparator(command) || /^(?:~\/|\/|[A-Za-z]:[\\/])/.test(command);
+
 /** Runs what a person named: nothing is probed, and only a trusted project runs it. */
 const chosenLaunch = (
   name: string,
@@ -274,8 +281,7 @@ const EXTENSION = /^[a-z0-9][a-z0-9+_-]*$/;
 export const normalizeCustomServer = (
   fields: CustomLanguageServerFields,
 ): CustomLanguageServerFields | { readonly problem: string } => {
-  const { command } = fields;
-  if (hasSeparator(command) && !/^(?:~\/|\/|[A-Za-z]:[\\/])/.test(command)) {
+  if (!isRunnableCommand(fields.command)) {
     return { problem: "The command must be a name on PATH or a full path." };
   }
   const languageIds = Object.fromEntries(

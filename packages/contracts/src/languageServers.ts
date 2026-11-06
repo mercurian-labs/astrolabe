@@ -342,6 +342,8 @@ export const LanguageServerToolchains = Schema.Struct({
   kind: LanguageServerToolchainKind,
   /** Null: found automatically. */
   selected: Schema.NullOr(Schema.String),
+  /** `selected` is gone from disk, so `active` is what was found automatically instead. */
+  selectedMissing: Schema.Boolean,
   /** Null: servers look for one themselves. Always null in a project that isn't trusted. */
   active: Schema.NullOr(LanguageServerToolchainOption),
   trusted: Schema.Boolean,
@@ -417,10 +419,26 @@ export const LanguageServerCheck = Schema.Struct({
   language: Schema.NullOr(BuiltInLanguageServerId),
   /** What settings change about it, and where each came from. */
   overrides: Schema.Array(LanguageServerOverrideEntry),
+  /** The environment variables settings give it, by name: values can be secrets. */
+  envNames: Schema.Array(Schema.String),
   /** Servers added in settings that take its place on some of its files. */
   replacedBy: Schema.Array(Schema.String),
 });
 export type LanguageServerCheck = typeof LanguageServerCheck.Type;
+
+export const LanguageServerSettingsInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
+export type LanguageServerSettingsInput = typeof LanguageServerSettingsInput.Type;
+
+/**
+ * What Settings edits, values and all. Environment values, arguments and JSON settings can hold
+ * tokens, so this takes the maintain scope where `check` takes only read.
+ */
+export const LanguageServerSettings = Schema.Struct({
+  machine: LanguageServerSettingsLayer,
+  project: LanguageServerSettingsLayer,
+  custom: Schema.Array(CustomLanguageServer),
+});
+export type LanguageServerSettings = typeof LanguageServerSettings.Type;
 
 /** A checkout's own `.astrolabe/language-servers.json`. */
 export const LanguageServerProjectFile = Schema.Struct({
@@ -438,12 +456,6 @@ export const LanguageServerCheckResult = Schema.Struct({
   trusted: Schema.Boolean,
   /** Each language's servers in the order they run, primary first. */
   servers: Schema.Array(LanguageServerCheck),
-  /** What Settings edits. */
-  settings: Schema.Struct({
-    machine: LanguageServerSettingsLayer,
-    project: LanguageServerSettingsLayer,
-    custom: Schema.Array(CustomLanguageServer),
-  }),
   projectFile: LanguageServerProjectFile,
   /** The environment's settings file can't be read: nothing it says applies. */
   settingsProblem: Schema.NullOr(Schema.String),
@@ -490,6 +502,8 @@ export const LanguageServerInfo = Schema.Struct({
   /** The last launch's: they stay after the process stops. */
   binary: Schema.NullOr(Schema.String),
   args: Schema.Array(Schema.String),
+  /** `args` was withheld from a subscription that isn't `full`: a token often sits there. */
+  argsHidden: Schema.Boolean,
   /** What the running server says it is. */
   version: Schema.NullOr(Schema.String),
   pid: Schema.NullOr(NonNegativeInt),
@@ -504,6 +518,7 @@ const LanguageServerLogState = Schema.Struct({
   tracing: Schema.Boolean,
 });
 
+/** `trace` is empty unless the subscription is `full`: it carries servers' settings. */
 export const LanguageServerLogItem = Schema.Union([
   /** What the environment has kept. */
   Schema.Struct({
@@ -521,6 +536,17 @@ export const LanguageServerLogItem = Schema.Union([
   }),
 ]);
 export type LanguageServerLogItem = typeof LanguageServerLogItem.Type;
+
+export const LanguageServerLogsInput = Schema.Struct({
+  ...LanguageServerTarget.fields,
+  /** Arguments and the trace too, which can carry tokens: this asks for the maintain scope. */
+  full: Schema.optionalKey(Schema.Boolean),
+});
+export type LanguageServerLogsInput = typeof LanguageServerLogsInput.Type;
+
+/** A logs subscription that asks for what only maintainers may read. */
+export const languageServerLogsFull = (input: unknown): boolean =>
+  typeof input === "object" && input !== null && (input as { full?: unknown }).full === true;
 
 export const LanguageServerSetTraceInput = Schema.Struct({
   ...LanguageServerTarget.fields,

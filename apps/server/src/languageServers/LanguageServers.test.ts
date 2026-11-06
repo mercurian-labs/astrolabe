@@ -25,6 +25,7 @@ import type {
 import { primaryLanguageServerRoute } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -1144,14 +1145,10 @@ describe("LanguageServers", () => {
             off: false,
             language: "typescript",
             overrides: [],
+            envNames: [],
             replacedBy: [],
           },
         ],
-        settings: {
-          machine: { servers: {}, order: {} },
-          project: { servers: {}, order: {} },
-          custom: [],
-        },
         projectFile: {
           path: ".astrolabe/language-servers.json",
           read: false,
@@ -2515,11 +2512,12 @@ describe("LanguageServers project trust", () => {
 const openLogs = Effect.fn("openLogs")(function* (
   checkout: Checkout,
   server: LanguageServerId = "typescript",
+  full = false,
 ) {
   const service = yield* LanguageServers.LanguageServers;
   const items = yield* Queue.unbounded<LanguageServerLogItem, Cause.Done | LanguageServerError>();
   const fiber = yield* service
-    .logs({ cwd: checkout.cwd, server })
+    .logs({ cwd: checkout.cwd, server, full })
     .pipe(Stream.runIntoQueue(items), Effect.forkScoped);
   const seen: Array<LanguageServerLogItem> = [];
   const lines = () => seen.flatMap((item) => item.lines);
@@ -2609,7 +2607,8 @@ describe("LanguageServers settings", () => {
         items: [{ section: "fake" }],
       });
       expect(answer.result).toEqual([{ level: "loose", extra: 1 }]);
-      const { servers, settings } = yield* service.check(checkout.cwd);
+      const { servers } = yield* service.check(checkout.cwd);
+      const settings = yield* service.settings(checkout.cwd);
       expect(servers[0]?.overrides).toEqual([
         { field: "args", source: "machine" },
         { field: "env", source: "machine" },
@@ -2743,10 +2742,108 @@ describe("LanguageServers settings", () => {
       expect(
         yield* refused({ type: "toolchain", kind: "python", path: "/usr/bin/not-listed" }),
       ).toBe("invalid");
-      expect((yield* service.check(checkout.cwd)).settings).toMatchObject({
+      expect(
+        yield* refused({
+          type: "server",
+          scope: "machine",
+          server: "typescript",
+          override: { binary: "bin/server" },
+        }),
+      ).toBe("invalid");
+      expect(yield* service.settings(checkout.cwd)).toMatchObject({
         machine: { servers: {}, order: {} },
         custom: [],
       });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("keeps what can hold a token from anyone who can only read", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const TOKEN = "s3cret-token";
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "project",
+        server: "typescript",
+        override: {
+          args: [`--token=${TOKEN}`],
+          env: { API_KEY: TOKEN },
+          initializationOptions: { key: TOKEN },
+          settings: { key: TOKEN },
+        },
+      });
+      yield* set(checkout.cwd, {
+        type: "custom",
+        id: null,
+        server: {
+          ...customFor(checkout),
+          args: [`--token=${TOKEN}`],
+          env: { MINE_KEY: TOKEN },
+        },
+      });
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+
+      const checked = yield* service.check(checkout.cwd);
+      expect(JSON.stringify(checked)).not.toContain(TOKEN);
+      expect(checked.servers.map((server) => server.envNames)).toEqual([["API_KEY"], ["MINE_KEY"]]);
+      expect(JSON.stringify(yield* routesIn(checkout.cwd))).not.toContain(TOKEN);
+      expect(JSON.stringify(yield* service.settings(checkout.cwd))).toContain(TOKEN);
+
+      const firstOf = (input: { readonly full?: boolean }) =>
+        service
+          .logs({ cwd: checkout.cwd, server: "typescript", ...input })
+          .pipe(Stream.runHead, Effect.map(Option.getOrThrow));
+      const reader = yield* firstOf({});
+      expect(JSON.stringify(reader)).not.toContain(TOKEN);
+      expect(reader.state?.info).toMatchObject({ args: [], argsHidden: true });
+      expect((yield* firstOf({ full: true })).state?.info).toMatchObject({
+        args: expect.arrayContaining([`--token=${TOKEN}`]),
+        argsHidden: false,
+      });
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("keeps a trace from a logs reader who can only read", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      const full = yield* openLogs(checkout, "typescript", true);
+      yield* full.until(() => full.seen[0]);
+      yield* service.setTrace({ cwd: checkout.cwd, server: "typescript", enabled: true });
+      const reader = yield* openLogs(checkout);
+      yield* reader.until(() => reader.seen[0]);
+      yield* session.request(1, "test/state", {});
+      yield* full.until(() => full.trace()[0]);
+      yield* session.request(2, "test/state", {});
+      yield* full.until(() => full.trace().find((entry) => entry.text.includes('"id":2')));
+      expect(reader.trace()).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
+  it.live("leaves a start that fails without its command line in the log", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout(SOURCE);
+      // There, so it's chosen, but it can't be run.
+      yield* checkout.write("not-runnable", "");
+      yield* fileSystem.chmod(`${checkout.cwd}/not-runnable`, 0o644);
+      yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "typescript",
+        override: { binary: `${checkout.cwd}/not-runnable`, args: ["--token=s3cret-token"] },
+      });
+      const logs = yield* openLogs(checkout);
+      const session = yield* openSession(checkout);
+      yield* session.state("failed");
+      const line = yield* logs.until(() =>
+        logs.lines().find((entry) => entry.text.startsWith("Could not start")),
+      );
+      expect(line.text).not.toContain("s3cret-token");
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
@@ -2774,6 +2871,34 @@ describe("LanguageServers settings", () => {
               `${folder}/language-server-settings.json`,
               "{ not json",
             );
+            return layerFor({ cacheDir: `${folder}/language-servers` });
+          }).pipe(Effect.provide(NodeServices.layer)),
+        ),
+      ),
+    ),
+  );
+
+  it.live("treats a settings file it can't read as unreadable, not as empty", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const checkout = yield* makeCheckout(SOURCE);
+      expect((yield* service.check(checkout.cwd)).settingsProblem).toContain("can't be read");
+      const failed = yield* set(checkout.cwd, {
+        type: "server",
+        scope: "machine",
+        server: "typescript",
+        override: { enabled: false },
+      }).pipe(Effect.flip);
+      expect(failed.message).toContain("can't be read");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.unwrap(
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
+            const folder = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-eisdir-" });
+            // Reading this fails, as a file without permission would, and it isn't missing.
+            yield* fileSystem.makeDirectory(`${folder}/language-server-settings.json`);
             return layerFor({ cacheDir: `${folder}/language-servers` });
           }).pipe(Effect.provide(NodeServices.layer)),
         ),
@@ -3023,6 +3148,16 @@ describe("LanguageServers settings", () => {
         const session = yield* openSession(checkout);
         const ready = yield* session.state("ready");
         expect(ready.message).toContain(FILE_PATH);
+
+        // There but unreadable is a problem too, not the same as having none.
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.remove(`${checkout.cwd}/${FILE_PATH}`);
+        expect((yield* service.check(checkout.cwd)).projectFile).toMatchObject({
+          read: false,
+          problem: null,
+        });
+        yield* fileSystem.makeDirectory(`${checkout.cwd}/${FILE_PATH}`);
+        expect((yield* service.check(checkout.cwd)).projectFile.problem).toContain("can't be read");
       }).pipe(Effect.scoped, Effect.provide(layerFor())),
     );
 
@@ -3138,11 +3273,17 @@ describe("LanguageServers settings", () => {
         yield* session.state("starting");
         yield* session.state("ready");
         yield* set(checkout.cwd, { type: "removeCustom", id });
-        const stopped = yield* session.state("disabled");
-        expect(stopped.memoryBytes).toBeNull();
         expect(yield* order()).toEqual(["typescript", "eslint"]);
+        // Gone, not off: nothing lists it, and a session bound to it ends.
+        const list = yield* statuses((all) => !all.some((status) => status.server === id));
+        expect(list.map((status) => status.state)).not.toContain("disabled");
+        expect(Exit.isFailure(yield* Effect.exit(session.state("ready")))).toBe(true);
+        expect(
+          (yield* service.logs({ cwd: checkout.cwd, server: id }).pipe(Stream.runHead, Effect.flip))
+            .reason,
+        ).toBe("unsupported");
         // Its settings went with it.
-        expect((yield* service.check(checkout.cwd)).settings.machine.servers).toEqual({});
+        expect((yield* service.settings(checkout.cwd)).machine.servers).toEqual({});
         // Anything still bound to it hears it can't be had.
         const gone = yield* service
           .session({ cwd: checkout.cwd, server: "custom:nobody", sessionId: "gone" })
@@ -3284,6 +3425,60 @@ describe("LanguageServers settings", () => {
         }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: pythonSpecs }))),
     );
 
+    it.live("says when the chosen interpreter is gone, and doesn't pretend it's in use", () =>
+      Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const checkout = yield* makeCheckout("x = 1\n");
+        yield* checkout.write("envs-a/bin/python", "");
+        yield* checkout.write("envs-a/pyvenv.cfg", "version = 3.11.4\n");
+        const chosen = `${checkout.cwd}/envs-a/bin/python`;
+        const hintOf = service
+          .check(checkout.cwd)
+          .pipe(Effect.map(({ servers }) => servers[0]?.message));
+        const choose = (path: string | null) =>
+          service.updateSettings({
+            cwd: checkout.cwd,
+            change: { type: "toolchain", kind: "python", path },
+          });
+        expect(yield* hintOf).toBe("No venv here.");
+        yield* choose(chosen);
+        expect(yield* hintOf).toBeNull();
+        expect(yield* service.toolchains(checkout.cwd)).toMatchObject({
+          selected: chosen,
+          selectedMissing: false,
+          active: { path: chosen },
+        });
+
+        yield* fileSystem.remove(`${checkout.cwd}/envs-a`, { recursive: true });
+        yield* checkout.write(".venv/bin/python", "");
+        expect(yield* service.toolchains(checkout.cwd)).toMatchObject({
+          selected: chosen,
+          selectedMissing: true,
+          active: { path: `${checkout.cwd}/.venv/bin/python` },
+        });
+        yield* fileSystem.remove(`${checkout.cwd}/.venv`, { recursive: true });
+        expect(yield* hintOf).toBe("No venv here.");
+        yield* choose(null);
+        expect(yield* service.toolchains(checkout.cwd)).toMatchObject({
+          selected: null,
+          selectedMissing: false,
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerFor({
+            specs: {
+              basedpyright: {
+                ...pythonSpecs.basedpyright,
+                hint: { unless: [".venv", "venv"], message: "No venv here." },
+              },
+            },
+          }),
+        ),
+      ),
+    );
+
     it.live("tells nothing of a chosen interpreter while the project isn't trusted", () =>
       withMachineServer((specs) =>
         Effect.gen(function* () {
@@ -3393,7 +3588,7 @@ describe("LanguageServers logs", () => {
       const target = { cwd: checkout.cwd, server: "typescript" } as const;
       const refused = yield* service.setTrace({ ...target, enabled: true }).pipe(Effect.flip);
       expect(refused.reason).toBe("not-running");
-      const logs = yield* openLogs(checkout);
+      const logs = yield* openLogs(checkout, "typescript", true);
       const session = yield* openSession(checkout);
       yield* session.state("ready");
       yield* session.open(checkout.uri);
@@ -3422,7 +3617,7 @@ describe("LanguageServers logs", () => {
         textDocument: { uri: checkout.uri },
         position: { line: 0, character: 6 },
       });
-      const off = yield* openLogs(checkout);
+      const off = yield* openLogs(checkout, "typescript", true);
       yield* off.until(() => off.seen[0]);
       expect(off.seen[0]?.trace).toHaveLength(before);
       yield* off.close;
@@ -3430,7 +3625,7 @@ describe("LanguageServers logs", () => {
       // With the last reader gone it stops, and what it held goes.
       yield* service.setTrace({ ...target, enabled: true });
       yield* logs.close;
-      const after = yield* openLogs(checkout);
+      const after = yield* openLogs(checkout, "typescript", true);
       yield* after.until(() => after.seen[0]);
       expect(after.seen[0]).toMatchObject({ trace: [], state: { tracing: false } });
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
@@ -3440,7 +3635,7 @@ describe("LanguageServers logs", () => {
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;
       const checkout = yield* makeCheckout(SOURCE);
-      const logs = yield* openLogs(checkout);
+      const logs = yield* openLogs(checkout, "typescript", true);
       const session = yield* openSession(checkout);
       yield* session.state("ready");
       yield* service.setTrace({ cwd: checkout.cwd, server: "typescript", enabled: true });
@@ -3449,7 +3644,7 @@ describe("LanguageServers logs", () => {
         textDocument: { uri: checkout.uri },
         position: { line: 0, character: 6 },
       });
-      const back = yield* openLogs(checkout);
+      const back = yield* openLogs(checkout, "typescript", true);
       yield* back.until(() => back.seen[0]);
       expect(back.seen[0]).toMatchObject({ state: { tracing: true } });
       expect(back.seen[0]?.trace.length).toBeGreaterThan(0);

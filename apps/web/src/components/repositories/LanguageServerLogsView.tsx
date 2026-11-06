@@ -78,7 +78,10 @@ function Info({ info }: { readonly info: LanguageServerInfo | null }) {
     ["State", info.restricted ? `${info.state} (restricted)` : info.state],
     ["Version", info.version],
     ["Binary", info.binary],
-    ["Arguments", info.args.join(" ")],
+    [
+      "Arguments",
+      info.argsHidden ? "Hidden: only someone managing it can see these" : info.args.join(" "),
+    ],
     ["Folder", info.cwd],
     ["Process", info.pid === null ? null : String(info.pid)],
     ["Memory", info.memoryBytes === null ? null : formatBytes(info.memoryBytes)],
@@ -136,7 +139,7 @@ export function LanguageServerLogsView({ tab }: { readonly tab: RepositoryLangua
     };
   }, [sink]);
   const [follow] = useState(() =>
-    languageServersEnvironment.logs(environmentId, { cwd, server }, (item) => {
+    languageServersEnvironment.logs(environmentId, { cwd, server, full: canRecord }, (item) => {
       sink.take(item);
       if (item.type === "snapshot" || item.trace.length > 0) setTraced(item.trace.length > 0);
       if (item.state !== undefined) setState(item.state);

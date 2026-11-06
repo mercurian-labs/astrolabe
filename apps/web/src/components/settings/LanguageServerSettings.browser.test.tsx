@@ -2,6 +2,7 @@ import {
   EnvironmentId,
   type LanguageServerCheck,
   type LanguageServerCheckResult,
+  type LanguageServerSettings,
   type LanguageServerUpdateSettingsInput,
 } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
@@ -9,13 +10,16 @@ import { page, userEvent } from "vite-plus/test/browser";
 
 const shared = vi.hoisted(() => ({
   results: new Map<string, unknown>(),
+  stored: new Map<string, unknown>(),
+  canEdit: true,
   update: null as ((input: unknown) => Promise<unknown>) | null,
 }));
 
 vi.mock(import("../../state/languageServers"), async () => {
   const { Atom, AsyncResult } = await import("effect/reactivity");
-  const guarded = { permissionAtom: () => Atom.make(true) };
+  const guarded = { permissionAtom: () => Atom.make(shared.canEdit) };
   const atoms = new Map<string, unknown>();
+  const storedAtoms = new Map<string, unknown>();
   return {
     languageServersEnvironment: {
       trustProject: guarded,
@@ -25,6 +29,12 @@ vi.mock(import("../../state/languageServers"), async () => {
         const atom =
           atoms.get(cwd) ?? Atom.make(() => AsyncResult.success(shared.results.get(cwd)));
         atoms.set(cwd, atom);
+        return atom;
+      },
+      settings: ({ input: { cwd } }: { readonly input: { readonly cwd: string } }) => {
+        const atom =
+          storedAtoms.get(cwd) ?? Atom.make(() => AsyncResult.success(shared.stored.get(cwd)));
+        storedAtoms.set(cwd, atom);
         return atom;
       },
     } as never,
@@ -52,6 +62,7 @@ const check = (patch: Partial<LanguageServerCheck>): LanguageServerCheck => ({
   off: false,
   language: "basedpyright",
   overrides: [],
+  envNames: [],
   replacedBy: [],
   ...patch,
 });
@@ -65,12 +76,17 @@ const EMPTY = { servers: {}, order: {} };
 let tests = 0;
 
 /** The section on a checkout of its own, and the changes it asks for. */
-async function setup(result: Partial<LanguageServerCheckResult> = {}) {
+async function setup(
+  result: Partial<LanguageServerCheckResult> = {},
+  stored: Partial<LanguageServerSettings> = {},
+  canEdit = true,
+) {
   const cwd = `/repo/${++tests}`;
+  shared.canEdit = canEdit;
+  shared.stored.set(cwd, { machine: EMPTY, project: EMPTY, custom: [], ...stored });
   shared.results.set(cwd, {
     trusted: true,
     servers: [check({}), RUFF],
-    settings: { machine: EMPTY, project: EMPTY, custom: [] },
     projectFile: { path: ".astrolabe/language-servers.json", read: false, problem: null },
     settingsProblem: null,
     ...result,
@@ -111,6 +127,50 @@ it("turns a server on and off at the chosen scope, and says when it's off", asyn
   );
 });
 
+it("shows what the chosen scope says, and why a project's own setting wins at the row", async () => {
+  const { screen, changes } = await setup(
+    { servers: [check({ off: true }), RUFF] },
+    {
+      project: { servers: { basedpyright: { enabled: false } }, order: { basedpyright: ["ruff"] } },
+    },
+  );
+  await using _screen = screen;
+  const pyright = screen.getByRole("switch", { name: "basedpyright 1.40.2 on" });
+  await expect.element(pyright).not.toBeChecked();
+  await expect.element(screen.getByText(/own setting keeps it/)).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("combobox", { name: "Changes here apply to" }));
+  await userEvent.click(page.getByRole("option", { name: "All projects" }));
+  // On for all projects, off in this one: the switch says the first, the row says the second.
+  await expect.element(pyright).toBeChecked();
+  await expect.element(screen.getByText(/own setting keeps it off here/)).toBeVisible();
+  await expect.element(screen.getByText(/own order decides here/).first()).toBeVisible();
+  await userEvent.click(pyright);
+  await vi.waitFor(() =>
+    expect(changes).toEqual([
+      { type: "enabled", scope: "machine", server: "basedpyright", enabled: false },
+    ]),
+  );
+});
+
+it("gives a client that can't change settings names, no values and nothing to press", async () => {
+  const { screen } = await setup({ servers: [check({ envNames: ["API_KEY"] })] }, {}, false);
+  await using _screen = screen;
+  await expect.element(screen.getByText("Environment variables: API_KEY")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Configure" })).toBeDisabled();
+  await expect
+    .element(screen.getByRole("switch", { name: "basedpyright 1.40.2 on" }))
+    .toBeDisabled();
+});
+
+it("says settings reach restricted servers in projects that aren't trusted", async () => {
+  const { screen } = await setup();
+  await using _screen = screen;
+  await expect
+    .element(screen.getByText(/reach servers running restricted in projects that aren't trusted/))
+    .toBeVisible();
+});
+
 it("orders a language's servers from a picker, with the first marked", async () => {
   const { screen, changes } = await setup();
   await using _screen = screen;
@@ -132,13 +192,10 @@ it("orders a language's servers from a picker, with the first marked", async () 
 });
 
 it("shows bad JSON at its field and changes nothing, then saves it fixed", async () => {
-  const { screen, changes } = await setup({
-    settings: {
-      machine: EMPTY,
-      project: { servers: { basedpyright: { enabled: false } }, order: {} },
-      custom: [],
-    },
-  });
+  const { screen, changes } = await setup(
+    {},
+    { project: { servers: { basedpyright: { enabled: false } }, order: {} } },
+  );
   await using _screen = screen;
   await userEvent.click(screen.getByRole("button", { name: "Configure" }).first());
   const settings = screen.getByRole("textbox", { name: "Settings", exact: true });
@@ -205,19 +262,21 @@ it("adds a server of someone's own in the page, and removes it again", async () 
     rootFiles: [],
     replaces: false,
   } as const;
-  const { screen, changes } = await setup({
-    servers: [
-      check({}),
-      check({
-        server: added.id,
-        name: "Mine",
-        languages: ".foo",
-        language: null,
-        executable: "/bin/mine-ls",
-      }),
-    ],
-    settings: { machine: EMPTY, project: EMPTY, custom: [added] },
-  });
+  const { screen, changes } = await setup(
+    {
+      servers: [
+        check({}),
+        check({
+          server: added.id,
+          name: "Mine",
+          languages: ".foo",
+          language: null,
+          executable: "/bin/mine-ls",
+        }),
+      ],
+    },
+    { custom: [added] },
+  );
   await using _screen = screen;
   await userEvent.click(screen.getByRole("button", { name: "Add", exact: true }));
   await userEvent.click(screen.getByRole("button", { name: "Save", exact: true }));

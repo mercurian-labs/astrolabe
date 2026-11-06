@@ -12,7 +12,7 @@ import {
   AuthTerminalOperateScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
-import { languageServerSendWrites } from "./languageServers.ts";
+import { languageServerLogsFull, languageServerSendWrites } from "./languageServers.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
 
@@ -144,6 +144,10 @@ export function clientRpcRequiredScopes(
   // Astrolabe: a request carrying unconfirmed edits lands them on the file's document.
   if (method === WS_METHODS.languageServersSend && languageServerSendWrites(input)) {
     return [AuthFilesystemWriteScope];
+  }
+  // Astrolabe: a server's arguments and trace can carry tokens; its output is a plain read.
+  if (method === WS_METHODS.languageServersLogs && languageServerLogsFull(input)) {
+    return [AuthEnvironmentMaintainScope];
   }
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

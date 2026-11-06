@@ -102,6 +102,7 @@ it("shows the active interpreter, and chooses another or goes back to automatic"
   const found: LanguageServerToolchains = {
     kind: "python",
     selected: null,
+    selectedMissing: false,
     active: venv,
     trusted: true,
     options: [venv, pyenv],
@@ -118,10 +119,34 @@ it("shows the active interpreter, and chooses another or goes back to automatic"
   expect(vi.mocked(selectInterpreter)).toHaveBeenCalledWith(python, pyenv.path);
 });
 
+it("says a chosen interpreter is gone, shows the fallback as automatic, and clears it", async () => {
+  vi.mocked(selectInterpreter).mockClear();
+  const venv = { path: "/repo/.venv/bin/python", label: ".venv", version: "3.12.1" };
+  const found: LanguageServerToolchains = {
+    kind: "python",
+    selected: "/gone/bin/python",
+    selectedMissing: true,
+    active: venv,
+    trusted: true,
+    options: [venv],
+  };
+  shared.toolchains = found;
+  const python = file({ toolchain: "python" });
+  await using screen = await render(
+    <LanguageServerStatusEntry file={python} status={status({})} servers={[route({})]} />,
+  );
+  await userEvent.click(screen.getByRole("status"));
+  await expect.element(page.getByText(/\.venv, Python 3\.12\.1 \(automatic\)/)).toBeVisible();
+  await expect.element(page.getByText(/is gone: \/gone\/bin\/python/)).toBeVisible();
+  await userEvent.click(page.getByRole("menuitem", { name: "Clear chosen interpreter" }));
+  expect(vi.mocked(selectInterpreter)).toHaveBeenCalledWith(python, null);
+});
+
 it("says a chosen interpreter waits for trust", async () => {
   const found: LanguageServerToolchains = {
     kind: "python",
     selected: "/repo/.venv/bin/python",
+    selectedMissing: false,
     active: null,
     trusted: false,
     options: [],

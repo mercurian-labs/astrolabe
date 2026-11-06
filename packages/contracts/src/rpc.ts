@@ -499,6 +499,7 @@ import {
   LanguageServerCheckResult,
   LanguageServerError,
   LanguageServerLogItem,
+  LanguageServerLogsInput,
   LanguageServerProblemsInput,
   LanguageServerProblemsItem,
   LanguageServerSendInput,
@@ -509,6 +510,8 @@ import {
   LanguageServerTarget,
   LanguageServerRoutes,
   LanguageServerRoutesInput,
+  LanguageServerSettings,
+  LanguageServerSettingsInput,
   LanguageServerToolchains,
   LanguageServerToolchainsInput,
   LanguageServerTrustInput,
@@ -725,6 +728,7 @@ export const WS_METHODS = {
   languageServersProblems: "languageServers.problems",
   languageServersRoutes: "languageServers.routes",
   languageServersToolchains: "languageServers.toolchains",
+  languageServersSettings: "languageServers.settings",
   languageServersUpdateSettings: "languageServers.updateSettings",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
@@ -2392,7 +2396,7 @@ const WsLanguageServersRevokeProjectTrustRpc = Rpc.make(
 
 /** A server's recent output, then what follows in batches; starts no server. */
 const WsLanguageServersLogsRpc = Rpc.make(WS_METHODS.languageServersLogs, {
-  payload: LanguageServerTarget,
+  payload: LanguageServerLogsInput,
   success: LanguageServerLogItem,
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
   stream: true,
@@ -2438,6 +2442,13 @@ const WsLanguageServersRoutesRpc = Rpc.make(WS_METHODS.languageServersRoutes, {
 const WsLanguageServersToolchainsRpc = Rpc.make(WS_METHODS.languageServersToolchains, {
   payload: LanguageServerToolchainsInput,
   success: LanguageServerToolchains,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Settings with their values, for the form that edits them. */
+const WsLanguageServersSettingsRpc = Rpc.make(WS_METHODS.languageServersSettings, {
+  payload: LanguageServerSettingsInput,
+  success: LanguageServerSettings,
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
@@ -2865,6 +2876,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsLanguageServersProblemsRpc,
   WsLanguageServersRoutesRpc,
   WsLanguageServersToolchainsRpc,
+  WsLanguageServersSettingsRpc,
   WsLanguageServersUpdateSettingsRpc,
 ).middleware(RpcScopeAuthorization);
 

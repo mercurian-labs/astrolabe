@@ -48,8 +48,8 @@ export function InterpreterPicker(props: { readonly setOpen: (open: boolean) => 
     title,
     description,
     titleTrailingContent:
-      data?.selected === path ? (
-        <span className="ms-auto shrink-0 text-xs text-muted-foreground">Selected</span>
+      data?.selected === path || (path === null && data?.selectedMissing === true) ? (
+        <span className="ms-auto shrink-0 text-xs text-muted-foreground">In use</span>
       ) : undefined,
     icon: null,
     run: async () => {
@@ -84,7 +84,11 @@ export function InterpreterPicker(props: { readonly setOpen: (open: boolean) => 
         groups={[
           {
             value: "interpreters",
-            label: data && !data.trusted ? "Applies once this project is trusted" : "",
+            label: data?.selectedMissing
+              ? "The interpreter chosen here is gone: Automatic clears it"
+              : data && !data.trusted
+                ? "Applies once this project is trusted"
+                : "",
             items,
           },
         ]}

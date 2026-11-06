@@ -195,6 +195,7 @@ function PythonInterpreter({
     }),
   );
   const active = data?.active ?? null;
+  const automatic = data?.selected === null || data?.selectedMissing === true;
   const AUTOMATIC = "automatic";
   return (
     <>
@@ -207,9 +208,17 @@ function PythonInterpreter({
               ? "Applies once this project is trusted"
               : active === null
                 ? "Automatic: none in this checkout"
-                : `${describeInterpreter(active)}${data.selected === null ? " (automatic)" : ""}`}
+                : `${describeInterpreter(active)}${automatic ? " (automatic)" : ""}`}
+          {data?.selectedMissing ? (
+            <span className="block">The interpreter chosen here is gone: {data.selected}</span>
+          ) : null}
         </p>
       </MenuGroup>
+      {data?.selectedMissing ? (
+        <MenuItem disabled={!canMaintain} onClick={() => selectInterpreter(file, null)}>
+          Clear chosen interpreter
+        </MenuItem>
+      ) : null}
       <MenuSub>
         <MenuSubTrigger disabled={!canMaintain || data === null}>
           Select Python interpreter

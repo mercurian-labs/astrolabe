@@ -15,6 +15,7 @@ import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { type ChangeEvent, useContext, useId, useState } from "react";
 
 import { languageServersEnvironment } from "../../state/languageServers";
+import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -329,6 +330,7 @@ function CustomServerForm({
 /** One server: on or off, its place in its language, and its settings at the chosen scope. */
 function ServerControls({
   check,
+  enabled,
   order,
   disabled,
   open,
@@ -337,6 +339,8 @@ function ServerControls({
   onMove,
 }: {
   readonly check: LanguageServerCheck;
+  /** What the chosen scope says, which is what the switch changes. */
+  readonly enabled: boolean;
   /** The language's servers in the order they run; just this one for a server alone. */
   readonly order: ReadonlyArray<LanguageServerCheck["server"]>;
   readonly disabled: boolean;
@@ -370,12 +374,18 @@ function ServerControls({
           </Button>
         </>
       ) : null}
-      <Button size="xs" variant="ghost" aria-expanded={open} onClick={onToggleOpen}>
+      <Button
+        size="xs"
+        variant="ghost"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={onToggleOpen}
+      >
         Configure
       </Button>
       <Switch
         aria-label={`${check.name} on`}
-        checked={!check.off}
+        checked={enabled}
         disabled={disabled}
         onCheckedChange={onEnabled}
       />
@@ -427,9 +437,20 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
       editing?.member.environmentId ?? (members[0]?.environmentId as EnvironmentId),
     ),
   );
-  const canEdit = editable && edited !== null && edited.settingsProblem === null;
+  // Values can be tokens: only someone who may change them reads them.
+  const stored = useEnvironmentQuery(
+    editable && editing !== undefined
+      ? languageServersEnvironment.settings({
+          environmentId: editing.member.environmentId,
+          input: { cwd: editing.member.workspaceRoot },
+        })
+      : null,
+  );
+  const settings = stored.data;
+  const canEdit =
+    editable && edited !== null && edited.settingsProblem === null && settings !== null;
   const groups = languageGroups(servers);
-  const layer = edited?.settings[scope];
+  const layer = settings?.[scope];
   const change = async (next: LanguageServerSettingsChange) => {
     if (editing === undefined) return;
     await update({
@@ -437,11 +458,16 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
       input: { cwd: editing.member.workspaceRoot, change: next },
     });
     recheck();
+    stored.refresh();
   };
   const waiting = checkouts.some((checkout) => checkout.waiting);
   const prefix = (member: Checkout) =>
     members.length > 1 && member.environmentLabel !== null ? `${member.environmentLabel}: ` : "";
-  const custom = edited?.settings.custom ?? [];
+  const custom = settings?.custom ?? [];
+  // All projects can say one thing while a project's own setting decides here.
+  const projectLayer = scope === "machine" ? settings?.project : undefined;
+  const enabledAtScope = (server: LanguageServerCheck) =>
+    scope === "machine" ? settings?.machine.servers[server.server]?.enabled !== false : !server.off;
 
   return (
     <SettingsSection title="Language servers">
@@ -468,7 +494,7 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
       )}
       <SettingsRow
         title="Changes here apply to"
-        description="All projects is everything on this machine. A project's own settings go over that, and over its .astrolabe/language-servers.json."
+        description="All projects is everything on this machine. A project's own settings go over that, and over its .astrolabe/language-servers.json. Settings and initialization options also reach servers running restricted in projects that aren't trusted."
         control={
           <span className="flex items-center gap-2">
             {members.length > 1 ? (
@@ -569,14 +595,32 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
                           {describeOverrides(check)}
                         </span>
                       ) : null}
+                      {check !== undefined && check.envNames.length > 0 ? (
+                        <span className="block text-muted-foreground">
+                          Environment variables: {check.envNames.join(", ")}
+                        </span>
+                      ) : null}
                     </span>
                   );
                 })}
+                {projectLayer?.servers[server.server]?.enabled !== undefined ? (
+                  <span className="block text-muted-foreground">
+                    This project's own setting keeps it{" "}
+                    {projectLayer.servers[server.server]?.enabled ? "on" : "off"} here, whatever all
+                    projects say.
+                  </span>
+                ) : null}
+                {server.language !== null && projectLayer?.order[server.language] !== undefined ? (
+                  <span className="block text-muted-foreground">
+                    This project's own order decides here, whatever all projects say.
+                  </span>
+                ) : null}
               </span>
             }
             control={
               <ServerControls
                 check={server}
+                enabled={enabledAtScope(server)}
                 order={group.map(({ server: id }) => id)}
                 disabled={!canEdit}
                 open={configuring === server.server}
