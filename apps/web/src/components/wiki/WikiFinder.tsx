@@ -1,7 +1,13 @@
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { FilePenLineIcon, FilePlusIcon, FileTextIcon, TableIcon } from "lucide-react";
+import {
+  FilePenLineIcon,
+  FilePlusIcon,
+  FileTextIcon,
+  TableIcon,
+  WaypointsIcon,
+} from "lucide-react";
 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { useState } from "react";
@@ -13,7 +19,7 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
 import { isWikisPath } from "../sidebar/mainAppLocation";
-import { noteKey } from "./wiki.logic";
+import { documentTitle, isCanvasName, noteKey } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { openWikiTab, showWikiTab } from "./wikiPanes";
 import { wikiScopeKey, wikiSidebarItems, type WikiDocumentItem, type WikiTab } from "./wikiTabs";
@@ -149,6 +155,8 @@ function documentRow(
         <FilePenLineIcon className={ITEM_ICON_CLASS} />
       ) : document.base ? (
         <TableIcon className={ITEM_ICON_CLASS} />
+      ) : document.canvas ? (
+        <WaypointsIcon className={ITEM_ICON_CLASS} />
       ) : (
         <FileTextIcon className={ITEM_ICON_CLASS} />
       ),
@@ -235,39 +243,59 @@ export function finderGroups(input: {
   // A name no document has can be written, in the filtered wiki or any of them.
   const name = query.trim();
   const taken = documents.some((document) => noteKey(document.name) === needle);
+  const targets = overviews.filter(
+    (overview) =>
+      scope === null || wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
+  );
   const writeItems: CommandPaletteActionItem[] =
     name === "" || taken
       ? []
-      : overviews
-          .filter(
-            (overview) =>
-              scope === null ||
-              wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
-          )
-          .map((overview) => ({
-            kind: "action",
-            value: `wiki-finder:write:${overview.environmentId}:${overview.wiki.wikiId}`,
-            searchTerms: [name],
-            title: `Write “${name}”`,
-            description: multipleWikis ? `in ${overview.wiki.name}` : "",
-            icon: <FilePlusIcon className={ITEM_ICON_CLASS} />,
-            run: async () =>
-              onPick({
-                kind: "note",
-                environmentId: overview.environmentId,
-                wikiId: overview.wiki.wikiId,
-                name,
-                changeRequestId: undefined,
-              }),
-          }));
+      : targets.map((overview) => ({
+          kind: "action",
+          value: `wiki-finder:write:${overview.environmentId}:${overview.wiki.wikiId}`,
+          searchTerms: [name],
+          title: `Write “${name}”`,
+          description: multipleWikis ? `in ${overview.wiki.name}` : "",
+          icon: <FilePlusIcon className={ITEM_ICON_CLASS} />,
+          run: async () =>
+            onPick({
+              kind: "note",
+              environmentId: overview.environmentId,
+              wikiId: overview.wiki.wikiId,
+              name,
+              changeRequestId: undefined,
+            }),
+        }));
+  // A canvas opens unwritten, as a note does, and its page offers to start it.
+  const canvasName = isCanvasName(name) ? name : `${name}.canvas`;
+  const canvasTaken = documents.some((document) => noteKey(document.name) === noteKey(canvasName));
+  const canvasItems: CommandPaletteActionItem[] =
+    name === "" || canvasTaken
+      ? []
+      : targets.map((overview) => ({
+          kind: "action",
+          value: `wiki-finder:canvas:${overview.environmentId}:${overview.wiki.wikiId}`,
+          searchTerms: [name, "canvas"],
+          title: `New canvas “${documentTitle(canvasName)}”`,
+          description: multipleWikis ? `in ${overview.wiki.name}` : "",
+          icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+          run: async () =>
+            onPick({
+              kind: "note",
+              environmentId: overview.environmentId,
+              wikiId: overview.wiki.wikiId,
+              name: canvasName,
+              changeRequestId: undefined,
+            }),
+        }));
 
   const groups: CommandPaletteGroup[] = [];
   const add = (value: string, label: string, items: CommandPaletteActionItem[]) => {
     if (items.length > 0) groups.push({ value, label, items });
   };
-  if (mode === "new") add("write", "New document", writeItems);
+  if (mode === "new") add("write", "New document", [...writeItems, ...canvasItems]);
   add("documents", "Documents", documentItems);
   add("changes", "Open changes", changeItems);
-  if (mode === "find") add("write", "New document", writeItems);
+  if (mode === "find") add("write", "New document", [...writeItems, ...canvasItems]);
   return groups;
 }

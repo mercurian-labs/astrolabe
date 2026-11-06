@@ -5,7 +5,14 @@ import type {
   WikiChangeRequestId,
   WikiId,
 } from "@t3tools/contracts";
-import { FilePenLineIcon, FileTextIcon, SquareDashed, TableIcon } from "lucide-react";
+import {
+  FilePenLineIcon,
+  FileTextIcon,
+  SquareDashed,
+  TableIcon,
+  WaypointsIcon,
+} from "lucide-react";
+import { lazy, Suspense } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { ensureLocalApi } from "~/localApi";
 import type { PaneTabLabel } from "~/panes/panesHost";
@@ -19,15 +26,20 @@ import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
+import { documentTitle } from "./wiki.logic";
 import { WikiNoteView } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
 import {
   changeRequestBranch,
   isBaseTab,
+  isCanvasTab,
   parseWikiTabKey,
   wikiTabKey,
   type WikiTab,
 } from "./wikiTabs";
+
+// The board brings the Markdown parser; a wiki with no canvas open shouldn't load it.
+const WikiCanvasPage = lazy(() => import("./WikiCanvasView"));
 
 /** The worktree holding a change request's branch, for a tab in a change request; else null. */
 function useChangeRequestWorktree(tab: WikiTab | null) {
@@ -104,13 +116,55 @@ function NoteTab({
   useNumberWhenOpened(target, holder);
   const openChangeRequests = (all ?? []).filter((changeRequest) => changeRequest.status === "open");
   const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
+  const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
+  // A file that is no wiki document opens as a file, on the line the tab reads.
+  const branch =
+    tab.changeRequestId === undefined
+      ? overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki.mainBranch
+      : changeRequestBranch(tab.changeRequestId);
+  const openFile =
+    branch === undefined
+      ? undefined
+      : (path: string) =>
+          nav.open(
+            repositoryTabKey({
+              kind: "file",
+              environmentId: tab.environmentId,
+              wikiId: tab.wikiId,
+              checkout: { branch },
+              path,
+            }),
+          );
+  if (isCanvasTab(tab)) {
+    return (
+      <Suspense fallback={null}>
+        <WikiCanvasPage
+          tabKey={tabKey}
+          environmentId={tab.environmentId}
+          wikiId={tab.wikiId}
+          file={tab.name}
+          changeRequestId={tab.changeRequestId}
+          parent={
+            tab.changeRequestId === undefined
+              ? "Main"
+              : (changeRequest?.title ?? "A change request")
+          }
+          openChangeRequests={openChangeRequests}
+          onSaved={(savedTo: WikiChangeRequestId) => {
+            if (savedTo !== tab.changeRequestId) {
+              nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), {
+                rekey: true,
+              });
+            }
+          }}
+          onOpenNote={(name) => nav.replace(tabKey, wikiTabKey({ ...tab, name }))}
+          onOpenFile={openFile}
+          onOpenTab={nav.open}
+        />
+      </Suspense>
+    );
+  }
   if (isBaseTab(tab)) {
-    const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
-    // A row that is no wiki document opens as a file, on the line the base reads.
-    const branch =
-      tab.changeRequestId === undefined
-        ? overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki.mainBranch
-        : changeRequestBranch(tab.changeRequestId);
     return (
       <WikiBasePage
         environmentId={tab.environmentId}
@@ -133,20 +187,7 @@ function NoteTab({
           if (hasUnsavedEdits(tabKey)) nav.open(next);
           else nav.replace(tabKey, next);
         }}
-        onOpenFile={
-          branch === undefined
-            ? undefined
-            : (path) =>
-                nav.open(
-                  repositoryTabKey({
-                    kind: "file",
-                    environmentId: tab.environmentId,
-                    wikiId: tab.wikiId,
-                    checkout: { branch },
-                    path,
-                  }),
-                )
-        }
+        onOpenFile={openFile}
       />
     );
   }
@@ -229,6 +270,13 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   );
   if (!tab) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   if (tab.kind === "note") {
+    if (isCanvasTab(tab)) {
+      return {
+        title: documentTitle(tab.name),
+        icon: <WaypointsIcon className="size-3.5 shrink-0" />,
+        ...trailing,
+      };
+    }
     if (isBaseTab(tab)) {
       return {
         title: tab.name.replace(/\.base$/, ""),

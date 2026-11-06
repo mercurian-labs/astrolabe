@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 
-import { documentTitle, noteKey } from "./wiki.logic";
+import { documentTitle, isCanvasName, noteKey } from "./wiki.logic";
 
 /**
  * What a tab in the Wikis area shows: a note, read from main or inside a change request, or a
@@ -83,6 +83,9 @@ export function parseWikiTabKey(key: string): WikiTab | null {
 export const isBaseTab = (tab: WikiTab): boolean =>
   tab.kind === "note" && tab.name.endsWith(".base");
 
+/** Whether a document tab shows a canvas: a `.canvas` file, opened by its file name. */
+export const isCanvasTab = (tab: WikiTab): boolean => tab.kind === "note" && isCanvasName(tab.name);
+
 /** Whether two tabs show the same thing; note names compare as the wiki compares them. */
 export function sameWikiTab(a: WikiTab, b: WikiTab): boolean {
   if (a.environmentId !== b.environmentId || a.wikiId !== b.wikiId) return false;
@@ -115,11 +118,13 @@ export interface WikiDocumentItem {
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
   readonly name: string;
-  /** What lists show: the name, without a base's `.base`. */
+  /** What lists show: the name, without a base's `.base` or a canvas's `.canvas`. */
   readonly title: string;
   readonly file: string;
   /** A `.base` file, which lists mark with a table icon. */
   readonly base: boolean;
+  /** A `.canvas` file, which lists mark with their own icon. */
+  readonly canvas: boolean;
   readonly links: number;
   readonly backlinks: number;
   /** When the note last changed on main; null when the wiki doesn't say. */
@@ -188,7 +193,7 @@ export function wikiSidebarItems(
     }
     const openItems = open.map(item);
     changes.push(...openItems);
-    // A base is a document too, opened by its file name.
+    // A base and a canvas are documents too, opened by their file names.
     const bases = (overview.index?.bases ?? []).map((base) => ({
       name: base.file,
       file: base.file,
@@ -196,7 +201,11 @@ export function wikiSidebarItems(
       incoming: 0,
       editedAt: base.editedAt,
     }));
-    for (const note of [...(overview.index?.notes ?? []), ...bases]) {
+    const canvases = (overview.index?.canvases ?? []).map((canvas) => ({
+      ...canvas,
+      name: canvas.file,
+    }));
+    for (const note of [...(overview.index?.notes ?? []), ...bases, ...canvases]) {
       documents.push({
         key: wikiTabKey({
           kind: "note",
@@ -211,6 +220,7 @@ export function wikiSidebarItems(
         title: documentTitle(note.name),
         file: note.file,
         base: note.file.endsWith(".base"),
+        canvas: isCanvasName(note.file),
         links: note.outgoing,
         backlinks: note.incoming,
         editedAt: note.editedAt ?? null,

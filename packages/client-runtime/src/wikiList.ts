@@ -5,24 +5,26 @@ import { documentTitle, noteKey } from "./wikiLogic.ts";
 
 /**
  * Astrolabe: the Wikis list, as the thread list is one list across projects: every open
- * change request, then every document (notes and `.base` files), then the merged and closed
+ * change request, then every document (notes, `.base` and `.canvas` files), then the merged and closed
  * change requests (the shelf a closed one is reopened from), each newest first, across every
  * wiki on every server.
  */
 
-/** A document in the list: a note, or a `.base` file, on its wiki's main line. */
+/** A document in the list: a note, a `.base` or a `.canvas` file, on its wiki's main line. */
 export interface WikiDocumentEntry {
   readonly kind: "document";
   readonly key: string;
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
-  /** A base is named, and opened, by its file name (`Projects.base`), as on web. */
+  /** A base or canvas is named, and opened, by its file name (`Projects.base`), as on web. */
   readonly name: string;
-  /** What the list shows: the name, without a base's `.base`. */
+  /** What the list shows: the name, without a base's `.base` or a canvas's `.canvas`. */
   readonly title: string;
   readonly file: string;
   /** A `.base` file: read only, with no links of its own. */
   readonly base: boolean;
+  /** A `.canvas` file. */
+  readonly canvas: boolean;
   readonly links: number;
   readonly backlinks: number;
   /** When the note last changed on main; null when the wiki does not say. */
@@ -79,7 +81,7 @@ export function wikiListEntries(
     }
     open.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
     changes.push(...open);
-    const notes = (index?.notes ?? []).map((note) => ({ ...note, base: false }));
+    const notes = (index?.notes ?? []).map((note) => ({ ...note, base: false, canvas: false }));
     const bases = (index?.bases ?? []).map((base) => ({
       name: base.file,
       file: base.file,
@@ -87,8 +89,15 @@ export function wikiListEntries(
       incoming: 0,
       editedAt: base.editedAt,
       base: true,
+      canvas: false,
     }));
-    for (const note of [...notes, ...bases]) {
+    const canvases = (index?.canvases ?? []).map((canvas) => ({
+      ...canvas,
+      name: canvas.file,
+      base: false,
+      canvas: true,
+    }));
+    for (const note of [...notes, ...bases, ...canvases]) {
       documents.push({
         kind: "document",
         key: `document:${scopeKey}:${noteKey(note.name)}`,
@@ -98,6 +107,7 @@ export function wikiListEntries(
         title: documentTitle(note.name),
         file: note.file,
         base: note.base,
+        canvas: note.canvas,
         links: note.outgoing,
         backlinks: note.incoming,
         editedAt: note.editedAt ?? null,

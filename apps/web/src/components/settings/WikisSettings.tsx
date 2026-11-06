@@ -199,7 +199,9 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
         <FactRow title="Main line" value={wiki.mainBranch} />
         <FactRow
           title="Documents"
-          value={index === null ? "…" : index.notes.length + index.bases.length}
+          value={
+            index === null ? "…" : index.notes.length + index.bases.length + index.canvases.length
+          }
         />
         <FactRow title="Open change requests" value={wiki.openChangeRequests} />
       </SettingsSection>

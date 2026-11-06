@@ -74,6 +74,7 @@ import {
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
+  WaypointsIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
@@ -257,7 +258,11 @@ import { readPullRequestListPreferences } from "~/components/pullRequest/pullReq
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 // Astrolabe: the palette as Vim's ex line, and Search finding wiki documents.
+import { wikiCanvasBoard } from "~/components/wiki/wikiCanvasBoards";
 import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
+import { useFocusedWikiTab } from "~/components/wiki/wikiPanes";
+import { isCanvasTab, wikiTabKey } from "~/components/wiki/wikiTabs";
+import { appCommandsSlot } from "~/whichKey/handles";
 import { useAddWiki } from "~/components/wiki/useAddWiki";
 import {
   useWikiLinkStep,
@@ -528,6 +533,7 @@ function OpenCommandPaletteDialog(props: {
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
   const currentView = viewStack.at(-1)?.view ?? null;
+  const focusedWikiTab = useFocusedWikiTab();
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
@@ -1296,6 +1302,36 @@ function OpenCommandPaletteDialog(props: {
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
+  // Astrolabe: a canvas's own command, while one is in front.
+  const canvasBoard =
+    focusedWikiTab !== null && isCanvasTab(focusedWikiTab)
+      ? wikiCanvasBoard(wikiTabKey(focusedWikiTab))
+      : undefined;
+  if (canvasBoard !== undefined && canvasBoard.groups.length > 0) {
+    actionItems.push({
+      kind: "submenu",
+      value: "action:canvas-jump-to-group",
+      searchTerms: ["canvas", "jump to group", "go to group"],
+      title: "Canvas: Jump to group",
+      icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <WaypointsIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "canvas-groups",
+          label: "Groups",
+          items: canvasBoard.groups.map((group) => ({
+            kind: "action",
+            value: `canvas-group:${group.id}`,
+            searchTerms: [group.label],
+            title: group.label,
+            icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+            run: async () => canvasBoard.jumpToGroup(group.id),
+          })),
+        },
+      ],
+    });
+  }
+
   if (projects.length > 0) {
     const activeProjectTitle =
       projectPickerEntries.find((entry) => entry.isPreferred)?.group.displayName ??
@@ -1561,6 +1597,14 @@ function OpenCommandPaletteDialog(props: {
   }
 
   if (firstConnectedEnvironment) {
+    actionItems.push({
+      kind: "action",
+      value: "action:new-canvas",
+      searchTerms: ["new canvas", "canvas", "board", "whiteboard", "document"],
+      title: "New canvas",
+      icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+      run: async () => appCommandsSlot.get()?.command("wiki.findDocument", null).run(),
+    });
     actionItems.push({
       kind: "action",
       value: "action:new-wiki",

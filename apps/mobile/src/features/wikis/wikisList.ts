@@ -52,6 +52,8 @@ export function buildWikiListItems(entries: WikiListEntries): WikiListItem[] {
     items.push({ type: "changes-link", key: "changes-link", count: entries.changes.length });
   }
   for (const entry of entries.documents) {
+    // The phone has no screen for a canvas yet, and reading one as a note would show its outline.
+    if (entry.canvas) continue;
     items.push({
       type: "document",
       key: entry.key,

@@ -95,11 +95,11 @@ const READ_ONLY_EXTENSIONS = [
   appVimKeys(() => null),
 ];
 
-interface BaseBlock {
+interface HostBlock {
   readonly id: number;
-  /** A ```base block's YAML, or an embed's target (`Open.base#Table`). */
+  /** A code block's source, or an embed's target (`Open.base#Table`). */
   readonly source: string;
-  readonly embed: boolean;
+  readonly kind: "base" | "base-embed" | "canvas-embed" | "mermaid";
   readonly element: HTMLElement;
 }
 
@@ -116,7 +116,10 @@ export function WikiNoteEditor({
   onWrite,
   renderBase,
   renderBaseEmbed,
+  renderCanvasEmbed,
+  renderMermaid,
   linkTypes,
+  linkNames,
   renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
@@ -126,10 +129,16 @@ export function WikiNoteEditor({
   readonly renderBase: (source: string) => ReactNode;
   /** An embedded base's view, `![[Open.base#Table]]` alone on its line, by its target. */
   readonly renderBaseEmbed?: (target: string) => ReactNode;
+  /** An embedded canvas, `![[Board.canvas]]` alone on its line, by its target. */
+  readonly renderCanvasEmbed?: (target: string) => ReactNode;
+  /** A ```mermaid block's diagram, from its source; it shows until the block is edited. */
+  readonly renderMermaid?: (source: string) => ReactNode;
   /** Vim's `:w`: saves the note, as Save to change request does. */
   readonly onWrite?: () => void;
   /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
   readonly linkTypes: ReadonlyArray<string>;
+  /** The documents a `[[` can complete to. */
+  readonly linkNames?: ReadonlyArray<string>;
   /** What a link's preview shows, drawn into its popover. */
   readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
 }) {
@@ -144,7 +153,7 @@ export function WikiNoteEditor({
   useLayoutEffect(() => {
     writeRef.current = onWrite;
   }, [onWrite]);
-  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview, linkNames);
   // One array for the editor's life: a new one would remount it.
   const [editableExtensions] = useState(() => [
     WIKI_EDITOR_THEME,
@@ -156,27 +165,26 @@ export function WikiNoteEditor({
   ]);
   const [readOnlyExtensions] = useState(() => [...READ_ONLY_EXTENSIONS, linkTools.extension]);
   // The blocks the editor draws, each filled through a portal so the view keeps the app's context.
-  const [baseBlocks, setBaseBlocks] = useState<ReadonlyArray<BaseBlock>>([]);
+  const [hostBlocks, setHostBlocks] = useState<ReadonlyArray<HostBlock>>([]);
   const [stable] = useState(() => {
     const ids = { next: 0 };
+    const draw = (kind: HostBlock["kind"]) => (source: string, element: HTMLElement) => {
+      const id = ids.next++;
+      setHostBlocks((blocks) => [...blocks, { id, source, kind, element }]);
+      return () => setHostBlocks((blocks) => blocks.filter((block) => block.id !== id));
+    };
     return {
       openNote: (name: string) => openNoteRef.current(name),
-      codeBlocks: {
-        base: (source: string, element: HTMLElement) => {
-          const id = ids.next++;
-          setBaseBlocks((blocks) => [...blocks, { id, source, embed: false, element }]);
-          return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
-        },
-      },
-      embedBlocks: {
-        base: (target: string, element: HTMLElement) => {
-          const id = ids.next++;
-          setBaseBlocks((blocks) => [...blocks, { id, source: target, embed: true, element }]);
-          return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
-        },
-      },
+      codeBlocks: { base: draw("base"), mermaid: draw("mermaid") },
+      embedBlocks: { base: draw("base-embed"), canvas: draw("canvas-embed") },
     };
   });
+  const renderers = {
+    base: renderBase,
+    "base-embed": renderBaseEmbed,
+    "canvas-embed": renderCanvasEmbed,
+    mermaid: renderMermaid,
+  };
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
@@ -208,9 +216,9 @@ export function WikiNoteEditor({
         vimPanel={false}
         findKeys={findKeys}
       />
-      {baseBlocks.map((block) =>
+      {hostBlocks.map((block) =>
         createPortal(
-          block.embed ? (renderBaseEmbed?.(block.source) ?? null) : renderBase(block.source),
+          renderers[block.kind]?.(block.source) ?? null,
           block.element,
           String(block.id),
         ),

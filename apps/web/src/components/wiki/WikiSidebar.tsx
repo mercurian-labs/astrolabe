@@ -19,6 +19,7 @@ import {
   ListFilterIcon,
   SettingsIcon,
   TableIcon,
+  WaypointsIcon,
   UsersIcon,
 } from "lucide-react";
 import {
@@ -104,7 +105,7 @@ import {
 } from "../ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { documentTitle, isTurnRunning, noteNameOfFile } from "./wiki.logic";
+import { documentTitle, isCanvasName, isTurnRunning, noteNameOfFile } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
@@ -454,7 +455,7 @@ export function WikiSidebar() {
     );
     const files = [
       ...new Set((changeRequest?.amendments ?? []).flatMap((amendment) => amendment.files)),
-    ].filter((file) => /\.(md|base)$/i.test(file));
+    ].filter((file) => /\.(md|base|canvas)$/i.test(file));
     if (files.length === 0) return <SidebarRowsNote>No documents changed yet</SidebarRowsNote>;
     return files.map((file) => {
       const onMain = allLists.documents.find(
@@ -468,6 +469,7 @@ export function WikiSidebar() {
         name,
         title: documentTitle(name),
         base: file.endsWith(".base"),
+        canvas: isCanvasName(file),
         file,
         links: onMain?.links ?? 0,
         backlinks: onMain?.backlinks ?? 0,
@@ -691,6 +693,9 @@ export function WikiSidebar() {
     </>
   );
 }
+
+const documentKindLabel = (item: WikiDocumentItem) =>
+  item.base ? ", base" : item.canvas ? ", canvas" : "";
 
 function EmptyStateButton({ onClick, children }: { onClick: () => void; children: string }) {
   return (
@@ -1334,8 +1339,8 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
     <CardRow
       label={
         changeRequestId === undefined || change === undefined
-          ? `${item.title}${item.base ? ", base" : ""}, ${item.wiki.name}`
-          : `${item.title}${item.base ? ", base" : ""}, in ${change.title}`
+          ? `${item.title}${documentKindLabel(item)}, ${item.wiki.name}`
+          : `${item.title}${documentKindLabel(item)}, in ${change.title}`
       }
       active={active}
       selected={selected}
@@ -1349,6 +1354,10 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
           {item.base ? (
             <DetailLine icon={<TableIcon className={DETAIL_ICON_CLASS} />}>
               A base: a saved question over the wiki's notes
+            </DetailLine>
+          ) : item.canvas ? (
+            <DetailLine icon={<WaypointsIcon className={DETAIL_ICON_CLASS} />}>
+              A canvas: cards and arrows on a board
             </DetailLine>
           ) : (
             <DetailLine icon={<LinkIcon className={DETAIL_ICON_CLASS} />}>
@@ -1375,6 +1384,9 @@ const WikiDocumentRow = memo(function WikiDocumentRow({
           <>
             {item.base ? (
               <TableIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
+            ) : null}
+            {item.canvas ? (
+              <WaypointsIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
             ) : null}
             {change ? (
               <FilePenLineIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/70" />
@@ -1523,7 +1535,9 @@ function WikiChangeDetails({
               <DetailLine
                 key={file}
                 icon={
-                  file.endsWith(".base") ? (
+                  isCanvasName(file) ? (
+                    <WaypointsIcon className={DETAIL_ICON_CLASS} />
+                  ) : file.endsWith(".base") ? (
                     <TableIcon className={DETAIL_ICON_CLASS} />
                   ) : (
                     <FileTextIcon className={DETAIL_ICON_CLASS} />

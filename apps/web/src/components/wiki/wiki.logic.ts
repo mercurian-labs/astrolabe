@@ -32,6 +32,7 @@ export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
 // Shared with the mobile app.
 export {
   documentTitle,
+  isCanvasName,
   wikiDocumentName,
   noteKey,
   noteNameOfFile,

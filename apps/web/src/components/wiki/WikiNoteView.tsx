@@ -3,10 +3,11 @@ import type {
   WikiChangeRequest,
   WikiChangeRequestId,
   WikiId,
+  WikiIndexResult,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
 import { TriangleAlertIcon } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ensureLocalApi } from "~/localApi";
 import { useEnvironmentQuery } from "~/state/query";
@@ -29,12 +30,22 @@ import {
 import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-tools";
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
 import { WikiBase } from "./WikiBaseView";
+import { WikiMermaid } from "./WikiMermaid";
 import { WikiNoteEditor } from "./WikiNoteEditor";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
 import { SaveToChangeRequestDialog, useChangeRequestTurn, type SaveTarget } from "./WikiSaveDialog";
 
 const NO_LINK_TYPES: ReadonlyArray<string> = [];
+
+const WikiCanvasEmbed = lazy(() => import("./WikiCanvasEmbed"));
+
+/** What a `[[` can complete to: notes by name, bases and canvases by file. */
+const wikiLinkNames = (index: WikiIndexResult | null): ReadonlyArray<string> => [
+  ...(index?.notes ?? []).map((note) => note.name),
+  ...(index?.canvases ?? []).map((canvas) => canvas.file),
+  ...(index?.bases ?? []).map((base) => base.file),
+];
 
 function LinkPreview({
   environmentId,
@@ -177,7 +188,8 @@ export function WikiNoteView({
   }, [queued, queuedTurn.running, commit]);
 
   const [saving, setSaving] = useState(false);
-  const known = new Set((index.data?.notes ?? []).map((entry) => noteKey(entry.name)));
+  const documents = wikiLinkNames(index.data);
+  const known = new Set(documents.map(noteKey));
 
   if (note.data === null) {
     return note.error !== null ? (
@@ -258,6 +270,7 @@ export function WikiNoteView({
               readOnly={readOnly}
               onOpenNote={onOpenNote}
               linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
+              linkNames={documents}
               renderLinkPreview={(link) => (
                 <LinkPreview
                   environmentId={environmentId}
@@ -288,6 +301,18 @@ export function WikiNoteView({
                   />
                 );
               }}
+              renderCanvasEmbed={(target) => (
+                <Suspense fallback={null}>
+                  <WikiCanvasEmbed
+                    environmentId={environmentId}
+                    wikiId={wikiId}
+                    changeRequestId={changeRequestId}
+                    file={target.split("#")[0]?.trim() ?? target}
+                    onOpen={onOpenNote}
+                  />
+                </Suspense>
+              )}
+              renderMermaid={(source) => <WikiMermaid source={source} />}
               onWrite={() => {
                 if (buffer.getSnapshot().dirty) setSaving(true);
                 else toastManager.add({ type: "info", title: "No edits to save" });

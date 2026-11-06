@@ -45,7 +45,7 @@ import {
   ComboboxTrigger,
 } from "../ui/combobox";
 import { MenuItem } from "../ui/menu";
-import { wikiDocumentName } from "./wiki.logic";
+import { isCanvasName, wikiDocumentName } from "./wiki.logic";
 import { showWikiTab, wikiPanes } from "./wikiPanes";
 import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 
@@ -149,13 +149,15 @@ export function WikiWorktreeSections({
     chosen.get(worktree.path) ?? (worktree.isMain || worktree.path === active?.path);
   const selectedPath =
     focusedHere?.kind === "note"
-      ? (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??
-        `${focusedHere.name}.md`)
+      ? isCanvasName(focusedHere.name)
+        ? focusedHere.name
+        : (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??
+          `${focusedHere.name}.md`)
       : null;
   const openFile = (worktree: ProjectWorktree, file: string) => {
     const changeRequestId = changeRequestOf(worktree.branch) ?? undefined;
     const onMainLine = worktree.isMain || worktree.branch === wiki.mainBranch;
-    const name = /\.md$/i.test(file) ? wikiDocumentName(file) : null;
+    const name = /\.md$/i.test(file) || isCanvasName(file) ? wikiDocumentName(file) : null;
     if (name !== null && (onMainLine || changeRequestId !== undefined)) {
       showWikiTab({
         kind: "note",

@@ -16,17 +16,21 @@ export const noteKey = (name: string): string => name.normalize("NFC").toLowerCa
 
 export const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
 
-/** A document's name as a person reads it: a base without its `.base`, which its icon shows. */
-export const documentTitle = (name: string): string => name.replace(/\.base$/i, "");
+/** A document's name as a person reads it: without a `.base` or `.canvas`, which its icon shows. */
+export const documentTitle = (name: string): string => name.replace(/\.(base|canvas)$/i, "");
+
+/** A document named by its file: a base and a canvas are, as a link to either has to be. */
+export const isCanvasName = (name: string): boolean => /\.canvas$/i.test(name);
 
 const NOT_NOTES = new Set(["readme.md", "agents.md", "claude.md"]);
 
 /**
- * The name a wiki tab opens a repository file by: a top-level note's, or a base's file name.
- * Null for any other file (one in a folder, a skill map, an attachment), which opens as a file.
+ * The name a wiki tab opens a repository file by: a top-level note's, or the file name of a base
+ * or canvas, at any depth for a canvas. Null for any other file (one in a folder, a skill map, an
+ * attachment), which opens as a file.
  */
 export function wikiDocumentName(file: string): string | null {
-  if (/^[^/]+\.base$/i.test(file)) return file;
+  if (/^[^/]+\.base$/i.test(file) || isCanvasName(file)) return file;
   return /^[^/]+\.md$/i.test(file) &&
     !NOT_NOTES.has(file.toLowerCase()) &&
     !/\.skillmap\.md$/i.test(file)
