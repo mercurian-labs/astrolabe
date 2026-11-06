@@ -10,6 +10,7 @@ import {
   type LanguageServerSettingsChange,
   type LanguageServerSettingsScope,
 } from "@t3tools/contracts";
+import { useSearch } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon } from "lucide-react";
 import { type ChangeEvent, useContext, useId, useState } from "react";
@@ -403,6 +404,7 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
   const key = JSON.stringify(members.map((member) => [member.environmentId, member.workspaceRoot]));
   const registry = useContext(RegistryContext);
   const checks = useAtomValue(checksAtom(key));
+  const asked = useSearch({ strict: false }).server;
   const [scope, setScope] = useState<LanguageServerSettingsScope>("project");
   const [editingIndex, setEditingIndex] = useState(0);
   const [configuring, setConfiguring] = useState<LanguageServerCheck["server"] | null>(null);
@@ -452,8 +454,10 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
     editable && edited !== null && edited.settingsProblem === null && settings !== null;
   // With every language listed, those not set up anywhere here would bury the ones that are.
   const untouched = (server: LanguageServerCheck) =>
+    server.server !== asked &&
     checkouts.every(({ checks }) => {
-      const check = checks?.find((candidate) => candidate.server === server.server);
+      if (checks === null) return true;
+      const check = checks.find((candidate) => candidate.server === server.server);
       return (
         check !== undefined &&
         (check.state === "download" || check.state === "missing") &&
@@ -462,7 +466,9 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
         check.replacedBy.length === 0
       );
     });
-  const allGroups = languageGroups(servers);
+  // Rows must not fold away under someone's eyes as a slower checkout answers.
+  const arrived = checkouts.every(({ checks, failed }) => checks !== null || failed);
+  const allGroups = arrived ? languageGroups(servers) : [];
   const groups = allGroups.filter((group) => !group.every(untouched));
   const waitingGroups = allGroups.filter((group) => group.every(untouched));
   const layer = settings?.[scope];

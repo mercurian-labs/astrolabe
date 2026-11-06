@@ -80,6 +80,7 @@ async function setup(
   result: Partial<LanguageServerCheckResult> = {},
   stored: Partial<LanguageServerSettings> = {},
   canEdit = true,
+  router: string | undefined = undefined,
 ) {
   const cwd = `/repo/${++tests}`;
   shared.canEdit = canEdit;
@@ -97,7 +98,10 @@ async function setup(
     return { _tag: "Success" };
   };
   const members = [{ environmentId, workspaceRoot: cwd, environmentLabel: null }];
-  const screen = await render(<LanguageServerProjectSettings members={members} />);
+  const screen = await render(
+    <LanguageServerProjectSettings members={members} />,
+    router === undefined ? undefined : { router },
+  );
   return { screen, changes };
 }
 
@@ -116,6 +120,23 @@ it("folds what isn't set up yet, and keeps anything someone changed in view", as
   await userEvent.click(screen.getByRole("button", { name: /2 more not set up yet/ }));
   await expect.element(screen.getByText("Lua")).toBeVisible();
   await expect.element(screen.getByText("YAML")).toBeVisible();
+});
+
+it("keeps the server a file's header sent someone for out of the fold", async () => {
+  const { screen } = await setup(
+    {
+      servers: [
+        check({ server: "lua", languages: "Lua", language: "lua", state: "missing" }),
+        check({ server: "yaml", languages: "YAML", language: "yaml", state: "missing" }),
+      ],
+    },
+    {},
+    true,
+    "/settings/projects?server=lua",
+  );
+  await using _screen = screen;
+  await expect.element(screen.getByText("Lua")).toBeVisible();
+  await expect.element(screen.getByText("YAML")).not.toBeInTheDocument();
 });
 
 it("turns a server on and off at the chosen scope, and says when it's off", async () => {

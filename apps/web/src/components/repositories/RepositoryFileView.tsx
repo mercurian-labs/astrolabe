@@ -215,11 +215,11 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
         : openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
     );
   });
-  const openSettings = useStableCallback(() => {
+  const openSettings = useStableCallback((server: LanguageServerId) => {
     const project = "projectId" in tab ? projectSettingsKey(environmentId, tab.projectId) : null;
     void navigate({
       to: "/settings/projects",
-      search: project === null ? {} : { project },
+      search: project === null ? { server } : { project, server },
       hash: searchableSetting("project-language-servers").id,
     });
   });

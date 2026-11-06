@@ -41,9 +41,10 @@ interface Binding {
   readonly follow: ReturnType<typeof languageServersEnvironment.session>;
 }
 
-type LanguageServerHosts = Pick<LanguageServerFile, "openSettings"> & {
+interface LanguageServerHosts {
+  readonly openSettings: ((server: LanguageServerId) => void) | null;
   readonly openLogs: (server: LanguageServerId) => void;
-};
+}
 
 /** Matches the environment's table on what binds a session, so its arrival rebinds nothing. */
 function usualRoutes(path: string): ReadonlyArray<LanguageServerRoute> {
@@ -100,6 +101,7 @@ function makeBinding(
       },
     },
   );
+  const { openSettings } = hosts;
   const file: LanguageServerFile = {
     environmentId,
     cwd,
@@ -107,7 +109,7 @@ function makeBinding(
     toolchain,
     status: () => status,
     openLogs: (server = primary.server) => hosts.openLogs(server),
-    openSettings: hosts.openSettings,
+    openSettings: openSettings && (() => openSettings(primary.server)),
   };
   return {
     lsp,
