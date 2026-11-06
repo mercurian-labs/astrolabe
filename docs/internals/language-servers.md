@@ -65,8 +65,9 @@ server's status, and speaks to whatever stands behind it.
   servers running with the file open. If the primary can't run, the session behaves as it always
   did. Agents' diagnostics wait for the primary and give companions `companionWait`; `locate` asks
   only the primary.
-- **Activation is evidence at the checkout's root** (`activation` in the registry), read once per
-  primary instance and again on Restart, which also adds and drops holds on files already open.
+- **Activation is evidence at the checkout's root** (`activation` in the registry), read with the
+  routes whenever a server starts and on Restart, which also adds and drops holds on files already
+  open.
 - **Holds are what keep a companion alive.** It has no sessions of its own, so idle timing sees
   only its documents, and a hold and its record are made uninterruptibly: a session ending
   between them would leave a server nothing stops.
@@ -108,7 +109,7 @@ history, because a go-to opens a new tab or moves the cursor and neither is a st
 ## Where a server comes from
 
 [`registry.ts`](../../apps/server/src/languageServers/registry.ts) is data: per server, launches
-tried in order. The project's own binary wins, then one installed on the machine, then our cache,
+tried in order, which settings can replace. The project's own binary wins, then one installed on the machine, then our cache,
 then a download, because the machine's copy matches the project's toolchain (rustup's
 rust-analyzer, Xcode's clangd) where ours may not. A machine binary must pass its `probe`:
 rustup installs a `rust-analyzer` proxy that fails without the component. Downloads are pinned:
@@ -117,6 +118,38 @@ gopls by Go's checksum database. Bumping a release means updating its hashes the
 holds no dependencies, so a package that needs some pins exactly what its server requires
 (`dependencies`, flat in `node_modules`); `vscode-langservers-extracted` declares far more, for
 servers we don't run.
+
+## Settings
+
+What people set lives on the environment, because that's where servers run:
+`language-server-settings.json` beside the trust file, read by
+[`settings.ts`](../../apps/server/src/languageServers/settings.ts). An unreadable one applies
+nothing and refuses writes, so a hand edit can still be fixed.
+
+- **Scopes rank from general to specific**: defaults, all projects, the checkout's
+  `.astrolabe/language-servers.json`, the project. The file ranks above the machine because it knows
+  the project, and below the project because a person's own choice for it beats what was committed.
+  A project is its trust key, and a chosen interpreter is per checkout because venvs are.
+- **A checkout's file is data, never a command.** It can set `settings` and
+  `initializationOptions` of servers that exist, and only trusted projects read it: anything else
+  rejects the whole file, which is reported rather than half applied. Binaries, arguments, env and
+  custom servers come only from people's settings.
+- **What someone set isn't known safe.** A launch with a chosen binary, arguments or env loses
+  `restrictedSafe`, so it needs trust whatever the default was. Custom servers never have it.
+- **A change restarts what it reaches, found by comparing.** Each start records its resolved config
+  as text; after a change, each server's is worked out again and only those that differ restart.
+  There's no list to keep in step with which setting affects which server.
+- **Routes are a table per checkout, sent to clients.** Clients can't derive them: custom servers,
+  order and off live on the environment, and overrides are keyed by a repository the client can't
+  see. A client uses the static table until the environment's arrives, so an older environment still
+  works, and the built-in case rebinds nothing. Sessions stay bound to one primary for life, so when
+  the table moves a file the editor swaps its LSP client in a compartment, keeping the view.
+- **Activation lives in the table.** A server the checkout shows no use for is left out, so it can't
+  lead a language after a reorder. `locate` falls through to the next server when the leader can't
+  navigate, since a reorder can put Ruff first.
+- **Off is a state, not an absence**, so nothing reads as healthy or as merely stopped. An off server
+  stays in the routes to be listed with its way back. A removed custom server goes the same way until
+  its sessions drain, which keeps instance teardown on the idle path.
 
 ## Project trust
 
