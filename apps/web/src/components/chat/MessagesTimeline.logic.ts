@@ -639,6 +639,8 @@ type MessagesTimelineRowContent =
       id: string;
       createdAt: string;
       canvas: CanvasView;
+      sourceThreadId: ThreadId;
+      itemId: TurnItemId;
     }
   | {
       kind: "mcp-app";
@@ -1975,6 +1977,8 @@ export function deriveMessagesTimelineRows(input: {
         id: timelineEntry.id,
         createdAt: timelineEntry.createdAt,
         canvas: timelineEntry.canvas,
+        sourceThreadId: timelineEntry.sourceThreadId,
+        itemId: timelineEntry.itemId,
       });
       continue;
     }

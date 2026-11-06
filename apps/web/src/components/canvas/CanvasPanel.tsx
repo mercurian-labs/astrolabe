@@ -1,10 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
 import { Suspense } from "react";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
 import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
+import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 
 /** A thread's Canvas tab: the canvas opened from the thread, to pan and zoom. */
@@ -22,9 +23,16 @@ export function CanvasPanel({ threadRef }: { readonly threadRef: ScopedThreadRef
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <p className="truncate border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-        {view.title}
-      </p>
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3">
+        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{view.title}</p>
+        <KeepCanvasButton
+          environmentId={threadRef.environmentId}
+          threadId={threadRef.threadId}
+          itemId={TurnItemId.make(view.id)}
+          title={view.title}
+          size="xs"
+        />
+      </div>
       <div className="min-h-0 flex-1">
         <Suspense fallback={null}>
           <LazyCanvasBoard

@@ -140,6 +140,8 @@ export type TimelineEntry = (
       readonly createdAt: string;
       readonly runId: RunId | null;
       readonly canvas: CanvasView;
+      readonly sourceThreadId: ThreadId;
+      readonly itemId: TurnItemId;
     }
   | {
       readonly id: string;
@@ -727,6 +729,8 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
         createdAt,
         runId: item.runId,
         canvas,
+        sourceThreadId: row.sourceThreadId,
+        itemId: row.sourceItemId,
         ...attemptMetadata,
       });
       continue;

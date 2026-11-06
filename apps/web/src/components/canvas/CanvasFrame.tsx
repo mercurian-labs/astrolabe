@@ -1,6 +1,6 @@
 import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { Maximize2Icon } from "lucide-react";
 import { lazy, Suspense } from "react";
 
@@ -9,6 +9,7 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { canvasViewsKey } from "~/state/canvasViews";
 
 import { Button } from "../ui/button";
+import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 
 // The board brings the Markdown parser; a thread with no canvas shouldn't load it.
@@ -43,10 +44,13 @@ export function CanvasFrame({
   id,
   view,
   threadRef,
+  source,
 }: {
   readonly id: string;
   readonly view: CanvasView;
   readonly threadRef: ScopedThreadRef | null;
+  /** The tool call that drew it, which a thread can hold from another thread. */
+  readonly source: { readonly threadId: ThreadId; readonly itemId: TurnItemId };
 }) {
   const { width, height } = canvasBounds(view.data);
   return (
@@ -54,17 +58,26 @@ export function CanvasFrame({
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
         {threadRef === null ? null : (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={`Open ${view.title} in a panel`}
-            onClick={() => {
-              useThreadCanvasStore.getState().show(canvasViewsKey(threadRef), id);
-              useRightPanelStore.getState().open(threadRef, "canvas");
-            }}
-          >
-            <Maximize2Icon />
-          </Button>
+          <>
+            <KeepCanvasButton
+              environmentId={threadRef.environmentId}
+              threadId={source.threadId}
+              itemId={source.itemId}
+              title={view.title}
+              size="icon-xs"
+            />
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Open ${view.title} in a panel`}
+              onClick={() => {
+                useThreadCanvasStore.getState().show(canvasViewsKey(threadRef), id);
+                useRightPanelStore.getState().open(threadRef, "canvas");
+              }}
+            >
+              <Maximize2Icon />
+            </Button>
+          </>
         )}
       </figcaption>
       <div

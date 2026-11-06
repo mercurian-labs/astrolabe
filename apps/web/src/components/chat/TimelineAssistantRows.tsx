@@ -275,7 +275,12 @@ export function CanvasTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   const { threadRef } = use(TimelineRowCtx);
   return (
     <div className="min-w-0 px-1">
-      <CanvasFrame id={row.id} view={row.canvas} threadRef={threadRef ?? null} />
+      <CanvasFrame
+        id={row.id}
+        view={row.canvas}
+        threadRef={threadRef ?? null}
+        source={{ threadId: row.sourceThreadId, itemId: row.itemId }}
+      />
     </div>
   );
 }

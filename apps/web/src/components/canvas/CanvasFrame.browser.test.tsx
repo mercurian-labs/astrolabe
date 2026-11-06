@@ -1,6 +1,6 @@
 import { placeCanvas } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -14,6 +14,7 @@ import { CanvasFrame, LazyCanvasBoard } from "./CanvasFrame";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 
 const threadRef = scopeThreadRef(EnvironmentId.make("environment"), ThreadId.make("thread"));
+const source = { threadId: threadRef.threadId, itemId: TurnItemId.make("item-1") };
 
 const view = {
   title: "How a wiki save lands",
@@ -47,7 +48,7 @@ describe("CanvasFrame", () => {
   it("draws the board at once, in a frame shaped like the board", async () => {
     await using screen = await render(
       <div style={{ width: 720 }}>
-        <CanvasFrame id="item-1" view={view} threadRef={threadRef} />
+        <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />
       </div>,
       { router: false }, // The frame reads no route.
     );
@@ -62,7 +63,7 @@ describe("CanvasFrame", () => {
       .spyOn(useRightPanelStore.getState(), "open")
       .mockImplementation(() => undefined);
     await using screen = await render(
-      <CanvasFrame id="item-1" view={view} threadRef={threadRef} />,
+      <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />,
       { router: false }, // The frame reads no route.
     );
     await userEvent.click(screen.getByRole("button", { name: `Open ${view.title} in a panel` }));
@@ -75,7 +76,7 @@ describe("CanvasFrame", () => {
       .spyOn(useRightPanelStore.getState(), "openFile")
       .mockImplementation(() => undefined);
     await using screen = await render(
-      <CanvasFrame id="item-1" view={view} threadRef={threadRef} />,
+      <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />,
       { router: false }, // The frame reads no route.
     );
     await userEvent.click(screen.getByText("WikiService.ts:1160–1200"));
@@ -85,9 +86,12 @@ describe("CanvasFrame", () => {
       1160,
     );
 
-    await using guest = await render(<CanvasFrame id="item-1" view={view} threadRef={null} />, {
-      router: false, // The frame reads no route.
-    });
+    await using guest = await render(
+      <CanvasFrame id="item-1" view={view} threadRef={null} source={source} />,
+      {
+        router: false, // The frame reads no route.
+      },
+    );
     await expect.element(guest.getByText("Client")).toBeVisible();
     expect(guest.getByRole("button", { name: `Open ${view.title} in a panel` }).query()).toBeNull();
   });

@@ -11,7 +11,6 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -71,9 +70,7 @@ const keep = (world: World) => {
         }),
         Layer.mock(ProjectService.ProjectService)({
           getById: () =>
-            Effect.succeed(
-              Option.some({ workspaceRoot: "/repo", repositoryIdentity: identity } as never),
-            ),
+            Effect.succeedSome({ workspaceRoot: "/repo", repositoryIdentity: identity } as never),
         }),
         Layer.mock(GitVcsDriver.GitVcsDriver)({
           nearestPushedCommit: () => Effect.succeed(pushed),

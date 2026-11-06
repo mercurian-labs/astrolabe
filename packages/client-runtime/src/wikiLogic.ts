@@ -1,5 +1,7 @@
+import { reviewCanvasFiles, type CanvasReview } from "@mercurian/wiki/canvas";
 import type {
   WikiChangeRequest,
+  WikiChangeRequestDetail,
   WikiChangeRequestId,
   WikiIndexError,
   WikiIndexResult,
@@ -19,6 +21,31 @@ export const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "
 
 /** A document's name as a person reads it: without a `.base` or `.canvas`, which its icon shows. */
 export const documentTitle = (name: string): string => name.replace(/\.(base|canvas)$/i, "");
+
+/**
+ * A canvas read in an open change request, marked with what that changes: `text` over its version
+ * from before, so the board and its marks are always the same commit. Null when there's nothing
+ * to mark, or its JSON doesn't read.
+ */
+export function changeRequestCanvasReview(
+  detail: Pick<WikiChangeRequestDetail, "changeRequest" | "files"> | null,
+  file: string,
+  text: string | null,
+): CanvasReview | null {
+  if (detail?.changeRequest.status !== "open" || text === null) return null;
+  const change = detail.files.find((each) => each.file === file);
+  if (change === undefined) return null;
+  const review = reviewCanvasFiles(change.before, text);
+  return "invalid" in review ? null : review;
+}
+
+/** A board's title as the name to keep it under: flat, with nothing a file name can't hold. */
+export const keepCanvasName = (title: string): string =>
+  title
+    .replace(/[/\\\0-\x1f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "");
 
 /** A document named by its file: a base and a canvas are, as a link to either has to be. */
 export const isCanvasName = (name: string): boolean => /\.canvas$/i.test(name);
