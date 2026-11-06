@@ -4,8 +4,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 /**
- * Finding a checkout's Python interpreters. Nothing here runs one: an untrusted checkout's
- * interpreter is its code. Versions come from what's on disk beside them.
+ * Finding a checkout's Python interpreters, and the machine's Java. Nothing here runs one: an
+ * untrusted checkout's interpreter is its code. Versions come from what's on disk beside them.
  */
 
 const VENV_FOLDERS = [".venv", "venv"];
@@ -13,6 +13,7 @@ const VENV_INTERPRETERS = ["bin/python", "Scripts/python.exe"];
 const CONDA_FOLDERS = ["miniconda3", "anaconda3", "miniforge3", "mambaforge", ".conda"];
 const CONDA_INSTALLS = ["/opt/anaconda3", "/opt/homebrew/Caskroom/miniconda/base"];
 const HOMEBREW_ROOTS = ["/opt/homebrew", "/usr/local"];
+const JVM_FOLDER = "/usr/lib/jvm";
 const OPTIONS_LISTED = 100;
 
 export const checkoutInterpreters = (path: Path.Path, cwd: string) =>
@@ -26,6 +27,28 @@ interface Found extends LanguageServerToolchainOption {
   /** A virtual environment's interpreter links to its base, and isn't the same choice. */
   readonly isolated: boolean;
 }
+
+/** Java installed where package managers leave it off PATH, newest name first. Runs none. */
+export const findJavaInstalls = Effect.fn("LanguageServers.findJavaInstalls")(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const list = (folder: string) =>
+    fileSystem.readDirectory(folder).pipe(
+      Effect.map((names) => names.toSorted().toReversed()),
+      Effect.orElseSucceed((): Array<string> => []),
+    );
+  const installs: Array<string> = [];
+  for (const root of HOMEBREW_ROOTS) {
+    const opt = path.join(root, "opt");
+    for (const name of yield* list(opt)) {
+      if (name.startsWith("openjdk")) installs.push(path.join(opt, name, "bin/java"));
+    }
+  }
+  for (const name of yield* list(JVM_FOLDER)) {
+    installs.push(path.join(JVM_FOLDER, name, "bin/java"));
+  }
+  return installs;
+});
 
 export const findPythonInterpreters = Effect.fn("LanguageServers.findPythonInterpreters")(
   function* (input: {

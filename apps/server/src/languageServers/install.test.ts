@@ -92,6 +92,20 @@ describe("language server resolution", () => {
       expect(yield* fileSystem.exists(`${env.cwd}/probed`)).toBe(false);
       expect(yield* env.installer.resolve(env.cwd, spec, true)).toMatchObject({ type: "ready" });
       expect(yield* fileSystem.exists(`${env.cwd}/probed`)).toBe(true);
+
+      yield* fileSystem.remove(`${env.cwd}/probed`);
+      const javaHome = `${env.cache}-java`;
+      yield* fileSystem.makeDirectory(`${javaHome}/bin`, { recursive: true });
+      yield* fileSystem.writeFileString(`${javaHome}/bin/java`, "#!/bin/sh\ntouch probed\n");
+      yield* fileSystem.chmod(`${javaHome}/bin/java`, 0o755);
+      const java = yield* setup(null).pipe(
+        Effect.provideService(HostProcess.Environment, { JAVA_HOME: javaHome }),
+      );
+      expect(yield* java.installer.resolve(env.cwd, LANGUAGE_SERVERS.jdtls, false)).toMatchObject({
+        type: "trust-needed",
+        message: "jdtls 1.63.0 (EPL-2.0) needs downloading from Eclipse.",
+      });
+      expect(yield* fileSystem.exists(`${env.cwd}/probed`)).toBe(false);
     }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
   );
 
@@ -250,6 +264,43 @@ describe("servers installed on the machine", () => {
     }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("runs the downloaded jdtls on the first Java new enough, without its launcher", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const bin = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-java-" });
+      yield* script(`${bin}/home/bin`, "java", 'openjdk version \\"17.0.1\\"');
+      const java = yield* script(`${bin}/path`, "java", 'openjdk version \\"21.0.2\\"');
+      const env = yield* setup(null).pipe(
+        Effect.provideService(HostProcess.Environment, {
+          JAVA_HOME: `${bin}/home`,
+          PATH: `${bin}/path`,
+        }),
+      );
+      const jdtls = LANGUAGE_SERVERS.jdtls;
+      expect(yield* env.installer.resolve(env.cwd, jdtls, true)).toMatchObject({
+        type: "download",
+        name: "jdtls 1.63.0",
+        download: { kind: "release", java },
+      });
+      const cached = `${env.cache}/jdtls@1.63.0`;
+      yield* fileSystem.makeDirectory(cached, { recursive: true });
+      yield* fileSystem.writeFileString(`${cached}/.astrolabe-complete`, "1.63.0");
+      const resolution = yield* env.installer.resolve(env.cwd, jdtls, true);
+      if (resolution.type !== "ready") return expect.unreachable();
+      expect(resolution.server).toMatchObject({ executable: java, source: "cache" });
+      const { args } = resolution.server;
+      const jar = args.indexOf("-jar");
+      expect(args.slice(0, jar)).toEqual(
+        expect.arrayContaining([
+          `-Dosgi.sharedConfiguration.area=${cached}/config_mac_arm`,
+          "-Djava.import.generatesMetadataFilesAtProjectRoot=false",
+        ]),
+      );
+      expect(args[jar + 1]).toMatch(/^.*\/plugins\/org\.eclipse\.equinox\.launcher_.*\.jar$/);
+      expect(args.slice(jar + 2)).toEqual(["-data", expect.stringContaining("/data/jdtls/")]);
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect(
     "passes over a binary that fails its probe, as rustup's proxy does without the component",
     () =>
@@ -282,10 +333,18 @@ describe("servers installed on the machine", () => {
         type: "unavailable",
         message: LANGUAGE_SERVERS.gopls.missing,
       });
-      // jdtls is never downloaded: its licence isn't one we download.
-      expect(yield* env.installer.resolve(env.cwd, LANGUAGE_SERVERS.jdtls, true)).toEqual({
+      // No Java new enough for jdtls, whatever this machine has.
+      const jdtls = LANGUAGE_SERVERS.jdtls;
+      const beyondAnyJava = {
+        ...jdtls,
+        launches: jdtls.launches.map((launch) => ({
+          ...launch,
+          release: { ...launch.release!, java: { minMajor: 1000 } },
+        })),
+      };
+      expect(yield* env.installer.resolve(env.cwd, beyondAnyJava, true)).toEqual({
         type: "unavailable",
-        message: LANGUAGE_SERVERS.jdtls.missing,
+        message: jdtls.missing,
       });
       // No rust-analyzer build for FreeBSD.
       const freebsd = yield* setup(null).pipe(

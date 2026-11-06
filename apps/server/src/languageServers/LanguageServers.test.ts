@@ -49,7 +49,7 @@ import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ContentModified, RequestCancelled } from "./connection.ts";
 import * as LanguageServers from "./LanguageServers.ts";
-import type { LanguageServerSpec } from "./registry.ts";
+import type { LanguageServerSpec, ReleaseSource } from "./registry.ts";
 
 const FAKE_SERVER = NodeURL.fileURLToPath(
   new URL("./testing/fakeLanguageServer.mjs", import.meta.url),
@@ -1330,15 +1330,15 @@ describe("LanguageServers", () => {
   );
 });
 
-/** A gzipped npm tarball holding `files` under `package/`. */
-const tarball = (files: Record<string, string>) => {
+/** A gzipped npm tarball holding `files` under `package/`, or `top`. */
+const tarball = (files: Record<string, string>, top = "package/") => {
   const blocks: Array<Uint8Array> = [];
   for (const [name, contents] of Object.entries(files)) {
     const data = new TextEncoder().encode(contents);
     const header = new Uint8Array(512);
     const put = (offset: number, value: string) =>
       header.set(new TextEncoder().encode(value), offset);
-    put(0, `package/${name}`);
+    put(0, `${top}${name}`);
     put(100, "0000755\0");
     put(124, `${data.length.toString(8).padStart(11, "0")}\0`);
     put(156, "0");
@@ -1501,6 +1501,15 @@ const releaseSpecs = (
     restrictedSafe: true,
   }),
 });
+
+/** A tarred release under another licence than `releaseSpecs` gives one. */
+const licensedSpecs = (
+  bytes: Uint8Array,
+  licence: Pick<ReleaseSource, "licence" | "licenceRuled">,
+) => {
+  const launch = releaseSpecs(bytes, "tgz").typescript.launches[0]!;
+  return { typescript: fakeSpec({ ...launch, release: { ...launch.release!, ...licence } }) };
+};
 
 /** A native executable that runs the fake server with the Node on PATH. */
 const nativeFakeServer = `#!/usr/bin/env node\nimport(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`;
@@ -2165,6 +2174,7 @@ describe("LanguageServers with nothing to run", () => {
 describe("LanguageServers downloads", () => {
   // The tar helper's top folder is `package/`, which is what a release's dropped folder stands for.
   const tarred = tarball({ "fake-server": nativeFakeServer });
+  const untopped = tarball({ "bin/fake-server": nativeFakeServer, "main.lua": "" }, "");
 
   const archive = tarball({
     "server.mjs": `await import(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`,
@@ -2276,6 +2286,48 @@ describe("LanguageServers downloads", () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(layerFor({ specs: releaseSpecs(tarred, "tgz") }, releaseServing(tarred))),
+    ),
+  );
+
+  it.live("keeps a tarred release's folders when it has no one top folder", () =>
+    Effect.gen(function* () {
+      const session = yield* openSession(yield* makeCheckout(SOURCE));
+      expect((yield* session.state("ready")).source).toBe("cache");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: releaseSpecs(untopped, "tgz", untopped, "bin/fake-server") },
+          releaseServing(untopped),
+        ),
+      ),
+    ),
+  );
+
+  it.live("refuses a release under a licence outside the allowlist", () =>
+    Effect.gen(function* () {
+      const session = yield* openSession(yield* makeCheckout(SOURCE));
+      expect((yield* session.state("failed")).message).toContain("licence");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({ specs: licensedSpecs(tarred, { licence: "EPL-2.0" }) }, releaseServing(tarred)),
+      ),
+    ),
+  );
+
+  it.live("takes a licence outside the allowlist where the server's own row rules it", () =>
+    Effect.gen(function* () {
+      const session = yield* openSession(yield* makeCheckout(SOURCE));
+      expect((yield* session.state("ready")).source).toBe("cache");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: licensedSpecs(tarred, { licence: "EPL-2.0", licenceRuled: true }) },
+          releaseServing(tarred),
+        ),
+      ),
     ),
   );
 

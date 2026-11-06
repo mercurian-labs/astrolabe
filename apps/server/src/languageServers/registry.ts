@@ -7,8 +7,9 @@ import type { BuiltInLanguageServerId, LanguageServerId } from "@t3tools/contrac
  */
 
 /**
- * Licences we download; a server under any other (MPL included) has to be on PATH. An SPDX
- * `WITH` exception only grants more, so LLVM's is allowed with its licence.
+ * Licences we download; a server under any other (MPL included) has to be on PATH, unless its
+ * own row says otherwise (`licenceRuled`). An SPDX `WITH` exception only grants more, so LLVM's
+ * is allowed with its licence.
  */
 const LICENCE_ALLOWLIST = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]);
 const EXCEPTION_ALLOWLIST = new Set(["LLVM-exception"]);
@@ -36,10 +37,15 @@ export interface ReleaseAsset {
   readonly sha256: string;
   /**
    * `gz` is the executable itself, gzipped; `zip` and `tgz` unpack whole and run `entry` (the
-   * release's name by default). A `tgz`'s top folder is dropped.
+   * release's name by default). A `tgz`'s one top folder is dropped, if it has one.
    */
   readonly format: "gz" | "zip" | "tgz";
   readonly entry?: string;
+  /**
+   * With `java`, what comes before `-jar entry`. `{release}` is the unpacked folder and `{data}`
+   * the launch's own. Launchers name a platform's configuration, so these differ by platform.
+   */
+  readonly jvmArgs?: ReadonlyArray<string>;
 }
 
 /** A project's published build, such as a GitHub release. */
@@ -47,7 +53,14 @@ export interface ReleaseSource {
   readonly name: string;
   readonly version: string;
   readonly licence: string;
+  /** Outside the allowlist, and allowed for this one server by a maintainer's ruling. */
+  readonly licenceRuled?: boolean;
   readonly host: string;
+  /**
+   * `entry` is a jar for this Java or newer, which the machine must already have: no launch
+   * applies without it. A launch's `--jvm-arg=` arguments reach the JVM, as jdtls's launcher does.
+   */
+  readonly java?: { readonly minMajor: number };
   /** By `{platform}-{arch}`; a platform with no build has to find the server elsewhere. */
   readonly assets: Readonly<Partial<Record<string, ReleaseAsset>>>;
 }
@@ -181,6 +194,36 @@ const TYPESCRIPT_SETTINGS = {
 
 const CLANGD_RELEASE = "https://github.com/clangd/clangd/releases/download/23.1.0";
 const RUFF_RELEASE = "https://github.com/astral-sh/ruff/releases/download/0.17.4";
+
+/** One tarball for every platform; `config` names each platform's native parts. */
+const jdtlsAsset = (config: string): ReleaseAsset => ({
+  url: "https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz",
+  bytes: 51143565,
+  sha256: "b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4",
+  format: "tgz",
+  entry: "plugins/org.eclipse.equinox.launcher_1.8.0.v20260804-1928.jar",
+  // What the Python launcher in that tarball passes, so Python needn't be on the machine. Java 24
+  // and newer need the two XML limits lifted; older ones ignore them.
+  jvmArgs: [
+    "-Djdk.xml.maxGeneralEntitySizeLimit=0",
+    "-Djdk.xml.totalEntitySizeLimit=0",
+    "-Declipse.application=org.eclipse.jdt.ls.core.id1",
+    "-Dosgi.bundles.defaultStartLevel=4",
+    "-Declipse.product=org.eclipse.jdt.ls.core.product",
+    "-Dosgi.checkConfiguration=true",
+    `-Dosgi.sharedConfiguration.area={release}/${config}`,
+    "-Dosgi.sharedConfiguration.area.readOnly=true",
+    "-Dosgi.configuration.cascaded=true",
+    // Equinox would otherwise write here into the release, which every checkout shares.
+    "-Dosgi.configuration.area={data}/configuration",
+    "-Xms1G",
+    "--add-modules=ALL-SYSTEM",
+    "--add-opens",
+    "java.base/java.util=ALL-UNNAMED",
+    "--add-opens",
+    "java.base/java.lang=ALL-UNNAMED",
+  ],
+});
 
 export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, LanguageServerSpec>> = {
   typescript: {
@@ -444,9 +487,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
     id: "jdtls",
     name: "jdtls",
     languages: "Java",
-    // Eclipse's server is EPL-2.0, outside the licences we download: it has to be installed.
     missing:
-      "jdtls isn't installed: run `brew install jdtls`, or put Eclipse's `jdtls` on PATH (it needs Java 21 or newer), then try again.",
+      "jdtls needs Java 21 or newer, which this machine doesn't have: run `brew install openjdk` or install one from adoptium.net, then try again.",
     hint: {
       unless: [
         "pom.xml",
@@ -464,6 +506,23 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
         // Its launcher refuses a Java older than 21 itself.
         knownPaths: ["/opt/homebrew/bin/jdtls", "/usr/local/bin/jdtls"],
         pathCommand: "jdtls",
+        release: {
+          name: "jdtls",
+          version: "1.63.0",
+          licence: "EPL-2.0",
+          // Ruled 2026-11-06: Eclipse's own milestone build, for this server only.
+          licenceRuled: true,
+          host: "Eclipse",
+          java: { minMajor: 21 },
+          assets: {
+            "darwin-arm64": jdtlsAsset("config_mac_arm"),
+            "darwin-x64": jdtlsAsset("config_mac"),
+            "linux-arm64": jdtlsAsset("config_linux_arm"),
+            "linux-x64": jdtlsAsset("config_linux"),
+            "win32-arm64": jdtlsAsset("config_win"),
+            "win32-x64": jdtlsAsset("config_win"),
+          },
+        },
         // Its default data folder is named after the checkout's folder alone, so two checkouts
         // of the same name would fight over it.
         // The property keeps Eclipse's .project, .classpath and .settings out of the checkout; as

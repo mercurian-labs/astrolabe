@@ -16,6 +16,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeCrypto from "node:crypto";
 import * as NodeURL from "node:url";
+import * as NodeUtil from "node:util";
 import * as NodeZlib from "node:zlib";
 
 import { openZipArchive } from "../zipArchive.ts";
@@ -31,7 +32,7 @@ import {
 } from "./registry.ts";
 import { parseJson } from "./json.ts";
 import { readTar, type TarFile } from "./tar.ts";
-import { checkoutInterpreters, findPythonInterpreters } from "./toolchains.ts";
+import { checkoutInterpreters, findJavaInstalls, findPythonInterpreters } from "./toolchains.ts";
 
 /**
  * Finding a language server's binary, in the ruled order: the project's own (or one installed on
@@ -55,7 +56,13 @@ export interface ResolvedServer {
 /** Something the launch that applies needs, which isn't cached yet. */
 export type Download =
   | { readonly kind: "npm"; readonly npm: NpmSource }
-  | { readonly kind: "release"; readonly release: ReleaseSource; readonly asset: ReleaseAsset }
+  | {
+      readonly kind: "release";
+      readonly release: ReleaseSource;
+      readonly asset: ReleaseAsset;
+      /** The machine's Java that will run it, for a release that needs one. */
+      readonly java: string | null;
+    }
   | { readonly kind: "go"; readonly go: GoSource; readonly goCommand: string };
 
 export type Resolution =
@@ -88,6 +95,8 @@ const PROBE_TIMEOUT = Duration.seconds(10);
 const GO_INSTALL_TIMEOUT = Duration.minutes(10);
 const VERSION = /\d+\.\d+(?:\.\d+)?/;
 const GO_INSTALLS = ["/usr/local/go/bin/go", "/opt/homebrew/bin/go"];
+const JAVA_HOME_TOOL = "/usr/libexec/java_home";
+const JVM_ARG = "--jvm-arg=";
 
 const PACKAGE_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 
@@ -130,6 +139,8 @@ const fill = (value: unknown, vars: Readonly<Record<string, string | null>>): un
   }
   return value;
 };
+
+const gunzip = NodeUtil.promisify(NodeZlib.gunzip);
 
 const majorOf = (version: string) => Number.parseInt(version.split(".")[0] ?? "", 10);
 
@@ -216,6 +227,15 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     return VERSION.exec(result.output)?.[0] ?? "";
   });
 
+  const onPath = (name: string) =>
+    resolveCommandPath(name, { env: environment }).pipe(
+      Effect.provideService(CommandResolutionCache, new Map()),
+      Effect.orElseSucceed(() => null),
+    );
+
+  // macOS's /usr/bin developer tools are shims that offer to install Xcode's tools when run.
+  const isShim = (file: string) => platform === "darwin" && file.startsWith("/usr/bin/");
+
   /** On the machine: a known install path first, then PATH. */
   const installed = Effect.fn("LanguageServers.installed")(function* (
     launch: Launch,
@@ -226,13 +246,8 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
       known.startsWith("~/") ? (home === null ? [] : [path.join(home, known.slice(2))]) : [known],
     );
     if (launch.pathCommand !== undefined) {
-      const onPath = yield* resolveCommandPath(launch.pathCommand, { env: environment }).pipe(
-        Effect.provideService(CommandResolutionCache, new Map()),
-        Effect.orElseSucceed(() => null),
-      );
-      // macOS's /usr/bin developer tools are shims that offer to install Xcode's tools when run.
-      const shim = platform === "darwin" && onPath?.startsWith("/usr/bin/") === true;
-      if (onPath !== null && (launch.chosen === true || !shim)) candidates.push(onPath);
+      const found = yield* onPath(launch.pathCommand);
+      if (found !== null && (launch.chosen === true || !isShim(found))) candidates.push(found);
     }
     for (const file of candidates) {
       if (!(yield* exists(file))) continue;
@@ -280,20 +295,61 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
       Effect.provideService(Path.Path, path),
     );
 
+  /**
+   * The first Java new enough to run a release. `java_home` answers with what it has even when
+   * that's too old, and version managers' shims obey the checkout's own file, so each is run
+   * there, unless it can't be: then the first one here stands for what trust would find.
+   */
+  const findJava = Effect.fn("LanguageServers.findJava")(function* (
+    minMajor: number,
+    cwd: string,
+    probing: boolean,
+  ) {
+    const inHome = (folder: string | undefined) =>
+      folder ? [path.join(folder, "bin", platform === "win32" ? "java.exe" : "java")] : [];
+    const found = yield* onPath("java");
+    const javaHome =
+      platform === "darwin" && (yield* exists(JAVA_HOME_TOOL))
+        ? yield* run(JAVA_HOME_TOOL, ["-v", `${minMajor}+`], { timeout: PROBE_TIMEOUT })
+        : null;
+    const installs = yield* findJavaInstalls().pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+    const candidates = [
+      ...inHome(environment.JAVA_HOME),
+      ...(found === null || isShim(found) ? [] : [found]),
+      ...(javaHome?.code === 0 ? inHome(javaHome.output.split("\n")[0]?.trim()) : []),
+      ...installs,
+    ];
+    for (const java of candidates) {
+      if (!(yield* exists(java))) continue;
+      if (!probing) return java;
+      const version = yield* run(java, ["-version"], { cwd, timeout: PROBE_TIMEOUT });
+      const major = Number(/version "(\d+)/.exec(version?.output ?? "")?.[1]);
+      if (version?.code === 0 && major >= minMajor) return java;
+    }
+    return null;
+  });
+
   /** What a launch downloads on this machine, or null when it has nothing for it. */
-  const downloadOf = Effect.fn("LanguageServers.downloadOf")(function* (launch: Launch) {
+  const downloadOf = Effect.fn("LanguageServers.downloadOf")(function* (
+    launch: Launch,
+    cwd: string,
+    probing: boolean,
+  ) {
     if (launch.npm !== undefined) return { kind: "npm", npm: filled(launch.npm) } as const;
     if (launch.release !== undefined) {
-      const asset = launch.release.assets[`${platform}-${arch}`];
-      if (asset !== undefined) return { kind: "release", release: launch.release, asset } as const;
+      const { release } = launch;
+      const asset = release.assets[`${platform}-${arch}`];
+      const java = release.java ? yield* findJava(release.java.minMajor, cwd, probing) : null;
+      if (asset !== undefined && (java !== null || release.java === undefined)) {
+        return { kind: "release", release, asset, java } as const;
+      }
     }
     if (launch.go !== undefined) {
-      const onPath = yield* resolveCommandPath("go", { env: environment }).pipe(
-        Effect.provideService(CommandResolutionCache, new Map()),
-        Effect.orElseSucceed(() => null),
-      );
       // Our PATH dates from when we started; Go installed since is in one of its usual places.
-      for (const go of [onPath, ...GO_INSTALLS]) {
+      for (const go of [yield* onPath("go"), ...GO_INSTALLS]) {
         if (go !== null && (yield* exists(go))) {
           return { kind: "go", go: launch.go, goCommand: go } as const;
         }
@@ -399,7 +455,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           onMachine.version || null,
         );
       }
-      const download = yield* downloadOf(launch);
+      const download = yield* downloadOf(launch, cwd, probing);
       if (download === null) continue;
       const folder = path.join(options.cacheDir, cacheFolder(download));
       const downloadVersion =
@@ -410,11 +466,29 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
             : download.go.version.replace(/^v/, "");
       if (yield* exists(path.join(folder, COMPLETE))) {
         const entry = cachedEntry(download, folder);
-        const found = yield* command(
-          entry,
-          download.kind === "npm" ? download.npm.runWith : "native",
-          launch,
-        );
+        const found =
+          download.kind === "release" && download.java !== null
+            ? {
+                executable: download.java,
+                args: [
+                  ...(fill(download.asset.jvmArgs ?? [], {
+                    release: folder,
+                    data,
+                  }) as Array<string>),
+                  ...launch.args
+                    .filter((arg) => arg.startsWith(JVM_ARG))
+                    .map((arg) => arg.slice(JVM_ARG.length)),
+                  "-jar",
+                  entry,
+                  ...launch.args.filter((arg) => !arg.startsWith(JVM_ARG)),
+                ],
+                env: environment,
+              }
+            : yield* command(
+                entry,
+                download.kind === "npm" ? download.npm.runWith : "native",
+                launch,
+              );
         return ready(entry, found, "cache", downloadVersion);
       }
       return { type: "download", name: name(downloadVersion), download } satisfies Resolution;
@@ -627,8 +701,9 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           const bytes = yield* fileSystem
             .readFile(archive)
             .pipe(Effect.mapError(failed(`Could not unpack ${release.name}.`)));
-          const files = yield* Effect.try({
-            try: () => readTar(NodeZlib.gunzipSync(bytes)),
+          // On its own thread: Eclipse's archive would stall the server for a moment here.
+          const files = yield* Effect.tryPromise({
+            try: () => gunzip(bytes).then(readTar),
             catch: failed(`${release.name}'s download could not be read.`),
           });
           yield* writeFiles(staging, files, release.name);
@@ -755,7 +830,8 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
         : wanted.kind === "release"
           ? [wanted.release.name, wanted.release.licence]
           : [wanted.go.name, wanted.go.licence];
-    if (!licenceAllowed(licence)) {
+    const ruled = wanted.kind === "release" && wanted.release.licenceRuled === true;
+    if (!ruled && !licenceAllowed(licence)) {
       return yield* new InstallError({ message: `${label} is not under a licence we download.` });
     }
     const folder = path.join(options.cacheDir, cacheFolder(wanted));
