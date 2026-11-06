@@ -321,22 +321,21 @@ const make = Effect.gen(function* () {
         yield* (wikiHost.merge ?? wikis.merge)({
           wikiId,
           changeRequestId: changeRequestId as WikiChangeRequestId,
-        })
-          .pipe(
-            Effect.tap(() =>
-              Effect.logInfo("Merged a change group's documentation with its code", {
-                groupId: group.groupId,
-                changeRequestId,
-              }),
-            ),
-            Effect.catch((error) =>
-              Effect.logWarning("A change group's documentation could not merge", {
-                groupId: group.groupId,
-                changeRequestId,
-                error,
-              }),
-            ),
-          );
+        }).pipe(
+          Effect.tap(() =>
+            Effect.logInfo("Merged a change group's documentation with its code", {
+              groupId: group.groupId,
+              changeRequestId,
+            }),
+          ),
+          Effect.catch((error) =>
+            Effect.logWarning("A change group's documentation could not merge", {
+              groupId: group.groupId,
+              changeRequestId,
+              error,
+            }),
+          ),
+        );
       }
     }
   }).pipe(Effect.catch((error) => Effect.logWarning("Change groups could not be read", { error })));

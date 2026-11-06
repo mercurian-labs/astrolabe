@@ -75,7 +75,7 @@ import {
 } from "./usePullRequestListView";
 import { pullRequestGroups, pullRequestListEntryId } from "./pullRequestListGroups.logic";
 import { useChangeRequestKind } from "../changeRequests/changeRequestKind";
-import { hostedPullRequestKey } from "../wiki/wiki.logic";
+import { isHostedPullRequest } from "../wiki/wiki.logic";
 import { useHostedPullRequestKeys } from "../wiki/wikiEnvironment";
 import { PullRequestListEmptyState } from "./PullRequestListEmptyState";
 import { PullRequestListGhost } from "./PullRequestGhosts";
@@ -671,8 +671,7 @@ export function PullRequestsPage() {
   );
   const { entries, groups, entriesByStatsKey, heldPullRequestsBySurface } = pullRequestGroups({
     known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
-    hidden:
-      hostedKeys.size === 0 ? undefined : (entry) => hostedKeys.has(hostedPullRequestKey(entry)),
+    hidden: hostedKeys.size === 0 ? undefined : (entry) => isHostedPullRequest(hostedKeys, entry),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
     involvement: search.involvement,

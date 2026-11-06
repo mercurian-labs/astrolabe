@@ -237,6 +237,13 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
           <AlertDescription>{host.lastError}</AlertDescription>
         </Alert>
       ) : null}
+      {host?.changeRequestIssue ? (
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertTitle>A change request needs attention</AlertTitle>
+          <AlertDescription>{host.changeRequestIssue}</AlertDescription>
+        </Alert>
+      ) : null}
       {host?.relation === "diverged" ? (
         <Alert variant="error">
           <TriangleAlertIcon />

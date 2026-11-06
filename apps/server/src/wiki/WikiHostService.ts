@@ -14,7 +14,6 @@ import {
   type WikiChangeRequest,
   type WikiChangeRequestId,
   type WikiChangeRequestTarget,
-  type WikiConnectHostInput,
   WikiError,
   type WikiId,
   type WikiMergeResult,
@@ -41,6 +40,7 @@ import * as Stream from "effect/Stream";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import { forkParked } from "../serverActivation.ts";
+import type { SourceControlProvider } from "@t3tools/source-control-core/server/SourceControlProvider";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import * as WikiService from "./WikiService.ts";
@@ -69,8 +69,8 @@ export const preferredMergeMethod = (
 export class WikiHostService extends Context.Service<
   WikiHostService,
   {
-    /** Moves a wiki onto a remote of its folder, pushing its history if the host lacks it. */
-    readonly connect: (input: WikiConnectHostInput) => Effect.Effect<WikiSummary, WikiError>;
+    /** Moves a wiki onto its folder's origin, pushing its history if the host lacks it. */
+    readonly connect: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
     /** Makes it a local wiki again; the host keeps its copy and its review history. */
     readonly disconnect: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
     readonly sync: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
@@ -282,38 +282,20 @@ const make = Effect.gen(function* () {
    */
   const settle = Effect.fn("WikiHostService.settle")(function* (
     wiki: WikiSummary,
+    provider: SourceControlProvider["Service"],
     entry: WikiChangeRequest,
   ) {
     if (entry.pullRequest == null) return;
     const target = { wikiId: entry.wikiId, changeRequestId: entry.changeRequestId };
-    const failed = hostError("The pull request could not be read from the host.");
-    const provider = yield* providers.resolve({ cwd: wiki.root }).pipe(Effect.mapError(failed));
     const { state } = yield* provider
       .getChangeRequest({ cwd: wiki.root, reference: String(entry.pullRequest.number) })
-      .pipe(Effect.mapError(failed));
+      .pipe(Effect.mapError(hostError("The pull request could not be read from the host.")));
     if (state === "merged") {
       yield* wikis.recordHostMerge(target);
     } else if (state !== entry.status) {
       yield* wikis.setChangeRequestStatus({ ...target, status: state });
     }
   });
-
-  /** One stuck change request must not hold up the others, or the wiki's sync. */
-  const isolated = (wikiId: WikiId, title: string, effect: Effect.Effect<unknown, WikiError>) =>
-    effect.pipe(
-      Effect.asVoid,
-      Effect.catch((error) =>
-        wikis
-          .recordHostError(wikiId, `${title}: ${error.message}`)
-          .pipe(
-            Effect.andThen(
-              Effect.logWarning("A wiki change request could not follow the host").pipe(
-                Effect.annotateLogs({ wikiId, cause: error }),
-              ),
-            ),
-          ),
-      ),
-    );
 
   const syncWiki = Effect.fn("WikiHostService.syncWiki")(function* (wikiId: WikiId, full: boolean) {
     const wiki = yield* wikis.get(wikiId);
@@ -324,11 +306,33 @@ const make = Effect.gen(function* () {
     const { changeRequests } = yield* wikis.changeRequestsList({ wikiId });
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const age = (entry: WikiChangeRequest) => now - Date.parse(entry.updatedAt);
+    const issues: Array<string> = [];
+    /** One stuck change request must not hold up the others, or the wiki's sync. */
+    const isolated = (entry: WikiChangeRequest, effect: Effect.Effect<unknown, WikiError>) =>
+      effect.pipe(
+        Effect.asVoid,
+        Effect.catch((error) =>
+          Effect.sync(() => issues.push(`${entry.title}: ${error.message}`)).pipe(
+            Effect.andThen(
+              Effect.logWarning("A wiki change request could not follow the host").pipe(
+                Effect.annotateLogs({ wikiId, cause: error }),
+              ),
+            ),
+          ),
+        ),
+      );
     if (full || before !== after) {
-      for (const entry of changeRequests) {
-        if (entry.status === "merged") continue;
-        if (entry.status === "closed" && age(entry) > CLOSED_WATCH_MS) continue;
-        yield* isolated(wikiId, entry.title, settle(wiki, entry));
+      const watched = changeRequests.filter(
+        (entry) =>
+          entry.pullRequest != null &&
+          entry.status !== "merged" &&
+          !(entry.status === "closed" && age(entry) > CLOSED_WATCH_MS),
+      );
+      if (watched.length > 0) {
+        const provider = yield* providers
+          .resolve({ cwd: wiki.root })
+          .pipe(Effect.mapError(hostError("The wiki's git host could not be reached.")));
+        for (const entry of watched) yield* isolated(entry, settle(wiki, provider, entry));
       }
     }
     const unpublished = changeRequests.filter(
@@ -339,12 +343,9 @@ const make = Effect.gen(function* () {
         age(entry) > UNPUBLISHED_GRACE_MS,
     );
     for (const entry of unpublished) {
-      yield* isolated(
-        wikiId,
-        entry.title,
-        publish({ wikiId, changeRequestId: entry.changeRequestId }),
-      );
+      yield* isolated(entry, publish({ wikiId, changeRequestId: entry.changeRequestId }));
     }
+    yield* wikis.recordChangeRequestIssue(wikiId, issues[0] ?? null);
   });
 
   /** Syncs one wiki for a person who asked; the failure reaches them and the wiki records it. */
@@ -370,6 +371,8 @@ const make = Effect.gen(function* () {
   const connect: WikiHostService["Service"]["connect"] = Effect.fn("WikiHostService.connect")(
     function* (input) {
       const wiki = yield* wikis.get(input.wikiId);
+      // A failed connect undoes itself by disconnecting, which must never touch a working wiki.
+      if (wiki.host != null) return yield* sync(input);
       yield* providers
         .resolve({ cwd: wiki.root })
         .pipe(
@@ -391,8 +394,8 @@ const make = Effect.gen(function* () {
       yield* wikis
         .setHost(input.wikiId, {
           projectId: project.id,
-          remote: input.remote ?? "origin",
-          createdProject: created || (wiki.host?.createdProject ?? false),
+          remote: "origin",
+          createdProject: created,
         })
         .pipe(Effect.tapError(() => removeProject));
       const undo = wikis
@@ -569,7 +572,7 @@ const make = Effect.gen(function* () {
   const run = (job: Job): Effect.Effect<void> => {
     switch (job.kind) {
       case "sweep":
-        return Ref.set(sweepQueued, false).pipe(Effect.andThen(sweep));
+        return sweep.pipe(Effect.ensuring(Ref.set(sweepQueued, false)));
       case "thread":
         return publishForThread(job.threadId).pipe(
           Effect.catch((cause) =>

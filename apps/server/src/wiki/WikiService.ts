@@ -265,6 +265,11 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiSummary, WikiError>;
     /** Fetches the host, fast-forwards main and the open change requests, and records how it went. */
     readonly syncFromHost: (wikiId: WikiId) => Effect.Effect<WikiHostRelation, WikiError>;
+    /** Records what stopped a change request following the host, or clears it with null. */
+    readonly recordChangeRequestIssue: (
+      wikiId: WikiId,
+      message: string | null,
+    ) => Effect.Effect<void, WikiError>;
     /** Records a sync or publish that failed, or clears one with null. */
     readonly recordHostError: (
       wikiId: WikiId,
@@ -2407,6 +2412,16 @@ const make = Effect.gen(function* () {
         : replaceHost(wiki, (host) => ({ ...host, lastError: message })),
     );
 
+  const recordChangeRequestIssue: WikiService["Service"]["recordChangeRequestIssue"] = (
+    wikiId,
+    message,
+  ) =>
+    withWiki(wikiId, (wiki) =>
+      wiki.host === null || (wiki.host.changeRequestIssue ?? null) === message
+        ? Effect.void
+        : replaceHost(wiki, (host) => ({ ...host, changeRequestIssue: message })),
+    );
+
   const trackedHostRoot = (remote: string) => `refs/wiki/host/${remote}/`;
 
   /** What the host holds under main and `cr/`, read without fetching. */
@@ -2537,12 +2552,10 @@ const make = Effect.gen(function* () {
               if (stored.record.status === "open" && remoteHead !== undefined) {
                 // One held-up change request is no reason to stop the others following.
                 yield* followHostBranch(wiki, stored, remoteHead, main).pipe(
-                  Effect.catchIf(
-                    (error) => error.reason === "checkout-busy" || error.reason === "stale",
-                    (error) =>
-                      Effect.logInfo("A wiki change request could not follow the host").pipe(
-                        Effect.annotateLogs({ wikiId: wiki.wikiId, cause: error.message }),
-                      ),
+                  Effect.catch((error) =>
+                    Effect.logInfo("A wiki change request could not follow the host").pipe(
+                      Effect.annotateLogs({ wikiId: wiki.wikiId, cause: error.message }),
+                    ),
                   ),
                 );
               }
@@ -2593,19 +2606,27 @@ const make = Effect.gen(function* () {
               host.remote,
               `${stored.head}:${changeRequestBranch(input.changeRequestId)}`,
             ],
-            { timeoutMs: REMOTE_TIMEOUT_MS, allowExitCodes: [1] },
+            { timeoutMs: REMOTE_TIMEOUT_MS, allowExitCodes: [1], env: { LC_ALL: "C" } },
           );
           if (pushed.exitCode !== 0) {
-            return yield* new WikiError({
-              reason: "stale",
-              message:
-                "The host's copy of this change request has work this one lacks. Sync the wiki and try again.",
-              cause: new WikiGitExitError({
-                operation: "pushChangeRequest",
-                exitCode: pushed.exitCode,
-                stderr: pushed.stderr,
-              }),
+            const cause = new WikiGitExitError({
+              operation: "pushChangeRequest",
+              exitCode: pushed.exitCode,
+              stderr: pushed.stderr,
             });
+            return yield* /non-fast-forward|fetch first/.test(pushed.stderr)
+              ? new WikiError({
+                  reason: "stale",
+                  message:
+                    "The host's copy of this change request has work this one lacks. Sync the wiki and try again.",
+                  cause,
+                })
+              : new WikiError({
+                  reason: "git-failed",
+                  message:
+                    "The host refused this push. A branch rule or hook on the repository may be blocking it.",
+                  cause,
+                });
           }
           return yield* locked(
             wiki,
@@ -2789,6 +2810,7 @@ const make = Effect.gen(function* () {
     setHost,
     syncFromHost,
     recordHostError,
+    recordChangeRequestIssue,
     pushMainToHost,
     pushChangeRequest,
     adoptHostBranch,

@@ -61,6 +61,8 @@ export const WikiHostStatus = Schema.Struct({
   lastSyncedCommit: Schema.NullOr(Schema.String),
   relation: Schema.NullOr(WikiHostRelation),
   lastError: Schema.NullOr(Schema.String),
+  /** What stopped one change request following the host; the wiki itself syncs fine. */
+  changeRequestIssue: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** Whether connecting made the backing project, so disconnecting can take it away again. */
   createdProject: Schema.optionalKey(Schema.Boolean),
 });
@@ -667,13 +669,6 @@ export const WikiSetMapBackgroundsInput = Schema.Struct({
   backgrounds: Schema.Array(WikiMapBackground),
 });
 export type WikiSetMapBackgroundsInput = typeof WikiSetMapBackgroundsInput.Type;
-
-export const WikiConnectHostInput = Schema.Struct({
-  wikiId: WikiId,
-  /** A remote of the wiki's folder; `origin` when omitted. */
-  remote: Schema.optional(TrimmedNonEmptyString),
-});
-export type WikiConnectHostInput = typeof WikiConnectHostInput.Type;
 
 export const WikiSetProjectLinkInput = Schema.Struct({
   wikiId: WikiId,

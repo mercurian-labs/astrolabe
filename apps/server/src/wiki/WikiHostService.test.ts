@@ -626,6 +626,41 @@ it.effect("a change request stuck on the host holds up neither the sync nor anot
       const merged = yield* hosts.merge({ wikiId, changeRequestId: other.changeRequestId });
       assert.equal(merged.changeRequest.status, "merged");
       assert.equal(yield* git(root, ["rev-parse", "main"]), merged.commit);
+      const healthy = yield* hosts.sync({ wikiId });
+      assert.isNull(healthy.host?.lastError ?? null);
+    }),
+  ),
+);
+
+it.effect("a push a branch rule refuses is named as that, not as work to sync", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { bare, hosts, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      yield* git(bare, ["config", "receive.denyUpdates", "false"]);
+      yield* Effect.flatMap(FileSystem.FileSystem, (fileSystem) =>
+        fileSystem
+          .writeFileString(`${bare}/hooks/pre-receive`, "#!/bin/sh\nexit 1\n")
+          .pipe(Effect.andThen(fileSystem.chmod(`${bare}/hooks/pre-receive`, 0o755))),
+      ).pipe(Effect.orDie);
+      const refused = yield* Effect.flip(
+        hosts.publish({ wikiId, changeRequestId: changeRequest.changeRequestId }),
+      );
+      assert.equal(refused.reason, "git-failed");
+      assert.include(refused.message, "refused");
+    }),
+  ),
+);
+
+it.effect("connecting a connected wiki syncs it and leaves its pull requests linked", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { hosts, wikis, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      yield* hosts.publish(target);
+      yield* hosts.connect({ wikiId });
+      assert.equal((yield* wikis.changeRequest(target)).pullRequest?.number, 1);
     }),
   ),
 );

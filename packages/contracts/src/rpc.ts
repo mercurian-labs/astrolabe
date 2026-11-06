@@ -422,7 +422,6 @@ import {
   WikiError,
   WikiEvent,
   WikiIndexResult,
-  WikiConnectHostInput,
   WikiListResult,
   WikiMergeResult,
   WikiNoteInput,
@@ -2285,7 +2284,7 @@ const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
 });
 
 const WsWikiConnectHostRpc = Rpc.make(WS_METHODS.wikiConnectHost, {
-  payload: WikiConnectHostInput,
+  payload: WikiTarget,
   success: WikiSummary,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });

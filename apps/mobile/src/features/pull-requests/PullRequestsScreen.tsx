@@ -39,7 +39,11 @@ import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
 import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
 import { ChangeGroupsSection } from "../changeGroups/ChangeGroupsSection";
-import { hostedPullRequestKey, hostedPullRequestKeys } from "@t3tools/client-runtime/wikiLogic";
+import {
+  hostedPullRequestKeys,
+  hostedWikis,
+  isHostedPullRequest,
+} from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useWikiOverviews } from "../wikis/useWikiOverviews";
 import { WikiChangesSection } from "../wikis/WikiChangesSection";
@@ -216,16 +220,10 @@ export function PullRequestsScreen(
   const { overviews: wikiOverviews } = useWikiOverviews(wikiEnvironmentIds);
   const hostedSignature =
     wikiSource.kind === "all" && !controls.projectId
-      ? [
-          ...hostedPullRequestKeys(
-            wikiOverviews.flatMap((overview) =>
-              overview.wiki.host == null ? [] : (overview.changeRequests ?? []),
-            ),
-          ),
-        ].join(" ")
+      ? [...hostedPullRequestKeys(hostedWikis(wikiOverviews))].join("\n")
       : "";
   const entries = useMemo(() => {
-    const hosted = new Set(hostedSignature.split(" ").filter(Boolean));
+    const hosted = new Set(hostedSignature.split("\n").filter(Boolean));
     return filterPullRequestList(
       result.entries,
       controls,
@@ -233,7 +231,7 @@ export function PullRequestsScreen(
       query,
       result.data.localSearchHosts,
       new Set(connectedKey.split("\n")),
-    ).filter((entry) => !hosted.has(hostedPullRequestKey(entry)));
+    ).filter((entry) => !isHostedPullRequest(hosted, entry));
   }, [result.entries, controls, query, result.data, connectedKey, hostedSignature]);
   const facets = pullRequestListFacets(result.entries);
   const [knownFacets, setKnownFacets] = useState({ environmentId, source: facets, ...facets });

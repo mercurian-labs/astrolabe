@@ -11,7 +11,7 @@ import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiOverviewsAtom } from "~/state/wiki";
 import { toastManager } from "../ui/toast";
-import { describeWikiFailure, hostedPullRequestKeys } from "./wiki.logic";
+import { describeWikiFailure, hostedPullRequestKeys, hostedWikis } from "./wiki.logic";
 
 /**
  * The server whose wikis the page shows: the one the URL names while this workspace knows it,
@@ -52,11 +52,7 @@ export function useWikiOverviews(enabled = true): {
 /** The pull requests that are host wikis' own change requests. */
 export function useHostedPullRequestKeys(enabled: boolean): ReadonlySet<string> {
   const { overviews } = useWikiOverviews(enabled);
-  return hostedPullRequestKeys(
-    overviews.flatMap((overview) =>
-      overview.wiki.host == null ? [] : (overview.changeRequests ?? []),
-    ),
-  );
+  return hostedPullRequestKeys(hostedWikis(overviews));
 }
 
 export type WikiCommandOutcome<A> =
