@@ -175,6 +175,14 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
         highlight.range = mapRange(m, highlight.range, false);
       }
       return result;
+    case "textDocument/codeLens":
+      for (const lens of Array.isArray(result) ? result : []) {
+        lens.range = mapRange(m, lens.range, false);
+      }
+      return result;
+    case "codeLens/resolve":
+      if (result.range) result.range = mapRange(m, result.range, false);
+      return result;
     case "textDocument/linkedEditingRange":
       result.ranges = result.ranges?.map((range: Json) => mapRange(m, range, true));
       return result;

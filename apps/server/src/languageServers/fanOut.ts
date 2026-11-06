@@ -36,6 +36,7 @@ export const ROUTES: ReadonlyMap<string, Route> = new Map([
   ["textDocument/documentHighlight", first("documentHighlightProvider")],
   ["textDocument/linkedEditingRange", first("linkedEditingRangeProvider")],
   ["textDocument/prepareCallHierarchy", first("callHierarchyProvider")],
+  ["textDocument/codeLens", first("codeLensProvider")],
   ["textDocument/semanticTokens/full", first("semanticTokensProvider")],
   ["textDocument/semanticTokens/full/delta", first("semanticTokensProvider")],
   ["textDocument/completion", { capability: "completionProvider", fan: "all" }],
@@ -121,7 +122,7 @@ export const handedBack = (
   method: string,
   params: Json,
 ): { readonly origin: CompletionOrigin; readonly params: Json } | null => {
-  if (method === "completionItem/resolve") {
+  if (method === "completionItem/resolve" || method === "codeLens/resolve") {
     const found = originOf(params);
     return found && { origin: found.origin, params: found.item };
   }
@@ -133,10 +134,14 @@ export const handedBack = (
 };
 
 /** Whether a server with `capabilities` answers a request that hands an item back. */
-export const answersHandedBack = (method: string, capabilities: Json) =>
-  method === "completionItem/resolve"
-    ? capabilities?.completionProvider?.resolveProvider === true
-    : Boolean(capabilities?.callHierarchyProvider);
+export const answersHandedBack = (method: string, capabilities: Json) => {
+  if (method === "completionItem/resolve") {
+    return capabilities?.completionProvider?.resolveProvider === true;
+  }
+  if (method === "codeLens/resolve")
+    return capabilities?.codeLensProvider?.resolveProvider === true;
+  return Boolean(capabilities?.callHierarchyProvider);
+};
 
 /** A call hierarchy's answer as locations: the calls to a symbol, or the symbols it calls. */
 export const callLocations = (method: string, calls: Json): Array<Json> =>

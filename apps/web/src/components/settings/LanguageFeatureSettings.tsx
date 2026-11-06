@@ -10,7 +10,8 @@ type Feature =
   | "inlayHintTypes"
   | "inlayHintParameters"
   | "inlineDiagnostics"
-  | "semanticTokens";
+  | "semanticTokens"
+  | "codeLens";
 
 function FeatureRow(props: {
   readonly feature: Feature;
@@ -79,6 +80,12 @@ export function LanguageFeatureRows() {
         settingId="semantic-tokens"
         label="Semantic colours"
         description="Colour code by what its language server knows it is, once edits stop. Large files keep their usual colours."
+      />
+      <FeatureRow
+        feature="codeLens"
+        settingId="code-lens"
+        label="Code lens"
+        description="Show what a language server says about a definition above its line, such as how many references it has. Clicking one runs it."
       />
     </>
   );

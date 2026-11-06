@@ -1613,6 +1613,44 @@ describe("LanguageServers with companions on a file", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
   );
 
+  it.live("resolves a code lens and runs its command on the server that made it", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { checkout, session } = yield* openWithCompanions(SOURCE, {
+        without: ["codeLensProvider"],
+        roles: { eslint: { without: [] }, tailwindcss: { without: ["codeLensProvider"] } },
+      });
+      const editor = yield* openEditor(checkout, "editor-a");
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// one\n" }));
+      const listed = yield* session.request(
+        1,
+        "textDocument/codeLens",
+        { textDocument: { uri: checkout.uri } },
+        editor.envelope(),
+      );
+      expect(editor.slice(listed.result[1].range)).toBe("point");
+      const resolved = yield* session.request(
+        2,
+        "codeLens/resolve",
+        listed.result[1],
+        editor.envelope(),
+      );
+      expect(resolved.result.command.title).toBe("Remove the line");
+      expect(editor.slice(resolved.result.range)).toBe("point");
+      const run = yield* session.request(3, "astrolabe/runLensCommand", resolved.result);
+      expect(run.result.applied.files).toEqual([FILE]);
+      expect(yield* fileSystem.readFileString(`${checkout.cwd}/${FILE}`)).toBe(
+        "// one\nconst point = makePoint(1, 2);\n",
+      );
+
+      const refused = yield* session.request(4, "astrolabe/runLensCommand", {
+        ...resolved.result,
+        command: { title: "Run", command: "editor.showSomething" },
+      });
+      expect(refused.error.code).toBe(-32601);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
   it.live("merges completions and resolves each item on the server that made it", () =>
     Effect.gen(function* () {
       const { checkout, session } = yield* openWithCompanions(SOURCE, {

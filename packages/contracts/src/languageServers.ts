@@ -414,7 +414,11 @@ export const LanguageServerUndoEditResult = Schema.Struct({
 export type LanguageServerUndoEditResult = typeof LanguageServerUndoEditResult.Type;
 
 /** LSP requests whose answer the environment applies to files, so a send of one writes. */
-const WRITING_METHODS = new Set(["textDocument/rename", "astrolabe/applyCodeAction"]);
+const WRITING_METHODS = new Set([
+  "textDocument/rename",
+  "astrolabe/applyCodeAction",
+  "astrolabe/runLensCommand",
+]);
 /** A checkout's problems: the files language servers have open, or had open since they started. */
 export const LanguageServerProblemsInput = Schema.Struct({ cwd: TrimmedNonEmptyString });
 export type LanguageServerProblemsInput = typeof LanguageServerProblemsInput.Type;

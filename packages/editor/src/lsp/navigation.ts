@@ -162,7 +162,11 @@ function show(
   view.state.facet(navigationHost)?.pick(view, title, places, kind);
 }
 
-function ask(view: EditorView, kind: GoToKind | "references"): boolean {
+function ask(
+  view: EditorView,
+  kind: GoToKind | "references",
+  head = view.state.selection.main.head,
+): boolean {
   const plugin = LSPPlugin.get(view);
   const request = REQUESTS[kind];
   const capabilities = plugin?.client.serverCapabilities;
@@ -170,7 +174,6 @@ function ask(view: EditorView, kind: GoToKind | "references"): boolean {
     return false;
   }
   plugin.client.sync();
-  const head = view.state.selection.main.head;
   const word = view.state.wordAt(head);
   const name = word ? view.state.sliceDoc(word.from, word.to) : "";
   void plugin.client.withMapping((mapping) =>
@@ -242,6 +245,11 @@ function calls(view: EditorView, direction: CallDirection): boolean {
 
 export const showIncomingCalls: Command = (view) => calls(view, "incoming");
 export const showOutgoingCalls: Command = (view) => calls(view, "outgoing");
+
+/** The references or implementations of the symbol at `pos`, the cursor staying where it is. */
+export function lookUpAt(view: EditorView, kind: "references" | "implementation", pos: number) {
+  return ask(view, kind, pos);
+}
 
 export const goToDefinition: Command = (view) => ask(view, "definition");
 export const goToDeclaration: Command = (view) => ask(view, "declaration");

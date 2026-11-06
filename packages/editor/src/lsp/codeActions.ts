@@ -47,6 +47,17 @@ export interface AppliedCodeAction {
   readonly places: readonly EditPlace[];
 }
 
+/** Tells the host of an edit the environment applied under `title`. */
+export function reportApplied(
+  view: EditorView,
+  title: string,
+  applied: Omit<AppliedCodeAction, "title">,
+) {
+  // An older environment names no places.
+  const { places = [] } = applied;
+  view.state.facet(codeActionHost)?.applied(view, { ...applied, places, title });
+}
+
 export interface CodeActionHost {
   readonly applied: (view: EditorView, action: AppliedCodeAction) => void;
 }
@@ -156,11 +167,7 @@ function apply(view: EditorView, action: CodeActionSummary) {
     .then(
       (answer) => {
         if (!answer?.applied) return;
-        // An older environment names no places.
-        const { places = [] } = answer.applied;
-        view.state
-          .facet(codeActionHost)
-          ?.applied(view, { ...answer.applied, places, title: action.title });
+        reportApplied(view, action.title, answer.applied);
       },
       (error) => plugin.reportError("Code action failed", error),
     );

@@ -95,6 +95,10 @@
       "types": "./src/lsp/semanticTokens.ts",
       "default": "./src/lsp/semanticTokens.ts"
     },
+    "./lsp/code-lens": {
+      "types": "./src/lsp/codeLens.ts",
+      "default": "./src/lsp/codeLens.ts"
+    },
     "./lsp/symbol-highlights": {
       "types": "./src/lsp/symbolHighlights.ts",
       "default": "./src/lsp/symbolHighlights.ts"

@@ -16,6 +16,7 @@ import { outline, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
+import { codeLens } from "@mercurian/editor/lsp/code-lens";
 import { inlayHints } from "@mercurian/editor/lsp/inlay-hints";
 import { linkedEditing } from "@mercurian/editor/lsp/linked-editing";
 import { semanticTokens } from "@mercurian/editor/lsp/semantic-tokens";
@@ -164,6 +165,7 @@ const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
 const selectInlineDiagnostics = (settings: ClientSettings) => settings.inlineDiagnostics;
 const selectSemanticTokens = (settings: ClientSettings) => settings.semanticTokens;
+const selectCodeLens = (settings: ClientSettings) => settings.codeLens;
 const selectInlayHintTypes = (settings: ClientSettings) =>
   settings.inlayHints && settings.inlayHintTypes;
 const selectInlayHintParameters = (settings: ClientSettings) =>
@@ -628,6 +630,7 @@ function FileEditor({
   const hintParameters = useClientSettings(selectInlayHintParameters);
   const inlineDiagnostics = useClientSettings(selectInlineDiagnostics);
   const semanticColours = useClientSettings(selectSemanticTokens);
+  const lenses = useClientSettings(selectCodeLens);
   // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
   const save = useStableCallback(() => {
     const view = viewRef.current;
@@ -764,6 +767,7 @@ function FileEditor({
               hintParameters,
               inlineDiagnostics,
               semanticColours,
+              lenses,
             })
           : [],
         "session" in initial.source
@@ -792,6 +796,7 @@ function FileEditor({
     hintParameters,
     inlineDiagnostics,
     semanticColours,
+    lenses,
   ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the read-only state to the CodeMirror view
@@ -846,6 +851,7 @@ function languageServerUi(
     readonly hintParameters: boolean;
     readonly inlineDiagnostics: boolean;
     readonly semanticColours: boolean;
+    readonly lenses: boolean;
   },
 ): Extension {
   return [
@@ -856,6 +862,7 @@ function languageServerUi(
     symbolHighlights(),
     linkedEditing(),
     shown.semanticColours ? semanticTokens() : [],
+    shown.lenses ? codeLens() : [],
     environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
     environmentHover({
       keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },

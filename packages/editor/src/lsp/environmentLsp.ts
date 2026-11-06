@@ -251,7 +251,7 @@ export function environmentLsp(options: {
       };
       // An item handed back to resolve names no file: it is this editor's one.
       const uri =
-        parsed.method === "completionItem/resolve"
+        parsed.method === "completionItem/resolve" || parsed.method === "codeLens/resolve"
           ? workspace?.files[0]?.uri
           : parsed.params?.textDocument?.uri;
       const file =

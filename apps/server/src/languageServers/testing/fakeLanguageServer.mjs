@@ -147,6 +147,7 @@ const handle = (message) => {
           documentHighlightProvider: true,
           linkedEditingRangeProvider: true,
           callHierarchyProvider: true,
+          codeLensProvider: { resolveProvider: true },
           semanticTokensProvider: {
             legend: { tokenTypes: ["variable"], tokenModifiers: [] },
             full: { delta: true },
@@ -389,6 +390,25 @@ const handle = (message) => {
         },
       ]);
     }
+    case "textDocument/codeLens": {
+      // Over each `point`; resolving one gives it the command that removes its line.
+      const { text } = docs.get(params.textDocument.uri);
+      return reply(
+        occurrences(text, "point").map((offset) => ({
+          range: rangeOf(text, offset, offset + "point".length),
+          data: { uri: params.textDocument.uri },
+        })),
+      );
+    }
+    case "codeLens/resolve":
+      return reply({
+        ...params,
+        command: {
+          title: "Remove the line",
+          command: "fake.removeLine",
+          arguments: [params.data.uri, params.range.start.line],
+        },
+      });
     case "test/refresh": {
       const askId = `fake-${++askedCount}`;
       asked.set(askId, () => {});

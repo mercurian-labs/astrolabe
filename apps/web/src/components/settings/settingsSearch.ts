@@ -467,6 +467,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["semantic tokens highlighting syntax language server code editor"],
   },
   {
+    id: "code-lens",
+    title: "Code lens",
+    to: "/settings/appearance",
+    searchTerms: ["references implementations above lines language server code editor"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",

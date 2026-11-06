@@ -488,6 +488,7 @@ const CLIENT_CAPABILITIES = {
     inlayHint: {},
     documentHighlight: {},
     linkedEditingRange: {},
+    codeLens: {},
     callHierarchy: {},
     semanticTokens: {
       requests: { full: { delta: true } },
@@ -550,6 +551,7 @@ const CLIENT_CAPABILITIES = {
     didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
     inlayHint: { refreshSupport: true },
     semanticTokens: { refreshSupport: true },
+    codeLens: { refreshSupport: true },
   },
   window: { workDoneProgress: false, showMessage: {} },
 };
@@ -1161,6 +1163,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         return refreshSessions(instance, "inlayHints");
       case "workspace/semanticTokens/refresh":
         return refreshSessions(instance, "semanticTokens");
+      case "workspace/codeLens/refresh":
+        return refreshSessions(instance, "codeLens");
       case "workspace/applyEdit":
         return new Promise((resolve) =>
           Queue.offerUnsafe(instance.serverEdits, {
@@ -2112,6 +2116,26 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     };
   };
 
+  /** Runs a server's command, whose own edits come back to `collected` through this environment. */
+  const runCommand = (
+    instance: Instance,
+    running: Running,
+    command: Json,
+    collected: Array<LanguageServerAppliedEdit>,
+  ) =>
+    Effect.suspend(() => {
+      instance.collecting = collected;
+      return running.connection
+        .request("workspace/executeCommand", {
+          command: command.command,
+          ...(command.arguments === undefined ? {} : { arguments: command.arguments }),
+        })
+        .response.pipe(
+          Effect.ignore,
+          Effect.ensuring(Effect.sync(() => (instance.collecting = null))),
+        );
+    });
+
   /**
    * Applies one of the code actions last offered to the session on the server that offered it:
    * its edit through the environment, as a rename's, then its command, whose own edits the server
@@ -2147,18 +2171,28 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       done.push(edit.value);
     }
     const command = isCommand ? action : action.command;
-    if (typeof command?.command === "string") {
-      instance.collecting = done;
-      yield* running.connection
-        .request("workspace/executeCommand", {
-          command: command.command,
-          ...(command.arguments === undefined ? {} : { arguments: command.arguments }),
-        })
-        .response.pipe(
-          Effect.ignore,
-          Effect.ensuring(Effect.sync(() => (instance.collecting = null))),
-        );
+    if (typeof command?.command === "string") yield* runCommand(instance, running, command, done);
+    return { result: { applied: mergeApplied(done) } };
+  });
+
+  /** Runs a code lens's command on the server that made the lens, as a code action's. */
+  const runLensCommand = Effect.fn("LanguageServers.runLensCommand")(function* (
+    session: Session,
+    lens: Json,
+  ) {
+    const found = handedBack("codeLens/resolve", lens);
+    const instance = found && instances.get(`${session.primary.cwd}\0${found.origin.server}`);
+    const running = instance?.running;
+    const command = lens?.command;
+    if (!instance || !running || typeof command?.command !== "string") {
+      return { error: contentModified("The code lens changed; try it again.") };
     }
+    const listed = running.capabilities?.executeCommandProvider?.commands;
+    if (!Array.isArray(listed) || !listed.includes(command.command)) {
+      return { error: { code: -32601, message: `${instance.spec.name} can't run this here.` } };
+    }
+    const done: Array<LanguageServerAppliedEdit> = [];
+    yield* runCommand(instance, running, command, done);
     return { result: { applied: mergeApplied(done) } };
   });
 
@@ -2501,6 +2535,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         const [item] = tagCompletions({ items: [answer.result] }, resolving.origin).items;
         return { result: item };
       }
+      if (method === "textDocument/codeLens") {
+        const origin = { server: asked.instance.spec.id, path: relativePath ?? "" };
+        return { result: tagCompletions({ items: answer.result ?? [] }, origin).items };
+      }
       const uris = toSessionUris(asked.instance, session, answer.result);
       if (!LOCATION_METHODS.has(method)) return { result: uris };
       return { result: yield* withPreviews(asked.instance, uris, clientUri) };
@@ -2614,6 +2652,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     if (message.method === "shutdown") return { result: null };
     if (message.method === "astrolabe/applyCodeAction") {
       return yield* applyCodeAction(session, message.params?.index);
+    }
+    if (message.method === "astrolabe/runLensCommand") {
+      yield* Deferred.await(primary.ready);
+      return yield* runLensCommand(session, message.params);
     }
     if (message.method !== "initialize") {
       return yield* forward(primary, session, message, state, pending);

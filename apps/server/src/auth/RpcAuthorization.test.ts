@@ -111,13 +111,15 @@ describe("RPC authorization scopes", () => {
         document: { ...document, unconfirmed: [[3, [0, "x"]]] },
       }),
     ).toEqual([AuthFilesystemWriteScope]);
-    // A rename's answer is applied to the files it names.
-    expect(
-      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
-        ...send,
-        message: JSON.stringify({ id: 4, method: "textDocument/rename", params: {} }),
-      }),
-    ).toEqual([AuthFilesystemWriteScope]);
+    // A rename's answer is applied to the files it names, and a lens's command edits as it likes.
+    for (const method of ["textDocument/rename", "astrolabe/runLensCommand"]) {
+      expect(
+        clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+          ...send,
+          message: JSON.stringify({ id: 4, method, params: {} }),
+        }),
+      ).toEqual([AuthFilesystemWriteScope]);
+    }
     expect(requiredScopeForRpcMethod(WS_METHODS.languageServersUndoEdit)).toBe(
       AuthFilesystemWriteScope,
     );
