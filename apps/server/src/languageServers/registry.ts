@@ -1,8 +1,4 @@
-import type {
-  BuiltInLanguageServerId,
-  LanguageServerId,
-  LanguageServerToolchainKind,
-} from "@t3tools/contracts";
+import type { BuiltInLanguageServerId, LanguageServerId } from "@t3tools/contracts";
 
 /**
  * Language servers as data: which to run for a checkout, where its binary comes from, its
@@ -131,8 +127,6 @@ export interface LanguageServerSpec {
   readonly hint?: { readonly unless: ReadonlyArray<string>; readonly message: string };
   /** For a language's primary: who may format its files, in order. Without it, the primary. */
   readonly formatters?: ReadonlyArray<LanguageServerId>;
-  /** The toolchain it reads, whose choice restarts it. */
-  readonly usesToolchain?: LanguageServerToolchainKind;
   /** Added in settings to run beside a language's servers, so it goes first past the memory budget. */
   readonly joins?: boolean;
   /**
@@ -253,7 +247,6 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
     },
     // basedpyright has no formatter of its own today; a later one must not fight Ruff's.
     formatters: ["ruff", "basedpyright"],
-    usesToolchain: "python",
     launches: [
       {
         name: "basedpyright",

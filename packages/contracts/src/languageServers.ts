@@ -132,6 +132,11 @@ export function languageServersForPath(path: string): ReadonlyArray<LanguageServ
 export const isCompanionLanguageServer = (server: LanguageServerId) =>
   COMPANION_EXTENSIONS.some(([companion]) => companion === server);
 
+/** The toolchain a server reads, which people can choose. */
+export const languageServerToolchain = (
+  server: LanguageServerId,
+): LanguageServerToolchainKind | null => (server === "basedpyright" ? "python" : null);
+
 /** The server leading a built-in's language by default: itself, or a companion's primary. */
 export const languageServerLanguage = (server: BuiltInLanguageServerId) => {
   const joined = COMPANION_EXTENSIONS.find(([companion]) => companion === server)?.[1];

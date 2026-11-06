@@ -5,11 +5,16 @@ import type {
   DocumentChannel,
   DocumentSession,
 } from "@t3tools/client-runtime/state/document-session";
-import { EnvironmentId, ProjectId, type DocumentStreamItem } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type LanguageServerRoutes,
+  ProjectId,
+  type DocumentStreamItem,
+} from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 
 /** The environment's side of one file: `@codemirror/collab`'s authority loop and a disk. */
 class Authority {
@@ -83,7 +88,7 @@ class Authority {
   }
 }
 
-const shared = vi.hoisted(() => ({ authority: null as unknown }));
+const shared = vi.hoisted(() => ({ authority: null as unknown, routes: null as unknown }));
 const authority = () => shared.authority as Authority;
 
 // A call arrives after the editor's update that made it, as over a connection.
@@ -112,6 +117,18 @@ vi.mock(import("~/state/documents"), async () => {
     } as never,
   };
 });
+vi.mock(import("~/state/languageServers"), async (original) => {
+  const { languageServersEnvironment } = await original();
+  const { Atom } = await import("effect/reactivity");
+  return {
+    languageServersEnvironment: {
+      ...languageServersEnvironment,
+      routes: ((...args: Parameters<typeof languageServersEnvironment.routes>) =>
+        shared.routes ?? languageServersEnvironment.routes(...args)) as never,
+      session: (() => Atom.make(null)) as never,
+    },
+  };
+});
 vi.mock(import("~/state/session"), async (original) => ({
   ...(await original()),
   useEnvironmentScope: (() => true) as never,
@@ -125,6 +142,11 @@ vi.mock(import("~/state/entities"), async (original) => ({
   useProject: (() => null) as never,
   useThreadShells: (() => []) as never,
 }));
+
+import { RegistryContext } from "@effect/atom-react";
+import { hasLanguageServer } from "@mercurian/editor/lsp";
+import { EditorView } from "@codemirror/view";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import { RepositoryFileView } from "./RepositoryFileView";
 
@@ -169,6 +191,42 @@ describe("RepositoryFileView", () => {
     authority().save();
     await expect.element(screen.getByTestId("first").getByText("Saved")).toBeVisible();
     await expect.element(screen.getByTestId("second").getByText("Saved")).toBeVisible();
+  });
+
+  it("takes a language server on and off while open, keeping the editor and its text", async () => {
+    setup("hello\n");
+    const registry = AtomRegistry.make();
+    const routes = Atom.make<AsyncResult.AsyncResult<LanguageServerRoutes>>(AsyncResult.initial());
+    shared.routes = routes;
+    using _routes = { [Symbol.dispose]: () => void (shared.routes = null) };
+    await using screen = await render(
+      <RegistryContext.Provider value={registry}>
+        <RepositoryFileView tabKey="file" tab={tab} />
+      </RegistryContext.Provider>,
+    );
+    const text = screen.getByRole("textbox");
+    await expect.element(text).toHaveTextContent("hello");
+    await userEvent.click(text);
+    await userEvent.keyboard("typed");
+    const view = EditorView.findFromDOM(text.element() as HTMLElement)!;
+    expect(hasLanguageServer(view.state)).toBe(false);
+
+    const arrive = (extensions: LanguageServerRoutes["extensions"]) =>
+      act(() => registry.set(routes, AsyncResult.success({ extensions })));
+    const mine = {
+      server: "custom:mine",
+      name: "Mine",
+      languageId: "plain",
+      off: false,
+      toolchain: null,
+    } as const;
+    await arrive({ txt: [mine] });
+    await vi.waitFor(() => expect(hasLanguageServer(view.state)).toBe(true));
+    await arrive({});
+    await vi.waitFor(() => expect(hasLanguageServer(view.state)).toBe(false));
+
+    expect(EditorView.findFromDOM(text.element() as HTMLElement)).toBe(view);
+    expect(view.state.doc.toString()).toContain("typed");
   });
 
   it("offers to save a deleted file with unsaved edits, and saving recreates it", async () => {

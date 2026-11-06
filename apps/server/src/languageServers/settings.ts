@@ -9,6 +9,7 @@ import {
   type LanguageServerOverrideEntry,
   languageServerExtensions,
   languageServersForPath,
+  languageServerToolchain,
   type LanguageServerRoute,
   type LanguageServerRoutes,
   type LanguageServerSettingSource,
@@ -342,7 +343,7 @@ export const routesFor = (input: {
           .toSorted((a, b) => rank(a.server) - rank(b.server))
           .map(({ server, languageId }) => {
             const spec = input.specs[server]!;
-            return route(server, spec.name, languageId, spec.usesToolchain ?? null);
+            return route(server, spec.name, languageId, languageServerToolchain(server));
           });
         const on = customs.flatMap((custom) =>
           Object.hasOwn(custom.languageIds, extension)

@@ -2548,10 +2548,7 @@ describe("LanguageServers settings", () => {
     );
   const pythonSpecs = {
     basedpyright: {
-      ...companionSpec("basedpyright", {
-        usesToolchain: "python",
-        formatters: ["ruff", "basedpyright"],
-      }),
+      ...companionSpec("basedpyright", { formatters: ["ruff", "basedpyright"] }),
       launches: [
         {
           ...fakeLaunch,
@@ -3132,10 +3129,20 @@ describe("LanguageServers settings", () => {
         expect((yield* session.state("ready")).name).toBe("Renamed");
         expect(yield* order()).toEqual(["typescript", "eslint", id]);
 
+        yield* set(checkout.cwd, {
+          type: "server",
+          scope: "machine",
+          server: id,
+          override: { settings: { kept: false } },
+        });
+        yield* session.state("starting");
+        yield* session.state("ready");
         yield* set(checkout.cwd, { type: "removeCustom", id });
         const stopped = yield* session.state("disabled");
         expect(stopped.memoryBytes).toBeNull();
         expect(yield* order()).toEqual(["typescript", "eslint"]);
+        // Its settings went with it.
+        expect((yield* service.check(checkout.cwd)).settings.machine.servers).toEqual({});
         // Anything still bound to it hears it can't be had.
         const gone = yield* service
           .session({ cwd: checkout.cwd, server: "custom:nobody", sessionId: "gone" })
@@ -3307,7 +3314,6 @@ describe("LanguageServers settings", () => {
                 basedpyright: {
                   ...specs.typescript!,
                   id: "basedpyright",
-                  usesToolchain: "python",
                   launches: [
                     {
                       ...specs.typescript!.launches[1]!,

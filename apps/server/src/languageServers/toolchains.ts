@@ -117,7 +117,8 @@ export const findPythonInterpreters = Effect.fn("LanguageServers.findPythonInter
     }
     for (const root of HOMEBREW_ROOTS) {
       const opt = path.join(root, "opt");
-      for (const name of (yield* list(opt)).toSorted()) {
+      // Newest first, and `python@3.14` before `python@3`, its link: that one says its version.
+      for (const name of (yield* list(opt)).toSorted().toReversed()) {
         if (!name.startsWith("python@")) continue;
         const file = path.join(opt, name, "bin/python3");
         if (yield* exists(file)) {

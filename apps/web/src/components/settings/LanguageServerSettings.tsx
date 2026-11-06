@@ -12,7 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import { useContext, useState } from "react";
+import { type ChangeEvent, useContext, useId, useState } from "react";
 
 import { languageServersEnvironment } from "../../state/languageServers";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -209,35 +209,34 @@ function FormField({
   readonly lines?: boolean;
   readonly onChange: (value: string) => void;
 }) {
-  const invalid = error === undefined ? {} : { "aria-invalid": true };
+  const id = useId();
+  const noteId = `${id}-note`;
+  const control = {
+    id,
+    value,
+    size: "sm",
+    font: "mono",
+    "aria-describedby": noteId,
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      onChange(event.target.value),
+    ...(error === undefined ? {} : { "aria-invalid": true }),
+  } as const;
   return (
-    <label className="grid gap-1 text-xs">
-      <span className="font-medium text-foreground">{label}</span>
-      {lines ? (
-        <Textarea
-          size="sm"
-          font="mono"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          {...invalid}
-        />
-      ) : (
-        <Input
-          size="sm"
-          font="mono"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          {...invalid}
-        />
-      )}
+    <div className="grid gap-1 text-xs">
+      <label htmlFor={id} className="font-medium text-foreground">
+        {label}
+      </label>
+      {lines ? <Textarea {...control} /> : <Input {...control} />}
       {error === undefined ? (
-        <span className="text-muted-foreground">{hint}</span>
+        <span id={noteId} className="text-muted-foreground">
+          {hint}
+        </span>
       ) : (
-        <span role="alert" className="text-destructive-foreground">
+        <span id={noteId} role="alert" className="text-destructive-foreground">
           {error}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -288,7 +287,7 @@ function CustomServerForm({
         lines
         {...field("rootFiles")}
       />
-      <label className="flex items-center justify-between gap-2 text-xs">
+      <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-medium text-foreground">Beside the usual server</span>
         <Select
           value={fields.replaces ? "replaces" : "joins"}
@@ -308,7 +307,7 @@ function CustomServerForm({
             <SelectItem value="replaces">Replaces it on these files</SelectItem>
           </SelectPopup>
         </Select>
-      </label>
+      </div>
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onCancel}>
           Cancel

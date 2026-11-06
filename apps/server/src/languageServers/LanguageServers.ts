@@ -28,6 +28,7 @@ import {
   languageServerForPath,
   languageServerLanguage,
   languageServerRoutesForPath,
+  languageServerToolchain,
   LanguageServerError,
   LanguageServerId,
   type LanguageServerProblemsItem,
@@ -1362,7 +1363,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const base = specOf(server);
     const spec = base === undefined ? null : withSettings(base, effective);
     const python =
-      base?.usesToolchain === "python" ? (settings.get().toolchains[cwd]?.python ?? null) : null;
+      languageServerToolchain(server) === "python"
+        ? (settings.get().toolchains[cwd]?.python ?? null)
+        : null;
     const { off, overrides } = effective;
     return {
       spec,
@@ -2117,11 +2120,21 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
                 custom: [...current.custom.filter((custom) => custom.id !== id), { id, ...fields }],
               };
             }
-            case "removeCustom":
+            case "removeCustom": {
+              // Its settings go with it: a later server of the same name starts clean.
+              const without = (layer: typeof EMPTY_LAYER) => {
+                const { [change.id]: _removed, ...servers } = layer.servers;
+                return { ...layer, servers };
+              };
               return {
                 ...current,
+                machine: without(current.machine),
+                projects: Object.fromEntries(
+                  Object.entries(current.projects).map(([key, layer]) => [key, without(layer)]),
+                ),
                 custom: current.custom.filter((custom) => custom.id !== change.id),
               };
+            }
             case "toolchain": {
               const { [cwd]: _replaced, ...others } = current.toolchains;
               return {

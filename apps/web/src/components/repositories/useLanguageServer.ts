@@ -7,6 +7,7 @@ import {
   type LanguageServerRoute,
   languageServerRoutesForPath,
   languageServersForPath,
+  languageServerToolchain,
   type LanguageServerStatus,
   primaryLanguageServerRoute,
 } from "@t3tools/contracts";
@@ -44,12 +45,13 @@ type LanguageServerHosts = Pick<LanguageServerFile, "openSettings"> & {
   readonly openLogs: (server: LanguageServerId) => void;
 };
 
+/** Matches the environment's table on what binds a session, so its arrival rebinds nothing. */
 function usualRoutes(path: string): ReadonlyArray<LanguageServerRoute> {
   return languageServersForPath(path).map((route) => ({
     ...route,
     name: route.server,
     off: false,
-    toolchain: null,
+    toolchain: languageServerToolchain(route.server),
   }));
 }
 
@@ -123,6 +125,18 @@ function makeBinding(
 }
 
 /**
+ * One binding per key, however many times a render asks: each opens a client. A session stays
+ * bound to the server it opened on, so settings moving the file means a new binding.
+ */
+const makeBinder = () => {
+  let current: { readonly key: string | null; readonly binding: Binding | null } | null = null;
+  return (key: string | null, bind: () => Binding | null) => {
+    if (current?.key !== key) current = { key, binding: bind() };
+    return current.binding;
+  };
+};
+
+/**
  * Astrolabe: an editor's language server, through the environment's gateway, while the caller is
  * mounted and `enabled`. Null for files no server reads, or without the live document. The
  * environment says which servers read a file; `hosts` are taken as they are at each binding.
@@ -142,7 +156,7 @@ export function useLanguageServer(
   // An environment that hasn't said, or an older one that can't, runs the usual servers.
   const servers = routes ? languageServerRoutesForPath(path, routes) : usualRoutes(path);
   const primary = primaryLanguageServerRoute(servers);
-  const toolchain = servers.find((route) => route.toolchain !== null)?.toolchain ?? null;
+  const toolchain = servers.find((route) => !route.off && route.toolchain)?.toolchain ?? null;
   const key =
     session === null || primary === null
       ? null
@@ -151,13 +165,8 @@ export function useLanguageServer(
     session === null || primary === null
       ? null
       : makeBinding(registry, { environmentId, cwd, path, session, primary, toolchain, hosts });
-  const [bound, setBound] = useState(() => ({ key, binding: bind() }));
-  let binding = bound.binding;
-  // Settings moved the file to another server: a session stays bound to the one it opened on.
-  if (bound.key !== key) {
-    binding = bind();
-    setBound({ key, binding });
-  }
+  const [bindingFor] = useState(makeBinder);
+  const binding = bindingFor(key, bind);
   useAtomMount((enabled ? binding?.follow : null) ?? NO_SESSION);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ends the editor's LSP client with the view that holds it
   useEffect(() => () => binding?.lsp.destroy(), [binding]);
