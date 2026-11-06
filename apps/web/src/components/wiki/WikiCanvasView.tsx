@@ -4,13 +4,28 @@ import {
   type CanvasData,
   type CanvasMarks,
 } from "@mercurian/wiki/canvas";
-import { CanvasBoard, type CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
+import {
+  CanvasBoard,
+  type CanvasBoardHandle,
+  type CanvasBoardSettings,
+} from "@mercurian/wiki-editor/canvas-board";
+import { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
 import { useAtomValue } from "@effect/atom-react";
 import { changeRequestCanvasReview } from "@t3tools/client-runtime/wikiLogic";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  UnifiedSettings,
+  WikiChangeRequestId,
+  WikiId,
+} from "@t3tools/contracts";
+import { useBlocker } from "@tanstack/react-router";
 import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
+import * as Schema from "effect/Schema";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "~/hooks/useSettings";
+import { ensureLocalApi } from "~/localApi";
 import { TabHeader } from "~/panes/TabHeader";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -19,38 +34,57 @@ import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
-import { describeWikiFailure, documentTitle } from "./wiki.logic";
+import { describeWikiFailure, documentTitle, isSettledChangeRequest } from "./wiki.logic";
+import {
+  holdsEdits,
+  useChangeRequestTurn,
+  useWikiAutosave,
+  WikiSaveFailure,
+  WikiSaveStatus,
+} from "./wikiAutosave";
 import { registerWikiCanvasBoard, type WikiCanvasGroup } from "./wikiCanvasBoards";
-import { useWikiCommand } from "./wikiEnvironment";
+import { useWikiAutosaveCommand, useWikiCommand } from "./wikiEnvironment";
 import { useWikiCanvasHost } from "./wikiCanvasHost";
+import type { WikiDraftEdits } from "./WikiNoteView";
 
 function CanvasBoardPane({
   tabKey,
   environmentId,
   wikiId,
   changeRequestId,
+  savesTo,
   file,
   commit,
   data,
   marks,
   groups,
+  canvas,
+  readOnly,
+  onReadOnly,
   onOpenNote,
   onOpenFile,
   onOpenTab,
+  onOpenInNewTab,
 }: {
   readonly tabKey: string;
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly savesTo: WikiChangeRequestId | undefined;
   readonly file: string;
   readonly commit: string;
   readonly data: CanvasData;
   /** What the change request it's read in changes, until that's merged or closed. */
   readonly marks: CanvasMarks | undefined;
   readonly groups: ReadonlyArray<WikiCanvasGroup>;
+  /** Set where this person can change cards. */
+  readonly canvas: CanvasDocument | null;
+  readonly readOnly: boolean;
+  readonly onReadOnly: (on: boolean) => void;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenFile: ((path: string) => void) | undefined;
   readonly onOpenTab: (key: string) => void;
+  readonly onOpenInNewTab: ((name: string) => void) | undefined;
 }) {
   const host = useWikiCanvasHost({
     environmentId,
@@ -60,17 +94,26 @@ function CanvasBoardPane({
     onOpenNote,
     onOpenFile,
     onOpenTab,
+    savesTo,
+    onOpenInNewTab,
   });
+  const settings = useEnvironmentSettings(environmentId, selectCanvasSettings);
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const onSettings = (patch: Partial<CanvasBoardSettings>) =>
+    updateSettings({ wikiCanvas: { ...settings, ...patch } });
 
   const board = useRef<CanvasBoardHandle>(null);
+  const editable = canvas !== null && !readOnly;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the command palette reaches this canvas through a registry outside React
   useEffect(
     () =>
       registerWikiCanvasBoard(tabKey, {
         groups,
         jumpToGroup: (id) => board.current?.focusCard(id),
+        editable,
+        run: (command) => board.current?.run(command),
       }),
-    [tabKey, groups],
+    [tabKey, groups, editable],
   );
 
   return (
@@ -100,6 +143,11 @@ function CanvasBoardPane({
           host={host}
           label={documentTitle(file)}
           revision={commit}
+          document={canvas}
+          readOnly={readOnly}
+          onReadOnly={onReadOnly}
+          settings={settings}
+          onSettings={onSettings}
           {...(marks === undefined ? {} : { marks })}
         />
       </div>
@@ -107,13 +155,16 @@ function CanvasBoardPane({
   );
 }
 
+const selectCanvasSettings = (settings: UnifiedSettings) => settings.wikiCanvas;
+
 const EMPTY_GROUPS: ReadonlyArray<WikiCanvasGroup> = [];
+const ReadOnlyFlag = Schema.Boolean;
 
 /**
  * A `.canvas` file in its own tab, read from main or a change request, and refreshed per commit
  * with its camera kept. In a change request it marks what that changes, so an agent's work shows
- * as it lands. Reading only, for now: a canvas that doesn't exist yet starts in the person's draft,
- * or the change request the tab is in, with no Save anywhere, as hand edits will land too.
+ * as it lands. Edits land by themselves, in the change request the tab is in or the person's draft,
+ * so a canvas has no Save: only what's closed, or out of this person's reach, stays read only.
  */
 export default function WikiCanvasPage({
   tabKey,
@@ -123,10 +174,12 @@ export default function WikiCanvasPage({
   changeRequestId,
   savesTo,
   parent,
-  draftPill,
+  renderDraftPill,
+  registerUnsaved,
   onOpenNote,
   onOpenFile,
   onOpenTab,
+  onOpenInNewTab,
 }: {
   readonly tabKey: string;
   readonly environmentId: EnvironmentId;
@@ -139,10 +192,12 @@ export default function WikiCanvasPage({
   /** Where the canvas is read from, as the tab header names it. */
   readonly parent: string;
   /** The draft's pill in the header's place for `parent`, when there's a draft. */
-  readonly draftPill?: ReactNode;
+  readonly renderDraftPill?: (edits?: WikiDraftEdits) => ReactNode;
+  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenFile: ((path: string) => void) | undefined;
   readonly onOpenTab: (key: string) => void;
+  readonly onOpenInNewTab?: (name: string) => void;
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const query = useEnvironmentQuery(
@@ -151,20 +206,20 @@ export default function WikiCanvasPage({
   const read = query.data?.files[0];
   const text = read?.text ?? null;
   const parsed = text === null ? null : parseCanvas(text);
-  const groups = parsed?.ok ? canvasGroups(parsed.data) : EMPTY_GROUPS;
   const detail = useEnvironmentQuery(
     changeRequestId === undefined
       ? null
       : wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
+  const changeRequest = detail.data?.changeRequest;
   const review = changeRequestCanvasReview(detail.data, file, text);
   const title = documentTitle(file);
   const [creating, setCreating] = useState(false);
-  const canCreate = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
-  const autosave = useWikiCommand(wikiEnvironment.autosave, "Couldn't start the canvas");
+  const canWrite = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const autosaveCommand = useWikiCommand(wikiEnvironment.autosave, "Couldn't start the canvas");
   const create = async () => {
     setCreating(true);
-    await autosave({
+    await autosaveCommand({
       environmentId,
       input: {
         wikiId,
@@ -175,6 +230,77 @@ export default function WikiCanvasPage({
     });
     setCreating(false);
   };
+
+  // Writes follow `checkFileName`, flat until wikis have folders: one deeper can only be read.
+  const reachable = /^[^/]+\.canvas$/i.test(file);
+  const known = changeRequestId === undefined || changeRequest !== undefined;
+  const canEdit = canWrite && reachable && known && !isSettledChangeRequest(changeRequest);
+  const [readOnly, setReadOnly] = useLocalStorage(
+    `astrolabe:canvas-read-only:${wikiId}:${file}`,
+    false,
+    ReadOnlyFlag,
+  );
+
+  const send = useWikiAutosaveCommand();
+  const [canvas, setCanvas] = useState<CanvasDocument | null>(null);
+  const { autosave, status } = useWikiAutosave({
+    subject: title,
+    save: async () => {
+      const taken = canvas?.take() ?? null;
+      if (taken === null) return { ok: true };
+      const outcome = await send({
+        environmentId,
+        input: {
+          wikiId,
+          ...(savesTo === undefined ? {} : { changeRequestId: savesTo }),
+          document: file,
+          write: {
+            kind: "transform",
+            transform: { kind: "canvas", file, edits: [...taken.edits] },
+          },
+        },
+      });
+      if (!outcome.ok) return outcome;
+      canvas?.landed(taken.through, outcome.value.commit);
+      return { ok: true };
+    },
+  });
+  const commit = query.data?.commit ?? null;
+  const document = parsed?.ok === true ? parsed.document : null;
+  if (canvas === null && document !== null && commit !== null) {
+    setCanvas(new CanvasDocument({ document, revision: commit, onEdited: autosave.edited }));
+  }
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each commit read crosses into the document, which keeps this person's unlanded edits on top
+  useEffect(() => {
+    if (canvas !== null && commit !== null && document !== null) canvas.receive(document, commit);
+  }, [canvas, commit, document]);
+  const turn = useChangeRequestTurn(
+    environmentId,
+    changeRequest?.status === "open" ? changeRequest.threadId : null,
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a running turn holds the autosave store, which lives outside React
+  useEffect(() => autosave.setHeld(turn.running), [autosave, turn.running]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are held back
+  useEffect(
+    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus())),
+    [autosave, registerUnsaved],
+  );
+  useBlocker({
+    disabled: !holdsEdits(status),
+    enableBeforeUnload: () => holdsEdits(autosave.getStatus()),
+    shouldBlockFn: async () => {
+      if (!holdsEdits(autosave.getStatus())) return false;
+      const leave = await ensureLocalApi().dialogs.confirm(
+        `Leave ${title}? Your unsaved changes will be lost.`,
+        { variant: "destructive" },
+      );
+      if (leave) autosave.cancel();
+      return !leave;
+    },
+  });
+
+  const groupData = canvas?.getState().data ?? (parsed?.ok === true ? parsed.data : null);
+  const groups = groupData === null ? EMPTY_GROUPS : canvasGroups(groupData);
 
   const body = () => {
     if (query.data === null) {
@@ -202,7 +328,7 @@ export default function WikiCanvasPage({
                 : "It starts in this change request."}
             </EmptyDescription>
           </EmptyHeader>
-          {canCreate ? (
+          {canWrite ? (
             <Button size="sm" disabled={creating} onClick={() => void create()}>
               {creating ? <Spinner /> : null}
               Create canvas
@@ -240,14 +366,20 @@ export default function WikiCanvasPage({
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        savesTo={savesTo}
         file={file}
         commit={query.data.commit}
         data={review?.data ?? parsed.data}
-        marks={review?.marks}
+        // Your own draft's cards all read as changed, which says nothing a person doesn't know.
+        marks={changeRequest?.draft === true ? undefined : review?.marks}
         groups={groups}
+        canvas={canEdit ? canvas : null}
+        readOnly={readOnly}
+        onReadOnly={setReadOnly}
         onOpenNote={onOpenNote}
         onOpenFile={onOpenFile}
         onOpenTab={onOpenTab}
+        onOpenInNewTab={onOpenInNewTab}
       />
     );
   };
@@ -255,11 +387,23 @@ export default function WikiCanvasPage({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
-        <TabHeader.Title label="Canvas" parent={parent} parentControl={draftPill}>
+        <TabHeader.Title
+          label="Canvas"
+          parent={parent}
+          parentControl={renderDraftPill?.({
+            flush: autosave.flush,
+            drop: () => {
+              canvas?.discard();
+              autosave.cancel();
+            },
+          })}
+        >
           {title}
         </TabHeader.Title>
-        <TabHeader.Status>Read only</TabHeader.Status>
+        {!canEdit || readOnly ? <TabHeader.Status>Read only</TabHeader.Status> : null}
+        <WikiSaveStatus status={status} />
       </TabHeader.Root>
+      <WikiSaveFailure status={status} autosave={autosave} />
       {body()}
     </div>
   );

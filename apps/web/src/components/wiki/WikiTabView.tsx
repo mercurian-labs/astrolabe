@@ -183,6 +183,7 @@ function NoteTab({
     return (
       <Suspense fallback={null}>
         <WikiCanvasPage
+          key={tabKey}
           tabKey={tabKey}
           environmentId={tab.environmentId}
           wikiId={tab.wikiId}
@@ -190,10 +191,16 @@ function NoteTab({
           changeRequestId={scope}
           savesTo={tab.changeRequestId}
           parent={parent}
-          draftPill={renderDraftPill()}
-          onOpenNote={(name) => nav.replace(tabKey, wikiTabKey({ ...tab, name }))}
+          renderDraftPill={renderDraftPill}
+          registerUnsaved={registerUnsaved}
+          onOpenNote={(name) => {
+            const next = wikiTabKey({ ...tab, name });
+            if (hasUnsavedEdits(tabKey)) nav.open(next);
+            else nav.replace(tabKey, next);
+          }}
           onOpenFile={openFile}
           onOpenTab={nav.open}
+          onOpenInNewTab={(name) => nav.open(wikiTabKey({ ...tab, name }))}
         />
       </Suspense>
     );

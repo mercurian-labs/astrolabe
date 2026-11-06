@@ -148,6 +148,7 @@ import {
   wikiScopeKey,
   wikiSidebarEntryTab,
   wikiSidebarItems,
+  wikiTabFile,
   wikiTabKey,
   type WikiChangeItem,
   type WikiDocumentItem,
@@ -300,6 +301,9 @@ export function WikiSidebar() {
           key: wikiTabKey(tab),
           keys: [],
           place: (paneId, drop) => placeWikiTabs(carried, tab, paneId, drop),
+          wikiFiles: carried.flatMap((each) =>
+            each.kind === "note" ? [wikiTabFile(each.name)] : [],
+          ),
         },
         event.currentTarget.getAttribute("aria-label") ?? "",
         carried.length > 1 ? carried.length : 0,

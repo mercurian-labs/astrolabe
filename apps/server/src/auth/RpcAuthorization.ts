@@ -132,6 +132,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.wikiReadNote]: AuthFilesystemReadScope,
   [WS_METHODS.wikiQuery]: AuthFilesystemReadScope,
   [WS_METHODS.wikiReadFiles]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiListFiles]: AuthFilesystemReadScope,
   [WS_METHODS.wikiCodeStatus]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,

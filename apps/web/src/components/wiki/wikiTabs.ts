@@ -84,6 +84,10 @@ export const isBaseTab = (tab: WikiTab): boolean =>
   tab.kind === "note" && tab.name.endsWith(".base");
 
 /** Whether a document tab shows a canvas: a `.canvas` file, opened by its file name. */
+/** The file a document's tab shows: a note's name has no extension. */
+export const wikiTabFile = (name: string): string =>
+  /\.(base|canvas)$/i.test(name) ? name : `${name}.md`;
+
 export const isCanvasTab = (tab: WikiTab): boolean => tab.kind === "note" && isCanvasName(tab.name);
 
 /** Whether two tabs show the same thing; note names compare as the wiki compares them. */

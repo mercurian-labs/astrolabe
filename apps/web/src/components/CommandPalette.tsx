@@ -262,6 +262,7 @@ import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 // Astrolabe: the palette as Vim's ex line, and Search finding wiki documents.
 import { showChangeRequestTab } from "~/components/pullRequest/pullRequestWorkspace";
 import { wikiDraft } from "~/components/wiki/wiki.logic";
+import type { CanvasBoardCommand } from "@mercurian/wiki-editor/canvas-board";
 import { wikiCanvasBoard } from "~/components/wiki/wikiCanvasBoards";
 import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
 import { useFocusedWikiTab } from "~/components/wiki/wikiPanes";
@@ -1360,6 +1361,33 @@ function OpenCommandPaletteDialog(props: {
         },
       ],
     });
+  }
+
+  if (canvasBoard !== undefined) {
+    const canvasAction = (command: CanvasBoardCommand, title: string, terms: string[]) =>
+      actionItems.push({
+        kind: "action",
+        value: `action:canvas-${command}`,
+        searchTerms: ["canvas", ...terms],
+        title: `Canvas: ${title}`,
+        icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+        run: async () => canvasBoard.run(command),
+      });
+    canvasAction("export-image", "Export as image", ["export", "png", "image"]);
+    canvasAction("zoom-to-fit", "Zoom to fit", ["fit"]);
+    canvasAction("zoom-to-selection", "Zoom to selection", ["selection"]);
+    canvasAction("help", "Help", ["keys", "shortcuts"]);
+    if (canvasBoard.editable) {
+      canvasAction("add-card", "Add card", ["new card", "text"]);
+      canvasAction("add-note", "Add note from wiki", ["note", "file"]);
+      canvasAction("add-media", "Add media from wiki", ["image", "media"]);
+      canvasAction("add-web-page", "Add web page", ["link", "url"]);
+      canvasAction("create-group", "Create group", ["group"]);
+      canvasAction("convert-to-file", "Convert to file", ["convert", "note"]);
+      canvasAction("select-all", "Select all", ["select"]);
+      canvasAction("undo", "Undo", []);
+      canvasAction("redo", "Redo", []);
+    }
   }
 
   if (projects.length > 0) {
