@@ -6,6 +6,7 @@ import {
   type CanvasBoardHandle,
   type CanvasBoardHost,
 } from "@mercurian/wiki-editor/canvas-board";
+import { canvasFileKind } from "@mercurian/wiki-editor/canvas-geometry";
 import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
@@ -147,10 +148,11 @@ function CanvasBoardPane({
     liveLinks: true,
     onOpenUrl: openUrl,
     onOpenCode: openCode,
-    // A link names a document; any other file opens as a file.
+    // A bare name is a note's. Anything with a file's extension that's no document opens as a file.
     onOpenLink: (name) => {
-      if (/\.[a-z0-9]+$/i.test(name) && wikiDocumentName(name) === null) openFile(name);
-      else openNote(name);
+      const document = canvasFileKind(name) === "other" ? name : wikiDocumentName(name);
+      if (document === null) openFile(name);
+      else openNote(document);
     },
     isResolved: (name) => known === null || known.has(noteKey(name)),
     readFiles,

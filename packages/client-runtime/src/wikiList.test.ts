@@ -120,4 +120,28 @@ describe("wikiListEntries", () => {
       ),
     ).toEqual(["Projects.base"]);
   });
+
+  it("lists a wiki's canvases, named by their file, with their links", () => {
+    const overview: WikiOverview = {
+      environmentId,
+      wiki: wiki("c", "Plans"),
+      index: {
+        ...index([]),
+        canvases: [{ file: "Board.canvas", outgoing: 2, incoming: 1 }],
+      } as unknown as WikiIndexResult,
+      changeRequests: [],
+    };
+    const { documents } = wikiListEntries([overview], null);
+    expect(documents).toMatchObject([
+      {
+        name: "Board.canvas",
+        title: "Board",
+        file: "Board.canvas",
+        canvas: true,
+        base: false,
+        links: 2,
+        backlinks: 1,
+      },
+    ]);
+  });
 });

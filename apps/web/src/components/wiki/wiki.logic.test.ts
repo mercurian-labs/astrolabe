@@ -10,6 +10,7 @@ import {
   latestAmendmentFor,
   mapTilesFor,
   mergeBlockedReason,
+  wikiDocumentName,
   parseWikiSearch,
   queuedSaveStep,
   summarizeMirror,
@@ -178,5 +179,15 @@ describe("mapTilesFor", () => {
   it("uses a background's dark tiles in dark mode, or its light ones without any", () => {
     expect(mapTilesFor({}, [terrain], null, true)).toEqual(["https://a/dark"]);
     expect(mapTilesFor({}, [satellite], null, true)).toEqual(["https://b/light"]);
+  });
+});
+
+describe("wikiDocumentName", () => {
+  it("names a canvas by its file, at any depth, and a note only at the top", () => {
+    expect(wikiDocumentName("Board.canvas")).toBe("Board.canvas");
+    expect(wikiDocumentName("plans/Board.canvas")).toBe("plans/Board.canvas");
+    expect(wikiDocumentName("Note.md")).toBe("Note");
+    expect(wikiDocumentName("plans/Note.md")).toBeNull();
+    expect(wikiDocumentName("pic.png")).toBeNull();
   });
 });

@@ -777,7 +777,7 @@ export function CanvasBoard({
             const card = (event.target as Element).closest(".cv-card-label");
             const id = card?.closest("[data-card-id]")?.getAttribute("data-card-id");
             const node = id ? layout.byId.get(id) : undefined;
-            if (node?.type === "file") host.onOpenLink?.(node.file.replace(/\.md$/i, ""));
+            if (node?.type === "file") host.onOpenLink?.(node.file);
           },
           onKeyDown,
         }
