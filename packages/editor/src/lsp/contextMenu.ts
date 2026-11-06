@@ -10,6 +10,8 @@ import {
   goToDefinition,
   goToImplementation,
   goToTypeDefinition,
+  showIncomingCalls,
+  showOutgoingCalls,
 } from "./navigation.ts";
 import { renameSymbol } from "./rename.ts";
 
@@ -64,6 +66,8 @@ const LANGUAGE: readonly Item[] = [
   ask("Go to Type Definition", "typeDefinitionProvider", goToTypeDefinition),
   ask("Go to Implementation", "implementationProvider", goToImplementation),
   ask("Find All References", "referencesProvider", findReferences),
+  ask("Show Incoming Calls", "callHierarchyProvider", showIncomingCalls),
+  ask("Show Outgoing Calls", "callHierarchyProvider", showOutgoingCalls),
   { ...ask("Rename Symbol…", "renameProvider", renameSymbol, true), separatorBefore: true },
   ask("Code Actions…", "codeActionProvider", showCodeActions, true),
   {

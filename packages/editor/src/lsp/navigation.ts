@@ -37,8 +37,10 @@ export interface NavigationHost {
     view: EditorView,
     title: string,
     locations: readonly NavigationLocation[],
-    kind: GoToKind | "references",
+    kind: PlacesKind,
   ) => void;
+  /** Says a call hierarchy found nothing, which `title` names. */
+  readonly nothing: (title: string) => void;
 }
 
 const navigationHost = Facet.define<NavigationHost, NavigationHost | null>({
@@ -46,6 +48,11 @@ const navigationHost = Facet.define<NavigationHost, NavigationHost | null>({
 });
 
 export type GoToKind = "definition" | "declaration" | "typeDefinition" | "implementation";
+
+export type CallDirection = "incoming" | "outgoing";
+
+/** What a list of places is. */
+export type PlacesKind = GoToKind | "references" | CallDirection;
 
 const REQUESTS: Readonly<
   Record<
@@ -195,6 +202,47 @@ function ask(view: EditorView, kind: GoToKind | "references"): boolean {
   return true;
 }
 
+interface CallItem {
+  readonly name: string;
+}
+
+/** One level of calls to or from the symbol at the cursor, always as a list under a heading. */
+function calls(view: EditorView, direction: CallDirection): boolean {
+  const plugin = LSPPlugin.get(view);
+  const capabilities = plugin?.client.serverCapabilities;
+  if (!plugin || (capabilities && !capabilities.callHierarchyProvider)) return false;
+  plugin.client.sync();
+  const head = view.state.selection.main.head;
+  const host = view.state.facet(navigationHost);
+  const label = direction === "incoming" ? "Incoming calls" : "Outgoing calls";
+  void plugin.client.withMapping(async (mapping) => {
+    try {
+      const items = await plugin.client.request<object, readonly CallItem[] | null>(
+        "textDocument/prepareCallHierarchy",
+        { textDocument: { uri: plugin.uri }, position: plugin.toPosition(head) },
+      );
+      const item = items?.[0];
+      const word = view.state.wordAt(head);
+      const name = item?.name ?? (word ? view.state.sliceDoc(word.from, word.to) : "");
+      const title = name ? `${label} of ${name}` : label;
+      const answer = item
+        ? await plugin.client.request<object, LspAnswer>(`callHierarchy/${direction}Calls`, {
+            item,
+          })
+        : null;
+      const places = placesOf(answer, plugin, mapping);
+      if (places.length === 0) host?.nothing(title);
+      else host?.pick(view, title, places, direction);
+    } catch (error) {
+      plugin.reportError(`${label} failed`, error);
+    }
+  });
+  return true;
+}
+
+export const showIncomingCalls: Command = (view) => calls(view, "incoming");
+export const showOutgoingCalls: Command = (view) => calls(view, "outgoing");
+
 export const goToDefinition: Command = (view) => ask(view, "definition");
 export const goToDeclaration: Command = (view) => ask(view, "declaration");
 export const goToTypeDefinition: Command = (view) => ask(view, "typeDefinition");
@@ -228,6 +276,8 @@ export interface NavigationKeys {
   readonly typeDefinition: readonly string[];
   readonly implementation: readonly string[];
   readonly references: readonly string[];
+  readonly incomingCalls: readonly string[];
+  readonly outgoingCalls: readonly string[];
 }
 
 const COMMANDS: Readonly<Record<keyof NavigationKeys, Command>> = {
@@ -236,9 +286,11 @@ const COMMANDS: Readonly<Record<keyof NavigationKeys, Command>> = {
   typeDefinition: goToTypeDefinition,
   implementation: goToImplementation,
   references: findReferences,
+  incomingCalls: showIncomingCalls,
+  outgoingCalls: showOutgoingCalls,
 };
 
-/** Navigation by key, Mod-click and Vim's `gd` `gD` `gy` `gI` `gr`, opening through `host`. */
+/** Navigation by key, Mod-click and Vim's `gd` `gD` `gy` `gI` `gr` `gh` `gH`, through `host`. */
 export function environmentNavigation(options: {
   readonly keys: NavigationKeys;
   readonly host: NavigationHost;

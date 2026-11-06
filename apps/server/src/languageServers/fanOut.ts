@@ -35,6 +35,7 @@ export const ROUTES: ReadonlyMap<string, Route> = new Map([
   ["textDocument/inlayHint", first("inlayHintProvider")],
   ["textDocument/documentHighlight", first("documentHighlightProvider")],
   ["textDocument/linkedEditingRange", first("linkedEditingRangeProvider")],
+  ["textDocument/prepareCallHierarchy", first("callHierarchyProvider")],
   ["textDocument/semanticTokens/full", first("semanticTokensProvider")],
   ["textDocument/semanticTokens/full/delta", first("semanticTokensProvider")],
   ["textDocument/completion", { capability: "completionProvider", fan: "all" }],
@@ -102,13 +103,48 @@ export const tagCompletions = (list: Json, origin: CompletionOrigin): Json => {
 };
 
 /** The item as its server gave it, and who that was; null for an item no list here made. */
-export const originOf = (
+const originOf = (
   item: Json,
 ): { readonly origin: CompletionOrigin; readonly item: Json } | null => {
   const origin = item?.data?.[ORIGIN];
   if (typeof origin?.server !== "string" || typeof origin?.path !== "string") return null;
   return { origin, item: { ...item, data: item.data.data } };
 };
+
+export const CALL_METHODS = new Set(["callHierarchy/incomingCalls", "callHierarchy/outgoingCalls"]);
+
+/**
+ * A request that hands an item back, which names neither file nor server: who made it, and the
+ * params as that server should see them. Null for any other request, or an item not made here.
+ */
+export const handedBack = (
+  method: string,
+  params: Json,
+): { readonly origin: CompletionOrigin; readonly params: Json } | null => {
+  if (method === "completionItem/resolve") {
+    const found = originOf(params);
+    return found && { origin: found.origin, params: found.item };
+  }
+  if (CALL_METHODS.has(method)) {
+    const found = originOf(params?.item);
+    return found && { origin: found.origin, params: { ...params, item: found.item } };
+  }
+  return null;
+};
+
+/** Whether a server with `capabilities` answers a request that hands an item back. */
+export const answersHandedBack = (method: string, capabilities: Json) =>
+  method === "completionItem/resolve"
+    ? capabilities?.completionProvider?.resolveProvider === true
+    : Boolean(capabilities?.callHierarchyProvider);
+
+/** A call hierarchy's answer as locations: the calls to a symbol, or the symbols it calls. */
+export const callLocations = (method: string, calls: Json): Array<Json> =>
+  (Array.isArray(calls) ? calls : []).flatMap((call: Json) =>
+    method === "callHierarchy/incomingCalls"
+      ? (call?.fromRanges ?? []).map((range: Json) => ({ uri: call.from?.uri, range }))
+      : [{ uri: call?.to?.uri, range: call?.to?.selectionRange }],
+  );
 
 /** Items with their list's defaults written out, for a list that keeps no defaults of its own. */
 const expanded = (list: Json): Array<Json> => {

@@ -22,9 +22,9 @@ import { semanticTokens } from "@mercurian/editor/lsp/semantic-tokens";
 import { symbolHighlights } from "@mercurian/editor/lsp/symbol-highlights";
 import {
   environmentNavigation,
-  type GoToKind,
   type NavigationHost,
   type NavigationLocation,
+  type PlacesKind,
 } from "@mercurian/editor/lsp/navigation";
 import {
   environmentRename,
@@ -280,7 +280,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
       view: EditorView,
       title: string,
       locations: readonly NavigationLocation[],
-      kind: GoToKind | "references",
+      kind: PlacesKind,
     ) => {
       const list = navigationList(kind, title, locations, (uri) => pathOfUri(uri, cwd));
       // A places tab is a project's; a wiki's file picks from a list instead.
@@ -296,6 +296,11 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
   const [navigation] = useState<NavigationHost>(() => ({
     open: openLocation,
     pick: pickLocation,
+    nothing: (title) =>
+      toastManager.add({
+        type: "info",
+        title: `No ${title.charAt(0).toLowerCase()}${title.slice(1)}`,
+      }),
   }));
   const showGraph = useStableCallback(() => {
     if ("projectId" in tab) panes.update((arrangement) => openLocalGraph(arrangement, tab));
@@ -862,6 +867,8 @@ function languageServerUi(
         typeDefinition: keys["lsp.typeDefinition"],
         implementation: keys["lsp.implementation"],
         references: keys["lsp.references"],
+        incomingCalls: keys["lsp.incomingCalls"],
+        outgoingCalls: keys["lsp.outgoingCalls"],
       },
       host: hosts.navigation,
     }),

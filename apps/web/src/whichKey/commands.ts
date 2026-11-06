@@ -24,6 +24,8 @@ import {
   goToDefinition,
   goToImplementation,
   goToTypeDefinition,
+  showIncomingCalls,
+  showOutgoingCalls,
 } from "@mercurian/editor/lsp/navigation";
 import { renameSymbol } from "@mercurian/editor/lsp/rename";
 import { formatCode } from "@mercurian/editor/lsp/format";
@@ -515,6 +517,10 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Go to implementation", goToImplementation);
     case "lsp.references":
       return lspEntry(context.origin, "Find references", findReferences);
+    case "lsp.incomingCalls":
+      return lspEntry(context.origin, "Show incoming calls", showIncomingCalls);
+    case "lsp.outgoingCalls":
+      return lspEntry(context.origin, "Show outgoing calls", showOutgoingCalls);
     case "lsp.rename":
       return lspEntry(context.origin, "Rename symbol", renameSymbol);
     case "lsp.format":

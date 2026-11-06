@@ -86,6 +86,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e g t", command: "lsp.typeDefinition" },
   { key: "menu e g i", command: "lsp.implementation" },
   { key: "menu e g r", command: "lsp.references" },
+  { key: "menu e g h", command: "lsp.incomingCalls" },
+  { key: "menu e g H", command: "lsp.outgoingCalls" },
   { key: "menu e e", command: "lsp.rename" },
   { key: "menu e z", command: "lsp.undoRename" },
   { key: "menu e =", command: "lsp.format" },

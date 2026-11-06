@@ -146,6 +146,7 @@ const handle = (message) => {
           inlayHintProvider: true,
           documentHighlightProvider: true,
           linkedEditingRangeProvider: true,
+          callHierarchyProvider: true,
           semanticTokensProvider: {
             legend: { tokenTypes: ["variable"], tokenModifiers: [] },
             full: { delta: true },
@@ -347,6 +348,46 @@ const handle = (message) => {
         return token;
       });
       return reply({ resultId: "1", data });
+    }
+    case "textDocument/prepareCallHierarchy": {
+      const { text } = docs.get(params.textDocument.uri);
+      const found = wordAt(text, offsetOf(text, params.position));
+      const range = rangeOf(text, found.from, found.to);
+      return reply([
+        {
+          name: found.word,
+          kind: 12,
+          uri: params.textDocument.uri,
+          range,
+          selectionRange: range,
+          data: { server: role ?? "primary" },
+        },
+      ]);
+    }
+    case "callHierarchy/incomingCalls": {
+      // Every use of the word is a call; the item must come back as it went out.
+      const { uri, name, data } = params.item;
+      const { text } = docs.get(uri);
+      const range = rangeOf(text, 0, 0);
+      return reply([
+        {
+          from: { name: data.server, kind: 2, uri, range, selectionRange: range },
+          fromRanges: occurrences(text, name).map((offset) =>
+            rangeOf(text, offset, offset + name.length),
+          ),
+        },
+      ]);
+    }
+    case "callHierarchy/outgoingCalls": {
+      const { uri, data } = params.item;
+      const { text } = docs.get(uri);
+      const range = rangeOf(text, 0, data.server.length);
+      return reply([
+        {
+          to: { name: data.server, kind: 12, uri, range, selectionRange: range },
+          fromRanges: [range],
+        },
+      ]);
     }
     case "test/refresh": {
       const askId = `fake-${++askedCount}`;

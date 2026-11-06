@@ -14,7 +14,9 @@ export type LspVimAction =
   | "declaration"
   | "typeDefinition"
   | "implementation"
-  | "references";
+  | "references"
+  | "incomingCalls"
+  | "outgoingCalls";
 
 const VIM_KEYS: Readonly<Record<LspVimAction, string>> = {
   hover: "K",
@@ -23,6 +25,8 @@ const VIM_KEYS: Readonly<Record<LspVimAction, string>> = {
   typeDefinition: "gy",
   implementation: "gI",
   references: "gr",
+  incomingCalls: "gh",
+  outgoingCalls: "gH",
 };
 
 const actions = Facet.define<Partial<Record<LspVimAction, Command>>>();

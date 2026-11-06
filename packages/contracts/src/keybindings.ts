@@ -67,6 +67,8 @@ export const LSP_KEYBINDING_COMMANDS = [
   "lsp.typeDefinition",
   "lsp.implementation",
   "lsp.references",
+  "lsp.incomingCalls",
+  "lsp.outgoingCalls",
   "lsp.rename",
   "lsp.undoRename",
   "lsp.format",

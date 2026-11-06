@@ -1584,6 +1584,35 @@ describe("LanguageServers with companions on a file", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
   );
 
+  it.live("walks a call hierarchy on the server that prepared it, as places with their lines", () =>
+    Effect.gen(function* () {
+      const { checkout, session } = yield* openWithCompanions(SOURCE, {
+        without: ["callHierarchyProvider"],
+        roles: { eslint: { without: [] }, tailwindcss: { without: ["callHierarchyProvider"] } },
+      });
+      const editor = yield* openEditor(checkout, "editor-a");
+      const prepared = yield* session.request(
+        1,
+        "textDocument/prepareCallHierarchy",
+        { textDocument: { uri: checkout.uri }, position: editor.position("point", 1) },
+        editor.envelope(),
+      );
+      expect(prepared.result[0].name).toBe("point");
+      const incoming = yield* session.request(2, "callHierarchy/incomingCalls", {
+        item: prepared.result[0],
+      });
+      expect(incoming.result.map((place: any) => place["astrolabe/preview"])).toEqual([
+        "const point = makePoint(1, 2);",
+        "export const label = point;",
+      ]);
+      const outgoing = yield* session.request(3, "callHierarchy/outgoingCalls", {
+        item: prepared.result[0],
+      });
+      expect(outgoing.result).toHaveLength(1);
+      expect(outgoing.result[0].range.end.character).toBe("eslint".length);
+    }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth }))),
+  );
+
   it.live("merges completions and resolves each item on the server that made it", () =>
     Effect.gen(function* () {
       const { checkout, session } = yield* openWithCompanions(SOURCE, {

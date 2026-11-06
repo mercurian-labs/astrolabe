@@ -58,12 +58,15 @@ import * as ServerConfig from "../config.ts";
 import * as Documents from "../documents/Documents.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import {
+  answersHandedBack,
+  CALL_METHODS,
+  callLocations,
   FORMATTING_METHODS,
+  handedBack,
   hasContent,
   hearsCompletion,
   mergeCapabilities,
   mergeCompletions,
-  originOf,
   ROUTES,
   tagCompletions,
 } from "./fanOut.ts";
@@ -485,6 +488,7 @@ const CLIENT_CAPABILITIES = {
     inlayHint: {},
     documentHighlight: {},
     linkedEditingRange: {},
+    callHierarchy: {},
     semanticTokens: {
       requests: { full: { delta: true } },
       tokenTypes: [
@@ -2395,8 +2399,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     yield* Deferred.await(primary.ready);
     const method: string = message.method;
     const clientUri = message.params?.textDocument?.uri;
-    const resolving = method === "completionItem/resolve" ? originOf(message.params) : null;
-    const params = resolving?.item ?? message.params;
+    const resolving = handedBack(method, message.params);
+    const params = resolving?.params ?? message.params;
     const relativePath = resolving?.origin.path ?? relativePathOf(primary, clientUri);
     const doc = relativePath === null ? undefined : primary.docs.get(relativePath);
     if (doc !== undefined && relativePath !== null && state !== undefined) {
@@ -2481,6 +2485,16 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           ),
         );
       }
+      if (CALL_METHODS.has(method)) {
+        // In the environment's text, which is what a multi-file view shows.
+        const uris = toSessionUris(asked.instance, session, callLocations(method, result));
+        return { result: yield* withPreviews(asked.instance, uris, undefined) };
+      }
+      if (method === "textDocument/prepareCallHierarchy") {
+        // The editor hands an item back as it came, so nothing in it is translated.
+        const origin = { server: asked.instance.spec.id, path: relativePath ?? "" };
+        return { result: tagCompletions({ items: result ?? [] }, origin).items };
+      }
       const answer = mapped(asked, result);
       if ("error" in answer) return answer;
       if (resolving !== null) {
@@ -2494,8 +2508,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
 
     if (resolving !== null) {
       const origin = instances.get(`${primary.cwd}\0${resolving.origin.server}`);
-      if (!origin?.running?.capabilities?.completionProvider?.resolveProvider) {
-        return { result: message.params };
+      if (!origin || !answersHandedBack(method, origin.running?.capabilities)) {
+        return { result: CALL_METHODS.has(method) ? [] : message.params };
       }
       const asked = ask(origin);
       if ("error" in asked) return asked;
