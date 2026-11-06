@@ -64,6 +64,16 @@ describe("the page's messages", () => {
     });
   });
 
+  it("keeps a review's marks, and takes a board with broken marks without them", () => {
+    const data = { nodes: [], edges: [] };
+    const marks = { cards: { a: "added" }, arrows: {} };
+    expect(parseWikiEditorCommand({ type: "showCanvas", data, marks })).toMatchObject({ marks });
+    expect(parseWikiEditorCommand({ type: "showCanvas", data, marks: { cards: 1 } })).toEqual({
+      type: "showCanvas",
+      data,
+    });
+  });
+
   it("reads a board's camera, null while it fits, and refuses a malformed read", () => {
     const event = (value: unknown) => parseWikiEditorEvent(JSON.stringify(value));
     expect(event({ type: "camera", camera: { x: 1, y: 2, zoom: 1 } })).toEqual({

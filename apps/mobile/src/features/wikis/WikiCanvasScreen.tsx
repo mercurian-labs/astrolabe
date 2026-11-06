@@ -1,4 +1,4 @@
-import { canvasGroups, parseCanvas } from "@mercurian/wiki/canvas";
+import { canvasGroups, parseCanvas, type CanvasReview } from "@mercurian/wiki/canvas";
 import {
   canvasFileKind,
   cardFileName,
@@ -42,6 +42,7 @@ import { useEditorTheme } from "./document/useEditorTheme";
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
+import { WikiCanvasChanges } from "./WikiCanvasChanges";
 import type { WikiDocumentParams } from "./wikiRoutes";
 
 const QUIET_READ = { reportFailure: false, reportDefect: false };
@@ -70,8 +71,15 @@ function previewKind(path: string): FilePreviewSource["kind"] | null {
  * A `.canvas` file on its own, read at the commit the wiki stands at and refreshed per commit with
  * the camera kept. The editor page draws the board; this screen reads for it: visible cards' files
  * in batches, their addresses, and bases. What a card opens goes on top, read from the same place.
+ * With `review`, a change request's board with marks takes its place, its cards read at that head.
  */
-export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentParams }) {
+export function WikiCanvasScreen({
+  params,
+  review,
+}: {
+  readonly params: WikiDocumentParams;
+  readonly review?: { readonly board: CanvasReview; readonly commit: string };
+}) {
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
@@ -98,9 +106,10 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
 
   const read = query.data?.files[0];
   const text = read?.text ?? null;
-  const commit = query.data?.commit ?? null;
+  const commit = review?.commit ?? query.data?.commit ?? null;
   const parsed = useMemo(() => (text === null ? null : parseCanvas(text)), [text]);
-  const data = parsed?.ok ? parsed.data : null;
+  const data = review?.board.data ?? (parsed?.ok ? parsed.data : null);
+  const marks = review?.board.marks;
   const groups = useMemo(() => (data === null ? [] : canvasGroups(data)), [data]);
   const names = useMemo(
     () => (index.data === null ? null : wikiDocumentNames(index.data)),
@@ -113,10 +122,10 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
   // Until the page first asks, what it would be sent is in `initialCommands`: a board is one
   // large message, so it isn't sent twice.
   const pageAsked = useRef(false);
-  const shown = useRef({ theme, data, commit, names });
+  const shown = useRef({ theme, data, commit, names, marks });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a reloaded web view reads the latest board, commit and names
   useLayoutEffect(() => {
-    shown.current = { theme, data, commit, names };
+    shown.current = { theme, data, commit, names, marks };
   });
   const initialCommands = useCallback((): WikiEditorCommand[] => {
     pageAsked.current = true;
@@ -134,6 +143,7 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
               data: current.data,
               revision: current.commit,
               camera: camera.current,
+              marks: current.marks,
             },
           ]),
     ];
@@ -152,7 +162,8 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
   useEffect(() => {
     const revision = shown.current.commit;
     if (data === null || revision === null || !pageAsked.current) return;
-    editor.current?.send({ type: "showCanvas", data, revision, camera: camera.current });
+    const { marks } = shown.current;
+    editor.current?.send({ type: "showCanvas", data, revision, camera: camera.current, marks });
   }, [data]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new commit crosses into the web view, outside React
   useEffect(() => {
@@ -319,7 +330,7 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
       readsChangeRequest: changeRequestId !== undefined,
       agentWorking: false,
     }),
-    "Canvas · read only",
+    review === undefined ? "Canvas · read only" : "Canvas · changes",
   ].join(" · ");
   const header = (
     <NativeStackScreenOptions
@@ -329,6 +340,24 @@ export function WikiCanvasScreen({ params }: { readonly params: WikiDocumentPara
   );
 
   const body = () => {
+    if (review !== undefined) {
+      return (
+        <>
+          <View className="flex-1">
+            <WikiEditorWebView
+              ref={editor}
+              onEvent={onEvent}
+              initialCommands={initialCommands}
+              fixed
+            />
+          </View>
+          <WikiCanvasChanges
+            review={review.board}
+            onPick={(id) => editor.current?.send({ type: "focusCard", id, select: true })}
+          />
+        </>
+      );
+    }
     if (query.data === null) {
       return query.error !== null ? (
         <EmptyState title={`Couldn't open ${title}`} detail={query.error} />

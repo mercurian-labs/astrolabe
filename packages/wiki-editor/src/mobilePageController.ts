@@ -1,4 +1,4 @@
-import type { CanvasData } from "@mercurian/wiki/canvas";
+import type { CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
 
 import type { CanvasBoardHandle } from "./CanvasBoard";
 import type { CanvasCamera } from "./canvasGeometry";
@@ -33,6 +33,8 @@ export interface WikiEditorPageState {
   readonly baseEditable: boolean;
   /** The canvas the page shows alone, in place of the note and any base. */
   readonly canvas: CanvasData | null;
+  /** What a review marks on the board. */
+  readonly marks: CanvasMarks | null;
   /** The commit a wiki's board reads at; null for a thread's, which reads nothing. */
   readonly revision: string | null;
   /** Where the board opens; null fits it. */
@@ -56,6 +58,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     base: null,
     baseEditable: false,
     canvas: null,
+    marks: null,
     revision: null,
     camera: null,
     knownDocuments: null,
@@ -235,6 +238,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
       case "showCanvas":
         setState({
           canvas: command.data,
+          marks: command.marks ?? null,
           revision: command.revision ?? null,
           camera: command.camera ?? null,
         });
@@ -243,7 +247,8 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         setState({ revision: command.revision });
         return;
       case "focusCard":
-        board?.focusCard(command.id);
+        if (command.select) board?.selectCard(command.id);
+        else board?.focusCard(command.id);
         return;
       case "knownDocuments":
         setState({ knownDocuments: new Set(command.names.map(documentKey)) });

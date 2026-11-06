@@ -298,10 +298,13 @@ describe("the wiki editor protocol", () => {
     it("hands Jump to group to the board on screen", () => {
       const { page: editor } = page();
       const focusCard = vi.fn();
+      const selectCard = vi.fn();
       editor.handle({ type: "focusCard", id: "before" });
-      editor.setBoard({ focusCard });
+      editor.setBoard({ focusCard, selectCard });
       editor.handle({ type: "focusCard", id: "group" });
       expect(focusCard.mock.calls).toEqual([["group"]]);
+      editor.handle({ type: "focusCard", id: "changed", select: true });
+      expect(selectCard.mock.calls).toEqual([["changed"]]);
     });
 
     it("compares known documents as the wiki compares names", () => {

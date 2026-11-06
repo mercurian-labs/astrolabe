@@ -4,7 +4,7 @@
  * page edits it and says what the person did. Plain data both ways, as JSON.
  */
 
-import type { CanvasCodeReference, CanvasData } from "@mercurian/wiki/canvas";
+import type { CanvasCodeReference, CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
 
 import type { BaseCellValue } from "./baseCells";
 import type { CanvasCamera } from "./canvasGeometry";
@@ -155,11 +155,13 @@ export type WikiEditorCommand =
       readonly revision?: string | undefined;
       /** Where a page that had to load again left off; null fits the board. */
       readonly camera?: CanvasCamera | null | undefined;
+      /** What a review marks on it. */
+      readonly marks?: CanvasMarks | undefined;
     }
   /** The wiki moved on and the board's own file didn't: cards read at this commit from now on. */
   | { readonly type: "canvasRevision"; readonly revision: string }
-  /** Brings a card or group into view, as Jump to group does. */
-  | { readonly type: "focusCard"; readonly id: string }
+  /** Brings a card or group into view, as Jump to group does; a review's list selects it too. */
+  | { readonly type: "focusCard"; readonly id: string; readonly select?: boolean | undefined }
   /** The documents the wiki holds; a link to anything else reads as unwritten. */
   | { readonly type: "knownDocuments"; readonly names: ReadonlyArray<string> }
   /** Part of the answer to `readFiles`: `files[0]` answers `paths[start]` of `total`. */
@@ -459,7 +461,7 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         : null;
     case "showCanvas": {
       // The app's own page: the board is placed by the app, and checked only far enough to draw.
-      const { data } = value;
+      const { data, marks } = value;
       const camera = readCamera(value.camera);
       return isRecord(data) && Array.isArray(data.nodes) && Array.isArray(data.edges)
         ? {
@@ -467,6 +469,9 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
             data: data as unknown as CanvasData,
             ...(typeof value.revision === "string" ? { revision: value.revision } : {}),
             ...(camera === null ? {} : { camera }),
+            ...(isRecord(marks) && isRecord(marks.cards) && isRecord(marks.arrows)
+              ? { marks: marks as unknown as CanvasMarks }
+              : {}),
           }
         : null;
     }
@@ -475,7 +480,9 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         ? { type: "canvasRevision", revision: value.revision }
         : null;
     case "focusCard":
-      return typeof value.id === "string" ? { type: "focusCard", id: value.id } : null;
+      return typeof value.id === "string"
+        ? { type: "focusCard", id: value.id, select: value.select === true }
+        : null;
     case "knownDocuments":
       return isStringArray(value.names) ? { type: "knownDocuments", names: value.names } : null;
     case "filesRead":

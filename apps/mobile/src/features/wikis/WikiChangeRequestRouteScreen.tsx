@@ -6,10 +6,13 @@ import {
 import {
   describeIndexError,
   describeWikiFailure,
+  isCanvasName,
   mergeBlockedReason,
+  mergeConflictAdvice,
   documentTitle,
   noteNameOfFile,
 } from "@t3tools/client-runtime/wikiLogic";
+import { canvasChangeSummary, reviewCanvasFiles } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   changeRequestPullRequests,
@@ -27,7 +30,7 @@ import type {
   WikiMergePreview,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -52,11 +55,17 @@ const newestFirst = <T,>(items: ReadonlyArray<T>): T[] =>
   items.map((_, index) => items[items.length - 1 - index]!);
 
 /** Runs a wiki command; resolves to its failure's message, or null on success. */
-function useWikiAction<W, A, E>(command: Parameters<typeof useAtomCommand<A, E, W>>[0]) {
+function useWikiAction<W, A, E>(
+  command: Parameters<typeof useAtomCommand<A, E, W>>[0],
+  onSuccess?: (value: A) => void,
+) {
   const run = useAtomCommand(command, { reportFailure: false });
   return async (value: W): Promise<string | null> => {
     const result = await run(value);
-    if (result._tag === "Success") return null;
+    if (result._tag === "Success") {
+      onSuccess?.(result.value);
+      return null;
+    }
     if (isAtomCommandInterrupted(result)) return null;
     return describeWikiFailure(squashAtomCommandFailure(result));
   };
@@ -138,13 +147,20 @@ export function WikiChangeRequestRouteScreen({
 
   const openDocument = (change: WikiFileChange) =>
     navigation.dispatch(
-      StackActions.push("WikiDocument", {
-        environmentId: route.params.environmentId,
-        wikiId: route.params.wikiId,
-        name: noteNameOfFile(change.file),
-        // A merged or closed change request's documents are read from main.
-        ...(open ? { changeRequestId: route.params.changeRequestId } : {}),
-      }),
+      isCanvasName(change.file)
+        ? StackActions.push("WikiCanvasReview", {
+            environmentId: route.params.environmentId,
+            wikiId: route.params.wikiId,
+            changeRequestId: route.params.changeRequestId,
+            name: change.file,
+          })
+        : StackActions.push("WikiDocument", {
+            environmentId: route.params.environmentId,
+            wikiId: route.params.wikiId,
+            name: noteNameOfFile(change.file),
+            // A merged or closed change request's documents are read from main.
+            ...(open ? { changeRequestId: route.params.changeRequestId } : {}),
+          }),
     );
 
   return (
@@ -300,20 +316,14 @@ export function WikiChangeRequestRouteScreen({
                 <Pressable
                   key={change.file}
                   accessibilityRole="button"
-                  disabled={change.after === null}
+                  disabled={change.after === null && !isCanvasName(change.file)}
                   onPress={() => openDocument(change)}
                   className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
                 >
                   <Text className="flex-1 text-base text-foreground" numberOfLines={1}>
                     {documentTitle(noteNameOfFile(change.file))}
                   </Text>
-                  <Text className="text-sm text-foreground-muted">
-                    {change.before === null
-                      ? "Added"
-                      : change.after === null
-                        ? "Deleted"
-                        : "Changed"}
-                  </Text>
+                  <FileChangeLabel change={change} />
                 </Pressable>
               ))}
             </View>
@@ -422,12 +432,35 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
       </Text>
       {preview.status === "conflict" ? (
         <Text className="text-sm text-foreground-muted">
-          {preview.conflicts.length > 0
-            ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this change request to settle them, then merge.`
-            : "Amend this change request to settle the conflict, then merge."}
+          {mergeConflictAdvice(preview.conflicts, "phone")}
         </Text>
       ) : null}
+      {preview.canvases.map(({ file, notes }) => (
+        <View key={file} className="gap-0.5 pt-1">
+          <Text className="text-sm font-t3-medium text-foreground">{documentTitle(file)}</Text>
+          {notes.map((note) => (
+            <Text key={note} className="text-sm text-foreground-muted">
+              {note}
+            </Text>
+          ))}
+        </View>
+      ))}
     </Card>
+  );
+}
+
+/** How much a document changed: for a canvas, what happened to its cards. */
+function FileChangeLabel({ change }: { readonly change: WikiFileChange }) {
+  const { file, before, after } = change;
+  const summary = useMemo(() => {
+    if (!isCanvasName(file)) return null;
+    const review = reviewCanvasFiles(before, after);
+    return "invalid" in review ? null : canvasChangeSummary(review.changes);
+  }, [file, before, after]);
+  return (
+    <Text className="shrink text-sm text-foreground-muted" numberOfLines={1}>
+      {summary ?? (before === null ? "Added" : after === null ? "Deleted" : "Changed")}
+    </Text>
   );
 }
 
@@ -443,7 +476,13 @@ function AmendmentRow(props: {
   const canWrite = useAtomValue(
     wikiEnvironment.revertAmendment.permissionAtom(props.environmentId),
   );
-  const revert = useWikiAction(wikiEnvironment.revertAmendment);
+  const revert = useWikiAction(wikiEnvironment.revertAmendment, ({ canvases = [] }) => {
+    if (canvases.length === 0) return;
+    Dialog.alert(
+      "Reverted, and the canvas was fitted to later work",
+      canvases.flatMap((each) => each.notes).join("\n\n"),
+    );
+  });
   const [busy, setBusy] = useState(false);
   return (
     <View

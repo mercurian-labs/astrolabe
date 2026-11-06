@@ -81,7 +81,10 @@ export function MobileCanvas({
   readonly data: CanvasData;
   readonly post: Post;
 }) {
-  const { revision, camera, knownDocuments } = useSyncExternalStore(page.subscribe, page.getState);
+  const { revision, camera, knownDocuments, marks } = useSyncExternalStore(
+    page.subscribe,
+    page.getState,
+  );
   const { setBoard, reportCamera } = page;
   const host = useMemo((): CanvasBoardHost => {
     const onOpenUrl = (href: string) => post({ type: "openUrl", href });
@@ -129,6 +132,7 @@ export function MobileCanvas({
         revision={revision ?? undefined}
         camera={camera}
         onCamera={reportCamera}
+        {...(marks === null ? {} : { marks })}
       />
     </div>
   );

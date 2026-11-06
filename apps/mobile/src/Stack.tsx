@@ -35,6 +35,7 @@ import {
   PullRequestFileRouteScreen,
 } from "./features/pull-requests/PullRequestRouteScreen";
 import { PullRequestFilesSheet } from "./features/pull-requests/PullRequestFiles";
+import { WikiCanvasReviewRouteScreen } from "./features/wikis/WikiCanvasReviewRouteScreen";
 import { WikiChangeRequestRouteScreen } from "./features/wikis/WikiChangeRequestRouteScreen";
 import { WikiDocumentRouteScreen } from "./features/wikis/WikiDocumentRouteScreen";
 import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
@@ -681,6 +682,11 @@ const RootStackConfig = createWorkspaceStackNavigator({
       screen: WikiChangeRequestRouteScreen,
       linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId",
       options: GLASS_HEADER_OPTIONS,
+    }),
+    WikiCanvasReview: createNativeStackScreen({
+      screen: WikiCanvasReviewRouteScreen,
+      linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId/canvases/:name",
+      options: SOLID_HEADER_OPTIONS,
     }),
     PullRequestGuideStop: createNativeStackScreen({
       screen: PullRequestGuideStopScreen,
