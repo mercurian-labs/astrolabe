@@ -164,8 +164,9 @@
       "includeEntryExports": true,
     },
     "packages/wiki-editor": {
-      // The mobile app's build script bundles the page into the WebView it shows notes in.
-      "entry": ["src/mobilePage.tsx"],
+      // The mobile app's build script bundles the page into the WebView it shows notes in, with
+      // this in place of `pele/lazy`.
+      "entry": ["src/mobilePage.tsx", "src/peleOnDemand.ts"],
     },
     "packages/graph": {
       "includeEntryExports": true,

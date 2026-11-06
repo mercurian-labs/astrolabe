@@ -1,4 +1,6 @@
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import { build } from "vite-plus";
@@ -12,6 +14,78 @@ export const wikiEditorSources = [
   NodePath.join(workspaceRoot, "packages/editor/src"),
   NodePath.join(workspaceRoot, "packages/wiki/src"),
 ];
+
+async function writeIfChanged(root: string, file: string, contents: string) {
+  const destination = NodePath.join(root, file);
+  const previous = await NodeFSP.readFile(destination, "utf8").catch(() => null);
+  if (previous !== contents) await NodeFSP.writeFile(destination, contents);
+}
+
+/**
+ * Each Mermaid diagram type as CommonJS chunks shared between types, which the app injects the
+ * first time the page draws that type (`peleOnDemand.ts`), so no diagram weighs on the page.
+ */
+async function buildDiagramChunks() {
+  const packages = NodeModule.createRequire(
+    NodePath.join(workspaceRoot, "packages/wiki-editor/package.json"),
+  );
+  const diagrams = NodePath.join(
+    NodePath.dirname(packages.resolve("pele/package.json")),
+    "dist/esm/diagrams",
+  );
+  const input = Object.fromEntries(
+    NodeFS.readdirSync(diagrams)
+      .filter((file) => file.endsWith(".js"))
+      .map((file) => [NodePath.basename(file, ".js"), NodePath.join(diagrams, file)]),
+  );
+  const result = await build({
+    configFile: false,
+    logLevel: "silent",
+    mode: "production",
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    build: {
+      write: false,
+      target: "es2022",
+      minify: true,
+      rollupOptions: {
+        input,
+        preserveEntrySignatures: "strict",
+        output: {
+          format: "cjs",
+          exports: "named",
+          entryFileNames: "[name].js",
+          chunkFileNames: "[hash].js",
+        },
+      },
+    },
+  });
+  const outputs = (Array.isArray(result) ? result : [result]).flatMap((bundle) =>
+    "output" in bundle ? bundle.output : [],
+  );
+  const chunks = new Map(
+    outputs.flatMap((output) => (output.type === "chunk" ? [[output.fileName, output]] : [])),
+  );
+  const closure = (file: string, seen = new Set<string>()) => {
+    if (seen.has(file)) return seen;
+    seen.add(file);
+    for (const imported of chunks.get(file)?.imports ?? []) closure(imported, seen);
+    return seen;
+  };
+  return {
+    // A function's text, so the app can send a type's chunks as one script.
+    chunks: Object.fromEntries(
+      [...chunks].map(([file, chunk]) => [
+        file,
+        `function(module,exports,require){${chunk.code}\n}`,
+      ]),
+    ),
+    diagrams: Object.fromEntries(
+      Object.keys(input).map((type) => [type, [...closure(`${type}.js`)]]),
+    ),
+  };
+}
+
+let diagramChunks: Promise<string> | null = null;
 
 /**
  * Builds the wiki editor page (`@mercurian/wiki-editor`'s `mobilePage.tsx`) into one HTML
@@ -38,6 +112,7 @@ export async function generateWikiEditorPage() {
           mobileRoot,
           "scripts/wiki-editor-stubs/codemirror-vim.ts",
         ),
+        "pele/lazy": NodePath.join(workspaceRoot, "packages/wiki-editor/src/peleOnDemand.ts"),
       },
     },
     build: {
@@ -78,13 +153,12 @@ export async function generateWikiEditorPage() {
   ].join("");
   const root = NodePath.join(mobileRoot, ".generated", "wiki-editor");
   await NodeFSP.mkdir(root, { recursive: true });
-  for (const [file, contents] of [
-    ["index.js", `module.exports = ${JSON.stringify(html)};\n`],
-    ["package.json", '{"main":"index.js"}\n'],
-  ] as const) {
-    const destination = NodePath.join(root, file);
-    const previous = await NodeFSP.readFile(destination, "utf8").catch(() => null);
-    if (previous !== contents) await NodeFSP.writeFile(destination, contents);
-  }
+  // Pele only changes with a dependency bump, so a rebuild of the page leaves its chunks alone.
+  diagramChunks ??= buildDiagramChunks().then(
+    (built) => `module.exports = ${JSON.stringify(built)};\n`,
+  );
+  await writeIfChanged(root, "diagrams.js", await diagramChunks);
+  await writeIfChanged(root, "index.js", `module.exports = ${JSON.stringify(html)};\n`);
+  await writeIfChanged(root, "package.json", '{"main":"index.js"}\n');
   return html.length;
 }

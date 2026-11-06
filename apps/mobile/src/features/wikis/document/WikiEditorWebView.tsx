@@ -9,6 +9,8 @@ import wikiEditorPage from "@t3tools/mobile-wiki-editor";
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
+import { diagramScript } from "./wikiEditorDiagrams";
+
 export interface WikiEditorHandle {
   /** Sends a command to the page; held until the page says it is ready. */
   send(command: WikiEditorCommand): void;
@@ -66,6 +68,10 @@ export const WikiEditorWebView = forwardRef<
   const onMessage = (message: WebViewMessageEvent) => {
     const event = parseWikiEditorEvent(message.nativeEvent.data);
     if (!event) return;
+    if (event.type === "loadDiagram") {
+      webView.current?.injectJavaScript(diagramScript(event.diagram));
+      return;
+    }
     if (event.type === "ready") {
       ready.current = true;
       for (const command of latest.current.initialCommands()) inject(command);
