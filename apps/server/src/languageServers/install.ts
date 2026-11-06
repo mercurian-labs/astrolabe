@@ -698,13 +698,26 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     Effect.ignore({ log: "Warn", message: "Could not keep a server's files out of git." }),
   );
 
-  /** The folder every checkout of `cwd`'s repository shares; null for a folder without git. */
+  /**
+   * The folder every checkout of `cwd`'s repository shares; null for a folder without git. Only
+   * the repository's own worktree list counts: a `.git` file can name any repository it likes.
+   */
   const repositoryOf = Effect.fn("LanguageServers.repositoryOf")(function* (cwd: string) {
-    const found = yield* run("git", ["rev-parse", "--git-common-dir"], {
-      cwd,
-      timeout: PROBE_TIMEOUT,
-    });
-    return found === null || found.code !== 0 ? null : path.resolve(cwd, found.output.trim());
+    const options = { cwd, timeout: PROBE_TIMEOUT };
+    const found = yield* run("git", ["rev-parse", "--git-common-dir", "--show-toplevel"], options);
+    if (found === null || found.code !== 0) return null;
+    const [commonDir, topLevel] = found.output.trim().split("\n");
+    if (commonDir === undefined || topLevel === undefined) return null;
+    const listed = yield* run("git", ["worktree", "list", "--porcelain"], options);
+    if (listed === null || listed.code !== 0) return null;
+    const real = (folder: string) =>
+      fileSystem.realPath(folder).pipe(Effect.orElseSucceed(() => folder));
+    const own = yield* real(topLevel);
+    const worktrees = yield* Effect.forEach(
+      listed.output.split("\n").filter((line) => line.startsWith("worktree ")),
+      (line) => real(line.slice("worktree ".length)),
+    );
+    return worktrees.includes(own) ? path.resolve(cwd, commonDir) : null;
   });
 
   return { resolve, download, excludeFromGit, repositoryOf };

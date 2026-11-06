@@ -61,8 +61,8 @@ a project that was already allowed to run code.
 
 - **The key is the repository**, `git rev-parse --git-common-dir`, or the folder without git: a
   worktree is created by whoever owns the repository, and asking again per worktree teaches people
-  to click through. A folder's `.git` file can name another repository, so a checkout unpacked
-  from an archive could claim a trusted one's trust.
+  to click through. A folder's `.git` file can name another repository, so the key holds only when
+  the repository's own worktree list names the folder: an unpacked archive can't claim trust.
 - **Untrusted means nothing of the checkout's runs**, which is more than skipping launches:
   `restrictedSafe` launches skip `projectBinary`, and basedpyright isn't told the checkout's
   interpreter, which it would start to read `sys.path`. A probe runs in the checkout, where

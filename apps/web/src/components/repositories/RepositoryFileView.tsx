@@ -219,7 +219,7 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     !fromDisk && state.status !== "failed",
     { openLogs, openSettings: "projectId" in tab ? openSettings : null },
   );
-  const serverFile = languageServer.file;
+  const serverFile = fromDisk ? null : languageServer.file;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lets commands find this tab's server until unmount
   useEffect(
     () => (serverFile ? registerLanguageServerFile(tabKey, serverFile) : undefined),

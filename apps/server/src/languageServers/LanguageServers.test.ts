@@ -1613,6 +1613,20 @@ describe("LanguageServers project trust", () => {
       expect((yield* service.check(main.cwd)).trusted).toBe(false);
     }).pipe(Effect.scoped, Effect.provide(untrusted)),
   );
+
+  it.live("gives no trust to a folder whose .git file only claims a trusted repository", () =>
+    Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const main = yield* makeCheckout(SOURCE);
+      yield* git(main.cwd, "init", "-q");
+      yield* service.trustProject(main.cwd);
+      const claimant = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-claimant-" });
+      yield* fileSystem.writeFileString(`${claimant}/.git`, `gitdir: ${main.cwd}/.git\n`);
+      expect((yield* service.check(main.cwd)).trusted).toBe(true);
+      expect((yield* service.check(claimant)).trusted).toBe(false);
+    }).pipe(Effect.scoped, Effect.provide(untrusted)),
+  );
 });
 
 /** A server's log subscription: each item, and the lines and trace entries so far. */

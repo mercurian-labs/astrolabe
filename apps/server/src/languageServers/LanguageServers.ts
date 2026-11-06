@@ -556,6 +556,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   const sessions = new Map<string, { readonly instance: Instance; readonly session: Session }>();
   const statuses = yield* SubscriptionRef.make<ReadonlyArray<LanguageServerStatus>>([]);
   const applied = new Map<string, AppliedEdit>();
+  /** Keys of logs whose last reader left within `traceGrace`: a hidden tab comes back to them. */
+  const lingering = new Map<string, number>();
   const logs = new Map<string, ServerLog>();
   let editCount = 0;
   let clock = 0;
@@ -1191,7 +1193,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     yield* stopProcess(instance);
     if (instances.get(instance.key) === instance) instances.delete(instance.key);
     yield* Scope.close(instance.scope, Exit.void);
-    if (instance.log.subscribers.size === 0) logs.delete(instance.key);
+    if (instance.log.subscribers.size === 0 && !lingering.has(instance.key)) {
+      logs.delete(instance.key);
+    }
     instance.log.stateChanged();
     yield* publishList();
   });
@@ -1518,8 +1522,17 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           offer: (event) => void Queue.offerUnsafe(events, event),
         };
         log.subscribers.add(subscriber);
+        // With the subscribe, nothing between: a line lands in one or the other, never both.
+        const snapshot: LanguageServerLogItem = {
+          type: "snapshot",
+          state: { info: infoOf(key), tracing: log.tracing },
+          lines: log.lines(),
+          trace: log.entries(),
+        };
         const endIfUnread = Effect.sync(() => {
-          if (log.subscribers.size > 0) return;
+          lingering.set(key, Math.max(0, (lingering.get(key) ?? 1) - 1));
+          if ((lingering.get(key) ?? 0) === 0) lingering.delete(key);
+          if (log.subscribers.size > 0 || lingering.has(key)) return;
           log.onLastSubscriberGone();
           if (!instances.has(key) && logs.get(key) === log) logs.delete(key);
         });
@@ -1527,17 +1540,12 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
           Effect.suspend(() => {
             log.subscribers.delete(subscriber);
             if (log.subscribers.size > 0) return Effect.void;
+            lingering.set(key, (lingering.get(key) ?? 0) + 1);
             return Duration.isZero(Duration.fromInputUnsafe(options.traceGrace))
               ? endIfUnread
               : fork(Effect.sleep(options.traceGrace).pipe(Effect.andThen(endIfUnread)));
           }),
         );
-        const snapshot: LanguageServerLogItem = {
-          type: "snapshot",
-          state: { info: infoOf(key), tracing: log.tracing },
-          lines: log.lines(),
-          trace: log.entries(),
-        };
         return Stream.concat(
           Stream.succeed(snapshot),
           Stream.fromQueue(events).pipe(
