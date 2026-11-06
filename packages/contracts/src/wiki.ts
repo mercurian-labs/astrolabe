@@ -513,6 +513,8 @@ export const WikiAmendmentSummary = Schema.Struct({
   files: Schema.Array(Schema.String),
   /** The commit this amendment reverts, when it is a revert. */
   reverts: Schema.NullOr(Schema.String),
+  /** The document a person's autosave was editing; later saves of it can replace this one. */
+  autosave: Schema.optional(Schema.String),
 });
 export type WikiAmendmentSummary = typeof WikiAmendmentSummary.Type;
 
@@ -521,6 +523,8 @@ export const WikiChangeRequest = Schema.Struct({
   wikiId: WikiId,
   title: TrimmedNonEmptyString,
   status: WikiChangeRequestStatus,
+  /** A person's autosaved edits, unnamed so far and listed apart. Only its author sees one. */
+  draft: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   branch: Schema.String,
   /** The main-line commit the change request started from. */
   base: Schema.String,
@@ -680,6 +684,53 @@ export const WikiAmendResult = Schema.Struct({
   ),
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
+
+/** What one autosave writes: a note's whole text, or a transform replayed on the head. */
+export const WikiAutosaveWrite = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("text"),
+    file: TrimmedNonEmptyString,
+    text: Schema.String,
+    /** The commit this text last agreed with, so a write from another device isn't overwritten. */
+    readAt: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ kind: Schema.Literal("transform"), transform: WikiTransform }),
+]);
+export type WikiAutosaveWrite = typeof WikiAutosaveWrite.Type;
+
+export const WikiAutosaveInput = Schema.Struct({
+  wikiId: WikiId,
+  /** The change request being edited; without one, the edit lands in the person's draft. */
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  /** The document being edited: what names the amendment, and what later saves replace. */
+  document: TrimmedNonEmptyString,
+  write: WikiAutosaveWrite,
+});
+export type WikiAutosaveInput = typeof WikiAutosaveInput.Type;
+
+export const WikiAutosaveResult = Schema.Struct({
+  /** Where the edit went; null when it changed nothing and no draft existed to hold it. */
+  changeRequest: Schema.NullOr(WikiChangeRequest),
+  /** The commit now holding the document; null as above. */
+  commit: Schema.NullOr(Schema.String),
+});
+export type WikiAutosaveResult = typeof WikiAutosaveResult.Type;
+
+export const WikiDraftPromoteInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: WikiChangeRequestId,
+  title: TrimmedNonEmptyString,
+});
+export type WikiDraftPromoteInput = typeof WikiDraftPromoteInput.Type;
+
+export const WikiDraftMoveInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: WikiChangeRequestId,
+  to: WikiChangeRequestId,
+  /** The files to move; without them, everything the draft changes. */
+  files: Schema.optional(Schema.Array(Schema.String)),
+});
+export type WikiDraftMoveInput = typeof WikiDraftMoveInput.Type;
 
 /** A board drawn in a thread, saved into a wiki as a change request. */
 export const WikiKeepCanvasInput = Schema.Struct({

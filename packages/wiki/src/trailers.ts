@@ -5,6 +5,8 @@ export interface AmendmentTrailers {
   readonly changeRequest?: string;
   readonly thread?: string;
   readonly reverts?: string;
+  /** The document a person's autosave was editing; a later save of it can replace this commit. */
+  readonly autosave?: string;
 }
 
 const oneLine = (text: string): string => text.replace(/[\r\n]+/g, " ").trim();
@@ -17,6 +19,7 @@ export function amendmentMessage(message: string, trailers: AmendmentTrailers): 
   if (trailers.changeRequest) lines.push(`Wiki-Change-Request: ${oneLine(trailers.changeRequest)}`);
   if (trailers.thread) lines.push(`Wiki-Thread: ${oneLine(trailers.thread)}`);
   if (trailers.reverts) lines.push(`Reverts-Amendment: ${oneLine(trailers.reverts)}`);
+  if (trailers.autosave) lines.push(`Wiki-Autosave: ${oneLine(trailers.autosave)}`);
   return `${message.trim()}\n\n${lines.join("\n")}\n`;
 }
 
@@ -27,11 +30,13 @@ export function parseAmendmentTrailers(body: string): AmendmentTrailers | undefi
   const changeRequest = value("Wiki-Change-Request");
   const thread = value("Wiki-Thread");
   const reverts = value("Reverts-Amendment");
+  const autosave = value("Wiki-Autosave");
   return {
     amendment,
     actor: value("Wiki-Actor") ?? value("Memory-Actor") ?? "unknown",
     ...(changeRequest ? { changeRequest } : {}),
     ...(thread ? { thread } : {}),
     ...(reverts ? { reverts } : {}),
+    ...(autosave ? { autosave } : {}),
   };
 }

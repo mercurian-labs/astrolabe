@@ -1641,3 +1641,437 @@ it.effect("saves a worktree's unsaved document edits as one amendment and leaves
     }),
   ),
 );
+
+const noteEdit = (text: string, readAt?: string) => ({
+  document: "Alpha.md",
+  write: {
+    kind: "text" as const,
+    file: "Alpha.md",
+    text,
+    ...(readAt === undefined ? {} : { readAt }),
+  },
+});
+
+const mainAt = (root: string) => git(root, ["rev-parse", "main"]);
+
+it.effect("starts one draft on the first edit, and collects every document in it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const main = yield* mainAt(root);
+
+      const [first, second] = yield* Effect.all(
+        [
+          wikis.autosave({ wikiId, ...noteEdit("# Alpha\n\nEdited.\n") }, WikiService.person),
+          wikis.autosave(
+            {
+              wikiId,
+              document: "Beta.md",
+              write: { kind: "text", file: "Beta.md", text: "# Beta\n\nEdited.\n" },
+            },
+            WikiService.person,
+          ),
+        ],
+        { concurrency: "unbounded" },
+      );
+      assert.equal(first.changeRequest?.changeRequestId, second.changeRequest?.changeRequestId);
+      assert.isTrue(second.changeRequest?.draft);
+      assert.equal(first.changeRequest?.title, "Edit Alpha");
+      assert.equal(yield* mainAt(root), main);
+      assert.equal(yield* read(root, "Alpha.md"), FIXTURE["Alpha.md"]);
+
+      const { changeRequests } = yield* wikis.changeRequestsList({ wikiId }, WikiService.person);
+      assert.equal(changeRequests.length, 1);
+      assert.equal(changeRequests[0]?.amendments.length, 2);
+    }),
+  ),
+);
+
+it.effect("keeps a draft from everyone but its author, and from agents' writes", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const saved = yield* wikis.autosave({ wikiId, ...noteEdit("Mine.\n") }, WikiService.person);
+      const draft = saved.changeRequest!;
+
+      assert.equal((yield* wikis.changeRequestsList({ wikiId })).changeRequests.length, 0);
+      assert.equal(
+        (yield* wikis.changeRequestsList({ wikiId }, agent("t1"))).changeRequests.length,
+        0,
+      );
+      assert.equal((yield* wikis.list).wikis[0]?.openChangeRequests, 0);
+
+      const changes = { "Alpha.md": "An agent's.\n" };
+      const target = { wikiId, message: "Change", changeRequestId: draft.changeRequestId };
+      const refused = yield* failure(wikis.amend({ ...target, changes }, agent("t1")));
+      assert.equal(refused.reason, "invalid");
+      const revert = { wikiId, changeRequestId: draft.changeRequestId, commit: draft.head };
+      assert.equal((yield* failure(wikis.revertAmendment(revert, agent("t1")))).reason, "invalid");
+
+      // Without naming it, an agent's write opens its own change request as ever.
+      const own = yield* wikis.amend({ wikiId, message: "Change", changes }, agent("t1"));
+      assert.isFalse(own.changeRequest.draft);
+      assert.notEqual(own.changeRequest.changeRequestId, draft.changeRequestId);
+    }),
+  ),
+);
+
+it.effect("counts saves of one document in a run as one amendment", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const save = (text: string) =>
+        wikis.autosave({ wikiId, ...noteEdit(text) }, WikiService.person);
+      const first = yield* save("One.\n");
+      yield* save("Two.\n");
+      const third = yield* save("Three.\n");
+      const draft = third.changeRequest!;
+      assert.equal(draft.amendments.length, 1);
+      assert.notEqual(third.commit, first.commit);
+      assert.equal(yield* git(root, ["rev-parse", `${third.commit}^`]), draft.base);
+      assert.equal(yield* git(root, ["show", `${third.commit}:Alpha.md`]), "Three.");
+
+      // Another document ends the run, and past the gap a new one starts.
+      const other = {
+        document: "Beta.md",
+        write: { kind: "text" as const, file: "Beta.md", text: "Beta edited.\n" },
+      };
+      yield* wikis.autosave({ wikiId, ...other }, WikiService.person);
+      const back = yield* save("Four.\n");
+      assert.equal(back.changeRequest?.amendments.length, 3);
+      yield* save("Five.\n");
+      yield* TestClock.adjust("10 minutes");
+      const later = yield* save("Six.\n");
+      assert.equal(later.changeRequest?.amendments.length, 4);
+    }),
+  ),
+);
+
+it.effect("ends a run when an agent's amendment or a revert lands on top of it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const { changeRequest } = yield* wikis.amend(
+        { wikiId, title: "Work", message: "Start", changes: { "Beta.md": "Beta one.\n" } },
+        agent("t1"),
+      );
+      const { changeRequestId } = changeRequest;
+      const save = (text: string) =>
+        wikis.autosave({ wikiId, changeRequestId, ...noteEdit(text) }, WikiService.person);
+
+      const typed = yield* save("Typed.\n");
+      assert.equal(typed.changeRequest?.changeRequestId, changeRequestId);
+      assert.isFalse(typed.changeRequest?.draft);
+      yield* wikis.amend(
+        { wikiId, changeRequestId, message: "More", changes: { "Beta.md": "Beta two.\n" } },
+        agent("t1"),
+      );
+      const after = yield* save("Typed again.\n");
+      assert.equal(after.changeRequest?.amendments.length, 4);
+
+      yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: after.commit! },
+        WikiService.person,
+      );
+      const reverted = yield* save("Typed after a revert.\n");
+      assert.equal(reverted.changeRequest?.amendments.length, 6);
+    }),
+  ),
+);
+
+it.effect("drops an amendment edited back to where it began, and saves nothing for no edit", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const unchanged = yield* wikis.autosave(
+        { wikiId, ...noteEdit(FIXTURE["Alpha.md"]) },
+        WikiService.person,
+      );
+      assert.deepEqual(unchanged, { changeRequest: null, commit: null });
+      assert.equal(
+        (yield* wikis.changeRequestsList({ wikiId }, WikiService.person)).changeRequests.length,
+        0,
+      );
+
+      const edited = yield* wikis.autosave(
+        { wikiId, ...noteEdit("Edited.\n") },
+        WikiService.person,
+      );
+      const same = yield* wikis.autosave({ wikiId, ...noteEdit("Edited.\n") }, WikiService.person);
+      assert.equal(same.commit, edited.commit);
+
+      const undone = yield* wikis.autosave(
+        { wikiId, ...noteEdit(FIXTURE["Alpha.md"]) },
+        WikiService.person,
+      );
+      assert.equal(undone.changeRequest?.amendments.length, 0);
+      assert.equal(undone.changeRequest?.status, "open");
+      assert.equal(undone.changeRequest?.head, undone.changeRequest?.base);
+
+      // The next edit reuses the empty draft.
+      const again = yield* wikis.autosave({ wikiId, ...noteEdit("Again.\n") }, WikiService.person);
+      assert.equal(again.changeRequest?.changeRequestId, undone.changeRequest?.changeRequestId);
+    }),
+  ),
+);
+
+it.effect("leaves no warning from a link broken for a moment in a run", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* wikis.autosave({ wikiId, ...noteEdit("Mid-edit, no link.\n") }, WikiService.person);
+      const restored = yield* wikis.autosave(
+        { wikiId, ...noteEdit("Alpha builds on [[Beta]] still.\n") },
+        WikiService.person,
+      );
+      assert.equal(restored.changeRequest?.amendments.length, 1);
+      assert.deepEqual(restored.changeRequest?.amendments[0]?.files, ["Alpha.md"]);
+      assert.equal(
+        yield* git(root, ["show", `${restored.commit}:Product.skillmap.md`]),
+        MAP.trim(),
+      );
+    }),
+  ),
+);
+
+it.effect("refuses text that hasn't seen another device's save, unless nothing was touched", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const main = yield* mainAt(root);
+      const phone = yield* wikis.autosave(
+        { wikiId, ...noteEdit("From the phone.\n", main) },
+        WikiService.person,
+      );
+      assert.equal(phone.changeRequest?.base, main);
+
+      const stale = yield* failure(
+        wikis.autosave({ wikiId, ...noteEdit("From the laptop.\n", main) }, WikiService.person),
+      );
+      assert.equal(stale.reason, "stale");
+      const caughtUp = yield* wikis.autosave(
+        { wikiId, ...noteEdit("From both.\n", phone.commit!) },
+        WikiService.person,
+      );
+      assert.equal(caughtUp.changeRequest?.amendments.length, 1);
+
+      // Beta is untouched by the draft, so text read from a newer main has nothing to overwrite.
+      yield* wikis.merge({
+        wikiId,
+        changeRequestId: (yield* wikis.amend(
+          { wikiId, title: "Other", message: "Other", changes: { "Beta.md": "Beta on main.\n" } },
+          WikiService.person,
+        )).changeRequest.changeRequestId,
+      });
+      const landed = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Beta.md",
+          write: {
+            kind: "text",
+            file: "Beta.md",
+            text: "Beta on main, edited.\n",
+            readAt: yield* mainAt(root),
+          },
+        },
+        WikiService.person,
+      );
+      assert.equal(landed.changeRequest?.amendments.length, 2);
+    }),
+  ),
+);
+
+it.effect("lands a base's edits and a canvas's in the draft, replayed in a run", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Tasks.base": "views:\n  - type: table\n    name: All\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Base"]);
+      const property = (value: string) => ({
+        document: "Tasks.base",
+        write: {
+          kind: "transform" as const,
+          transform: {
+            kind: "base-edits" as const,
+            edits: [{ kind: "property" as const, file: "Alpha.md", property: "status", value }],
+          },
+        },
+      });
+      yield* wikis.autosave({ wikiId, ...property("open") }, WikiService.person);
+      const based = yield* wikis.autosave({ wikiId, ...property("done") }, WikiService.person);
+      assert.equal(based.changeRequest?.amendments.length, 1);
+      assert.include(yield* git(root, ["show", `${based.commit}:Alpha.md`]), "status: done");
+
+      const board = {
+        document: "Board.canvas",
+        write: {
+          kind: "transform" as const,
+          transform: { kind: "canvas-create" as const, file: "Board.canvas" },
+        },
+      };
+      const canvas = yield* wikis.autosave({ wikiId, ...board }, WikiService.person);
+      assert.isTrue(canvas.changeRequest?.draft);
+      assert.equal(canvas.changeRequest?.amendments.length, 2);
+      const carded = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Board.canvas",
+          write: {
+            kind: "transform",
+            transform: {
+              kind: "canvas",
+              file: "Board.canvas",
+              edits: [{ op: "add", ref: "a", text: "A card" }],
+            },
+          },
+        },
+        WikiService.person,
+      );
+      assert.equal(carded.changeRequest?.amendments.length, 2);
+      assert.include(yield* git(root, ["show", `${carded.commit}:Board.canvas`]), "A card");
+    }),
+  ),
+);
+
+it.effect("makes a draft a change request, which merges; a draft itself doesn't", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const saved = yield* wikis.autosave({ wikiId, ...noteEdit("Done.\n") }, WikiService.person);
+      const { changeRequestId } = saved.changeRequest!;
+
+      assert.equal((yield* failure(wikis.merge({ wikiId, changeRequestId }))).reason, "invalid");
+
+      const promoted = yield* wikis.draftPromote(
+        { wikiId, changeRequestId, title: "A real title" },
+        WikiService.person,
+      );
+      assert.isFalse(promoted.draft);
+      assert.equal(promoted.title, "A real title");
+      assert.equal((yield* wikis.list).wikis[0]?.openChangeRequests, 1);
+      assert.equal(
+        (yield* failure(
+          wikis.draftPromote({ wikiId, changeRequestId, title: "Again" }, WikiService.person),
+        )).reason,
+        "invalid",
+      );
+
+      // The next edit on main starts a new draft, not more of the change request.
+      const next = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Beta.md",
+          write: { kind: "text", file: "Beta.md", text: "Next.\n" },
+        },
+        WikiService.person,
+      );
+      assert.isTrue(next.changeRequest?.draft);
+      assert.notEqual(next.changeRequest?.changeRequestId, changeRequestId);
+
+      yield* wikis.merge({ wikiId, changeRequestId });
+      assert.equal(yield* read(root, "Alpha.md"), "Done.\n");
+    }),
+  ),
+);
+
+it.effect("moves a draft into a change request, whole or a document at a time", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const target = yield* wikis.amend(
+        { wikiId, title: "Target", message: "Start", changes: { "New.md": "New.\n" } },
+        WikiService.person,
+      );
+      const to = target.changeRequest.changeRequestId;
+      const beta = {
+        document: "Beta.md",
+        write: { kind: "text" as const, file: "Beta.md", text: "Beta in the draft.\n" },
+      };
+      yield* wikis.autosave(
+        { wikiId, ...noteEdit("Alpha in the draft, on [[Beta]].\n") },
+        WikiService.person,
+      );
+      const saved = yield* wikis.autosave({ wikiId, ...beta }, WikiService.person);
+      const changeRequestId = saved.changeRequest!.changeRequestId;
+
+      const one = yield* wikis.draftMove(
+        { wikiId, changeRequestId, to, files: ["Alpha.md"] },
+        WikiService.person,
+      );
+      assert.equal(one.amendments.length, 2);
+      const inTarget = (name: string) =>
+        wikis.readNote({ wikiId, changeRequestId: to, name }).pipe(Effect.map((n) => n.source));
+      assert.equal(yield* inTarget("Alpha"), "Alpha in the draft, on [[Beta]].\n");
+      assert.equal(yield* inTarget("Beta"), FIXTURE["Beta.md"]);
+      const detail = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      assert.deepEqual(
+        detail.files.map((file) => file.file),
+        ["Beta.md"],
+      );
+      assert.equal(detail.changeRequest.status, "open");
+
+      yield* wikis.draftMove({ wikiId, changeRequestId, to }, WikiService.person);
+      assert.equal(yield* inTarget("Beta"), "Beta in the draft.\n");
+      const closed = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      assert.equal(closed.changeRequest.status, "closed");
+    }),
+  ),
+);
+
+it.effect("refuses a move that conflicts, leaving both sides as they were", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const target = yield* wikis.amend(
+        {
+          wikiId,
+          title: "Target",
+          message: "Start",
+          changes: { "Alpha.md": "# Alpha\n\nTheirs.\n" },
+        },
+        WikiService.person,
+      );
+      const to = target.changeRequest.changeRequestId;
+      const saved = yield* wikis.autosave(
+        { wikiId, ...noteEdit("# Alpha\n\nMine.\n") },
+        WikiService.person,
+      );
+      const changeRequestId = saved.changeRequest!.changeRequestId;
+      const refused = yield* failure(
+        wikis.draftMove({ wikiId, changeRequestId, to }, WikiService.person),
+      );
+      assert.equal(refused.reason, "conflict");
+      assert.include(refused.message, "Alpha.md");
+      const draft = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      assert.equal(draft.changeRequest.status, "open");
+      assert.equal(draft.changeRequest.head, saved.commit);
+      const unmoved = yield* wikis.changeRequestsGet({ wikiId, changeRequestId: to });
+      assert.equal(unmoved.changeRequest.amendments.length, 1);
+    }),
+  ),
+);
+
+it.effect("reopens a discarded draft, unless another has started since", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const saved = yield* wikis.autosave({ wikiId, ...noteEdit("Kept.\n") }, WikiService.person);
+      const { changeRequestId } = saved.changeRequest!;
+      const status = (next: "open" | "closed", id = changeRequestId) =>
+        wikis.setChangeRequestStatus({ wikiId, changeRequestId: id, status: next });
+
+      yield* status("closed");
+      const reopened = yield* status("open");
+      assert.equal(reopened.head, saved.commit);
+      assert.isTrue(reopened.draft);
+
+      yield* status("closed");
+      const next = yield* wikis.autosave({ wikiId, ...noteEdit("New.\n") }, WikiService.person);
+      assert.notEqual(next.changeRequest?.changeRequestId, changeRequestId);
+      assert.equal((yield* failure(status("open"))).reason, "invalid");
+      yield* status("closed", next.changeRequest!.changeRequestId);
+      assert.equal((yield* status("open")).status, "open");
+    }),
+  ),
+);

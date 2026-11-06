@@ -426,6 +426,11 @@ describe("trailers", () => {
       changeRequest: "cr1",
       thread: "t1",
     });
+    expect(
+      parseAmendmentTrailers(
+        amendmentMessage("Edit Alpha", { amendment: "a2", actor: "You", autosave: "Alpha.md" }),
+      ),
+    ).toEqual({ amendment: "a2", actor: "You", autosave: "Alpha.md" });
     expect(parseAmendmentTrailers("docs\n\nMemory-Amendment: m1\nMemory-Actor: Codex\n")).toEqual({
       amendment: "m1",
       actor: "Codex",

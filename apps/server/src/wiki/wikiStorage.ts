@@ -53,6 +53,8 @@ export const ChangeRequestRecord = Schema.Struct({
   changeRequestId: WikiChangeRequestId,
   title: TrimmedNonEmptyString,
   status: WikiChangeRequestStatus,
+  /** A person's autosaved edits; `createdBy` is whose. */
+  draft: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   branch: Schema.String,
   base: Schema.String,
   threadId: Schema.NullOr(ThreadId),
@@ -150,6 +152,7 @@ export const parseAmendmentLog = (output: string): ReadonlyArray<WikiAmendmentSu
             .map((file) => file.replace(/^\n/, ""))
             .filter(Boolean),
           reverts: trailers?.reverts ?? null,
+          ...(trailers?.autosave === undefined ? {} : { autosave: trailers.autosave }),
         },
       ];
     });

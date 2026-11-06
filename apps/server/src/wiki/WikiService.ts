@@ -41,6 +41,8 @@ import {
   type ThreadId,
   type WikiAmendInput,
   type WikiAmendResult,
+  type WikiAutosaveInput,
+  type WikiAutosaveResult,
   type WikiCanvasMergeNotes,
   type WikiChangeRequest,
   type WikiChangeRequestDetail,
@@ -53,6 +55,8 @@ import {
   type WikiCodeStatusInput,
   type WikiCodeStatusResult,
   type WikiCreateInput,
+  type WikiDraftMoveInput,
+  type WikiDraftPromoteInput,
   WikiError,
   type WikiEvent,
   WikiId,
@@ -74,6 +78,7 @@ import {
   type WikiSetProjectLinkInput,
   type WikiSummary,
   type WikiTarget,
+  type WikiTransform,
   type WikiTransformInput,
   wikiAgentGuidance,
 } from "@t3tools/contracts";
@@ -238,8 +243,10 @@ export class WikiService extends Context.Service<
     readonly codeStatus: (
       input: WikiCodeStatusInput,
     ) => Effect.Effect<WikiCodeStatusResult, WikiError>;
+    /** A draft lists only for the `viewer` who wrote it; with no viewer, none do. */
     readonly changeRequestsList: (
       input: WikiChangeRequestListInput,
+      viewer?: WikiAuthor,
     ) => Effect.Effect<WikiChangeRequestListResult, WikiError>;
     /** A change request in review form: what it changes, whether it merges, what it breaks. */
     readonly changeRequestsGet: (
@@ -261,6 +268,27 @@ export class WikiService extends Context.Service<
       input: WikiTransformInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
+    /**
+     * A person's edit landing by itself: in the change request named, else the author's draft,
+     * starting one on the first edit. Saves of one document in a run replace each other.
+     */
+    readonly autosave: (
+      input: WikiAutosaveInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiAutosaveResult, WikiError>;
+    /** Makes a draft an ordinary change request, under a title of the person's. */
+    readonly draftPromote: (
+      input: WikiDraftPromoteInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /**
+     * Merges some or all of a draft into an open change request as one amendment, which is
+     * returned. Moving everything closes the draft; otherwise those files go back to its base.
+     */
+    readonly draftMove: (
+      input: WikiDraftMoveInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
     /** Undoes one amendment with a new one, keeping later independent work. */
     readonly revertAmendment: (
       input: WikiRevertInput,
@@ -284,6 +312,11 @@ export class WikiService extends Context.Service<
 
 /** The most rows a base query returns, for a view and for an agent's context alike. */
 const QUERY_ROWS = 200;
+
+/** How long after a person's last save of a document the next one still replaces it. */
+const AUTOSAVE_RUN_MS = 10 * 60 * 1000;
+
+const NOTHING_CHANGED = "This amendment changes nothing.";
 
 /** The largest file `readFiles` returns text for. */
 const READ_TEXT_BYTES = 16 * 1024 * 1024;
@@ -393,6 +426,13 @@ const encodeChangeRequest = Schema.encodeEffect(ChangeRequestRecordJson);
 const isWikiError = Schema.is(WikiError);
 
 const oneLine = (text: string) => text.replace(/[\r\n<>]+/g, " ").trim();
+
+const actorName = (author: WikiAuthor) => oneLine(author.actor) || "Agent";
+
+/** A document as an amendment names it: without the extension a person never reads. */
+const documentSubject = (document: string) => document.replace(/\.(md|base|canvas)$/i, "");
+
+const isCommitId = (value: string) => /^[0-9a-f]{4,64}$/i.test(value);
 
 const subjectOf = (message: string) => {
   const subject = message.trim().split("\n")[0]?.trim() ?? "";
@@ -1083,6 +1123,7 @@ const make = Effect.gen(function* () {
         wikiId: wiki.wikiId,
         title: stored.record.title,
         status: stored.record.status,
+        draft: stored.record.draft,
         branch: stored.record.branch,
         base: stored.record.base,
         head: stored.head,
@@ -1194,6 +1235,27 @@ const make = Effect.gen(function* () {
     return { record, metadataCommit: meta, head } satisfies StoredChangeRequest;
   });
 
+  /** The draft `actor` has open on this wiki; there is at most one. */
+  const openDraftOf = (wiki: WikiRecord, actor: string) =>
+    readChangeRequests(wiki).pipe(
+      Effect.map((all) =>
+        all.find(
+          ({ record }) => record.draft && record.status === "open" && record.createdBy === actor,
+        ),
+      ),
+    );
+
+  const refuseOthersDraft = (stored: StoredChangeRequest, author: WikiAuthor) =>
+    stored.record.draft && stored.record.createdBy !== actorName(author)
+      ? Effect.fail(
+          new WikiError({
+            reason: "invalid",
+            message: "This is someone's draft, which only they can change.",
+            changeRequestId: stored.record.changeRequestId,
+          }),
+        )
+      : Effect.void;
+
   const requireOpen = (stored: StoredChangeRequest) =>
     stored.record.status === "open"
       ? Effect.void
@@ -1241,6 +1303,7 @@ const make = Effect.gen(function* () {
         readonly changeRequestId: WikiChangeRequestId;
         readonly base: string;
         readonly title: string;
+        readonly draft: boolean;
       };
 
   const resolveTarget = Effect.fn("WikiService.resolveTarget")(function* (
@@ -1255,6 +1318,7 @@ const make = Effect.gen(function* () {
     if (input.changeRequestId !== undefined) {
       const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
       yield* requireOpen(stored);
+      yield* refuseOthersDraft(stored, author);
       return { kind: "existing", stored };
     }
     if (author.threadId !== null) {
@@ -1266,6 +1330,7 @@ const make = Effect.gen(function* () {
       changeRequestId: WikiChangeRequestId.make(yield* newId),
       base: yield* mainTip(wiki),
       title: input.title ?? (subjectOf(input.message) || "Wiki change"),
+      draft: false,
     };
   });
 
@@ -1279,9 +1344,18 @@ const make = Effect.gen(function* () {
     author: WikiAuthor,
     message: string,
     plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment,
-    options: { readonly reverts?: string; readonly follow?: boolean } = {},
+    options: {
+      readonly reverts?: string;
+      readonly follow?: boolean;
+      /** The document, when this is a person's autosave. */
+      readonly autosave?: string;
+      /** Lands on this commit in place of the head, whose amendment this one replaces. */
+      readonly onto?: string;
+      /** Plans on `onto` too: a whole text replaces what the head's amendment did. */
+      readonly planOnto?: boolean;
+    } = {},
   ) {
-    const { reverts, follow = true } = options;
+    const { reverts, follow = true, autosave, onto, planOnto = false } = options;
     const now = yield* DateTime.now;
     const at = DateTime.formatIso(now);
     const amendment = yield* newId;
@@ -1289,7 +1363,8 @@ const make = Effect.gen(function* () {
     const changeRequestId =
       target.kind === "existing" ? target.stored.record.changeRequestId : target.changeRequestId;
     const parent = target.kind === "existing" ? target.stored.head : target.base;
-    const snapshot = yield* snapshotAt(wiki, parent);
+    const from = planOnto ? (onto ?? parent) : parent;
+    const snapshot = yield* snapshotAt(wiki, from);
     let warnings = 0;
     const stamp: AmendmentStamp = {
       amendment,
@@ -1300,26 +1375,30 @@ const make = Effect.gen(function* () {
       try: () => plan(snapshot.files, stamp),
       catch: planningError,
     });
-    const tree = yield* buildTree(wiki.root, parent, planned.changes);
-    if (tree === (yield* gitOut("parentTree", wiki.root, ["rev-parse", `${parent}^{tree}`]))) {
-      return yield* new WikiError({
-        reason: "invalid",
-        message: "This amendment changes nothing.",
-      });
+    const tree = yield* buildTree(wiki.root, from, planned.changes);
+    const treeOf = (commit: string) =>
+      gitOut("parentTree", wiki.root, ["rev-parse", `${commit}^{tree}`]);
+    if (tree === (yield* treeOf(parent))) {
+      return yield* new WikiError({ reason: "invalid", message: NOTHING_CHANGED });
     }
-    const commit = yield* commitTree(
-      wiki.root,
-      tree,
-      [parent],
-      amendmentMessage(message, {
-        amendment,
-        actor: oneLine(author.actor) || "Agent",
-        changeRequest: changeRequestId,
-        ...(author.threadId === null ? {} : { thread: author.threadId }),
-        ...(reverts === undefined ? {} : { reverts }),
-      }),
-      env,
-    );
+    // A run edited back to where it began leaves nothing to record.
+    const commit =
+      onto !== undefined && tree === (yield* treeOf(onto))
+        ? onto
+        : yield* commitTree(
+            wiki.root,
+            tree,
+            [onto ?? parent],
+            amendmentMessage(message, {
+              amendment,
+              actor: actorName(author),
+              changeRequest: changeRequestId,
+              ...(author.threadId === null ? {} : { thread: author.threadId }),
+              ...(reverts === undefined ? {} : { reverts }),
+              ...(autosave === undefined ? {} : { autosave }),
+            }),
+            env,
+          );
     const stored =
       target.kind === "existing"
         ? yield* recordChangeRequest(
@@ -1338,10 +1417,11 @@ const make = Effect.gen(function* () {
               changeRequestId,
               title: target.title,
               status: "open",
+              draft: target.draft,
               branch: changeRequestBranch(changeRequestId),
               base: target.base,
               threadId: author.threadId,
-              createdBy: oneLine(author.actor) || "Agent",
+              createdBy: actorName(author),
               createdAt: at,
               updatedAt: at,
               mergedCommit: null,
@@ -1391,16 +1471,319 @@ const make = Effect.gen(function* () {
     return amendWith(input, author, (files, stamp) => planAmendment(files, input.changes, stamp));
   };
 
-  const transform: WikiService["Service"]["transform"] = (input, author) =>
-    amendWith(input, author, (files, stamp) => {
-      const change = input.transform;
+  const planWikiTransform =
+    (change: WikiTransform) =>
+    (files: WikiFiles, stamp: AmendmentStamp): PlannedAmendment => {
       if (change.kind !== "canvas") {
         return planAmendment(files, planTransform(files, change, stamp), stamp);
       }
       const { file, changes, cards, notes } = planCanvasEdits(files, change, stamp);
       const canvas = { file, cards, ...(notes.length > 0 ? { notes } : {}) };
       return { ...planAmendment(files, changes, stamp), canvas };
+    };
+
+  const transform: WikiService["Service"]["transform"] = (input, author) =>
+    amendWith(input, author, planWikiTransform(input.transform));
+
+  /** Where an autosave lands: the change request named, else the author's draft, else a new one. */
+  const autosaveTarget = Effect.fn("WikiService.autosaveTarget")(function* (
+    wiki: WikiRecord,
+    input: WikiAutosaveInput,
+    author: WikiAuthor,
+  ): Effect.fn.Return<Target, WikiError> {
+    if (input.changeRequestId !== undefined) {
+      const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+      yield* requireOpen(stored);
+      yield* refuseOthersDraft(stored, author);
+      return { kind: "existing", stored };
+    }
+    const own = yield* openDraftOf(wiki, actorName(author));
+    if (own !== undefined) return { kind: "existing", stored: own };
+    const main = yield* mainTip(wiki);
+    const read = input.write.kind === "text" ? input.write.readAt : undefined;
+    // Started from what the person read, so a merge keeps whatever main gained since.
+    const base =
+      read !== undefined &&
+      isCommitId(read) &&
+      (yield* revParse(wiki.root, read)) !== undefined &&
+      (yield* isAncestor(wiki.root, read, main))
+        ? read
+        : main;
+    return {
+      kind: "new",
+      changeRequestId: WikiChangeRequestId.make(yield* newId),
+      base,
+      title: `Edit ${documentSubject(input.document)}`,
+      draft: true,
+    };
+  });
+
+  /**
+   * Refuses whole text from a client that hasn't seen what another device saved of this document,
+   * which would overwrite it. The client's read brings that work into its buffer, and it retries.
+   * A document this change request hasn't touched has nothing to overwrite.
+   */
+  const requireInStep = Effect.fn("WikiService.requireInStep")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+    file: string,
+    readAt: string,
+  ) {
+    if (readAt === stored.head) return;
+    const [atHead, atRead, atBase] = yield* readObjects(wiki.root, [
+      `${stored.head}:${file}`,
+      ...(isCommitId(readAt) ? [`${readAt}:${file}`] : ["0000:missing"]),
+      `${stored.record.base}:${file}`,
+    ]);
+    if (atHead === atRead || atHead === atBase) return;
+    return yield* new WikiError({
+      reason: "stale",
+      message: `${documentSubject(file)} changed on another device. It saves again once that arrives.`,
     });
+  });
+
+  /** The commit this save lands on, when it continues the run the head's amendment belongs to. */
+  const autosaveRunParent = Effect.fn("WikiService.autosaveRunParent")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+    document: string,
+    author: WikiAuthor,
+  ) {
+    const head = (yield* amendmentsOf(wiki, stored)).at(-1);
+    if (head?.autosave !== document || head.actor !== actorName(author)) return undefined;
+    const now = yield* Clock.currentTimeMillis;
+    if (now - Date.parse(head.at) >= AUTOSAVE_RUN_MS) return undefined;
+    return yield* revParse(wiki.root, `${stored.head}^`);
+  });
+
+  const autosave: WikiService["Service"]["autosave"] = (input, author) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const target = yield* autosaveTarget(wiki, input, author);
+            const { write } = input;
+            const nothing =
+              target.kind === "new"
+                ? Effect.succeed<WikiAutosaveResult>({ changeRequest: null, commit: null })
+                : Effect.map(view(wiki, target.stored), (changeRequest): WikiAutosaveResult => ({
+                    changeRequest,
+                    commit: target.stored.head,
+                  }));
+            if (write.kind === "text") {
+              const head = target.kind === "new" ? target.base : target.stored.head;
+              if ((yield* snapshotAt(wiki, head)).files[write.file] === write.text)
+                return yield* nothing;
+              if (write.readAt !== undefined && target.kind === "existing") {
+                yield* requireInStep(wiki, target.stored, write.file, write.readAt);
+              }
+            }
+            const onto =
+              target.kind === "existing"
+                ? yield* autosaveRunParent(wiki, target.stored, input.document, author)
+                : undefined;
+            return yield* land(
+              wiki,
+              target,
+              author,
+              `Edit ${documentSubject(input.document)}`,
+              write.kind === "text"
+                ? (files, stamp) => planAmendment(files, { [write.file]: write.text }, stamp)
+                : planWikiTransform(write.transform),
+              // A link broken for a moment while typing stamps no lasting warning on a map.
+              {
+                autosave: input.document,
+                planOnto: write.kind === "text",
+                ...(onto === undefined ? {} : { onto }),
+              },
+            ).pipe(
+              Effect.map(({ changeRequest, commit }): WikiAutosaveResult => ({
+                changeRequest,
+                commit,
+              })),
+              Effect.catchIf(
+                (error) => error.message === NOTHING_CHANGED,
+                () => nothing,
+              ),
+            );
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  /** The open draft `changeRequestId` names, which must be the author's. */
+  const loadOwnDraft = Effect.fn("WikiService.loadOwnDraft")(function* (
+    wiki: WikiRecord,
+    changeRequestId: WikiChangeRequestId,
+    author: WikiAuthor,
+  ) {
+    const stored = yield* loadChangeRequest(wiki, changeRequestId);
+    yield* requireOpen(stored);
+    yield* refuseOthersDraft(stored, author);
+    if (stored.record.draft) return stored;
+    return yield* new WikiError({
+      reason: "invalid",
+      message: "This change request isn't a draft.",
+      changeRequestId,
+    });
+  });
+
+  const draftPromote: WikiService["Service"]["draftPromote"] = (input, author) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const stored = yield* loadOwnDraft(wiki, input.changeRequestId, author);
+            const now = yield* DateTime.now;
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              {
+                ...stored.record,
+                draft: false,
+                title: input.title,
+                updatedAt: DateTime.formatIso(now),
+              },
+              "Make draft a change request",
+              identity(author.actor, now),
+            );
+            yield* publish("status", wiki.wikiId, input.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  /** What `to` changes from `from`, by file, each file's new text or null. */
+  const changesBetween = Effect.fn("WikiService.changesBetween")(function* (
+    wiki: WikiRecord,
+    from: string,
+    to: string,
+  ) {
+    const names = (yield* runGit("diffNames", wiki.root, [
+      "diff",
+      "--no-renames",
+      "--name-only",
+      "-z",
+      from,
+      to,
+    ])).stdout
+      .split("\0")
+      .filter(Boolean);
+    const contents = yield* readObjects(
+      wiki.root,
+      names.map((name) => `${to}:${name}`),
+    );
+    const changes: Record<string, string | null> = {};
+    names.forEach((name, position) => {
+      changes[name] = contents[position] ?? null;
+    });
+    return changes;
+  });
+
+  const draftMove: WikiService["Service"]["draftMove"] = (input, author) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const draft = yield* loadOwnDraft(wiki, input.changeRequestId, author);
+            const target = yield* loadChangeRequest(wiki, input.to);
+            yield* requireOpen(target);
+            if (target.record.draft) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: "A draft moves into a change request, not another draft.",
+              });
+            }
+            const { base } = draft.record;
+            const held = yield* changesBetween(wiki, base, draft.head);
+            const moving = Object.fromEntries(
+              Object.entries(held).filter(
+                ([file]) => input.files === undefined || input.files.includes(file),
+              ),
+            );
+            const files = Object.keys(moving);
+            if (files.length === 0) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: "None of those documents are in this draft.",
+              });
+            }
+            const now = yield* DateTime.now;
+            const env = identity(author.actor, now);
+            // Only what moves, on the draft's base, so the merge brings nothing else with it.
+            const carrier = yield* commitTree(
+              wiki.root,
+              yield* buildTree(wiki.root, base, moving),
+              [base],
+              "Temporary draft carrier",
+              env,
+            );
+            const { tree, conflicts } = yield* mergeTrees(wiki, target.head, carrier, {
+              notes: true,
+            });
+            if (tree === null) {
+              return yield* new WikiError({
+                reason: "conflict",
+                message: `This draft conflicts with that change request in ${conflicts.join(", ") || "some files"}. Nothing was moved.`,
+              });
+            }
+            const merged = yield* changesBetween(wiki, target.head, tree);
+            const first = documentSubject(files[0] ?? "");
+            const moved =
+              Object.keys(merged).length === 0
+                ? yield* view(wiki, target)
+                : (yield* land(
+                    wiki,
+                    { kind: "existing", stored: target },
+                    author,
+                    files.length === 1
+                      ? `Move ${first} from a draft`
+                      : `Move ${files.length} documents from a draft`,
+                    (current, stamp) =>
+                      planAmendment(current, keepWarningHistory(current, merged), stamp, {
+                        allowUnstamped: true,
+                      }),
+                  )).changeRequest;
+            if (files.length === Object.keys(held).length) {
+              yield* recordChangeRequest(
+                wiki,
+                draft,
+                { ...draft.record, status: "closed", updatedAt: DateTime.formatIso(now) },
+                "Close draft",
+                env,
+              );
+              yield* publish("status", wiki.wikiId, input.changeRequestId);
+              return moved;
+            }
+            const before = yield* readObjects(
+              wiki.root,
+              files.map((file) => `${base}:${file}`),
+            );
+            const restored = Object.fromEntries(
+              files.map((file, position) => [file, before[position] ?? null]),
+            );
+            yield* land(
+              wiki,
+              { kind: "existing", stored: draft },
+              author,
+              `Move ${files.length === 1 ? first : `${files.length} documents`} to ${target.record.title}`,
+              (current, stamp) =>
+                planAmendment(current, keepWarningHistory(current, restored), stamp, {
+                  allowUnstamped: true,
+                }),
+            );
+            return moved;
+          }),
+        ),
+      input.changeRequestId,
+    );
 
   const revertAmendment: WikiService["Service"]["revertAmendment"] = (input, author) =>
     withWiki(
@@ -1411,6 +1794,7 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
             yield* requireOpen(stored);
+            yield* refuseOthersDraft(stored, author);
             const notAmendment = new WikiError({
               reason: "invalid",
               message: "That commit is not an amendment on this change request.",
@@ -1705,6 +2089,12 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
             yield* requireOpen(stored);
+            if (stored.record.draft) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: "A draft doesn't merge. Make it a change request first.",
+              });
+            }
             const main = yield* mainTip(wiki);
             if (yield* isAncestor(wiki.root, stored.head, main)) {
               return yield* new WikiError({
@@ -1756,7 +2146,9 @@ const make = Effect.gen(function* () {
 
   const summary = (wiki: WikiRecord) =>
     readChangeRequests(wiki).pipe(
-      Effect.map((all) => all.filter((cr) => cr.record.status === "open").length),
+      Effect.map(
+        (all) => all.filter(({ record }) => record.status === "open" && !record.draft).length,
+      ),
       // A wiki whose folder went away still lists, so it can be removed.
       Effect.orElseSucceed(() => 0),
       Effect.map((openChangeRequests): WikiSummary => ({
@@ -2066,7 +2458,7 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const changeRequestsList: WikiService["Service"]["changeRequestsList"] = (input) =>
+  const changeRequestsList: WikiService["Service"]["changeRequestsList"] = (input, viewer) =>
     requireGit.pipe(
       Effect.andThen(
         input.wikiId === undefined
@@ -2081,6 +2473,8 @@ const make = Effect.gen(function* () {
               Effect.map((all) =>
                 all.filter(
                   ({ record }) =>
+                    (!record.draft ||
+                      (viewer !== undefined && record.createdBy === actorName(viewer))) &&
                     (input.status === undefined || record.status === input.status) &&
                     (input.threadId === undefined || record.threadId === input.threadId),
                 ),
@@ -2189,10 +2583,11 @@ const make = Effect.gen(function* () {
               changeRequestId,
               title: input.title,
               status: "open",
+              draft: false,
               branch: changeRequestBranch(changeRequestId),
               base,
               threadId: author.threadId,
-              createdBy: oneLine(author.actor) || "Agent",
+              createdBy: actorName(author),
               createdAt: at,
               updatedAt: at,
               mergedCommit: null,
@@ -2221,6 +2616,17 @@ const make = Effect.gen(function* () {
               });
             }
             if (stored.record.status === input.status) return yield* view(wiki, stored);
+            if (
+              input.status === "open" &&
+              stored.record.draft &&
+              (yield* openDraftOf(wiki, stored.record.createdBy)) !== undefined
+            ) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message:
+                  "You have another draft on this wiki. Make it a change request or discard it, then reopen this one.",
+              });
+            }
             const now = yield* DateTime.now;
             const next = yield* recordChangeRequest(
               wiki,
@@ -2542,6 +2948,9 @@ const make = Effect.gen(function* () {
     changeRequestsOpen,
     amend,
     transform,
+    autosave,
+    draftPromote,
+    draftMove,
     revertAmendment,
     saveWorktree,
     merge,
