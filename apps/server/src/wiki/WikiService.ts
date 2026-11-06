@@ -1570,12 +1570,23 @@ const make = Effect.gen(function* () {
   const followMain = Effect.fn("WikiService.followMain")(function* (
     wiki: WikiRecord,
     stored: StoredChangeRequest,
+    document: string,
     author: WikiAuthor,
   ) {
     const main = yield* mainTip(wiki);
     if (yield* isAncestor(wiki.root, main, stored.head)) return stored;
-    const { tree } = yield* mergeIntoMain(wiki, main, stored.head);
-    if (tree === null) return stored;
+    const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
+    if (tree === null) {
+      const [held, onMain] = yield* readObjects(wiki.root, [
+        `${stored.head}:${document}`,
+        `${main}:${document}`,
+      ]);
+      if (typeof held === "string" || typeof onMain !== "string") return stored;
+      return yield* new WikiError({
+        reason: "conflict",
+        message: `Your draft clashes with main in ${conflicts.join(", ")}, so ${documentSubject(document)} can't join it yet. Make the draft a change request and settle that first.`,
+      });
+    }
     const now = yield* DateTime.now;
     const env = identity(author.actor, now);
     const message = "Follow main";
@@ -1588,6 +1599,8 @@ const make = Effect.gen(function* () {
       env,
       commit,
     ).pipe(
+      // A view reading main hears it moved, which an outside commit doesn't tell it.
+      Effect.tap(() => publish("main-moved", wiki.wikiId, null)),
       // A worktree with unsaved edits holds the branch, which can move once they're in.
       Effect.catchIf(
         (error) => error.reason === "checkout-busy",
@@ -1651,7 +1664,10 @@ const make = Effect.gen(function* () {
             const found = yield* autosaveTarget(wiki, input, author);
             const target: typeof found =
               found.kind === "existing" && found.stored.record.draft
-                ? { ...found, stored: yield* followMain(wiki, found.stored, author) }
+                ? {
+                    ...found,
+                    stored: yield* followMain(wiki, found.stored, input.document, author),
+                  }
                 : found;
             const { write } = input;
             const nothing =
@@ -1818,11 +1834,16 @@ const make = Effect.gen(function* () {
             }
             const now = yield* DateTime.now;
             const env = identity(author.actor, now);
-            // Only what moves, on the draft's base, so the merge brings nothing else with it.
+            // Only what moves, on what the two share: a draft that followed main is ahead of the
+            // target, and its base would bring all of that along.
+            const shared =
+              (yield* runGit("mergeBase", wiki.root, ["merge-base", base, target.head], {
+                allowExitCodes: [1],
+              })).stdout.trim() || base;
             const carrier = yield* commitTree(
               wiki.root,
-              yield* buildTree(wiki.root, base, moving),
-              [base],
+              yield* buildTree(wiki.root, shared, moving),
+              [shared],
               "Temporary draft carrier",
               env,
             );

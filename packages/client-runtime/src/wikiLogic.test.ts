@@ -38,6 +38,7 @@ describe("drafts", () => {
   it("reads a document from its tab's change request, else the draft if it holds it, else main", () => {
     expect(scope("alpha")).toBe("draft-1");
     expect(scope("Tasks.base")).toBe("draft-1");
+    expect(scope("Other.base")).toBe("draft-1");
     expect(scope("Beta")).toBeUndefined();
     expect(scope("Alpha", "cr-1" as WikiChangeRequestId)).toBe("cr-1");
   });

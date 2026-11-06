@@ -111,10 +111,12 @@ export function wikiDocumentScope(input: {
   readonly name: string;
 }): WikiChangeRequestId | undefined {
   if (input.tabChangeRequestId !== undefined) return input.tabChangeRequestId;
-  if (input.draft !== null && filesHoldDocument(changeRequestFiles(input.draft), input.name)) {
-    return input.draft.changeRequestId;
-  }
-  return undefined;
+  if (input.draft === null) return undefined;
+  // A base's rows are notes, so the draft can hold its edits and not the base itself.
+  if (/\.base$/i.test(input.name)) return input.draft.changeRequestId;
+  return filesHoldDocument(changeRequestFiles(input.draft), input.name)
+    ? input.draft.changeRequestId
+    : undefined;
 }
 
 /** Where a person's edit to a document can't go: a change request that merged or closed. */

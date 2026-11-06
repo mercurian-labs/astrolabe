@@ -1936,6 +1936,72 @@ it.effect("takes in what reached main at each save, so a newer document can be e
   ),
 );
 
+it.effect("says why a clashing draft can't take a document newer than it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* wikis.autosave({ wikiId, ...noteEdit("Mine.\n") }, WikiService.person);
+      yield* write(root, { "Alpha.md": "Theirs.\n", "New.md": "New.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Clash"]);
+      const refused = yield* failure(
+        wikis.autosave(
+          {
+            wikiId,
+            document: "New.md",
+            write: { kind: "text", file: "New.md", text: "New, edited.\n" },
+          },
+          WikiService.person,
+        ),
+      );
+      assert.equal(refused.reason, "conflict");
+      assert.include(refused.message, "Alpha.md");
+
+      const beta = { kind: "text" as const, file: "Beta.md", text: "Beta, edited.\n" };
+      const landed = yield* wikis.autosave(
+        { wikiId, document: "Beta.md", write: beta },
+        WikiService.person,
+      );
+      assert.equal(landed.changeRequest?.amendments.length, 2);
+    }),
+  ),
+);
+
+it.effect("moves one document out of a draft that followed main, and nothing else", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const target = yield* wikis.amend(
+        { wikiId, title: "Older", message: "Older", changes: { "Gamma.md": "Gamma, older.\n" } },
+        WikiService.person,
+      );
+      yield* wikis.autosave({ wikiId, ...noteEdit("Mine.\n") }, WikiService.person);
+      yield* write(root, { "Late.md": "Late.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Late"]);
+      const saved = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Beta.md",
+          write: { kind: "text", file: "Beta.md", text: "Beta, edited.\n" },
+        },
+        WikiService.person,
+      );
+      const moved = yield* wikis.draftMove(
+        {
+          wikiId,
+          changeRequestId: saved.changeRequest!.changeRequestId,
+          to: target.changeRequest.changeRequestId,
+          files: ["Alpha.md"],
+        },
+        WikiService.person,
+      );
+      assert.notInclude([...moved.files], "Late.md");
+      assert.include([...moved.files], "Alpha.md");
+    }),
+  ),
+);
+
 it.effect("lands a base's edits and a canvas's in the draft, replayed in a run", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
