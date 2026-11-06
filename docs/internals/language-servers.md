@@ -124,7 +124,8 @@ servers we don't run.
 What people set lives on the environment, because that's where servers run:
 `language-server-settings.json` beside the trust file, read by
 [`settings.ts`](../../apps/server/src/languageServers/settings.ts). An unreadable one applies
-nothing and refuses writes, so a hand edit can still be fixed.
+nothing and refuses writes, so a hand edit can still be fixed. Only a file that isn't there is
+empty: one that can't be read still holds someone's settings.
 
 - **Scopes rank from general to specific**: defaults, all projects, the checkout's
   `.astrolabe/language-servers.json`, the project. The file ranks above the machine because it knows
@@ -148,8 +149,13 @@ nothing and refuses writes, so a hand edit can still be fixed.
   lead a language after a reorder. `locate` falls through to the next server when the leader can't
   navigate, since a reorder can put Ruff first.
 - **Off is a state, not an absence**, so nothing reads as healthy or as merely stopped. An off server
-  stays in the routes to be listed with its way back. A removed custom server goes the same way until
-  its sessions drain, which keeps instance teardown on the idle path.
+  stays in the routes to be listed with its way back. A removed custom server has no way back, so it
+  isn't off: its instance goes at once and the sessions bound to it end.
+- **Values are for maintainers.** Environment values, arguments and JSON settings can hold tokens, so
+  `check` and the routes carry only names and which fields changed, and `languageServers.settings`
+  takes the maintain scope. So does a `full` logs subscription, the only one that gets arguments or
+  the trace, whose `initialize` and configuration messages carry settings. Spawn errors spell out the
+  command line, so the log keeps only their reason.
 
 ## Project trust
 

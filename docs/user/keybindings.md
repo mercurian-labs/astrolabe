@@ -398,7 +398,11 @@ project's own setting wins. Only the servers a change reaches restart.
   and where the change came from.
 
 A server with its own binary, arguments or environment runs only in a trusted project, even one
-that would otherwise run restricted.
+that would otherwise run restricted. Its settings and initialization options still reach servers
+running restricted in projects that aren't trusted.
+
+Environment values, arguments and settings can hold tokens, so only someone who can manage the
+environment sees them. Others see which variables are set, by name.
 
 A project can keep servers' settings in its repository, in `.astrolabe/language-servers.json`:
 
@@ -436,7 +440,8 @@ or `venv`. To use another, click the server's name in a Python file's header and
 Python interpreter**, or run that command. It lists virtual environments in the checkout, and conda,
 pyenv, uv, Homebrew and system Pythons on the machine, without running any of them. The menu shows
 which one is active. **Automatic** goes back to the default. The choice is per checkout, and applies
-once the project is trusted.
+once the project is trusted. If the chosen interpreter is deleted, the menu says so and offers to
+clear it, and the default is used until you do.
 
 ## Language features in a code file
 
