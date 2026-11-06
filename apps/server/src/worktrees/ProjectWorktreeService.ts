@@ -21,6 +21,7 @@ import {
   type ProjectWorktreeStatusResult,
   type ProjectWorktreeTargetInput,
   type ServerSettings as ServerSettingsShape,
+  isIdleRunTerminal,
   type TerminalSummary,
   type WikiId,
 } from "@t3tools/contracts";
@@ -259,6 +260,15 @@ const make = Effect.gen(function* () {
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
   };
 
+  const terminalsIn = (worktreePath: string) =>
+    [...liveTerminals.values()].filter((terminal) => {
+      if (terminal.status !== "starting" && terminal.status !== "running") return false;
+      return (
+        (terminal.worktreePath !== null && path.resolve(terminal.worktreePath) === worktreePath) ||
+        inside(worktreePath, path.resolve(terminal.cwd))
+      );
+    });
+
   const runGit = (operation: string, cwd: string, args: ReadonlyArray<string>) =>
     git
       .execute({ operation: `ProjectWorktreeService.${operation}`, cwd, args })
@@ -405,16 +415,8 @@ const make = Effect.gen(function* () {
           : { kind: "working", label: `${thread.title} is working here` },
       );
     }
-    for (const terminal of liveTerminals.values()) {
-      if (terminal.status !== "starting" && terminal.status !== "running") continue;
-      const cwd = path.resolve(terminal.cwd);
-      if (
-        (terminal.worktreePath !== null && path.resolve(terminal.worktreePath) === listed.path) ||
-        inside(listed.path, cwd)
-      ) {
-        holds.push({ kind: "terminal", label: "A terminal is open here" });
-        break;
-      }
+    if (terminalsIn(listed.path).some((terminal) => !isIdleRunTerminal(terminal))) {
+      holds.push({ kind: "terminal", label: "A terminal is open here" });
     }
     // Set-aside work is keyed by branch, so a detached checkout's edits would have nowhere to go;
     // a list does not count them, so a detached checkout is never taken.
@@ -794,6 +796,12 @@ const make = Effect.gen(function* () {
           worktree.path,
           Effect.gen(function* () {
             if (worktree.branch !== null) yield* setAside(worktree);
+            // A run's tab may have closed with no connection to end its shell.
+            yield* Effect.forEach(
+              terminalsIn(worktree.path).filter(isIdleRunTerminal),
+              terminals.closeIdle,
+              { discard: true },
+            );
             yield* gitWorkflow
               .removeWorktree({ cwd: root, path: worktree.path, force: true })
               .pipe(Effect.mapError(failWith("The worktree could not be deleted")));

@@ -4,6 +4,8 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type OrchestrationV2ThreadShell,
   ProjectId,
+  runTerminalThreadId,
+  type TerminalMetadataStreamEvent,
   ThreadId,
   WikiError,
   WikiId,
@@ -93,6 +95,8 @@ const fixture = Effect.gen(function* () {
     threads: [] as OrchestrationV2ThreadShell[],
     watched: [] as string[],
     workspaceRoot: repo,
+    closedIdle: [] as string[],
+    terminalEvent: (_event: TerminalMetadataStreamEvent): Effect.Effect<void> => Effect.void,
   };
   const context = yield* Layer.build(projectWorktreeLayer).pipe(
     Effect.provideService(ProjectService.ProjectService, {
@@ -110,7 +114,13 @@ const fixture = Effect.gen(function* () {
       getShellSnapshot: () => Effect.sync(() => ({ threads: state.threads, archivedThreads: [] })),
     } as unknown as ProjectionStore.ProjectionStoreV2["Service"]),
     Effect.provideService(TerminalManager.TerminalManager, {
-      subscribeMetadata: () => Effect.succeed(() => undefined),
+      subscribeMetadata: (listener: typeof state.terminalEvent) =>
+        Effect.sync(() => {
+          state.terminalEvent = listener;
+          return () => undefined;
+        }),
+      closeIdle: (input: { threadId: string }) =>
+        Effect.sync(() => void state.closedIdle.push(input.threadId)),
     } as unknown as TerminalManager.TerminalManager["Service"]),
     Effect.provideService(GitWorkflow.GitWorkflowService, {
       invalidateStatus: () => Effect.void,
@@ -369,6 +379,51 @@ describe("ProjectWorktreeService", () => {
         ]);
         const created = yield* service.create({ projectId, branch: "gamma", base: "main" });
         expect(created.path).toBe(alpha.worktree.path);
+      }),
+    ),
+  );
+
+  it.live("lets an idle run terminal go with its worktree, but not a busy one", () =>
+    run(
+      Effect.gen(function* () {
+        const { service, state } = yield* fixture;
+        const { worktree } = yield* service.open({ projectId, branch: "alpha" });
+        const threadId = runTerminalThreadId(worktree.path);
+        const runTerminal = (hasRunningSubprocess: boolean) =>
+          state.terminalEvent({
+            type: "upsert",
+            terminal: {
+              threadId,
+              terminalId: "run-1",
+              cwd: worktree.path,
+              worktreePath: worktree.path,
+              status: "running",
+              pid: 1,
+              exitCode: null,
+              exitSignal: null,
+              hasRunningSubprocess,
+              label: "tests::adds",
+              updatedAt: "2026-06-10T12:00:00.000Z",
+            },
+          });
+        const holds = () =>
+          service
+            .list({ projectId })
+            .pipe(
+              Effect.map(
+                ({ worktrees }) =>
+                  worktrees.find((entry) => entry.path === worktree.path)?.holds ?? [],
+              ),
+            );
+
+        yield* runTerminal(true);
+        expect(yield* holds()).toEqual([{ kind: "terminal", label: "A terminal is open here" }]);
+
+        yield* runTerminal(false);
+        expect(yield* holds()).toEqual([]);
+        const removed = yield* service.remove({ projectId, path: worktree.path, confirmed: true });
+        expect(removed.removed).toBe(true);
+        expect(state.closedIdle).toEqual([threadId]);
       }),
     ),
   );

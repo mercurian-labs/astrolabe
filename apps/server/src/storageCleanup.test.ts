@@ -14,6 +14,7 @@ import { TestClock } from "effect/testing";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
   DEFAULT_SERVER_SETTINGS,
+  runTerminalThreadId,
   type WorktreeKeepWhen,
   type StorageCleanupSettings,
   type TerminalMetadataStreamEvent,
@@ -350,6 +351,7 @@ const cleanupFixture = (
     let fullStatusCalls = 0;
     let snapshotReads = 0;
     let terminalListener: ((event: TerminalMetadataStreamEvent) => Effect.Effect<void>) | undefined;
+    const closedIdle: string[] = [];
     let events: Stream.Stream<OrchestrationV2DomainEvent> = Stream.empty;
     const activated = yield* Deferred.make<void>();
     const context = yield* Layer.build(StorageCleanup.layer).pipe(
@@ -466,6 +468,8 @@ const cleanupFixture = (
             terminalListener = listener;
             return () => {};
           }),
+        closeIdle: (input: { threadId: string }) =>
+          Effect.sync(() => void closedIdle.push(input.threadId)),
       } as unknown as TerminalManager.TerminalManager["Service"]),
       Effect.provideService(ServerActivation, Deferred.await(activated)),
     );
@@ -534,7 +538,13 @@ const cleanupFixture = (
       setOpenSessionCwd: (cwd: string | null) => {
         openSessionCwd = cwd;
       },
-      openTerminal: (paths: { cwd: string; worktreePath: string | null }) =>
+      closedIdle,
+      openTerminal: (paths: {
+        cwd: string;
+        worktreePath: string | null;
+        threadId?: string;
+        hasRunningSubprocess?: boolean;
+      }) =>
         terminalListener?.({
           type: "upsert",
           terminal: {
@@ -1719,6 +1729,27 @@ describe("orphan worktree reports", () => {
           );
         }),
       ),
+  );
+
+  it.live.each([
+    ["ends a run terminal at its prompt and removes the worktree", false, "removed"],
+    ["waits for a run terminal with something running", true, "kept"],
+  ] as const)("%s", ([, hasRunningSubprocess, outcome]) =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const fixture = yield* cleanupFixture();
+        const threadId = runTerminalThreadId(fixture.worktree);
+        yield* fixture.openTerminal({
+          cwd: fixture.worktree,
+          worktreePath: fixture.worktree,
+          threadId,
+          hasRunningSubprocess,
+        });
+        const report = yield* fixture.service.runNow;
+        expect(report.entries[0]).toMatchObject({ outcome });
+        expect(fixture.closedIdle).toEqual(hasRunningSubprocess ? [] : [threadId]);
+      }),
+    ),
   );
 
   it.live.each(["win32", "linux"] as const)(

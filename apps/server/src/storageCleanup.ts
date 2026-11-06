@@ -1,5 +1,6 @@
 import {
   GitCommandError,
+  isIdleRunTerminal,
   OrchestrationV2AppThreadJson,
   OrchestrationV2ProviderSessionJson,
 } from "@t3tools/contracts";
@@ -283,10 +284,10 @@ const make = Effect.gen(function* () {
       !path.isAbsolute(relative)
     );
   };
-  const hasTerminal = (worktreePath: string) =>
+  const terminalsIn = (worktreePath: string) =>
     [...liveTerminals.values()]
       .flatMap((entries) => [...entries.values()])
-      .some((terminal) => {
+      .filter((terminal) => {
         if (terminal.status !== "starting" && terminal.status !== "running") return false;
         const cwd = path.resolve(terminal.cwd);
         return (
@@ -296,6 +297,8 @@ const make = Effect.gen(function* () {
           inside(worktreePath, cwd)
         );
       });
+  const hasTerminal = (worktreePath: string) =>
+    terminalsIn(worktreePath).some((terminal) => !isIdleRunTerminal(terminal));
 
   // pnpm imports packages by clone or reflink when its store shares a device
   // with the worktree. Those files have one link but share blocks with the
@@ -1071,6 +1074,14 @@ const make = Effect.gen(function* () {
           const changes = yield* localChangesReason(worktreePath, settings);
           if (changes !== null) return keep(changes);
         }
+        // A run's tab may have closed with no connection to end its shell.
+        yield* Effect.forEach(
+          terminalsIn(worktreePath).filter(isIdleRunTerminal),
+          terminals.closeIdle,
+          {
+            discard: true,
+          },
+        );
         yield* removeLinkedWorktree({
           operation: "StorageCleanup.cleanupGit",
           cwd: project.workspaceRoot,
