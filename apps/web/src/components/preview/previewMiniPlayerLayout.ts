@@ -288,23 +288,27 @@ export function resizePreviewMiniPlayer(input: {
   const span = spanOf(start.x, start.width);
   const floor = floorFor(span, container, obstacles);
   const ceiling = ceilingFor(span, obstacles);
+  const horizontal = east || west;
+  const vertical = north || south;
+  // An edge stops at the limit it pushes against. A corner has another way to grow, so it slides off
+  // the limit instead of stopping dead, as an edge's free axis already does.
   const max = {
-    width: west
-      ? right - PREVIEW_MINI_PLAYER_EDGE_GAP
-      : east
-        ? container.width - PREVIEW_MINI_PLAYER_EDGE_GAP - start.x
+    width:
+      horizontal && !vertical
+        ? west
+          ? right - PREVIEW_MINI_PLAYER_EDGE_GAP
+          : container.width - PREVIEW_MINI_PLAYER_EDGE_GAP - start.x
         : container.width - PREVIEW_MINI_PLAYER_EDGE_GAP * 2,
-    height: north
-      ? bottom - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP
-      : south
-        ? floor - PREVIEW_MINI_PLAYER_EDGE_GAP - start.y
+    height:
+      vertical && !horizontal
+        ? north
+          ? bottom - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP
+          : floor - PREVIEW_MINI_PLAYER_EDGE_GAP - start.y
         : floor - ceiling - PREVIEW_MINI_PLAYER_EDGE_GAP * 2,
   };
   const desiredWidth = start.width + (east ? delta.x : west ? -delta.x : 0);
   const desiredHeight =
     start.height - PREVIEW_MINI_PLAYER_PAGE_TOP + (south ? delta.y : north ? -delta.y : 0);
-  const horizontal = east || west;
-  const vertical = north || south;
   const aspectRatio = source.width / source.height;
   // Project onto the aspect-ratio diagonal; dominant-axis switching jumps when axes move in opposite
   // directions.

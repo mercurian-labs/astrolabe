@@ -138,6 +138,34 @@ describe("resizePreviewMiniPlayer", () => {
     ).toEqual({ x: 600, y: 12, width: 388, height: 243 + bar });
   });
 
+  it.each([
+    {
+      corner: "against the top",
+      start: { x: 300, y: gap, width: 320, height: 200 + bar },
+      direction: "northeast" as const,
+      delta: { x: 40, y: -20 },
+      expected: { x: 300, y: gap, width: 358, height: 224 + bar },
+    },
+    {
+      corner: "against the top",
+      start: { x: 300, y: gap, width: 320, height: 200 + bar },
+      direction: "northwest" as const,
+      delta: { x: -40, y: -20 },
+      expected: { x: 262, y: gap, width: 358, height: 224 + bar },
+    },
+    {
+      corner: "against the right",
+      start: { x: 1_000 - gap - 320, y: 300, width: 320, height: 200 + bar },
+      direction: "northeast" as const,
+      delta: { x: 40, y: -20 },
+      expected: { x: 1_000 - gap - 358, y: 300 - 24, width: 358, height: 224 + bar },
+    },
+  ])("slides a $direction drag along a limit $corner", ({ start, direction, delta, expected }) => {
+    expect(resizePreviewMiniPlayer({ start, direction, delta, source, container })).toEqual(
+      expected,
+    );
+  });
+
   it("shifts the player when the free axis would overflow", () => {
     expect(
       resizePreviewMiniPlayer({

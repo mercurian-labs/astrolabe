@@ -84,7 +84,7 @@ const frameCornerRadius = () => PREVIEW_MINI_PLAYER_CORNER_RADIUS;
 
 // Around the whole window, with the grab band mostly outside: a desktop page draws above everything
 // in the pane, so a handle laid over it can be neither seen nor grabbed. The top edge keeps clear of
-// the bar's buttons, and the gap under the bar resizes too.
+// the bar's buttons, and the page's own top corners resize like the window's.
 const RESIZE_HANDLES: ReadonlyArray<{
   readonly direction: BrowserViewportResizeDirection;
   readonly className: string;
@@ -99,8 +99,18 @@ const RESIZE_HANDLES: ReadonlyArray<{
   { direction: "south", className: "inset-x-0 -bottom-3 h-4 cursor-ns-resize" },
   { direction: "west", className: "inset-y-0 -left-3 w-4 cursor-ew-resize" },
   { direction: "east", className: "inset-y-0 -right-3 w-4 cursor-ew-resize" },
-  { direction: "northwest", className: "-left-3 -top-3 size-4 cursor-nwse-resize" },
-  { direction: "northeast", className: "-right-3 -top-3 size-4 cursor-nesw-resize" },
+  { direction: "northwest", className: "-left-3 -top-3 h-7 w-4 cursor-nwse-resize" },
+  { direction: "northeast", className: "-right-3 -top-3 h-7 w-4 cursor-nesw-resize" },
+  {
+    direction: "northwest",
+    className: "-left-3 h-5 w-4 cursor-nwse-resize",
+    top: PREVIEW_MINI_PLAYER_BAR_HEIGHT,
+  },
+  {
+    direction: "northeast",
+    className: "-right-3 h-5 w-4 cursor-nesw-resize",
+    top: PREVIEW_MINI_PLAYER_BAR_HEIGHT,
+  },
   { direction: "southwest", className: "-bottom-4 -left-4 size-6 cursor-nesw-resize" },
   { direction: "southeast", className: "-bottom-4 -right-4 size-6 cursor-nwse-resize" },
 ];
