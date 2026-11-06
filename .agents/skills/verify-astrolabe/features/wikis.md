@@ -180,6 +180,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
   stays on the computer. Walk it on an iPhone with test-t3-mobile.
 
+- **Git host**: Settings → Wikis → a wiki → **Git host** with **Connect**, then **Sync now** and
+  **Disconnect** (`WikisSettings.tsx`, server `wiki/WikiHostService.ts`). Connecting uses the
+  folder's `origin`, gives the wiki a backing project (what pull requests are read through) and
+  replaces the mirror. A person's edit publishes on its own; an agent's waits for its turn to
+  end and opens as a draft where the host has drafts. Merging goes through the host. Changes
+  shows such a change once, under Wiki changes, while the filter is All, and as a pull request
+  row with one project picked. Walk it on a throwaway repository, never on a wiki we use.
+
 ## How to get to it (user POV)
 
 The book icon in the icon rail, the keyboard menu's `w w` or `g w`, or a document
