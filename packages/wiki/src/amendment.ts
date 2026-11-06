@@ -1,5 +1,7 @@
 import { applyBaseEdits, type BaseEdit } from "./baseEdits.ts";
 import { renameInBase, renameInBaseBlocks } from "./bases.ts";
+import { isCanvasFile, serializeCanvas } from "./canvas.ts";
+import { renameInCanvas, type CanvasRename } from "./canvasIndex.ts";
 import { key, renameLinks } from "./links.ts";
 import {
   isMapFile,
@@ -17,6 +19,7 @@ import {
   support,
   unresolved,
   type WikiFiles,
+  type WikiIndex,
   type WikiIndexError,
 } from "./wikiIndex.ts";
 
@@ -27,7 +30,7 @@ export class AmendmentError extends Error {
   override readonly name = "AmendmentError";
 }
 
-/** A flat note or base filename: no directories, no hidden files, no control characters. */
+/** A flat document filename: no directories, no hidden files, no control characters. */
 export function checkFileName(file: string): string {
   if (
     !file ||
@@ -35,9 +38,9 @@ export function checkFileName(file: string): string {
     file.includes("\\") ||
     /[\0\r\n]/.test(file) ||
     file.startsWith(".") ||
-    !(file.endsWith(".md") || file.endsWith(".base"))
+    !(file.endsWith(".md") || file.endsWith(".base") || file.endsWith(".canvas"))
   ) {
-    throw new AmendmentError(`Expected a flat .md or .base filename: ${file}`);
+    throw new AmendmentError(`Expected a flat .md, .base or .canvas filename: ${file}`);
   }
   return file;
 }
@@ -163,7 +166,21 @@ export type WikiTransform =
       readonly text: string;
     }
   /** Edits made from a base's view (see `applyBaseEdits`). */
-  | { readonly kind: "base-edits"; readonly edits: ReadonlyArray<BaseEdit> };
+  | { readonly kind: "base-edits"; readonly edits: ReadonlyArray<BaseEdit> }
+  /** A new, empty canvas: the one way to start a canvas until cards can be written. */
+  | { readonly kind: "canvas-create"; readonly file: string };
+
+/** What a rename touches: a note goes by its name, a canvas by its file name. */
+function renameOf(index: WikiIndex, from: string, to: string): CanvasRename {
+  const canvas = index.canvases.get(key(from));
+  if (canvas !== undefined) {
+    const toFile = isCanvasFile(to) ? to : `${to}.canvas`;
+    return { fromFile: canvas.file, toFile, fromName: canvas.file, toName: toFile };
+  }
+  const note = index.notes.get(key(from));
+  if (!note) throw new AmendmentError(`No note named ${from}`);
+  return { fromFile: note.file, toFile: `${to}.md`, fromName: note.name, toName: to };
+}
 
 export function planTransform(
   files: WikiFiles,
@@ -182,31 +199,46 @@ export function planTransform(
   if (malformed.length)
     throw new AmendmentError(`Fix malformed maps first: ${JSON.stringify(malformed)}`);
   const changes: Record<string, string | null> = {};
+  if (transform.kind === "canvas-create") {
+    const file = checkFileName(transform.file);
+    if (!isCanvasFile(file)) throw new AmendmentError(`Expected a .canvas filename: ${file}`);
+    if (Object.keys(files).some((existing) => key(existing) === key(file))) {
+      throw new AmendmentError(`A file named ${file} already exists`);
+    }
+    changes[file] = serializeCanvas({ nodes: [], edges: [] });
+    return changes;
+  }
   if (transform.kind === "rename") {
-    const from = index.notes.get(key(transform.from));
-    if (!from) throw new AmendmentError(`No note named ${transform.from}`);
-    const target = checkFileName(`${transform.to}.md`);
-    if (
-      index.notes.has(key(transform.to)) ||
-      Object.keys(files).some((f) => key(f) === key(target))
-    ) {
+    const rename = renameOf(index, transform.from, transform.to);
+    const { fromFile, toFile, fromName, toName } = rename;
+    const target = checkFileName(toFile);
+    if (index.notes.has(key(toName)) || Object.keys(files).some((f) => key(f) === key(target))) {
       throw new AmendmentError(`Rename target exists: ${transform.to}`);
     }
     for (const note of index.notes.values()) {
       const source = renameInBaseBlocks(
-        renameLinks(note.source, from.name, transform.to),
-        from.name,
-        transform.to,
+        renameLinks(note.source, fromName, toName),
+        fromName,
+        toName,
       );
-      if (note.name === from.name) {
+      if (note.file === fromFile) {
         changes[note.file] = null;
         changes[target] = source;
       } else if (source !== note.source) {
         changes[note.file] = source;
       }
     }
+    for (const canvas of index.canvases.values()) {
+      const source = renameInCanvas(canvas.source, rename);
+      if (canvas.file === fromFile) {
+        changes[canvas.file] = null;
+        changes[target] = source;
+      } else if (source !== canvas.source) {
+        changes[canvas.file] = source;
+      }
+    }
     for (const [baseFile, source] of index.bases) {
-      const next = renameInBase(source, from.name, transform.to);
+      const next = renameInBase(source, fromName, toName);
       if (next !== source) changes[baseFile] = next;
     }
     for (const [mapFile, map] of index.maps) {
@@ -214,10 +246,10 @@ export function planTransform(
         ...map,
         edges: map.edges.map((edge) => ({
           ...edge,
-          from: key(edge.from) === key(from.name) ? transform.to : edge.from,
-          to: key(edge.to) === key(from.name) ? transform.to : edge.to,
+          from: key(edge.from) === key(fromName) ? toName : edge.from,
+          to: key(edge.to) === key(fromName) ? toName : edge.to,
         })),
-        body: renameLinks(map.body ?? "", from.name, transform.to),
+        body: renameLinks(map.body ?? "", fromName, toName),
       };
       const next = serializeMap(renamed);
       if (next !== serializeMap(map)) changes[mapFile] = next;

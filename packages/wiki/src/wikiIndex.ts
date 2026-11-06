@@ -1,13 +1,15 @@
 import { baseBlocks, baseProblems, isBaseFile } from "./bases.ts";
+import { isCanvasFile, parseCanvas, type CanvasData } from "./canvas.ts";
+import { canvasLinks, type CanvasLink } from "./canvasIndex.ts";
 import { key, links, noteName, type WikiLink } from "./links.ts";
 import { isMapFile, parseMap, type MapEdgeRef, type SkillMap } from "./skillMap.ts";
 
 /** Operational files beside the notes; never knowledge. */
 const RESERVED = new Set(["agents.md", "claude.md", "readme.md"]);
 
-/** A note, a skill map, or a base: a flat file at the wiki's top level. */
+/** A note, a skill map, a base or a canvas: a flat file at the wiki's top level. */
 export const isWikiDocument = (file: string): boolean =>
-  (file.endsWith(".md") || file.endsWith(".base")) &&
+  (file.endsWith(".md") || file.endsWith(".base") || file.endsWith(".canvas")) &&
   !file.includes("/") &&
   !RESERVED.has(key(file));
 
@@ -16,6 +18,15 @@ export interface WikiNote {
   readonly file: string;
   readonly source: string;
   readonly links: ReadonlyArray<WikiLink>;
+}
+
+/** A `.canvas` file. It is never a note, so no card can hold up a skill map's edge. */
+export interface WikiCanvas {
+  readonly file: string;
+  readonly source: string;
+  /** What draws; null when the file isn't JSON, which `errors` reports. */
+  readonly data: CanvasData | null;
+  readonly links: ReadonlyArray<CanvasLink>;
 }
 
 export interface WikiIndexError {
@@ -33,6 +44,8 @@ export interface WikiIndex {
   readonly maps: ReadonlyMap<string, SkillMap>;
   /** Each `.base` file's source, by file; a base is checked when it is queried. */
   readonly bases: ReadonlyMap<string, string>;
+  /** By compared file name: a link names a canvas by its file, as `[[Board.canvas]]`. */
+  readonly canvases: ReadonlyMap<string, WikiCanvas>;
   readonly errors: ReadonlyArray<WikiIndexError>;
 }
 
@@ -46,11 +59,24 @@ export function indexFiles(files: WikiFiles): WikiIndex {
   const notes = new Map<string, WikiNote>();
   const maps = new Map<string, SkillMap>();
   const bases = new Map<string, string>();
+  const canvases = new Map<string, WikiCanvas>();
   const errors: WikiIndexError[] = [];
   for (const [file, source] of Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) {
     if (!isWikiDocument(file)) continue;
     if (isBaseFile(file)) {
       bases.set(file, source);
+      continue;
+    }
+    if (isCanvasFile(file)) {
+      const parsed = parseCanvas(source);
+      if (!parsed.ok) errors.push({ file, error: `Not valid JSON: ${parsed.error}` });
+      const data = parsed.ok ? parsed.data : null;
+      canvases.set(key(file), {
+        file,
+        source,
+        data,
+        links: data === null ? [] : canvasLinks(data),
+      });
       continue;
     }
     if (isMapFile(file)) {
@@ -85,7 +111,7 @@ export function indexFiles(files: WikiFiles): WikiIndex {
       }
     }
   }
-  return { notes, maps, bases, errors };
+  return { notes, maps, bases, canvases, errors };
 }
 
 export interface ProseSupport {
@@ -125,24 +151,42 @@ export interface UnresolvedNote {
   readonly sources: ReadonlyArray<string>;
 }
 
-/** The frontier: names linked to that no note carries yet. */
-export function unresolved(index: Pick<WikiIndex, "notes">): ReadonlyArray<UnresolvedNote> {
+/** Whether a link's target is a document: a note by name, a canvas by its file name. */
+export const isDocumentLink = (
+  index: Pick<WikiIndex, "notes" | "canvases">,
+  target: string,
+): boolean => index.notes.has(key(target)) || index.canvases.has(key(target));
+
+/** The frontier: names linked to, from notes and text cards, that nothing carries yet. */
+export function unresolved(
+  index: Pick<WikiIndex, "notes" | "canvases">,
+): ReadonlyArray<UnresolvedNote> {
   const missing = new Map<string, { name: string; sources: string[] }>();
-  for (const note of index.notes.values()) {
-    for (const link of note.links) {
-      if (index.notes.has(key(link.target))) continue;
-      const entry = missing.get(key(link.target)) ?? { name: link.target, sources: [] };
-      if (!entry.sources.includes(note.name)) entry.sources.push(note.name);
-      missing.set(key(link.target), entry);
-    }
+  const note = (target: string, source: string) => {
+    if (isDocumentLink(index, target)) return;
+    const entry = missing.get(key(target)) ?? { name: target, sources: [] };
+    if (!entry.sources.includes(source)) entry.sources.push(source);
+    missing.set(key(target), entry);
+  };
+  for (const { name, links } of index.notes.values()) {
+    for (const link of links) note(link.target, name);
+  }
+  for (const canvas of index.canvases.values()) {
+    for (const link of canvas.links) if (link.card === "text") note(link.target, canvas.file);
   }
   return [...missing.values()];
 }
 
-export function backlinks(index: Pick<WikiIndex, "notes">, name: string): ReadonlyArray<string> {
+export function backlinks(
+  index: Pick<WikiIndex, "notes" | "canvases">,
+  name: string,
+): ReadonlyArray<string> {
   const sources: string[] = [];
   for (const note of index.notes.values()) {
     if (note.links.some((link) => key(link.target) === key(name))) sources.push(note.name);
+  }
+  for (const canvas of index.canvases.values()) {
+    if (canvas.links.some((link) => key(link.target) === key(name))) sources.push(canvas.file);
   }
   return sources;
 }

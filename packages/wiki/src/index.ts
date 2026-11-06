@@ -9,3 +9,5 @@ export * from "./bases.ts";
 export * from "./baseCorpus.ts";
 export * from "./baseEdits.ts";
 export * from "./baseLayout.ts";
+export * from "./canvas.ts";
+export * from "./canvasIndex.ts";

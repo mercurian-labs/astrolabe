@@ -1,12 +1,218 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   canvasBounds,
+  canvasData,
   canvasDrawingProblems,
+  parseCanvas,
   placeCanvas,
+  serializeCanvas,
   type CanvasBounds,
   type CanvasDrawing,
 } from "./canvas.ts";
+import { canvasLinks, canvasOutline, canvasSourceOutline, renameInCanvas } from "./canvasIndex.ts";
+
+const fixtureFolder = new URL("./fixtures/obsidian-canvas/", import.meta.url);
+const fixture = (name: string) => NodeFS.readFileSync(new URL(name, fixtureFolder), "utf8");
+/** Files as Obsidian saved them; the others are input we wrote for it to open. */
+const saved = NodeFS.readdirSync(fixtureFolder).filter((name) => fixture(name).includes('\n\t"'));
+
+describe("serializeCanvas", () => {
+  it.each(saved)("writes %s back byte for byte", (name) => {
+    expect(serializeCanvas(JSON.parse(fixture(name)))).toBe(fixture(name));
+  });
+
+  it("covers the formats the report names", () => {
+    expect(saved).toEqual(
+      expect.arrayContaining(["ed-format.after-edit.canvas", "hand-after-edit.canvas"]),
+    );
+  });
+
+  it("keeps `{}` as it is and expands an empty container's parent", () => {
+    expect(serializeCanvas({})).toBe("{}");
+    expect(serializeCanvas({ nodes: [], edges: [] })).toBe('{\n\t"nodes":[],\n\t"edges":[]\n}');
+    expect(serializeCanvas({ c: { d: {} } })).toBe('{\n\t"c":{\n\t\t"d":{}\n\t}\n}');
+  });
+});
+
+describe("parseCanvas", () => {
+  it("keeps what doesn't draw in the document, and writes it back", () => {
+    const parsed = parseCanvas(fixture("survive-input.canvas"));
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.data.nodes.map((node) => node.id)).toEqual([
+      "mover",
+      "fracstill",
+      "link",
+      "linkedge",
+    ]);
+    const rewritten = JSON.parse(serializeCanvas(parsed.document));
+    expect(rewritten).toEqual(JSON.parse(fixture("survive-input.canvas")));
+    expect(Object.keys(rewritten)).toEqual(["extra", "nodes", "edges", "zzz"]);
+  });
+
+  it.each([
+    ["empty text", "", 0],
+    ["whitespace", " \n", 0],
+    ["an empty object", "{}", 0],
+    ["an array", "[1,2,3]", 0],
+    ["no edges", '{"nodes":[{"id":"a","type":"text","text":"t"}]}', 1],
+    ["no nodes", '{"edges":[]}', 0],
+  ])("opens %s", (_name, source, count) => {
+    const parsed = parseCanvas(source);
+    expect(parsed.ok && parsed.data.nodes.length).toBe(count);
+  });
+
+  it("refuses only text that isn't JSON", () => {
+    expect(parseCanvas("{nope").ok).toBe(false);
+  });
+
+  it("draws a card the file left incomplete", () => {
+    const { nodes } = canvasData({
+      nodes: [{ type: "text" }, { id: "a", type: "file", x: "1" }, "junk"],
+    });
+    expect(nodes[0]).toMatchObject({ id: "node-0", text: "", x: 0, width: 100, height: 100 });
+    expect(nodes[1]).toMatchObject({ id: "a", file: "", x: 0 });
+    expect(nodes).toHaveLength(2);
+  });
+
+  it("gives repeated ids distinct keys, keeping both cards", () => {
+    const parsed = parseCanvas(fixture("bad-dup-id.afterclose.canvas"));
+    expect(parsed.ok && parsed.data.nodes.map((node) => node.id)).toEqual(["a", "a~1"]);
+  });
+
+  it("reads a pinned base view, and a code card's reference", () => {
+    const parsed = parseCanvas(fixture("base-pinned.canvas"));
+    expect(parsed.ok && parsed.data.nodes[0]).toMatchObject({ type: "file" });
+    const { nodes } = canvasData({
+      nodes: [
+        {
+          id: "c",
+          type: "link",
+          url: "https://x.test",
+          astrolabe: { code: { path: "a.ts", lines: [1, 2], commit: "abc" } },
+        },
+      ],
+    });
+    expect(nodes[0]).toMatchObject({
+      astrolabe: { code: { path: "a.ts", lines: [1, 2], commit: "abc" } },
+    });
+  });
+});
+
+describe("canvas links", () => {
+  const data = canvasData({
+    nodes: [
+      { id: "a", type: "text", text: "[[Ghost]] and ![[Alpha#Top]]" },
+      { id: "b", type: "file", file: "Beta.md", subpath: "#H" },
+      { id: "c", type: "file", file: "Board.canvas" },
+      { id: "d", type: "link", url: "https://x.test" },
+    ],
+    edges: [{ id: "e", fromNode: "b", toNode: "c" }],
+  });
+
+  it("reads text cards and file cards, and never arrows", () => {
+    expect(canvasLinks(data)).toEqual([
+      { target: "Ghost", card: "text" },
+      { target: "Alpha", card: "text" },
+      { target: "Beta", card: "file" },
+      { target: "Board.canvas", card: "file" },
+    ]);
+  });
+});
+
+describe("renameInCanvas", () => {
+  const rename = {
+    fromFile: "~/N1.md",
+    toFile: "~/N1r.md",
+    fromName: "~/N1",
+    toName: "~/N1r",
+  };
+
+  it("matches what Obsidian saves, but for Markdown-style links, which notes don't rename either", () => {
+    expect(renameInCanvas(fixture("links-on-deleteNote-closed.canvas"), rename)).toBe(
+      fixture("links-on-renameNote-open.canvas").replace("[md](~/N1r.md)", "[md](~/N1.md)"),
+    );
+  });
+
+  it("follows a group's background by its whole path", () => {
+    const source = '{"nodes":[{"id":"g","type":"group","background":"a/pic.png"}],"edges":[]}';
+    const next = renameInCanvas(source, {
+      fromFile: "a/pic.png",
+      toFile: "a/new.png",
+      fromName: "a/pic.png",
+      toName: "a/new.png",
+    });
+    expect(JSON.parse(next).nodes[0].background).toBe("a/new.png");
+  });
+
+  it("leaves a file with nothing to rename in the bytes it had", () => {
+    const source = fixture("hand-before-edit.canvas");
+    expect(renameInCanvas(source, rename)).toBe(source);
+    expect(renameInCanvas("{nope", rename)).toBe("{nope");
+  });
+
+  it("keeps a card's other keys and their order", () => {
+    const next = renameInCanvas(
+      '{"nodes":[{"keep":1,"id":"a","type":"file","file":"~/N1.md","subpath":"#H","x":0}]}',
+      rename,
+    );
+    expect(Object.keys(JSON.parse(next).nodes[0])).toEqual([
+      "keep",
+      "id",
+      "type",
+      "file",
+      "subpath",
+      "x",
+    ]);
+  });
+});
+
+describe("canvasOutline", () => {
+  const data = canvasData({
+    nodes: [
+      { id: "outer", type: "group", label: "Outer", x: 0, y: 0, width: 500, height: 500 },
+      { id: "inner", type: "group", label: "Inner", x: 10, y: 10, width: 200, height: 200 },
+      { id: "a", type: "text", text: "first\nsecond", x: 20, y: 20, width: 50, height: 50 },
+      {
+        id: "b",
+        type: "file",
+        file: "Note.md",
+        subpath: "#Top",
+        x: 300,
+        y: 300,
+        width: 50,
+        height: 50,
+      },
+      { id: "c", type: "text", text: "half out", x: 480, y: 0, width: 50, height: 50 },
+    ],
+    edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses", fromEnd: "arrow" }],
+  });
+
+  it("files cards under the smallest group wholly holding them, with no coordinates", () => {
+    expect(canvasOutline("Board.canvas", data)).toBe(
+      [
+        "Board.canvas: 3 cards, 2 groups, 1 arrow.",
+        "[c] half out",
+        "",
+        "Group [outer] Outer",
+        "[b] File: Note.md#Top",
+        "",
+        "Group [inner] Inner",
+        "[a] first",
+        "  second",
+        "",
+        "Arrows",
+        "[a] <-> [b]: uses",
+      ].join("\n"),
+    );
+  });
+
+  it("says what's wrong with a file that isn't JSON, and shows it", () => {
+    expect(canvasSourceOutline("Board.canvas", "{nope")).toContain("{nope");
+  });
+});
 
 const overlap = (a: CanvasBounds, b: CanvasBounds) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;

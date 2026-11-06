@@ -5,6 +5,7 @@
  * are left out, as Obsidian leaves them out.
  */
 import { fileName, stripHeading, type BaseDoc, type LinkValue } from "./baseValues.ts";
+import { isCanvasFile, parseCanvas } from "./canvas.ts";
 import { key, links as findLinks, typedLinks } from "./links.ts";
 import { noteProperties, noteTags } from "./properties.ts";
 
@@ -58,26 +59,16 @@ function noteLinks(source: string): { links: LinkValue[]; embeds: LinkValue[] } 
 }
 
 /** A canvas's links: those its text cards write, then the files its file cards show. */
-function canvasLinks(source: string): LinkValue[] {
-  let nodes: unknown;
-  try {
-    nodes = (JSON.parse(source) as { nodes?: unknown }).nodes;
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(nodes)) return [];
-  const cards = nodes.filter(
-    (node): node is Record<string, unknown> => typeof node === "object" && node !== null,
-  );
-  const fromText = cards.flatMap((node) =>
-    node.type === "text" && typeof node.text === "string" ? noteLinks(node.text).links : [],
-  );
-  const fromFiles = cards.flatMap((node): LinkValue[] =>
-    node.type === "file" && typeof node.file === "string"
-      ? [{ kind: "link", path: node.file }]
-      : [],
-  );
-  return [...fromText, ...fromFiles];
+function canvasLinkValues(source: string): LinkValue[] {
+  const parsed = parseCanvas(source);
+  if (!parsed.ok) return [];
+  const { nodes } = parsed.data;
+  return [
+    ...nodes.flatMap((node) => (node.type === "text" ? noteLinks(node.text).links : [])),
+    ...nodes.flatMap((node): LinkValue[] =>
+      node.type === "file" && node.file !== "" ? [{ kind: "link", path: node.file }] : [],
+    ),
+  ];
 }
 
 const timeOf = (times: ReadonlyMap<string, string | number> | undefined, file: string) => {
@@ -106,7 +97,7 @@ function docOf(entry: BaseFile, times: BaseFileTimes): BaseDoc {
       typedLinks: typedLinks(source),
     };
   }
-  const links = /\.canvas$/i.test(entry.file) ? canvasLinks(source) : [];
+  const links = isCanvasFile(entry.file) ? canvasLinkValues(source) : [];
   return { ...base, properties: {}, tags: [], links, embeds: [], typedLinks: [] };
 }
 

@@ -1,6 +1,7 @@
 /**
- * JSON Canvas (https://jsoncanvas.org/spec/1.0/), and how a drawing with no coordinates becomes
- * one. This file is what clients import: it must stay free of the wiki's parsers.
+ * JSON Canvas (https://jsoncanvas.org/spec/1.0/): reading one, writing it back as Obsidian writes
+ * it, and how a drawing with no coordinates becomes one. This file is what clients import, the
+ * phone's engine included: it must stay free of the wiki's parsers.
  */
 
 export type CanvasSide = "top" | "right" | "bottom" | "left";
@@ -35,12 +36,24 @@ export interface CanvasLinkNode extends CanvasNodeBase {
   readonly astrolabe?: { readonly caption?: string; readonly code?: CanvasCodeReference };
 }
 
+export interface CanvasFileNode extends CanvasNodeBase {
+  readonly type: "file";
+  /** Its path from the wiki's root, any depth, extension included. */
+  readonly file: string;
+  /** A note's `#Heading` or `#^block`, or a base's `#View`. */
+  readonly subpath?: string;
+}
+
 export interface CanvasGroupNode extends CanvasNodeBase {
   readonly type: "group";
   readonly label?: string;
+  /** An image's path from the wiki's root. */
+  readonly background?: string;
+  /** `ratio` or `repeat`; a group with none covers, as Obsidian writes it. */
+  readonly backgroundStyle?: string;
 }
 
-export type CanvasNode = CanvasTextNode | CanvasLinkNode | CanvasGroupNode;
+export type CanvasNode = CanvasTextNode | CanvasLinkNode | CanvasFileNode | CanvasGroupNode;
 
 export interface CanvasEdge {
   readonly id: string;
@@ -54,6 +67,7 @@ export interface CanvasEdge {
   readonly label?: string;
 }
 
+/** What a board draws. A file's exact contents live in the document `parseCanvas` returns. */
 export interface CanvasData {
   /** Earlier nodes draw beneath later ones. */
   readonly nodes: ReadonlyArray<CanvasNode>;
@@ -69,12 +83,205 @@ export interface CanvasBounds {
 
 export function canvasBounds(data: Pick<CanvasData, "nodes">): CanvasBounds {
   if (data.nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-  const left = Math.min(...data.nodes.map((node) => node.x));
-  const top = Math.min(...data.nodes.map((node) => node.y));
-  const right = Math.max(...data.nodes.map((node) => node.x + node.width));
-  const bottom = Math.max(...data.nodes.map((node) => node.y + node.height));
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const node of data.nodes) {
+    left = Math.min(left, node.x);
+    top = Math.min(top, node.y);
+    right = Math.max(right, node.x + node.width);
+    bottom = Math.max(bottom, node.y + node.height);
+  }
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
+
+export const isCanvasFile = (file: string): boolean => /\.canvas$/i.test(file);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const number = (value: unknown, fallback: number) =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+const side = (value: unknown) =>
+  value === "top" || value === "right" || value === "bottom" || value === "left"
+    ? value
+    : undefined;
+const end = (value: unknown) => (value === "none" || value === "arrow" ? value : undefined);
+
+function codeReference(value: unknown): CanvasCodeReference | undefined {
+  if (!isRecord(value) || typeof value.path !== "string") return undefined;
+  const { lines } = value;
+  const repository = text(value.repository);
+  const commit = text(value.commit);
+  return {
+    path: value.path,
+    ...(Array.isArray(lines) && typeof lines[0] === "number" && typeof lines[1] === "number"
+      ? { lines: [lines[0], lines[1]] as const }
+      : {}),
+    ...(repository === undefined ? {} : { repository }),
+    ...(commit === undefined ? {} : { commit }),
+  };
+}
+
+/** The card a node draws as; none for a type this version doesn't know, which Obsidian skips too. */
+function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | undefined {
+  const color = text(raw.color);
+  const base = {
+    id,
+    x: number(raw.x, 0),
+    y: number(raw.y, 0),
+    width: number(raw.width, 100),
+    height: number(raw.height, 100),
+    ...(color === undefined ? {} : { color }),
+  };
+  switch (raw.type) {
+    case "text":
+      return { ...base, type: "text", text: text(raw.text) ?? "" };
+    case "file": {
+      const subpath = text(raw.subpath);
+      return {
+        ...base,
+        type: "file",
+        file: text(raw.file) ?? "",
+        ...(subpath === undefined ? {} : { subpath }),
+      };
+    }
+    case "link": {
+      const astrolabe = isRecord(raw.astrolabe) ? raw.astrolabe : undefined;
+      const caption = text(astrolabe?.caption);
+      const code = codeReference(astrolabe?.code);
+      return {
+        ...base,
+        type: "link",
+        url: text(raw.url) ?? "",
+        ...(caption === undefined && code === undefined
+          ? {}
+          : {
+              astrolabe: {
+                ...(caption === undefined ? {} : { caption }),
+                ...(code === undefined ? {} : { code }),
+              },
+            }),
+      };
+    }
+    case "group": {
+      const label = text(raw.label);
+      const background = text(raw.background);
+      const backgroundStyle = text(raw.backgroundStyle);
+      return {
+        ...base,
+        type: "group",
+        ...(label === undefined ? {} : { label }),
+        ...(background === undefined ? {} : { background }),
+        ...(backgroundStyle === undefined ? {} : { backgroundStyle }),
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
+function canvasEdge(raw: Record<string, unknown>, id: string): CanvasEdge | undefined {
+  const { fromNode, toNode } = raw;
+  if (typeof fromNode !== "string" || typeof toNode !== "string") return undefined;
+  const fromSide = side(raw.fromSide);
+  const toSide = side(raw.toSide);
+  const fromEnd = end(raw.fromEnd);
+  const toEnd = end(raw.toEnd);
+  const color = text(raw.color);
+  const label = text(raw.label);
+  return {
+    id,
+    fromNode,
+    toNode,
+    ...(fromSide === undefined ? {} : { fromSide }),
+    ...(toSide === undefined ? {} : { toSide }),
+    ...(fromEnd === undefined ? {} : { fromEnd }),
+    ...(toEnd === undefined ? {} : { toEnd }),
+    ...(color === undefined ? {} : { color }),
+    ...(label === undefined ? {} : { label }),
+  };
+}
+
+/** What a list's entries draw as. Ids are unique here though a file's may repeat or be missing. */
+function drawn<A>(
+  list: unknown,
+  prefix: string,
+  read: (raw: Record<string, unknown>, id: string) => A | undefined,
+): A[] {
+  const seen = new Set<string>();
+  const items: A[] = [];
+  (Array.isArray(list) ? list : []).forEach((raw: unknown, position) => {
+    if (!isRecord(raw)) return;
+    const named = typeof raw.id === "string" && raw.id !== "" ? raw.id : `${prefix}-${position}`;
+    const id = seen.has(named) ? `${named}~${position}` : named;
+    seen.add(id);
+    const item = read(raw, id);
+    if (item !== undefined) items.push(item);
+  });
+  return items;
+}
+
+/** A file's JSON as drawn: every card with what it needs, whatever the file left out. */
+export function canvasData(document: unknown): CanvasData {
+  if (!isRecord(document)) return { nodes: [], edges: [] };
+  return {
+    nodes: drawn(document.nodes, "node", canvasNode),
+    edges: drawn(document.edges, "edge", canvasEdge),
+  };
+}
+
+export type ParsedCanvas =
+  | {
+      readonly ok: true;
+      /** The file as read. It alone is what writes back: `data` drops what doesn't draw. */
+      readonly document: unknown;
+      readonly data: CanvasData;
+    }
+  | { readonly ok: false; readonly error: string };
+
+/** Reads a canvas as Obsidian opens one: only text that isn't JSON at all is refused. */
+export function parseCanvas(source: string): ParsedCanvas {
+  if (source.trim() === "") return { ok: true, document: {}, data: { nodes: [], edges: [] } };
+  try {
+    const document: unknown = JSON.parse(source);
+    return { ok: true, document, data: canvasData(document) };
+  } catch (cause) {
+    return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+  }
+}
+
+const isContainer = (value: unknown) => typeof value === "object" && value !== null;
+
+function written(value: unknown, depth: number): string {
+  if (!isContainer(value)) return JSON.stringify(value) ?? "null";
+  const entries: ReadonlyArray<readonly [string | null, unknown]> = Array.isArray(value)
+    ? value.map((item: unknown) => [null, item] as const)
+    : Object.entries(value as object).filter(([, item]) => item !== undefined);
+  const [open, close] = Array.isArray(value) ? ["[", "]"] : ["{", "}"];
+  if (!entries.some(([, item]) => isContainer(item))) return JSON.stringify(value);
+  const indent = "\t".repeat(depth + 1);
+  const lines = entries.map(
+    ([name, item]) =>
+      `${indent}${name === null ? "" : `${JSON.stringify(name)}:`}${written(item, depth + 1)}`,
+  );
+  return `${open}\n${lines.join(",\n")}\n${"\t".repeat(depth)}${close}`;
+}
+
+/**
+ * The bytes Obsidian writes for a canvas: tabs, LF, no spaces, no final newline. A container sits
+ * on one line only when everything in it is a scalar; an empty `{}` or `[]` counts as a container.
+ */
+export const serializeCanvas = (document: unknown): string => written(document, 0);
+
+/** A group's cards are those wholly inside it, its edge included. Membership is never stored. */
+export const insideGroup = (group: CanvasBounds, card: CanvasBounds): boolean =>
+  card.x >= group.x &&
+  card.y >= group.y &&
+  card.x + card.width <= group.x + group.width &&
+  card.y + card.height <= group.y + group.height;
 
 /** A diagram as an agent describes it: what is on it, never where. */
 export interface CanvasDrawing {

@@ -1,0 +1,36 @@
+{
+	"extra":"top",
+	"nodes":[
+		{"id":"fracstill","type":"text","text":"frac unmoved","x":301,"y":0,"width":201,"height":100},
+		{
+			"id":"link",
+			"type":"link",
+			"url":"https://example.com",
+			"astrolabe":{
+				"repository":"x",
+				"commit":"y",
+				"path":"a.ts",
+				"lines":[1,2]
+			},
+			"x":300,
+			"y":300,
+			"width":300,
+			"height":200
+		},
+		{"id":"linkedge","type":"text","text":"edge to unk","x":700,"y":0,"width":200,"height":100,"color":"mauve"},
+		{"id":"mover","type":"text","text":"mover","x":0,"y":-100,"width":200,"height":100}
+	],
+	"edges":[
+		{
+			"id":"e1",
+			"meta":{"a":1},
+			"style":"dashed",
+			"fromNode":"mover",
+			"fromSide":"right",
+			"toNode":"fracstill",
+			"toSide":"left",
+			"color":"9"
+		}
+	],
+	"zzz":[1,2]
+}
