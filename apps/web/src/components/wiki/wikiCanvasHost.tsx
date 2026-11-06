@@ -262,8 +262,8 @@ export function useWikiCanvasHost({
     copyText: (text) => void navigator.clipboard?.writeText(text),
     editorTakesEscape: vimHoldsEscape,
     draggedFiles: draggedWikiFiles,
-    onLeaderKey: () =>
-      document.activeElement !== null && openLeaderFrom(document.activeElement, " "),
+    onLeaderKey: (key) =>
+      document.activeElement !== null && openLeaderFrom(document.activeElement, key),
     renderExportDialog: (dialog) => (
       <Suspense fallback={null}>
         <CanvasExportDialog {...dialog} assetUrl={assetUrl} />

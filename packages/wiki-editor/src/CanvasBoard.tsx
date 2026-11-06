@@ -173,8 +173,8 @@ export interface CanvasBoardHost
   readonly editorTakesEscape?: (target: Element) => boolean;
   /** Paths being dragged from outside the board, such as a wiki's sidebar rows. */
   readonly draggedFiles?: () => ReadonlyArray<string> | null;
-  /** The leader key, tapped on the board. */
-  readonly onLeaderKey?: () => boolean;
+  /** A plain key the board didn't use: the app's menu may want it. True when it did. */
+  readonly onLeaderKey?: (key: string) => boolean;
   /** Image export's dialog: left out where a platform can't save one. */
   readonly renderExportDialog?: (dialog: CanvasExportRequest) => ReactNode;
   /** Whether a finger drives this board. */
@@ -1786,7 +1786,7 @@ export function CanvasBoard({
           : boardRef.current;
       const rect = element?.getBoundingClientRect();
       if (rect && element) openBoardMenu(rect.left + 8, rect.top + 8, element);
-    } else {
+    } else if (!live.host.onLeaderKey?.(key)) {
       return;
     }
     event.preventDefault();
@@ -1797,7 +1797,7 @@ export function CanvasBoard({
     if (event.key !== " " || !live.spaceHeld) return;
     live.update({ spaceHeld: false });
     boardRef.current?.classList.remove("cv-panning");
-    if (!live.spaceUsed) live.host.onLeaderKey?.();
+    if (!live.spaceUsed) live.host.onLeaderKey?.(" ");
   };
 
   const onCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {

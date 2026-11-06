@@ -1,12 +1,14 @@
 import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
-import type {
-  CanvasBounds,
-  CanvasData,
-  CanvasEdge,
-  CanvasFileNode,
-  CanvasGroupNode,
-  CanvasLinkNode,
-  CanvasNode,
+import {
+  canvasArrowSides,
+  canvasCardName,
+  type CanvasBounds,
+  type CanvasData,
+  type CanvasEdge,
+  type CanvasFileNode,
+  type CanvasGroupNode,
+  type CanvasLinkNode,
+  type CanvasNode,
 } from "@mercurian/wiki/canvas";
 
 import {
@@ -721,6 +723,81 @@ export class CanvasCommands {
           backgroundStyle: "ratio",
           ...(image === null ? {} : { height: ratioHeight(group.width, image) }),
         },
+      },
+    ]);
+  }
+
+  #cardOptions(except: string) {
+    return this.#board
+      .data()
+      .nodes.filter((node) => node.id !== except)
+      .map((node) => ({ value: node.id, label: canvasCardName({ ...node }) }));
+  }
+
+  /** Dragging a dot, from the keyboard: the sides that face each other. */
+  async connectTo(id: string) {
+    const document = this.#document;
+    const from = this.#node(id);
+    if (document === null || from === undefined) return;
+    const picked = await this.#board.pick({
+      title: "Connect to",
+      options: this.#cardOptions(id),
+    });
+    if (picked?.kind !== "existing") return;
+    const to = this.#node(picked.value);
+    if (to === undefined) return;
+    const [fromSide, toSide] = canvasArrowSides(from, to);
+    document.commit([
+      {
+        op: "put-arrow",
+        edge: arrowBetween(
+          document.mint(),
+          { node: id, side: fromSide },
+          { node: to.id, side: toSide },
+        ),
+      },
+    ]);
+  }
+
+  /** The keyboard's way to reach an arrow. */
+  async selectConnection(id: string) {
+    const name = (end: string) => {
+      const node = this.#node(end);
+      return node === undefined ? "A missing card" : canvasCardName({ ...node });
+    };
+    const options = this.#board
+      .data()
+      .edges.filter((edge) => edge.fromNode === id || edge.toNode === id)
+      .map((edge) => ({
+        value: edge.id,
+        label: `${name(edge.fromNode)} → ${name(edge.toNode)}`,
+      }));
+    const picked = await this.#board.pick({ title: "Select connection", options });
+    if (picked?.kind === "existing") this.select({ cards: new Set(), arrow: picked.value });
+  }
+
+  /** Dragging an arrow's end, from the keyboard. */
+  async moveEnd(arrow: string, end: "from" | "to") {
+    const edge = this.#edge(arrow);
+    if (edge === undefined) return;
+    const fixed = end === "from" ? edge.toNode : edge.fromNode;
+    const picked = await this.#board.pick({
+      title: end === "from" ? "Move the start to" : "Move the end to",
+      options: this.#cardOptions(fixed),
+    });
+    if (picked?.kind !== "existing") return;
+    const keep = this.#node(fixed);
+    const next = this.#node(picked.value);
+    if (keep === undefined || next === undefined) return;
+    const [keptSide, nextSide] = canvasArrowSides(keep, next);
+    this.#document?.commit([
+      {
+        op: "set-arrow",
+        arrow,
+        keys:
+          end === "from"
+            ? { fromNode: next.id, fromSide: nextSide, toSide: keptSide }
+            : { toNode: next.id, toSide: nextSide, fromSide: keptSide },
       },
     ]);
   }

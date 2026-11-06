@@ -311,6 +311,53 @@ describe("the wiki editor protocol", () => {
       }
     });
 
+    it("crosses a board's edits to the app, whole, and hears what landed", () => {
+      vi.useFakeTimers();
+      try {
+        const { page: editor, events } = page();
+        const document = { nodes: [{ id: "a", type: "text", text: "A" }], edges: [] };
+        const data = { nodes: [], edges: [] };
+        editor.handle({ type: "showCanvas", data, document, revision: "r0" });
+        const board = editor.getState().editing!;
+        expect(board.getState().data.nodes).toHaveLength(1);
+        const edited = () => events.filter((event) => event.type === "canvasEdited");
+
+        board.commit([{ op: "move", card: "a", x: 20, y: 0 }]);
+        expect(edited()).toHaveLength(1);
+        board.commit([{ op: "move", card: "a", x: 40, y: 0 }]);
+        expect(edited()).toHaveLength(1);
+        vi.advanceTimersByTime(500);
+        const [, latest] = edited();
+        expect(latest).toMatchObject({ through: 2 });
+        expect(latest?.type === "canvasEdited" ? latest.edits : []).toHaveLength(2);
+
+        editor.handle({ type: "canvasLanded", through: 2, commit: "c1" });
+        expect(board.take()).toBeNull();
+
+        // The same board stays: a new read enters it, under what's unlanded.
+        board.commit([{ op: "set-card", card: "a", keys: { color: "1" } }]);
+        const moved = { nodes: [{ id: "a", type: "text", text: "B" }], edges: [] };
+        editor.handle({ type: "showCanvas", data, document: moved, revision: "r1" });
+        expect(editor.getState().editing).toBe(board);
+        expect(board.getState().data.nodes[0]).toMatchObject({ text: "B", color: "1" });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("asks the app what a board can't reach, each answer to its own question", async () => {
+      const { page: editor, events } = page();
+      const answer = editor.askApp({ kind: "list-files" });
+      const asked = events.find((event) => event.type === "canvasAsk");
+      expect(asked).toMatchObject({ ask: { kind: "list-files" } });
+      editor.handle({
+        type: "canvasAnswer",
+        requestId: asked?.type === "canvasAsk" ? asked.requestId : -1,
+        answer: { kind: "files", files: ["A.md"] },
+      });
+      await expect(answer).resolves.toEqual({ kind: "files", files: ["A.md"] });
+    });
+
     it("hands Jump to group to the board on screen", () => {
       const { page: editor } = page();
       const focusCard = vi.fn();

@@ -861,6 +861,38 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(document.querySelector(".cv-export")).toBeNull());
   });
 
+  it("pans sideways with Shift, and zooms by default when the setting says so", async () => {
+    const canvas = newCanvas([text("a", 0, 0)]);
+    const settings = {
+      wheel: "zoom",
+      cardNames: "always",
+      snapToGrid: true,
+      snapToObjects: true,
+      simpleZoom: 0.3,
+    } as const;
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    wheel({ deltaY: 30, shiftKey: true });
+    await vi.waitFor(() => expect(world().style.transform).toBe("translate(-30px, 0px) scale(1)"));
+    await screen.rerender(
+      <div style={{ width: 1000, height: 700 }}>
+        <CanvasBoard
+          data={canvas.getState().data}
+          mode="free"
+          label="Board"
+          document={canvas}
+          settings={settings}
+        />
+      </div>,
+    );
+    wheel({ deltaY: -100 });
+    await vi.waitFor(() => expect(world().style.transform).not.toContain("scale(1)"));
+    const zoomed = world().style.transform;
+    wheel({ deltaY: 40, metaKey: true });
+    await vi.waitFor(() => expect(world().style.transform).not.toBe(zoomed));
+    expect(world().style.transform).toContain(zoomed.slice(zoomed.indexOf("scale")));
+  });
+
   it("takes a selected card away with a commit that removed it", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", 0, 0), text("b", 400, 0)]);

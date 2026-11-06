@@ -122,6 +122,8 @@ type Session =
       others: ReadonlyArray<CanvasBounds>;
       box: CanvasBounds;
       followers: Followers;
+      /** Every card where it was, so a frame only works out what moved. */
+      rects: ReadonlyMap<string, CanvasBounds>;
       delta: CanvasPoint;
     }
   | {
@@ -331,6 +333,7 @@ export class CanvasGestures {
         others: [],
         box: { x: 0, y: 0, width: 0, height: 0 },
         followers: { arrows: [] },
+        rects: new Map(),
         delta: { x: 0, y: 0 },
       };
     }
@@ -495,10 +498,15 @@ export class CanvasGestures {
         session.moved = movedWith(nodes, pressed);
         const moving = nodes.filter((node) => session.moved.has(node.id));
         session.box = boundsOfRects(moving);
+        const mounted = new Map<string, HTMLElement>();
+        for (const element of host.world()?.querySelectorAll<HTMLElement>("[data-card-id]") ?? []) {
+          mounted.set(element.getAttribute("data-card-id") ?? "", element);
+        }
         session.elements = moving.flatMap((node) => {
-          const element = this.#elementOf(node.id);
-          return element === null ? [] : [{ element, node }];
+          const element = mounted.get(node.id);
+          return element === undefined ? [] : [{ element, node }];
         });
+        session.rects = new Map(nodes.map((node) => [node.id, node]));
         const inView = host.view.window(200);
         session.others = nodes.filter(
           (node) => !session.moved.has(node.id) && overlaps(node, inView),
@@ -585,9 +593,12 @@ export class CanvasGestures {
           (mover instanceof HTMLElement ? mover : mover.element).style.transform = transform;
         }
         if (session.ghosts.length === 0) {
-          const { nodes } = host.data();
-          const rects = this.#rectsWith(nodes, session.moved, delta);
-          this.#drawArrows(session.followers, (id) => rects.get(id));
+          this.#drawArrows(session.followers, (id) => {
+            const rect = session.rects.get(id);
+            return rect !== undefined && session.moved.has(id)
+              ? offset(rect, delta.x, delta.y)
+              : rect;
+          });
         }
         return;
       }
@@ -600,9 +611,10 @@ export class CanvasGestures {
         });
         session.rect = rect;
         this.#setBox(session.element, rect);
-        const rects = this.#rectsWith(host.data().nodes, new Set(), { x: 0, y: 0 });
-        rects.set(session.card.id, rect);
-        this.#drawArrows(session.followers, (id) => rects.get(id));
+        const { nodes } = host.data();
+        this.#drawArrows(session.followers, (id) =>
+          id === session.card.id ? rect : nodes.find((node) => node.id === id),
+        );
         return;
       }
       case "connect":
@@ -634,14 +646,6 @@ export class CanvasGestures {
     element.style.top = `${rect.y}px`;
     element.style.width = `${rect.width}px`;
     element.style.height = `${rect.height}px`;
-  }
-
-  #rectsWith(nodes: ReadonlyArray<CanvasNode>, moved: ReadonlySet<string>, delta: CanvasPoint) {
-    const rects = new Map<string, CanvasBounds>();
-    for (const node of nodes) {
-      rects.set(node.id, moved.has(node.id) ? offset(node, delta.x, delta.y) : node);
-    }
-    return rects;
   }
 
   release(event: PointerEvent) {
@@ -696,15 +700,12 @@ export class CanvasGestures {
         host.board()?.classList.remove("cv-moving");
         for (const { element } of session.elements) element.style.transform = "";
         for (const ghost of session.ghosts) ghost.remove();
-        if (session.started) {
-          const rects = this.#rectsWith(host.data().nodes, new Set(), { x: 0, y: 0 });
-          this.#drawArrows(session.followers, (id) => rects.get(id));
-        }
+        if (session.started) this.#drawArrows(session.followers, (id) => session.rects.get(id));
         return;
       case "resize": {
         this.#setBox(session.element, session.card);
-        const rects = this.#rectsWith(host.data().nodes, new Set(), { x: 0, y: 0 });
-        this.#drawArrows(session.followers, (id) => rects.get(id));
+        const { nodes } = host.data();
+        this.#drawArrows(session.followers, (id) => nodes.find((node) => node.id === id));
         return;
       }
       case "connect":

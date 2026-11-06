@@ -33,10 +33,16 @@ export const snapToGrid = (value: number, grid = CANVAS_GRID): number =>
 
 export const boundsOfRects = (rects: ReadonlyArray<CanvasBounds>): CanvasBounds => {
   if (rects.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-  const left = Math.min(...rects.map((rect) => rect.x));
-  const top = Math.min(...rects.map((rect) => rect.y));
-  const right = Math.max(...rects.map((rect) => rect.x + rect.width));
-  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const rect of rects) {
+    left = Math.min(left, rect.x);
+    top = Math.min(top, rect.y);
+    right = Math.max(right, rect.x + rect.width);
+    bottom = Math.max(bottom, rect.y + rect.height);
+  }
   return { x: left, y: top, width: right - left, height: bottom - top };
 };
 

@@ -45,6 +45,12 @@ export const boardMenu = ({
   { label: "Read-only", checked: false, run: () => setReadOnly(true) },
 ];
 
+/** A dot's drag, and reaching an arrow, for a keyboard. */
+const connections = (commands: CanvasCommands, id: string): ReadonlyArray<CanvasMenuEntry> => [
+  { label: "Connect to…", run: () => void commands.connectTo(id) },
+  { label: "Select connection…", run: () => void commands.selectConnection(id) },
+];
+
 const remove = (commands: CanvasCommands): CanvasMenuEntry => ({
   label: "Remove",
   destructive: true,
@@ -86,7 +92,7 @@ export function cardMenu(
   missing: boolean,
 ): ReadonlyArray<CanvasMenuEntry> {
   const zoom = zoomTo(commands);
-  const clip = clipboard(commands, at);
+  const clip = [...connections(commands, node.id), ...clipboard(commands, at)];
   switch (node.type) {
     case "text":
       return [
@@ -116,6 +122,7 @@ export function cardMenu(
       return [
         zoom,
         { label: "Edit label", run: () => commands.editSelected() },
+        ...connections(commands, node.id),
         "separator",
         remove(commands),
       ];
@@ -174,6 +181,8 @@ export const arrowMenu = (
       { label: "Bidirectional", run: () => commands.setLineDirection(edge.id, "both") },
     ],
   },
+  { label: "Move the start…", run: () => void commands.moveEnd(edge.id, "from") },
+  { label: "Move the end…", run: () => void commands.moveEnd(edge.id, "to") },
   "separator",
   remove(commands),
 ];

@@ -492,6 +492,26 @@ describe("a person's edits", () => {
     expect(source).toContain('{"id":"e2","fromNode":"a","toNode":"gone"}');
   });
 
+  it("leaves an Obsidian-saved file as Obsidian saved it, but for the card that moved", () => {
+    const source = serializeCanvas(read(fixture("hand-after-edit.canvas")).document);
+    const [first] = read(source).data.nodes;
+    const moved = apply(source, [{ op: "move", card: first!.id, x: 1000, y: 2000 }]).source!;
+    const was = source.split("\n");
+    const now = moved.split("\n");
+    expect(now).toHaveLength(was.length);
+    // This card holds a nested object, so it's written across lines.
+    expect(now.filter((line, position) => line !== was[position])).toEqual([
+      '\t\t\t"x":1000,',
+      '\t\t\t"y":2000,',
+    ]);
+    const undone = applyCanvasHandEdits(read(source).document, [
+      { op: "move", card: first!.id, x: 1000, y: 2000 },
+    ]);
+    expect(serializeCanvas(applyCanvasHandEdits(undone.document, undone.inverse).document)).toBe(
+      source,
+    );
+  });
+
   it("keeps a card's keys in the order the file has them", () => {
     const { source } = apply(board([card("a", 0, 0, { color: "1", extra: true })]), [
       { op: "move", card: "a", x: 20, y: 40 },

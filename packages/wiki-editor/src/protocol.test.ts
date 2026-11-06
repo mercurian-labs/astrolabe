@@ -74,6 +74,35 @@ describe("the page's messages", () => {
     });
   });
 
+  it("carries a board's edits, what landed, and the app's answers", () => {
+    const data = { nodes: [], edges: [] };
+    const document = { nodes: [], edges: [], kept: true };
+    expect(
+      parseWikiEditorCommand({ type: "showCanvas", data, document, readOnly: true }),
+    ).toMatchObject({ document, readOnly: true });
+    expect(parseWikiEditorCommand({ type: "canvasLanded", through: 3, commit: null })).toEqual({
+      type: "canvasLanded",
+      through: 3,
+      commit: null,
+    });
+    expect(parseWikiEditorCommand({ type: "canvasLanded", commit: "c1" })).toBeNull();
+    const event = (value: unknown) => parseWikiEditorEvent(JSON.stringify(value));
+    const edits = [{ op: "move", card: "a", x: 1, y: 2 }];
+    expect(event({ type: "canvasEdited", edits, through: 1 })).toEqual({
+      type: "canvasEdited",
+      edits,
+      through: 1,
+    });
+    expect(event({ type: "canvasEdited", edits: "no", through: 1 })).toBeNull();
+    expect(event({ type: "canvasAsk", requestId: 1, ask: { kind: "list-files" } })).toMatchObject({
+      ask: { kind: "list-files" },
+    });
+    expect(event({ type: "canvasReadOnly", on: true })).toEqual({
+      type: "canvasReadOnly",
+      on: true,
+    });
+  });
+
   it("reads a board's camera, null while it fits, and refuses a malformed read", () => {
     const event = (value: unknown) => parseWikiEditorEvent(JSON.stringify(value));
     expect(event({ type: "camera", camera: { x: 1, y: 2, zoom: 1 } })).toEqual({
