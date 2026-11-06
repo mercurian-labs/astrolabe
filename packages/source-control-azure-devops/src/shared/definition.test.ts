@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { definition } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
 describe("Azure DevOps change request URLs", () => {
@@ -191,5 +192,21 @@ describe("Azure DevOps repository selector", () => {
         name: "checkout%20(eu)",
       }),
     ).toBe("checkout (eu)");
+  });
+});
+
+describe("Azure DevOps file URLs", () => {
+  const base = { host: "dev.azure.com", repository: "acme/web/_git/app" };
+  it.each([
+    [
+      { path: "src/a.ts", lines: [10, 20] },
+      `https://dev.azure.com/acme/web/_git/app?path=%2Fsrc%2Fa.ts&version=GC${SHA}&line=10&lineEnd=21&lineStartColumn=1&lineEndColumn=1&lineStyle=plain`,
+    ],
+    [
+      { path: "src/a.ts" },
+      `https://dev.azure.com/acme/web/_git/app?path=%2Fsrc%2Fa.ts&version=GC${SHA}`,
+    ],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
   });
 });

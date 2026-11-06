@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { definition } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
 describe("GitLab change request URLs", () => {
@@ -93,5 +94,17 @@ describe("GitLab remotes", () => {
 
   it("matches complete DNS labels only", () => {
     expect(recognize("https://notgitlab.example.com/group/repo.git")).toBeNull();
+  });
+});
+
+describe("GitLab file URLs", () => {
+  const base = { host: "gitlab.com", repository: "acme/team/web" };
+  it.each([
+    [
+      { path: "src/a.ts", lines: [10, 20] },
+      `https://gitlab.com/acme/team/web/-/blob/${SHA}/src/a.ts#L10-20`,
+    ],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
   });
 });

@@ -8,6 +8,7 @@ import {
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
+  TurnItemId,
 } from "./baseSchemas.ts";
 import { WikiCanvasAgentTransform, WikiCanvasTransform } from "./canvas.ts";
 
@@ -669,12 +670,35 @@ export const WikiAmendResult = Schema.Struct({
   errors: Schema.Array(WikiIndexError),
   /** What a revert's merge settled by itself in canvases: it has no preview to say so. */
   canvases: Schema.optional(Schema.Array(WikiCanvasMergeNotes)),
-  /** A canvas transform's new cards and groups: the id each `ref` got. */
-  cards: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  /** What a canvas transform couldn't do as asked. */
-  notes: Schema.optional(Schema.Array(Schema.String)),
+  /** What a canvas transform did: the id each `ref` got, and what it couldn't do as asked. */
+  canvas: Schema.optional(
+    Schema.Struct({
+      file: Schema.String,
+      cards: Schema.Record(Schema.String, Schema.String),
+      notes: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
+
+/** A board drawn in a thread, saved into a wiki as a change request. */
+export const WikiKeepCanvasInput = Schema.Struct({
+  wikiId: WikiId,
+  threadId: ThreadId,
+  /** The `astrolabe_canvas_show` call that drew it. */
+  itemId: TurnItemId,
+  /** Its name in the wiki, with or without `.canvas`. */
+  name: TrimmedNonEmptyString,
+});
+export type WikiKeepCanvasInput = typeof WikiKeepCanvasInput.Type;
+
+export const WikiKeepCanvasResult = Schema.Struct({
+  changeRequest: WikiChangeRequest,
+  file: Schema.String,
+  /** What a person should know about how its code cards landed. */
+  notes: Schema.Array(Schema.String),
+});
+export type WikiKeepCanvasResult = typeof WikiKeepCanvasResult.Type;
 
 export const WikiRevertInput = Schema.Struct({
   wikiId: WikiId,

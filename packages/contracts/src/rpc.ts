@@ -443,6 +443,8 @@ import {
   WikiSummary,
   WikiTarget,
   WikiTransformInput,
+  WikiKeepCanvasInput,
+  WikiKeepCanvasResult,
 } from "./wiki.ts";
 import {
   CodeIndexError,
@@ -679,6 +681,7 @@ export const WS_METHODS = {
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
   wikiAmend: "wiki.amend",
   wikiTransform: "wiki.transform",
+  wikiKeepCanvas: "wiki.keepCanvas",
   wikiRevertAmendment: "wiki.revertAmendment",
   wikiSaveWorktree: "wiki.saveWorktree",
   wikiMerge: "wiki.merge",
@@ -2249,6 +2252,12 @@ const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiKeepCanvasRpc = Rpc.make(WS_METHODS.wikiKeepCanvas, {
+  payload: WikiKeepCanvasInput,
+  success: WikiKeepCanvasResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiRevertAmendmentRpc = Rpc.make(WS_METHODS.wikiRevertAmendment, {
   payload: WikiRevertInput,
   success: WikiAmendResult,
@@ -2771,6 +2780,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiChangeRequestsOpenRpc,
   WsWikiAmendRpc,
   WsWikiTransformRpc,
+  WsWikiKeepCanvasRpc,
   WsWikiRevertAmendmentRpc,
   WsWikiSaveWorktreeRpc,
   WsWikiMergeRpc,

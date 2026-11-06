@@ -247,6 +247,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as TriageService from "./triage/TriageService.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as CanvasKeep from "./wiki/CanvasKeep.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
@@ -1242,6 +1243,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
   Effect.gen(function* () {
     const wikis = yield* WikiService.WikiService;
+    const canvasKeep = yield* CanvasKeep.CanvasKeep;
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
@@ -1290,6 +1292,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
         wikis.changeRequestsOpen(input, WikiService.person),
       [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
       [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
+      [WS_METHODS.wikiKeepCanvas]: (input) => canvasKeep.keep(input),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
       [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
       [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),

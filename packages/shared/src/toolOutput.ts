@@ -108,6 +108,32 @@ function boundedId(value: unknown): string | undefined {
   return Array.from(value).join("");
 }
 
+/** A tool's input as an object: parsed from JSON text, out of Cursor's args envelope, or as given. */
+export function toolArguments(input: unknown): unknown {
+  if (typeof input === "string") {
+    try {
+      return toolArguments(JSON.parse(input));
+    } catch {
+      return null;
+    }
+  }
+  if (Predicate.isObject(input) && typeof input.toolName === "string") {
+    if (Predicate.isObject(input.args)) return input.args;
+  }
+  return input;
+}
+
+/** What a tool returned, out of any provider's envelope; nothing for a failed call. */
+export function toolResultData(value: unknown): Record<PropertyKey, unknown> | undefined {
+  const budget: ResultReadBudget = {
+    remainingBytes: MAX_PARSED_BYTES,
+    remainingNodes: MAX_ENVELOPE_NODES,
+    exceeded: false,
+  };
+  const result = readResult(value, budget);
+  return result.failed || budget.exceeded ? undefined : result.data;
+}
+
 export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
   const budget: ResultReadBudget = {
     remainingBytes: MAX_PARSED_BYTES,

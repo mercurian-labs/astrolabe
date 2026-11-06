@@ -266,6 +266,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiChangeRequestsOpen]: "wiki",
   [WS_METHODS.wikiAmend]: "wiki",
   [WS_METHODS.wikiTransform]: "wiki",
+  [WS_METHODS.wikiKeepCanvas]: "wiki",
   [WS_METHODS.wikiRevertAmendment]: "wiki",
   [WS_METHODS.wikiSaveWorktree]: "wiki",
   [WS_METHODS.wikiMerge]: "wiki",

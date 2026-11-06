@@ -1355,7 +1355,7 @@ const make = Effect.gen(function* () {
       commit,
       amendment,
       errors: planned.errors,
-      ...planned.canvas,
+      ...(planned.canvas === undefined ? {} : { canvas: planned.canvas }),
     } satisfies WikiAmendResult;
   });
 
@@ -1397,8 +1397,8 @@ const make = Effect.gen(function* () {
       if (change.kind !== "canvas") {
         return planAmendment(files, planTransform(files, change, stamp), stamp);
       }
-      const { changes, cards, notes } = planCanvasEdits(files, change, stamp);
-      const canvas = { cards, ...(notes.length > 0 ? { notes } : {}) };
+      const { file, changes, cards, notes } = planCanvasEdits(files, change, stamp);
+      const canvas = { file, cards, ...(notes.length > 0 ? { notes } : {}) };
       return { ...planAmendment(files, changes, stamp), canvas };
     });
 

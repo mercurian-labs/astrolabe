@@ -1,6 +1,7 @@
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import {
   buildCommitUrl,
+  buildFileUrl,
   changeRequestUrlBelow,
   defineSourceControl,
   isChangeRequestInProjectRepository,
@@ -44,6 +45,10 @@ export const definition = defineSourceControl({
       : `https://${host}/${repository}/-/merge_requests/${number}`,
   parseChangeRequestUrl: (url) => parseChangeRequestPath(url, CHANGE_REQUEST_PATH),
   commitUrl: (input) => buildCommitUrl(input, "-/commit"),
+  fileUrl: (input) =>
+    buildFileUrl(input, "-/blob", (first, last) =>
+      first === last ? `L${first}` : `L${first}-${last}`,
+    ),
   parseCommitUrl: (url) => parseCommitPath(url, COMMIT_PATH),
   changeRequestUrlFromReferenceAutolink: () => null,
   changeRequestActions: new Set([

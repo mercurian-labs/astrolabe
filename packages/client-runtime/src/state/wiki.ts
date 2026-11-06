@@ -157,6 +157,10 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:transform",
       tag: WS_METHODS.wikiTransform,
     }),
+    keepCanvas: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:keep-canvas",
+      tag: WS_METHODS.wikiKeepCanvas,
+    }),
     revertAmendment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:revert-amendment",
       tag: WS_METHODS.wikiRevertAmendment,

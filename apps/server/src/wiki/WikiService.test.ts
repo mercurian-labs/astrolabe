@@ -911,7 +911,7 @@ it.effect("lands canvas edits on the head, placed by the server, with the ids it
         },
         thread,
       );
-      const login = drawn.cards?.login ?? "";
+      const login = drawn.canvas?.cards.login ?? "";
       assert.match(login, /^[0-9a-f]{16}$/);
       const added = yield* wikis.transform(
         {
@@ -935,11 +935,33 @@ it.effect("lands canvas edits on the head, placed by the server, with the ids it
       assert.lengthOf(nodes, 3);
       assert.lengthOf(edges, 1);
       assert.equal(nodes[0].id, login);
-      assert.equal(nodes[2].id, added.cards?.check);
+      assert.equal(nodes[2].id, added.canvas?.cards.check);
       assert.notDeepEqual([nodes[2].x, nodes[2].y], [nodes[1].x, nodes[1].y]);
 
       const onMain = yield* wikis.readFiles({ wikiId, paths: ["Board.canvas"] });
       assert.isFalse(onMain.files[0]?.exists);
+
+      const kept = yield* wikis.transform(
+        {
+          wikiId,
+          message: "Keep",
+          transform: {
+            kind: "canvas-create",
+            file: "Kept.canvas",
+            source: '{"nodes":[{"id":"a","type":"text","text":"Hi","x":1,"y":2}]}',
+          },
+        },
+        thread,
+      );
+      const written = yield* wikis.readFiles({
+        wikiId,
+        commit: kept.commit,
+        paths: ["Kept.canvas"],
+      });
+      assert.equal(
+        written.files[0]?.text,
+        serializeCanvas({ nodes: [{ id: "a", type: "text", text: "Hi", x: 1, y: 2 }] }),
+      );
 
       const refused = yield* failure(
         wikis.transform(

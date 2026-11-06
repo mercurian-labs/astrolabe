@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { definition } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
 describe("GitHub change request URLs", () => {
@@ -157,5 +158,23 @@ describe("GitHub media URLs", () => {
     ]) {
       expect(media(url), url).toBeNull();
     }
+  });
+});
+
+describe("GitHub file URLs", () => {
+  const base = { host: "github.com", repository: "acme/web" };
+  it.each([
+    [
+      { path: "src/a b.ts", lines: [10, 20] },
+      `https://github.com/acme/web/blob/${SHA}/src/a%20b.ts#L10-L20`,
+    ],
+    [{ path: "src/a.ts", lines: [7, 7] }, `https://github.com/acme/web/blob/${SHA}/src/a.ts#L7`],
+    [{ path: "src/a.ts" }, `https://github.com/acme/web/blob/${SHA}/src/a.ts`],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
+  });
+
+  it("has none for a path that names no repository", () => {
+    expect(definition.fileUrl({ ...base, sha: SHA, path: "a.ts", repository: "acme" })).toBeNull();
   });
 });

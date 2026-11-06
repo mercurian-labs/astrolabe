@@ -1,4 +1,5 @@
 import { CodeGraphShowInput } from "@t3tools/contracts";
+import { toolArguments } from "@t3tools/shared/toolOutput";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -9,30 +10,9 @@ import * as Schema from "effect/Schema";
 
 const decodeInput = Schema.decodeUnknownOption(CodeGraphShowInput);
 
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
-/** A tool's input as an object: parsed from JSON text, out of Cursor's args envelope, or as given. */
-export function argumentsOf(input: unknown): unknown {
-  if (typeof input === "string") {
-    try {
-      return argumentsOf(JSON.parse(input));
-    } catch {
-      return null;
-    }
-  }
-  const record = asRecord(input);
-  if (record !== null && typeof record.toolName === "string" && asRecord(record.args)) {
-    return record.args;
-  }
-  return input;
-}
-
 /** The call's story, or null when its input is not one. */
 export const codeGraphShowInput = (input: unknown): CodeGraphShowInput | null =>
-  Option.getOrNull(decodeInput(argumentsOf(input)));
+  Option.getOrNull(decodeInput(toolArguments(input)));
 
 /** What the call pictured, after its verb: `“Title” · 3 steps`, or `a picture of the code`. */
 export function codeGraphStoryLabel(story: CodeGraphShowInput): string {

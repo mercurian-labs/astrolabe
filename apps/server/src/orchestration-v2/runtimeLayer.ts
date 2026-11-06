@@ -59,6 +59,7 @@ import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import * as CanvasKeep from "../wiki/CanvasKeep.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 import * as CodeIndex from "../codeIndex/CodeIndex.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
@@ -402,6 +403,12 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,
+  CanvasKeep.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(layerOrchestratorProvided, layerProjectService, layerWikiServiceProvided),
+    ),
+    Layer.provide(GitVcsDriver.layer),
+  ),
   layerCodeIndexProvided,
   layerChangeGroupServiceProvided,
   layerProjectWorktreeServiceProvided,

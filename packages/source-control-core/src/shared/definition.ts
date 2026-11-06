@@ -41,6 +41,12 @@ export interface CommitUrlInput extends Omit<ChangeRequestUrlInput, "number"> {
   readonly sha: string;
 }
 
+/** A file at a commit, with the lines cited, first to last. */
+export interface FileUrlInput extends CommitUrlInput {
+  readonly path: string;
+  readonly lines?: readonly [number, number] | undefined;
+}
+
 export interface ChangeRequestTerminology {
   readonly shortLabel: string;
   /** Spelled out because the article follows how the label is said: "an MR". */
@@ -250,6 +256,8 @@ export interface SourceControlDefinition {
   readonly defaultCloneTransport: "https" | "ssh";
   readonly changeRequestUrl: (input: ChangeRequestUrlInput) => string | null;
   readonly commitUrl?: (input: CommitUrlInput) => string | null;
+  /** Where a browser reads a file at a commit. Null when this host or server has no such page. */
+  readonly fileUrl: (input: FileUrlInput) => string | null;
   /** `known` is set when the caller already knows this host serves the URL's repository. */
   readonly parseCommitUrl?: (url: URL, known: boolean) => CommitLink | null;
   /** Null when the URL is not one of this host's change requests. */
@@ -385,6 +393,19 @@ export function buildCommitUrl(
   } catch {
     return null;
   }
+}
+
+/** `route` holds the commit and then the file, as `<route>/<sha>/<path>`; `anchor` marks the lines. */
+export function buildFileUrl(
+  input: FileUrlInput,
+  route: string,
+  anchor?: (first: number, last: number) => string,
+): string | null {
+  const commit = buildCommitUrl(input, route);
+  if (commit === null) return null;
+  const path = input.path.split("/").map(encodeURIComponent).join("/");
+  const hash = input.lines === undefined ? "" : anchor?.(input.lines[0], input.lines[1]);
+  return `${commit}/${path}${hash ? `#${hash}` : ""}`;
 }
 
 /**
@@ -560,6 +581,7 @@ export const UNKNOWN_SOURCE_CONTROL_CLIENT: SourceControlDefinition = {
   newRepositoryOwner: () => null,
   defaultCloneTransport: "ssh",
   changeRequestUrl: () => null,
+  fileUrl: () => null,
   parseChangeRequestUrl: () => null,
   changeRequestUrlFromReferenceAutolink: () => null,
   changeRequestActions: new Set(),

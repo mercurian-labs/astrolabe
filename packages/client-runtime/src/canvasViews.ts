@@ -1,10 +1,10 @@
 import { placeCanvas, type CanvasData } from "@mercurian/wiki/canvas";
 import { CANVAS_SHOW_TOOL_NAME, CanvasShowInput } from "@t3tools/contracts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
+import { toolArguments } from "@t3tools/shared/toolOutput";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { argumentsOf } from "./codeGraphStory.ts";
 import { t3ToolResultIndicatesFailure } from "./t3ToolSummary.ts";
 
 /**
@@ -36,7 +36,7 @@ export function canvasViewFromToolItem(item: CanvasToolItem): CanvasView | undef
   if (cached !== undefined) return cached ?? undefined;
   const input = t3ToolResultIndicatesFailure(item.output)
     ? null
-    : Option.getOrNull(decodeInput(argumentsOf(item.input)));
+    : Option.getOrNull(decodeInput(toolArguments(item.input)));
   const view = input === null ? null : { title: input.title, data: placeCanvas(input) };
   viewsByItem.set(item, view);
   return view ?? undefined;

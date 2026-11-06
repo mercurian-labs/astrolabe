@@ -66,6 +66,7 @@ export interface PlannedAmendment {
   readonly errors: ReadonlyArray<WikiIndexError>;
   /** What a canvas transform reports, returned with the amendment. */
   readonly canvas?: {
+    readonly file: string;
     readonly cards: PlannedCanvasEdits["cards"];
     readonly notes?: PlannedCanvasEdits["notes"];
   };
@@ -183,6 +184,7 @@ export interface CanvasTransform {
 }
 
 export interface PlannedCanvasEdits {
+  readonly file: string;
   readonly changes: WikiChanges;
   readonly cards: Readonly<Record<string, string>>;
   readonly notes: ReadonlyArray<string>;
@@ -204,7 +206,7 @@ export function planCanvasEdits(
       transform.edits,
       stamp.amendment,
     );
-    return { changes: { [existing ?? file]: source }, cards, notes };
+    return { file: existing ?? file, changes: { [existing ?? file]: source }, cards, notes };
   } catch (error) {
     if (error instanceof CanvasEditError) throw new AmendmentError(error.message);
     throw error;
