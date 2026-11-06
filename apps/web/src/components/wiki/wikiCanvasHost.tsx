@@ -9,7 +9,7 @@ import { vimAtRest, vimInsertMode } from "@mercurian/editor/vim";
 import { canvasFileKind } from "@mercurian/wiki-editor/canvas-geometry";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { useAssetUrlState } from "~/assets/assetUrls";
 import { readLocalApi } from "~/localApi";
@@ -85,6 +85,17 @@ function WikiAsset({
   );
 }
 
+/** Holds the draft a save landed in, for reads that run before React next renders. */
+function lastDraft() {
+  let draft: WikiChangeRequestId | undefined;
+  return {
+    get: () => draft,
+    set: (next: WikiChangeRequestId | undefined) => {
+      draft = next;
+    },
+  };
+}
+
 /** What a board of a wiki's needs from the app, reading its cards at `commit`. */
 export function useWikiCanvasHost({
   environmentId,
@@ -117,6 +128,8 @@ export function useWikiCanvasHost({
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
   const known = index.data === null ? null : new Set(wikiDocumentNames(index.data).map(noteKey));
+  // The first note of a new draft reads back before the list of change requests has it.
+  const [noteDraft] = useState(lastDraft);
   const projects = useProjects();
   const runFiles = useAtomQueryRunner(wikiEnvironment.files, QUIET_READ);
   const runCode = useAtomQueryRunner(wikiEnvironment.codeStatus, QUIET_READ);
@@ -157,7 +170,7 @@ export function useWikiCanvasHost({
     };
     const found = await read({ commit }, paths);
     const missing = found.filter((file) => !file.exists).map((file) => file.file);
-    const fallback = draftId ?? noteDraft.current;
+    const fallback = draftId ?? noteDraft.get();
     if (fallback === undefined || missing.length === 0) return found;
     const drafted = new Map(
       (await read({ changeRequestId: fallback }, missing)).map((file) => [file.file, file]),
@@ -172,8 +185,6 @@ export function useWikiCanvasHost({
   );
 
   const send = useWikiAutosaveCommand();
-  // The first note of a new draft reads back before the list of change requests has it.
-  const noteDraft = useRef<WikiChangeRequestId | undefined>(undefined);
   const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
   const mintUrl = useAtomQueryRunner(assetEnvironment.createUrl, QUIET_MINT);
   const connection = usePreparedConnection(environmentId);
@@ -193,8 +204,7 @@ export function useWikiCanvasHost({
         write: { kind: "text", file, text, ...(readAt === undefined ? {} : { readAt }) },
       },
     });
-    // oxlint-disable-next-line react/immutability -- written when a save returns, not in render
-    if (outcome.ok) noteDraft.current = outcome.value.changeRequest?.changeRequestId;
+    if (outcome.ok) noteDraft.set(outcome.value.changeRequest?.changeRequestId);
     return outcome.ok ? null : outcome.message;
   });
   const attachFile = useStableCallback(async (name: string, base64: string) => {
