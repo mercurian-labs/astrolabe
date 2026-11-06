@@ -1,0 +1,605 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, it } from "@effect/vitest";
+import {
+  type PullRequestAction,
+  type PullRequestDetail,
+  type PullRequestMergeCapabilities,
+  type PullRequestState,
+  type PullRequestSummary,
+  ThreadId,
+  type WikiChangeRequestId,
+  type WikiError,
+  type WikiId,
+} from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
+
+import * as ServerConfig from "../config.ts";
+import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
+import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import * as PullRequestService from "../pullRequest/PullRequestService.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as WikiHostService from "./WikiHostService.ts";
+import * as WikiService from "./WikiService.ts";
+
+const REPOSITORY = "acme/handbook";
+
+const layerEnrichment = ProjectEnrichmentService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolve: () => Effect.succeed(null),
+      }),
+      Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
+        resolvePath: () => Effect.succeed(null),
+        invalidate: () => Effect.void,
+      }),
+    ),
+  ),
+);
+
+const git = (cwd: string, args: ReadonlyArray<string>) =>
+  ProcessRunner.ProcessRunner.pipe(
+    Effect.flatMap((runner) =>
+      runner.run({
+        command: "git",
+        args: [
+          "-C",
+          cwd,
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.com",
+          ...args,
+        ],
+      }),
+    ),
+    Effect.map((result) => result.stdout.trim()),
+    Effect.provide(ProcessRunner.layer),
+    Effect.orDie,
+  );
+
+interface FakePull {
+  readonly number: number;
+  readonly head: string;
+  state: PullRequestState;
+  isDraft: boolean;
+}
+
+/** A git host: a bare repository, its pull requests, and a clone that merges them for real. */
+interface FakeHost {
+  readonly pulls: Array<FakePull>;
+  readonly actions: Array<{ readonly action: PullRequestAction; readonly method?: string }>;
+  /** Each pull request as it opens, so a test can await work the service does on its own. */
+  readonly opened: Queue.Queue<FakePull>;
+  supported: ReadonlyArray<PullRequestAction>;
+  mergeCapabilities: PullRequestMergeCapabilities;
+  /** Whether the host's own line merge conflicts, for a head that lacks main. */
+  lineMergeConflicts: boolean;
+}
+
+const pullUrl = (number: number) => `https://github.com/${REPOSITORY}/pull/${number}`;
+
+const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost) => {
+  const pullFor = (number: number) => {
+    const pull = host.pulls.find((entry) => entry.number === number);
+    if (pull === undefined) throw new Error(`no pull request ${number}`);
+    return pull;
+  };
+  const mergePull = (pull: FakePull) =>
+    Effect.gen(function* () {
+      yield* git(clone, ["fetch", "--quiet", "origin"]);
+      yield* git(clone, ["checkout", "--quiet", "main"]);
+      yield* git(clone, ["reset", "--quiet", "--hard", "origin/main"]);
+      yield* git(clone, ["merge", "--quiet", "--no-ff", "-m", "Merge", `origin/${pull.head}`]);
+      yield* git(clone, ["push", "--quiet", "origin", "main"]);
+      pull.state = "merged";
+    });
+  const layerPullRequests = Layer.mock(PullRequestService.PullRequestService)({
+    refreshAfterTurn: () => Effect.void,
+    summary: (input) =>
+      Effect.sync(() => ({ state: pullFor(input.number).state }) as PullRequestSummary),
+    detail: (input) =>
+      Effect.gen(function* () {
+        const pull = pullFor(input.number);
+        const behind = yield* git(bare, ["rev-list", "--count", `${pull.head}..main`]);
+        return {
+          capabilities: { actions: host.supported },
+          mergeability: host.lineMergeConflicts && behind !== "0" ? "conflicting" : "mergeable",
+          mergeCapabilities: host.mergeCapabilities,
+        } as unknown as PullRequestDetail;
+      }),
+    runAction: (input) =>
+      Effect.gen(function* () {
+        const pull = pullFor(input.number);
+        host.actions.push({
+          action: input.action,
+          ...(input.mergeMethod === undefined ? {} : { method: input.mergeMethod }),
+        });
+        if (input.action === "merge") yield* mergePull(pull);
+        if (input.action === "draft") pull.isDraft = true;
+        if (input.action === "close") pull.state = "closed";
+        if (input.action === "reopen") pull.state = "open";
+      }),
+  });
+  const provider = {
+    listChangeRequests: (input: { readonly headSelector: string }) =>
+      Effect.sync(() =>
+        host.pulls
+          .filter((pull) => pull.head === input.headSelector && pull.state === "open")
+          .map((pull) => ({ number: pull.number, url: pullUrl(pull.number) })),
+      ),
+    createChangeRequest: (input: { readonly headSelector: string }) =>
+      Effect.gen(function* () {
+        const pull: FakePull = {
+          number: host.pulls.length + 1,
+          head: input.headSelector,
+          state: "open",
+          isDraft: false,
+        };
+        host.pulls.push(pull);
+        yield* Queue.offer(host.opened, pull);
+      }),
+  };
+  const layerRegistry = Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+    resolve: () => Effect.succeed(provider as never),
+  });
+  const layerProjects = RuntimeLayer.layerProjectService;
+  return WikiHostService.layer.pipe(
+    Layer.provideMerge(WikiService.layer),
+    Layer.provideMerge(Layer.mergeAll(layerPullRequests, layerRegistry)),
+    Layer.provideMerge(layerProjects),
+    Layer.provideMerge(layerEnrichment),
+    Layer.provideMerge(WorkspacePaths.layer),
+    Layer.provideMerge(GitVcsDriver.layer.pipe(Layer.provide(VcsProcess.layer))),
+    Layer.provideMerge(SqlitePersistence.layerMemory),
+    Layer.provideMerge(ServerSettings.layerTest()),
+    Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
+    Layer.provideMerge(NodeServices.layer),
+  );
+};
+
+interface Fixture {
+  readonly root: string;
+  readonly bare: string;
+  /** A teammate's clone of the host. */
+  readonly clone: string;
+  readonly host: FakeHost;
+  readonly wikiId: WikiId;
+  readonly wikis: WikiService.WikiService["Service"];
+  readonly hosts: WikiHostService.WikiHostService["Service"];
+  readonly commitOnHost: (file: string, content: string) => Effect.Effect<void>;
+  readonly write: (file: string, content: string) => Effect.Effect<void>;
+}
+
+const agent = (thread: string): WikiService.WikiAuthor => ({
+  actor: "Agent",
+  threadId: ThreadId.make(thread),
+});
+
+/** A wiki with history on this machine, a remote that is an empty host, and nothing connected. */
+const withFixture = <A, E>(
+  body: (
+    fixture: Fixture,
+  ) => Effect.Effect<
+    A,
+    E,
+    | WikiService.WikiService
+    | WikiHostService.WikiHostService
+    | ProjectService.ProjectService
+    | NodeServices.NodeServices
+  >,
+  options: { readonly connect?: boolean } = {},
+) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const scratch = yield* fileSystem
+      .makeTempDirectoryScoped({ prefix: "t3-wiki-host-" })
+      .pipe(Effect.flatMap((directory) => fileSystem.realPath(directory)));
+    const baseDir = path.join(scratch, "data");
+    const root = path.join(scratch, "wiki");
+    const bare = path.join(scratch, "host.git");
+    const clone = path.join(scratch, "clone");
+    for (const directory of [baseDir, root, bare, clone]) {
+      yield* fileSystem.makeDirectory(directory);
+    }
+    yield* git(bare, ["init", "--quiet", "--bare", "--initial-branch=main"]);
+    yield* git(root, ["init", "--quiet", "--initial-branch=main"]);
+    yield* fileSystem.writeFileString(path.join(root, "Home.md"), "# Home\n\nFirst.\n\nSecond.\n");
+    yield* git(root, ["add", "."]);
+    yield* git(root, ["commit", "--quiet", "-m", "Start"]);
+    yield* git(root, ["remote", "add", "origin", bare]);
+
+    const host: FakeHost = {
+      pulls: [],
+      actions: [],
+      opened: yield* Queue.unbounded<FakePull>(),
+      supported: ["merge", "draft", "close", "reopen"],
+      mergeCapabilities: { merge: true, squash: true, rebase: true },
+      lineMergeConflicts: false,
+    };
+
+    const write = (file: string, content: string) =>
+      fileSystem.writeFileString(path.join(root, file), content).pipe(Effect.orDie);
+    const commitOnHost = (file: string, content: string) =>
+      Effect.gen(function* () {
+        yield* git(clone, ["fetch", "--quiet", "origin"]);
+        yield* git(clone, ["reset", "--quiet", "--hard", "origin/main"]);
+        yield* fileSystem.writeFileString(path.join(clone, file), content).pipe(Effect.orDie);
+        yield* git(clone, ["add", "."]);
+        yield* git(clone, ["commit", "--quiet", "-m", `Host edit of ${file}`]);
+        yield* git(clone, ["push", "--quiet", "origin", "HEAD:main"]);
+      });
+
+    return yield* Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const hosts = yield* WikiHostService.WikiHostService;
+      const { wikiId } = yield* wikis.register({ root });
+      if (options.connect !== false) {
+        yield* hosts.connect({ wikiId });
+        yield* git(clone, ["clone", "--quiet", bare, "."]);
+      }
+      return yield* body({ root, bare, clone, host, wikiId, wikis, hosts, commitOnHost, write });
+    }).pipe(Effect.provide(makeLayers(baseDir, bare, clone, host)));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+const amendment = (fixture: Fixture, file: string, thread = "thread-a") =>
+  fixture.wikis
+    .amend(
+      { wikiId: fixture.wikiId, message: `Add ${file}`, changes: { [file]: `# ${file}\n` } },
+      agent(thread),
+    )
+    .pipe(Effect.map((result) => result.changeRequest));
+
+it.effect("connecting moves a local wiki's history to an empty host and gives it a project", () =>
+  withFixture(
+    ({ root, bare, wikiId, wikis, hosts }) =>
+      Effect.gen(function* () {
+        const summary = yield* hosts.connect({ wikiId });
+        const local = yield* git(root, ["rev-parse", "main"]);
+        assert.equal(yield* git(bare, ["rev-parse", "main"]), local);
+        assert.equal(summary.host?.relation, "up-to-date");
+        const projects = yield* ProjectService.ProjectService;
+        const project = yield* projects.getByWorkspaceRoot(root);
+        assert.equal(project._tag, "Some");
+        assert.equal(summary.host?.projectId, project._tag === "Some" ? project.value.id : "");
+        // Connecting again keeps the same project.
+        const again = yield* hosts.connect({ wikiId });
+        assert.equal(again.host?.projectId, summary.host?.projectId);
+        const refused = yield* Effect.flip(wikis.setMirror({ wikiId, url: bare }));
+        assert.equal(refused.reason, "invalid");
+      }),
+    { connect: false },
+  ),
+);
+
+it.effect("connecting refuses a host with a different history and leaves the mirror alone", () =>
+  withFixture(
+    ({ bare, clone, wikiId, wikis, hosts }) =>
+      Effect.gen(function* () {
+        yield* git(clone, ["init", "--quiet", "--initial-branch=main"]);
+        yield* git(clone, ["commit", "--quiet", "--allow-empty", "-m", "Unrelated"]);
+        yield* git(clone, ["push", "--quiet", bare, "main"]);
+        yield* wikis.setMirror({ wikiId, url: "https://example.com/backup.git" });
+        const error = yield* Effect.flip(hosts.connect({ wikiId }));
+        assert.equal(error.reason, "conflict");
+        const summary = yield* wikis.get(wikiId);
+        assert.isNull(summary.host ?? null);
+        assert.equal(summary.mirror?.url, "https://example.com/backup.git");
+      }),
+    { connect: false },
+  ),
+);
+
+it.effect("sync fast-forwards main, and unsaved edits hold it back without losing them", () =>
+  withFixture(({ root, wikiId, wikis, hosts, commitOnHost, write }) =>
+    Effect.gen(function* () {
+      yield* commitOnHost("Home.md", "# Home\n\nFrom the host.\n\nSecond.\n");
+      yield* hosts.sync({ wikiId });
+      const note = yield* wikis.readNote({ wikiId, name: "Home" });
+      assert.include(note.source, "From the host.");
+
+      yield* commitOnHost("Home.md", "# Home\n\nAgain from the host.\n\nSecond.\n");
+      yield* write("Home.md", "# Home\n\nMine, unsaved.\n\nSecond.\n");
+      const held = yield* hosts.sync({ wikiId });
+      assert.isNotNull(held.host?.lastError ?? null);
+      assert.include(yield* git(root, ["show", "HEAD:Home.md"]), "From the host.");
+      yield* git(root, ["checkout", "--quiet", "--", "Home.md"]);
+      const clear = yield* hosts.sync({ wikiId });
+      assert.isNull(clear.host?.lastError ?? null);
+      assert.equal(clear.host?.relation, "up-to-date");
+    }),
+  ),
+);
+
+it.effect("sync reports a main line that has left the host's", () =>
+  withFixture(({ root, wikiId, hosts, commitOnHost }) =>
+    Effect.gen(function* () {
+      yield* git(root, ["commit", "--quiet", "--allow-empty", "-m", "Local only"]);
+      assert.equal((yield* hosts.sync({ wikiId })).host?.relation, "ahead");
+      yield* commitOnHost("Host.md", "# Host\n");
+      assert.equal((yield* hosts.sync({ wikiId })).host?.relation, "diverged");
+    }),
+  ),
+);
+
+it.effect("publishing pushes the branch and opens one pull request, a draft for an agent", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { bare, host, hosts, wikiId } = fixture;
+      const first = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: first.changeRequestId };
+      assert.isNull(first.pushedHead ?? null);
+
+      const published = yield* hosts.publish(target);
+      assert.equal(published.pushedHead, published.head);
+      assert.deepEqual(published.pullRequest, {
+        repository: REPOSITORY,
+        number: 1,
+        url: pullUrl(1),
+      });
+      assert.equal(yield* git(bare, ["rev-parse", `cr/${first.changeRequestId}`]), published.head);
+      assert.isTrue(host.pulls[0]?.isDraft);
+
+      const second = yield* amendment(fixture, "Two.md");
+      assert.equal(second.changeRequestId, first.changeRequestId);
+      const republished = yield* hosts.publish(target);
+      assert.equal(republished.pushedHead, republished.head);
+      assert.lengthOf(host.pulls, 1);
+    }),
+  ),
+);
+
+it.effect("a person's edit publishes on its own; an agent's waits for its turn to end", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { host, hosts, wikiId, wikis } = fixture;
+      const agents = yield* amendment(fixture, "Agent.md");
+      yield* hosts.publishThread(ThreadId.make("thread-a"));
+      const forAgent = yield* Queue.take(host.opened);
+      assert.equal(forAgent.head, `cr/${agents.changeRequestId}`);
+
+      const edit = yield* wikis.amend(
+        { wikiId, message: "By hand", changes: { "Hand.md": "# Hand\n" } },
+        WikiService.person,
+      );
+      const forPerson = yield* Queue.take(host.opened);
+      assert.equal(forPerson.head, `cr/${edit.changeRequest.changeRequestId}`);
+      assert.isFalse(forPerson.isDraft);
+      assert.lengthOf(host.pulls, 2, "the agent's amendment opened nothing by itself");
+    }),
+  ),
+);
+
+it.effect("a change request with nothing in it opens no pull request", () =>
+  withFixture(({ host, hosts, wikiId, wikis }) =>
+    Effect.gen(function* () {
+      const empty = yield* wikis.changeRequestsOpen({ wikiId, title: "Empty" }, agent("thread-a"));
+      yield* hosts.publish({ wikiId, changeRequestId: empty.changeRequestId });
+      assert.lengthOf(host.pulls, 0);
+    }),
+  ),
+);
+
+it.effect("merging goes through the host, keeps the amendments and moves main", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { host, hosts, root, bare, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      const merged = yield* hosts.merge(target);
+      assert.equal(merged.changeRequest.status, "merged");
+      assert.deepEqual(host.actions.at(-1), { action: "merge", method: "merge" });
+      assert.equal(merged.commit, yield* git(bare, ["rev-parse", "main"]));
+      assert.equal(yield* git(root, ["rev-parse", "main"]), merged.commit);
+      assert.isTrue((yield* git(bare, ["log", "--format=%B", "main"])).includes("Wiki-Amendment:"));
+    }),
+  ),
+);
+
+it.effect("a local merge is refused on a host wiki, and works again after disconnecting", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { host, hosts, wikis, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      assert.equal((yield* Effect.flip(wikis.merge(target))).reason, "invalid");
+      const summary = yield* hosts.disconnect({ wikiId });
+      assert.isNull(summary.host ?? null);
+      const merged = yield* hosts.merge(target);
+      assert.equal(merged.changeRequest.status, "merged");
+      assert.lengthOf(host.actions, 0);
+    }),
+  ),
+);
+
+it.effect("the markdown merge settles what the host's line merge cannot", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { host, hosts, wikis, wikiId, commitOnHost } = fixture;
+      host.lineMergeConflicts = true;
+      const amended = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Edit the first sentence",
+          changes: { "Home.md": "# Home\n\nFirst, edited here. Then more.\n\nSecond.\n" },
+        },
+        agent("thread-a"),
+      );
+      const target = { wikiId, changeRequestId: amended.changeRequest.changeRequestId };
+      yield* hosts.publish(target);
+      yield* commitOnHost("Home.md", "# Home\n\nFirst.\n\nSecond, edited on the host.\n");
+
+      const merged = yield* hosts.merge(target);
+      assert.equal(merged.changeRequest.status, "merged");
+      assert.lengthOf(
+        merged.changeRequest.amendments,
+        1,
+        "the reconciling merge is not an amendment",
+      );
+      const note = yield* wikis.readNote({ wikiId, name: "Home" });
+      assert.include(note.source, "First, edited here.");
+      assert.include(note.source, "Second, edited on the host.");
+    }),
+  ),
+);
+
+it.effect("picks the merge method that keeps amendments, and squashes only as a last resort", () =>
+  Effect.sync(() => {
+    const allow = (merge: boolean, rebase: boolean, squash: boolean) =>
+      WikiHostService.preferredMergeMethod({ merge, rebase, squash });
+    assert.equal(allow(true, true, true), "merge");
+    assert.equal(allow(false, true, true), "rebase");
+    assert.equal(allow(false, false, true), "squash");
+    assert.isNull(allow(false, false, false));
+  }),
+);
+
+it.effect("sync follows a pull request merged, closed or reopened on the host", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { clone, host, hosts, root, wikis, wikiId } = fixture;
+      const merging = yield* amendment(fixture, "One.md", "thread-a");
+      const closing = yield* amendment(fixture, "Two.md", "thread-b");
+      const merged = { wikiId, changeRequestId: merging.changeRequestId };
+      const closed = { wikiId, changeRequestId: closing.changeRequestId };
+      yield* hosts.publish(merged);
+      yield* hosts.publish(closed);
+
+      // Someone merges the first on the host's site and closes the second.
+      yield* git(clone, ["fetch", "--quiet", "origin"]);
+      yield* git(clone, ["reset", "--quiet", "--hard", "origin/main"]);
+      yield* git(clone, [
+        "merge",
+        "--quiet",
+        "--no-ff",
+        "-m",
+        "M",
+        `origin/cr/${merged.changeRequestId}`,
+      ]);
+      yield* git(clone, ["push", "--quiet", "origin", "HEAD:main"]);
+      host.pulls[0]!.state = "merged";
+      host.pulls[1]!.state = "closed";
+
+      yield* hosts.sync({ wikiId });
+      const read = (changeRequestId: WikiChangeRequestId) =>
+        wikis
+          .changeRequestsList({ wikiId })
+          .pipe(
+            Effect.map(({ changeRequests }) =>
+              changeRequests.find((entry) => entry.changeRequestId === changeRequestId)!,
+            ),
+          );
+      const settled = yield* read(merged.changeRequestId);
+      assert.equal(settled.status, "merged");
+      assert.equal(settled.mergedCommit, yield* git(root, ["rev-parse", "main"]));
+      assert.equal((yield* read(closed.changeRequestId)).status, "closed");
+
+      host.pulls[1]!.state = "open";
+      yield* hosts.sync({ wikiId });
+      assert.equal((yield* read(closed.changeRequestId)).status, "open");
+    }),
+  ),
+);
+
+it.effect("closing reaches the host, and a host that cannot reopen says so", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { host, hosts, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      yield* hosts.publish(target);
+      const closed = yield* hosts.setChangeRequestStatus({ ...target, status: "closed" });
+      assert.equal(closed.status, "closed");
+      assert.equal(host.pulls[0]?.state, "closed");
+
+      host.supported = ["merge", "close"];
+      const refused: WikiError = yield* Effect.flip(
+        hosts.setChangeRequestStatus({ ...target, status: "open" }),
+      );
+      assert.equal(refused.reason, "invalid");
+      assert.equal(host.pulls[0]?.state, "closed");
+    }),
+  ),
+);
+
+it.effect("a change request follows work added on the host, and a push never overwrites it", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { clone, hosts, wikis, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      const published = yield* hosts.publish(target);
+      const branch = `cr/${target.changeRequestId}`;
+
+      const addOnHost = (message: string) =>
+        Effect.gen(function* () {
+          yield* git(clone, ["fetch", "--quiet", "origin"]);
+          yield* git(clone, ["checkout", "--quiet", "-B", branch, `origin/${branch}`]);
+          yield* git(clone, ["commit", "--quiet", "--allow-empty", "-m", message]);
+          yield* git(clone, ["push", "--quiet", "origin", `HEAD:${branch}`]);
+          return yield* git(clone, ["rev-parse", "HEAD"]);
+        });
+
+      const hostHead = yield* addOnHost("Teammate's work");
+      yield* hosts.sync({ wikiId });
+      const followed = (yield* wikis.changeRequestsList({ wikiId })).changeRequests[0];
+      assert.equal(followed?.head, hostHead);
+      assert.equal(followed?.pushedHead, hostHead);
+      assert.notEqual(followed?.head, published.head);
+
+      // Both sides move: the push is refused rather than replacing the teammate's commit.
+      yield* amendment(fixture, "Two.md");
+      const moved = yield* addOnHost("More from the teammate");
+      const refused = yield* Effect.flip(hosts.publish(target));
+      assert.equal(refused.reason, "stale");
+      assert.equal(yield* git(fixture.bare, ["rev-parse", branch]), moved);
+    }),
+  ),
+);
+
+it.effect("a sweep records a host it cannot reach and leaves the wiki working", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { root, hosts, wikis, wikiId } = fixture;
+      yield* git(root, ["remote", "set-url", "origin", `${fixture.bare}-gone`]);
+      yield* hosts.sweep;
+      assert.isNotNull((yield* wikis.get(wikiId)).host?.lastError ?? null);
+      const changeRequest = yield* amendment(fixture, "One.md");
+      assert.equal(changeRequest.status, "open");
+      yield* git(root, ["remote", "set-url", "origin", fixture.bare]);
+      yield* hosts.sweep;
+      assert.isNull((yield* wikis.get(wikiId)).host?.lastError ?? null);
+    }),
+  ),
+);
+
+it.effect("publishing a change request on a wiki with no host is an error", () =>
+  withFixture(
+    (fixture) =>
+      Effect.gen(function* () {
+        const changeRequest = yield* amendment(fixture, "One.md");
+        const error = yield* Effect.flip(
+          fixture.hosts.publish({
+            wikiId: fixture.wikiId,
+            changeRequestId: changeRequest.changeRequestId,
+          }),
+        );
+        assert.equal(error.reason, "invalid");
+      }),
+    { connect: false },
+  ),
+);
