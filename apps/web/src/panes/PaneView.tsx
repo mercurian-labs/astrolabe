@@ -712,7 +712,6 @@ function PaneOverlay({ children }: { children: ReactNode }) {
 export const PaneView = memo(function PaneView({
   leaf,
   focused,
-  hosting,
   maximized,
   atTop,
   atLeft,
@@ -722,7 +721,6 @@ export const PaneView = memo(function PaneView({
   leaf: Leaf;
   focused: boolean;
   /** Whether this pane holds content that renders in one place only (see `PaneArrangementSnapshot`). */
-  hosting: boolean;
   /**
    * Whether this pane fills the panel (true), or another does and this one waits, mounted,
    * beneath it (false); null when every pane shows.
@@ -741,8 +739,8 @@ export const PaneView = memo(function PaneView({
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- places the pane's surfaces into this slot's DOM node
   useLayoutEffect(() => {
-    if (slot.current) tabs.place(slot.current, leaf, hosting);
-  }, [tabs, leaf, hosting]);
+    if (slot.current) tabs.place(slot.current, leaf);
+  }, [tabs, leaf]);
 
   // A drag that ends anywhere else, or is cancelled, clears the highlight.
   const dragging = target !== null;
@@ -895,7 +893,7 @@ export const PaneView = memo(function PaneView({
       <div className="relative min-h-0 flex-1 [contain:layout_paint]">
         <div ref={slot} className="absolute inset-0" />
         <PaneOverlay>
-          <Overlay leaf={leaf} hosting={hosting} />
+          <Overlay leaf={leaf} />
         </PaneOverlay>
       </div>
       {target ? (

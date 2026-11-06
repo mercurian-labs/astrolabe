@@ -1,12 +1,14 @@
-import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useContext, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { useRightPanelStore } from "../rightPanelStore";
+import { type RightPanelSurface, useRightPanelStore } from "../rightPanelStore";
+import { parseChatSurfaceKey } from "../sectionTabs/sectionTabs";
 import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
 import { PaneTabKeyContext, useChatOwner, useWorkspaceHost } from "./PaneSurfaceHost";
-import { findLeaf } from "./tree";
 import {
+  useLiveSurfaceKeys,
+  useTabPaneId,
   useWorkspaceFront,
   useWorkspaceHostPaneId,
   workspace,
@@ -14,21 +16,25 @@ import {
 } from "./workspace";
 
 /**
- * Whether a maximized pane fills the panes over the one showing the front chat's live surface.
- * A browser's webview floats above the app at its pane's position, so a pane can't cover it.
+ * Whether a maximized pane fills the panes over the one showing this surface. A browser's webview
+ * floats above the app at its pane's position, so a pane can't cover it.
  */
 export function useLiveSurfaceCovered(): boolean {
   const maximized = useMaximizedPaneId();
-  const hostPaneId = useWorkspaceHostPaneId();
-  return maximized !== null && maximized !== hostPaneId;
+  const paneId = useTabPaneId(useContext(PaneTabKeyContext));
+  return maximized !== null && paneId !== null && maximized !== paneId;
 }
 
 /**
  * Astrolabe: ChatView's right panel inside the shared panes, with no frame: the thread's surfaces
  * are tabs linked to its chat. While its chat is in front this lends the panes ChatView's panel
- * props and renders the live surface into the pane showing it; maximizing maximizes that pane.
+ * props and renders every surface in front of a pane into its tab's container; maximizing
+ * maximizes the pane of the active one.
  */
-export function LinkedPanel(props: PanelProps) {
+export function LinkedPanel({
+  renderSurface,
+  ...props
+}: PanelProps & { readonly renderSurface: (surface: RightPanelSurface) => ReactNode }) {
   const host = useWorkspaceHost();
   const owner = useChatOwner();
   const front = useWorkspaceFront();
@@ -75,15 +81,17 @@ export function LinkedPanel(props: PanelProps) {
       }
     };
   }, [hostPaneId, maximized]);
-  // The live surface is the tab in front of the pane showing it, not its chat's tab.
-  const surfaceTab = useSyncExternalStore(workspace.store.subscribe, () =>
-    hostPaneId === null
-      ? null
-      : (findLeaf(workspace.arrangement().root, hostPaneId)?.active ?? null),
-  );
+  const liveKeys = useLiveSurfaceKeys(owner);
   if (!inFront || host === null) return null;
-  return createPortal(
-    <PaneTabKeyContext value={surfaceTab}>{props.children}</PaneTabKeyContext>,
-    host.surface,
-  );
+  return liveKeys.flatMap((key) => {
+    const surface = props.surfaces.find(({ id }) => id === parseChatSurfaceKey(key)?.surfaceId);
+    if (!surface) return [];
+    return [
+      createPortal(
+        <PaneTabKeyContext value={key}>{renderSurface(surface)}</PaneTabKeyContext>,
+        host.containerFor(key),
+        key,
+      ),
+    ];
+  });
 }

@@ -37,7 +37,7 @@ export function PaneTree({
   panelMaximized: boolean;
   panel?: PanesPanel;
 }) {
-  const { arrangement, hostPaneId } = snapshot;
+  const { arrangement } = snapshot;
   const maximizedId = useMaximizedPaneId();
   // The keyboard menu and the ex line act on the panes on screen (see `panesSlot`).
   const { controller, tabs } = usePanesHost();
@@ -80,7 +80,6 @@ export function PaneTree({
       <PaneNode
         node={arrangement.root}
         focused={arrangement.focused}
-        hostPaneId={hostPaneId}
         maximized={maximized}
         atTop
         atLeft={panelMaximized}
@@ -93,7 +92,6 @@ export function PaneTree({
 function PaneNode({
   node,
   focused,
-  hostPaneId,
   maximized,
   atTop,
   atLeft,
@@ -101,7 +99,6 @@ function PaneNode({
 }: {
   node: SplitNode;
   focused: string;
-  hostPaneId: string | null;
   /** The pane filling the panel, if one does; the others stay mounted beneath it. */
   maximized: string | null;
   /** Whether the node's top, left or right edge is the window's title bar's. */
@@ -114,7 +111,6 @@ function PaneNode({
       <PaneView
         leaf={node}
         focused={node.id === focused}
-        hosting={node.id === hostPaneId}
         maximized={maximized === null ? null : maximized === node.id}
         // A pane beneath a maximized one holds no title bar, nor any drag regions over its strip.
         atTop={maximized === null ? atTop : maximized === node.id}
@@ -147,7 +143,6 @@ function PaneNode({
             <PaneNode
               node={child}
               focused={focused}
-              hostPaneId={hostPaneId}
               maximized={maximized}
               atTop={atTop && (node.direction === "row" || index === 0)}
               // A maximized pane starts at the panel's left edge, wherever it sits in the tree.
