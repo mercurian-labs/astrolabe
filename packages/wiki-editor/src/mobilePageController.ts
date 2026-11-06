@@ -1,10 +1,13 @@
 import type { CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
 
-import type { CanvasBoardHandle } from "./CanvasBoard";
+import type { CanvasBoardHandle, CanvasBoardSettings } from "./CanvasBoard";
+import { CanvasDocument } from "./canvasDocument";
 import type { CanvasCamera } from "./canvasGeometry";
 import { WikiNoteBuffer } from "./noteBuffer";
 import type {
   WikiEditorBaseResult,
+  WikiEditorCanvasAnswer,
+  WikiEditorCanvasAsk,
   WikiEditorCodeReference,
   WikiEditorCodeStatus,
   WikiEditorCommand,
@@ -35,6 +38,10 @@ export interface WikiEditorPageState {
   readonly baseEditable: boolean;
   /** The canvas the page shows alone, in place of the note and any base. */
   readonly canvas: CanvasData | null;
+  /** The board being edited; null while it can only be read. */
+  readonly editing: CanvasDocument | null;
+  readonly readOnly: boolean;
+  readonly settings: CanvasBoardSettings | undefined;
   /** What a review marks on the board. */
   readonly marks: CanvasMarks | null;
   /** The commit a wiki's board reads at; null for a thread's, which reads nothing. */
@@ -60,6 +67,9 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     base: null,
     baseEditable: false,
     canvas: null,
+    editing: null,
+    readOnly: false,
+    settings: undefined,
     marks: null,
     revision: null,
     camera: null,
@@ -197,6 +207,32 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     };
   };
 
+  // A board's edits, crossed to the app at the pace typing does: it saves the latest whole list.
+  let editing: CanvasDocument | null = null;
+  let editedTimer: ReturnType<typeof setTimeout> | undefined;
+  let editedAgain = false;
+  const reportCanvasEdits = () => {
+    if (editedTimer !== undefined) {
+      editedAgain = true;
+      return;
+    }
+    const taken = editing?.take() ?? null;
+    if (taken !== null) post({ type: "canvasEdited", ...taken });
+    editedTimer = setTimeout(() => {
+      editedTimer = undefined;
+      if (!editedAgain) return;
+      editedAgain = false;
+      reportCanvasEdits();
+    }, EDIT_REPORT_MS);
+  };
+  const canvasAsks = new Map<number, (answer: WikiEditorCanvasAnswer) => void>();
+  const askApp = (ask: WikiEditorCanvasAsk) =>
+    new Promise<WikiEditorCanvasAnswer>((resolve) => {
+      const requestId = nextRequest++;
+      canvasAsks.set(requestId, resolve);
+      post({ type: "canvasAsk", requestId, ask });
+    });
+
   let board: CanvasBoardHandle | null = null;
   let cameraTimer: ReturnType<typeof setTimeout> | undefined;
   let cameraSent: string | null = null;
@@ -261,12 +297,33 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         for (const listener of noteListeners) listener();
         return;
       case "showCanvas":
+        if (command.document === undefined) {
+          editing = null;
+        } else if (editing === null) {
+          editing = new CanvasDocument({
+            document: command.document,
+            revision: command.revision ?? "",
+            onEdited: reportCanvasEdits,
+          });
+        } else {
+          editing.receive(command.document, command.revision ?? "");
+        }
         setState({
           canvas: command.data,
+          editing,
+          readOnly: command.readOnly === true,
+          settings: command.settings,
           marks: command.marks ?? null,
           revision: command.revision ?? null,
           camera: command.camera ?? null,
         });
+        return;
+      case "canvasLanded":
+        editing?.landed(command.through, command.commit);
+        return;
+      case "canvasAnswer":
+        canvasAsks.get(command.requestId)?.(command.answer);
+        canvasAsks.delete(command.requestId);
         return;
       case "canvasRevision":
         setState({ revision: command.revision });
@@ -331,6 +388,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     watchFile,
     getFile: (path: string): WikiEditorEmbeddedFile | undefined => files.get(path),
     reportCamera,
+    askApp,
     /** The board shown, for what the app drives from outside it, such as Jump to group. */
     setBoard(handle: CanvasBoardHandle | null) {
       board = handle;
@@ -344,6 +402,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     dispose() {
       clearTimeout(cameraTimer);
       clearTimeout(editTimer);
+      clearTimeout(editedTimer);
       stopReportingEdits();
       stopReporting();
       buffer.release();

@@ -5,8 +5,10 @@
  */
 
 import type { CanvasCodeReference, CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
+import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
 
 import type { BaseCellValue } from "./baseCells";
+import type { CanvasBoardSettings } from "./CanvasBoard";
 import type { CanvasCamera } from "./canvasGeometry";
 
 /** A column's summary, as Obsidian displays its value. */
@@ -116,6 +118,26 @@ export interface WikiEditorCodeReference {
 }
 
 /** What the app tells the page. */
+/** What a board on the page can't reach by itself. */
+export type WikiEditorCanvasAsk =
+  | { readonly kind: "list-files" }
+  | { readonly kind: "read-file"; readonly path: string }
+  | { readonly kind: "asset-url"; readonly path: string }
+  | {
+      readonly kind: "write-note";
+      readonly file: string;
+      readonly text: string;
+      readonly readAt?: string | undefined;
+    }
+  | { readonly kind: "rename"; readonly file: string; readonly to: string };
+
+export type WikiEditorCanvasAnswer =
+  | { readonly kind: "files"; readonly files: ReadonlyArray<string> }
+  /** A file's text or address, null when it has none. */
+  | { readonly kind: "value"; readonly value: string | null }
+  /** Why a write failed, null when it didn't. */
+  | { readonly kind: "failure"; readonly message: string | null };
+
 export type WikiEditorCommand =
   /** A read of the note. With `author`, a changed version lands live as theirs. */
   | {
@@ -159,9 +181,26 @@ export type WikiEditorCommand =
       readonly camera?: CanvasCamera | null | undefined;
       /** What a review marks on it. */
       readonly marks?: CanvasMarks | undefined;
+      /** The file's JSON, which a person edits: what it draws takes `data`'s place. */
+      readonly document?: unknown;
+      /** This board's own toggle. */
+      readonly readOnly?: boolean | undefined;
+      readonly settings?: CanvasBoardSettings | undefined;
     }
   /** The wiki moved on and the board's own file didn't: cards read at this commit from now on. */
   | { readonly type: "canvasRevision"; readonly revision: string }
+  /** A `canvasEdited` is on the head. `commit` is null when it changed nothing there. */
+  | {
+      readonly type: "canvasLanded";
+      readonly through: number;
+      readonly commit: string | null;
+    }
+  /** Answers a `canvasAsk`. */
+  | {
+      readonly type: "canvasAnswer";
+      readonly requestId: number;
+      readonly answer: WikiEditorCanvasAnswer;
+    }
   /** Brings a card or group into view, as Jump to group does; a review's list selects it too. */
   | { readonly type: "focusCard"; readonly id: string; readonly select?: boolean | undefined }
   /** The documents the wiki holds; a link to anything else reads as unwritten. */
@@ -256,6 +295,20 @@ export type WikiEditorEvent =
   | { readonly type: "readFile"; readonly path: string }
   /** The board's camera, once it settles; null while it fits the board. */
   | { readonly type: "camera"; readonly camera: CanvasCamera | null }
+  /** Everything the board hasn't heard has landed: the app autosaves it, replacing the last. */
+  | {
+      readonly type: "canvasEdited";
+      readonly edits: ReadonlyArray<CanvasHandEdit>;
+      readonly through: number;
+    }
+  /** What a board needs the app for; the app answers with `canvasAnswer`. */
+  | {
+      readonly type: "canvasAsk";
+      readonly requestId: number;
+      readonly ask: WikiEditorCanvasAsk;
+    }
+  | { readonly type: "canvasSettings"; readonly settings: Partial<CanvasBoardSettings> }
+  | { readonly type: "canvasReadOnly"; readonly on: boolean }
   /** A diagram of a type the page hasn't loaded: the app injects its script. */
   | { readonly type: "loadDiagram"; readonly diagram: string }
   /** A note's property set from the base shown alone: a cell edited, or a card moved. */
@@ -416,6 +469,28 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
       return typeof value.path === "string" ? { type: "readFile", path: value.path } : null;
     case "camera":
       return { type: "camera", camera: readCamera(value.camera) };
+    case "canvasEdited":
+      return Array.isArray(value.edits) && typeof value.through === "number"
+        ? {
+            type: "canvasEdited",
+            edits: value.edits as ReadonlyArray<CanvasHandEdit>,
+            through: value.through,
+          }
+        : null;
+    case "canvasAsk":
+      return typeof value.requestId === "number" && isRecord(value.ask)
+        ? {
+            type: "canvasAsk",
+            requestId: value.requestId,
+            ask: value.ask as unknown as WikiEditorCanvasAsk,
+          }
+        : null;
+    case "canvasSettings":
+      return isRecord(value.settings)
+        ? { type: "canvasSettings", settings: value.settings as Partial<CanvasBoardSettings> }
+        : null;
+    case "canvasReadOnly":
+      return { type: "canvasReadOnly", on: value.on === true };
     case "loadDiagram":
       return typeof value.diagram === "string"
         ? { type: "loadDiagram", diagram: value.diagram }
@@ -479,7 +554,7 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         : null;
     case "showCanvas": {
       // The app's own page: the board is placed by the app, and checked only far enough to draw.
-      const { data, marks } = value;
+      const { data, marks, document, settings } = value;
       const camera = readCamera(value.camera);
       return isRecord(data) && Array.isArray(data.nodes) && Array.isArray(data.edges)
         ? {
@@ -490,9 +565,28 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
             ...(isRecord(marks) && isRecord(marks.cards) && isRecord(marks.arrows)
               ? { marks: marks as unknown as CanvasMarks }
               : {}),
+            ...(isRecord(document) ? { document } : {}),
+            ...(value.readOnly === true ? { readOnly: true } : {}),
+            ...(isRecord(settings) ? { settings: settings as unknown as CanvasBoardSettings } : {}),
           }
         : null;
     }
+    case "canvasLanded":
+      return typeof value.through === "number"
+        ? {
+            type: "canvasLanded",
+            through: value.through,
+            commit: typeof value.commit === "string" ? value.commit : null,
+          }
+        : null;
+    case "canvasAnswer":
+      return typeof value.requestId === "number" && isRecord(value.answer)
+        ? {
+            type: "canvasAnswer",
+            requestId: value.requestId,
+            answer: value.answer as unknown as WikiEditorCanvasAnswer,
+          }
+        : null;
     case "canvasRevision":
       return typeof value.revision === "string"
         ? { type: "canvasRevision", revision: value.revision }

@@ -316,7 +316,7 @@ describe("the wiki editor protocol", () => {
       const focusCard = vi.fn();
       const selectCard = vi.fn();
       editor.handle({ type: "focusCard", id: "before" });
-      editor.setBoard({ focusCard, selectCard });
+      editor.setBoard({ focusCard, selectCard, run: vi.fn() });
       editor.handle({ type: "focusCard", id: "group" });
       expect(focusCard.mock.calls).toEqual([["group"]]);
       editor.handle({ type: "focusCard", id: "changed", select: true });

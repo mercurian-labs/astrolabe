@@ -1,10 +1,4 @@
-import type {
-  CanvasBounds,
-  CanvasData,
-  CanvasEdge,
-  CanvasNode,
-  CanvasSide,
-} from "@mercurian/wiki/canvas";
+import type { CanvasBounds, CanvasData, CanvasEdge, CanvasSide } from "@mercurian/wiki/canvas";
 
 /** What the board's view is looking at: screen = world * zoom + offset. */
 export interface CanvasCamera {
@@ -89,7 +83,7 @@ const NORMAL: Readonly<Record<CanvasSide, Point>> = {
   left: { x: -1, y: 0 },
 };
 
-const sideMiddle = (node: CanvasNode, side: CanvasSide): Point => {
+const sideMiddle = (node: CanvasBounds, side: CanvasSide): Point => {
   switch (side) {
     case "top":
       return { x: node.x + node.width / 2, y: node.y };
@@ -103,7 +97,7 @@ const sideMiddle = (node: CanvasNode, side: CanvasSide): Point => {
 };
 
 /** The sides facing each other: the spec leaves `fromSide` and `toSide` optional. */
-function facingSides(from: CanvasNode, to: CanvasNode): readonly [CanvasSide, CanvasSide] {
+function facingSides(from: CanvasBounds, to: CanvasBounds): readonly [CanvasSide, CanvasSide] {
   if (from === to) return ["right", "right"];
   const dx = to.x + to.width / 2 - (from.x + from.width / 2);
   const dy = to.y + to.height / 2 - (from.y + from.height / 2);
@@ -142,37 +136,69 @@ const cubicAt = (a: Point, b: Point, c: Point, d: Point, t: number): Point => {
   return { x: at("x"), y: at("y") };
 };
 
-/** Each edge's curve, leaving each card square to its side. Edges to missing cards are skipped. */
+/** An edge's curve between two boxes, leaving each square to its side. */
+export function canvasEdgeShape(
+  edge: CanvasEdge,
+  from: CanvasBounds,
+  to: CanvasBounds,
+): CanvasEdgeShape {
+  const [facingFrom, facingTo] = facingSides(from, to);
+  const fromSide = edge.fromSide ?? facingFrom;
+  const toSide = edge.toSide ?? facingTo;
+  const start = sideMiddle(from, fromSide);
+  const end = sideMiddle(to, toSide);
+  const startNormal = NORMAL[fromSide];
+  const endNormal = NORMAL[toSide];
+  const [control1, control2] = curveControls(start, startNormal, end, endNormal);
+  const heads = [
+    ...((edge.toEnd ?? "arrow") === "arrow" ? [head(end, endNormal)] : []),
+    ...((edge.fromEnd ?? "none") === "arrow" ? [head(start, startNormal)] : []),
+  ];
+  return {
+    edge,
+    path: curvePath(start, control1, control2, end),
+    heads,
+    labelAt: cubicAt(start, control1, control2, end, 0.5),
+    bounds: boundsOf([start, control1, control2, end]),
+  };
+}
+
+const curveControls = (start: Point, startNormal: Point, end: Point, endNormal: Point) => {
+  const reach = Math.min(160, Math.max(40, Math.hypot(end.x - start.x, end.y - start.y) / 2));
+  return [
+    { x: start.x + startNormal.x * reach, y: start.y + startNormal.y * reach },
+    { x: end.x + endNormal.x * reach, y: end.y + endNormal.y * reach },
+  ] as const;
+};
+
+const curvePath = (start: Point, control1: Point, control2: Point, end: Point) =>
+  `M${start.x} ${start.y}C${control1.x} ${control1.y} ${control2.x} ${control2.y} ${end.x} ${end.y}`;
+
+/** A line being drawn from a card's side to the pointer, before it has a far end. */
+export function canvasDraftPath(from: CanvasBounds, side: CanvasSide, to: Point): string {
+  const start = sideMiddle(from, side);
+  const [control1] = curveControls(start, NORMAL[side], to, { x: 0, y: 0 });
+  return curvePath(start, control1, to, to);
+}
+
+/** Each edge's curve. Edges to missing cards are skipped. */
 export function canvasEdgeShapes(data: CanvasData): CanvasEdgeShape[] {
   const nodes = new Map(data.nodes.map((node) => [node.id, node]));
   return data.edges.flatMap((edge) => {
     const from = nodes.get(edge.fromNode);
     const to = nodes.get(edge.toNode);
-    if (from === undefined || to === undefined) return [];
-    const [facingFrom, facingTo] = facingSides(from, to);
-    const fromSide = edge.fromSide ?? facingFrom;
-    const toSide = edge.toSide ?? facingTo;
-    const start = sideMiddle(from, fromSide);
-    const end = sideMiddle(to, toSide);
-    const reach = Math.min(160, Math.max(40, Math.hypot(end.x - start.x, end.y - start.y) / 2));
-    const startNormal = NORMAL[fromSide];
-    const endNormal = NORMAL[toSide];
-    const control1 = { x: start.x + startNormal.x * reach, y: start.y + startNormal.y * reach };
-    const control2 = { x: end.x + endNormal.x * reach, y: end.y + endNormal.y * reach };
-    const heads = [
-      ...((edge.toEnd ?? "arrow") === "arrow" ? [head(end, endNormal)] : []),
-      ...((edge.fromEnd ?? "none") === "arrow" ? [head(start, startNormal)] : []),
-    ];
-    return [
-      {
-        edge,
-        path: `M${start.x} ${start.y}C${control1.x} ${control1.y} ${control2.x} ${control2.y} ${end.x} ${end.y}`,
-        heads,
-        labelAt: cubicAt(start, control1, control2, end, 0.5),
-        bounds: boundsOf([start, control1, control2, end]),
-      },
-    ];
+    return from === undefined || to === undefined ? [] : [canvasEdgeShape(edge, from, to)];
   });
+}
+
+/** The two ends of an edge as drawn, for working out which one a press is nearer. */
+export function canvasEdgeEnds(
+  edge: CanvasEdge,
+  from: CanvasBounds,
+  to: CanvasBounds,
+): readonly [Point, Point] {
+  const [facingFrom, facingTo] = facingSides(from, to);
+  return [sideMiddle(from, edge.fromSide ?? facingFrom), sideMiddle(to, edge.toSide ?? facingTo)];
 }
 
 /** A colour for CSS: a spec preset by its name in the stylesheet, or a hex value. Else none. */

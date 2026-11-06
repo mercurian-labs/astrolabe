@@ -1,5 +1,5 @@
 import { parseCanvas, type CanvasData } from "@mercurian/wiki/canvas";
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { BaseBlock } from "./BaseBlock";
 import {
@@ -7,12 +7,15 @@ import {
   CanvasBoard,
   type CanvasAsset,
   type CanvasBoardHost,
+  type CanvasCardEditor,
 } from "./CanvasBoard";
+import { canvasCardSession } from "./canvasCardSession";
 import { cardFileName } from "./canvasGeometry";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { MobileMermaid } from "./MobileMermaid";
 import { documentKey, type WikiEditorPage } from "./mobilePageController";
-import type { WikiEditorEvent } from "./protocol";
+import { WikiNoteEditor } from "./NoteEditor";
+import type { WikiEditorCanvasAsk, WikiEditorEvent } from "./protocol";
 
 type Post = (event: WikiEditorEvent) => void;
 
@@ -68,6 +71,36 @@ function BaseImage({
   return <img className={className} src={url} alt="" loading="lazy" decoding="async" />;
 }
 
+const NO_LINK_TYPES: ReadonlyArray<string> = [];
+
+/** The one real editor, on the card being typed in. */
+function CardEditor({
+  editor,
+  onOpenNote,
+}: {
+  readonly editor: CanvasCardEditor;
+  readonly onOpenNote: (name: string) => void;
+}) {
+  const [session] = useState(() => canvasCardSession(editor.initialText, editor.onChange));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the editor's document is an external resource it owns for as long as it's open
+  useEffect(() => session.dispose, [session]);
+  return (
+    <WikiNoteEditor
+      session={session}
+      onOpenNote={onOpenNote}
+      linkTypes={NO_LINK_TYPES}
+      renderLinkPreview={() => null}
+      renderMermaid={(source) => <MobileMermaid source={source} />}
+    />
+  );
+}
+
+const failureOf = (answer: Awaited<ReturnType<WikiEditorPage["askApp"]>>) =>
+  answer.kind === "failure" ? answer.message : "That didn't work.";
+
+const valueOf = (answer: Awaited<ReturnType<WikiEditorPage["askApp"]>>) =>
+  answer.kind === "value" ? answer.value : null;
+
 /**
  * A canvas alone on the page. A thread's reads nothing; a wiki's reads its cards through the app,
  * at the commit shown.
@@ -81,10 +114,8 @@ export function MobileCanvas({
   readonly data: CanvasData;
   readonly post: Post;
 }) {
-  const { revision, camera, knownDocuments, marks } = useSyncExternalStore(
-    page.subscribe,
-    page.getState,
-  );
+  const { revision, camera, knownDocuments, marks, editing, readOnly, settings } =
+    useSyncExternalStore(page.subscribe, page.getState);
   const { setBoard, reportCamera } = page;
   const host = useMemo((): CanvasBoardHost => {
     const onOpenUrl = (href: string) => post({ type: "openUrl", href });
@@ -92,7 +123,20 @@ export function MobileCanvas({
       post({ type: "openCode", code, url });
     if (revision === null) return { onOpenUrl, onOpenCode };
     const onOpenNote = (name: string) => post({ type: "openNote", name });
+    const ask = (question: WikiEditorCanvasAsk) => page.askApp(question);
     return {
+      touch: true,
+      renderCardEditor: (editor) => <CardEditor editor={editor} onOpenNote={onOpenNote} />,
+      listFiles: async () => {
+        const answer = await ask({ kind: "list-files" });
+        return answer.kind === "files" ? answer.files : [];
+      },
+      readFileText: async (path) => valueOf(await ask({ kind: "read-file", path })),
+      assetUrl: async (path) => valueOf(await ask({ kind: "asset-url", path })),
+      writeNote: async (file, text, readAt) =>
+        failureOf(await ask({ kind: "write-note", file, text, readAt })),
+      renameDocument: async (file, to) => failureOf(await ask({ kind: "rename", file, to })),
+      copyText: (text) => void navigator.clipboard?.writeText(text),
       onOpenUrl,
       onOpenCode,
       onOpenLink: onOpenNote,
@@ -132,6 +176,11 @@ export function MobileCanvas({
         revision={revision ?? undefined}
         camera={camera}
         onCamera={reportCamera}
+        document={editing}
+        readOnly={readOnly}
+        onReadOnly={(on) => post({ type: "canvasReadOnly", on })}
+        onSettings={(patch) => post({ type: "canvasSettings", settings: patch })}
+        {...(settings === undefined ? {} : { settings })}
         {...(marks === null ? {} : { marks })}
       />
     </div>

@@ -1,6 +1,6 @@
 import type { CanvasBounds } from "@mercurian/wiki/canvas";
 
-import { fitCamera, zoomAt, ZOOM_STEP, type CanvasCamera } from "./canvasGeometry";
+import { cameraWindow, fitCamera, zoomAt, ZOOM_STEP, type CanvasCamera } from "./canvasGeometry";
 
 const WHEEL_ZOOM_SPEED = 0.01;
 
@@ -52,6 +52,32 @@ export class CanvasView {
     };
   }
 
+  get camera() {
+    return this.#camera;
+  }
+
+  /** What the frame shows, in board units, with `margin` screen pixels to spare. */
+  window(margin = 0): CanvasBounds {
+    const { clientWidth = 0, clientHeight = 0 } = this.#board ?? {};
+    return cameraWindow(this.#camera, clientWidth, clientHeight, margin);
+  }
+
+  /** The board's point under a screen point. */
+  toWorld(clientX: number, clientY: number) {
+    const rect = this.#board?.getBoundingClientRect();
+    const { x, y, zoom } = this.#camera;
+    return {
+      x: (clientX - (rect?.left ?? 0) - x) / zoom,
+      y: (clientY - (rect?.top ?? 0) - y) / zoom,
+    };
+  }
+
+  /** The screen point, in the frame's own pixels, of a board's point. */
+  toFrame(point: { readonly x: number; readonly y: number }) {
+    const { x, y, zoom } = this.#camera;
+    return { x: point.x * zoom + x, y: point.y * zoom + y };
+  }
+
   /** Whether the board is fitted: the reader hasn't moved it, so it follows its frame. */
   get fitted() {
     return this.#fitted;
@@ -89,6 +115,36 @@ export class CanvasView {
     this.#move(fitCamera(rect, this.#board.clientWidth, this.#board.clientHeight, this.#padding));
   }
 
+  /** `rect` in the middle of the frame at actual size, as Follow connection lands. */
+  center(rect: CanvasBounds) {
+    if (this.#board === null) return;
+    const { clientWidth, clientHeight } = this.#board;
+    this.#move({
+      x: clientWidth / 2 - (rect.x + rect.width / 2),
+      y: clientHeight / 2 - (rect.y + rect.height / 2),
+      zoom: 1,
+    });
+  }
+
+  /** Pans just enough to show the top of `rect` above an on-screen keyboard. */
+  reveal(rect: CanvasBounds, visibleHeight: number) {
+    const { x, y, zoom } = this.#camera;
+    const top = rect.y * zoom + y;
+    const bottom = top + rect.height * zoom;
+    const room = 16;
+    if (bottom > visibleHeight - room || top < room) {
+      this.#move({
+        x,
+        y:
+          y +
+          (top > room
+            ? visibleHeight - room - Math.min(bottom, top + visibleHeight - room * 2)
+            : room - top),
+        zoom,
+      });
+    }
+  }
+
   pan(dx: number, dy: number) {
     this.#move({ ...this.#camera, x: this.#camera.x + dx, y: this.#camera.y + dy });
   }
@@ -112,10 +168,14 @@ export class CanvasView {
     this.zoomBy(1 / this.#camera.zoom);
   }
 
-  wheel(event: WheelEvent) {
+  /** `zooms` swaps a plain wheel to zooming, and a held ⌘ to panning. */
+  wheel(event: WheelEvent, zooms = false, held = false) {
     if (this.#board === null) return;
-    if (!event.ctrlKey && !event.metaKey) {
-      this.pan(-event.deltaX, -event.deltaY);
+    const modified = event.ctrlKey || event.metaKey;
+    if (!held && modified === zooms) {
+      // A wheel with Shift has its delta on Y in most browsers.
+      if (event.shiftKey) this.pan(-(event.deltaX || event.deltaY), 0);
+      else this.pan(-event.deltaX, -event.deltaY);
       return;
     }
     const rect = this.#board.getBoundingClientRect();
