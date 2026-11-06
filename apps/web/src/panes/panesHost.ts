@@ -75,9 +75,9 @@ export interface PaneTabs {
    * Puts a pane's content into its slot, after each render of the pane: its tabs' contents
    * move between panes as DOM nodes, so moving a tab never remounts what it shows.
    */
-  readonly place: (slot: HTMLElement, leaf: Leaf, hosting: boolean) => void;
+  readonly place: (slot: HTMLElement, leaf: Leaf) => void;
   /** Drawn over the slot for a pane's active tab when it shows no content of its own. */
-  readonly Overlay: ComponentType<{ readonly leaf: Leaf; readonly hosting: boolean }>;
+  readonly Overlay: ComponentType<{ readonly leaf: Leaf }>;
   /** Whether the top-right strip leaves room for controls pinned over its end. */
   readonly reservesTopRight: boolean;
   /**

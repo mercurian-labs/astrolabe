@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveChatCanvasLayout, type ChatCanvasPreview } from "./chatCanvasLayout";
-import { resizePreviewMiniPlayer } from "../preview/previewMiniPlayerLayout";
+import {
+  PREVIEW_MINI_PLAYER_PAGE_TOP as bar,
+  resizePreviewMiniPlayer,
+} from "../preview/previewMiniPlayerLayout";
 import {
   resolveThreadDetailsCardDensity,
   resolveThreadDetailsCardLayout,
@@ -25,12 +28,12 @@ const expectClear = (result: ReturnType<typeof resolve>) => {
 describe("chat canvas layout", () => {
   it("lifts a growing preview above the composer without snapping at the chat boundary", () => {
     let previous: ReturnType<typeof resolve> | undefined;
-    for (let width = 480; width <= 1100; width++) {
+    for (let width = 480; width <= 1040; width++) {
       const result = resolve(1344, {
         ...preview,
         width,
         lastInteraction: "resize",
-        position: { x: 1332 - width, y: 888 - Math.round(width / 1.6) },
+        position: { x: 1332 - width, y: 888 - Math.round(width / 1.6) - bar },
       });
       const frame = result.frame!;
       if (frame.x < result.chat.left + result.chat.width + 12) {
@@ -46,7 +49,7 @@ describe("chat canvas layout", () => {
       previous = result;
     }
     expect(previous!.overlapsChat).toBe(true);
-    expect(previous!.frame!.width).toBe(1100);
+    expect(previous!.frame!.width).toBe(1040);
   });
   it.each([900, 1000, 1004])("allows dragging across a %spx chat canvas", (width) => {
     const start = resolve(width, { ...preview, position: { x: width - 332, y: 200 } }).frame!;
@@ -100,7 +103,7 @@ describe("chat canvas layout", () => {
         position: { x: 1260, y: 240 },
       },
     });
-    expect(result.frame).toEqual({ x: 1260, y: 351, width: 240, height: 365 });
+    expect(result.frame).toEqual({ x: 1260, y: 351, width: 240, height: 365 + bar });
     expect(result.overlapsDetailsCard).toBe(false);
     expect(result.chat).toEqual({ left: 424, width: 736, insetStart: 0, insetEnd: 0 });
   });
@@ -152,7 +155,7 @@ describe("chat canvas layout", () => {
       });
     for (const lastInteraction of ["drag", "resize"] as const) {
       const result = layout(lastInteraction);
-      expect(result.frame).toEqual({ x: 1332, y: 60, width: 240, height: 365 });
+      expect(result.frame).toEqual({ x: 1332, y: 60, width: 240, height: 365 + bar });
       expect(result.overlapsDetailsCard).toBe(false);
       expect(result.chat).toEqual({ left: 424, width: 736, insetStart: 0, insetEnd: 0 });
     }
@@ -170,16 +173,16 @@ describe("chat canvas layout", () => {
         position: { x: 1260, y: 100 },
       },
     });
-    expect(result.frame).toEqual({ x: 1008, y: 100, width: 240, height: 700 });
+    expect(result.frame).toEqual({ x: 1008, y: 100, width: 240, height: 700 + bar });
     expect(result.overlapsDetailsCard).toBe(false);
     expectClear(result);
   });
   it("keeps a large player when clearing the full card would leave no readable chat", () => {
-    const container = { width: 1584, height: 988 };
+    const container = { width: 1584, height: 988 + bar };
     const source = { width: 1000, height: 1523 };
     const layout = (width: number) => {
       const resized = resizePreviewMiniPlayer({
-        start: { x: 1332, y: 610, width: 240, height: 366 },
+        start: { x: 1332, y: 610, width: 240, height: 366 + bar },
         direction: "northwest",
         delta: { x: 240 - width, y: ((240 - width) * source.height) / source.width },
         container,
@@ -215,11 +218,11 @@ describe("chat canvas layout", () => {
   it.each(["west", "north"] as const)(
     "folds the card before moving a %s resize beside it",
     (direction) => {
-      const container = { width: 1584, height: 988 };
+      const container = { width: 1584, height: 988 + bar };
       const source = { width: 1000, height: 1523 };
       const layout = (width: number) => {
         const resized = resizePreviewMiniPlayer({
-          start: { x: 1332, y: 611, width: 240, height: 365 },
+          start: { x: 1332, y: 611, width: 240, height: 365 + bar },
           direction,
           delta: { x: 240 - width, y: ((240 - width) * source.height) / source.width },
           container,
@@ -281,7 +284,7 @@ describe("chat canvas layout", () => {
     });
     expect(result.overlapsDetailsCard).toBe(true);
     expect(result.overlapsChat).toBe(true);
-    expect(result.frame).toEqual({ x: 12, y: 396, width: 1300, height: 400 });
+    expect(result.frame).toEqual({ x: 12, y: 396 - bar, width: 1300, height: 400 + bar });
   });
 });
 

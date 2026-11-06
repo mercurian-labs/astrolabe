@@ -239,8 +239,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   centred on the strip, midway between the two tabs either side.
 - **F6 stop**: each pane is one stop in upstream's F6 cycle (`workspaceAreaProps("pane", …)` in
   `PaneView.tsx`, keyboard-nav.md), after the chat's own areas.
-- **One live surface**: only the record's active surface renders. Another
-  pane's shown tab reads "Click to show" until its pane takes focus.
+- **Surfaces side by side**: every linked tab in front of a pane is live at once, and moving
+  focus between them remounts neither. Only the focused one answers shortcuts.
 - **Persistence**: the one arrangement, its links and parked tabs survive a reload, per
   device (`astrolabe:workspace:v1`, history `astrolabe:workspace-tab-history:v1`). The first
   load brings in the old chat tabs and the Projects, Wikis and Changes layouts (and their
@@ -301,13 +301,11 @@ its body:
     h: r.height,
     tab: hit(t.x + t.width / 2, t.y + t.height / 2),
     body: hit(r.x + r.width / 2, r.y + r.height * 0.6),
-    waiting: p.innerText.includes("Click to show"),
   };
 });
 ```
 
-Every pane should have `w` and `h` above 0 and `tab` and `body` true; with two panes
-showing surfaces, exactly one (the unfocused one) is `waiting`.
+Every pane should have `w` and `h` above 0 and `tab` and `body` true.
 
 The stored workspace: `JSON.parse(localStorage['astrolabe:workspace:v1'])` (`root`, `focused`,
 `seq`, `owners`, `parked`, `front`; a leaf may carry `from`, the pane it was split from). Writes are debounced (150 ms) and flushed on `pagehide`; the

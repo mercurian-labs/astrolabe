@@ -100,7 +100,7 @@ import { LinkedTabsFilter } from "./LinkedTabsFilter";
 import { useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
-import { WorkspaceHostContext } from "./PaneSurfaceHost";
+import { PaneTabKeyContext, WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
 import { leaves } from "./tree";
 import { useWorkspaceSnapshot, workspace, WORKSPACE_LAYOUT_KEY } from "./workspace";
@@ -511,7 +511,12 @@ describe("a thread's surface as a tab of the shared panes", () => {
     }
     using _panel = emptyPanel();
     useRightPanelStore.getState().open(ref, "diff");
-    await using screen = await renderPanes({}, <Covered />);
+    await using screen = await renderPanes(
+      {},
+      <PaneTabKeyContext value={chatSurfaceKey(chat, "diff")}>
+        <Covered />
+      </PaneTabKeyContext>,
+    );
     const covered = () => screen.container.querySelector("output")?.textContent;
     const toggle = async (paneId: string) => {
       await act(() => useMaximizedPaneStore.getState().toggle(WORKSPACE_LAYOUT_KEY, paneId));

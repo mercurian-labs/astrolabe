@@ -1087,6 +1087,25 @@ export function useWorkspaceHostPaneId(): string | null {
   );
 }
 
+/** The pane holding the tab `key`, if one does. */
+export function useTabPaneId(key: string | null): string | null {
+  return useSyncExternalStore(workspace.store.subscribe, () =>
+    key === null ? null : (leafWithTab(workspace.arrangement().root, key)?.id ?? null),
+  );
+}
+
+/** `owner`'s surface tabs in front of their panes, each of which renders live. */
+export function useLiveSurfaceKeys(owner: string | null): readonly string[] {
+  // Joined, as a new array each read would never settle; pane resizes change no keys.
+  const keys = useSyncExternalStore(workspace.store.subscribe, () =>
+    leaves(workspace.arrangement().root)
+      .map((leaf) => leaf.active)
+      .filter((key) => owner !== null && parseChatSurfaceKey(key)?.chatKey === owner)
+      .join("\n"),
+  );
+  return keys === "" ? [] : keys.split("\n");
+}
+
 export function useWorkspaceArrangement(): Arrangement {
   return useSyncExternalStore(workspace.store.subscribe, workspace.arrangement);
 }

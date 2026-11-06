@@ -1,4 +1,7 @@
+import type { ReactNode } from "react";
+
 import { usePreviewPanelInlineSize } from "../../hooks/usePreviewPanelInlineSize";
+import type { RightPanelSurface } from "../../rightPanelStore";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { RightPanelTabs, type RightPanelTabsProps } from "../RightPanelTabs";
 import { LinkedPanel } from "../../panes/LinkedPanel";
@@ -11,6 +14,8 @@ type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "ma
   readonly widthStorageKey: string;
   readonly sheetAnimationDurationMs: number;
   readonly onCloseSheet: () => void;
+  /** Astrolabe: a surface's content, for the shared panes, which show several at once. */
+  readonly renderSurface: (surface: RightPanelSurface) => ReactNode;
 };
 
 /**
@@ -27,6 +32,7 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     onCloseSheet,
     maximized,
     layoutControls,
+    renderSurface,
     ...tabs
   } = props;
   const inlineSize = usePreviewPanelInlineSize({
@@ -35,7 +41,11 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
   });
   // Astrolabe: inside the shared panes, the thread's surfaces are tabs linked to its chat.
   const linked = useWorkspaceHost() !== null;
-  if (linked) return <LinkedPanel {...tabs} mode="inline" maximized={maximized} />;
+  if (linked) {
+    return (
+      <LinkedPanel {...tabs} mode="inline" maximized={maximized} renderSurface={renderSurface} />
+    );
+  }
   if (!sheet) {
     return <RightPanelTabs {...tabs} mode="inline" maximized={maximized} inlineSize={inlineSize} />;
   }
