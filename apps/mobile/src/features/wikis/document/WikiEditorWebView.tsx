@@ -56,8 +56,9 @@ export const WikiEditorWebView = forwardRef<
     () => ({
       html: wikiEditorPage,
       // A real origin on both platforms: under iOS's `file:///` the page is opaque, so its
-      // errors arrive as a bare "Script error." and storage APIs refuse it.
-      baseUrl: "https://localhost/",
+      // errors arrive as a bare "Script error." and storage APIs refuse it. Not https: WebKit
+      // upgrades a plain-http server's files on such a page, and the upgraded request fails.
+      baseUrl: "http://localhost/",
     }),
     [],
   );
@@ -90,6 +91,7 @@ export const WikiEditorWebView = forwardRef<
         webView.current?.reload();
       }}
       keyboardDisplayRequiresUserAction={false}
+      allowsInlineMediaPlayback
       scrollEnabled={props.fixed !== true}
       bounces={props.fixed !== true}
       hideKeyboardAccessoryView
