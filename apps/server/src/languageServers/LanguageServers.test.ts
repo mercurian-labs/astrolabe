@@ -21,6 +21,7 @@ import type {
   LanguageServerSessionItem,
   LanguageServerSettingsChange,
   LanguageServerStatus,
+  WikiSummary,
 } from "@t3tools/contracts";
 import { primaryLanguageServerRoute } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -43,6 +44,7 @@ import * as ServerConfig from "../config.ts";
 import * as Documents from "../documents/Documents.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as WikiService from "../wiki/WikiService.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
@@ -99,6 +101,7 @@ const noHttp = HttpClient.make((request) =>
 const layerFor = (
   options: Partial<LanguageServers.LanguageServersOptions> = {},
   http: HttpClient.HttpClient = noHttp,
+  wikiRoots: ReadonlyArray<string> = [],
 ) =>
   LanguageServers.layerWith({
     ...LanguageServers.defaultOptions,
@@ -115,6 +118,13 @@ const layerFor = (
   }).pipe(
     Layer.provideMerge(layerDocuments),
     Layer.provide(Layer.succeed(HttpClient.HttpClient, http)),
+    Layer.provide(
+      Layer.mock(WikiService.WikiService)({
+        list: Effect.sync(() => ({
+          wikis: wikiRoots.map((root) => ({ root }) as WikiSummary),
+        })),
+      }),
+    ),
     Layer.provide(layerKnownWorkspaces),
     Layer.provideMerge(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix: "t3-lsp-" })),
     Layer.provideMerge(NodeServices.layer),
@@ -1342,6 +1352,53 @@ describe("LanguageServers", () => {
     ),
   );
 
+  it.live("keeps a wiki's checkouts away from a server that doesn't belong there", () => {
+    const wikiRoots: Array<string> = [];
+    const notes: LanguageServerSpec = {
+      ...companionSpec("marksman", {}),
+      notInWikis: true,
+    };
+    return Effect.gen(function* () {
+      const service = yield* LanguageServers.LanguageServers;
+      const project = yield* makeCheckout(SOURCE);
+      const wiki = yield* makeCheckout(SOURCE);
+      yield* wiki.write("note.md", "[[elsewhere]]\n");
+      yield* project.write("note.md", "plain\n");
+      wikiRoots.push(wiki.cwd);
+
+      const servers = (cwd: string) =>
+        service.check(cwd).pipe(Effect.map((result) => result.servers.map(({ server }) => server)));
+      expect(yield* servers(project.cwd)).toContain("marksman");
+      expect(yield* servers(wiki.cwd)).not.toContain("marksman");
+
+      const refused = yield* service
+        .diagnostics({ cwd: wiki.cwd, relativePath: "note.md" })
+        .pipe(Effect.flip);
+      expect(refused.reason).toBe("unsupported");
+      const located = yield* service
+        .locate({
+          cwd: wiki.cwd,
+          relativePath: "note.md",
+          line: 1,
+          column: 1,
+          kind: "definition",
+        })
+        .pipe(Effect.flip);
+      expect(located.reason).toBe("unsupported");
+      expect(yield* wiki.starts).toBe(0);
+      yield* service.diagnostics({ cwd: project.cwd, relativePath: "note.md" });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor(
+          { specs: { ...fakeSpecs, marksman: notes }, diagnosticsTimeout: "5 seconds" },
+          noHttp,
+          wikiRoots,
+        ),
+      ),
+    );
+  });
+
   it.live("lists a checkout's problems, keeps a closed file's until its server stops", () =>
     Effect.gen(function* () {
       const service = yield* LanguageServers.LanguageServers;
@@ -2538,6 +2595,64 @@ describe("LanguageServers project trust", () => {
         .pipe(Effect.flip);
       expect(located.reason).toBe("trust-needed");
     }).pipe(Effect.scoped, Effect.provide(untrusted)),
+  );
+
+  it.live("holds an untrusted checkout to a launch's limits until trust lifts them", () =>
+    withMachineServer((specs) => {
+      const machine = specs.typescript!.launches[1]!;
+      const limited = {
+        typescript: fakeSpec({
+          ...machine,
+          initializationOptions: { kept: true, schemas: "all" },
+          settings: { store: { enable: true } },
+          restricted: {
+            initializationOptions: { schemas: "file" },
+            settings: { store: { enable: false } },
+            notify: ["test/limited"],
+          },
+        }),
+      };
+      return Effect.gen(function* () {
+        const service = yield* LanguageServers.LanguageServers;
+        const checkout = yield* makeCheckout(SOURCE);
+        const session = yield* openSession(checkout);
+        const looks = (id: number) =>
+          Effect.all([
+            session.request(id, "test/state", {}),
+            session.request(id + 1, "test/configuration", { items: [{ section: "store" }] }),
+          ]);
+        yield* session.state("ready");
+        yield* service.updateSettings({
+          cwd: checkout.cwd,
+          change: {
+            type: "server",
+            scope: "machine",
+            server: "typescript",
+            override: { settings: { store: { enable: true, chosen: 1 } } },
+          },
+        });
+        yield* session.state("ready");
+        const [state, store] = yield* looks(1);
+        expect(state.result.initializationOptions).toEqual({ kept: true, schemas: "file" });
+        expect(state.result.notified).toContain("test/limited");
+        expect(store.result).toEqual([{ enable: false, chosen: 1 }]);
+
+        // What it would have fetched itself comes to the gateway, which has no way to.
+        const asked = yield* session.request(3, "test/ask", {
+          method: "vscode/content",
+          params: "http://localhost:1/schema.json",
+        });
+        expect(asked.result.error.code).toBe(-32601);
+
+        yield* service.trustProject(checkout.cwd);
+        yield* session.state("starting");
+        yield* session.state("ready");
+        const [trusted, trustedStore] = yield* looks(4);
+        expect(trusted.result.initializationOptions).toEqual({ kept: true, schemas: "all" });
+        expect(trusted.result.notified).not.toContain("test/limited");
+        expect(trustedStore.result).toEqual([{ enable: true, chosen: 1 }]);
+      }).pipe(Effect.provide(layerFor({ specs: limited, trusted: undefined })));
+    }).pipe(Effect.scoped),
   );
 
   it.live("runs a machine's safe server restricted, and swaps it as trust comes and goes", () =>

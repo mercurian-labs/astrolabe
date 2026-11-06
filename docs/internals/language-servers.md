@@ -67,7 +67,8 @@ server's status, and speaks to whatever stands behind it.
   only the primary.
 - **Activation is evidence at the checkout's root** (`activation` in the registry), read with the
   routes whenever a server starts and on Restart, which also adds and drops holds on files already
-  open.
+  open. `notInWikis` leaves a server out of the routes of a wiki's checkouts the same way, so
+  agents and Settings don't reach it either: Marksman would call a wiki's links broken.
 - **Holds are what keep a companion alive.** It has no sessions of its own, so idle timing sees
   only its documents, and a hold and its record are made uninterruptibly: a session ending
   between them would leave a server nothing stops.
@@ -127,7 +128,8 @@ pins the last ISC one, which is all `.editorconfig` needs of it.
 jdtls runs from its jar, so Python needn't be on the machine, on the first Java new enough. Every
 candidate's version is read: `java_home -v 21+` answers with what it has even when that's too old.
 The read runs in the checkout, since a version manager's shim obeys the checkout's own file, so an
-untrusted checkout's answer is the first Java present, unread.
+untrusted checkout's answer is the first Java present, unread. Reads are kept by checkout and path
+until the file's mtime moves: `check` resolves every server each time Settings opens.
 
 zls isn't downloaded: each build fits only the Zig it was made for, and the checkout's Zig decides
 that. Installed-only servers are in the registry so people get a `missing` that says what to do.
@@ -186,6 +188,11 @@ a project that was already allowed to run code.
   `restrictedSafe` launches skip `projectBinary`, and basedpyright isn't told the checkout's
   interpreter, which it would start to read `sys.path`. A probe runs in the checkout, where
   rustup's proxy obeys `rust-toolchain.toml`, so what trust would bring is worked out unprobed.
+- **Untrusted means no network a file chooses.** A `$schema` URL is a GET to wherever a stranger's
+  file says, so `restricted` on a launch turns schema fetching off, over anything in settings:
+  JSON and YAML then ask the gateway for the content (`vscode/content`), which refuses, and Taplo
+  stops using schemas. YAML has no setting for its `$schema=` line; `yaml/registerContentRequest`
+  is what routes it. A local schema can still be read, since that leaves the machine alone.
 - **Granting is a person's act.** Agents get an error saying so and have no tool for it, and the
   RPCs take the environment maintenance scope.
 

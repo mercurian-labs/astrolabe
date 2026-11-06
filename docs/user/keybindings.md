@@ -380,7 +380,8 @@ An untrusted project runs only the servers that never run project code and are a
 machine or downloaded, marked restricted in the header; the others wait, and agents' code tools
 say so unless it is only ESLint or Tailwind waiting. Click **Trust project** in the header to run them, downloads included. A worktree shares
 its repository's trust. To take it back, go to **Settings → Projects → Language servers** and
-click **Revoke**: the project's servers restart restricted.
+click **Revoke**: the project's servers restart restricted. A restricted server fetches nothing a
+file names, so JSON, YAML and TOML schemas at a URL load once the project is trusted.
 
 **Settings → Projects → Language servers** shows what each server would run for a project and
 what is missing, without starting any, and whether Ruff, ESLint and Tailwind apply and why. clangd reads each file's compiler flags from a

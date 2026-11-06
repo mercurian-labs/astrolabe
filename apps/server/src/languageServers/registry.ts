@@ -37,7 +37,8 @@ export interface ReleaseAsset {
   readonly sha256: string;
   /**
    * `binary` is the executable itself and `gz` the same gzipped; `zip` and `tgz` unpack whole and
-   * run `entry` (the release's name by default). A `tgz`'s one top folder is dropped, if it has one.
+   * run `entry` (the release's name by default). A `tgz` whose entries all sit under one folder
+   * loses that folder, as npm's `package/` does; one with several at its top keeps them.
    */
   readonly format: "binary" | "gz" | "zip" | "tgz";
   readonly entry?: string;
@@ -114,6 +115,15 @@ export interface Launch {
    */
   readonly settings?: Readonly<Record<string, unknown>>;
   /**
+   * For a checkout that isn't trusted, over everything else: a file there must not get to choose
+   * what a server fetches. `notify` is sent once after `initialized`.
+   */
+  readonly restricted?: {
+    readonly initializationOptions?: unknown;
+    readonly settings?: Readonly<Record<string, unknown>>;
+    readonly notify?: ReadonlyArray<string>;
+  };
+  /**
    * rust-analyzer's own protocol: it answers a pull with nothing while it loads, and its
    * `experimental/serverStatus` says when it has finished, so its files are pulled again then.
    */
@@ -136,6 +146,8 @@ export interface LanguageServerSpec {
   readonly writes?: ReadonlyArray<string>;
   /** Stops treating a file as the project's once it closes, until told the file exists. */
   readonly forgetsClosedFiles?: boolean;
+  /** Left out of a wiki's checkouts, which have rules of their own for what it reads. */
+  readonly notInWikis?: boolean;
   /**
    * Publishes only what differs from its last, so a clean file or an edit that changes no
    * problem gets no word at all, and an agent has to stop waiting for one.
@@ -585,7 +597,9 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
         }),
         args: ["--stdio"],
         initializationOptions: { provideFormatter: true },
-        // Runs nothing. A file's `$schema` can make it fetch that URL, a GET and no more.
+        // What it would fetch goes to the gateway as `vscode/content`, which refuses.
+        restricted: { initializationOptions: { handledSchemaProtocols: ["file"] } },
+        // Runs nothing. Trusted, it fetches the `$schema` a file names.
         restrictedSafe: true,
       },
     ],
@@ -673,7 +687,15 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
           },
         },
         args: ["--stdio"],
-        // Runs nothing. It fetches schemas: SchemaStore's list, and a URL a file names.
+        // Its stores are settings. A file's own `$schema=` line has no switch, but the notification
+        // sends what it names to the gateway as `vscode/content`, which refuses.
+        restricted: {
+          settings: {
+            yaml: { schemaStore: { enable: false }, kubernetesCRDStore: { enable: false } },
+          },
+          notify: ["yaml/registerContentRequest"],
+        },
+        // Runs nothing. Trusted, it fetches SchemaStore's list and the schemas files name.
         restrictedSafe: true,
       },
     ],
@@ -826,7 +848,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
           },
         },
         args: ["lsp", "stdio"],
-        // Parses TOML, with no plugins. Its config can name schemas to fetch, not code to run.
+        restricted: { settings: { evenBetterToml: { schema: { enabled: false } } } },
+        // Parses TOML, with no plugins. Trusted, it fetches the schemas a config or file names.
         restrictedSafe: true,
       },
     ],
@@ -898,6 +921,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<BuiltInLanguageServerId, Language
     name: "Marksman",
     languages: "Markdown",
     quietUnchanged: true,
+    // A wiki's `[[links]]` resolve its own way, so Marksman would call them broken.
+    notInWikis: true,
     missing: "Marksman has no download for this machine: install `marksman`, then try again.",
     launches: [
       {

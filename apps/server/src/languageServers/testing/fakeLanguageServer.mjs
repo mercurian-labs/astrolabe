@@ -25,6 +25,7 @@ let initializationOptions;
 const slow = new Map();
 // The server's own requests to the client, by id: what to do with each answer.
 const asked = new Map();
+const notified = [];
 let askedCount = 0;
 // Each `workspace/didChangeWatchedFiles`'s changes, and `test/watched` requests waiting for more.
 const watched = [];
@@ -113,7 +114,7 @@ const handle = (message) => {
   const { id, method, params } = message;
   const reply = (result) => write({ id, result });
   if (method === undefined && asked.has(id)) {
-    asked.get(id)(message.result);
+    asked.get(id)(message.result, message.error);
     asked.delete(id);
     return;
   }
@@ -555,10 +556,17 @@ const handle = (message) => {
         write({ id: params.id, error: { code: -32800, message: "Cancelled by the server" } });
       }
       return;
+    case "test/ask": {
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, (result, error) => reply({ result, error }));
+      write({ id: askId, method: params.method, params: params.params });
+      return;
+    }
     case "test/state":
       return reply({
         docs: Object.fromEntries(docs),
         received,
+        notified,
         initializationOptions,
         args: process.argv.slice(2),
         env: process.env.FAKE_SETTING,
@@ -566,6 +574,8 @@ const handle = (message) => {
     default:
       if (id !== undefined && method !== undefined) {
         write({ id, error: { code: -32601, message: "Not supported" } });
+      } else if (method !== undefined) {
+        notified.push(method);
       }
   }
 };

@@ -110,7 +110,7 @@ const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** `over` on `base`: objects merge key by key, and anything else replaces. */
-const mergeJson = (base: unknown, over: unknown): unknown => {
+export const mergeJson = (base: unknown, over: unknown): unknown => {
   if (!isObject(base) || !isObject(over)) return over;
   return Object.fromEntries([
     ...Object.entries(base),

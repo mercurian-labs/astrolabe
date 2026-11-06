@@ -31,6 +31,7 @@ import {
   type ReleaseSource,
 } from "./registry.ts";
 import { parseJson } from "./json.ts";
+import { mergeJson } from "./settings.ts";
 import { readTar, type TarFile } from "./tar.ts";
 import { checkoutInterpreters, findJavaInstalls, findPythonInterpreters } from "./toolchains.ts";
 
@@ -51,6 +52,8 @@ export interface ResolvedServer {
   /** Answers to `workspace/configuration`, by section. */
   readonly settings: Readonly<Record<string, unknown>>;
   readonly reportsQuiescence: boolean;
+  /** Sent once after `initialized`. */
+  readonly notifications: ReadonlyArray<string>;
 }
 
 /** Something the launch that applies needs, which isn't cached yet. */
@@ -299,6 +302,24 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
       Effect.provideService(Path.Path, path),
     );
 
+  /** A JVM takes a moment to start, and Settings resolves every server each time it opens. */
+  const javaMajors = new Map<string, { readonly changed: string; readonly major: number }>();
+  /** Java's major version, or 0; per checkout too, since version managers' shims obey its files. */
+  const javaMajor = Effect.fn("LanguageServers.javaMajor")(function* (java: string, cwd: string) {
+    const key = `${cwd}\0${java}`;
+    const changed = yield* fileSystem.stat(java).pipe(
+      Effect.map((info) => String(Option.getOrNull(info.mtime)?.getTime())),
+      Effect.orElseSucceed(() => null),
+    );
+    const known = javaMajors.get(key);
+    if (known !== undefined && known.changed === changed) return known.major;
+    const version = yield* run(java, ["-version"], { cwd, timeout: PROBE_TIMEOUT });
+    if (version === null) return 0;
+    const major = version.code === 0 ? Number(/version "(\d+)/.exec(version.output)?.[1] ?? 0) : 0;
+    if (changed !== null) javaMajors.set(key, { changed, major });
+    return major;
+  });
+
   /**
    * The first Java new enough to run a release. `java_home` answers with what it has even when
    * that's too old, and version managers' shims obey the checkout's own file, so each is run
@@ -329,9 +350,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     for (const java of candidates) {
       if (!(yield* exists(java))) continue;
       if (!probing) return java;
-      const version = yield* run(java, ["-version"], { cwd, timeout: PROBE_TIMEOUT });
-      const major = Number(/version "(\d+)/.exec(version?.output ?? "")?.[1]);
-      if (version?.code === 0 && major >= minMajor) return java;
+      if ((yield* javaMajor(java, cwd)) >= minMajor) return java;
     }
     return null;
   });
@@ -419,6 +438,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
         toolchain = folder;
         version = found;
       }
+      const limits = trusted ? undefined : launch.restricted;
       const name = (packageVersion: string | null) =>
         [launch.name, version ?? packageVersion].filter(Boolean).join(" ");
       const ready = (
@@ -434,13 +454,16 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           binary,
           name: name(packageVersion),
           source,
-          initializationOptions: fill(launch.initializationOptions ?? {}, { toolchain }),
-          settings: fill(launch.settings ?? {}, {
-            python,
-            rootUri,
-            rootName: path.basename(cwd),
-          }) as Record<string, unknown>,
+          initializationOptions: mergeJson(
+            fill(launch.initializationOptions ?? {}, { toolchain }),
+            limits?.initializationOptions ?? {},
+          ),
+          settings: mergeJson(
+            fill(launch.settings ?? {}, { python, rootUri, rootName: path.basename(cwd) }),
+            limits?.settings ?? {},
+          ) as Record<string, unknown>,
           reportsQuiescence: listed.reportsQuiescence === true,
+          notifications: limits?.notify ?? [],
         },
       });
       if (trusted && launch.projectBinary !== undefined) {

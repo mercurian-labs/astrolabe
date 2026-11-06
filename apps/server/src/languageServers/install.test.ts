@@ -301,6 +301,32 @@ describe("servers installed on the machine", () => {
     }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("reads a Java's version once, until the file changes", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const bin = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-lsp-java-" });
+      const java = `${bin}/java`;
+      yield* fileSystem.writeFileString(
+        java,
+        `#!/bin/sh\necho run >> ${bin}/runs\necho 'openjdk version "21.0.2"'\n`,
+      );
+      yield* fileSystem.chmod(java, 0o755);
+      const env = yield* setup(null).pipe(
+        Effect.provideService(HostProcess.Environment, { JAVA_HOME: "/none", PATH: bin }),
+      );
+      const runs = fileSystem
+        .readFileString(`${bin}/runs`)
+        .pipe(Effect.map((log) => log.trim().split("\n").length));
+      const resolve = env.installer.resolve(env.cwd, LANGUAGE_SERVERS.jdtls, true);
+      yield* resolve;
+      yield* resolve;
+      expect(yield* runs).toBe(1);
+      yield* fileSystem.utimes(java, 0, 1_000_000);
+      yield* resolve;
+      expect(yield* runs).toBe(2);
+    }).pipe(Effect.scoped, onMac, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect(
     "passes over a binary that fails its probe, as rustup's proxy does without the component",
     () =>

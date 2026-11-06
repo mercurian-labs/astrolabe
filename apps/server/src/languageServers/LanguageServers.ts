@@ -70,6 +70,7 @@ import * as NodeURL from "node:url";
 
 import * as ServerConfig from "../config.ts";
 import * as Documents from "../documents/Documents.ts";
+import * as WikiService from "../wiki/WikiService.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import {
   answersHandedBack,
@@ -775,6 +776,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     file: path.join(path.dirname(cacheDir), "language-server-settings.json"),
   });
   const readMemory = options.readMemory ?? (yield* makeMemoryReader());
+  const wikis = yield* WikiService.WikiService;
   const processServices = yield* Effect.context<
     ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
   >();
@@ -1419,6 +1421,17 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
   });
 
   /** Reads a checkout's routes, telling those following it when they changed. */
+  /** A wiki's root or any worktree of it: they share its repository. */
+  const isWikiCheckout = Effect.fn("LanguageServers.isWikiCheckout")(function* (cwd: string) {
+    const listed = yield* wikis.list.pipe(Effect.orElseSucceed(() => ({ wikis: [] })));
+    if (listed.wikis.length === 0) return false;
+    const repository = yield* trust.keyOf(cwd);
+    for (const { root } of listed.wikis) {
+      if ((yield* trust.keyOf(root)) === repository) return true;
+    }
+    return false;
+  });
+
   const loadRoutes = Effect.fn("LanguageServers.loadRoutes")(function* (cwd: string) {
     const layers = yield* layersOf(cwd);
     const { custom } = settings.get();
@@ -1428,6 +1441,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       ...custom.map(customSpec),
     ];
     for (const spec of specs) {
+      if (spec.notInWikis === true && (yield* isWikiCheckout(cwd))) inactive.add(spec.id);
       if (spec.activation === undefined) continue;
       if (!(yield* installer.activationOf(cwd, spec)).active) inactive.add(spec.id);
     }
@@ -1581,6 +1595,7 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       return yield* Scope.close(processScope, Exit.void);
     }
     connection.value.notify("initialized", {});
+    for (const method of server.notifications) connection.value.notify(method, {});
     // typescript-language-server only ever hears settings this way; the rest ask again.
     if (Object.keys(instance.settings).length > 0) {
       connection.value.notify("workspace/didChangeConfiguration", { settings: instance.settings });
@@ -1943,7 +1958,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const trusted = yield* isTrusted(cwd);
     const layers = yield* layersOf(cwd);
     const { custom } = settings.get();
-    const builtIn = Object.values(options.specs).filter((spec) => spec !== undefined);
+    const inWiki = yield* isWikiCheckout(cwd);
+    const builtIn = Object.values(options.specs).filter(
+      (spec) => spec !== undefined && !(inWiki && spec.notInWikis === true),
+    );
     const languageOf = (spec: LanguageServerSpec) =>
       isBuiltInLanguageServerId(spec.id) ? languageServerLanguage(spec.id) : null;
     const position = (spec: LanguageServerSpec) => {

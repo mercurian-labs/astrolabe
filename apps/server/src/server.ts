@@ -193,6 +193,7 @@ import * as CursorUsageAccounts from "@t3tools/provider-cursor/server/CursorUsag
 import * as UsageService from "./usage/UsageService.ts";
 import * as CodexUsageHistory from "./usage/CodexUsageHistory.ts";
 import * as RuntimeLayer from "./orchestration-v2/runtimeLayer.ts";
+import * as WikiService from "./wiki/WikiService.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadLineage from "./orchestration-v2/ThreadLineage.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
@@ -485,6 +486,8 @@ const layerDocuments = Documents.layer.pipe(
 const layerLanguageServers = LanguageServers.layer.pipe(
   Layer.provide(layerDocuments),
   Layer.provide(layerKnownWorkspaces),
+  // The same layer as orchestration's, so there is still one wiki service per server.
+  Layer.provide(WikiService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
 );
 
 const layerWorkspace = Layer.mergeAll(
