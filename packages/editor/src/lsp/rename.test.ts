@@ -5,6 +5,7 @@ import { environmentRename, type RenameResult, renameSymbol } from "./rename.ts"
 import { range, setup } from "./testing.ts";
 
 const TEXT = "const point = makePoint(1, 2);\nexport const label = point;\n";
+const PLACE = { path: "src/main.ts", line: 1, column: 14, endLine: 1, endColumn: 21 };
 
 async function open() {
   const renamed: RenameResult[] = [];
@@ -16,7 +17,14 @@ async function open() {
         return { range: range(editor.view.state.doc, at, at + 9), placeholder: "makePoint" };
       }
       if (method === "textDocument/rename") {
-        return { applied: { id: "edit-1", files: ["src/main.ts", "src/point.ts"], edits: 3 } };
+        return {
+          applied: {
+            id: "edit-1",
+            files: ["src/main.ts", "src/point.ts"],
+            edits: 3,
+            places: [PLACE],
+          },
+        };
       }
       void params;
       return undefined;
@@ -53,6 +61,7 @@ describe("environmentRename", () => {
         id: "edit-1",
         files: ["src/main.ts", "src/point.ts"],
         edits: 3,
+        places: [PLACE],
         from: "makePoint",
         to: "pointAt",
       });

@@ -5,6 +5,7 @@ import { type AppliedCodeAction, environmentCodeActions, showCodeActions } from 
 import { range, setup, URI } from "./testing.ts";
 
 const TEXT = "let bad = 1;\nlet fine = 2;\n";
+const PLACE = { path: "src/main.ts", line: 1, column: 4, endLine: 1, endColumn: 8 };
 
 async function open() {
   const applied: AppliedCodeAction[] = [];
@@ -20,7 +21,14 @@ async function open() {
             ];
       }
       if (method === "astrolabe/applyCodeAction") {
-        return { applied: { id: "edit-7", files: ["src/main.ts"], edits: 1 } };
+        return {
+          applied: {
+            id: "edit-7",
+            files: ["src/main.ts"],
+            edits: 1,
+            places: [PLACE],
+          },
+        };
       }
       return undefined;
     },
@@ -91,6 +99,7 @@ describe("environmentCodeActions", () => {
         id: "edit-7",
         files: ["src/main.ts"],
         edits: 1,
+        places: [PLACE],
       });
       const apply = editor.sent.find(
         (entry) => entry.message.method === "astrolabe/applyCodeAction",
