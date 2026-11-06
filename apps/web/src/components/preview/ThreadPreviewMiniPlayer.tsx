@@ -82,20 +82,27 @@ interface Props {
 
 const frameCornerRadius = () => PREVIEW_MINI_PLAYER_CORNER_RADIUS;
 
-// Outside the page, like the bar: a desktop page draws above everything in the pane, so anything
-// laid over it can be neither seen nor grabbed.
+// Around the whole window, with the grab band mostly outside: a desktop page draws above everything
+// in the pane, so a handle laid over it can be neither seen nor grabbed. The top edge keeps clear of
+// the bar's buttons, and the gap under the bar resizes too.
 const RESIZE_HANDLES: ReadonlyArray<{
   readonly direction: BrowserViewportResizeDirection;
   readonly className: string;
+  readonly top?: number;
 }> = [
-  { direction: "north", className: "inset-x-0 -top-2 h-2 cursor-ns-resize" },
-  { direction: "south", className: "inset-x-0 -bottom-2 h-2 cursor-ns-resize" },
-  { direction: "west", className: "inset-y-0 -left-2 w-2 cursor-ew-resize" },
-  { direction: "east", className: "inset-y-0 -right-2 w-2 cursor-ew-resize" },
+  { direction: "north", className: "inset-x-0 -top-3 h-3 cursor-ns-resize" },
+  {
+    direction: "north",
+    className: "inset-x-0 h-2 cursor-ns-resize",
+    top: PREVIEW_MINI_PLAYER_BAR_HEIGHT,
+  },
+  { direction: "south", className: "inset-x-0 -bottom-3 h-4 cursor-ns-resize" },
+  { direction: "west", className: "inset-y-0 -left-3 w-4 cursor-ew-resize" },
+  { direction: "east", className: "inset-y-0 -right-3 w-4 cursor-ew-resize" },
   { direction: "northwest", className: "-left-3 -top-3 size-4 cursor-nwse-resize" },
   { direction: "northeast", className: "-right-3 -top-3 size-4 cursor-nesw-resize" },
-  { direction: "southwest", className: "-bottom-3 -left-3 size-4 cursor-nesw-resize" },
-  { direction: "southeast", className: "-bottom-3 -right-3 size-4 cursor-nwse-resize" },
+  { direction: "southwest", className: "-bottom-4 -left-4 size-6 cursor-nesw-resize" },
+  { direction: "southeast", className: "-bottom-4 -right-4 size-6 cursor-nwse-resize" },
 ];
 
 // What the stream reports about its source. It lives outside the player so the
@@ -580,19 +587,20 @@ function MiniPlayerShell({
           >
             <div className="absolute inset-0 z-[47] rounded-[inherit] bg-muted shadow-2xl/35 ring-1 ring-border/80" />
             {children(frame)}
-            {RESIZE_HANDLES.map(({ direction, className }) => (
-              <div
-                key={direction}
-                role="presentation"
-                data-preview-mini-player-resize={direction}
-                className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
-                onPointerDown={(event) => beginGesture(event, direction)}
-                onPointerMove={handlePointerMove}
-                onPointerUp={endGesture}
-                onPointerCancel={endGesture}
-              />
-            ))}
           </div>
+          {RESIZE_HANDLES.map(({ direction, className, top }) => (
+            <div
+              key={className}
+              role="presentation"
+              data-preview-mini-player-resize={direction}
+              className={cn("pointer-events-auto absolute z-[49] touch-none", className)}
+              style={{ top }}
+              onPointerDown={(event) => beginGesture(event, direction)}
+              onPointerMove={handlePointerMove}
+              onPointerUp={endGesture}
+              onPointerCancel={endGesture}
+            />
+          ))}
         </section>
       ) : null}
     </div>
