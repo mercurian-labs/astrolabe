@@ -75,12 +75,10 @@ export const wikiDocumentNames = (
   ...index.bases.map((base) => base.file),
 ];
 
-/** Everything a change request's amendments touch, in the order they did. */
+/** The files a change request holds a change to. */
 export const changeRequestFiles = (
-  changeRequest: Pick<WikiChangeRequest, "amendments">,
-): ReadonlyArray<string> => [
-  ...new Set(changeRequest.amendments.flatMap((amendment) => amendment.files)),
-];
+  changeRequest: Pick<WikiChangeRequest, "files">,
+): ReadonlyArray<string> => changeRequest.files;
 
 /** The draft a wiki's change requests hold for the person reading them, unless it is empty. */
 export function wikiDraft(
@@ -127,7 +125,7 @@ export function isSettledChangeRequest(
 }
 
 /** A draft's pill. */
-export function draftLabel(draft: Pick<WikiChangeRequest, "amendments">): string {
+export function draftLabel(draft: Pick<WikiChangeRequest, "files">): string {
   const documents = changeRequestFiles(draft).length;
   return `Draft · ${documents} ${documents === 1 ? "document" : "documents"}`;
 }

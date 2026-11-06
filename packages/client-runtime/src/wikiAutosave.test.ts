@@ -150,7 +150,7 @@ describe("createWikiAutosave", () => {
     autosave.cancel();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(save).not.toHaveBeenCalled();
-    expect(autosave.getStatus().kind).toBe("idle");
+    expect(autosave.getStatus()).toEqual({ kind: "idle", saved: false });
   });
 
   it("keeps a save in flight when its view leaves, and retries what the view last held", async () => {

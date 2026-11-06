@@ -90,6 +90,7 @@ const changeRequest = (
     status,
     updatedAt,
     amendments: [{ files }],
+    files,
   }) as unknown as WikiChangeRequest;
 
 describe("wikiSidebarItems", () => {

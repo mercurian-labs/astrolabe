@@ -492,6 +492,7 @@ const make = Effect.gen(function* () {
   const wikiLocks = new Map<string, Semaphore.Semaphore>();
   const snapshots = lru<Snapshot>(24);
   const amendmentLogs = lru<WikiChangeRequest["amendments"]>(128);
+  const changedFiles = lru<WikiChangeRequest["files"]>(128);
   const metadataRecords = lru<ChangeRequestRecord>(512);
   const editTimes = lru<WikiFileTimes>(24);
   const corpora = lru<BaseCorpus>(8);
@@ -1127,6 +1128,7 @@ const make = Effect.gen(function* () {
     const log = yield* runGit("log", wiki.root, [
       "log",
       "--reverse",
+      "--no-merges",
       "--no-renames",
       `--format=${AMENDMENT_LOG_FORMAT}`,
       "--name-only",
@@ -1138,9 +1140,29 @@ const make = Effect.gen(function* () {
     return amendments;
   });
 
+  const filesOf = Effect.fn("WikiService.filesOf")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+  ) {
+    const range = `${stored.record.base}..${stored.head}`;
+    const cached = changedFiles.get(range);
+    if (cached !== undefined) return cached;
+    const names = yield* runGit("changedFiles", wiki.root, [
+      "diff",
+      "--no-renames",
+      "--name-only",
+      "-z",
+      stored.record.base,
+      stored.head,
+    ]);
+    const files = names.stdout.split("\0").filter(Boolean);
+    changedFiles.set(range, files);
+    return files;
+  });
+
   const view = (wiki: WikiRecord, stored: StoredChangeRequest) =>
-    amendmentsOf(wiki, stored).pipe(
-      Effect.map((amendments): WikiChangeRequest => ({
+    Effect.all([amendmentsOf(wiki, stored), filesOf(wiki, stored)]).pipe(
+      Effect.map(([amendments, files]): WikiChangeRequest => ({
         changeRequestId: stored.record.changeRequestId,
         wikiId: wiki.wikiId,
         title: stored.record.title,
@@ -1155,6 +1177,7 @@ const make = Effect.gen(function* () {
         updatedAt: stored.record.updatedAt,
         mergedCommit: stored.record.mergedCommit,
         amendments,
+        files,
       })),
     );
 
@@ -1541,9 +1564,43 @@ const make = Effect.gen(function* () {
   });
 
   /**
+   * A draft takes in what reached main at each save, so it can hold any document its person opens,
+   * including one newer than the draft. A clash stays where it is, to settle before merging.
+   */
+  const followMain = Effect.fn("WikiService.followMain")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+    author: WikiAuthor,
+  ) {
+    const main = yield* mainTip(wiki);
+    if (yield* isAncestor(wiki.root, main, stored.head)) return stored;
+    const { tree } = yield* mergeIntoMain(wiki, main, stored.head);
+    if (tree === null) return stored;
+    const now = yield* DateTime.now;
+    const env = identity(author.actor, now);
+    const message = "Follow main";
+    const commit = yield* commitTree(wiki.root, tree, [stored.head, main], message, env);
+    return yield* recordChangeRequest(
+      wiki,
+      stored,
+      { ...stored.record, base: main, updatedAt: DateTime.formatIso(now) },
+      message,
+      env,
+      commit,
+    ).pipe(
+      // A worktree with unsaved edits holds the branch, which can move once they're in.
+      Effect.catchIf(
+        (error) => error.reason === "checkout-busy",
+        () => Effect.succeed(stored),
+      ),
+    );
+  });
+
+  /**
    * Refuses whole text from a client that hasn't seen what another device saved of this document,
    * which would overwrite it. The client's read brings that work into its buffer, and it retries.
-   * A document this change request hasn't touched has nothing to overwrite.
+   * A document this change request hasn't touched has nothing to overwrite, unless it's a draft
+   * that has taken in a newer copy from main.
    */
   const requireInStep = Effect.fn("WikiService.requireInStep")(function* (
     wiki: WikiRecord,
@@ -1557,7 +1614,12 @@ const make = Effect.gen(function* () {
       ...(isCommitId(readAt) ? [`${readAt}:${file}`] : ["0000:missing"]),
       `${stored.record.base}:${file}`,
     ]);
-    if (atHead === atRead || atHead === atBase) return;
+    if (atHead === atRead) return;
+    const followed =
+      stored.record.draft &&
+      isCommitId(readAt) &&
+      (yield* isAncestor(wiki.root, yield* mainTip(wiki), stored.head));
+    if (atHead === atBase && !followed) return;
     return yield* new WikiError({
       reason: "stale",
       message: `${documentSubject(file)} changed on another device. It saves again once that arrives.`,
@@ -1573,6 +1635,7 @@ const make = Effect.gen(function* () {
   ) {
     const head = (yield* amendmentsOf(wiki, stored)).at(-1);
     if (head?.autosave !== document || head.actor !== actorName(author)) return undefined;
+    if (head.commit !== stored.head) return undefined;
     const now = yield* Clock.currentTimeMillis;
     if (now - Date.parse(head.at) >= AUTOSAVE_RUN_MS) return undefined;
     return yield* revParse(wiki.root, `${stored.head}^`);
@@ -1585,7 +1648,11 @@ const make = Effect.gen(function* () {
         locked(
           wiki,
           Effect.gen(function* () {
-            const target = yield* autosaveTarget(wiki, input, author);
+            const found = yield* autosaveTarget(wiki, input, author);
+            const target: typeof found =
+              found.kind === "existing" && found.stored.record.draft
+                ? { ...found, stored: yield* followMain(wiki, found.stored, author) }
+                : found;
             const { write } = input;
             const nothing =
               target.kind === "new"

@@ -190,6 +190,7 @@ export function createWikiAutosave(options: {
     },
     cancel: () => {
       stopTimer();
+      saved = false;
       unsaved = false;
       unsavedSince = null;
       failure = null;

@@ -549,6 +549,8 @@ export const WikiChangeRequest = Schema.Struct({
   updatedAt: IsoDateTime,
   mergedCommit: Schema.NullOr(Schema.String),
   amendments: Schema.Array(WikiAmendmentSummary),
+  /** The files that differ from the base now, which a later amendment can have put back. */
+  files: Schema.Array(Schema.String),
 });
 export type WikiChangeRequest = typeof WikiChangeRequest.Type;
 

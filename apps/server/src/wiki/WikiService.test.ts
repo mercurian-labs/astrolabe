@@ -1882,6 +1882,60 @@ it.effect("refuses text that hasn't seen another device's save, unless nothing w
   ),
 );
 
+it.effect("takes in what reached main at each save, so a newer document can be edited", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* wikis.autosave({ wikiId, ...noteEdit("Mine.\n") }, WikiService.person);
+      const board =
+        '{"nodes":[{"id":"a","type":"text","text":"","x":0,"y":0,"width":250,"height":60}],"edges":[]}';
+      yield* write(root, { "New.canvas": board });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "A board on main"]);
+
+      const saved = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "New.canvas",
+          write: {
+            kind: "transform",
+            transform: {
+              kind: "canvas",
+              file: "New.canvas",
+              edits: [{ op: "set-card", card: "a", keys: { text: "Edited" } }],
+            },
+          },
+        },
+        WikiService.person,
+      );
+      assert.equal(saved.changeRequest?.base, yield* mainAt(root));
+      assert.includeMembers([...(saved.changeRequest?.files ?? [])], ["Alpha.md", "New.canvas"]);
+      assert.deepEqual(
+        saved.changeRequest?.amendments.map((amendment) => amendment.subject),
+        ["Edit Alpha", "Edit New"],
+      );
+      assert.include(yield* git(root, ["show", `${saved.commit}:New.canvas`]), "Edited");
+
+      // Text read before main moved would take main's change back out.
+      const read = yield* mainAt(root);
+      yield* write(root, { "Beta.md": "Beta, newer.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Beta on main"]);
+      const stale = yield* failure(
+        wikis.autosave(
+          {
+            wikiId,
+            document: "Beta.md",
+            write: { kind: "text", file: "Beta.md", text: "Older, edited.\n", readAt: read },
+          },
+          WikiService.person,
+        ),
+      );
+      assert.equal(stale.reason, "stale");
+    }),
+  ),
+);
+
 it.effect("lands a base's edits and a canvas's in the draft, replayed in a run", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
@@ -2093,6 +2147,7 @@ it.effect("moves a draft into a change request, whole or a document at a time", 
         detail.files.map((file) => file.file),
         ["Beta.md"],
       );
+      assert.deepEqual(detail.changeRequest.files, ["Beta.md"]);
       assert.equal(detail.changeRequest.status, "open");
 
       yield* wikis.draftMove({ wikiId, changeRequestId, to }, WikiService.person);
