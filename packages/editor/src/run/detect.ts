@@ -205,6 +205,7 @@ function scanJavaScript({ lines, isCode, add }: Scan, path: string, fileText: st
     const call = JS_CALL.exec(line);
     if (!call || !isCode(index + 1, indentOf(line))) return;
     const name = unescapeJs(call[2] ?? call[3] ?? call[4] ?? "");
+    if (name === "") return;
     const names = [...scopes.open.map((scope) => scope.name), name];
     if (call[1] === "it" || call[1] === "test") return add("test", names, index);
     add("suite", names, index);

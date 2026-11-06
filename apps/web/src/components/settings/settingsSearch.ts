@@ -473,6 +473,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["references implementations above lines language server code editor"],
   },
   {
+    id: "run-markers",
+    title: "Run markers",
+    to: "/settings/appearance",
+    searchTerms: ["run test tests gutter play terminal main entry point code editor"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",

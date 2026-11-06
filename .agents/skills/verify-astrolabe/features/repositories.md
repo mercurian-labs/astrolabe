@@ -166,6 +166,12 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `.astrolabe/language-servers.json` shows as a row and in the status menu's message. Python files
   show the interpreter in the status menu with a **Select Python interpreter** submenu, and the
   same command opens the palette's `interpreter-picker`.
+- **Run markers** (`packages/editor/src/run/`, `components/repositories/runTabs.ts`): in a trusted
+  project a code file shows `.atlas-run-marker` in `.atlas-run-gutter` beside tests and entry points,
+  its `title` the exact command; untrusted the column stays, empty, so opening a file moves nothing.
+  Click runs in a tab named after the test, beside the file, with the command in its header; running
+  again reuses it. Right-click has the command, **Run** and **Copy command**. **Run at cursor**,
+  **Run last**, and **Run markers** in Settings → Appearance. Closing the tab ends its terminal.
 - **Right-click menu** (`packages/editor/src/lsp/contextMenu.ts`): moves the cursor to the
   click unless it lands in the selection, then Go to Definition / Type Definition /
   Implementation / Find All References / Show Incoming Calls / Show Outgoing Calls |

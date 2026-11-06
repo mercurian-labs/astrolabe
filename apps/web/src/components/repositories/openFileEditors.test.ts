@@ -30,6 +30,7 @@ function openEditor(path: string, text: string) {
     path,
     view: view as unknown as EditorView,
     writable: () => true,
+    save: async () => undefined,
   });
   const replace = () => {
     const found = replacementsIn(

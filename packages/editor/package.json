@@ -119,6 +119,10 @@
       "types": "./src/run/command.ts",
       "default": "./src/run/command.ts"
     },
+    "./run/detect": {
+      "types": "./src/run/detect.ts",
+      "default": "./src/run/detect.ts"
+    },
     "./multibuffer": {
       "types": "./src/multibuffer/multibuffer.ts",
       "default": "./src/multibuffer/multibuffer.ts"

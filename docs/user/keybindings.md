@@ -526,6 +526,37 @@ reads. Typing in an HTML or JSX tag writes its closing tag too, where the langua
 | Inline diagnostics | Shows each line's worst problem at its end. Off at first                                  | `e` `L` `d`             |
 | Semantic colours   | Colours code by what the server knows it is. Off at first; large files keep their colours |                         |
 | Code lens          | Shows counts and actions above definitions. Off at first; click one to run it             |                         |
+| Run markers        | Shows a marker beside what can run in a code file. On at first                            |                         |
+
+## Run a test or program from a code file
+
+In a trusted project, a code file shows a marker in its gutter beside what can run. Running is
+running the project's code, so a project that isn't trusted shows none.
+
+| Language                  | What can run                                                   | Runs with                                                     |
+| ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------- |
+| Rust                      | `fn main`, `#[test]`, test modules                             | `cargo`                                                       |
+| Go                        | `func main`, `TestX`, `BenchmarkX`                             | `go`                                                          |
+| Python                    | `test_` functions and `Test` classes in test files, `__main__` | `pytest`, with the interpreter you chose in the header's menu |
+| TypeScript and JavaScript | `test`, `it` and `describe` in test files                      | vitest or jest, whichever the package uses; or `node --test`  |
+| Java                      | JUnit `@Test`, `main`                                          | The project's Maven or Gradle wrapper, or `mvn` or `gradle`   |
+
+Hover a marker to read the exact command. Click it to run: the file saves, and the command is typed
+into a terminal in its own tab, named after the test, in the folder of the nearest manifest. Its
+output stays there, with the command at the top. Run it again and the same tab is reused, stopping
+what was still running; **Stop** and **Run again** are in the tab's header. Closing the tab ends
+its terminal.
+
+Right-click a marker for **Run** and **Copy command**. **Run at cursor** runs the test or program
+around the cursor, and **Run last** runs the last one again from anywhere. Both are in the Command
+Palette and rebindable under **Editors**, with no shortcut at first:
+
+| Command       | Keyboard menu | Vim  |
+| ------------- | ------------- | ---- |
+| Run at cursor | `e` `R` `r`   | `gR` |
+| Run last      | `e` `R` `l`   | `gL` |
+
+Turn the markers off with **Run markers** in Settings → Appearance. The commands still work.
 
 ## Search results and problems in one editor
 

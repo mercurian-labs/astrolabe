@@ -128,14 +128,15 @@ const isWorkspaceKey = (key: string) =>
 export const navigatesInPlace = (key: string) =>
   parseChatTabKey(key) === null && parseChatSurfaceKey(key) === null;
 
-/** Results (a search, problems, places) and logs are read, not browsed past: never shown over. */
+/** Results (a search, problems, places), logs and runs are read, not browsed past: never shown over. */
 const keepsPlace = (key: string) => {
   const kind = parseRepositoryTabKey(key)?.kind;
   return (
     kind === "search" ||
     kind === "problems" ||
     kind === "locations" ||
-    kind === "language-server-logs"
+    kind === "language-server-logs" ||
+    kind === "run"
   );
 };
 

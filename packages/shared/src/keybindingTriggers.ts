@@ -101,6 +101,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e L p", command: "lsp.selectInterpreter" },
   { key: "menu e L h", command: "lsp.toggleInlayHints" },
   { key: "menu e L d", command: "lsp.toggleInlineDiagnostics" },
+  { key: "menu e R r", command: "run.atCursor" },
+  { key: "menu e R l", command: "run.last" },
   { key: "menu e v", command: "multibuffer.problems" },
   { key: "menu e x", command: "multibuffer.expand" },
   { key: "menu e k", command: "multibuffer.openExcerpt" },

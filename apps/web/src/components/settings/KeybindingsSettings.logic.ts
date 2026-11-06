@@ -241,7 +241,7 @@ const KEYBINDING_GROUPS = [
   {
     id: "editor",
     title: "Editors",
-    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp", "file"],
+    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp", "run", "file"],
   },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
@@ -443,6 +443,8 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "lsp.selectInterpreter": "Select Python Interpreter",
   "lsp.toggleInlayHints": "Toggle Inlay Hints",
   "lsp.toggleInlineDiagnostics": "Toggle Inline Diagnostics",
+  "run.atCursor": "Run at Cursor",
+  "run.last": "Run Last",
   "file.save": "Save File",
   "multibuffer.expand": "Show More Lines Around Excerpt",
   "multibuffer.openExcerpt": "Open Excerpt in Its File",

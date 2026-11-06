@@ -3,6 +3,7 @@ import {
   FileDiffIcon,
   GitBranchIcon,
   ListTreeIcon,
+  PlayIcon,
   ScrollTextIcon,
   SearchIcon,
   WaypointsIcon,
@@ -40,7 +41,7 @@ import { useNumberWhenOpened } from "./worktreeNumbering";
 
 /** The worktrees a tab's checkout is among: its project's, or its wiki's. */
 const worktreesOf = (
-  tab: Exclude<RepositoryTab, { kind: "language-server-logs" }>,
+  tab: Exclude<RepositoryTab, { kind: "language-server-logs" | "run" }>,
 ): WorktreesTarget =>
   "wikiId" in tab
     ? { environmentId: tab.environmentId, wikiId: tab.wikiId }
@@ -72,7 +73,12 @@ const LanguageServerLogsView = lazy(() =>
   })),
 );
 
-/** A file, a checkout's changes, a file's local graph, a multi-file view, or a server's logs. */
+// A run's terminal loads with its first tab.
+const RepositoryRunView = lazy(() =>
+  import("./RepositoryRunView").then((module) => ({ default: module.RepositoryRunView })),
+);
+
+/** A file, a checkout's changes, a file's local graph, a multi-file view, a server's logs, or a run. */
 export function RepositoryTabView({
   tabKey,
   tab,
@@ -103,6 +109,12 @@ export function RepositoryTabView({
       return (
         <Suspense fallback={null}>
           <LanguageServerLogsView key={tabKey} tab={tab} />
+        </Suspense>
+      );
+    case "run":
+      return (
+        <Suspense fallback={null}>
+          <RepositoryRunView tabKey={tabKey} tab={tab} />
         </Suspense>
       );
   }
@@ -198,7 +210,9 @@ function CheckedOut({
 export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const tab = parseRepositoryTabKey(tabKey);
   const listed = useListedProjectWorktrees(
-    tab === null || tab.kind === "language-server-logs" ? null : worktreesOf(tab),
+    tab === null || tab.kind === "language-server-logs" || tab.kind === "run"
+      ? null
+      : worktreesOf(tab),
   );
   const { resolvedTheme } = useTheme();
   if (tab === null) return null;
@@ -220,6 +234,17 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
         title: `${tab.server} logs`,
         icon: <ScrollTextIcon className="size-3.5 shrink-0" />,
         tooltip: tab.cwd,
+      };
+    case "run":
+      return {
+        title: tab.name,
+        icon: <PlayIcon className="size-3.5 shrink-0" />,
+        tooltip: (
+          <div className="flex flex-col">
+            <span className="font-mono">{tab.command}</span>
+            <span className="text-muted-foreground">{tab.cwd}</span>
+          </div>
+        ),
       };
   }
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;

@@ -677,6 +677,7 @@ describe("a code file's editing commands", () => {
       ["=", "No language server here"],
       ["q", "No language server here"],
       ["L", "Language server"],
+      ["R", "Run"],
       // Nor a repository tab in front, or a multi-file view's excerpt.
       ["v", "No project in front"],
       ["x", "No results here"],

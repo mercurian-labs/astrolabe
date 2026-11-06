@@ -134,6 +134,8 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "diagnostic.previous",
   ...LSP_KEYBINDING_COMMANDS,
   ...LANGUAGE_SERVER_KEYBINDING_COMMANDS,
+  "run.atCursor",
+  "run.last",
   "repository.localGraph",
   "file.save",
   // Multi-file views (search results, problems): stacked excerpt editors.

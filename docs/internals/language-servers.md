@@ -196,6 +196,31 @@ a project that was already allowed to run code.
 - **Granting is a person's act.** Agents get an error saying so and have no tool for it, and the
   RPCs take the environment maintenance scope.
 
+## Running from the gutter
+
+[`packages/editor/src/run/`](../../packages/editor/src/run/) finds what can run in a code file and
+builds its command; the server only reports what a client can't see (`languageServers.runContext`):
+trust, the nearest manifest, and the tools it names. Agents already run shell commands, so this has
+no tool.
+
+- **A server's answer wins per line, not per file.** rust-analyzer knows the package and target, so
+  its command stands. gopls lists only tests, so `func main` comes from the text; its lenses add the
+  tests a pattern can't see. rust-analyzer answers with nothing useful while loading, and sends
+  `codeLens/refresh` when it's done, which is the ask again.
+- **A run marker replaces gopls's own test lens**, which would run the test on the server with its
+  output in progress messages. `codelenses.test` is on for the markers; `codeLens.ts` leaves those
+  rows out.
+- **Files have no thread, and terminals are keyed by one.** A run's terminal takes `run:<checkout>`
+  as its thread id, which nothing resolves to a thread, so nothing ends it for us:
+  `RunTabsSync` closes it when its tab goes. Left open it would hold its worktree (`terminal` hold).
+  Its id comes from the file and the test, not the command, so a command that changes (an
+  interpreter chosen, rust-analyzer arriving) keeps the tab and its output.
+- **The marker isn't the check.** It's hidden when untrusted, but a marker or Run last can outlive
+  trust, so `startRun` reads it again. The environment doesn't enforce it: a terminal runs whatever
+  it's told, and whoever holds the terminal scope could type this themselves.
+- **The column is there before there's anything in it.** Trust arrives after the file opens, so a
+  column that came with the first marker would move the text.
+
 ## Logs
 
 Each server's output and trace are kept per checkout and server, in memory, apart from the process

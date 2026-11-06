@@ -88,7 +88,13 @@ class Authority {
   }
 }
 
-const shared = vi.hoisted(() => ({ authority: null as unknown, routes: null as unknown }));
+const shared = vi.hoisted(() => ({
+  authority: null as unknown,
+  routes: null as unknown,
+  runContext: null as unknown,
+  started: [] as unknown[],
+  runContextAtom: {} as unknown,
+}));
 const authority = () => shared.authority as Authority;
 
 // A call arrives after the editor's update that made it, as over a connection.
@@ -126,16 +132,25 @@ vi.mock(import("~/state/languageServers"), async (original) => {
       routes: ((...args: Parameters<typeof languageServersEnvironment.routes>) =>
         shared.routes ?? languageServersEnvironment.routes(...args)) as never,
       session: (() => Atom.make(null)) as never,
+      runContext: (() => shared.runContextAtom) as never,
     },
   };
 });
+vi.mock(import("./runTabs"), async (original) => ({
+  ...(await original()),
+  startRun: (async (tab: unknown) => void shared.started.push(tab)) as never,
+}));
 vi.mock(import("~/state/session"), async (original) => ({
   ...(await original()),
   useEnvironmentScope: (() => true) as never,
 }));
 vi.mock(import("~/state/query"), async (original) => ({
   ...(await original()),
-  useEnvironmentQuery: (() => ({ isSuccess: false, error: null, data: null })) as never,
+  useEnvironmentQuery: ((atom: unknown) => ({
+    isSuccess: false,
+    error: null,
+    data: atom !== null && atom === shared.runContextAtom ? shared.runContext : null,
+  })) as never,
 }));
 vi.mock(import("~/state/entities"), async (original) => ({
   ...(await original()),
@@ -148,6 +163,7 @@ import { hasLanguageServer } from "@mercurian/editor/lsp";
 import { EditorView } from "@codemirror/view";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
+import { getClientSettings, updateClientSettings } from "~/hooks/useSettings";
 import { RepositoryFileView } from "./RepositoryFileView";
 
 const tab = {
@@ -162,7 +178,22 @@ const tab = {
 
 function setup(text: string) {
   shared.authority = new Authority(text);
+  shared.runContext = null;
+  shared.started = [];
+  shared.runContextAtom = Atom.make(AsyncResult.initial());
 }
+
+const RUST_TAB = { ...tab, path: "src/main.rs" };
+
+const TRUSTED = {
+  trusted: true,
+  root: "",
+  python: "python3",
+  testRunner: null,
+  packageRunner: "npx",
+  buildTool: null,
+  buildCommand: null,
+};
 
 describe("RepositoryFileView", () => {
   it("shows typing in one editor in another editor of the same file, then saves", async () => {
@@ -227,6 +258,56 @@ describe("RepositoryFileView", () => {
 
     expect(EditorView.findFromDOM(text.element() as HTMLElement)).toBe(view);
     expect(view.state.doc.toString()).toContain("typed");
+  });
+
+  it("marks what can run once the project is trusted, moving no text, and runs it", async () => {
+    setup("fn main() {}\n");
+    await using screen = await render(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+    const text = screen.getByRole("textbox");
+    await expect.element(text).toHaveTextContent("fn main() {}");
+    const left = () => text.element().getBoundingClientRect().left;
+    const marker = () => document.querySelector<HTMLElement>(".atlas-run-marker");
+    await vi.waitFor(() => expect(document.querySelector(".atlas-run-gutter")).not.toBeNull());
+    const before = left();
+    expect(marker()).toBeNull();
+
+    shared.runContext = { ...TRUSTED, trusted: false };
+    await screen.rerender(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+    await vi.waitFor(() => expect(marker()).toBeNull());
+
+    shared.runContext = TRUSTED;
+    await screen.rerender(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+    await vi.waitFor(() => expect(marker()?.title).toBe("cargo run"));
+    expect(left()).toBe(before);
+
+    await userEvent.click(marker()!);
+    expect(shared.started).toEqual([
+      {
+        kind: "run",
+        environmentId: tab.environmentId,
+        cwd: "/repo",
+        directory: "",
+        path: "src/main.rs",
+        name: "Run main.rs",
+        command: "cargo run",
+      },
+    ]);
+  });
+
+  it("takes the markers away with the setting, and brings them back", async () => {
+    setup("fn main() {}\n");
+    shared.runContext = TRUSTED;
+    const { runMarkers } = getClientSettings();
+    using _setting = { [Symbol.dispose]: () => updateClientSettings({ runMarkers }) };
+    await using screen = await render(<RepositoryFileView tabKey="file" tab={RUST_TAB} />);
+    const marker = () => document.querySelector(".atlas-run-marker");
+    await vi.waitFor(() => expect(marker()).not.toBeNull());
+
+    await act(() => updateClientSettings({ runMarkers: false }));
+    await vi.waitFor(() => expect(document.querySelector(".atlas-run-gutter")).toBeNull());
+    await act(() => updateClientSettings({ runMarkers: true }));
+    await vi.waitFor(() => expect(marker()).not.toBeNull());
+    expect(screen.getByRole("textbox").element().textContent).toContain("fn main");
   });
 
   it("offers to save a deleted file with unsaved edits, and saving recreates it", async () => {

@@ -44,12 +44,16 @@ import { searchableSetting } from "../settings/settingsSearch";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { lastRename, undoableEdit } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
+import { runMarkers, setRunContext, type RunHost } from "@mercurian/editor/run";
+import type { RunContext, RunTarget } from "@mercurian/editor/run/command";
+import { runLanguageFor } from "@mercurian/editor/run/detect";
 import { codeContextMenu, type CodeContextMenuHost } from "@mercurian/editor/lsp/context-menu";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "~/localApi";
 import { vimMode, vimNormalModeFont } from "@mercurian/editor/vim";
 import {
   AuthFilesystemWriteScope,
+  AuthTerminalOperateScope,
   type ClientSettings,
   type LanguageServerId,
 } from "@t3tools/contracts";
@@ -81,6 +85,7 @@ import {
 import { useClientSettings } from "~/hooks/useSettings";
 import { PanesHostContext } from "~/panes/panesHost";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
 import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
@@ -120,6 +125,7 @@ import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs
 type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
 import { projectSettingsKey, registerLanguageServerFile } from "./languageServerFile";
 import { LanguageServerStatusEntry } from "./LanguageServerStatus";
+import { lastRunStarter, startRun } from "./runTabs";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
 
@@ -167,6 +173,7 @@ const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
 const selectInlineDiagnostics = (settings: ClientSettings) => settings.inlineDiagnostics;
 const selectSemanticTokens = (settings: ClientSettings) => settings.semanticTokens;
 const selectCodeLens = (settings: ClientSettings) => settings.codeLens;
+const selectRunMarkers = (settings: ClientSettings) => settings.runMarkers;
 const selectInlayHintTypes = (settings: ClientSettings) =>
   settings.inlayHints && settings.inlayHintTypes;
 const selectInlayHintParameters = (settings: ClientSettings) =>
@@ -239,6 +246,25 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     () => (serverFile ? registerLanguageServerFile(tabKey, serverFile) : undefined),
     [tabKey, serverFile],
   );
+  const canRun = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
+  const runContextAtom =
+    !fromDisk && canRun && runLanguageFor(path) !== null
+      ? languageServersEnvironment.runContext({ environmentId, input: { cwd, path } })
+      : null;
+  const runContext = useEnvironmentQuery(runContextAtom).data;
+  const serverState = `${languageServer.status?.state}\0${languageServer.status?.restricted}`;
+  const readServerState = useRef(serverState);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- trust moves on the environment, and a server's status is how this file hears of it
+  useEffect(() => {
+    if (readServerState.current === serverState) return;
+    readServerState.current = serverState;
+    if (runContextAtom !== null) appAtomRegistry.refresh(runContextAtom);
+  }, [runContextAtom, serverState]);
+  const runInTerminal = useStableCallback(({ name, command, directory }: RunTarget) => {
+    const run = { kind: "run", environmentId, cwd, directory, path, name, command } as const;
+    void startRun(run, panes, tabKey);
+  });
+  const runLast = useStableCallback(() => lastRunStarter(panes)?.());
   const agentWorking = useAgentWorkingIn(tab);
   const bases = useBaseTexts(tab, !isMarkdownPath(path));
   const [choice, setChoice] = useState<FileDiffBase | null>(null);
@@ -394,6 +420,14 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
     ),
   );
   const [codeActions] = useState<CodeActionHost>(() => ({ applied: appliedAction }));
+  const [run] = useState<RunHost>(() => ({
+    path,
+    checkout: cwd,
+    run: runInTerminal,
+    runLast,
+    copy: (command) => void writeTextToClipboard(command).catch(() => undefined),
+    menu: contextMenu.show,
+  }));
 
   if (fromDisk) {
     if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
@@ -472,6 +506,8 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
           contextMenu={contextMenu}
           rename={rename}
           codeActions={codeActions}
+          run={run}
+          runContext={runContext?.trusted ? runContext : null}
           readOnly={readOnly}
           baseText={baseText}
           baseControl={baseControl}
@@ -592,6 +628,8 @@ function FileEditor({
   contextMenu,
   rename,
   codeActions,
+  run,
+  runContext,
   readOnly,
   baseText,
   baseControl,
@@ -615,6 +653,10 @@ function FileEditor({
   readonly rename: RenameHost;
   /** Told of each code action the environment applied. */
   readonly codeActions: CodeActionHost;
+  /** Where its run markers run things. */
+  readonly run: RunHost;
+  /** What running here is built from; null while nothing may run. */
+  readonly runContext: RunContext | null;
   readonly readOnly: boolean;
   /** The text the changes are marked against; null for none, undefined while loading. */
   readonly baseText: string | null | undefined;
@@ -641,6 +683,7 @@ function FileEditor({
   const inlineDiagnostics = useClientSettings(selectInlineDiagnostics);
   const semanticColours = useClientSettings(selectSemanticTokens);
   const lenses = useClientSettings(selectCodeLens);
+  const markers = useClientSettings(selectRunMarkers);
   // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
   const save = useStableCallback(() => {
     const view = viewRef.current;
@@ -656,6 +699,7 @@ function FileEditor({
     language: new Compartment(),
     readOnly: new Compartment(),
     server: new Compartment(),
+    run: new Compartment(),
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
   const [initial] = useState(() => ({
@@ -670,6 +714,8 @@ function FileEditor({
     contextMenu,
     rename,
     codeActions,
+    run,
+    markers,
     readOnly,
     vim,
     wordWrap,
@@ -709,6 +755,9 @@ function FileEditor({
           compartments.keys.of([]),
           markdown ? [] : diffBaseControl.of(initial.baseControl),
           markdown ? livePreview() : [codeView(), codeContextMenu(initial.contextMenu)],
+          compartments.run.of(
+            session ? runMarkers({ host: initial.run, markers: initial.markers }) : [],
+          ),
           compartments.language.of([]),
           compartments.readOnly.of(readOnlyExtension(initial.readOnly)),
           outline({ onPath: initial.outlinePath }),
@@ -731,6 +780,9 @@ function FileEditor({
       view,
       writable: () =>
         session !== null && session.getState().status === "open" && !view.state.readOnly,
+      save: async () => {
+        if (session?.getState().unsaved) await session.save();
+      },
     });
     const stopCursor = trackJumpCursor(initial.tabKey, () => {
       const { head } = view.state.selection.main;
@@ -763,6 +815,20 @@ function FileEditor({
     if (!view || !vimExtension) return;
     view.dispatch({ effects: compartments.vim.reconfigure(vim ? vimExtension() : []) });
   }, [compartments, vim]);
+
+  const runnable = "session" in initial.source;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- turns the run markers' column on or off in the CodeMirror view
+  useEffect(() => {
+    if (!runnable) return;
+    viewRef.current?.dispatch({
+      effects: compartments.run.reconfigure(runMarkers({ host: initial.run, markers })),
+    });
+  }, [compartments, initial, markers, runnable]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the CodeMirror view what the environment says of running here
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setRunContext.of(runContext) });
+  }, [runContext]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves the CodeMirror view to the client of the server settings put on this file
   useLayoutEffect(() => {

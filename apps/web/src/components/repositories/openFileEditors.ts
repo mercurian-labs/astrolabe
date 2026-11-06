@@ -18,6 +18,8 @@ export interface OpenFileEditor {
   readonly view: EditorView;
   /** Whether it is the live document and you may edit it. */
   readonly writable: () => boolean;
+  /** Writes what isn't on disk yet, for something about to read the file there. */
+  readonly save: () => Promise<unknown>;
 }
 
 const editors = new Set<OpenFileEditor>();

@@ -72,6 +72,18 @@ export type RepositoryTab =
       readonly environmentId: EnvironmentId;
       readonly cwd: string;
       readonly server: LanguageServerId;
+    }
+  // A test or entry point run from a code file, in its own terminal (`runTabs`).
+  | {
+      readonly kind: "run";
+      readonly environmentId: EnvironmentId;
+      readonly cwd: string;
+      /** The folder it runs in, within the checkout; "" at its root. */
+      readonly directory: string;
+      /** The file it came from. */
+      readonly path: string;
+      readonly name: string;
+      readonly command: string;
     };
 
 /** What a search tab searches for, as the project search palette asked. */
@@ -165,6 +177,9 @@ const SEARCH_PREFIX = "repo-search:";
 const PROBLEMS_PREFIX = "repo-problems:";
 const LOCATIONS_PREFIX = "repo-locations:";
 const LANGUAGE_SERVER_LOGS_PREFIX = "repo-lsp-logs:";
+const RUN_PREFIX = "repo-run:";
+// An empty part doesn't survive a key: this stands for the checkout's root.
+const ROOT_DIRECTORY = ".";
 const isLanguageServerId = Schema.is(LanguageServerId);
 
 function searchOf(text: string): RepositorySearch | null {
@@ -233,6 +248,18 @@ export function repositoryTabKey(tab: RepositoryTab): string {
       return LOCATIONS_PREFIX + encode([tab.environmentId, tab.projectId, tab.cwd, tab.id]);
     case "language-server-logs":
       return LANGUAGE_SERVER_LOGS_PREFIX + encode([tab.environmentId, tab.cwd, tab.server]);
+    case "run":
+      return (
+        RUN_PREFIX +
+        encode([
+          tab.environmentId,
+          tab.cwd,
+          tab.directory === "" ? ROOT_DIRECTORY : tab.directory,
+          tab.path,
+          tab.name,
+          tab.command,
+        ])
+      );
   }
 }
 
@@ -379,6 +406,27 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
       environmentId: EnvironmentId.make(environmentId),
       cwd,
       server,
+    };
+  }
+  if (key.startsWith(RUN_PREFIX)) {
+    const parts = decodeParts(key.slice(RUN_PREFIX.length), [6]);
+    if (parts === null) return null;
+    const [environmentId, cwd, directory, path, name, command] = parts as [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ];
+    return {
+      kind: "run",
+      environmentId: EnvironmentId.make(environmentId),
+      cwd,
+      directory: directory === ROOT_DIRECTORY ? "" : directory,
+      path,
+      name,
+      command,
     };
   }
   return null;

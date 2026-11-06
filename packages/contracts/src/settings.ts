@@ -501,6 +501,8 @@ export const ClientSettingsSchema = Schema.Struct({
   inlineDiagnostics: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   semanticTokens: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   codeLens: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Astrolabe: the markers beside what can run in a code file. The commands stay without them.
+  runMarkers: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Astrolabe: Vim's j and k move by screen line (as gj and gk) without a count. Off by default,
   // as Vim's are.
   vimScreenLinesEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1848,6 +1850,7 @@ export const ClientSettingsPatch = Schema.Struct({
   inlineDiagnostics: Schema.optionalKey(Schema.Boolean),
   semanticTokens: Schema.optionalKey(Schema.Boolean),
   codeLens: Schema.optionalKey(Schema.Boolean),
+  runMarkers: Schema.optionalKey(Schema.Boolean),
   vimScreenLinesEnabled: Schema.optionalKey(Schema.Boolean),
   // Astrolabe: Space as the keyboard menu's leader key.
   spaceLeaderEnabled: Schema.optionalKey(Schema.Boolean),

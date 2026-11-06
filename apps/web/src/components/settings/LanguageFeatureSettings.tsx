@@ -11,7 +11,8 @@ type Feature =
   | "inlayHintParameters"
   | "inlineDiagnostics"
   | "semanticTokens"
-  | "codeLens";
+  | "codeLens"
+  | "runMarkers";
 
 function FeatureRow(props: {
   readonly feature: Feature;
@@ -86,6 +87,12 @@ export function LanguageFeatureRows() {
         settingId="code-lens"
         label="Code lens"
         description="Show what a language server says about a definition above its line, such as how many references it has. Clicking one runs it."
+      />
+      <FeatureRow
+        feature="runMarkers"
+        settingId="run-markers"
+        label="Run markers"
+        description="Show a marker beside tests and entry points in a trusted project's code files. Clicking one runs it in a terminal."
       />
     </>
   );

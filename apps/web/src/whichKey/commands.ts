@@ -30,6 +30,7 @@ import {
 import { renameSymbol } from "@mercurian/editor/lsp/rename";
 import { formatCode } from "@mercurian/editor/lsp/format";
 import { showCodeActions } from "@mercurian/editor/lsp/code-actions";
+import { hasRunMarkers, runAtCursor, runSiteAt } from "@mercurian/editor/run";
 import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
 import { getClientSettings, updateClientSettings } from "~/hooks/useSettings";
 import {
@@ -44,6 +45,7 @@ import {
 } from "~/components/repositories/languageServerFile";
 import { openInterpreterPicker } from "~/components/repositories/InterpreterPicker";
 import { lastRename } from "~/components/repositories/renameUndo";
+import { lastRunStarter } from "~/components/repositories/runTabs";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
@@ -584,6 +586,18 @@ function astrolabeCommand(
         view ? "Go to symbol" : "No file to outline",
         view ? () => afterPalette(() => openOutlinePicker(view)) : null,
       );
+    }
+    case "run.atCursor": {
+      const view = editorFrom(context.origin, hasRunMarkers);
+      const site = view && runSiteAt(view.state, view.state.selection.main.head);
+      return entry(
+        site ? "Run at cursor" : "Nothing to run at the cursor",
+        view && site ? () => afterPalette(() => void runAtCursor(view)) : null,
+      );
+    }
+    case "run.last": {
+      const start = lastRunStarter(panes?.controller ?? workspace.store);
+      return entry(start ? "Run last" : "Nothing run yet", start);
     }
     case "lsp.projectSymbols": {
       const open = projectSymbolsOpener(panes?.controller ?? null);

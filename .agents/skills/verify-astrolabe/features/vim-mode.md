@@ -38,8 +38,8 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   menu and `:` the palette. Files save on their own; `:w` is **Save the file**, formatting
   first when a language server runs and **Format on save** (Settings → Appearance) is on.
   `]c`/`[c` jump to the next/previous change, and `K`, `gd`, `gD`, `gy`, `gI`, `gr` are hover,
-  definition, declaration, type definition, implementation and references
-  (`packages/editor/src/lsp/vimKeys.ts`). A bound Cmd/Ctrl/Alt key runs the editor's command
+  definition, declaration, type definition, implementation and references, `gR` and `gL` Run at
+  cursor and Run last (`packages/editor/src/lsp/vimKeys.ts`). A bound Cmd/Ctrl/Alt key runs the editor's command
   before Vim reads it as a character. A Markdown file switches to the code font outside insert mode; a code file
   (`.cm-editor.cm-code`) is monospace already, so only the block cursor shows the mode.
 - **Visual mode** (every Vim editor): `v`, `V` paint the selection in a theme colour

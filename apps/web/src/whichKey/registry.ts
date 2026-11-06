@@ -25,6 +25,7 @@ const GROUP_LABELS: Readonly<Record<string, string>> = {
 const NESTED_GROUP_LABELS: Readonly<Record<string, string>> = {
   "e g": "Go to code",
   "e L": "Language server",
+  "e R": "Run",
 };
 
 interface Node {
