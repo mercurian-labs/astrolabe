@@ -18,6 +18,7 @@ import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
 import { inlayHints } from "@mercurian/editor/lsp/inlay-hints";
 import { linkedEditing } from "@mercurian/editor/lsp/linked-editing";
+import { semanticTokens } from "@mercurian/editor/lsp/semantic-tokens";
 import { symbolHighlights } from "@mercurian/editor/lsp/symbol-highlights";
 import {
   environmentNavigation,
@@ -162,6 +163,7 @@ const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabl
 const selectWordWrap = (settings: ClientSettings) => settings.wordWrap;
 const selectFormatOnSave = (settings: ClientSettings) => settings.formatOnSave;
 const selectInlineDiagnostics = (settings: ClientSettings) => settings.inlineDiagnostics;
+const selectSemanticTokens = (settings: ClientSettings) => settings.semanticTokens;
 const selectInlayHintTypes = (settings: ClientSettings) =>
   settings.inlayHints && settings.inlayHintTypes;
 const selectInlayHintParameters = (settings: ClientSettings) =>
@@ -620,6 +622,7 @@ function FileEditor({
   const hintTypes = useClientSettings(selectInlayHintTypes);
   const hintParameters = useClientSettings(selectInlayHintParameters);
   const inlineDiagnostics = useClientSettings(selectInlineDiagnostics);
+  const semanticColours = useClientSettings(selectSemanticTokens);
   // The save you ask for (mod+s, `:w`): a code file with a language server is formatted first.
   const save = useStableCallback(() => {
     const view = viewRef.current;
@@ -755,6 +758,7 @@ function FileEditor({
               hintTypes,
               hintParameters,
               inlineDiagnostics,
+              semanticColours,
             })
           : [],
         "session" in initial.source
@@ -782,6 +786,7 @@ function FileEditor({
     hintTypes,
     hintParameters,
     inlineDiagnostics,
+    semanticColours,
   ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the read-only state to the CodeMirror view
@@ -835,6 +840,7 @@ function languageServerUi(
     readonly hintTypes: boolean;
     readonly hintParameters: boolean;
     readonly inlineDiagnostics: boolean;
+    readonly semanticColours: boolean;
   },
 ): Extension {
   return [
@@ -844,6 +850,7 @@ function languageServerUi(
       : [],
     symbolHighlights(),
     linkedEditing(),
+    shown.semanticColours ? semanticTokens() : [],
     environmentCompletion({ keys: { complete: keys["lsp.complete"] } }),
     environmentHover({
       keys: { hover: keys["lsp.hover"], signatureHelp: keys["lsp.signatureHelp"] },

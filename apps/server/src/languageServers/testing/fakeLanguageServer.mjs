@@ -146,6 +146,10 @@ const handle = (message) => {
           inlayHintProvider: true,
           documentHighlightProvider: true,
           linkedEditingRangeProvider: true,
+          semanticTokensProvider: {
+            legend: { tokenTypes: ["variable"], tokenModifiers: [] },
+            full: { delta: true },
+          },
           completionProvider: {
             resolveProvider: true,
             triggerCharacters: config.triggerCharacters ?? ["."],
@@ -323,6 +327,26 @@ const handle = (message) => {
           rangeOf(text, offset, offset + target.length),
         ),
       });
+    }
+    case "textDocument/semanticTokens/full": {
+      // Each `point`, as a variable.
+      const { text } = docs.get(params.textDocument.uri);
+      let line = 0;
+      let character = 0;
+      const data = occurrences(text, "point").flatMap((offset) => {
+        const at = positionOf(text, offset);
+        const token = [
+          at.line - line,
+          at.line === line ? at.character - character : at.character,
+          "point".length,
+          0,
+          0,
+        ];
+        line = at.line;
+        character = at.character;
+        return token;
+      });
+      return reply({ resultId: "1", data });
     }
     case "test/refresh": {
       const askId = `fake-${++askedCount}`;

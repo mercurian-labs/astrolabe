@@ -461,6 +461,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["errors problems warnings end of line message language server code editor"],
   },
   {
+    id: "semantic-tokens",
+    title: "Semantic colours",
+    to: "/settings/appearance",
+    searchTerms: ["semantic tokens highlighting syntax language server code editor"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",

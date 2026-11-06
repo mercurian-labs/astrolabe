@@ -119,6 +119,12 @@ export const mapParams = (params: Json, m: OffsetMapper): Json => {
   return params;
 };
 
+/** Whole-file answers with no positions to map: right only for the text the editor has. */
+export const SEMANTIC_TOKENS_METHODS = new Set([
+  "textDocument/semanticTokens/full",
+  "textDocument/semanticTokens/full/delta",
+]);
+
 export const LOCATION_METHODS = new Set([
   "textDocument/definition",
   "textDocument/declaration",

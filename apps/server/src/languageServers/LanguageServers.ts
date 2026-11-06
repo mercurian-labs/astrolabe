@@ -89,6 +89,7 @@ import {
   forwardMapper,
   inverseMapper,
   LOCATION_METHODS,
+  SEMANTIC_TOKENS_METHODS,
   locationsOf,
   mapDiagnostics,
   mapParams,
@@ -484,6 +485,36 @@ const CLIENT_CAPABILITIES = {
     inlayHint: {},
     documentHighlight: {},
     linkedEditingRange: {},
+    semanticTokens: {
+      requests: { full: { delta: true } },
+      tokenTypes: [
+        "namespace",
+        "type",
+        "class",
+        "enum",
+        "interface",
+        "struct",
+        "typeParameter",
+        "parameter",
+        "variable",
+        "property",
+        "enumMember",
+        "event",
+        "function",
+        "method",
+        "macro",
+        "keyword",
+        "modifier",
+        "comment",
+        "string",
+        "number",
+        "regexp",
+        "operator",
+        "decorator",
+      ],
+      tokenModifiers: ["declaration", "definition", "readonly", "static", "defaultLibrary"],
+      formats: ["relative"],
+    },
     codeAction: {
       codeActionLiteralSupport: {
         codeActionKind: {
@@ -514,6 +545,7 @@ const CLIENT_CAPABILITIES = {
     applyEdit: true,
     didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
     inlayHint: { refreshSupport: true },
+    semanticTokens: { refreshSupport: true },
   },
   window: { workDoneProgress: false, showMessage: {} },
 };
@@ -593,6 +625,9 @@ const mapAnswer = (
         ? trimHover(raw)
         : raw;
   if (context === null || doc === undefined) return { result };
+  if (SEMANTIC_TOKENS_METHODS.has(method) && !context.changes.empty) {
+    return { error: contentModified("These tokens are for text this editor has not received.") };
+  }
   try {
     return {
       result: mapResult(
@@ -1120,6 +1155,8 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         return null;
       case "workspace/inlayHint/refresh":
         return refreshSessions(instance, "inlayHints");
+      case "workspace/semanticTokens/refresh":
+        return refreshSessions(instance, "semanticTokens");
       case "workspace/applyEdit":
         return new Promise((resolve) =>
           Queue.offerUnsafe(instance.serverEdits, {

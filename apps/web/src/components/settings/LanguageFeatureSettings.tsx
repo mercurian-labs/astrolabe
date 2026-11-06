@@ -5,7 +5,12 @@ import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
-type Feature = "inlayHints" | "inlayHintTypes" | "inlayHintParameters" | "inlineDiagnostics";
+type Feature =
+  | "inlayHints"
+  | "inlayHintTypes"
+  | "inlayHintParameters"
+  | "inlineDiagnostics"
+  | "semanticTokens";
 
 function FeatureRow(props: {
   readonly feature: Feature;
@@ -68,6 +73,12 @@ export function LanguageFeatureRows() {
         settingId="inline-diagnostics"
         label="Inline diagnostics"
         description="Show each line's worst problem at the end of the line, cut off where the line ends."
+      />
+      <FeatureRow
+        feature="semanticTokens"
+        settingId="semantic-tokens"
+        label="Semantic colours"
+        description="Colour code by what its language server knows it is, once edits stop. Large files keep their usual colours."
       />
     </>
   );

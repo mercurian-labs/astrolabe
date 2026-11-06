@@ -519,6 +519,28 @@ describe("LanguageServers", () => {
     }).pipe(Effect.scoped, Effect.provide(layerFor())),
   );
 
+  it.live("gives semantic tokens only to an editor with the text they are for", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      const editor = yield* openEditor(checkout, "editor-a");
+      const tokens = (id: number) =>
+        session.request(
+          id,
+          "textDocument/semanticTokens/full",
+          { textDocument: { uri: checkout.uri } },
+          editor.envelope(),
+        );
+      expect((yield* tokens(1)).result.data).toEqual([0, 6, 5, 0, 0, 1, 21, 5, 0, 0]);
+      yield* agentEdit(checkout, () => ({ from: 0, insert: "// one\n" }));
+      expect((yield* tokens(2)).error.code).toBe(ContentModified);
+      yield* editor.catchUp;
+      expect((yield* tokens(3)).result.data).toEqual([1, 6, 5, 0, 0, 1, 21, 5, 0, 0]);
+    }).pipe(Effect.scoped, Effect.provide(layerFor())),
+  );
+
   it.live("lands the editor's unconfirmed edits before answering", () =>
     Effect.gen(function* () {
       const checkout = yield* makeCheckout(SOURCE);

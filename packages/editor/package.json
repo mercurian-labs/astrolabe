@@ -91,6 +91,10 @@
       "types": "./src/lsp/linkedEditing.ts",
       "default": "./src/lsp/linkedEditing.ts"
     },
+    "./lsp/semantic-tokens": {
+      "types": "./src/lsp/semanticTokens.ts",
+      "default": "./src/lsp/semanticTokens.ts"
+    },
     "./lsp/symbol-highlights": {
       "types": "./src/lsp/symbolHighlights.ts",
       "default": "./src/lsp/symbolHighlights.ts"
