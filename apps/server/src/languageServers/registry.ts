@@ -105,6 +105,10 @@ export interface LanguageServerSpec {
   readonly launches: ReadonlyArray<Launch>;
   /** What to do when no launch applies. */
   readonly missing: string;
+  /** Folders it writes inside a checkout, kept out of that checkout's git status. */
+  readonly writes?: ReadonlyArray<string>;
+  /** Stops treating a file as the project's once it closes, until told the file exists. */
+  readonly forgetsClosedFiles?: boolean;
   /** Said in settings when the checkout has none of `unless` (relative paths). */
   readonly hint?: { readonly unless: ReadonlyArray<string>; readonly message: string };
 }
@@ -170,6 +174,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     name: "basedpyright",
     languages: "Python",
     missing: "basedpyright could not be found or downloaded.",
+    // A rename would otherwise skip every file that was opened and closed since it started.
+    forgetsClosedFiles: true,
     hint: {
       unless: [".venv", "venv"],
       message: "No .venv or venv here: imports resolve against the Python on PATH.",
@@ -292,6 +298,8 @@ export const LANGUAGE_SERVERS: Readonly<Record<LanguageServerId, LanguageServerS
     id: "clangd",
     name: "clangd",
     languages: "C and C++",
+    // Its background index sits beside the compile commands.
+    writes: [".cache/clangd/"],
     hint: {
       unless: ["compile_commands.json", "build/compile_commands.json", "compile_flags.txt"],
       message:

@@ -206,15 +206,20 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
   );
 
   /** A binary installed on the machine, if it runs: its version, or "" without a probe. */
-  const probe = Effect.fn("LanguageServers.probe")(function* (file: string, launch: Launch) {
+  const probe = Effect.fn("LanguageServers.probe")(function* (
+    file: string,
+    launch: Launch,
+    cwd: string,
+  ) {
     if (launch.probe === undefined) return "";
-    const result = yield* run(file, launch.probe, { timeout: PROBE_TIMEOUT });
+    // In the checkout: rustup's proxy picks its toolchain from the folder it runs in.
+    const result = yield* run(file, launch.probe, { cwd, timeout: PROBE_TIMEOUT });
     if (result === null || result.code !== 0) return null;
     return VERSION.exec(result.output)?.[0] ?? "";
   });
 
   /** On the machine: a known install path first, then PATH. */
-  const installed = Effect.fn("LanguageServers.installed")(function* (launch: Launch) {
+  const installed = Effect.fn("LanguageServers.installed")(function* (launch: Launch, cwd: string) {
     const candidates = (launch.knownPaths ?? []).flatMap((known) =>
       known.startsWith("~/") ? (home === null ? [] : [path.join(home, known.slice(2))]) : [known],
     );
@@ -230,7 +235,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     }
     for (const file of candidates) {
       if (!(yield* exists(file))) continue;
-      const version = yield* probe(file, launch);
+      const version = yield* probe(file, launch, cwd);
       if (version !== null) return { file, version };
     }
     return null;
@@ -358,7 +363,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
           return ready(file, found, "project", null);
         }
       }
-      const onMachine = yield* installed(launch);
+      const onMachine = yield* installed(launch, cwd);
       if (onMachine !== null) {
         return ready(
           onMachine.file,
@@ -643,7 +648,27 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     }
   });
 
-  return { resolve, download, consented, consent };
+  /** Lists `patterns` in the checkout's own git excludes; a checkout without git needs nothing. */
+  const excludeFromGit = Effect.fn("LanguageServers.excludeFromGit")(
+    function* (cwd: string, patterns: ReadonlyArray<string>) {
+      const found = yield* run("git", ["rev-parse", "--git-path", "info/exclude"], {
+        cwd,
+        timeout: PROBE_TIMEOUT,
+      });
+      if (found === null || found.code !== 0) return;
+      const file = path.resolve(cwd, found.output.trim());
+      const text = yield* fileSystem.readFileString(file).pipe(Effect.orElseSucceed(() => ""));
+      const known = new Set(text.split("\n"));
+      const missing = patterns.filter((pattern) => !known.has(pattern));
+      if (missing.length === 0) return;
+      yield* fileSystem.makeDirectory(path.dirname(file), { recursive: true });
+      const lead = text === "" || text.endsWith("\n") ? "" : "\n";
+      yield* fileSystem.writeFileString(file, `${text}${lead}${missing.join("\n")}\n`);
+    },
+    Effect.ignore({ log: "Warn", message: "Could not keep a server's files out of git." }),
+  );
+
+  return { resolve, download, consented, consent, excludeFromGit };
 });
 
 export type Installer = Effect.Success<ReturnType<typeof makeInstaller>>;

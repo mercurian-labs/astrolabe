@@ -29,6 +29,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import * as NodeCrypto from "node:crypto";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeURL from "node:url";
 import * as NodeZlib from "node:zlib";
 
@@ -1271,6 +1272,48 @@ const releaseSpecs = (
 
 /** A native executable that runs the fake server with the Node on PATH. */
 const nativeFakeServer = `#!/usr/bin/env node\nimport(${JSON.stringify(NodeURL.pathToFileURL(FAKE_SERVER).href)});\n`;
+
+describe("LanguageServers for servers with quirks", () => {
+  it.live("tells a server that forgets closed files that the file still exists", () =>
+    Effect.gen(function* () {
+      const checkout = yield* makeCheckout(SOURCE);
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      yield* session.open(checkout.uri);
+      yield* session.diagnostics();
+      yield* session.send({
+        method: "textDocument/didClose",
+        params: { textDocument: { uri: checkout.uri } },
+      });
+      const watched = yield* session.request(1, "test/watched", { count: 1 });
+      expect(watched.result).toEqual([[{ uri: checkout.uri, type: 1 }]]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({ specs: { typescript: { ...fakeSpec(fakeLaunch), forgetsClosedFiles: true } } }),
+      ),
+    ),
+  );
+
+  it.live("keeps the folders a server writes out of the checkout's git status", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const checkout = yield* makeCheckout(SOURCE);
+      NodeChildProcess.execFileSync("git", ["init", "-q"], { cwd: checkout.cwd });
+      const session = yield* openSession(checkout);
+      yield* session.state("ready");
+      const exclude = yield* fileSystem.readFileString(`${checkout.cwd}/.git/info/exclude`);
+      expect(exclude.split("\n")).toContain(".cache/clangd/");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        layerFor({
+          specs: { typescript: { ...fakeSpec(fakeLaunch), writes: [".cache/clangd/"] } },
+        }),
+      ),
+    ),
+  );
+});
 
 describe("LanguageServers with nothing to run", () => {
   it.live("says what to install, to editors and agents, and finds it on the next try", () =>

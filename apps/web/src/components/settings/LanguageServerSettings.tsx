@@ -61,6 +61,7 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
       member,
       checks: query?._tag === "Success" ? query.value : null,
       waiting: query?.waiting ?? true,
+      failed: query?._tag === "Failure",
     };
   });
   const servers = checkouts.find((checkout) => checkout.checks !== null)?.checks ?? [];
@@ -86,12 +87,18 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
           title={server.languages}
           description={
             <span>
-              {checkouts.map(({ member, checks }) => {
+              {checkouts.map(({ member, checks, failed }) => {
                 const check = checks?.find((candidate) => candidate.server === server.server);
                 return (
                   <span key={`${member.environmentId}:${member.workspaceRoot}`} className="block">
                     {prefix(member)}
-                    {check === undefined ? "Unavailable on this machine." : describe(check)}
+                    {check !== undefined
+                      ? describe(check)
+                      : failed
+                        ? "Couldn't check this machine."
+                        : checks === null
+                          ? "Checking…"
+                          : "Unavailable on this machine."}
                     {check?.message ? (
                       <span className="block text-muted-foreground">{check.message}</span>
                     ) : null}

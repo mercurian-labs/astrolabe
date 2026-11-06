@@ -736,6 +736,11 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
     const running = instance.running;
     if (running !== null && doc.openOn === running.generation) {
       running.connection.notify("textDocument/didClose", { textDocument: { uri: doc.uri } });
+      if (instance.spec.forgetsClosedFiles) {
+        running.connection.notify("workspace/didChangeWatchedFiles", {
+          changes: [{ uri: doc.uri, type: FILE_CHANGE_TYPES.created }],
+        });
+      }
     }
     doc.openOn = null;
   };
@@ -1002,6 +1007,9 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
       source: server.source,
       restricted: !trusted,
     });
+    if (instance.spec.writes !== undefined) {
+      yield* installer.excludeFromGit(instance.cwd, instance.spec.writes);
+    }
     const processScope = yield* Scope.fork(instance.scope);
     instance.processScope = processScope;
     instance.settings = server.settings;
