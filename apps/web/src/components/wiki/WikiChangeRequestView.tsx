@@ -6,13 +6,14 @@ import type {
   WikiChangeRequestId,
   WikiFileChange,
   WikiId,
+  WikiMergePreview,
 } from "@t3tools/contracts";
 import { parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleCheckIcon, MessagesSquareIcon, TriangleAlertIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 
@@ -36,15 +37,20 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   describeIndexError,
   describeWikiFailure,
+  isCanvasName,
   mergeBlockedReason,
+  mergeConflictAdvice,
   noteNameOfFile,
 } from "./wiki.logic";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
+
+const WikiCanvasReview = lazy(() => import("./WikiCanvasReview"));
 
 const STATUS_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
@@ -56,11 +62,14 @@ export function WikiChangeRequestView({
   onOpenNote,
   onOpenThread,
   onOpenPullRequest,
+  onOpenTab,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId;
   readonly onOpenNote: (name: string) => void;
+  /** Astrolabe: opens a tab by its key, as a canvas's code cards do. */
+  readonly onOpenTab?: (key: string) => void;
   /** Astrolabe: shows the change request's thread beside it; without it, the link goes there. */
   readonly onOpenThread?: (threadId: ThreadId) => void;
   /** Astrolabe: shows one of its thread's pull requests beside it. */
@@ -221,6 +230,7 @@ export function WikiChangeRequestView({
             : {})}
         />
         {open ? <MergePreviewNotice preview={mergePreview} /> : null}
+        {open ? <CanvasMergeNotes preview={mergePreview} /> : null}
         {errors.length > 0 ? (
           <Alert variant="warning">
             <TriangleAlertIcon />
@@ -264,6 +274,14 @@ export function WikiChangeRequestView({
                       ? undefined
                       : () => onOpenNote(noteNameOfFile(change.file))
                   }
+                  canvas={{
+                    environmentId,
+                    wikiId,
+                    changeRequestId: open ? changeRequestId : undefined,
+                    commit: changeRequest.head,
+                    onOpenNote,
+                    onOpenTab,
+                  }}
                 />
               ))}
             </div>
@@ -395,11 +413,7 @@ function MergeButton({
   );
 }
 
-function MergePreviewNotice({
-  preview,
-}: {
-  readonly preview: { readonly status: string; readonly conflicts: ReadonlyArray<string> };
-}) {
+function MergePreviewNotice({ preview }: { readonly preview: WikiMergePreview }) {
   switch (preview.status) {
     case "clean":
       return (
@@ -413,11 +427,7 @@ function MergePreviewNotice({
         <Alert variant="error">
           <TriangleAlertIcon />
           <AlertTitle>Conflicts with main</AlertTitle>
-          <AlertDescription>
-            {preview.conflicts.length > 0
-              ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this change request to settle them, then merge.`
-              : "Amend this change request to settle the conflict, then merge."}
-          </AlertDescription>
+          <AlertDescription>{mergeConflictAdvice(preview.conflicts, "computer")}</AlertDescription>
         </Alert>
       );
     default:
@@ -428,6 +438,31 @@ function MergePreviewNotice({
         </Alert>
       );
   }
+}
+
+/** What merging decides in a canvas by itself, or what stops it, card by card. */
+function CanvasMergeNotes({ preview }: { readonly preview: WikiMergePreview }) {
+  if (preview.canvases.length === 0) return null;
+  return (
+    <Alert variant={preview.status === "conflict" ? "warning" : "info"}>
+      <TriangleAlertIcon />
+      <AlertTitle>
+        {preview.status === "conflict" ? "What clashes in the canvases" : "Merging decides these"}
+      </AlertTitle>
+      <AlertDescription>
+        {preview.canvases.map(({ file, notes }) => (
+          <div key={file} className="flex flex-col gap-1">
+            <span className="font-mono text-xs">{file}</span>
+            <ul className="flex list-disc flex-col gap-0.5 pl-4">
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 function AmendmentRow({
@@ -464,11 +499,19 @@ function AmendmentRow({
           disabled={!canWrite || busy}
           onClick={async () => {
             setBusy(true);
-            await revert({
+            const outcome = await revert({
               environmentId,
               input: { wikiId, changeRequestId, commit: amendment.commit },
             });
             setBusy(false);
+            const notes = outcome.ok ? (outcome.value.canvases ?? []) : [];
+            if (notes.length > 0) {
+              toastManager.add({
+                type: "info",
+                title: "Reverted, and the canvas was fitted to later work",
+                description: notes.flatMap((each) => each.notes).join(" "),
+              });
+            }
           }}
         >
           {busy ? <Spinner /> : null}
@@ -479,18 +522,37 @@ function AmendmentRow({
   );
 }
 
-function FileChange({
-  change,
-  onOpen,
-}: {
-  readonly change: WikiFileChange;
-  readonly onOpen: (() => void) | undefined;
-}) {
+function RawFileDiff({ change }: { readonly change: WikiFileChange }) {
   const { resolvedTheme } = useTheme();
   const diff = parseDiffFromFile(
     { name: change.file, contents: change.before ?? "" },
     { name: change.file, contents: change.after ?? "" },
   );
+  return (
+    <FileDiff
+      fileDiff={diff}
+      options={{
+        diffStyle: "unified",
+        theme: resolveDiffThemeName(resolvedTheme),
+        overflow: "wrap",
+        disableFileHeader: true,
+        preferredHighlighter: PREFERRED_HIGHLIGHTER,
+      }}
+    />
+  );
+}
+
+function FileChange({
+  change,
+  onOpen,
+  canvas,
+}: {
+  readonly change: WikiFileChange;
+  readonly onOpen: (() => void) | undefined;
+  readonly canvas: Omit<Parameters<typeof WikiCanvasReview>[0], "change">;
+}) {
+  const [json, setJson] = useState(false);
+  const isCanvas = isCanvasName(change.file);
   const label = change.before === null ? "Added" : change.after === null ? "Deleted" : "Changed";
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border">
@@ -499,22 +561,24 @@ function FileChange({
           {change.file}
         </span>
         <span className="text-xs text-muted-foreground">{label}</span>
+        {isCanvas ? (
+          <Button variant="ghost-muted" size="xs" onClick={() => setJson(!json)}>
+            {json ? "Board" : "JSON"}
+          </Button>
+        ) : null}
         {onOpen ? (
           <Button variant="ghost-muted" size="xs" onClick={onOpen}>
             Open
           </Button>
         ) : null}
       </div>
-      <FileDiff
-        fileDiff={diff}
-        options={{
-          diffStyle: "unified",
-          theme: resolveDiffThemeName(resolvedTheme),
-          overflow: "wrap",
-          disableFileHeader: true,
-          preferredHighlighter: PREFERRED_HIGHLIGHTER,
-        }}
-      />
+      {isCanvas && !json ? (
+        <Suspense fallback={null}>
+          <WikiCanvasReview {...canvas} change={change} />
+        </Suspense>
+      ) : (
+        <RawFileDiff change={change} />
+      )}
     </div>
   );
 }

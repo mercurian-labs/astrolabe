@@ -12,6 +12,7 @@ import {
   parseCanvas,
   placeCanvas,
   reviewCanvas,
+  reviewCanvasFiles,
   serializeCanvas,
   type CanvasBounds,
   type CanvasDrawing,
@@ -148,8 +149,22 @@ describe("reviewCanvas", () => {
   });
 
   it("treats a file added or deleted as all added or all removed", () => {
-    expect(canvasChangeSummary(reviewCanvas({}, before).changes)).toBe("5 added");
-    expect(canvasChangeSummary(reviewCanvas(before, {}).changes)).toBe("5 removed");
+    const review = (was: string | null, now: string | null) => {
+      const result = reviewCanvasFiles(was, now);
+      if ("invalid" in result) throw new Error(result.invalid);
+      return canvasChangeSummary(result.changes);
+    };
+    expect(review(null, JSON.stringify(before))).toBe("5 added");
+    expect(review(JSON.stringify(before), null)).toBe("5 removed");
+  });
+
+  it("says which version it can't read", () => {
+    expect(reviewCanvasFiles("{ nope", "{}")).toMatchObject({
+      invalid: expect.stringContaining("before this change"),
+    });
+    expect(reviewCanvasFiles("{}", "{ nope")).toMatchObject({
+      invalid: expect.stringContaining("This change's version"),
+    });
   });
 
   it("folds moves below what to read first", () => {

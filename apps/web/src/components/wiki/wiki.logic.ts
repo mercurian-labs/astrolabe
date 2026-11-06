@@ -39,6 +39,7 @@ export {
   noteNameOfFile,
   defaultSaveTarget,
   mergeBlockedReason,
+  mergeConflictAdvice,
   describeIndexError,
   describeWikiFailure,
   summarizeMirror,

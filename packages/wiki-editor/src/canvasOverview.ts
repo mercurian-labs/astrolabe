@@ -1,4 +1,4 @@
-import type { CanvasGroupNode, CanvasNode } from "@mercurian/wiki/canvas";
+import type { CanvasGroupNode, CanvasMarks, CanvasNode } from "@mercurian/wiki/canvas";
 
 import { canvasColor, type CanvasCamera, type CanvasEdgeShape } from "./canvasGeometry";
 
@@ -9,6 +9,14 @@ const PRESETS: Readonly<Record<string, string>> = {
   "4": "#30a46c",
   "5": "#00a2c7",
   "6": "#8e4ec6",
+};
+
+/** A canvas can't read the theme's tokens: what a review marks, at this distance. */
+const MARKS: Readonly<Record<string, string>> = {
+  added: "#30a46c",
+  removed: "#e5484d",
+  text: "#d6a100",
+  restyled: "#00a2c7",
 };
 
 interface OverviewItems {
@@ -61,6 +69,7 @@ export function drawCanvasOverview(
   width: number,
   height: number,
   items: OverviewItems,
+  marks: CanvasMarks,
 ) {
   const context = canvas.getContext("2d");
   if (context === null) return;
@@ -90,4 +99,10 @@ export function drawCanvasOverview(
   context.globalAlpha = 0.55;
   fillRects(context, items.cards, base);
   context.globalAlpha = 1;
+  for (const { id, x, y, width, height } of items.cards) {
+    const tint = MARKS[marks.cards[id] ?? ""];
+    if (tint === undefined) continue;
+    context.fillStyle = tint;
+    context.fillRect(x, y, width, height);
+  }
 }

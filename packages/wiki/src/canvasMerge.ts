@@ -247,20 +247,24 @@ function orderOf(
   };
 }
 
+type ReadSide =
+  | { readonly ok: true; readonly document: Raw }
+  | { readonly ok: false; readonly note: CanvasMergeNote };
+
 /** A version's document, or why it can't be merged. Never rewrites what it can't read. */
-function readSide(source: string, label: string): Raw | { readonly unreadable: CanvasMergeNote } {
+function readSide(source: string, label: string): ReadSide {
   const parsed = parseCanvas(source);
   if (!parsed.ok) {
     const message = `${label} isn't valid JSON, so this canvas can't be merged: ${parsed.error}`;
-    return { unreadable: { kind: "invalid", message } };
+    return { ok: false, note: { kind: "invalid", message } };
   }
   const { document } = parsed;
   const canvas =
     isRecord(document) &&
     (document.nodes === undefined || Array.isArray(document.nodes)) &&
     (document.edges === undefined || Array.isArray(document.edges));
-  if (canvas) return document;
-  return { unreadable: { kind: "invalid", message: `${label} isn't a canvas to merge.` } };
+  if (canvas) return { ok: true, document };
+  return { ok: false, note: { kind: "invalid", message: `${label} isn't a canvas to merge.` } };
 }
 
 /**
@@ -269,16 +273,18 @@ function readSide(source: string, label: string): Raw | { readonly unreadable: C
  * goes with it; a text edit against a delete is a conflict, and a look against a delete isn't.
  */
 export function canvasMerge(base: string, ours: string, theirs: string): CanvasMergeOutcome {
-  const read = [
-    readSide(base, "The version both sides started from"),
-    readSide(ours, "The version being merged into"),
-    readSide(theirs, "This change's version"),
-  ] as const;
-  const invalid = read.flatMap((side) =>
-    "unreadable" in side && isRecord(side.unreadable) ? [side.unreadable as CanvasMergeNote] : [],
-  );
-  if (invalid.length > 0) return { status: "conflict", conflicts: invalid };
-  const [was, mine, other] = read as readonly [Raw, Raw, Raw];
+  const read = {
+    base: readSide(base, "The version both sides started from"),
+    ours: readSide(ours, "The version being merged into"),
+    theirs: readSide(theirs, "This change's version"),
+  };
+  if (!read.base.ok || !read.ours.ok || !read.theirs.ok) {
+    const invalid = [read.base, read.ours, read.theirs].flatMap((side) =>
+      side.ok ? [] : [side.note],
+    );
+    return { status: "conflict", conflicts: invalid };
+  }
+  const [was, mine, other] = [read.base.document, read.ours.document, read.theirs.document];
 
   const said: Said = { resolved: [], conflicts: [] };
   const sides = { base: was, ours: mine, theirs: other };

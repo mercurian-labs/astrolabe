@@ -242,6 +242,7 @@ function ChangeRequestTab({
           }),
         )
       }
+      onOpenTab={nav.open}
       {...(openPullRequest ? { onOpenPullRequest: openPullRequest } : {})}
       {...(openThread
         ? {

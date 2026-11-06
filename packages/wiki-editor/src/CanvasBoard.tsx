@@ -3,6 +3,7 @@ import "./canvasBoard.css";
 
 import {
   canvasBounds,
+  CANVAS_MARK_LABELS,
   parseCanvas,
   type CanvasBounds,
   type CanvasCodeReference,
@@ -11,6 +12,8 @@ import {
   type CanvasFileNode,
   type CanvasGroupNode,
   type CanvasLinkNode,
+  type CanvasMark,
+  type CanvasMarks,
   type CanvasNode,
 } from "@mercurian/wiki/canvas";
 import {
@@ -134,6 +137,8 @@ export interface CanvasBoardHost extends Omit<CanvasMarkdownHost, "renderEmbed" 
 /** What a board's page drives from outside, such as Jump to group. */
 export interface CanvasBoardHandle {
   readonly focusCard: (id: string) => void;
+  /** Brings a card or arrow into view and selects it, above whatever covers it. */
+  readonly selectCard: (id: string) => void;
 }
 
 const FIT_PADDING = { fit: 8, free: 32 };
@@ -477,14 +482,19 @@ function SimpleCard({ node }: { readonly node: CanvasNode }) {
   }
 }
 
+const MarkBadge = ({ mark }: { readonly mark: CanvasMark | undefined }) =>
+  mark === undefined ? null : <span className="cv-mark">{CANVAS_MARK_LABELS[mark]}</span>;
+
 const CardNode = memo(function CardNode({
   node,
   selected,
   simple,
+  mark,
 }: {
   readonly node: Exclude<CanvasNode, CanvasGroupNode>;
   readonly selected: boolean;
   readonly simple: boolean;
+  readonly mark: CanvasMark | undefined;
 }) {
   const { mode } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -495,17 +505,24 @@ const CardNode = memo(function CardNode({
       data-kind={node.type}
       data-card-id={node.id}
       data-selected={selected || undefined}
+      data-mark={mark}
       style={{ ...position(node), ...style }}
       {...color}
     >
       {node.type === "file" ? <FileCardLabel node={node} /> : null}
+      <MarkBadge mark={mark} />
       <div className="cv-card-content" data-live={(live && !simple) || undefined}>
         {simple ? (
           <SimpleCard node={node} />
         ) : node.type === "text" ? (
           <TextCard text={node.text} />
         ) : node.type === "file" ? (
-          <FileCard node={node} live={live} />
+          // A removed card's file may be gone too, which isn't what this card is saying.
+          mark === "removed" ? (
+            <SimpleFile file={node.file} />
+          ) : (
+            <FileCard node={node} live={live} />
+          )
         ) : node.astrolabe?.code !== undefined ? (
           <CodeCard code={node.astrolabe.code} url={node.url} caption={node.astrolabe.caption} />
         ) : (
@@ -519,9 +536,11 @@ const CardNode = memo(function CardNode({
 const GroupNode = memo(function GroupNode({
   node,
   selected,
+  mark,
 }: {
   readonly node: CanvasGroupNode;
   readonly selected: boolean;
+  readonly mark: CanvasMark | undefined;
 }) {
   const { host } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -531,9 +550,11 @@ const GroupNode = memo(function GroupNode({
       className="cv-group"
       data-card-id={node.id}
       data-selected={selected || undefined}
+      data-mark={mark}
       style={{ ...position(node), ...style }}
       {...color}
     >
+      <MarkBadge mark={mark} />
       {node.background === undefined
         ? null
         : host.renderAsset?.({
@@ -546,11 +567,26 @@ const GroupNode = memo(function GroupNode({
   );
 });
 
-const EdgeNode = memo(function EdgeNode({ shape }: { readonly shape: CanvasEdgeShape }) {
+const EdgeNode = memo(function EdgeNode({
+  shape,
+  selected,
+  mark,
+}: {
+  readonly shape: CanvasEdgeShape;
+  readonly selected: boolean;
+  readonly mark: CanvasMark | undefined;
+}) {
   const { edge, path, heads } = shape;
   const { style, ...color } = colorProps(edge.color);
   return (
-    <g className="cv-edge" style={style} {...color}>
+    <g
+      className="cv-edge"
+      data-edge-id={edge.id}
+      data-selected={selected || undefined}
+      data-mark={mark}
+      style={style}
+      {...color}
+    >
       <path className="cv-edge-line" d={path} />
       {heads.map((head) => (
         <path key={head} className="cv-edge-head" d={head} />
@@ -603,6 +639,7 @@ interface Shown {
 }
 
 const NOTHING: Shown = { groups: [], cards: [], shapes: [], simple: false };
+const NO_MARKS: CanvasMarks = { cards: {}, arrows: {} };
 const OVERVIEW: Shown = { ...NOTHING, simple: true };
 
 function inView(layout: Layout, view: CanvasBounds, simple: boolean): Shown {
@@ -637,12 +674,18 @@ export function CanvasBoard({
   revision,
   camera: openingCamera,
   onCamera,
+  marks = NO_MARKS,
+  wheelOnceFocused = false,
   ref,
 }: {
   readonly data: CanvasData;
   readonly mode: "fit" | "free";
   readonly host?: CanvasBoardHost;
   readonly label: string;
+  /** What a review marks on the board. */
+  readonly marks?: CanvasMarks;
+  /** In a page that scrolls, the wheel stays the page's until the board is clicked. */
+  readonly wheelOnceFocused?: boolean;
   /** Changes when the wiki does: known files are read again, and the camera stays. */
   readonly revision?: string | undefined;
   /** Where the board opens, for a page that had to load again; read once. Unset, it fits. */
@@ -660,6 +703,7 @@ export function CanvasBoard({
   const [shown, setShown] = useState(NOTHING);
   const [selected, setSelected] = useState<string | null>(null);
   const layoutRef = useRef(layout);
+  const marksRef = useRef(marks);
   const boundsRef = useRef(bounds);
   const openingCameraRef = useRef(openingCamera);
   const onCameraRef = useRef(onCamera);
@@ -674,13 +718,17 @@ export function CanvasBoard({
     const next = inView(layoutRef.current, window, camera.zoom < SIMPLE_ZOOM);
     const overview = next.simple && next.cards.length > OVERVIEW_CARDS;
     if (overview && overviewRef.current !== null) {
-      drawCanvasOverview(overviewRef.current, camera, width, height, next);
+      drawCanvasOverview(overviewRef.current, camera, width, height, next, marksRef.current);
     }
     const mounted = overview ? OVERVIEW : next;
     setShown((current) => (sameShown(current, mounted) ? current : mounted));
     onCameraRef.current?.(view.fitted ? null : camera);
     if (next.simple) return;
-    reads.files.want(next.cards.flatMap((card) => (card.type === "file" ? [card.file] : [])));
+    reads.files.want(
+      next.cards.flatMap((card) =>
+        card.type === "file" && marksRef.current.cards[card.id] !== "removed" ? [card.file] : [],
+      ),
+    );
     reads.code.want(
       next.cards.flatMap((card) => {
         const code = card.type === "link" ? card.astrolabe?.code : undefined;
@@ -707,9 +755,10 @@ export function CanvasBoard({
       (keys) => host.readCodeStatus?.(keys.map(codeOfKey)) ?? Promise.resolve([]),
     );
     layoutRef.current = layout;
+    marksRef.current = marks;
     boundsRef.current = bounds;
     view.setBounds(bounds, mode === "fit");
-  }, [view, reads, host, layout, bounds, mode, onCamera]);
+  }, [view, reads, host, layout, marks, bounds, mode, onCamera]);
 
   const readAt = useRef(revision);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new commit in the wiki reads what's in view again, through the view, which knows what that is
@@ -726,6 +775,7 @@ export function CanvasBoard({
     const board = boardRef.current;
     if (board === null || mode !== "free") return;
     const onWheel = (event: WheelEvent) => {
+      if (wheelOnceFocused && !board.contains(document.activeElement)) return;
       const scrollable = (event.target as Element).closest("[data-live]");
       if (scrollable !== null && scrollable.scrollHeight > scrollable.clientHeight) return;
       event.preventDefault();
@@ -733,7 +783,7 @@ export function CanvasBoard({
     };
     board.addEventListener("wheel", onWheel, { passive: false });
     return () => board.removeEventListener("wheel", onWheel);
-  }, [view, mode]);
+  }, [view, mode, wheelOnceFocused]);
 
   useImperativeHandle(
     ref,
@@ -741,6 +791,13 @@ export function CanvasBoard({
       focusCard: (id) => {
         const node = layoutRef.current.byId.get(id);
         if (node !== undefined) view.focus(node);
+      },
+      selectCard: (id) => {
+        const { byId, shapes } = layoutRef.current;
+        const rect = byId.get(id) ?? shapes.find((shape) => shape.edge.id === id)?.bounds;
+        if (rect === undefined) return;
+        view.focus(rect);
+        setSelected(id);
       },
     }),
     [view],
@@ -864,11 +921,21 @@ export function CanvasBoard({
       <Board.Provider value={context}>
         <div ref={worldRef} className="cv-world">
           {shown.groups.map((node) => (
-            <GroupNode key={node.id} node={node} selected={node.id === selected} />
+            <GroupNode
+              key={node.id}
+              node={node}
+              selected={node.id === selected}
+              mark={marks.cards[node.id]}
+            />
           ))}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
             {shown.shapes.map((shape) => (
-              <EdgeNode key={shape.edge.id} shape={shape} />
+              <EdgeNode
+                key={shape.edge.id}
+                shape={shape}
+                selected={shape.edge.id === selected}
+                mark={marks.arrows[shape.edge.id]}
+              />
             ))}
           </svg>
           {shown.shapes.flatMap(({ edge, labelAt }) =>
@@ -880,6 +947,7 @@ export function CanvasBoard({
               node={node}
               selected={node.id === selected}
               simple={shown.simple}
+              mark={marks.cards[node.id]}
             />
           ))}
         </div>

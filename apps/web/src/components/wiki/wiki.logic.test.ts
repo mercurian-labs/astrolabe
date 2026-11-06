@@ -10,6 +10,7 @@ import {
   latestAmendmentFor,
   mapTilesFor,
   mergeBlockedReason,
+  mergeConflictAdvice,
   wikiDocumentName,
   parseWikiSearch,
   queuedSaveStep,
@@ -47,21 +48,33 @@ describe("mergeBlockedReason", () => {
     expect(
       mergeBlockedReason({
         canWrite: true,
-        preview: { status: "clean", conflicts: [], errors: [] },
+        preview: { status: "clean", conflicts: [], errors: [], canvases: [] },
       }),
     ).toBeNull();
     expect(
       mergeBlockedReason({
         canWrite: true,
-        preview: { status: "conflict", conflicts: ["A.md", "B.md"], errors: [] },
+        preview: { status: "conflict", conflicts: ["A.md", "B.md"], errors: [], canvases: [] },
       }),
     ).toBe("Conflicts with main in A.md, B.md.");
     expect(
       mergeBlockedReason({
         canWrite: false,
-        preview: { status: "clean", conflicts: [], errors: [] },
+        preview: { status: "clean", conflicts: [], errors: [], canvases: [] },
       }),
     ).toMatch(/permission/);
+  });
+});
+
+describe("mergeConflictAdvice", () => {
+  it("sends a canvas to its worktree, because an amendment can't write one", () => {
+    expect(mergeConflictAdvice(["A.md"], "computer")).toContain("Amend");
+    expect(mergeConflictAdvice([], "computer")).toContain("Amend");
+    const canvas = mergeConflictAdvice(["A.md", "Board.canvas"], "computer");
+    expect(canvas).toContain("worktree");
+    expect(canvas).not.toContain("Amend");
+    expect(mergeConflictAdvice(["Board.canvas"], "phone")).toContain("from the phone");
+    expect(mergeConflictAdvice(["A.md"], "phone")).toContain("Amend");
   });
 });
 

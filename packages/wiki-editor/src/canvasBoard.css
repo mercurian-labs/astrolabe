@@ -105,6 +105,53 @@
 .cv-board[data-mode="fit"] .cv-card-content {
   overflow: hidden;
 }
+/* What a review marks: the app's diff colours, with a word so colour isn't all that says it. */
+[data-mark="added"] {
+  --cv-mark: var(--diff-addition, var(--success, #30a46c));
+}
+[data-mark="removed"] {
+  --cv-mark: var(--diff-deletion, var(--destructive, #e5484d));
+}
+[data-mark="text"] {
+  --cv-mark: var(--warning, #d6a100);
+}
+[data-mark="restyled"] {
+  --cv-mark: var(--info, #00a2c7);
+}
+[data-mark="moved"] {
+  --cv-mark: var(--muted-foreground);
+}
+.cv-card[data-mark],
+.cv-group[data-mark] {
+  box-shadow: 0 0 0 calc(2px * var(--cv-ui, 1)) var(--cv-mark);
+}
+.cv-card[data-mark="moved"],
+.cv-group[data-mark="moved"] {
+  box-shadow: 0 0 0 calc(1px * var(--cv-ui, 1)) var(--cv-mark);
+}
+.cv-board .cv-card[data-mark="removed"],
+.cv-board .cv-group[data-mark="removed"] {
+  border-style: dashed;
+  box-shadow: none;
+  border-color: var(--cv-mark);
+}
+.cv-card[data-mark] .cv-card-label {
+  max-width: calc(100% - 56px * var(--cv-ui, 1));
+}
+.cv-card[data-mark="removed"] .cv-card-content {
+  opacity: 0.6;
+}
+.cv-mark {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  padding-bottom: 2px;
+  font-size: calc(11px * var(--cv-ui, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--cv-mark);
+  pointer-events: none;
+}
 /* Beneath a card's content until it's selected, the press lands on the board instead. */
 .cv-board[data-mode="free"] .cv-card-content:not([data-live]) > * {
   pointer-events: none;
@@ -433,6 +480,15 @@ span.cv-wikilink {
 }
 .cv-edge-head {
   fill: currentcolor;
+}
+.cv-edge[data-selected] .cv-edge-line {
+  stroke-width: calc(3px * var(--cv-ui, 1));
+}
+.cv-edge[data-mark] {
+  color: var(--cv-mark);
+}
+.cv-edge[data-mark="removed"] .cv-edge-line {
+  stroke-dasharray: calc(6px * var(--cv-ui, 1));
 }
 .cv-edge-label {
   position: absolute;

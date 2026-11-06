@@ -1,6 +1,16 @@
-import { CanvasBoard, type CanvasBoardHost } from "@mercurian/wiki-editor/canvas-board";
+import {
+  CanvasBoard,
+  type CanvasBoardHandle,
+  type CanvasBoardHost,
+} from "@mercurian/wiki-editor/canvas-board";
 import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
-import { canvasData, type CanvasData } from "@mercurian/wiki/canvas";
+import {
+  canvasData,
+  reviewCanvas,
+  type CanvasData,
+  type CanvasMarks,
+} from "@mercurian/wiki/canvas";
+import { createRef } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -36,12 +46,16 @@ function Frame({
   revision,
   camera,
   onCamera,
+  marks,
+  boardRef,
 }: {
   readonly data: CanvasData;
   readonly host?: CanvasBoardHost;
   readonly revision?: string;
   readonly camera?: CanvasCamera;
   readonly onCamera?: (camera: CanvasCamera | null) => void;
+  readonly marks?: CanvasMarks;
+  readonly boardRef?: Parameters<typeof CanvasBoard>[0]["ref"];
 }) {
   return (
     <div style={{ width: 1000, height: 700 }}>
@@ -53,6 +67,8 @@ function Frame({
         {...(revision === undefined ? {} : { revision })}
         {...(camera === undefined ? {} : { camera })}
         {...(onCamera === undefined ? {} : { onCamera })}
+        {...(marks === undefined ? {} : { marks })}
+        {...(boardRef === undefined ? {} : { ref: boardRef })}
       />
     </div>
   );
@@ -257,5 +273,79 @@ describe("cards", () => {
     await vi.waitFor(() => expect(readFiles).toHaveBeenCalledTimes(2));
     expect(world().style.transform).toBe(camera);
     expect(card("note").textContent).toContain("second");
+  });
+});
+
+describe("a board under review", () => {
+  const near = { y: 60, width: 200, height: 80 };
+  const before = {
+    nodes: [
+      { id: "kept", type: "text", text: "Kept", x: 40, ...near },
+      { id: "gone", type: "text", text: "Gone", x: 300, ...near },
+      { id: "file", type: "file", file: "Deleted too.md", x: 560, ...near },
+    ],
+    edges: [{ id: "arrow", fromNode: "kept", toNode: "gone" }],
+  };
+  const after = {
+    nodes: [
+      { id: "kept", type: "text", text: "Kept, edited", x: 40, ...near },
+      { id: "new", type: "text", text: "New", x: 40, y: 240, width: 200, height: 80 },
+    ],
+    edges: [],
+  };
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
+
+  it("marks what changed, and still draws what went without reading its file", async () => {
+    const { data, marks } = reviewCanvas(before, after);
+    const readFiles = vi.fn(async () => []);
+    await using _screen = await render(<Frame data={data} marks={marks} host={{ readFiles }} />, {
+      router: false,
+    });
+    await vi.waitFor(() => expect(card("gone")).not.toBeNull());
+    expect(card("kept")?.dataset.mark).toBe("text");
+    expect(card("new")?.dataset.mark).toBe("added");
+    expect(card("gone")?.dataset.mark).toBe("removed");
+    expect(card("gone")?.textContent).toContain("Gone");
+    expect(card("file")?.textContent).not.toContain("could not be found");
+    expect(document.querySelector<SVGElement>('[data-edge-id="arrow"]')?.dataset.mark).toBe(
+      "removed",
+    );
+    expect(readFiles).not.toHaveBeenCalled();
+  });
+
+  it("selects a card or an arrow it's asked to, and brings it into view", async () => {
+    const { data, marks } = reviewCanvas(before, after);
+    const boardRef = createRef<CanvasBoardHandle>();
+    await using _screen = await render(<Frame data={data} marks={marks} boardRef={boardRef} />, {
+      router: false,
+    });
+    await vi.waitFor(() => expect(card("gone")).not.toBeNull());
+    boardRef.current?.selectCard("gone");
+    await vi.waitFor(() => expect(card("gone")?.hasAttribute("data-selected")).toBe(true));
+    boardRef.current?.selectCard("arrow");
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-edge-id="arrow"]')?.hasAttribute("data-selected")).toBe(
+        true,
+      ),
+    );
+  });
+
+  it("leaves the wheel to the page until the board is clicked", async () => {
+    const { data } = reviewCanvas(before, after);
+    await using _screen = await render(
+      <div style={{ width: 1000, height: 700 }}>
+        <CanvasBoard data={data} mode="free" label="Board" wheelOnceFocused />
+      </div>,
+      { router: false },
+    );
+    await vi.waitFor(() => expect(card("kept")).not.toBeNull());
+    const spin = () => {
+      const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 40 });
+      board().dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(spin()).toBe(false);
+    board().focus();
+    expect(spin()).toBe(true);
   });
 });

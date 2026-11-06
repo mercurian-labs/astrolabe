@@ -127,10 +127,8 @@ const git = (cwd: string, args: ReadonlyArray<string>, stdin?: string) =>
 /** What git itself makes of a command, as `merge-tree` answers with its exit code. */
 const gitExit = (cwd: string, args: ReadonlyArray<string>) =>
   ProcessRunner.ProcessRunner.pipe(
-    Effect.flatMap((runner) =>
-      runner.run({ command: "git", args: ["-C", cwd, ...args], allowNonZeroExit: true }),
-    ),
-    Effect.map((result) => result.exitCode),
+    Effect.flatMap((runner) => runner.run({ command: "git", args: ["-C", cwd, ...args] })),
+    Effect.map((result) => result.code),
     Effect.provide(ProcessRunner.layer),
     Effect.orDie,
   );
@@ -637,6 +635,7 @@ it.effect("refuses a merge that conflicts with main", () =>
         status: "conflict",
         conflicts: ["Beta.md"],
         errors: [],
+        canvases: [],
       });
       const refused = yield* failure(wikis.merge({ wikiId, changeRequestId: id }));
       assert.equal(refused.reason, "conflict");
@@ -684,7 +683,11 @@ const boardChangeRequest = (harness: Harness, board: string) =>
   });
 
 const mergedBoard = (
-  { wikis, wikiId, root }: { wikis: WikiService.WikiService["Service"]; wikiId: WikiId; root: string },
+  {
+    wikis,
+    wikiId,
+    root,
+  }: { wikis: WikiService.WikiService["Service"]; wikiId: WikiId; root: string },
   changeRequestId: WikiChangeRequestId,
 ) =>
   Effect.gen(function* () {
@@ -787,6 +790,11 @@ it.effect("refuses a card's text edit against its delete, even where git merges 
       const preview = yield* cr.preview;
       assert.equal(preview.status, "conflict");
       assert.include(preview.canvases[0]?.notes[0], "edited on one side and deleted on the other");
+
+      // Keeping it: under a new id, the card is no longer the one main deleted.
+      const kept = { ...boardCard("a2", "Edited") };
+      yield* cr.saveBoard(boardFile([kept, ...cards.filter((card) => card.id !== "a")]));
+      assert.equal((yield* cr.preview).status, "clean");
     }),
   ),
 );
@@ -816,12 +824,12 @@ it.effect("reverts an amendment and drops the arrows later work drew on its card
         WikiService.person,
       );
       assert.include(reverted.canvases?.[0]?.notes[0], "is dropped");
-      const read = yield* cr.wikis.readFiles({
+      const { files } = yield* cr.wikis.readFiles({
         wikiId: cr.wikiId,
         commit: reverted.commit,
         paths: ["Board.canvas"],
       });
-      assert.deepEqual(JSON.parse(read.files[0]?.text ?? ""), {
+      assert.deepEqual(JSON.parse(files[0]?.text ?? ""), {
         nodes: [a, b, c],
         edges: [],
       });

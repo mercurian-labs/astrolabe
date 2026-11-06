@@ -520,6 +520,18 @@ export function reviewCanvas(before: unknown, after: unknown): CanvasReview {
   };
 }
 
+/** A change request's two versions of a file to review; either is null when it isn't there. */
+export function reviewCanvasFiles(
+  before: string | null,
+  after: string | null,
+): CanvasReview | { readonly invalid: string } {
+  const was = parseCanvas(before ?? "");
+  if (!was.ok) return { invalid: `The version before this change isn't valid JSON: ${was.error}` };
+  const now = parseCanvas(after ?? "");
+  if (!now.ok) return { invalid: `This change's version isn't valid JSON: ${now.error}` };
+  return reviewCanvas(was.document, now.document);
+}
+
 const MARK_ORDER: ReadonlyArray<CanvasMark> = ["added", "removed", "text", "restyled", "moved"];
 
 const MARK_WORDS: Readonly<Record<CanvasMark, string>> = {

@@ -80,6 +80,25 @@ export function mergeBlockedReason(input: {
   }
 }
 
+/**
+ * What to do about a conflict, from where the person is. An amendment can't write a canvas, so
+ * until agents can, a canvas is settled by hand in the change request's worktree.
+ */
+export function mergeConflictAdvice(
+  conflicts: ReadonlyArray<string>,
+  from: "computer" | "phone",
+): string {
+  if (conflicts.length === 0)
+    return "Amend this change request to settle the conflict, then merge.";
+  const both = `Edited on both sides: ${conflicts.join(", ")}.`;
+  if (!conflicts.some(isCanvasName)) {
+    return `${both} Amend this change request to settle them, then merge.`;
+  }
+  return from === "phone"
+    ? `${both} A canvas can't be settled from the phone. On a computer, edit it in this change request's worktree so the clashing cards agree with main, and save the edits to the change request.`
+    : `${both} A canvas is settled in this change request's worktree: edit it there, in Obsidian or any editor, so the clashing cards agree with main, then use Save edits to the change request and merge.`;
+}
+
 /** A standing index error in plain words. */
 export function describeIndexError(error: WikiIndexError): string {
   if (error.edge) {
