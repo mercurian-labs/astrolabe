@@ -221,7 +221,7 @@ export function KeepCanvasSheet(props: {
         // Below the sheet's translucent header, as the other app sheets lay out.
         contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
         contentContainerClassName="gap-4 px-4 pt-4 pb-10"
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
       >
         {body()}
       </ScrollView>
