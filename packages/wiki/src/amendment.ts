@@ -31,6 +31,7 @@ import {
   type WikiIndex,
   type WikiIndexError,
 } from "./wikiIndex.ts";
+import type { WikiMove } from "./trailers.ts";
 
 /** Whole new file content per changed file; `null` deletes the file. */
 export type WikiChanges = Readonly<Record<string, string | null>>;
@@ -80,6 +81,8 @@ export interface PlannedAmendment {
   /** The changes to commit, including any map whose warnings this amendment stamped. */
   readonly changes: WikiChanges;
   readonly attachment?: WikiAttachment;
+  /** What this moves, recorded on its commit. */
+  readonly moved?: ReadonlyArray<WikiMove>;
   /** Index errors standing after the amendment (stale edges included). */
   readonly errors: ReadonlyArray<WikiIndexError>;
   /** What a canvas transform reports, returned with the amendment. */
@@ -246,6 +249,7 @@ export interface WikiBlob {
 export interface PlannedMove {
   readonly changes: WikiChanges;
   readonly blobs: Readonly<Record<string, string | null>>;
+  readonly moved: ReadonlyArray<WikiMove>;
 }
 
 /** What a link becomes when `moves` happen: null leaves it. */
@@ -327,7 +331,7 @@ function applyMoves(
     blobs[file] = null;
     blobs[moved] = oid;
   }
-  return { changes, blobs };
+  return { changes, blobs, moved: [...moves].map(([from, to]) => ({ from, to })) };
 }
 
 /** The type a document keeps through a move: a new name can't turn a note into a board. */

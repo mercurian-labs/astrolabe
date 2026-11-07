@@ -14,6 +14,8 @@ import {
   keepWarningHistory,
   folderOf,
   freePath,
+  MOVES_LOG_FORMAT,
+  parseMoves,
   planAmendment,
   planMove,
   planCanvasEdits,
@@ -27,6 +29,7 @@ import {
   type WikiBlob,
   type WikiFiles,
   type WikiIndex,
+  type WikiMove,
   canvasMerge,
   canvasMergeMessages,
   mergeMarkdown,
@@ -135,6 +138,7 @@ import {
   EDIT_TIMES_FORMAT,
   parseFileListing,
   parseFileTimes,
+  withRecordedMoves,
   type WikiFileTimes,
   parseMergeTree,
   type WikiRecord,
@@ -1199,6 +1203,35 @@ const make = Effect.gen(function* () {
     return amendments;
   });
 
+  /** What changed from `from` to the head: what git sees, and the moves it can't. */
+  const changeList = Effect.fn("WikiService.changeList")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+    from: string,
+  ) {
+    const [diff, log] = yield* Effect.all(
+      [
+        runGit("changeList", wiki.root, [
+          "diff",
+          "--find-renames",
+          "--name-status",
+          "-z",
+          from,
+          stored.head,
+        ]),
+        runGit("recordedMoves", wiki.root, [
+          "log",
+          "--reverse",
+          "--no-merges",
+          `--format=${MOVES_LOG_FORMAT}`,
+          `${stored.record.base}..${stored.head}`,
+        ]),
+      ],
+      { concurrency: "unbounded" },
+    );
+    return withRecordedMoves(parseChangeList(diff.stdout), parseMoves(log.stdout));
+  });
+
   const filesOf = Effect.fn("WikiService.filesOf")(function* (
     wiki: WikiRecord,
     stored: StoredChangeRequest,
@@ -1206,21 +1239,16 @@ const make = Effect.gen(function* () {
     const range = `${stored.record.base}..${stored.head}`;
     const cached = changedFiles.get(range);
     if (cached !== undefined) return cached;
-    const listed = parseChangeList(
-      (yield* runGit("changedFiles", wiki.root, [
-        "diff",
-        "--find-renames",
-        "--name-status",
-        "-z",
-        stored.record.base,
-        stored.head,
-      ])).stdout,
-    );
+    const listed = yield* changeList(wiki, stored, stored.record.base);
     // Both paths stay in `files`: whatever travels with a change request needs each.
     const changed: ChangedFiles = {
-      files: listed
-        .flatMap(({ file, movedFrom }) => (movedFrom === undefined ? [file] : [movedFrom, file]))
-        .toSorted(),
+      files: [
+        ...new Set(
+          listed.flatMap(({ file, movedFrom }) =>
+            movedFrom === undefined ? [file] : [movedFrom, file],
+          ),
+        ),
+      ].toSorted(),
       moves: listed.flatMap(({ file, movedFrom }) =>
         movedFrom === undefined ? [] : [{ from: movedFrom, to: file }],
       ),
@@ -1521,6 +1549,7 @@ const make = Effect.gen(function* () {
               ...(author.threadId === null ? {} : { thread: author.threadId }),
               ...(reverts === undefined ? {} : { reverts }),
               ...(autosave === undefined ? {} : { autosave }),
+              ...(planned.moved === undefined ? {} : { moved: planned.moved }),
             }),
             env,
           );
@@ -1602,11 +1631,16 @@ const make = Effect.gen(function* () {
   };
 
   /** A move adds no edge, so an edge that stood unsupported before only comes along. */
-  const planMoved = (files: WikiFiles, stamp: AmendmentStamp, { changes, blobs }: PlannedMove) => ({
+  const planMoved = (
+    files: WikiFiles,
+    stamp: AmendmentStamp,
+    { changes, blobs, moved }: PlannedMove,
+  ) => ({
     ...(Object.keys(changes).length === 0
       ? { changes, errors: [] }
       : planAmendment(files, changes, stamp, { allowUnstamped: true })),
     blobs,
+    moved,
   });
 
   const planWikiTransform =
@@ -1966,7 +2000,7 @@ const make = Effect.gen(function* () {
 
   /** Lands files already carried from elsewhere; a warning they drop from a map stays on it. */
   const planCarried =
-    ({ changes, blobs }: CarriedFiles) =>
+    ({ changes, blobs }: CarriedFiles, moved: ReadonlyArray<WikiMove> = []) =>
     (files: WikiFiles, stamp: AmendmentStamp) => {
       const planned =
         Object.keys(changes).length === 0
@@ -1974,7 +2008,7 @@ const make = Effect.gen(function* () {
           : planAmendment(files, keepWarningHistory(files, changes), stamp, {
               allowUnstamped: true,
             });
-      return { ...planned, blobs };
+      return { ...planned, blobs, moved };
     };
 
   const draftMove: WikiService["Service"]["draftMove"] = (input, author) =>
@@ -2032,6 +2066,9 @@ const make = Effect.gen(function* () {
             }
             const merged = yield* changesBetween(wiki, target.head, tree);
             const first = documentSubject(files[0] ?? "");
+            const moves = (yield* filesOf(wiki, draft)).moves.filter(
+              ({ from, to }) => files.includes(from) && files.includes(to),
+            );
             const moved =
               carriedNames(merged).length === 0
                 ? yield* view(wiki, target)
@@ -2042,7 +2079,7 @@ const make = Effect.gen(function* () {
                     files.length === 1
                       ? `Move ${first} from a draft`
                       : `Move ${files.length} documents from a draft`,
-                    planCarried(merged),
+                    planCarried(merged, moves),
                   )).changeRequest;
             if (files.length === inDraft.length) {
               yield* recordChangeRequest(
@@ -2124,6 +2161,14 @@ const make = Effect.gen(function* () {
             }
             const { tree, canvases } = merged;
             const inverseChanges = yield* changesBetween(wiki, stored.head, tree);
+            const undone = parseMoves(
+              yield* gitOut("revertedMoves", wiki.root, [
+                "log",
+                "-1",
+                `--format=${MOVES_LOG_FORMAT}`,
+                commit,
+              ]),
+            );
             const subject = (yield* amendmentsOf(wiki, stored)).find(
               (amendment) => amendment.commit === commit,
             )?.subject;
@@ -2133,7 +2178,10 @@ const make = Effect.gen(function* () {
               author,
               `Revert "${subject ?? commit.slice(0, 12)}"`,
               // Warning history survives the inverse; resolving a warning is its own amendment.
-              planCarried(inverseChanges),
+              planCarried(
+                inverseChanges,
+                undone.toReversed().map(({ from, to }) => ({ from: to, to: from })),
+              ),
               { reverts: commit },
             );
             return canvases.length > 0 ? { ...landed, canvases } : landed;
@@ -2847,16 +2895,9 @@ const make = Effect.gen(function* () {
                   allowExitCodes: [1],
                 })).stdout.trim() || stored.record.base
               : stored.record.base;
-          const listed = parseChangeList(
-            (yield* runGit("changeList", wiki.root, [
-              "diff",
-              "--find-renames",
-              "--name-status",
-              "-z",
-              from,
-              stored.head,
-            ])).stdout,
-          ).filter(({ file }) => isWikiDocument(file));
+          const listed = (yield* changeList(wiki, stored, from)).filter(({ file }) =>
+            isWikiDocument(file),
+          );
           const contents = yield* readObjects(wiki.root, [
             ...listed.map(({ file, movedFrom }) => `${from}:${movedFrom ?? file}`),
             ...listed.map(({ file }) => `${stored.head}:${file}`),

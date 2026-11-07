@@ -2476,6 +2476,84 @@ it.effect("moves a draft's pasted image out whole, or goes back on it", () =>
 
 const LONG_NOTE = `${"A line the note keeps through its move.\n".repeat(8)}Links to [[Beta]].\n`;
 
+const REWRITTEN = `${"Nothing of this was in the note before.\n".repeat(12)}`;
+
+it.effect("keeps a move a move when an edit took it below what git can see", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Long.md": LONG_NOTE });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Long"]);
+      const person = WikiService.person;
+      const edited = yield* wikis.autosave(
+        { wikiId, document: "Long.md", write: { kind: "text", file: "Long.md", text: REWRITTEN } },
+        person,
+      );
+      const changeRequestId = edited.changeRequest!.changeRequestId;
+      const first = yield* wikis.move({ wikiId, from: "Long.md", to: "shelf/Long.md" }, person);
+      assert.deepEqual(first.changeRequest!.moves, [{ from: "Long.md", to: "shelf/Long.md" }]);
+      const detail = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      assert.deepEqual(
+        detail.files.map(({ file, movedFrom }) => [file, movedFrom]),
+        [["shelf/Long.md", "Long.md"]],
+      );
+      assert.equal(detail.files[0]?.before, LONG_NOTE);
+      assert.equal(detail.files[0]?.after, REWRITTEN);
+
+      // Moved again, it's one move from where it began.
+      const second = yield* wikis.move(
+        { wikiId, from: "shelf/Long.md", to: "desk/Short.md" },
+        person,
+      );
+      assert.deepEqual(second.changeRequest!.moves, [{ from: "Long.md", to: "desk/Short.md" }]);
+
+      // Going back on the second leaves the first; going back on the first leaves an edit.
+      const back = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: second.commit! },
+        person,
+      );
+      assert.deepEqual(back.changeRequest.moves, [{ from: "Long.md", to: "shelf/Long.md" }]);
+      const home = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: first.commit! },
+        person,
+      );
+      assert.isUndefined(home.changeRequest.moves);
+      assert.deepEqual(home.changeRequest.files, ["Long.md"]);
+    }),
+  ),
+);
+
+it.effect("brings a move an edit hid along when its draft moves into a change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Long.md": LONG_NOTE });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Long"]);
+      const person = WikiService.person;
+      const target = yield* wikis.amend(
+        { wikiId, title: "Target", message: "Open", changes: { "Gamma.md": "Gamma.\n" } },
+        person,
+      );
+      const edited = yield* wikis.autosave(
+        { wikiId, document: "Long.md", write: { kind: "text", file: "Long.md", text: REWRITTEN } },
+        person,
+      );
+      yield* wikis.move({ wikiId, from: "Long.md", to: "shelf/Long.md" }, person);
+      const moved = yield* wikis.draftMove(
+        {
+          wikiId,
+          changeRequestId: edited.changeRequest!.changeRequestId,
+          to: target.changeRequest.changeRequestId,
+        },
+        person,
+      );
+      assert.deepEqual(moved.moves, [{ from: "Long.md", to: "shelf/Long.md" }]);
+    }),
+  ),
+);
+
 it.effect("shows a moved document as a move, with its creation time carried", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

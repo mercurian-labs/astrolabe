@@ -5,7 +5,7 @@
  *
  * @module wikiStorage
  */
-import { parseAmendmentTrailers } from "@mercurian/wiki";
+import { parseAmendmentTrailers, type WikiMove } from "@mercurian/wiki";
 import {
   IsoDateTime,
   ProjectId,
@@ -91,6 +91,8 @@ export const parseTreeListing = (
   });
 
 interface NameStatus {
+  /** Git's letter: `A`, `D`, `M`, `R` and the like. */
+  readonly status: string;
   readonly file: string;
   /** The path it had, when git took the change for a move. */
   readonly movedFrom?: string;
@@ -104,10 +106,10 @@ function nameStatuses(fields: ReadonlyArray<string>): ReadonlyArray<NameStatus> 
     if (status === "") {
       at += 1;
     } else if (status.startsWith("R")) {
-      found.push({ file: fields[at + 2] ?? "", movedFrom: fields[at + 1] ?? "" });
+      found.push({ status: "R", file: fields[at + 2] ?? "", movedFrom: fields[at + 1] ?? "" });
       at += 3;
     } else {
-      found.push({ file: fields[at + 1] ?? "" });
+      found.push({ status: status.charAt(0), file: fields[at + 1] ?? "" });
       at += 2;
     }
   }
@@ -117,6 +119,45 @@ function nameStatuses(fields: ReadonlyArray<string>): ReadonlyArray<NameStatus> 
 /** `git diff --find-renames --name-status -z`: what changed, with what moved as one file. */
 export const parseChangeList = (output: string): ReadonlyArray<NameStatus> =>
   nameStatuses(output.split("\0"));
+
+/**
+ * `listed`, with the moves amendments recorded (oldest first) as one file each. A move of a moved
+ * file chains to where it began. One the diff doesn't bear out, as a reverted one, is left out.
+ */
+export function withRecordedMoves(
+  listed: ReadonlyArray<NameStatus>,
+  recorded: ReadonlyArray<WikiMove>,
+): ReadonlyArray<NameStatus> {
+  const began = new Map<string, string>();
+  for (const { from, to } of recorded) {
+    const origin = began.get(from) ?? from;
+    began.delete(from);
+    began.set(to, origin);
+  }
+  const left = new Set<string>();
+  const arrived = new Set<string>();
+  for (const { status, file, movedFrom } of listed) {
+    if (status === "D") left.add(file);
+    if (movedFrom !== undefined) left.add(movedFrom);
+    if (status === "A" || status === "R") arrived.add(file);
+  }
+  const moved = new Map([...began].filter(([to, from]) => arrived.has(to) && left.has(from)));
+  const sources = new Set(moved.values());
+  return listed
+    .flatMap((entry): ReadonlyArray<NameStatus> =>
+      entry.movedFrom !== undefined && (moved.has(entry.file) || sources.has(entry.movedFrom))
+        ? [
+            { status: "D", file: entry.movedFrom },
+            { status: "A", file: entry.file },
+          ]
+        : [entry],
+    )
+    .flatMap((entry): ReadonlyArray<NameStatus> => {
+      const movedFrom = moved.get(entry.file);
+      if (movedFrom !== undefined) return [{ status: "R", file: entry.file, movedFrom }];
+      return sources.has(entry.file) ? [] : [entry];
+    });
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
