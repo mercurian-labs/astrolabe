@@ -1,3 +1,4 @@
+import { canvasFile } from "@mercurian/wiki/placement";
 import { useNavigation } from "@react-navigation/native";
 import {
   isAtomCommandInterrupted,
@@ -61,7 +62,8 @@ export function KeepCanvasSheet(props: {
   const [error, setError] = useState<string | null>(null);
   const [kept, setKept] = useState<Kept | null>(null);
   const wikiId = picked ?? wikis[0]?.wikiId ?? null;
-  const canSubmit = wikiId !== null && name.trim().length > 0 && !busy;
+  const placeable = canvasFile(name) !== null;
+  const canSubmit = wikiId !== null && placeable && !busy;
 
   const addToChat = () => {
     const record = canvasContextRecord({
@@ -199,8 +201,14 @@ export function KeepCanvasSheet(props: {
             value={name}
             onChangeText={setName}
             maxLength={200}
+            autoCapitalize="none"
             className="rounded-[20px] bg-grouped-card px-4 py-3 text-base text-foreground"
           />
+          <Text className="px-4 text-xs text-foreground-muted">
+            {!placeable && name.trim() !== ""
+              ? "A wiki can't hold a canvas at this path."
+              : "It lands at the top of the wiki. Type a folder to file it there: ops/Board."}
+          </Text>
         </View>
         {error ? <Text className="text-sm text-danger">{error}</Text> : null}
         <Button

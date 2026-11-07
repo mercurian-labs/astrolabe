@@ -21,6 +21,17 @@ export function settingsFolder(text: string): string | null {
   return isWikiPath(`${folder}/x`) ? folder : null;
 }
 
+/**
+ * The canvas a typed name means. A canvas goes where it's typed, the top of the wiki unless that
+ * names a folder: no setting decides. Null for what a wiki can't hold.
+ */
+export function canvasFile(name: string): string | null {
+  const path = name.trim().replace(/^\/+/, "");
+  if (path === "" || path.endsWith("/")) return null;
+  const file = path.endsWith(".canvas") ? path : `${path}.canvas`;
+  return isWikiPath(file) ? file : null;
+}
+
 const joined = (folder: string, name: string) =>
   folder === "" || name === "" ? `${folder}${name}` : `${folder}/${name}`;
 

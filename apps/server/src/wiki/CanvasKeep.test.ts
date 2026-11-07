@@ -41,6 +41,7 @@ const drawing: CanvasShowInput = {
 };
 
 interface World {
+  readonly name?: string;
   readonly item?: unknown;
   readonly commit?: string | null;
   readonly identity?: unknown;
@@ -104,7 +105,7 @@ const keep = (world: World) => {
           wikiId: WIKI,
           threadId: THREAD,
           itemId: ITEM,
-          name: "The merge",
+          name: world.name ?? "The merge",
           ...(world.comment === undefined ? {} : { comment: world.comment }),
         },
         world.author ?? { actor: "You", threadId: THREAD },
@@ -125,6 +126,18 @@ const nodeWith = (source: string, text: string) => {
   assert.isDefined(node);
   return node as Record<string, unknown>;
 };
+
+it.effect("keeps a board in the folder its name gives, refusing what no wiki can hold", () =>
+  Effect.gen(function* () {
+    const { result, transforms } = yield* keep({ name: "/ops/deep/The merge" });
+    assert.equal(result.file, "ops/deep/The merge.canvas");
+    const transform = transforms[0]?.transform;
+    assert.equal(transform?.kind === "canvas-create" ? transform.file : "", result.file);
+
+    const refused = yield* Effect.flip(keep({ name: "../The merge" }));
+    assert.equal(refused.reason, "invalid");
+  }),
+);
 
 it.effect("lands a board as a new canvas, at the coordinates the thread showed", () =>
   Effect.gen(function* () {

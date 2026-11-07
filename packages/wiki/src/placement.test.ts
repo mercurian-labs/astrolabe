@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   attachmentFolder,
   attachmentPath,
+  canvasFile,
   cleanFileName,
   freePath,
   newNoteFile,
@@ -112,6 +113,20 @@ describe("where a new note lands (ATTACHMENTS-REPORT C, LINKS-REPORT A5, rule 12
     ["", beside, null, null],
   ] as const)("%s, %o, from %s lands at %j", (target, placement, from, file) => {
     expect(newNoteFile(target, from, placement, files)).toBe(file);
+  });
+
+  it.each([
+    ["Board", "Board.canvas"],
+    [" Board.canvas ", "Board.canvas"],
+    ["ops/deep/Board", "ops/deep/Board.canvas"],
+    ["/ops/Board", "ops/Board.canvas"],
+    ["", null],
+    ["ops/", null],
+    ["../Board", null],
+    ["a/../Board", null],
+    [".git/Board", null],
+  ] as const)("keeps a canvas typed as %j at %j", (name, file) => {
+    expect(canvasFile(name)).toBe(file);
   });
 
   it("reads a folder from settings, refusing .. and anything else no wiki holds", () => {

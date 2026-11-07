@@ -44,7 +44,9 @@ const CanvasKeepTool = Tool.make(CANVAS_KEEP_TOOL_NAME, {
     wiki: Schema.NonEmptyString.annotate({
       description: "The wiki's id or name, as astrolabe_wiki_list shows it.",
     }),
-    name: Schema.NonEmptyString.annotate({ description: "Its name in the wiki, as Name.canvas." }),
+    name: Schema.NonEmptyString.annotate({
+      description: "Its path in the wiki, as Name.canvas at the top or area/Name.canvas.",
+    }),
     itemId: Schema.NonEmptyString.annotate({
       description: "The itemId from the user's board reference.",
     }),

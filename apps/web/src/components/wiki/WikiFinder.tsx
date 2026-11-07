@@ -1,5 +1,5 @@
-import { newNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
-import { isHidden, isWikiPath } from "@mercurian/wiki/resolve-link";
+import { canvasFile, newNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
+import { isHidden } from "@mercurian/wiki/resolve-link";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -22,7 +22,7 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
 import { isWikisPath } from "../sidebar/mainAppLocation";
-import { documentPath, isCanvasName, noteKey } from "./wiki.logic";
+import { documentPath, noteKey } from "./wiki.logic";
 import { useWikiOverviews, useWikiPlacement } from "./wikiEnvironment";
 import { openWikiTab, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
 import { useWikiTreeView } from "./wikiTreeView";
@@ -327,10 +327,10 @@ export function finderGroups(input: {
           ];
         });
   // A canvas opens unwritten, as a note does, and its page offers to start it.
-  const canvasName = `${(isCanvasName(name) ? name : `${name}.canvas`).replace(/^\/+/, "")}`;
-  const canvasTaken = documents.some((document) => noteKey(document.name) === noteKey(canvasName));
+  const canvasName = canvasFile(name);
   const canvasItems: CommandPaletteActionItem[] =
-    name === "" || canvasTaken || !isWikiPath(canvasName)
+    canvasName === null ||
+    documents.some((document) => noteKey(document.name) === noteKey(canvasName))
       ? []
       : targets.map((overview) => ({
           kind: "action",

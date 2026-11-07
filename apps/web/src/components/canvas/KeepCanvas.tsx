@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { canvasFile } from "@mercurian/wiki/placement";
 import { keepCanvasName } from "@t3tools/client-runtime/wikiLogic";
 import {
   COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS,
@@ -52,7 +53,8 @@ function PlaceForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keep = useWikiCommand(wikiEnvironment.keepCanvas);
-  const canSubmit = wikiId !== undefined && name.trim().length > 0 && !busy;
+  const placeable = canvasFile(name) !== null;
+  const canSubmit = wikiId !== undefined && placeable && !busy;
 
   const submit = async () => {
     if (!canSubmit || wikiId === undefined) return;
@@ -113,8 +115,14 @@ function PlaceForm({
           id={`${id}-name`}
           autoFocus
           value={name}
+          aria-describedby={`${id}-name-hint`}
           onChange={(event) => setName(event.target.value)}
         />
+        <p id={`${id}-name-hint`} className="text-xs text-muted-foreground">
+          {!placeable && name.trim() !== ""
+            ? "A wiki can't hold a canvas at this path."
+            : "It lands at the top of the wiki. Type a folder to file it there: ops/Board."}
+        </p>
       </div>
       {error === null ? null : (
         <Alert variant="error">

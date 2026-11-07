@@ -6,6 +6,7 @@
  * @module CanvasKeep
  */
 import {
+  canvasFile,
   keptCanvasSource,
   placeCanvas,
   type CanvasCodePin,
@@ -173,6 +174,14 @@ const make = Effect.gen(function* () {
 
   const keep: CanvasKeep["Service"]["keep"] = Effect.fn("CanvasKeep.keep")(
     function* (input, author) {
+      const file = canvasFile(input.name);
+      if (file === null) {
+        return yield* new WikiError({
+          reason: "invalid",
+          message: `A wiki can't hold a canvas at ${input.name}.`,
+          wikiId: input.wikiId,
+        });
+      }
       const item = yield* orchestrator
         .getTurnItem({ threadId: input.threadId, itemId: input.itemId })
         .pipe(Effect.mapError((cause) => gone(input, cause)));
@@ -211,7 +220,6 @@ const make = Effect.gen(function* () {
         `${input.itemId}:${input.name}`,
       );
 
-      const file = /\.canvas$/i.test(input.name) ? input.name : `${input.name}.canvas`;
       const title = `Keep ${drawing.value.title}`;
       const landed = yield* wikis.transform(
         {
