@@ -27,8 +27,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Change requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
-  every wiki) and goes there. Documents (newest first) use the settled threads'
-  slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
+  every wiki) and goes there. The tree's rows show a time, or a change's mark; right-click or
+  Shift-F10 opens a row's menu, F2 renames, a drag onto a folder moves (`wiki.move`) and a drag
+  out carries the selection to panes and boards. **Flat list, newest first** and search use the
+  settled threads' slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
   card: wiki, machine, links and the open changes holding it. A wiki change request
   opened here (the finder, a deep link) is a foreign tab offering **Open in Changes**.
@@ -38,8 +40,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a change request in a worktree"`
   beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
   worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
-  a typed title offers "New change request “<title>” in a worktree". There is no list or
-  tree mode: outside search the sidebar is each shown wiki's worktrees (`WikiWorktreeSections`;
+  a typed title offers "New change request “<title>” in a worktree". Outside search the sidebar is
+  each shown wiki's worktrees, main's documents a `@pierre/trees` tree (`WikiDocumentTree`, flat
+  newest-first and hidden files are choices in the filter, `astrolabe:wiki-tree-view:v1`;
+  `WikiWorktreeSections`;
   with several wikis each under `button "<wiki>"` with its icon, open by default), as Projects
   lists a repository's: main under the wiki's main branch, a change request's under its title.
   Each header has Projects' toggle, `button "Show its files"` / `"Show its documents"`
