@@ -25,16 +25,11 @@ export const isWikiPath = (file: string): boolean =>
     .split("/")
     .every((part) => part !== "" && part !== "." && part !== ".." && key(part) !== ".git");
 
-/** Operational files beside the notes; never knowledge. */
-const RESERVED = new Set(["agents.md", "claude.md", "readme.md"]);
-
 const nameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
 /** A note, a skill map, a base or a canvas, in any folder. */
 export const isWikiDocument = (file: string): boolean =>
-  (file.endsWith(".md") || file.endsWith(".base") || file.endsWith(".canvas")) &&
-  isWikiPath(file) &&
-  !RESERVED.has(key(nameOf(file)));
+  (file.endsWith(".md") || file.endsWith(".base") || file.endsWith(".canvas")) && isWikiPath(file);
 
 /** What opens as a wiki's own document: anything else, a skill map too, opens as a file. */
 export const isDocumentFile = (file: string): boolean =>

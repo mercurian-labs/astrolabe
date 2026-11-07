@@ -482,7 +482,7 @@ it.effect("reads, links and edits documents in folders, two of them sharing a na
         "a/Note.md": "Beside it.\n",
         "b/Plan.md": "# Two\n\n[[Plan]]\n",
         "b/deep/Board.canvas": '{"nodes":[{"id":"c","type":"file","file":"a/Plan.md"}],"edges":[]}',
-        "docs/README.md": "Operational, in any folder.\n",
+        "docs/README.md": "A note like any other.\n",
         ".github/Guide.md": "Hidden.\n",
       });
       yield* git(root, ["add", "."]);
@@ -497,6 +497,7 @@ it.effect("reads, links and edits documents in folders, two of them sharing a na
         "a/Note.md",
         "a/Plan.md",
         "b/Plan.md",
+        "docs/README.md",
       ]);
       assert.equal(notes.get("a/Plan.md")?.name, "a/Plan");
       // Itself twice over, and the board's file card.
@@ -528,7 +529,7 @@ it.effect("reads, links and edits documents in folders, two of them sharing a na
         folders: [
           { path: "a", documents: 2 },
           { path: "b", documents: 2 },
-          { path: "docs", documents: 0 },
+          { path: "docs", documents: 1 },
         ],
         documents: ["Alpha.md", "Beta.md", "Product.skillmap.md"],
         files: [],

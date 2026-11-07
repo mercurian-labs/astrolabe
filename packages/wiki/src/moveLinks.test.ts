@@ -173,11 +173,11 @@ describe("moving a document", () => {
     ]);
   });
 
-  it("takes a case-only rename, and refuses a taken path, a reserved name and a dot-path", () => {
+  it("takes a case-only rename and a README, and refuses a taken path and a dot-path", () => {
     expect(planRename({ "cz/CsT.md": "x" }, [], "cz/CsT", "cst").changes["cz/cst.md"]).toBe("x");
     const files = { "a/N.md": "x", "b/N.md": "y" };
     expect(() => planRename(files, [], "a/N", "b/n")).toThrow(AmendmentError);
-    expect(() => planRename(files, [], "a/N", "a/README")).toThrow(AmendmentError);
+    expect(planRename(files, [], "a/N", "a/README").changes["a/README.md"]).toBe("x");
     expect(() => planRename(files, [], "a/N", "../N")).toThrow(AmendmentError);
     expect(() => planRename(files, [], "a/N", ".git/N")).toThrow(AmendmentError);
     expect(() => planRename(files, [{ file: "c/N.md", oid: "1" }], "a/N", "c/N")).toThrow(

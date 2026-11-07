@@ -135,7 +135,7 @@ describe("the index", () => {
     ).toHaveLength(1);
   });
 
-  it("keys notes by file, and leaves out operational files in every folder", () => {
+  it("keys notes by file, operational files and hidden ones too, but nothing under .git", () => {
     const index = indexFiles({
       "AGENTS.md": "[[A]]",
       "research/README.md": "x",
@@ -145,7 +145,14 @@ describe("the index", () => {
       ".git/config.md": "x",
       "A.md": "a",
     });
-    expect([...index.notes.keys()]).toEqual([".notes/Hidden.md", "A.md", "research/Strategy.md"]);
+    expect([...index.notes.keys()]).toEqual([
+      ".notes/Hidden.md",
+      "A.md",
+      "AGENTS.md",
+      "research/CLAUDE.md",
+      "research/README.md",
+      "research/Strategy.md",
+    ]);
     expect(index.notes.get("research/Strategy.md")?.name).toBe("research/Strategy");
   });
 
