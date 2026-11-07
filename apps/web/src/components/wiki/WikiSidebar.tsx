@@ -359,6 +359,12 @@ export function WikiSidebar() {
       selection: (file) => rowActions.count(tabOf(file)),
       openAll: (file) => rowActions.openAll(tabOf(file)),
       carry: (file) => carry(tabOf(file)),
+      carryFolder: (folder) =>
+        carryDrag({
+          key: `wiki-folder:${environmentId}:${wikiId}:${folder}`,
+          keys: [],
+          wikiFiles: [`${folder}/`],
+        }),
       move: (from, to, folder) => moveDocument({ environmentId, wikiId, from, to, folder }),
       moveTo: (path, folder) =>
         requestWikiMove({

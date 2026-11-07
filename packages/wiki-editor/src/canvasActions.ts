@@ -167,6 +167,26 @@ export function canvasClip(
   };
 }
 
+/** A board stays usable when a folder that's really a code repository lands on it. */
+const FOLDER_CARDS_MAX = 200;
+
+/**
+ * What a drop puts on a board: a path ending in `/` is a folder, for every file under it among
+ * `listed`, up to a limit. `left` counts those it had no room for.
+ */
+export function filesOfDrop(
+  dropped: ReadonlyArray<string>,
+  listed: ReadonlyArray<string>,
+): { readonly files: ReadonlyArray<string>; readonly left: number } {
+  const files = dropped.flatMap((path) =>
+    path.endsWith("/") ? listed.filter((file) => file.startsWith(path)) : [path],
+  );
+  return {
+    files: files.slice(0, FOLDER_CARDS_MAX),
+    left: Math.max(files.length - FOLDER_CARDS_MAX, 0),
+  };
+}
+
 export const CANVAS_CLIP_TYPE = "application/x-astrolabe-canvas";
 
 export const serializeClip = (clip: CanvasClip): string => JSON.stringify(clip);

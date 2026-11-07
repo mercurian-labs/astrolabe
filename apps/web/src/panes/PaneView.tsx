@@ -620,6 +620,8 @@ function dropTargetAt(
 ): DropTarget | null {
   // Every tab of a pane dragged over that pane has nowhere to go.
   if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
+  // Nor does what opens no tab, as a wiki's folder on its way to a board.
+  if (item.keys.length === 0 && item.place === undefined) return null;
   const rect = pane.getBoundingClientRect();
   const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
   const zone = paneDropZone(

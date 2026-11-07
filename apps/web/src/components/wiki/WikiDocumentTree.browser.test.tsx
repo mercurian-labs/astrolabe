@@ -36,6 +36,7 @@ const actions = (): WikiTreeActions => ({
   selection: () => 1,
   openAll: vi.fn(),
   carry: vi.fn(),
+  carryFolder: vi.fn(),
   move: vi.fn(async () => true),
   moveTo: vi.fn(),
   create: vi.fn(),

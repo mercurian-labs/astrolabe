@@ -172,7 +172,7 @@ export interface CanvasBoardHost
   readonly renderCardEditor?: (editor: CanvasCardEditor) => ReactNode;
   /** Whether Escape is the editor's to take, as Vim's insert mode's is. */
   readonly editorTakesEscape?: (target: Element) => boolean;
-  /** Paths being dragged from outside the board, such as a wiki's sidebar rows. */
+  /** Paths being dragged from outside the board, such as a wiki's rows; a folder's ends in `/`. */
   readonly draggedFiles?: () => ReadonlyArray<string> | null;
   /** A plain key the board didn't use: the app's menu may want it. True when it did. */
   readonly onLeaderKey?: (key: string) => boolean;
@@ -1643,7 +1643,7 @@ export function CanvasBoard({
       if (fromWiki !== null && fromWiki !== undefined) {
         event.preventDefault();
         event.stopPropagation();
-        commands.placeFiles(fromWiki, at);
+        void commands.placeDropped(fromWiki, at);
         return;
       }
       const transfer = event.dataTransfer;

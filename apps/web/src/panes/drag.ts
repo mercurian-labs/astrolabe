@@ -16,7 +16,10 @@ export interface DragItem {
    * a new pane on `side`.
    */
   readonly place?: (paneId: string, drop: { side: Side | null; index: number }) => void;
-  /** Astrolabe: the wiki files a row carries, which a canvas in that wiki takes as cards. */
+  /**
+   * Astrolabe: the wiki files a row carries, which a canvas in that wiki takes as cards. A folder
+   * ends in `/`, and only a board can take one.
+   */
   readonly wikiFiles?: readonly string[];
   /**
    * Astrolabe: a tab group dragged by its marker (`tabGroups`), by its id: `keys` are its run's

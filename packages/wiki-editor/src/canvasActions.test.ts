@@ -6,6 +6,7 @@ import {
   arrangeEdits,
   canvasClip,
   clipText,
+  filesOfDrop,
   parseClip,
   pasteClip,
   pastedCard,
@@ -131,5 +132,23 @@ describe("converting a card", () => {
       ["file", "b"],
       ["file", "out"],
     ]);
+  });
+});
+
+describe("filesOfDrop", () => {
+  const listed = ["ops/Runbook.md", "ops/deep/queue.png", "opsy/Other.md", "Top.md"];
+
+  it("takes a folder for every file under it, and a file for itself", () => {
+    expect(filesOfDrop(["ops/", "Top.md"], listed)).toEqual({
+      files: ["ops/Runbook.md", "ops/deep/queue.png", "Top.md"],
+      left: 0,
+    });
+  });
+
+  it("stops at a limit a board can hold, and says how many it left", () => {
+    const many = Array.from({ length: 205 }, (_, at) => `src/${at}.md`);
+    const { files, left } = filesOfDrop(["src/"], many);
+    expect(files).toHaveLength(200);
+    expect(left).toBe(5);
   });
 });

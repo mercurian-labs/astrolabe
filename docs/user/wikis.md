@@ -70,7 +70,7 @@ Click a card to select it, and its content becomes live: links open, a note scro
 
 Edits save by themselves a moment after you stop, into [your draft](#drafts), or into the change request the canvas is open in. There is no Save. A canvas in a closed change request, or one you can't write to, only reads, and the gear on a board turns **Read-only** on for that board alone.
 
-- **Add:** double-click the board for a text card, right-click it, drag from the bar at the bottom, or paste text, an address or an image. Drop files from your computer, a folder's files with them, or drag documents from the sidebar. Dropped and pasted files land where **New files** in **Settings → Wikis** says.
+- **Add:** double-click the board for a text card, right-click it, drag from the bar at the bottom, or paste text, an address or an image. Drop files from your computer, a folder's files with them, or drag documents from the sidebar. A folder dragged from the sidebar adds a card for every file in it, its subfolders' too, up to 200. Dropped and pasted files land where **New files** in **Settings → Wikis** says.
 - **Select and move:** click a card, Shift-click to add, or drag across the board to select everything you touch. Cards snap to a grid of 20 and to the cards near them; hold ⌃ during a drag to turn snapping off, Shift to hold to one direction, and Alt to leave a copy behind. Arrow keys nudge the selection, further with Shift.
 - **Connect:** drag from the dot on a card's side. Drop on another card, or in empty space to make a new one. Drag an arrow to move its nearer end, and double-click it to label it.
 - **Resize:** drag just outside a selected card's edge. Double-click the bottom or right edge to fit its text.

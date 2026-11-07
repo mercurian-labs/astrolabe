@@ -80,6 +80,8 @@ export interface WikiTreeActions {
   readonly openAll: (file: string) => void;
   /** Hands the rows to the panes, to open or to land on a board. */
   readonly carry: (file: string) => void;
+  /** Hands a folder to whatever board it lands on, for all it holds. */
+  readonly carryFolder: (folder: string) => void;
   /** Files and folders in the tree's terms; false when it didn't land. */
   readonly move: (from: string, to: string, folder: boolean) => Promise<boolean>;
   readonly moveTo: (path: string, folder: boolean) => void;
@@ -311,7 +313,9 @@ export function WikiDocumentTree({
       }}
       onDragStartCapture={(event) => {
         const path = itemPath(event.nativeEvent);
-        if (path !== null && !path.endsWith("/")) actions.carry(path);
+        if (path === null) return;
+        if (path.endsWith("/")) actions.carryFolder(asFolder(path));
+        else actions.carry(path);
       }}
       onDragEnd={endDrag}
     >

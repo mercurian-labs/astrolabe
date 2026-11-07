@@ -17,6 +17,7 @@ import {
   canvasClip,
   clipText,
   fileCard,
+  filesOfDrop,
   groupCard,
   lineDirectionEdit,
   linkCard,
@@ -264,6 +265,16 @@ export class CanvasCommands {
       },
     ]);
     this.#selectOne(id);
+  }
+
+  /** A drag from a wiki's tree, whose folders stand for all they hold (see `filesOfDrop`). */
+  async placeDropped(dropped: ReadonlyArray<string>, at: CanvasPoint) {
+    const folders = dropped.some((path) => path.endsWith("/"));
+    const listed = folders ? ((await this.#board.host().listFiles?.()) ?? []) : [];
+    const { files, left } = filesOfDrop(dropped, listed);
+    if (folders && files.length === 0) this.#board.notify("That folder has no files to add here.");
+    if (left > 0) this.#board.notify(`Added ${files.length} cards. ${left} more didn't fit.`);
+    this.placeFiles(files, at);
   }
 
   /** Files dropped or dragged in: one card each, in a row from the drop that wraps. */
