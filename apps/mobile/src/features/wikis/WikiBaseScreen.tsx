@@ -3,7 +3,6 @@ import { StackActions, useNavigation } from "@react-navigation/native";
 import { WIKI_BASE_AUTOSAVE_DELAY_MS } from "@t3tools/client-runtime/wikiAutosave";
 import { withUnsentEdit } from "@t3tools/client-runtime/wikiBaseEdits";
 import {
-  documentFile,
   documentTitle,
   filesHoldDocument,
   isSettledChangeRequest,
@@ -40,7 +39,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const file = documentFile(params.name);
+  const file = params.name;
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const changeRequests = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),

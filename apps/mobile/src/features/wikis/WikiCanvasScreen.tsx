@@ -26,7 +26,6 @@ import { StackActions, useNavigation } from "@react-navigation/native";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import {
   changeRequestCanvasReview,
-  documentFile,
   documentTitle,
   exactWikiPath,
   filesHoldDocument,
@@ -137,7 +136,7 @@ export function WikiCanvasScreen({
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const file = documentFile(params.name);
+  const file = params.name;
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const changeRequests = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),

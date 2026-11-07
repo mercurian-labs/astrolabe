@@ -141,8 +141,8 @@ function NoteTab({
     if (hasUnsavedEdits(tabKey)) nav.open(next);
     else nav.replace(tabKey, next);
   };
-  const openLink = (target: string, from = tab.file) =>
-    openDocument(wikiLinkFile(index.data, target, from));
+  const openLink = (target: string, from?: string) =>
+    openDocument(wikiLinkFile(index.data, target, from ?? tab.file));
   const parent =
     tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request");
   const renderDraftPill = (edits?: WikiDraftEdits) => {

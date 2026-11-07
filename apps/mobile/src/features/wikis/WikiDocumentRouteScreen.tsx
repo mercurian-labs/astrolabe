@@ -63,11 +63,13 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
 
 /** A wiki document: a note, or a `.base` or `.canvas` file opened by its file name, as on web. */
 export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
-  if (isCanvasName(route.params.name)) return <WikiCanvasScreen params={route.params} />;
-  return isWikiBaseFile(route.params.name) ? (
-    <WikiBaseScreen params={route.params} />
+  // A link from before wikis had folders holds a note's bare name.
+  const params = { ...route.params, name: documentFile(route.params.name) };
+  if (isCanvasName(params.name)) return <WikiCanvasScreen params={params} />;
+  return isWikiBaseFile(params.name) ? (
+    <WikiBaseScreen params={params} />
   ) : (
-    <WikiNoteScreen params={route.params} />
+    <WikiNoteScreen params={params} />
   );
 }
 
@@ -81,7 +83,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const requested = documentFile(params.name);
+  const requested = params.name;
   const title = documentTitle(requested);
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
 
