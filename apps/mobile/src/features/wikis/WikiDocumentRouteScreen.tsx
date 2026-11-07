@@ -18,9 +18,10 @@ import {
   wikiDocumentScope,
   wikiDraft,
   NO_NOTE_FROM_RELATIVE_LINK,
-  wikiDocumentFiles,
+  wikiDocumentFilesWithDraft,
   wikiLinkOpens,
 } from "@t3tools/client-runtime/wikiLogic";
+import { linkFiles } from "@mercurian/wiki/resolve-link";
 import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -224,10 +225,12 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   }, []);
 
   const linkTypes = index.data?.linkTypes;
+  const outsideDraft = changeRequestId === undefined ? draft : null;
   const documents = useMemo(
-    () => (index.data ? wikiDocumentFiles(index.data) : null),
-    [index.data],
+    () => (index.data ? wikiDocumentFilesWithDraft(index.data, outsideDraft) : null),
+    [index.data, outsideDraft],
   );
+  const linkedFiles = useMemo(() => (documents ? linkFiles(documents) : null), [documents]);
   const linkingFile = data?.file ?? null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's types cross into the editor's web view, outside React
   useEffect(() => {
@@ -478,7 +481,8 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
-        index={index.data}
+        draft={draft}
+        files={linkedFiles}
         from={data.file}
         onRead={onNoteRead}
       />

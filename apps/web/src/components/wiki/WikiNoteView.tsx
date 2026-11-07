@@ -30,12 +30,19 @@ import {
   isSettledChangeRequest,
   latestAmendmentFor,
   PERSON_ACTOR,
-  resolveWikiLink,
+  wikiDocumentFilesWithDraft,
+  wikiDocumentScope,
+  wikiDraft,
   wikiLinkFiles,
   wikiLinkOptions,
   wikiLinkFile,
 } from "./wiki.logic";
-import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-tools";
+import {
+  WikiLinkPreview,
+  type WikiLinkPeek,
+  type WikiLinkScope,
+} from "@mercurian/wiki-editor/link-tools";
+import { linkFiles, resolveLink } from "@mercurian/wiki/resolve-link";
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
 import { WikiBase } from "./WikiBaseView";
 import { WikiMermaid } from "./WikiMermaid";
@@ -67,31 +74,40 @@ function LinkPreview({
   environmentId,
   wikiId,
   changeRequestId,
+  draft,
   index,
+  linkScope,
   from,
   link,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly draft: WikiChangeRequest | null;
   readonly index: WikiIndexResult | null;
+  readonly linkScope: WikiLinkScope | null;
   /** The file the link is written in. */
   readonly from: string;
   readonly link: WikiLinkPeek;
 }) {
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
-  const file = wikiLinkFile(index, link.name, from);
+  const resolved = linkScope === null ? undefined : resolveLink(link.name, from, linkScope.files);
+  const file = resolved?.file ?? wikiLinkFile(index, link.name, from);
+  const readsFrom = wikiDocumentScope({ tabChangeRequestId: changeRequestId, draft, file });
   const { data } = useEnvironmentQuery(
     wikiEnvironment.note({
       environmentId,
-      input: { wikiId, name: exactWikiPath(file), ...scope },
+      input: {
+        wikiId,
+        name: exactWikiPath(file),
+        ...(readsFrom === undefined ? {} : { changeRequestId: readsFrom }),
+      },
     }),
   );
   return (
     <WikiLinkPreview
       link={link}
       source={data === null ? undefined : data.exists ? data.source : null}
-      resolved={index === null ? undefined : resolveWikiLink(index, link.name, from)}
+      resolved={resolved}
     />
   );
 }
@@ -251,8 +267,15 @@ export function WikiNoteView({
     onLanded: landedAt,
   });
   const linkOptions = index.data === null ? [] : wikiLinkOptions(index.data, showHidden);
-  const linkScope =
-    index.data === null || file === null ? null : { files: wikiLinkFiles(index.data), from: file };
+  const draft = wikiDraft(changeRequests);
+  const outsideDraft = changeRequestId === undefined ? draft : null;
+  const files =
+    index.data === null
+      ? null
+      : outsideDraft === null
+        ? wikiLinkFiles(index.data)
+        : linkFiles(wikiDocumentFilesWithDraft(index.data, outsideDraft));
+  const linkScope = files === null || file === null ? null : { files, from: file };
 
   if (data === null) {
     return note.error !== null ? (
@@ -334,7 +357,9 @@ export function WikiNoteView({
                   environmentId={environmentId}
                   wikiId={wikiId}
                   changeRequestId={changeRequestId}
+                  draft={draft}
                   index={index.data}
+                  linkScope={linkScope}
                   from={data.file}
                   link={link}
                 />
@@ -403,8 +428,8 @@ export function WikiNoteView({
                     key={target}
                     title={target}
                     tone={
-                      index.data === null ||
-                      resolveWikiLink(index.data, target, data.file).file !== null
+                      linkScope === null ||
+                      resolveLink(target, data.file, linkScope.files).file !== null
                         ? "default"
                         : "missing"
                     }

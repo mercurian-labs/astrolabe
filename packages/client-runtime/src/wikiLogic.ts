@@ -217,6 +217,26 @@ export function draftDocuments<T extends { readonly name: string; readonly file:
   return [...rows, ...added.map((file) => written(file, noteNameOfFile(file)))];
 }
 
+/**
+ * What a link finds for someone reading outside `draft`: what the draft moved has gone, and what
+ * it wrote is there, or the note they just made from a link would still read as missing.
+ */
+export function wikiDocumentFilesWithDraft(
+  index: LinkableIndex,
+  draft: WikiChangeRequest | null,
+): ReadonlyArray<string> {
+  const files = wikiDocumentFiles(index);
+  if (draft === null) return files;
+  const moved = new Set(draft.moves?.map(({ from }) => from));
+  const listed = new Set(files);
+  return [
+    ...files.filter((file) => !moved.has(file)),
+    ...changeRequestFiles(draft).filter(
+      (file) => isDocumentFile(file) && !listed.has(file) && !moved.has(file),
+    ),
+  ];
+}
+
 export function filesHoldDocument(files: ReadonlyArray<string>, file: string): boolean {
   const wanted = noteKey(file);
   return files.some((each) => isDocumentFile(each) && noteKey(each) === wanted);

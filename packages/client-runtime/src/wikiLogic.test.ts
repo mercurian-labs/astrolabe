@@ -1,4 +1,4 @@
-import type { WikiChangeRequest, WikiChangeRequestId } from "@t3tools/contracts";
+import type { WikiChangeRequest, WikiChangeRequestId, WikiIndexResult } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -13,6 +13,7 @@ import {
   isDocumentFile,
   keepCanvasName,
   resolveWikiLink,
+  wikiDocumentFilesWithDraft,
   wikiDocumentScope,
   wikiDraft,
   wikiLinkFile,
@@ -149,6 +150,21 @@ describe("what a draft does to a wiki's list", () => {
     expect(listed.map(({ file }) => file)).toEqual(["shelf/New.md", "Edited.md", "fresh/First.md"]);
     expect(draftMovedTo(draft, "Old.md")).toBe("shelf/New.md");
     expect(draftMovedTo(draft, "Edited.md")).toBeUndefined();
+  });
+
+  it("adds what the draft wrote to what a link finds, and takes away what it moved", () => {
+    const index = {
+      notes: [row("Old.md"), row("Edited.md")],
+      canvases: [],
+      bases: [],
+      maps: [],
+    } as unknown as WikiIndexResult;
+    expect(wikiDocumentFilesWithDraft(index, draft)).toEqual([
+      "Edited.md",
+      "shelf/New.md",
+      "fresh/First.md",
+    ]);
+    expect(wikiDocumentFilesWithDraft(index, null)).toEqual(["Old.md", "Edited.md"]);
   });
 
   it("leaves the list alone with no draft", () => {

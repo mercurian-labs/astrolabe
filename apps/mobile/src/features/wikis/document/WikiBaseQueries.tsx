@@ -4,12 +4,13 @@ import {
   type WikiEditorEmbeddedFile,
   type WikiEditorResolvedLink,
 } from "@mercurian/wiki-editor/protocol";
-import { exactWikiPath, resolveWikiLink, wikiLinkFile } from "@t3tools/client-runtime/wikiLogic";
+import { exactWikiPath, wikiDocumentScope } from "@t3tools/client-runtime/wikiLogic";
+import { resolveLink, unwrittenFile, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
 import type {
   EnvironmentId,
+  WikiChangeRequest,
   WikiChangeRequestId,
   WikiId,
-  WikiIndexResult,
 } from "@t3tools/contracts";
 import { useEffect } from "react";
 
@@ -73,17 +74,25 @@ function WikiNoteRead({
   environmentId,
   wikiId,
   changeRequestId,
-  index,
+  draft,
+  files,
   from,
   onRead,
 }: Omit<WikiNoteReadsProps, "names"> & { readonly name: string }) {
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
-  const file = wikiLinkFile(index, name, from);
-  const { data } = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name: exactWikiPath(file), ...scope } }),
-  );
   const { file: landed, others } =
-    index === null ? { file: null, others: NO_FILES } : resolveWikiLink(index, name, from);
+    files === null ? { file: null, others: NO_FILES } : resolveLink(name, from, files);
+  const file = landed ?? unwrittenFile(name, from);
+  const readsFrom = wikiDocumentScope({ tabChangeRequestId: changeRequestId, draft, file });
+  const { data } = useEnvironmentQuery(
+    wikiEnvironment.note({
+      environmentId,
+      input: {
+        wikiId,
+        name: exactWikiPath(file),
+        ...(readsFrom === undefined ? {} : { changeRequestId: readsFrom }),
+      },
+    }),
+  );
   const otherFiles = others.join("\0");
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
   useEffect(() => {
@@ -98,8 +107,9 @@ export interface WikiNoteReadsProps {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly draft: WikiChangeRequest | null;
   /** What the links search, once it's here. */
-  readonly index: WikiIndexResult | null;
+  readonly files: WikiLinkFiles | null;
   /** The file the links are written in. */
   readonly from: string;
   readonly onRead: (name: string, source: string | null, link: WikiEditorResolvedLink) => void;

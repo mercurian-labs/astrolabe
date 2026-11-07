@@ -53,6 +53,7 @@ export {
   noteKey,
   NO_NOTE_FROM_RELATIVE_LINK,
   wikiDocumentFiles,
+  wikiDocumentFilesWithDraft,
   wikiLinkFile,
   wikiLinkFiles,
   wikiLinkOpens,
