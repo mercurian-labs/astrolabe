@@ -77,8 +77,8 @@ describe("where an attachment lands (ATTACHMENTS-REPORT A1, B)", () => {
 
   it("puts name, folder and clash together", () => {
     const placement: WikiPlacement = { ...PLACEMENT, attachments: "beside" };
-    expect(attachmentPath(placement, "a/N.md", "x#y.png", ["a/x y.png"])).toBe("a/x y 1.png");
-    expect(attachmentPath(placement, null, "x.png", [])).toBe("x.png");
+    expect(attachmentPath(placement, "a/N.md", "x#y.png")).toBe("a/x y.png");
+    expect(attachmentPath(placement, null, "x.png")).toBe("x.png");
   });
 });
 

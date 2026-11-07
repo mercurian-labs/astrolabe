@@ -41,10 +41,9 @@ export function useWikiAttachments(input: {
     const listed = await runFileList({ environmentId, input: { wikiId, ...landing } });
     return listed._tag === "Success" ? listed.value.files.map(({ file }) => file) : [];
   };
-  /** Lands `name`'s bytes; its path, or null when the wiki refused it. */
+  /** Lands `name`'s bytes; the path it got, or null when the wiki refused it. */
   const attach = useStableCallback(async (name: string, base64: string) => {
-    const files = await listFiles();
-    const path = attachmentPath(placement, source, name, files);
+    const path = attachmentPath(placement, source, name);
     const outcome = await send({
       environmentId,
       input: {
@@ -56,7 +55,7 @@ export function useWikiAttachments(input: {
     });
     if (!outcome.ok) return null;
     if (outcome.value.commit !== null) onLanded?.(outcome.value.commit);
-    return path;
+    return outcome.value.attachment ?? path;
   });
   /** Lands `files`, and gives the embed each one writes in a note. */
   const embed = useStableCallback(async (files: ReadonlyArray<File>, arrival: WikiFileArrival) => {

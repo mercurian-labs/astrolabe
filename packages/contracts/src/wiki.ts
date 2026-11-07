@@ -741,6 +741,7 @@ export const WikiAutosaveWrite = Schema.Union([
   /** A file a board shows, such as a pasted image, beside the wiki's documents. */
   Schema.Struct({
     kind: Schema.Literal("attachment"),
+    /** Where it should land. The write takes ` 1`, ` 2` when that's taken: see the result. */
     file: TrimmedNonEmptyString,
     base64: Schema.String.check(Schema.isMaxLength(WIKI_ATTACHMENT_MAX_BASE64)),
   }),
@@ -762,6 +763,8 @@ export const WikiAutosaveResult = Schema.Struct({
   changeRequest: Schema.NullOr(WikiChangeRequest),
   /** The commit now holding the document; null as above. */
   commit: Schema.NullOr(Schema.String),
+  /** The path an attachment landed at, which only the write could settle. */
+  attachment: Schema.optional(Schema.String),
 });
 export type WikiAutosaveResult = typeof WikiAutosaveResult.Type;
 

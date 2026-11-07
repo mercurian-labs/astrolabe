@@ -13,6 +13,7 @@ import {
   isWikiDocument,
   keepWarningHistory,
   folderOf,
+  freePath,
   planAmendment,
   planMove,
   planCanvasEdits,
@@ -1560,6 +1561,7 @@ const make = Effect.gen(function* () {
       amendment,
       errors: planned.errors,
       ...(planned.canvas === undefined ? {} : { canvas: planned.canvas }),
+      ...(planned.attachment === undefined ? {} : { attachment: planned.attachment.file }),
     } satisfies WikiAmendResult;
   });
 
@@ -1807,10 +1809,17 @@ const make = Effect.gen(function* () {
                 ? (files, stamp) => planAmendment(files, { [write.file]: write.text }, stamp)
                 : write.kind === "transform"
                   ? planWikiTransform(write.transform)
-                  : () => ({
+                  : (files, _stamp, others) => ({
                       changes: {},
                       errors: [],
-                      attachment: { file: write.file, bytes: Buffer.from(write.base64, "base64") },
+                      attachment: {
+                        // Here, under the lock: two pastes in one second ask for one name.
+                        file: freePath(write.file, [
+                          ...Object.keys(files),
+                          ...others.map(({ file }) => file),
+                        ]),
+                        bytes: Buffer.from(write.base64, "base64"),
+                      },
                     }),
               // A link broken for a moment while typing stamps no lasting warning on a map.
               {
@@ -1819,9 +1828,10 @@ const make = Effect.gen(function* () {
                 ...(onto === undefined ? {} : { onto }),
               },
             ).pipe(
-              Effect.map(({ changeRequest, commit }): WikiAutosaveResult => ({
+              Effect.map(({ changeRequest, commit, attachment }): WikiAutosaveResult => ({
                 changeRequest,
                 commit,
+                ...(attachment === undefined ? {} : { attachment }),
               })),
               Effect.catchIf(
                 (error) => error.message === NOTHING_CHANGED,

@@ -93,13 +93,12 @@ export function freePath(file: string, files: Iterable<string>): string {
   return candidate;
 }
 
-/** Where a new attachment named `name` lands for `source`. */
+/** Where a new attachment named `name` should land for `source`; the write takes a free name. */
 export const attachmentPath = (
   placement: WikiPlacement,
   source: string | null,
   name: string,
-  files: Iterable<string>,
-): string => freePath(joined(attachmentFolder(placement, source), cleanFileName(name)), files);
+): string => joined(attachmentFolder(placement, source), cleanFileName(name));
 
 const isRelative = (text: string) =>
   text === "." || text === ".." || text.startsWith("./") || text.startsWith("../");

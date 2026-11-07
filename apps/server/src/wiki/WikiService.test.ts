@@ -2284,6 +2284,44 @@ it.effect("lands hand edits on a canvas, attaches a file beside it, and lists bo
   ),
 );
 
+it.effect(
+  "numbers attachments that want one name, in the folder they land in, under the lock",
+  () =>
+    withWikis((harness) =>
+      Effect.gen(function* () {
+        const { root, wikiId, wikis } = yield* registeredWiki(harness);
+        const attach = (file: string, text: string) =>
+          wikis.autosave(
+            {
+              wikiId,
+              document: "Board.canvas",
+              write: { kind: "attachment", file, base64: Buffer.from(text).toString("base64") },
+            },
+            WikiService.person,
+          );
+        // Both pastes asked with the same list in hand: only the write can tell them apart.
+        const [first, second] = yield* Effect.all(
+          [attach("a/Pasted.png", "one"), attach("a/Pasted.png", "two")],
+          { concurrency: "unbounded" },
+        );
+        assert.deepEqual(
+          [first?.attachment, second?.attachment],
+          ["a/Pasted.png", "a/Pasted 1.png"],
+        );
+        const head = second!.commit!;
+        assert.equal(yield* git(root, ["show", `${head}:a/Pasted.png`]), "one");
+        assert.equal(yield* git(root, ["show", `${head}:a/Pasted 1.png`]), "two");
+
+        const cased = yield* attach("A/PASTED.PNG", "three");
+        assert.equal(cased.attachment, "A/PASTED 2.PNG");
+        const elsewhere = yield* attach("b/Pasted.png", "four");
+        assert.equal(elsewhere.attachment, "b/Pasted.png");
+        const same = yield* attach("a/Pasted.png", "one");
+        assert.equal(same.attachment, "a/Pasted 3.png");
+      }),
+    ),
+);
+
 it.effect("makes a draft a change request, which merges; a draft itself doesn't", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
