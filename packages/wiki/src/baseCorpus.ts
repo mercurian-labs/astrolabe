@@ -4,10 +4,11 @@
  * give links; anything else only its file fields. Dot-folders, such as `.git` and `.obsidian`,
  * are left out, as Obsidian leaves them out.
  */
-import { fileName, stripHeading, type BaseDoc, type LinkValue } from "./baseValues.ts";
+import { type BaseDoc, type LinkValue } from "./baseValues.ts";
 import { isCanvasFile, parseCanvas } from "./canvas.ts";
 import { key, links as findLinks, typedLinks } from "./links.ts";
 import { noteProperties, noteTags } from "./properties.ts";
+import { isHidden, linkFiles, resolveLink } from "./resolveLink.ts";
 
 export interface BaseFile {
   readonly file: string;
@@ -27,31 +28,29 @@ export interface BaseCorpus {
   /** Sorted by path. */
   readonly docs: ReadonlyArray<BaseDoc>;
   readonly byPath: (path: string) => BaseDoc | undefined;
-  /** The file link text points at, as Obsidian resolves it. */
-  readonly resolve: (path: string) => BaseDoc | undefined;
+  /** The file link text points at, written in `from` when it says where. */
+  readonly resolve: (path: string, from?: string) => BaseDoc | undefined;
   /** The files linking to `doc`, sorted by path. */
   readonly backlinks: (doc: BaseDoc) => ReadonlyArray<BaseDoc>;
 }
 
 const encoder = new TextEncoder();
 const isNote = (file: string) => /\.md$/i.test(file);
-export const isHidden = (file: string): boolean =>
-  file.split("/").some((part) => part.startsWith("."));
 
 /** A link as a note's prose or frontmatter writes it, with the text Obsidian shows for it. */
-function linkOf(inner: string): LinkValue {
+function linkOf(inner: string, from: string): LinkValue {
   const bar = inner.indexOf("|");
   const path = (bar < 0 ? inner : inner.slice(0, bar)).trim();
   const alias = bar < 0 ? undefined : inner.slice(bar + 1);
   const display = alias ?? path.replace(/#/g, " > ").replace(/\s+>\s+/g, " > ");
-  return { kind: "link", path, display };
+  return { kind: "link", path, display, from };
 }
 
-function noteLinks(source: string): { links: LinkValue[]; embeds: LinkValue[] } {
+function noteLinks(source: string, from: string): { links: LinkValue[]; embeds: LinkValue[] } {
   const links: LinkValue[] = [];
   const embeds: LinkValue[] = [];
   for (const link of findLinks(source)) {
-    const value = linkOf(link.inner);
+    const value = linkOf(link.inner, from);
     links.push(value);
     if (source[link.index - 1] === "!") embeds.push(value);
   }
@@ -59,14 +58,14 @@ function noteLinks(source: string): { links: LinkValue[]; embeds: LinkValue[] } 
 }
 
 /** A canvas's links: those its text cards write, then the files its file cards show. */
-function canvasLinkValues(source: string): LinkValue[] {
+function canvasLinkValues(source: string, from: string): LinkValue[] {
   const parsed = parseCanvas(source);
   if (!parsed.ok) return [];
   const { nodes } = parsed.data;
   return [
-    ...nodes.flatMap((node) => (node.type === "text" ? noteLinks(node.text).links : [])),
+    ...nodes.flatMap((node) => (node.type === "text" ? noteLinks(node.text, from).links : [])),
     ...nodes.flatMap((node): LinkValue[] =>
-      node.type === "file" && node.file !== "" ? [{ kind: "link", path: node.file }] : [],
+      node.type === "file" && node.file !== "" ? [{ kind: "link", path: node.file, from }] : [],
     ),
   ];
 }
@@ -93,11 +92,11 @@ function docOf(entry: BaseFile, times: BaseFileTimes): BaseDoc {
       ...base,
       properties,
       tags: noteTags(source, properties),
-      ...noteLinks(source),
+      ...noteLinks(source, entry.file),
       typedLinks: typedLinks(source),
     };
   }
-  const links = isCanvasFile(entry.file) ? canvasLinkValues(source) : [];
+  const links = isCanvasFile(entry.file) ? canvasLinkValues(source, entry.file) : [];
   return { ...base, properties: {}, tags: [], links, embeds: [], typedLinks: [] };
 }
 
@@ -110,45 +109,21 @@ export function baseCorpus(files: Iterable<BaseFile>, times: BaseFileTimes = {})
     .map((entry) => docOf(entry, times))
     .toSorted((a, b) => collate(a.file, b.file));
   const byPathKey = new Map<string, BaseDoc>();
-  // Each file under its full name (`diagram.png`) and, for a note, its name without `.md`.
-  const byName = new Map<string, BaseDoc[]>();
-  for (const doc of docs) {
-    byPathKey.set(key(doc.file), doc);
-    const names = [fileName(doc.file)];
-    if (isNote(doc.file)) names.push(fileName(doc.file).replace(/\.md$/i, ""));
-    for (const name of names) {
-      const found = byName.get(key(name)) ?? [];
-      found.push(doc);
-      byName.set(key(name), found);
-    }
-  }
+  for (const doc of docs) byPathKey.set(key(doc.file), doc);
+  const listed = linkFiles(docs.map((doc) => doc.file));
   const resolved = new Map<string, BaseDoc | undefined>();
-  const resolve = (raw: string): BaseDoc | undefined => {
-    const path = stripHeading(raw).replace(/^\/+/, "");
-    if (!path) return undefined;
-    const cacheKey = key(path);
+  const resolve = (raw: string, from?: string): BaseDoc | undefined => {
+    const cacheKey = `${from ?? ""}\0${raw}`;
     if (resolved.has(cacheKey)) return resolved.get(cacheKey);
-    let doc = byPathKey.get(cacheKey) ?? byPathKey.get(`${cacheKey}.md`);
-    if (doc === undefined && !path.includes("/")) {
-      // Obsidian picks the closest to the vault's root when several files share a name.
-      doc = (byName.get(cacheKey) ?? []).toSorted(
-        (a, b) => a.file.split("/").length - b.file.split("/").length || collate(a.file, b.file),
-      )[0];
-    }
-    if (doc === undefined && path.includes("/")) {
-      const suffix = `/${cacheKey}`;
-      doc = docs.find((candidate) => {
-        const file = key(candidate.file);
-        return file.endsWith(suffix) || file.endsWith(`${suffix}.md`);
-      });
-    }
+    const { file } = resolveLink(raw, from ?? null, listed);
+    const doc = file === null ? undefined : byPathKey.get(key(file));
     resolved.set(cacheKey, doc);
     return doc;
   };
   const backlinkMap = new Map<BaseDoc, Set<BaseDoc>>();
   for (const doc of docs) {
     for (const link of doc.links) {
-      const target = resolve(link.path);
+      const target = resolve(link.path, doc.file);
       if (target === undefined) continue;
       const sources = backlinkMap.get(target) ?? new Set<BaseDoc>();
       sources.add(doc);

@@ -1,7 +1,6 @@
-/** Note identity: names compare case-insensitively after Unicode normalization. */
-export const key = (name: string): string => name.normalize("NFC").toLowerCase();
+import { key, noteName } from "./resolveLink.ts";
 
-export const noteName = (file: string): string => file.replace(/\.md$/i, "");
+export { key, noteName };
 
 export interface WikiLink {
   readonly target: string;

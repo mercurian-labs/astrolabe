@@ -12,6 +12,10 @@
       "types": "./src/links.ts",
       "import": "./src/links.ts"
     },
+    "./resolve-link": {
+      "types": "./src/resolveLink.ts",
+      "import": "./src/resolveLink.ts"
+    },
     "./canvas": {
       "types": "./src/canvas.ts",
       "import": "./src/canvas.ts"

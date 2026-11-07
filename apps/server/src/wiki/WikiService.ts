@@ -34,8 +34,10 @@ import {
   corpusWithChanges,
   isCanvasFile,
   isHidden,
-  key,
+  linkFiles,
+  resolveLink,
   type BaseCorpus,
+  type WikiLinkFiles,
 } from "@mercurian/wiki";
 import {
   type ProjectId,
@@ -360,6 +362,18 @@ interface Snapshot {
   readonly index: WikiIndex;
 }
 
+interface FileListing {
+  readonly entries: ReturnType<typeof parseFileListing>;
+  readonly byFile: ReadonlyMap<string, ReturnType<typeof parseFileListing>[number]>;
+  readonly links: WikiLinkFiles;
+}
+
+/** The file a path means in a wiki, as a link written in `from` would mean it. */
+const listedFile = (listing: FileListing, path: string, from: string | null = null) => {
+  const { file } = resolveLink(path, from, listing.links);
+  return file === null ? undefined : listing.byFile.get(file);
+};
+
 interface StoredChangeRequest {
   readonly record: ChangeRequestRecord;
   readonly metadataCommit: string;
@@ -402,21 +416,6 @@ const lru = <A>(capacity: number) => {
       if (entries.size > capacity && !oldest.done) entries.delete(oldest.value);
     },
   };
-};
-
-/** A path as a wiki's links mean it: exact, else ignoring case, else a bare name in any folder. */
-const listedFile = <A extends { readonly file: string }>(
-  listing: ReadonlyArray<A>,
-  path: string,
-): A | undefined => {
-  const wanted = key(path);
-  const exact = listing.find(({ file }) => file === path || key(file) === wanted);
-  if (exact !== undefined || path.includes("/")) return exact;
-  const suffix = `/${wanted}`;
-  return listing
-    .filter(({ file }) => key(file).endsWith(suffix))
-    .toSorted((a, b) => a.file.split("/").length - b.file.split("/").length)
-    .at(0);
 };
 
 const isMediaFile = (file: string) => {
@@ -496,7 +495,7 @@ const make = Effect.gen(function* () {
   const metadataRecords = lru<ChangeRequestRecord>(512);
   const editTimes = lru<WikiFileTimes>(24);
   const corpora = lru<BaseCorpus>(8);
-  const fileListings = lru<ReturnType<typeof parseFileListing>>(8);
+  const fileListings = lru<FileListing>(8);
   // A change request's every read asks for its preview, and a canvas's merge reads three blobs.
   const mergePreviews = lru<WikiTreeMerge>(64);
 
@@ -2320,9 +2319,14 @@ const make = Effect.gen(function* () {
   ) {
     const cached = fileListings.get(commit);
     if (cached !== undefined) return cached;
-    const listing = parseFileListing(
+    const entries = parseFileListing(
       (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
     );
+    const listing: FileListing = {
+      entries,
+      byFile: new Map(entries.map((entry) => [entry.file, entry])),
+      links: linkFiles(entries.map((entry) => entry.file)),
+    };
     fileListings.set(commit, listing);
     return listing;
   });
@@ -2331,7 +2335,9 @@ const make = Effect.gen(function* () {
   const corpusAt = Effect.fn("WikiService.corpusAt")(function* (wiki: WikiRecord, commit: string) {
     const cached = corpora.get(commit);
     if (cached !== undefined) return cached;
-    const listing = (yield* fileListingAt(wiki, commit)).filter((entry) => !isHidden(entry.file));
+    const listing = (yield* fileListingAt(wiki, commit)).entries.filter(
+      (entry) => !isHidden(entry.file),
+    );
     const readable = listing.filter((entry) => /\.(md|canvas)$/i.test(entry.file));
     const contents = yield* readObjects(
       wiki.root,
@@ -2488,7 +2494,9 @@ const make = Effect.gen(function* () {
           const listing = yield* fileListingAt(wiki, commit);
           return {
             commit,
-            files: listing.flatMap(({ file, size }) => (isHidden(file) ? [] : [{ file, size }])),
+            files: listing.entries.flatMap(({ file, size }) =>
+              isHidden(file) ? [] : [{ file, size }],
+            ),
           };
         }),
       input.changeRequestId,
