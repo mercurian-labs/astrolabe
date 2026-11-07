@@ -68,6 +68,7 @@ import {
   type WikiTarget,
   type WikiTransformInput,
   wikiAgentGuidance,
+  type SourceControlProviderKind,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { newProjectFolderName } from "@t3tools/shared/path";
@@ -113,6 +114,7 @@ import {
   type WikiRecord,
   type WikiRegistry,
   WikiRegistryJson,
+  wikiTerms,
 } from "./wikiStorage.ts";
 import {
   indexResult,
@@ -260,6 +262,7 @@ export class WikiService extends Context.Service<
       host: {
         readonly projectId: ProjectId;
         readonly remote: string;
+        readonly kind: SourceControlProviderKind;
         readonly createdProject: boolean;
       } | null,
     ) => Effect.Effect<WikiSummary, WikiError>;
@@ -807,7 +810,7 @@ const make = Effect.gen(function* () {
           : Effect.fail(
               new WikiError({
                 reason: "stale",
-                message: "The change request moved while this ran. Read it again and retry.",
+                message: "The wiki moved while this ran. Read it again and retry.",
                 cause: new WikiGitExitError({
                   operation: "updateRefs",
                   exitCode: result.exitCode,
@@ -978,7 +981,7 @@ const make = Effect.gen(function* () {
           ? Effect.fail(
               new WikiError({
                 reason: "not-found",
-                message: "No change request has this id in this wiki.",
+                message: `No ${wikiTerms(wiki).singular} has this id in this wiki.`,
                 changeRequestId,
               }),
             )
@@ -1053,7 +1056,7 @@ const make = Effect.gen(function* () {
         (cause) =>
           new WikiError({
             reason: "invalid",
-            message: "The change request could not be recorded.",
+            message: `The ${wikiTerms(wiki).singular} could not be recorded.`,
             cause,
           }),
       ),
@@ -1105,16 +1108,15 @@ const make = Effect.gen(function* () {
         ),
         {
           busy: (paths) =>
-            `Unsaved edits in this change request's worktree overlap the amendment${
+            `Unsaved edits in this ${wikiTerms(wiki).singular}'s worktree overlap the amendment${
               paths.length ? `: ${paths.join(", ")}` : ""
-            }. Save them to the change request or set them aside, then try again.`,
+            }. Save them to the ${wikiTerms(wiki).singular} or set them aside, then try again.`,
           stale: (rolledBack, cause) =>
             rolledBack && isWikiError(cause)
               ? cause
               : new WikiError({
                   reason: "stale",
-                  message:
-                    "The change request moved while this ran and its worktree could not be put back; check its files.",
+                  message: `The ${wikiTerms(wiki).singular} moved while this ran and its worktree could not be put back; check its files.`,
                   cause,
                 }),
         },
@@ -1146,7 +1148,7 @@ const make = Effect.gen(function* () {
       : Effect.fail(
           new WikiError({
             reason: "invalid",
-            message: `This change request is ${stored.record.status}; reopen it or open a new one.`,
+            message: `This is ${stored.record.status}; reopen it or open a new one.`,
             changeRequestId: stored.record.changeRequestId,
           }),
         );
@@ -1342,7 +1344,7 @@ const make = Effect.gen(function* () {
             yield* requireOpen(stored);
             const notAmendment = new WikiError({
               reason: "invalid",
-              message: "That commit is not an amendment on this change request.",
+              message: `That commit is not an amendment on this ${wikiTerms(wiki).singular}.`,
             });
             if (!/^[0-9a-f]{4,64}$/i.test(input.commit)) return yield* notAmendment;
             const commit = yield* revParse(wiki.root, input.commit);
@@ -1392,8 +1394,7 @@ const make = Effect.gen(function* () {
             if (merged.exitCode !== 0) {
               return yield* new WikiError({
                 reason: "conflict",
-                message:
-                  "This amendment overlaps later work in the change request; reconcile it with a new amendment instead.",
+                message: `This amendment overlaps later work in the ${wikiTerms(wiki).singular}; reconcile it with a new amendment instead.`,
               });
             }
             const { tree } = parseMergeTree(merged.stdout);
@@ -1552,7 +1553,7 @@ const make = Effect.gen(function* () {
             if (at === null) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "This change request is not checked out in a worktree.",
+                message: `This ${wikiTerms(wiki).singular} is not checked out in a worktree.`,
               });
             }
             return yield* withWorkspaceLease(
@@ -1561,7 +1562,7 @@ const make = Effect.gen(function* () {
                 if ((yield* gitOut("worktreeHead", at, ["rev-parse", "HEAD"])) !== stored.head) {
                   return yield* new WikiError({
                     reason: "stale",
-                    message: "The change request moved while this ran. Read it again and retry.",
+                    message: `The ${wikiTerms(wiki).singular} moved while this ran. Read it again and retry.`,
                   });
                 }
                 const status = yield* runGit("worktreeStatus", at, [
@@ -1648,7 +1649,7 @@ const make = Effect.gen(function* () {
             if (wiki.host !== null) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A host wiki's change requests merge through their pull requests.",
+                message: `This merges on the host, through its ${wikiTerms(wiki).singular}.`,
               });
             }
             const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
@@ -1657,15 +1658,14 @@ const make = Effect.gen(function* () {
             if (yield* isAncestor(wiki.root, stored.head, main)) {
               return yield* new WikiError({
                 reason: "invalid",
-                message:
-                  "Nothing to merge: main already has every amendment in this change request.",
+                message: `Nothing to merge: main already has every amendment in this ${wikiTerms(wiki).singular}.`,
               });
             }
             const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. Amend the change request to reconcile, then merge again.`,
+                message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. Amend the ${wikiTerms(wiki).singular} to reconcile, then merge again.`,
               });
             }
             const now = yield* DateTime.now;
@@ -1674,7 +1674,7 @@ const make = Effect.gen(function* () {
               wiki.root,
               tree,
               [main, stored.head],
-              `Merge change request: ${oneLine(stored.record.title)}\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
+              `Merge ${wikiTerms(wiki).singular}: ${oneLine(stored.record.title)}\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
               env,
             );
             yield* moveMain(wiki, main, commit);
@@ -1924,7 +1924,7 @@ const make = Effect.gen(function* () {
           if (stored === undefined) {
             return yield* new WikiError({
               reason: "not-found",
-              message: "This thread has no open change request on this wiki.",
+              message: `This thread has no open ${wikiTerms(wiki).singular} on this wiki.`,
             });
           }
           const main = yield* mainTip(wiki);
@@ -2012,7 +2012,7 @@ const make = Effect.gen(function* () {
             if (stored.record.status === "merged") {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A merged change request stays merged.",
+                message: `A merged ${wikiTerms(wiki).singular} stays merged.`,
               });
             }
             if (stored.record.status === input.status) return yield* view(wiki, stored);
@@ -2617,8 +2617,7 @@ const make = Effect.gen(function* () {
             return yield* /non-fast-forward|fetch first/.test(pushed.stderr)
               ? new WikiError({
                   reason: "stale",
-                  message:
-                    "The host's copy of this change request has work this one lacks. Sync the wiki and try again.",
+                  message: `The host's copy of this ${wikiTerms(wiki).singular} has work this one lacks. Sync the wiki and try again.`,
                   cause,
                 })
               : new WikiError({
@@ -2669,7 +2668,7 @@ const make = Effect.gen(function* () {
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `This change request and its copy on the host conflict in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then publish again.`,
+                message: `This ${wikiTerms(wiki).singular} and its copy on the host conflict in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then publish again.`,
               });
             }
             const now = yield* DateTime.now;
@@ -2723,7 +2722,7 @@ const make = Effect.gen(function* () {
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `This change request conflicts with main in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then merge again.`,
+                message: `This ${wikiTerms(wiki).singular} conflicts with main in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then merge again.`,
               });
             }
             const now = yield* DateTime.now;

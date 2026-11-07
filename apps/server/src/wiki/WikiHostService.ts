@@ -44,6 +44,7 @@ import type { SourceControlProvider } from "@t3tools/source-control-core/server/
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import * as WikiService from "./WikiService.ts";
+import { wikiTerms } from "./wikiStorage.ts";
 
 /** How often host wikis pick up what happened on the host. */
 const SWEEP_INTERVAL = "1 minute";
@@ -177,9 +178,9 @@ const make = Effect.gen(function* () {
     return repository;
   });
 
-  const describe = (entry: WikiChangeRequest) =>
+  const describe = (wiki: WikiSummary, entry: WikiChangeRequest) =>
     entry.amendments.length === 0
-      ? `Wiki change request ${entry.changeRequestId}.`
+      ? `Wiki ${wikiTerms(wiki).singular} ${entry.changeRequestId}.`
       : entry.amendments.map((amendment) => `- ${amendment.subject}`).join("\n");
 
   const openPullRequest = Effect.fn("WikiHostService.openPullRequest")(function* (
@@ -187,7 +188,7 @@ const make = Effect.gen(function* () {
     projectId: ProjectId,
     entry: WikiChangeRequest,
   ) {
-    const failed = hostError("The pull request could not be opened on the host.");
+    const failed = hostError(`The ${wikiTerms(wiki).singular} could not be opened on the host.`);
     const provider = yield* providers.resolve({ cwd: wiki.root }).pipe(Effect.mapError(failed));
     const headSelector = entry.branch.slice("refs/heads/".length);
     const find = provider
@@ -202,7 +203,7 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-wiki-pr-" });
           const bodyFile = path.join(directory, "body.md");
-          yield* fileSystem.writeFileString(bodyFile, describe(entry));
+          yield* fileSystem.writeFileString(bodyFile, describe(wiki, entry));
           yield* provider.createChangeRequest({
             cwd: wiki.root,
             baseRefName: wiki.mainBranch,
@@ -292,7 +293,11 @@ const make = Effect.gen(function* () {
     const target = { wikiId: entry.wikiId, changeRequestId: entry.changeRequestId };
     const { state } = yield* provider
       .getChangeRequest({ cwd: wiki.root, reference: String(entry.pullRequest.number) })
-      .pipe(Effect.mapError(hostError("The pull request could not be read from the host.")));
+      .pipe(
+        Effect.mapError(
+          hostError(`The ${wikiTerms(wiki).singular} could not be read from the host.`),
+        ),
+      );
     if (state === "merged") {
       yield* wikis.recordHostMerge(target);
     } else if (state !== entry.status) {
@@ -376,7 +381,7 @@ const make = Effect.gen(function* () {
       const wiki = yield* wikis.get(input.wikiId);
       // A failed connect undoes itself by disconnecting, which must never touch a working wiki.
       if (wiki.host != null) return yield* sync(input);
-      yield* providers
+      const provider = yield* providers
         .resolve({ cwd: wiki.root })
         .pipe(
           Effect.mapError(
@@ -398,6 +403,7 @@ const make = Effect.gen(function* () {
         .setHost(input.wikiId, {
           projectId: project.id,
           remote: "origin",
+          kind: provider.kind,
           createdProject: created,
         })
         .pipe(Effect.tapError(() => removeProject));
@@ -455,11 +461,13 @@ const make = Effect.gen(function* () {
       if (published.pullRequest == null) {
         return yield* new WikiError({
           reason: "invalid",
-          message: "This change request has nothing to merge yet.",
+          message: `This ${wikiTerms(wiki).singular} has nothing to merge yet.`,
         });
       }
       const ref = refOf(projectId, published.pullRequest);
-      const unreadable = hostError("The pull request could not be read from the host.");
+      const unreadable = hostError(
+        `The ${wikiTerms(wiki).singular} could not be read from the host.`,
+      );
       let detail = yield* pullRequests.detail(ref).pipe(Effect.mapError(unreadable));
       // The markdown merge settles what the host's line merge cannot.
       if (detail.mergeability === "conflicting") {
@@ -471,17 +479,19 @@ const make = Effect.gen(function* () {
       if (mergeMethod === null) {
         return yield* new WikiError({
           reason: "invalid",
-          message: "This repository's settings allow no way to merge this pull request.",
+          message: `This repository's settings allow no way to merge this ${wikiTerms(wiki).singular}.`,
         });
       }
       yield* pullRequests
         .runAction({ ...ref, action: "merge", mergeMethod })
-        .pipe(Effect.mapError(hostError("The host refused to merge this pull request.")));
+        .pipe(
+          Effect.mapError(hostError(`The host refused to merge this ${wikiTerms(wiki).singular}.`)),
+        );
       const { state } = yield* pullRequests.summary(ref).pipe(Effect.mapError(unreadable));
       if (state !== "merged") {
         return yield* new WikiError({
           reason: "invalid",
-          message: "The host has not merged this pull request yet. It may be waiting on checks.",
+          message: `The host has not merged this ${wikiTerms(wiki).singular} yet. It may be waiting on checks.`,
         });
       }
       yield* wikis.syncFromHost(input.wikiId);
@@ -498,12 +508,12 @@ const make = Effect.gen(function* () {
     if (wiki.host != null && entry.pullRequest != null && entry.status !== input.status) {
       const ref = refOf(wiki.host.projectId, entry.pullRequest);
       const action = input.status === "open" ? "reopen" : "close";
-      const failed = hostError("The host refused to change this pull request.");
+      const failed = hostError(`The host refused to change this ${wikiTerms(wiki).singular}.`);
       const detail = yield* pullRequests.detail(ref).pipe(Effect.mapError(failed));
       if (!detail.capabilities.actions.includes(action)) {
         return yield* new WikiError({
           reason: "invalid",
-          message: "This host can't reopen a pull request. Open a new change request instead.",
+          message: `This host can't reopen a ${wikiTerms(wiki).singular}. Open a new one instead.`,
         });
       }
       yield* pullRequests.runAction({ ...ref, action }).pipe(Effect.mapError(failed));

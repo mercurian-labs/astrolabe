@@ -43,7 +43,7 @@ const CAPABILITIES: PullRequestCapabilities = {
 
 const UNAVAILABLE_REQUIREMENT = {
   missing:
-    "GitLab CLI (`glab`) is required to browse change requests on this host. Install it from https://gitlab.com/gitlab-org/cli and reload.",
+    "GitLab CLI (`glab`) is required to browse merge requests on this host. Install it from https://gitlab.com/gitlab-org/cli and reload.",
   unauthenticated: "GitLab CLI is not authenticated. Run `glab auth login` and retry.",
 };
 

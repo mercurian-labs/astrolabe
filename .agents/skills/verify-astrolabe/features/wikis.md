@@ -1,7 +1,7 @@
 # Wikis
 
 Astrolabe's second section, beside the threads: folders of linked markdown notes
-kept in git, edited through change requests. Its rail item swaps the sidebar for
+kept in git, edited through pull requests. Its rail item swaps the sidebar for
 the Wikis sidebar, built from the thread list's parts, and fills the main area
 with Obsidian-style tabs and splits over documents (the one shared workspace, see
 [panes.md](panes.md)). User guide: `docs/user/wikis.md`.
@@ -12,7 +12,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   document**. The filter (`wiki/wikiFilter.ts`, the menu and pills in `WikiSidebar.tsx`) is a
   multi-select `role=combobox` named `Filter documents`, or `Filter documents (filtered)` with
   a dot. Its popup (`Search filters`) has a **Status** group, **Has changes** with its count
-  (documents an open change request touches), and a **Wikis** group: All wikis, each wiki
+  (documents an open pull request touches), and a **Wikis** group: All wikis, each wiki
   with a settings gear; then **Add a wiki**, which opens the palette's add-wiki flow. Rows are checkboxes and picking
   keeps it open; with no wiki picked every wiki shows ticked, unticking one keeps the rest,
   and ticking every one or unticking the last is All wikis. Kept in
@@ -24,45 +24,45 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   front stays listed while the filter hides it (opened from a link, Search or another section,
   or the filter changed under it), its row marked **hidden**; the filter never clears for it.
   With no wikis, the sidebar's empty state reads "No wikis yet" with its own **Add a wiki**.
-  Change requests moved to Changes
+  Pull requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
   every wiki) and goes there. Documents (newest first) use the settled threads'
   slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
-  card: wiki, machine, links and the open changes holding it. A wiki change request
+  card: wiki, machine, links and the open changes holding it. A wiki pull request
   opened here (the finder, a deep link) is a foreign tab offering **Open in Changes**.
   The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
-- **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a change request in a worktree"`
-  beside the filter lists open change requests; a pick puts its branch `cr/<id>` in a
+- **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a pull request in a worktree"`
+  beside the filter lists open pull requests; a pick puts its branch `cr/<id>` in a
   worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
-  a typed title offers "New change request “<title>” in a worktree". There is no list or
+  a typed title offers "New pull request “<title>” in a worktree". There is no list or
   tree mode: outside search the sidebar is each shown wiki's worktrees (`WikiWorktreeSections`;
   with several wikis each under `button "<wiki>"` with its icon, open by default), as Projects
-  lists a repository's: main under the wiki's main branch, a change request's under its title.
+  lists a repository's: main under the wiki's main branch, a pull request's under its title.
   Each header has Projects' toggle, `button "Show its files"` / `"Show its documents"`
   (`astrolabe:wiki-worktree-files:v1`, documents by default). Main's documents are the old list
-  (**Open changes · N**, then the notes the filter keeps); a change request's are the `.md` and
-  `.base` files its amendments touch, rows named `<note>, in <change request>` opening inside
+  (**Open changes · N**, then the notes the filter keeps); a pull request's are the `.md` and
+  `.base` files its amendments touch, rows named `<note>, in <pull request>` opening inside
   it. Files show a `FileBrowserPanel`. The main line and the focused tab's worktree open on
   their own. They fold as Projects'
   do (`worktreeFolding.ts`, `FoldedWorktrees`): idle ones under `button "N more worktrees"` with
   `textbox "Find among <wiki>'s other worktrees"`. The filter nests each wiki's worktrees under
   it (`button "Show <wiki>'s worktrees"`, folded by default); unticking one hides it from the
   sidebar (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
-  worktree staying, marked. A note or change request tab in a change request with a worktree
+  worktree staying, marked. A note or pull request tab in a pull request with a worktree
   shows its number before its ✕; opening such a note numbers the worktree
   (`useNumberWhenOpened`). A top-level `.md`
   clicked in a tree, on the main line or a `cr/` branch, opens as
-  `wiki-note:<env>:<wiki>:<change request id or empty>:<name>`; README, AGENTS, CLAUDE,
+  `wiki-note:<env>:<wiki>:<pull request id or empty>:<name>`; README, AGENTS, CLAUDE,
   `*.skillmap.md`, nested `.md`, any `.md` on another branch, and every other file open as
   `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
-  or modifiers). A change request worktree's menu adds **Save edits to the change
+  or modifiers). A pull request worktree's menu adds **Save edits to the change
   request** while it has uncommitted files (`wiki.saveWorktree`, one amendment, worktree left
   clean; refused with "No document in this worktree has unsaved changes." when only non-note
-  files changed). The main worktree has no menu. An amendment landing on a change request moves its worktree's files, and is
+  files changed). The main worktree has no menu. An amendment landing on a pull request moves its worktree's files, and is
   refused, naming the files, when they overlap unsaved edits there. The worktree calls name the wiki (`worktrees.*` with `wikiId`, read in the wiki's own
   folder), so a wiki needs no project; a non-note file opens as `wiki-file:<env>:<wiki>:…`
   (no local graph button, never in a change group).
@@ -83,11 +83,11 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **History**: each tab remembers what it showed (localStorage
   `astrolabe:workspace-tab-history:v1`, shared with every section, keyed by the tab key it shows now, last 50 each
   way). Clicks, Search, `:e`, deep links and followed wikilinks push onto it and clear
-  its forward history; saving a note into a change request keeps it. The note header's
+  its forward history; saving a note into a pull request keeps it. The note header's
   **Back**/**Forward** walk that tab, and `mod+[`/`mod+]` and Space `t h`/`t l` walk
   the focused pane's tab in front (the arrows faint at either end); a step to a document open in
   another tab brings that tab forward, and with unsaved edits it opens in a new tab.
-- **Pane header**: a note's header (Main or the change request, muted / the note's
+- **Pane header**: a note's header (Main or the pull request, muted / the note's
   name, as a chat's breadcrumb; then quiet status and its buttons) is one line as tall as the tab strip, with no bottom border; the strip's
   joined tab in front (panes.md) reads continuous with it. A pane's `+` opens a New tab
   (panes.md) whose **Document** (`O`, faint until a wiki exists) opens the finder; it
@@ -106,16 +106,16 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Search**: the Search palette (Cmd+K twice) finds every wiki's documents from
   anywhere in a Documents group; a pick shows it in the focused pane's tab in front,
   as a click does (or brings an open copy forward), and goes to `/wikis`.
-- **Chats and pull requests beside documents**: a change request's **Open thread** opens
+- **Chats and pull requests beside documents**: a pull request's **Open thread** opens
   its thread's chat in a new tab after the chat in front and brings it forward
   (`chat:<env>:<thread>` tab), as a sidebar click does. See panes.md, "Chats as tabs".
-- **Change requests** open as tabs with the shared tab header
-  (`nav[aria-label='Change request breadcrumb']`: the wiki, muted / the title; the state as
-  quiet status; **Open thread**, **Close change request** / **Reopen change request** and
+- **Pull requests** open as tabs with the shared tab header
+  (`nav[aria-label='Pull request breadcrumb']`: the wiki, muted / the title; the state as
+  quiet status; **Open thread**, **Close pull request** / **Reopen pull request** and
   **Merge**), then who opened it, amendments with Revert, and files that open inside the
-  change request.
+  pull request.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
-  that document in the tab in front, as a click does; `changeRequest=…` alone opens the change request, and
+  that document in the tab in front, as a click does; `changeRequest=…` alone opens the pull request, and
   with `note=` reads the note inside it.
 - **Linked projects** (`wiki/wikiLinkStep.tsx`, `wiki/WikiLinks.tsx`): a wiki is not
   a project. Adding a wiki or a project in the palette ends on a link step, a group headed
@@ -150,7 +150,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `WikiService.query` / `wiki.query`, agents `astrolabe_wiki_query`): a `.base` file lists as a
   document named `<name>.base` (no links line in its hover card) and opens as a tab labelled
   `<name>` (no `.base`) with its view (table or cards; a `View` select when it has several). Its
-  header's breadcrumb, `nav[aria-label='Base breadcrumb']`, reads `Main / <name>` (`<change request
+  header's breadcrumb, `nav[aria-label='Base breadcrumb']`, reads `Main / <name>` (`<pull request
   title> / <name>` when read from one), with "Base · read only" as its status. A
   ` ```base ` block in a note shows the same view in place (`.cm-md-host-block`, via the
   editor's `codeBlocks` option) and its YAML once the caret is in it. Row names and `[[links]]`
@@ -171,15 +171,17 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
   view; its header has `Edit the document`/`Stop editing` (iOS exposes them as `button "Edit"`/`"Done"`;
   not on read-only skill maps), and
-  once edited `Save to a change request` and `Document actions` › Discard edits. Save opens
-  the "Save to change request" sheet: New change request or an open one, `Change request
+  once edited `Save to a pull request` and `Document actions` › Discard edits. Save opens
+  the "Save to pull request" sheet: New pull request or an open one, `Pull request
   title` (captioned "Title" on iOS), `What changed`, then Save (`Save when the turn ends` while the agent works). A
-  change request (route `WikiChangeRequest`, from the Changes tab) has `Change
-  request actions` (on iOS the ⋯ button is named after the change request; Merge into main,
+  pull request (route `WikiChangeRequest`, from the Changes tab) has `Change
+  request actions` (on iOS the ⋯ button is named after the pull request; Merge into main,
   Close/Reopen, and Open thread when it has one), "Amendments (N)" with
   `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
   stays on the computer. Walk it on an iPhone with test-t3-mobile.
 
+- **What reviews are called**: every label on a wiki names its host's word: merge request on
+  a GitLab wiki, pull request on the others and on a local wiki.
 - **Git host**: Settings → Wikis → a wiki → **Git host** with **Connect**, then **Sync now** and
   **Disconnect** (`WikisSettings.tsx`, server `wiki/WikiHostService.ts`). Connecting uses the
   folder's `origin`, gives the wiki a backing project (what pull requests are read through) and
@@ -217,13 +219,13 @@ preview_act click     [aria-label='Open a tab'] >> role=button[name=/^Document/]
 `JSON.parse(localStorage['astrolabe:workspace:v1'])` (written within 150 ms; absent while
 the arrangement is the starting one), and the lit row
 (`[data-testid^=wiki-sidebar-row][aria-current=page]`). A change group's tabs here (its wiki
-change requests, its threads' chats, its pull requests, and the `change-group:` tab a click on
+pull requests, its threads' chats, its pull requests, and the `change-group:` tab a click on
 the marker opens) sit behind a `[data-tab-group]` marker; while the group is collapsed (its
 `aria-label` ends `, collapsed`) only its front tab has a `[data-pane-tab]`, so expand it from
 the marker's right-click menu before counting. Prove it paints: `document.elementFromPoint` at the
 centre of the front note's title returns it: headers have no `h2`, so take
-`nav[aria-label="Document breadcrumb"] [aria-current="page"]` (a change request's is
-`Change request breadcrumb`, a base's `Base breadcrumb`) in `[data-pane-id][data-focused]` with a non-zero rect (tabs
+`nav[aria-label="Document breadcrumb"] [aria-current="page"]` (a pull request's is
+`Pull request breadcrumb`, a base's `Base breadcrumb`) in `[data-pane-id][data-focused]` with a non-zero rect (tabs
 behind it are `display: none`), and at the lit row's centre
 returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row.
 `location.reload()` keeps the arrangement and the histories
@@ -244,7 +246,7 @@ a screenshot of the section.
 - The settings gear in the filter is `aria-hidden`; reach it by
   `[title="Settings for <wiki>"]`.
 - `data-wikilink` holds the raw target (with any `#Heading`).
-- A click on a numbered change request worktree's header by role (`role=button[name='1 …']`)
+- A click on a numbered pull request worktree's header by role (`role=button[name='1 …']`)
   may time out; click it by its measured centre instead.
 - Hot-reloading across a deleted route component can wedge the preview tab
   (evaluate times out). Open a fresh tab.

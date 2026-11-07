@@ -10,6 +10,7 @@ import {
   mergeBlockedReason,
   noteNameOfFile,
   wikiPullRequestHost,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -82,6 +83,7 @@ export function WikiChangeRequestRouteScreen({
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
   const wikiName = wiki?.name ?? null;
+  const terms = wikiTerms(wiki);
   const hostProjectId = wiki?.host?.projectId ?? null;
   const canMerge = useAtomValue(wikiEnvironment.merge.permissionAtom(environmentId));
   const canSetStatus = useAtomValue(
@@ -109,11 +111,11 @@ export function WikiChangeRequestRouteScreen({
   if (detail.data === null) {
     return (
       <View className="flex-1 bg-screen">
-        <NativeStackScreenOptions options={{ title: "Change request" }} />
+        <NativeStackScreenOptions options={{ title: terms.Singular }} />
         {detail.error !== null ? (
-          <EmptyState title="Couldn't open this change request" detail={detail.error} />
+          <EmptyState title={`Couldn't open this ${terms.singular}`} detail={detail.error} />
         ) : (
-          <LoadingScreen message="Opening the change request…" />
+          <LoadingScreen message={`Opening the ${terms.singular}…`} />
         )}
       </View>
     );
@@ -163,7 +165,7 @@ export function WikiChangeRequestRouteScreen({
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions
         options={{
-          title: "Change request",
+          title: terms.Singular,
           unstable_headerSubtitle: [wikiName, STATUS_LABEL[changeRequest.status]]
             .filter(Boolean)
             .join(" · "),
@@ -174,7 +176,7 @@ export function WikiChangeRequestRouteScreen({
         <Toolbar.Menu
           icon="ellipsis"
           title={changeRequest.title}
-          accessibilityLabel="Change request actions"
+          accessibilityLabel={`${terms.Singular} actions`}
           disabled={busy}
         >
           {open ? (
@@ -283,6 +285,7 @@ export function WikiChangeRequestRouteScreen({
         ) : null}
         {thread ? (
           <LinkedPullRequests
+            noun={terms.singular}
             links={pullRequestLinks}
             nudge={nudge}
             busy={busy}
@@ -308,7 +311,7 @@ export function WikiChangeRequestRouteScreen({
             }
           />
         ) : null}
-        {open ? <MergePreview preview={mergePreview} /> : null}
+        {open ? <MergePreview preview={mergePreview} noun={terms.singular} /> : null}
         {errors.length > 0 ? (
           <Card>
             <Text className="text-sm font-t3-medium text-foreground">
@@ -342,7 +345,7 @@ export function WikiChangeRequestRouteScreen({
         <Section title={`Documents changed (${files.length})`}>
           {files.length === 0 ? (
             <Text className="px-4 text-sm text-foreground-muted">
-              This change request changes no documents.
+              {`This ${terms.singular} changes no documents.`}
             </Text>
           ) : (
             <View className="overflow-hidden rounded-[20px] bg-grouped-card">
@@ -383,6 +386,7 @@ const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Clos
  * without merging. Nothing happens on its own.
  */
 function LinkedPullRequests(props: {
+  readonly noun: string;
   readonly links: ReadonlyArray<ThreadPullRequestLink>;
   readonly nudge: PullRequestNudge | null;
   readonly busy: boolean;
@@ -429,7 +433,7 @@ function LinkedPullRequests(props: {
           <Text className="text-sm text-foreground-muted">
             {nudge.kind === "merge"
               ? "Merge these docs too, so the wiki matches the code on main?"
-              : "Close this change request too?"}
+              : `Close this ${props.noun} too?`}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -438,7 +442,7 @@ function LinkedPullRequests(props: {
             className="self-start pt-1 active:opacity-60 disabled:opacity-40"
           >
             <Text className="text-sm font-t3-medium text-link">
-              {nudge.kind === "merge" ? "Merge docs" : "Close change request"}
+              {nudge.kind === "merge" ? "Merge docs" : `Close ${props.noun}`}
             </Text>
           </Pressable>
         </Card>
@@ -460,7 +464,13 @@ function Card(props: { readonly children: ReactNode }) {
   return <View className="gap-1.5 rounded-[20px] bg-grouped-card px-4 py-3">{props.children}</View>;
 }
 
-function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
+function MergePreview({
+  preview,
+  noun,
+}: {
+  readonly preview: WikiMergePreview;
+  readonly noun: string;
+}) {
   return (
     <Card>
       <Text className="text-sm font-t3-medium text-foreground">
@@ -473,8 +483,8 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
       {preview.status === "conflict" ? (
         <Text className="text-sm text-foreground-muted">
           {preview.conflicts.length > 0
-            ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this change request to settle them, then merge.`
-            : "Amend this change request to settle the conflict, then merge."}
+            ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this ${noun} to settle them, then merge.`
+            : `Amend this ${noun} to settle the conflict, then merge.`}
         </Text>
       ) : null}
     </Card>

@@ -86,7 +86,7 @@ export function ChangeGroupView({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <GroupHeader title="Change group" />
         <p role="status" className="px-4 py-6 text-center text-sm text-muted-foreground">
-          This group has fewer than two change requests now.
+          This group has fewer than two pull requests now.
         </p>
       </div>
     );
@@ -181,7 +181,7 @@ function GroupDetails({
     void ask(
       environmentId,
       target.threadId,
-      `The code this documentation describes changed after it was written:\n${list(code)}\n\nUpdate the documentation change request “${target.title}” in the ${target.place} wiki so it matches the code as it is now.`,
+      `The code this documentation describes changed after it was written:\n${list(code)}\n\nUpdate the documentation pull request “${target.title}” in the ${target.place} wiki so it matches the code as it is now.`,
     );
   };
   const askToDraftDocs = () => {
@@ -190,7 +190,7 @@ function GroupDetails({
     void ask(
       environmentId,
       target.threadId,
-      `This change has no documentation yet:\n${list(code)}\n\nDocument it in the team's wiki: amend the notes that describe what changed, opening a change request there.`,
+      `This change has no documentation yet:\n${list(code)}\n\nDocument it in the team's wiki: amend the notes that describe what changed, opening a pull request there.`,
     );
   };
   const askForSuggestions = () => {
@@ -202,9 +202,9 @@ function GroupDetails({
     void ask(
       environmentId,
       group.groupId,
-      `Look for other open change requests and threads that belong with the change group “${group.title}”, which holds:\n${list(group.members)}\n\nThreads working on it:\n${
+      `Look for other open pull requests and threads that belong with the change group “${group.title}”, which holds:\n${list(group.members)}\n\nThreads working on it:\n${
         group.threads.map((entry) => `- ${entry.title}`).join("\n") || "- none yet"
-      }\n\nCandidate change requests:\n${
+      }\n\nCandidate pull requests:\n${
         others.map((member) => `- ${member.key}: ${member.title} (${member.place})`).join("\n") ||
         "- none open right now"
       }\n\nCandidate threads, newest first:\n${
@@ -282,7 +282,7 @@ function GroupDetails({
       <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-auto">
         <div className="mx-auto flex max-w-2xl flex-col gap-5 px-6 pt-6 pb-8">
           <p className="text-sm text-muted-foreground">
-            {`${group.members.length} change requests, reviewed and merged each in its own place.${
+            {`${group.members.length} pull requests, reviewed and merged each in its own place.${
               group.threads.length === 0
                 ? ""
                 : ` ${group.threads.length} ${group.threads.length === 1 ? "thread works" : "threads work"} on it.`
@@ -641,17 +641,17 @@ function AddMember({
         if (!open) setQuery("");
       }}
     >
-      <HeaderComboboxTrigger label="Add a change request">
+      <HeaderComboboxTrigger label="Add a pull request">
         <PlusIcon className="size-4" />
       </HeaderComboboxTrigger>
       <ComboboxPopup align="end" className="min-w-72 max-w-[min(24rem,var(--available-width))]">
         <ComboboxSearchInput
-          aria-label="Search change requests"
-          placeholder="Search change requests..."
+          aria-label="Search pull requests"
+          placeholder="Search pull requests..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <ComboboxEmpty>No open change requests outside a group.</ComboboxEmpty>
+        <ComboboxEmpty>No open pull requests outside a group.</ComboboxEmpty>
         <ComboboxList>
           {(member: ChangeGroupMember) => (
             <ComboboxItem key={member.key} hideIndicator value={member}>

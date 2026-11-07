@@ -8,13 +8,14 @@ export function wikiDocumentSubtitle(input: {
   /** The change request the document is read inside; null reads main. */
   readonly changeRequest: Pick<WikiChangeRequest, "title"> | null;
   readonly readsChangeRequest: boolean;
+  readonly noun: string;
   readonly agentWorking: boolean;
 }): string {
   const scope = !input.readsChangeRequest
     ? "Main"
     : input.changeRequest
       ? `In “${input.changeRequest.title}”`
-      : "In a change request";
+      : `In a ${input.noun}`;
   return [input.wikiName, scope, input.agentWorking ? "agent working" : null]
     .filter((part): part is string => part !== null && part.length > 0)
     .join(" · ");

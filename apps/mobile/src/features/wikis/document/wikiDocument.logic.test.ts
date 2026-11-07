@@ -19,6 +19,7 @@ describe("wikiDocumentSubtitle", () => {
         wikiName: "almagest",
         changeRequest: null,
         readsChangeRequest: false,
+        noun: "pull request",
         agentWorking: false,
       }),
     ).toBe("almagest · Main");
@@ -27,6 +28,7 @@ describe("wikiDocumentSubtitle", () => {
         wikiName: "almagest",
         changeRequest: { title: "Grow Atlas" },
         readsChangeRequest: true,
+        noun: "pull request",
         agentWorking: true,
       }),
     ).toBe("almagest · In “Grow Atlas” · agent working");
@@ -35,9 +37,10 @@ describe("wikiDocumentSubtitle", () => {
         wikiName: null,
         changeRequest: null,
         readsChangeRequest: true,
+        noun: "merge request",
         agentWorking: false,
       }),
-    ).toBe("In a change request");
+    ).toBe("In a merge request");
   });
 });
 

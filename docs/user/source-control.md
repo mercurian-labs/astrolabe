@@ -174,14 +174,14 @@ where the host allows it. GitLab calls these merge requests.
 
 The sidebar lists reviews, with search, sort and filters above them, and your wikis' change
 requests in a **Wiki changes** group of their own (see [Wikis](wikis.md)). The project filter beside the
-search picks every project's pull requests or one project's, every wiki's change requests
+search picks every project's pull requests or one project's, every wiki's pull requests
 or one wiki's, or all of them; one host's pull requests are under **Filters**. A review opens as a
 tab among the ones every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)),
 so a review can sit beside another, a chat or a file, and `mod+[` and `mod+]` go back and
 forward through what the focused tab showed. Open tabs come back after a restart.
 
 On mobile, **Changes** lists reviews across your connected environments, with your
-wikis' change requests in a **Wiki changes** group above them. Open a review
+wikis' pull requests in a **Wiki changes** group above them. Open a review
 to read its description, activity, commits, and changed files. Line comments stay as drafts
 until you submit the review. **Work on PR** opens a chat with the review attached; sending
 the first message prepares a worktree from the review's branch.
@@ -225,21 +225,21 @@ declined pull request.
 
 ### Change groups
 
-A change group is change requests in different projects that are one effort, such as a pull
-request and the wiki change request documenting it. A thread's own change requests form a group on
-their own, and so do a coordinator's children's and a fork's; a change request with no thread joins
+A change group is pull requests in different projects that are one effort, such as a pull
+request and the wiki pull request documenting it. A thread's own pull requests form a group on
+their own, and so do a coordinator's children's and a fork's; a pull request with no thread joins
 the group whose titles share its issue key (`M-123`). Groups lead the **Changes** list,
 each with its state: **In sync**, **Docs behind**, **Waiting on code**, **Docs missing** or
 **Merged**. A thread in a group shows it beside its title.
 
 A group also lists the threads working on it: the thread it started from, the threads that opened
-its change requests, their forks and coordinator's children (including a fork that opened
+its pull requests, their forks and coordinator's children (including a fork that opened
 nothing), threads on one of its pull requests' branches, and threads whose title or branch names
 its issue key. A thread can be in more than one group.
 
 A group's tab lists its members and why each is there. **Merge with the code** merges the
 documentation the moment the code has; a merge the wiki refuses stays open for you. From the tab
-you can add a change request or a thread by hand or take one out, ask an agent for suggestions of
+you can add a pull request or a thread by hand or take one out, ask an agent for suggestions of
 either (you accept or dismiss each), and ask a thread to update documentation that fell behind or to
 draft missing documentation. **Open as a tab group** opens the group's threads, pull requests and
 documentation together behind a numbered marker. Beside a thread, the group's threads open as chats
@@ -249,9 +249,9 @@ Clicking the marker shows the group's tab; its menu collapses the group, merges 
 closes its tabs.
 Dragging a tab away doesn't take it out of the group: it gets a marker of its own where it lands.
 
-Which rules group change requests and threads, including **Same branch**, and what an agent may do,
+Which rules group pull requests and threads, including **Same branch**, and what an agent may do,
 are under **Settings → Changes → Grouping**, for each environment. Turning a rule off keeps the
-change requests already grouped.
+pull requests already grouped.
 
 On your phone, groups lead the **Changes** tab; a group shows its members and threads, opens each,
 takes one out, and turns **Merge with the code** on or off. Grouping is under **Settings →

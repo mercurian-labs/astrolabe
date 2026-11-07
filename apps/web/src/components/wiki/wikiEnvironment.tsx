@@ -1,4 +1,4 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiId } from "@t3tools/contracts";
 import {
   type AtomCommand,
   isAtomCommandInterrupted,
@@ -8,10 +8,11 @@ import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
 
 import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
+import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { wikiOverviewsAtom } from "~/state/wiki";
+import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
 import { toastManager } from "../ui/toast";
-import { describeWikiFailure, hostedPullRequestKeys, hostedWikis } from "./wiki.logic";
+import { describeWikiFailure, hostedPullRequestKeys, hostedWikis, wikiTerms } from "./wiki.logic";
 
 /**
  * The server whose wikis the page shows: the one the URL names while this workspace knows it,
@@ -53,6 +54,14 @@ export function useWikiOverviews(enabled = true): {
 export function useHostedPullRequestKeys(enabled: boolean): ReadonlySet<string> {
   const { overviews } = useWikiOverviews(enabled);
   return hostedPullRequestKeys(hostedWikis(overviews));
+}
+
+/** What a wiki calls its reviews, by its host. */
+export function useWikiTerms(environmentId: EnvironmentId | undefined, wikiId: WikiId | undefined) {
+  const { data } = useEnvironmentQuery(
+    environmentId === undefined ? null : wikiEnvironment.list({ environmentId, input: {} }),
+  );
+  return wikiTerms(data?.wikis.find((entry) => entry.wikiId === wikiId));
 }
 
 export type WikiCommandOutcome<A> =

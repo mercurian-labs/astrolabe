@@ -53,6 +53,7 @@ export {
   queuedSaveStep,
   type MirrorTone,
   type QueuedWikiSave,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 
 /** A map's tiles, picked as Obsidian does: the view's own, else a background, else the default. */

@@ -15,7 +15,7 @@ const GROUPING_ROWS: ReadonlyArray<{
   {
     key: "sameThread",
     title: "Same thread",
-    description: "A thread's pull requests and the wiki change requests it opened form one group.",
+    description: "A thread's pull requests and the wiki pull requests it opened form one group.",
   },
   {
     key: "coordinator",
@@ -25,13 +25,13 @@ const GROUPING_ROWS: ReadonlyArray<{
   {
     key: "lineage",
     title: "Thread lineage",
-    description: "A fork, and its change requests, join the group of the thread it came from.",
+    description: "A fork, and its pull requests, join the group of the thread it came from.",
   },
   {
     key: "references",
     title: "References",
     description:
-      "A change request in no group joins one whose titles share its issue key, and threads naming the key join it.",
+      "A pull request in no group joins one whose titles share its issue key, and threads naming the key join it.",
   },
   {
     key: "sameBranch",
@@ -42,7 +42,7 @@ const GROUPING_ROWS: ReadonlyArray<{
     key: "agentSuggestions",
     title: "Agent suggestions",
     description:
-      "An agent can suggest change requests and threads, each with its reason, for you to accept or dismiss.",
+      "An agent can suggest pull requests and threads, each with its reason, for you to accept or dismiss.",
   },
   {
     key: "flagDocsBehind",

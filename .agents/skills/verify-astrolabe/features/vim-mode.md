@@ -48,7 +48,7 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
 - **Ex commands** (through the Command Palette; the app's are aliases, keybinding
   rules such as `:w[rite]`, typed without the colon, see which-key.md): `w` sends the focused chat's draft (or that of
   the chat whose linked tab is focused; `writeTarget` in `whichKey/commands.ts`), or opens a
-  note's **Save to change request** ("No edits to save" on a clean note); with any other tab
+  note's **Save to pull request** ("No edits to save" on a clean note); with any other tab
   focused it offers "Nothing to write here". `q` is the app's close tab: it closes the focused pane's tab in
   front (a chat takes its linked tabs with it). Lines no command claims (`:s/a/b/`, `:%s`, `:12`) show **Run in the
   editor** (first, ahead of any palette matches) when the palette came from a Vim
@@ -140,12 +140,12 @@ Walk these end to end; each crosses into another feature.
 3. **Ex line round trip.** In normal mode `:` → Command Palette open (chevron,
    empty field) listing every command (Search, New thread, Close tab, Send the
    draft, Split down, Split right, Clear search highlight, …; from a note the write
-   row reads Save to change request) → type `s/hello/bye/` → first row **Run in the
+   row reads Save to pull request) → type `s/hello/bye/` → first row **Run in the
    editor** → Enter → palette gone, draft "bye world", mode `normal`, focus in the
    composer.
 4. **Note.** Open a wiki document (wikis.md) → click into it → mode `normal`, code
    font, no `--NORMAL--` panel → `v` `e` → a selection drawn → Escape → `:w` Enter → "No edits to save" → `A`, `x`, Escape, `:w` Enter →
-   **Save to change request** dialog → Escape, **Discard edits**.
+   **Save to pull request** dialog → Escape, **Discard edits**.
 5. **Vim configuration.** Settings › Keybindings › Vim → **Add** → Mode Insert, Keys
    `jk`, Does `<Esc>` → Save → a row `Insert jk → <Esc>`, a "Vim configuration
    updated" toast, and `inoremap jk <Esc>` in `$home/userdata/vimrc` → append

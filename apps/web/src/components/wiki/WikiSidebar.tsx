@@ -104,7 +104,7 @@ import {
 } from "../ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { documentTitle, isTurnRunning, noteNameOfFile } from "./wiki.logic";
+import { documentTitle, isTurnRunning, noteNameOfFile, wikiTerms } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiFinder } from "./WikiFinder";
 import { WikiIcon } from "./WikiIcon";
@@ -1431,7 +1431,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
     const StatusGlyph = merged ? PullRequestGlyph.merged : PullRequestGlyph.closed;
     return (
       <CardRow
-        label={`${changeRequest.title}, ${merged ? "merged" : "closed"} change request in ${item.wiki.name}`}
+        label={`${changeRequest.title}, ${merged ? "merged" : "closed"} ${wikiTerms(item.wiki).singular} in ${item.wiki.name}`}
         active={active}
         selected={selected}
         tab={tab}
@@ -1450,7 +1450,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
   }
   return (
     <CardRow
-      label={`${changeRequest.title}, change request in ${item.wiki.name}`}
+      label={`${changeRequest.title}, ${wikiTerms(item.wiki).singular} in ${item.wiki.name}`}
       active={active}
       selected={selected}
       tab={tab}

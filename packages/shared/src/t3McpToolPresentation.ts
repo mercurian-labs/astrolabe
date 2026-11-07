@@ -378,7 +378,7 @@ const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   astrolabe_wiki_links: tool(["Read", "Reading", "Read", "wiki links"], "wiki-read"),
   astrolabe_wiki_query: tool(["Query", "Querying", "Queried", "a wiki base"], "wiki-read"),
   astrolabe_wiki_change_request: tool(
-    ["Review", "Reviewing", "Reviewed", "a wiki change request"],
+    ["Review", "Reviewing", "Reviewed", "a wiki pull request"],
     "wiki-read",
   ),
   astrolabe_wiki_amend: tool(["Amend", "Amending", "Amended", "a wiki"], "wiki-amend"),

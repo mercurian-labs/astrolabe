@@ -49,7 +49,7 @@ export function ThreadChangeGroupPill({
           {CHANGE_GROUP_STATE_LABELS[group.state]}
         </Badge>
       </TooltipTrigger>
-      <TooltipPopup side="bottom">{`${group.title} · ${group.members.length} change requests`}</TooltipPopup>
+      <TooltipPopup side="bottom">{`${group.title} · ${group.members.length} pull requests`}</TooltipPopup>
     </Tooltip>
   );
 }

@@ -7,10 +7,30 @@ import type {
   WikiMirrorStatus,
 } from "@t3tools/contracts";
 
+import { sourceControlClients } from "./sourceControlClients.ts";
+
 /**
  * Astrolabe: how wiki state reads to a person, shared by the web and mobile clients: note
  * names, save targets, merge readiness, failures, the mirror, and live agent turns.
  */
+
+/** What a wiki's reviews are called: its host's name for them, else "pull request". */
+export function wikiTerms(
+  wiki:
+    | {
+        readonly host?: Pick<WikiHostStatus, "kind"> | null | undefined;
+      }
+    | null
+    | undefined,
+) {
+  const { singular, plural } = sourceControlClients.get(wiki?.host?.kind).changeRequest;
+  return {
+    singular,
+    plural,
+    Singular: `${singular.charAt(0).toUpperCase()}${singular.slice(1)}`,
+    Plural: `${plural.charAt(0).toUpperCase()}${plural.slice(1)}`,
+  };
+}
 
 /** The comparison key the wiki uses for note names. */
 export const noteKey = (name: string): string => name.normalize("NFC").toLowerCase();

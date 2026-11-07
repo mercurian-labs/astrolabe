@@ -30,7 +30,7 @@ import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
 import { WikiBase } from "./WikiBaseView";
 import { WikiNoteEditor } from "./WikiNoteEditor";
-import { useWikiCommand } from "./wikiEnvironment";
+import { useWikiCommand, useWikiTerms } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
 import { SaveToChangeRequestDialog, useChangeRequestTurn, type SaveTarget } from "./WikiSaveDialog";
 
@@ -92,6 +92,7 @@ export function WikiNoteView({
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
+  const terms = useWikiTerms(environmentId, wikiId);
   const viewingChange = openChangeRequests.find(
     (changeRequest) => changeRequest.changeRequestId === changeRequestId,
   );
@@ -202,7 +203,7 @@ export function WikiNoteView({
         <TabHeader.Title
           label="Document"
           parent={
-            changeRequestId === undefined ? "Main" : (viewingChange?.title ?? "A change request")
+            changeRequestId === undefined ? "Main" : (viewingChange?.title ?? `A ${terms.singular}`)
           }
         >
           {data.name}
@@ -223,7 +224,7 @@ export function WikiNoteView({
               Discard edits
             </Button>
             <Button size="sm" onClick={() => setSaving(true)}>
-              Save to change request
+              {`Save to ${terms.singular}`}
             </Button>
           </TabHeader.Actions>
         ) : null}
@@ -248,7 +249,7 @@ export function WikiNoteView({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 pt-6 pb-12">
           {data.exists ? null : (
             <WikiPart.Muted>
-              {`No note is called ${data.name} yet. Write it here and save it to a change request.`}
+              {`No note is called ${data.name} yet. Write it here and save it to a ${terms.singular}.`}
             </WikiPart.Muted>
           )}
           {snapshot.session ? (
@@ -324,6 +325,7 @@ export function WikiNoteView({
       {saving ? (
         <SaveToChangeRequestDialog
           environmentId={environmentId}
+          wikiId={wikiId}
           subject={data.name}
           openChangeRequests={openChangeRequests}
           viewing={changeRequestId}

@@ -1682,7 +1682,15 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:wikis",
-    searchTerms: ["wikis", "wiki", "notes", "knowledge", "skill map", "change requests"],
+    searchTerms: [
+      "wikis",
+      "wiki",
+      "notes",
+      "knowledge",
+      "skill map",
+      "pull requests",
+      "merge requests",
+    ],
     title: "Open wikis",
     icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
     run: async () => {

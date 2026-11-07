@@ -3,6 +3,7 @@ import type {
   ThreadId,
   WikiChangeRequest,
   WikiChangeRequestId,
+  WikiId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
@@ -27,6 +28,7 @@ import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { defaultSaveTarget, isTurnRunning, type QueuedWikiSave } from "./wiki.logic";
+import { useWikiTerms } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
 
 const NEW_CHANGE_REQUEST = "new";
@@ -51,6 +53,7 @@ export function useChangeRequestTurn(
 /** Saves edits as one amendment: into an open change request, or a new one. */
 export function SaveToChangeRequestDialog({
   environmentId,
+  wikiId,
   subject,
   openChangeRequests,
   viewing,
@@ -59,6 +62,7 @@ export function SaveToChangeRequestDialog({
   onQueue,
 }: {
   readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
   /** What was edited, for the title and message it starts with. */
   readonly subject: string;
   readonly openChangeRequests: ReadonlyArray<WikiChangeRequest>;
@@ -70,6 +74,7 @@ export function SaveToChangeRequestDialog({
   readonly onQueue?: (save: QueuedWikiSave) => void;
 }) {
   const id = useId();
+  const terms = useWikiTerms(environmentId, wikiId);
   const canAmend = useAtomValue(wikiEnvironment.amend.permissionAtom(environmentId));
   const [target, setTarget] = useState<string>(
     () => defaultSaveTarget(openChangeRequests, viewing) ?? NEW_CHANGE_REQUEST,
@@ -116,19 +121,19 @@ export function SaveToChangeRequestDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Save to change request</DialogTitle>
+            <DialogTitle>{`Save to ${terms.singular}`}</DialogTitle>
             <DialogDescription>
-              Your edit is added to a change request. Main changes only when someone merges it.
+              {`Your edit is added to a ${terms.singular}. Main changes only when someone merges it.`}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${id}-target`}>Change request</Label>
+                <Label htmlFor={`${id}-target`}>{terms.Singular}</Label>
                 <Select
                   value={target}
                   items={{
-                    [NEW_CHANGE_REQUEST]: "New change request",
+                    [NEW_CHANGE_REQUEST]: `New ${terms.singular}`,
                     ...Object.fromEntries(
                       openChangeRequests.map((changeRequest) => [
                         changeRequest.changeRequestId,
@@ -144,7 +149,7 @@ export function SaveToChangeRequestDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectPopup>
-                    <SelectItem value={NEW_CHANGE_REQUEST}>New change request</SelectItem>
+                    <SelectItem value={NEW_CHANGE_REQUEST}>{`New ${terms.singular}`}</SelectItem>
                     {openChangeRequests.map((changeRequest) => (
                       <SelectItem
                         key={changeRequest.changeRequestId}
@@ -177,7 +182,7 @@ export function SaveToChangeRequestDialog({
               </div>
               {waitsForTurn ? (
                 <WikiPart.Muted>
-                  {`The agent is working in this change request. Your edit is saved when its turn ends; until then the agent's writes keep landing around it.`}
+                  {`The agent is working in this ${terms.singular}. Your edit is saved when its turn ends; until then the agent's writes keep landing around it.`}
                 </WikiPart.Muted>
               ) : null}
               {shownError ? (

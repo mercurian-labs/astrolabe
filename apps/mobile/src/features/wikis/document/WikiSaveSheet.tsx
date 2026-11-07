@@ -21,6 +21,7 @@ export type WikiSaveTarget =
  * While the target's agent is mid-turn, the save waits for the turn to end.
  */
 export function WikiSaveSheet(props: {
+  readonly noun: string;
   readonly noteName: string;
   readonly openChangeRequests: ReadonlyArray<WikiChangeRequest>;
   readonly viewing: WikiChangeRequestId | undefined;
@@ -62,7 +63,7 @@ export function WikiSaveSheet(props: {
   };
 
   const choices = [
-    { value: NEW_CHANGE_REQUEST, label: "New change request" },
+    { value: NEW_CHANGE_REQUEST, label: `New ${props.noun}` },
     ...props.openChangeRequests.map((changeRequest) => ({
       value: changeRequest.changeRequestId as string,
       label: changeRequest.title,
@@ -70,7 +71,7 @@ export function WikiSaveSheet(props: {
   ];
 
   return (
-    <Sheet title="Save to change request" onClose={props.onClose}>
+    <Sheet title={`Save to ${props.noun}`} onClose={props.onClose}>
       <ScrollView
         // Below the sheet's translucent header, as the other app sheets lay out.
         contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
@@ -78,7 +79,7 @@ export function WikiSaveSheet(props: {
         keyboardShouldPersistTaps="handled"
       >
         <Text className="text-sm text-foreground-muted">
-          Your edit is added to a change request. Main changes only when someone merges it.
+          {`Your edit is added to a ${props.noun}. Main changes only when someone merges it.`}
         </Text>
         <View className="overflow-hidden rounded-[20px] bg-grouped-card">
           {choices.map((choice, index) => (
@@ -102,7 +103,7 @@ export function WikiSaveSheet(props: {
           <View className="gap-1.5">
             <Text className="px-4 text-xs text-foreground-muted">Title</Text>
             <TextInput
-              accessibilityLabel="Change request title"
+              accessibilityLabel={`Title of the new ${props.noun}`}
               value={title}
               onChangeText={setTitle}
               maxLength={200}
@@ -122,8 +123,7 @@ export function WikiSaveSheet(props: {
         </View>
         {waits ? (
           <Text className="text-sm text-foreground-muted">
-            The agent is working in this change request. Your edit is saved when its turn ends;
-            until then the agent's writes keep landing around it.
+            {`The agent is working in this ${props.noun}. Your edit is saved when its turn ends; until then the agent's writes keep landing around it.`}
           </Text>
         ) : null}
         {!props.canSave ? (

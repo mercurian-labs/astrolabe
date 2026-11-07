@@ -17,6 +17,8 @@ import { useNumberWhenOpened } from "../repositories/worktreeNumbering";
 import { WorktreeNumber } from "../repositories/WorktreeNumber";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
+import { useWikiTerms } from "./wikiEnvironment";
+import { wikiTerms } from "./wiki.logic";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import { WikiNoteView } from "./WikiNoteView";
@@ -99,6 +101,7 @@ function NoteTab({
 }) {
   const all = useChangeRequests(tab.environmentId, tab.wikiId);
   const overviews = useAtomValue(wikiEnvironment.overview(tab.environmentId));
+  const wiki = overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki;
   const { target, holder } = useChangeRequestWorktree(tab);
   // A change request's document is something opened in its worktree.
   useNumberWhenOpened(target, holder);
@@ -109,7 +112,7 @@ function NoteTab({
     // A row that is no wiki document opens as a file, on the line the base reads.
     const branch =
       tab.changeRequestId === undefined
-        ? overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki.mainBranch
+        ? wiki?.mainBranch
         : changeRequestBranch(tab.changeRequestId);
     return (
       <WikiBasePage
@@ -118,7 +121,9 @@ function NoteTab({
         file={tab.name}
         changeRequestId={tab.changeRequestId}
         parent={
-          tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request")
+          tab.changeRequestId === undefined
+            ? "Main"
+            : (changeRequest?.title ?? `A ${wikiTerms(wiki).singular}`)
         }
         openChangeRequests={openChangeRequests}
         registerUnsaved={registerUnsaved}
@@ -218,6 +223,7 @@ function ChangeRequestTab({
 export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const tab = parseWikiTabKey(tabKey);
   const { holder } = useChangeRequestWorktree(tab);
+  const terms = useWikiTerms(tab?.environmentId, tab?.wikiId);
   const trailing = holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {};
   const changeRequests = useEnvironmentQuery(
     tab?.kind === "change-request"
@@ -250,7 +256,7 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const title =
     changeRequests.data?.changeRequests.find(
       (entry) => entry.changeRequestId === tab.changeRequestId,
-    )?.title ?? "Change request";
+    )?.title ?? terms.Singular;
   return {
     title,
     icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" />,

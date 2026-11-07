@@ -58,7 +58,8 @@ const SETTINGS_SEARCH_TERMS = {
     "thread behavior",
   ],
   SettingsChangeRequests: [
-    "change requests",
+    "pull requests",
+    "merge requests",
     "pull requests",
     "change groups",
     "grouping",

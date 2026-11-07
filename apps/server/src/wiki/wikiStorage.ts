@@ -5,6 +5,7 @@
  *
  * @module wikiStorage
  */
+import { builtInSourceControlDefinitions } from "@t3tools/source-control-definitions/registry";
 import { isWikiDocument, parseAmendmentTrailers } from "@mercurian/wiki";
 import {
   IsoDateTime,
@@ -71,6 +72,10 @@ export const ChangeRequestRecord = Schema.Struct({
 export type ChangeRequestRecord = typeof ChangeRequestRecord.Type;
 
 export const ChangeRequestRecordJson = fromJsonStringPretty(ChangeRequestRecord);
+
+/** What a wiki's reviews are called: its host's name for them, else "pull request". */
+export const wikiTerms = (wiki: { readonly host?: { readonly kind?: string } | null }) =>
+  builtInSourceControlDefinitions.get(wiki.host?.kind).changeRequest;
 
 export const CHANGE_REQUEST_FILE = "change-request.json";
 export const changeRequestBranch = (id: string) => `refs/heads/cr/${id}`;

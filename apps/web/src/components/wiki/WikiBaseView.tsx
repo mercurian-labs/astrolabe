@@ -48,7 +48,7 @@ import {
   withEdit,
 } from "@t3tools/client-runtime/wikiBaseEdits";
 import { ColumnMenu, WikiBaseToolbar } from "./WikiBaseToolbar";
-import { useWikiCommand } from "./wikiEnvironment";
+import { useWikiCommand, useWikiTerms } from "./wikiEnvironment";
 import { SaveToChangeRequestDialog, type SaveTarget } from "./WikiSaveDialog";
 
 const WikiBaseMap = lazy(() => import("./WikiBaseMap"));
@@ -479,6 +479,7 @@ export function WikiBasePage({
   const [creating, setCreating] = useState<Readonly<Record<string, WikiBaseCell>> | null>(null);
   const canEdit = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
   const transform = useWikiCommand(wikiEnvironment.transform, "Couldn't save the base");
+  const terms = useWikiTerms(environmentId, wikiId);
   const editable = canEdit && /^[^/]+\.base$/.test(file);
   const dirty = edits.length > 0;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are unsaved
@@ -539,7 +540,7 @@ export function WikiBasePage({
               Discard
             </Button>
             <Button size="sm" onClick={() => setSaving(true)}>
-              Save to change request
+              {`Save to ${terms.singular}`}
             </Button>
           </TabHeader.Actions>
         ) : null}
@@ -560,6 +561,7 @@ export function WikiBasePage({
       {saving ? (
         <SaveToChangeRequestDialog
           environmentId={environmentId}
+          wikiId={wikiId}
           subject={file.replace(/\.base$/, "")}
           openChangeRequests={openChangeRequests}
           viewing={changeRequestId}

@@ -10,6 +10,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { SourceControlProviderKind } from "./sourceControl.ts";
 
 /** Astrolabe: local wikis. A wiki is a git repository of linked markdown notes. */
 export const WikiId = TrimmedNonEmptyString.pipe(Schema.brand("WikiId"));
@@ -57,6 +58,8 @@ export type WikiHostRelation = typeof WikiHostRelation.Type;
 export const WikiHostStatus = Schema.Struct({
   projectId: ProjectId,
   remote: TrimmedNonEmptyString,
+  /** Which host this is, so the wiki can call its reviews what the host does. */
+  kind: Schema.optionalKey(SourceControlProviderKind),
   lastSyncedAt: Schema.NullOr(IsoDateTime),
   lastSyncedCommit: Schema.NullOr(Schema.String),
   relation: Schema.NullOr(WikiHostRelation),

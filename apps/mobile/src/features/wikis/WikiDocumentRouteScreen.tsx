@@ -11,6 +11,7 @@ import {
   isTurnRunning,
   queuedSaveStep,
   type QueuedWikiSave,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import {
   isAtomCommandInterrupted,
@@ -291,6 +292,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     wikiName: wiki?.name ?? null,
     changeRequest: viewing ?? null,
     readsChangeRequest: changeRequestId !== undefined,
+    noun: wikiTerms(wiki).singular,
     agentWorking: viewingTurn.running,
   });
 
@@ -326,7 +328,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
           <Toolbar.Button
             label="Save"
             variant="done"
-            accessibilityLabel="Save to a change request"
+            accessibilityLabel={`Save to a ${wikiTerms(wiki).singular}`}
             onPress={() => setSaving(true)}
           />
         ) : null}
@@ -389,6 +391,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
       />
       {saving ? (
         <WikiSaveSheet
+          noun={wikiTerms(wiki).singular}
           noteName={name}
           openChangeRequests={openChangeRequests}
           viewing={changeRequestId}

@@ -978,7 +978,7 @@ export const make = Effect.gen(function* () {
       return yield* new GitManagerError({
         operation: "changeRequestHeadRef",
         cwd,
-        detail: "This host publishes no ref for a change request's head.",
+        detail: "This host publishes no ref for this head.",
       });
     }
     return ref;

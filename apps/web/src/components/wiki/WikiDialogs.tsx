@@ -191,7 +191,7 @@ export function WikiMirrorDialog({
               <TriangleAlertIcon />
               <AlertTitle>A push overwrote the mirror</AlertTitle>
               <AlertDescription>
-                {`On ${new Date(mirror.overwroteRemoteAt).toLocaleString()}, commits made on the mirror directly were replaced by this wiki's main line. Make changes here, through change requests.`}
+                {`On ${new Date(mirror.overwroteRemoteAt).toLocaleString()}, commits made on the mirror directly were replaced by this wiki's main line. Make changes here, through pull requests.`}
               </AlertDescription>
             </Alert>
           ) : null}

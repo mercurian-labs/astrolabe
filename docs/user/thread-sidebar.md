@@ -116,7 +116,7 @@ own. To keep a thread's file, diff or pull request whichever chat is in front, r
 tab and choose **Open as its own tab**: a file becomes the project's file, the diff the
 checkout's uncommitted changes, and the pull request its own tab, in the same place.
 
-A change group's **Open as a tab group** links its change requests to the group, so they show
+A change group's **Open as a tab group** links its pull requests to the group, so they show
 beside every thread in the group and no other.
 The sidebar's toggle is in the top-left corner, above the icon rail (after the window buttons in the macOS app).
 

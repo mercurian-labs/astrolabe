@@ -17,6 +17,7 @@ import { Button } from "../ui/button";
 import { CountedSectionHeader } from "./CountedSectionHeader";
 import { TooltipProvider } from "../ui/tooltip";
 import { useWikiOverviews } from "../wiki/wikiEnvironment";
+import { wikiTerms } from "../wiki/wiki.logic";
 import { changeRequestWikiScope } from "../wiki/wikiScope";
 import { WikiChangeRow, type WikiRowActions } from "../wiki/WikiSidebar";
 import {
@@ -139,10 +140,10 @@ export function WikiChangesGroup({
     return (
       <p role="status" className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground">
         {searching
-          ? "No change requests found"
+          ? "No pull requests found"
           : scoped
-            ? `No change requests in ${scoped.wiki.name} yet`
-            : "No wiki change requests yet"}
+            ? `No ${wikiTerms(scoped.wiki).plural} in ${scoped.wiki.name} yet`
+            : "No wiki pull requests yet"}
       </p>
     );
   }

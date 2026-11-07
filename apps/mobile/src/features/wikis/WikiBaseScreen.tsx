@@ -5,7 +5,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { withEdit } from "@t3tools/client-runtime/wikiBaseEdits";
-import { describeWikiFailure } from "@t3tools/client-runtime/wikiLogic";
+import { describeWikiFailure, wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiBaseEdit, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -180,6 +180,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       wikiName: wiki?.name ?? null,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
+      noun: wikiTerms(wiki).singular,
       agentWorking: false,
     }),
     edits.length
@@ -237,7 +238,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
             <Toolbar.Button
               label="Save"
               variant="done"
-              accessibilityLabel="Save to a change request"
+              accessibilityLabel={`Save to a ${wikiTerms(wiki).singular}`}
               onPress={() => setSaving(true)}
             />
           ) : null}
@@ -246,6 +247,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} />
       {saving ? (
         <WikiSaveSheet
+          noun={wikiTerms(wiki).singular}
           noteName={wikiBaseTitle(file)}
           openChangeRequests={openChangeRequests}
           viewing={changeRequestId}

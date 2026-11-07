@@ -151,7 +151,7 @@ export function WikiNoteEditor({
     vimNormalModeFont,
     outline(),
     agentChangeBar(),
-    appVimKeys(() => ({ label: "Save to change request", run: () => writeRef.current?.() })),
+    appVimKeys(() => ({ label: "Save edits", run: () => writeRef.current?.() })),
     linkTools.extension,
   ]);
   const [readOnlyExtensions] = useState(() => [...READ_ONLY_EXTENSIONS, linkTools.extension]);

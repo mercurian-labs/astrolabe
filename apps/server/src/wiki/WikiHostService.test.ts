@@ -145,6 +145,7 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
       }),
   });
   const provider = {
+    kind: "gitlab",
     listChangeRequests: (input: { readonly headSelector: string }) =>
       Effect.sync(() =>
         host.pulls
@@ -283,6 +284,7 @@ it.effect("connecting moves a local wiki's history to an empty host and gives it
     ({ root, bare, wikiId, wikis, hosts }) =>
       Effect.gen(function* () {
         const summary = yield* hosts.connect({ wikiId });
+        assert.equal(summary.host?.kind, "gitlab");
         const local = yield* git(root, ["rev-parse", "main"]);
         assert.equal(yield* git(bare, ["rev-parse", "main"]), local);
         assert.equal(summary.host?.relation, "up-to-date");

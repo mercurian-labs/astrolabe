@@ -2055,7 +2055,7 @@ hidden, leaves the sticky stage working). */
   flex-direction: column;
 }
 /* As the app's note header: one line as tall as the tab strip above it, the note's name, where it
-   is, and Discard edits and Save to change request while there are unsaved edits. */
+   is, and Discard edits and Save to pull request while there are unsaved edits. */
 .doc__bar {
   display: flex;
   flex: none;

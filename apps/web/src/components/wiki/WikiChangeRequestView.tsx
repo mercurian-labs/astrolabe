@@ -46,6 +46,7 @@ import {
   mergeBlockedReason,
   noteNameOfFile,
   wikiPullRequestHost,
+  wikiTerms,
 } from "./wiki.logic";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
@@ -76,6 +77,7 @@ export function WikiChangeRequestView({
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
   const wikiName = wiki?.name ?? null;
+  const terms = wikiTerms(wiki);
   const navigate = useNavigate();
   // Astrolabe: the pull requests of the thread that wrote it (see `changeRequestPullRequests`).
   const threadId = detail.data?.changeRequest.threadId ?? null;
@@ -96,7 +98,7 @@ export function WikiChangeRequestView({
   const frame = (title: string, header: ReactNode, body: ReactNode) => (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
-        <TabHeader.Title label="Change request" parent={wikiName}>
+        <TabHeader.Title label={terms.Singular} parent={wikiName}>
           {title}
         </TabHeader.Title>
         {header}
@@ -107,12 +109,12 @@ export function WikiChangeRequestView({
 
   if (detail.data === null) {
     return frame(
-      "Change request",
+      terms.Singular,
       null,
       detail.error !== null ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Couldn't open this change request</EmptyTitle>
+            <EmptyTitle>{`Couldn't open this ${terms.singular}`}</EmptyTitle>
             <EmptyDescription>
               {describeWikiFailure(detail.failure ?? detail.error)}
             </EmptyDescription>
@@ -180,7 +182,7 @@ export function WikiChangeRequestView({
         ) : null}
         {open ? (
           <TabHeader.Action
-            label="Close change request"
+            label={`Close ${terms.singular}`}
             disabled={!canSetStatus || busy !== null}
             onClick={() => void runStatus("closed")}
           >
@@ -188,7 +190,7 @@ export function WikiChangeRequestView({
           </TabHeader.Action>
         ) : changeRequest.status === "closed" ? (
           <TabHeader.Action
-            label="Reopen change request"
+            label={`Reopen ${terms.singular}`}
             disabled={!canSetStatus || busy !== null}
             onClick={() => void runStatus("open")}
           >
@@ -228,6 +230,7 @@ export function WikiChangeRequestView({
         <LinkedPullRequests
           links={pullRequestLinks}
           status={changeRequest.status}
+          noun={terms.singular}
           busy={busy !== null}
           canMerge={blocked === null}
           canClose={canSetStatus}
@@ -246,7 +249,7 @@ export function WikiChangeRequestView({
               }
             : {})}
         />
-        {open ? <MergePreviewNotice preview={mergePreview} /> : null}
+        {open ? <MergePreviewNotice preview={mergePreview} noun={terms.singular} /> : null}
         {errors.length > 0 ? (
           <Alert variant="warning">
             <TriangleAlertIcon />
@@ -278,7 +281,7 @@ export function WikiChangeRequestView({
 
         <WikiPart.Section title={`Files changed (${files.length})`}>
           {files.length === 0 ? (
-            <WikiPart.Muted>This change request changes no files.</WikiPart.Muted>
+            <WikiPart.Muted>{`This ${terms.singular} changes no files.`}</WikiPart.Muted>
           ) : (
             <div className="flex flex-col gap-4">
               {files.map((change) => (
@@ -311,6 +314,7 @@ const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Clos
 function LinkedPullRequests({
   links,
   status,
+  noun,
   busy,
   canMerge,
   canClose,
@@ -320,6 +324,7 @@ function LinkedPullRequests({
 }: {
   readonly links: ReadonlyArray<ThreadPullRequestLink>;
   readonly status: "open" | "merged" | "closed";
+  readonly noun: string;
   readonly busy: boolean;
   readonly canMerge: boolean;
   readonly canClose: boolean;
@@ -374,7 +379,7 @@ function LinkedPullRequests({
             <span>
               {nudge.kind === "merge"
                 ? "Merge these docs too, so the wiki matches the code on main?"
-                : "Close this change request too?"}
+                : `Close this ${noun} too?`}
             </span>
             <Button
               size="sm"
@@ -383,7 +388,7 @@ function LinkedPullRequests({
               disabled={busy || (nudge.kind === "merge" ? !canMerge : !canClose)}
               onClick={nudge.kind === "merge" ? onMerge : onClose}
             >
-              {nudge.kind === "merge" ? "Merge docs" : "Close change request"}
+              {nudge.kind === "merge" ? "Merge docs" : `Close ${noun}`}
             </Button>
           </AlertDescription>
         </Alert>
@@ -484,8 +489,10 @@ function MergeButton({
 
 function MergePreviewNotice({
   preview,
+  noun,
 }: {
   readonly preview: { readonly status: string; readonly conflicts: ReadonlyArray<string> };
+  readonly noun: string;
 }) {
   switch (preview.status) {
     case "clean":
@@ -502,8 +509,8 @@ function MergePreviewNotice({
           <AlertTitle>Conflicts with main</AlertTitle>
           <AlertDescription>
             {preview.conflicts.length > 0
-              ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this change request to settle them, then merge.`
-              : "Amend this change request to settle the conflict, then merge."}
+              ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this ${noun} to settle them, then merge.`
+              : `Amend this ${noun} to settle the conflict, then merge.`}
           </AlertDescription>
         </Alert>
       );

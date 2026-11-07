@@ -13,7 +13,7 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
 import { isWikisPath } from "../sidebar/mainAppLocation";
-import { noteKey } from "./wiki.logic";
+import { noteKey, wikiTerms } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { openWikiTab, showWikiTab } from "./wikiPanes";
 import { wikiScopeKey, wikiSidebarItems, type WikiDocumentItem, type WikiTab } from "./wikiTabs";
@@ -140,7 +140,7 @@ function documentRow(
     description: [
       multipleWikis ? document.wiki.name : null,
       document.editedAt ? `edited ${formatRelativeTimeLabel(document.editedAt)}` : null,
-      document.changes.length > 0 ? "in a change request" : null,
+      document.changes.length > 0 ? `in a ${wikiTerms(document.wiki).singular}` : null,
     ]
       .filter(Boolean)
       .join(" · "),

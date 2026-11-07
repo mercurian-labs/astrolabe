@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { WikiChangeRequestId } from "@t3tools/contracts";
+import { SourceControlProviderKind, type WikiChangeRequestId } from "@t3tools/contracts";
 
 import {
   authorColor,
@@ -8,6 +8,7 @@ import {
   describeWikiFailure,
   hasUnpublishedWork,
   hostedPullRequestKeys,
+  wikiTerms,
   isHostedPullRequest,
   isTurnRunning,
   latestAmendmentFor,
@@ -123,6 +124,19 @@ describe("summarizeHost", () => {
     expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
       "Sync failed",
     );
+  });
+});
+
+describe("wikiTerms", () => {
+  it("says what the wiki's host says, and pull request with no host", () => {
+    expect(wikiTerms({ host: { kind: SourceControlProviderKind.make("gitlab") } }).Plural).toBe(
+      "Merge requests",
+    );
+    expect(wikiTerms({ host: { kind: SourceControlProviderKind.make("forgejo") } }).singular).toBe(
+      "pull request",
+    );
+    expect(wikiTerms({ host: null }).Singular).toBe("Pull request");
+    expect(wikiTerms(null).plural).toBe("pull requests");
   });
 });
 

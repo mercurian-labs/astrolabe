@@ -20,6 +20,7 @@ import {
   summarizeHost,
   summarizeMirror,
   type MirrorTone,
+  wikiTerms,
 } from "../wiki/wiki.logic";
 import { WikiMirrorDialog } from "../wiki/WikiDialogs";
 import { useWikiCommand, useWikiOverviews } from "../wiki/wikiEnvironment";
@@ -164,6 +165,7 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
   const sync = useWikiCommand(wikiEnvironment.syncHost, "Couldn't sync with the host");
   const [busy, setBusy] = useState(false);
   const host = wiki.host ?? null;
+  const terms = wikiTerms(wiki);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     await action();
@@ -218,8 +220,8 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
           title={host ? `Main line on ${host.remote}` : "Keep this wiki on a git host"}
           description={
             host
-              ? "Change requests are this repository's pull requests. Agents' work is published when their turn ends, and everyone with access to the repository can review and merge it."
-              : "Connects to this folder's origin remote. The main line moves to that repository, its history is pushed if the host doesn't have it, and change requests become pull requests. Replaces the mirror."
+              ? `Wiki changes are this repository's ${terms.plural}. Agents' work is published when their turn ends, and everyone with access to the repository can review and merge it.`
+              : "Connects to this folder's origin remote. The main line moves to that repository, its history is pushed if the host doesn't have it, and reviews move to the host. Replaces the mirror."
           }
           status={
             host ? <WikiMirrorBadge wiki={wiki} /> : <Badge variant="outline">Not connected</Badge>
@@ -240,7 +242,7 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
       {host?.changeRequestIssue ? (
         <Alert variant="warning">
           <TriangleAlertIcon />
-          <AlertTitle>A change request needs attention</AlertTitle>
+          <AlertTitle>{`A ${terms.singular} needs attention`}</AlertTitle>
           <AlertDescription>{host.changeRequestIssue}</AlertDescription>
         </Alert>
       ) : null}
@@ -259,8 +261,7 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
           <TriangleAlertIcon />
           <AlertTitle>This folder has commits the host doesn't</AlertTitle>
           <AlertDescription>
-            They were committed here directly. Push them in git, or open a change request with them,
-            so they reach the main line.
+            {`They were committed here directly. Push them in git, or open a ${terms.singular} with them, so they reach the main line.`}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -322,7 +323,7 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
           title="Documents"
           value={index === null ? "…" : index.notes.length + index.bases.length}
         />
-        <FactRow title="Open change requests" value={wiki.openChangeRequests} />
+        <FactRow title={`Open ${wikiTerms(wiki).plural}`} value={wiki.openChangeRequests} />
       </SettingsSection>
       <WikiProjectLinks environmentId={environmentId} wiki={wiki} />
       <FoldedSettingsSection id="wiki-agent-guidance" title="What agents are told">
