@@ -105,6 +105,15 @@ describe("diffCanvas", () => {
       { nodes: [card, other], edges: [{ ...arrow, label: "why" }] },
     ).changes;
     expect(linked).toMatchObject({ item: "arrow", name: "One → Two: why", was: null });
+    const [plain] = diffCanvas(
+      { nodes: [] },
+      {
+        nodes: [
+          text("**Request** a `refund` via [[Pay|payments]], [the form](x) and ~~fax~~ _now_"),
+        ],
+      },
+    ).changes;
+    expect(plain?.name).toBe("Request a refund via payments, the form and fax now");
   });
 
   it("uses the ids the board draws under", () => {

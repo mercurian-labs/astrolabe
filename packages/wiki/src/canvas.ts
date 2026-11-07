@@ -348,13 +348,25 @@ export interface CanvasDiff {
 
 const NAME_CHARS = 60;
 
+/** A line as it reads, without the marks that format it. */
+const plainLine = (line: string): string =>
+  line
+    .replace(
+      /!?\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g,
+      (_, target: string, alias?: string) => alias ?? target,
+    )
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|~~|==|`)(.+?)\1/g, "$2")
+    .replace(/(^|[^\w*])[*_](\S(?:.*?\S)?)[*_](?![\w*])/g, "$1$2");
+
 function brief(text: string): string {
-  const line =
+  const line = plainLine(
     text
       .trim()
       .split("\n", 1)[0]
       ?.replace(/^#+\s*/, "")
-      .trim() ?? "";
+      .trim() ?? "",
+  );
   return line.length > NAME_CHARS ? `${line.slice(0, NAME_CHARS - 1)}…` : line;
 }
 
