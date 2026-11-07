@@ -128,6 +128,20 @@ const MOVES: ReadonlyArray<{
         '[one](c%20d/My%20Note.md "t") [two](<c d/My Note.md#H>) [web](http://a/My%20Note.md)',
     },
   },
+  {
+    row: "a root note takes the new name: both forms still land on what moved",
+    files: { "New.md": "n", "a/Old.md": "o", "c/X.md": "see [[Old]] and [[a/Old|al]]" },
+    from: "a/Old",
+    to: "New",
+    after: { "c/X.md": "see [[a/New]] and [[a/New|al]]" },
+  },
+  {
+    row: "a bystander of the new name keeps its target",
+    files: { "b/New.md": "n", "a/Old.md": "o", "d/Y.md": "[[New]]" },
+    from: "a/Old",
+    to: "New",
+    after: { "d/Y.md": "[[b/New]]" },
+  },
 ];
 
 describe("moving a document", () => {
