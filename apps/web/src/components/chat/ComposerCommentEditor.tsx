@@ -1,25 +1,35 @@
-import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
-import { useState, type Ref } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 
 import { Button } from "../ui/button";
 
-export function AssistantCitationCommentEditor({
-  citation,
+/** A comment on something going into the composer: a quote or a board. */
+export function ComposerCommentEditor({
+  initialComment,
+  maxLength,
+  label,
+  description,
+  saveLabel,
+  extraActions,
   inputRef,
   onSubmit,
   onSubmitAndSend,
   onCancel,
   onDraftChange,
 }: {
-  citation: AssistantCitation;
+  initialComment: string;
+  maxLength: number;
+  label: string;
+  description: string;
+  saveLabel: string;
+  extraActions?: ReactNode;
   inputRef?: Ref<HTMLTextAreaElement>;
   onSubmit: (comment: string) => boolean;
   onSubmitAndSend?: (comment: string) => boolean;
   onCancel: () => void;
   onDraftChange?: (comment: string) => void;
 }) {
-  const [comment, setComment] = useState(citation.comment ?? "");
-  const commentTooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
+  const [comment, setComment] = useState(initialComment);
+  const commentTooLong = comment.length > maxLength;
   const submit = () => {
     if (!commentTooLong) onSubmit(comment);
   };
@@ -46,8 +56,8 @@ export function AssistantCitationCommentEditor({
     >
       <textarea
         ref={inputRef}
-        aria-label="Comment on selected text"
-        aria-description="Enter to save the citation comment; Command/Ctrl+Enter to save and send; Shift+Enter for a new line."
+        aria-label={label}
+        aria-description={description}
         aria-invalid={commentTooLong || undefined}
         placeholder="Add an optional comment..."
         rows={2}
@@ -75,11 +85,11 @@ export function AssistantCitationCommentEditor({
       />
       {commentTooLong ? (
         <p role="status" className="pt-1 text-xs text-destructive">
-          Comments can contain up to {ASSISTANT_CITATION_MAX_COMMENT_LENGTH.toLocaleString()}{" "}
-          characters.
+          Comments can contain up to {maxLength.toLocaleString()} characters.
         </p>
       ) : null}
       <div className="mt-2 flex items-center justify-end gap-2">
+        {extraActions}
         <Button
           variant="outline"
           size="xs"
@@ -94,7 +104,7 @@ export function AssistantCitationCommentEditor({
           onPointerDown={(event) => event.preventDefault()}
           onClick={submit}
         >
-          {commentTooLong ? "Shorten comment" : "Save"}
+          {commentTooLong ? "Shorten comment" : saveLabel}
         </Button>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import type { WikiPlacement } from "@mercurian/wiki/placement";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { KeybindingCommand, ResolvedKeybindingTrigger } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -28,9 +29,10 @@ import {
   type CommandPaletteSubmenuItem,
 } from "~/components/CommandPalette.logic";
 import { isWikisPath } from "~/components/sidebar/mainAppLocation";
-import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
+import { useWikiOverviews, useWikiPlacement } from "~/components/wiki/wikiEnvironment";
 import { finderGroups } from "~/components/wiki/WikiFinder";
 import { showWikiTab } from "~/components/wiki/wikiPanes";
+import { useWikiTreeView } from "~/components/wiki/wikiTreeView";
 import { primaryServerKeybindingTriggersAtom } from "~/state/server";
 import { inEditor, type AppCommand } from "./commands";
 import { pendingExOrigin, releaseExOrigin, type KeyOrigin } from "./doors";
@@ -64,6 +66,8 @@ export interface ExLineContext {
   readonly chatTabThreadIds: readonly string[];
   /** Every wiki, for `:e`; asked for only while the line is an `:e`. */
   readonly overviews: ReadonlyArray<WikiOverview>;
+  readonly showHidden: boolean;
+  readonly placement: WikiPlacement;
   /** Shows the Wikis area, for a document `:e` opens from elsewhere. */
   readonly showWikis: () => void;
   /** Puts `text` on the command line, for a command that takes an argument there. */
@@ -161,6 +165,9 @@ function commandGroups(
           showWikiTab(tab);
           context.showWikis();
         },
+        showHidden: context.showHidden,
+        placement: context.placement,
+        from: null,
       });
     default: {
       const { label, disabled, run } = context.command(parsed.command);
@@ -283,6 +290,8 @@ export function useExLine(
   const line = exLineOf(query);
   const editing = line !== null && parseExCommand(line, triggers)?.command === "document.open";
   const { overviews } = useWikiOverviews(editing);
+  const { showHidden } = useWikiTreeView();
+  const placement = useWikiPlacement(overviews[0]?.environmentId ?? null);
   const openKeys = useWorkspaceOpenKeys();
   const navigate = useNavigate();
   const onWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
@@ -298,6 +307,8 @@ export function useExLine(
     threadItems,
     chatTabThreadIds: openKeys.flatMap((key) => parseChatTabKey(key)?.threadId ?? []),
     overviews,
+    showHidden,
+    placement,
     showWikis: () => {
       if (!onWikis) void navigate({ to: "/wikis" });
     },

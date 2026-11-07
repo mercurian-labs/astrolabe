@@ -76,6 +76,7 @@ const REVIEW_METADATA_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 // Temporary-index git add scales poorly (50k files took ~30 s); report incomplete totals above this cap.
 const REVIEW_UNTRACKED_MAX_FILES = 5_000;
 const REVIEW_DIFF_FILE_MAX_OUTPUT_BYTES = 1024 * 1024;
+const READ_AT_COMMIT_MAX_BYTES = 8 * 1024 * 1024;
 const REVIEW_BRANCH_COMMIT_LIMIT = 100;
 const REVIEW_BRANCH_SUBJECT_LIMIT = 300;
 const REVIEW_BRANCH_COMMIT_MAX_OUTPUT_BYTES = 128 * 1024;
@@ -4302,6 +4303,38 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return { commitSha };
   });
 
+  const nearestPushedCommit: GitVcsDriver.GitVcsDriver["Service"]["nearestPushedCommit"] =
+    Effect.fn("GitVcsDriver.nearestPushedCommit")(function* (input) {
+      if (!/^[0-9a-f]{4,64}$/i.test(input.commit)) return null;
+      const walked = yield* executeGit(
+        "GitVcsDriver.nearestPushedCommit",
+        input.cwd,
+        ["rev-list", "--boundary", input.commit, "--not", `--remotes=${input.remoteName}`],
+        { allowNonZeroExit: true },
+      );
+      if (walked.exitCode !== 0) return null;
+      const lines = walked.stdout.split("\n").filter((line) => line !== "");
+      if (lines.length === 0) return input.commit;
+      return lines.find((line) => line.startsWith("-"))?.slice(1) ?? null;
+    });
+
+  const readFileAtCommit: GitVcsDriver.GitVcsDriver["Service"]["readFileAtCommit"] = Effect.fn(
+    "GitVcsDriver.readFileAtCommit",
+  )(function* (input) {
+    const read = yield* executeGit(
+      "GitVcsDriver.readFileAtCommit",
+      input.cwd,
+      ["cat-file", "blob", `${input.commit}:${input.path}`],
+      {
+        allowNonZeroExit: true,
+        maxOutputBytes: READ_AT_COMMIT_MAX_BYTES,
+        appendTruncationMarker: true,
+        env: { GIT_NO_LAZY_FETCH: "1" },
+      },
+    );
+    return read.exitCode === 0 ? read.stdout : null;
+  });
+
   const fetchRefCommit: GitVcsDriver.GitVcsDriver["Service"]["fetchRefCommit"] = Effect.fn(
     "GitVcsDriver.fetchRefCommit",
   )(function* (input) {
@@ -4945,6 +4978,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }),
     fetchRefCommit,
     resolveCommit,
+    nearestPushedCommit,
+    readFileAtCommit,
     refreshCheckedOutBranch: Effect.fnUntraced(function* (input) {
       return yield* withListRefsInvalidation(input.cwd, refreshCheckedOutBranch(input));
     }),

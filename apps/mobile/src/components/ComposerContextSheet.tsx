@@ -324,6 +324,14 @@ export function ComposerContextSheet(props: {
                 ) : null}
               </View>
             ) : null}
+            {record.kind === "canvas" ? (
+              <>
+                <ContextField label="Canvas" value={record.title} />
+                {record.comment === undefined ? null : (
+                  <ContextField label="Comment" value={record.comment} />
+                )}
+              </>
+            ) : null}
             {record.kind === "environment" ? (
               <ContextField label="Machine" value={record.label} />
             ) : null}

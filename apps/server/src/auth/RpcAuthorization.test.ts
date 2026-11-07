@@ -85,6 +85,13 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("keeps moving a wiki's files behind source control write", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.wikiMove)).toBe(AuthSourceControlWriteScope);
+    expect(clientRpcRequiredScopes(WS_METHODS.wikiMove, undefined)).toEqual([
+      AuthSourceControlWriteScope,
+    ]);
+  });
+
   it("lets file readers use language servers, file writers land edits, and maintainers manage them", () => {
     for (const method of [
       WS_METHODS.languageServersSubscribe,

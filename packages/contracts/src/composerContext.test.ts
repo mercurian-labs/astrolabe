@@ -120,6 +120,15 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     wikiName: "Plans",
     name: "Login flow",
   },
+
+  canvas: {
+    ...base,
+    kind: "canvas",
+    threadId: "thread-1",
+    itemId: "item-1",
+    title: "Flow",
+    comment: "Keep this one",
+  },
   environment: {
     ...base,
     kind: "environment",

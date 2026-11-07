@@ -41,7 +41,7 @@ import {
   type ScopedThreadRef,
   type ThreadContextRecord,
   type EnvironmentContextRecord,
-  type WikiNoteContextRecord,
+  type WikiContextRecord,
   type ThreadId,
   type ThreadLinkedPullRequest,
   type RunId,
@@ -1173,7 +1173,7 @@ export interface PlanFollowUpComposerSnapshot {
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly wikiNotes: ReadonlyArray<WikiNoteContextRecord>;
+  readonly wikiContexts: ReadonlyArray<WikiContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
 }
 
@@ -1184,7 +1184,7 @@ export function restorePlanFollowUpComposer(input: {
   readonly writeReviewComments: (comments: ReadonlyArray<ReviewCommentContext>) => void;
   readonly writePreviewAnnotations: (annotations: ReadonlyArray<PreviewAnnotationPayload>) => void;
   readonly writeThreadContexts: (records: ReadonlyArray<ThreadContextRecord>) => void;
-  readonly writeWikiNotes: (records: ReadonlyArray<WikiNoteContextRecord>) => void;
+  readonly writeWikiContexts: (records: ReadonlyArray<WikiContextRecord>) => void;
   readonly writeEnvironmentContexts: (records: ReadonlyArray<EnvironmentContextRecord>) => void;
   readonly resetCursor: (options: {
     cursor: number;
@@ -1197,7 +1197,7 @@ export function restorePlanFollowUpComposer(input: {
   input.writeReviewComments(input.snapshot.reviewComments);
   input.writePreviewAnnotations(input.snapshot.previewAnnotations);
   input.writeThreadContexts(input.snapshot.threadContexts);
-  input.writeWikiNotes(input.snapshot.wikiNotes);
+  input.writeWikiContexts(input.snapshot.wikiContexts);
   input.writeEnvironmentContexts(input.snapshot.environmentContexts);
   input.resetCursor({
     cursor: collapseExpandedComposerCursor(input.snapshot.prompt, input.snapshot.prompt.length),
@@ -1358,7 +1358,7 @@ export interface ComposerSendContents {
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly wikiNotes: ReadonlyArray<WikiNoteContextRecord>;
+  readonly wikiContexts: ReadonlyArray<WikiContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
 }
 
@@ -1379,7 +1379,7 @@ export function snapshotComposerSend(contents: ComposerSendContents) {
     previewAnnotations: [...contents.previewAnnotations],
     reviewComments: [...contents.reviewComments],
     threadContexts: [...contents.threadContexts],
-    wikiNotes: [...contents.wikiNotes],
+    wikiContexts: [...contents.wikiContexts],
     environmentContexts: [...contents.environmentContexts],
     messageText: contents.terminalContexts
       .filter((context) => !terminalContexts.includes(context))

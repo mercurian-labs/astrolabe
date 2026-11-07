@@ -45,6 +45,7 @@ const changeRequest = (
     status,
     updatedAt,
     amendments: [{ files }],
+    files,
   }) as unknown as WikiChangeRequest;
 
 const overviews: WikiOverview[] = [
@@ -76,6 +77,26 @@ describe("wikiListEntries", () => {
     expect(settled.map((change) => change.changeRequest.changeRequestId)).toEqual(["cr-merged"]);
     expect(documents.find((document) => document.name === "Old")?.changes).toHaveLength(1);
     expect(documents.find((document) => document.name === "New")?.changes).toHaveLength(0);
+  });
+
+  it("lists a draft apart from the change requests, and on the documents it holds", () => {
+    const draft = {
+      ...changeRequest("cr-draft", "Edit Old", "open", "2026-10-06T00:00:00Z", ["Old.md"]),
+      draft: true,
+    };
+    const empty = { ...draft, changeRequestId: "cr-empty" as WikiChangeRequestId, amendments: [] };
+    const entries = wikiListEntries(
+      [{ ...overviews[0]!, changeRequests: [draft, empty, ...overviews[0]!.changeRequests!] }],
+      null,
+    );
+    expect(entries.drafts.map((entry) => entry.changeRequest.changeRequestId)).toEqual([
+      "cr-draft",
+    ]);
+    expect(entries.changes.map((entry) => entry.changeRequest.changeRequestId)).toEqual([
+      "cr-open",
+    ]);
+    const old = entries.documents.find((document) => document.name === "Old");
+    expect(old?.changes.map((change) => change.changeRequestId)).toEqual(["cr-draft", "cr-open"]);
   });
 
   it("keeps to the filtered wiki", () => {
@@ -119,5 +140,29 @@ describe("wikiListEntries", () => {
         (document) => document.name,
       ),
     ).toEqual(["Projects.base"]);
+  });
+
+  it("lists a wiki's canvases, named by their file, with their links", () => {
+    const overview: WikiOverview = {
+      environmentId,
+      wiki: wiki("c", "Plans"),
+      index: {
+        ...index([]),
+        canvases: [{ file: "Board.canvas", outgoing: 2, incoming: 1 }],
+      } as unknown as WikiIndexResult,
+      changeRequests: [],
+    };
+    const { documents } = wikiListEntries([overview], null);
+    expect(documents).toMatchObject([
+      {
+        name: "Board.canvas",
+        title: "Board",
+        file: "Board.canvas",
+        canvas: true,
+        base: false,
+        links: 2,
+        backlinks: 1,
+      },
+    ]);
   });
 });

@@ -1,9 +1,23 @@
-import { embeddedBase, type WikiEditorBaseResult } from "@mercurian/wiki-editor/protocol";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import {
+  embeddedBase,
+  type WikiEditorBaseResult,
+  type WikiEditorEmbeddedFile,
+  type WikiEditorResolvedLink,
+} from "@mercurian/wiki-editor/protocol";
+import { exactWikiPath, wikiDocumentScope } from "@t3tools/client-runtime/wikiLogic";
+import { resolveLink, unwrittenFile, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
+import type {
+  EnvironmentId,
+  WikiChangeRequest,
+  WikiChangeRequestId,
+  WikiId,
+} from "@t3tools/contracts";
 import { useEffect } from "react";
 
 import { useEnvironmentQuery } from "../../../state/query";
 import { wikiEnvironment } from "../../../state/wiki";
+
+const NO_FILES: ReadonlyArray<string> = [];
 
 /** What the editor page is told about one ```base block: its view, or why it can't show. */
 export interface WikiBaseAnswer {
@@ -32,7 +46,7 @@ function WikiBaseQuery({ source, ...scope }: Scope & { readonly source: string }
         ...(changeRequestId === undefined ? {} : { changeRequestId }),
         ...(embedded === null
           ? { source, note }
-          : { base: embedded.base, ...(embedded.view ? { view: embedded.view } : {}) }),
+          : { base: embedded.base, note, ...(embedded.view ? { view: embedded.view } : {}) }),
       },
     }),
   );
@@ -60,28 +74,83 @@ function WikiNoteRead({
   environmentId,
   wikiId,
   changeRequestId,
+  draft,
+  files,
+  from,
   onRead,
 }: Omit<WikiNoteReadsProps, "names"> & { readonly name: string }) {
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const { file: landed, others } =
+    files === null ? { file: null, others: NO_FILES } : resolveLink(name, from, files);
+  const file = landed ?? unwrittenFile(name, from);
+  const readsFrom = wikiDocumentScope({ tabChangeRequestId: changeRequestId, draft, file });
   const { data } = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
+    wikiEnvironment.note({
+      environmentId,
+      input: {
+        wikiId,
+        name: exactWikiPath(file),
+        ...(readsFrom === undefined ? {} : { changeRequestId: readsFrom }),
+      },
+    }),
   );
+  const otherFiles = others.join("\0");
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
   useEffect(() => {
-    if (data !== null) onRead(name, data.exists ? data.source : null);
-  }, [data, name, onRead]);
+    const link = { file: landed, others: otherFiles === "" ? NO_FILES : otherFiles.split("\0") };
+    if (data !== null) onRead(name, data.exists ? data.source : null, link);
+  }, [data, name, landed, otherFiles, onRead]);
   return null;
 }
 
-interface WikiNoteReadsProps {
+export interface WikiNoteReadsProps {
   readonly names: ReadonlyArray<string>;
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
-  readonly onRead: (name: string, source: string | null) => void;
+  readonly draft: WikiChangeRequest | null;
+  /** What the links search, once it's here. */
+  readonly files: WikiLinkFiles | null;
+  /** The file the links are written in. */
+  readonly from: string;
+  readonly onRead: (name: string, source: string | null, link: WikiEditorResolvedLink) => void;
 }
 
 /** Reads the notes the editor page's link previews show, each live. Renders nothing. */
 export function WikiNoteReads({ names, ...scope }: WikiNoteReadsProps) {
   return names.map((name) => <WikiNoteRead key={name} name={name} {...scope} />);
+}
+
+function WikiFileRead({
+  path,
+  environmentId,
+  wikiId,
+  changeRequestId,
+  from,
+  onRead,
+}: Omit<WikiFileReadsProps, "paths"> & { readonly path: string }) {
+  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const { data } = useEnvironmentQuery(
+    wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, from, paths: [path] } }),
+  );
+  const read = data?.files[0];
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
+  useEffect(() => {
+    if (read) onRead(path, { exists: read.exists, file: read.file, text: read.text });
+  }, [read, path, onRead]);
+  return null;
+}
+
+interface WikiFileReadsProps {
+  readonly paths: ReadonlyArray<string>;
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** The file the embeds are written in. */
+  readonly from: string;
+  readonly onRead: (path: string, read: WikiEditorEmbeddedFile) => void;
+}
+
+/** Reads the canvases the editor page's note embeds, each live. Renders nothing. */
+export function WikiFileReads({ paths, ...scope }: WikiFileReadsProps) {
+  return paths.map((path) => <WikiFileRead key={path} path={path} {...scope} />);
 }

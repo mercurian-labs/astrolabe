@@ -48,7 +48,7 @@ const FILES: Readonly<Record<string, string>> = {
     "",
   ].join("\n"),
   "Beta.md": "---\nstatus: done\npriority: 1\ndue: 2026-01-15\n---\nBeta sits in #area/sub.\n",
-  "Gamma.md": "Gamma is #area too, and links [[Alpha]].\n",
+  "Gamma.md": "Gamma is #area too, and links [[Alpha]] and [[Unwritten]].\n",
   "Delta.md": "---\ntags: book\npriority: 3\n---\nNo textbook here.\n",
   "Textbook.md": "# Textbook\n",
   "Code.md": "```\n#notatag [[Alpha]]\n```\n\n## Heading, not a tag\n",
@@ -226,8 +226,25 @@ describe("queries", () => {
     expect(names(filter('note["kind"].lower().startsWith("ind")'))).toEqual(["Index"]);
   });
 
+  it("searches a literal link from the base's own folder", () => {
+    const corpus = baseCorpus([
+      { file: "a/Name.md", source: "" },
+      { file: "b/Name.md", source: "" },
+      { file: "b/Links.md", source: "[[Name]]" },
+      { file: "a/Links.md", source: "[[Name]]" },
+    ]);
+    const rows = (source: string, self: string) =>
+      queryBase(corpus, parseBase(source), { self, now: 0 }).rows.map((row) => row.file);
+    const base = (filter: string) => `filters: '${filter}'\nviews:\n  - type: table\n`;
+    expect(rows(base('file.hasLink("Name")'), "b/Q.base")).toEqual(["b/Links.md"]);
+    expect(rows(base('file.hasLink("Name")'), "a/Q.base")).toEqual(["a/Links.md"]);
+    expect(rows(base('file.links.contains(link("Name"))'), "b/Q.base")).toEqual(["b/Links.md"]);
+  });
+
   it("follows links and backlinks, and tags with their nesting", () => {
     expect(names(filter('file.hasLink("Textbook")'))).toEqual(["Alpha"]);
+    expect(names(filter('file.hasLink("Unwritten")'))).toEqual(["Gamma"]);
+    expect(names(filter('file.hasLink("folder/Unwritten")'))).toEqual([]);
     expect(names(filter('file.links.contains(link("Beta"))'))).toEqual(["Alpha", "Index"]);
     expect(names(filter('file.backlinks.contains("Gamma")'))).toEqual(["Alpha"]);
     expect(names(filter("file.backlinks.isEmpty()"))).toEqual([

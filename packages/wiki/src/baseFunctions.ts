@@ -199,7 +199,7 @@ export function fileField(doc: BaseDoc, field: string, scope: BaseScope): BaseVa
 }
 
 export const noteProperty = (doc: BaseDoc, name: string): BaseValue =>
-  fromProperty(doc.properties[name]);
+  fromProperty(doc.properties[name], doc.file);
 
 const DATE_FIELDS = new Set(["year", "month", "day", "hour", "minute", "second", "millisecond"]);
 
@@ -276,7 +276,8 @@ function fileOf(value: BaseValue, scope: BaseScope): BaseValue {
       ? unwrapLink(value)
       : undefined;
   if (path === undefined) return null;
-  const doc = scope.corpus.byPath(path) ?? scope.corpus.resolve(path);
+  const from = tagged(value, "link") ? value.from : scope.self?.file;
+  const doc = scope.corpus.byPath(path) ?? scope.corpus.resolve(path, from);
   return doc ? { kind: "file", doc } : null;
 }
 
@@ -310,7 +311,14 @@ export function callGlobal(
           ? { kind: "url", href: path }
           : { kind: "url", href: path, display: label };
       }
-      return label === undefined ? { kind: "link", path } : { kind: "link", path, display: label };
+      // A literal is written in the base, so it searches from the base's folder.
+      const from = tagged(first, "link") ? first.from : scope.self?.file;
+      return {
+        kind: "link",
+        path,
+        ...(label === undefined ? {} : { display: label }),
+        ...(from === undefined ? {} : { from }),
+      };
     }
     case "list":
       return first === null ? [] : isList(first) ? first : [first];
@@ -368,7 +376,7 @@ function fileMethod(
 ): BaseValue | undefined {
   switch (name) {
     case "hasLink": {
-      const wanted = identity(args[0] ?? null, scope.corpus.resolve);
+      const wanted = identity(args[0] ?? null, scope.corpus.resolve, scope.self?.file);
       return (
         wanted !== undefined &&
         doc.links.some((link) => identity(link, scope.corpus.resolve) === wanted)
@@ -379,7 +387,7 @@ function fileMethod(
       if (typeof type !== "string") return typeError(name, "type", "String", type);
       return doc.typedLinks
         .filter((link) => link.types.includes(type))
-        .map((link): BaseValue => ({ kind: "link", path: link.target }));
+        .map((link): BaseValue => ({ kind: "link", path: link.target, from: doc.file }));
     }
     case "backlinksOfType": {
       const type = args[0] ?? null;
@@ -388,7 +396,8 @@ function fileMethod(
         .backlinks(doc)
         .filter((source) =>
           source.typedLinks.some(
-            (link) => link.types.includes(type) && scope.corpus.resolve(link.target) === doc,
+            (link) =>
+              link.types.includes(type) && scope.corpus.resolve(link.target, source.file) === doc,
           ),
         )
         .map((source): BaseValue => ({
@@ -602,14 +611,14 @@ export function callMethod(
   if (tagged(object, "date")) return dateMethod(object, name, args, scope) ?? null;
   if (tagged(object, "link")) {
     if (name === "asFile") {
-      const doc = resolve(object.path);
+      const doc = resolve(object.path, object.from);
       return doc ? { kind: "file", doc } : null;
     }
     if (name === "linksTo") {
       if (!tagged(first, "file") && !tagged(first, "this")) {
         return typeError("linksTo", "file", "File", first);
       }
-      const doc = resolve(object.path);
+      const doc = resolve(object.path, object.from);
       const wanted = identity(first, resolve);
       return doc !== undefined && doc.links.some((link) => identity(link, resolve) === wanted);
     }
@@ -617,7 +626,7 @@ export function callMethod(
   }
   if (tagged(object, "object")) {
     if (name === "keys") return Object.keys(object.entries);
-    if (name === "values") return Object.values(object.entries).map(fromProperty);
+    if (name === "values") return Object.values(object.entries).map((value) => fromProperty(value));
     return null;
   }
   if (tagged(object, "regex") && name === "matches") {

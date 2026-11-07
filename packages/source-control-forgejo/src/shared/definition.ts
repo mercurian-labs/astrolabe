@@ -1,6 +1,7 @@
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import {
   buildCommitUrl,
+  buildFileUrl,
   changeRequestUrlBelow,
   type ChangeRequestHostIdentity,
   type ChangeRequestProjectIdentity,
@@ -86,6 +87,10 @@ export const definition = defineSourceControl({
   },
   changeRequestUrlFromReferenceAutolink: () => null,
   commitUrl: (input) => buildCommitUrl(input, "commit"),
+  fileUrl: (input) =>
+    buildFileUrl(input, "src/commit", (first, last) =>
+      first === last ? `L${first}` : `L${first}-L${last}`,
+    ),
   parseCommitUrl: (url) => parseCommitPath(url, COMMIT_PATH),
   changeRequestActions: new Set(["merge", "close", "reopen", "update-branch"] as const),
   // Neither `fj` nor `tea` checks out by number.

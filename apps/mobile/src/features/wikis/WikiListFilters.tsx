@@ -7,6 +7,8 @@ export function WikiListFilters(props: {
   readonly choices: ReadonlyArray<{ readonly scope: string; readonly label: string }>;
   readonly scope: string | null;
   readonly onScopeChange: (scope: string | null) => void;
+  readonly showHidden: boolean;
+  readonly onShowHiddenChange: (showHidden: boolean) => void;
 }) {
   const selected = props.choices.find((choice) => choice.scope === props.scope);
   return (
@@ -36,6 +38,16 @@ export function WikiListFilters(props: {
             if (choice) props.onScopeChange(choice.scope);
           }
         }}
+      />
+      <ListFilterMenu
+        label={props.showHidden ? "Hidden files shown" : "Hidden files"}
+        accessibilityLabel="Show or hide hidden files"
+        active={props.showHidden}
+        actions={[
+          { id: "hide", title: "Hide", state: props.showHidden ? "off" : "on" },
+          { id: "show", title: "Show", state: props.showHidden ? "on" : "off" },
+        ]}
+        onSelect={(id) => props.onShowHiddenChange(id === "show")}
       />
     </ScrollView>
   );

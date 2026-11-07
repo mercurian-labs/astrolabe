@@ -1,0 +1,596 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  canvasBounds,
+  canvasChangeSections,
+  canvasChangeSummary,
+  canvasData,
+  canvasDrawingProblems,
+  diffCanvas,
+  parseCanvas,
+  placeCanvas,
+  reviewCanvas,
+  reviewCanvasFiles,
+  serializeCanvas,
+  type CanvasBounds,
+  type CanvasDrawing,
+} from "./canvas.ts";
+import { canvasLinks, canvasOutline, canvasSourceOutline, renameInCanvas } from "./canvasIndex.ts";
+
+const fixtureFolder = new URL("./fixtures/obsidian-canvas/", import.meta.url);
+const fixture = (name: string) => NodeFS.readFileSync(new URL(name, fixtureFolder), "utf8");
+/** Files as Obsidian saved them; the others are input we wrote for it to open. */
+const saved = NodeFS.readdirSync(fixtureFolder).filter((name) => fixture(name).includes('\n\t"'));
+
+describe("serializeCanvas", () => {
+  it.each(saved)("writes %s back byte for byte", (name) => {
+    expect(serializeCanvas(JSON.parse(fixture(name)))).toBe(fixture(name));
+  });
+
+  it("covers the formats the report names", () => {
+    expect(saved).toEqual(
+      expect.arrayContaining(["ed-format.after-edit.canvas", "hand-after-edit.canvas"]),
+    );
+  });
+
+  it("keeps `{}` as it is and expands an empty container's parent", () => {
+    expect(serializeCanvas({})).toBe("{}");
+    expect(serializeCanvas({ nodes: [], edges: [] })).toBe('{\n\t"nodes":[],\n\t"edges":[]\n}');
+    expect(serializeCanvas({ c: { d: {} } })).toBe('{\n\t"c":{\n\t\t"d":{}\n\t}\n}');
+  });
+});
+
+describe("diffCanvas", () => {
+  const card = { id: "a", type: "text", text: "One", x: 0, y: 0, width: 250, height: 60 };
+  const arrow = { id: "e", fromNode: "a", toNode: "b" };
+  const other = { ...card, id: "b", text: "Two" };
+  const marks = (before: unknown, after: unknown) =>
+    diffCanvas(before, after).changes.map(({ id, item, mark, also }) => [id, item, mark, also]);
+
+  it.each([
+    ["a moved card", { x: 20 }, "moved", []],
+    ["a resized card", { width: 300 }, "moved", []],
+    ["a recoloured card", { color: "1" }, "restyled", []],
+    ["new text", { text: "Uno" }, "text", []],
+    ["a key it can't read", { note: true }, "text", []],
+    ["text moved and recoloured", { text: "Uno", x: 1, color: "2" }, "text", ["restyled", "moved"]],
+    ["a recoloured move", { x: 1, color: "2" }, "restyled", ["moved"]],
+  ])("reads %s", (_, change, mark, also) => {
+    expect(marks({ nodes: [card] }, { nodes: [{ ...card, ...change }] })).toEqual([
+      ["a", "card", mark, also],
+    ]);
+  });
+
+  it("matches by id, ignoring key order, and sees what's added and removed", () => {
+    const reordered = { height: 60, width: 250, y: 0, x: 0, text: "One", type: "text", id: "a" };
+    expect(marks({ nodes: [card] }, { nodes: [reordered] })).toEqual([]);
+    expect(marks({ nodes: [card] }, { nodes: [other] })).toEqual([
+      ["b", "card", "added", []],
+      ["a", "card", "removed", []],
+    ]);
+  });
+
+  it.each([
+    ["a new label", { label: "why" }, "text"],
+    ["a new target", { toNode: "c" }, "text"],
+    ["a new colour", { color: "3" }, "restyled"],
+    ["new ends", { toEnd: "none" }, "restyled"],
+    ["new sides", { fromSide: "top" }, "moved"],
+  ])("reads an arrow with %s", (_, change, mark) => {
+    expect(marks({ edges: [arrow] }, { edges: [{ ...arrow, ...change }] })).toEqual([
+      ["e", "arrow", mark, []],
+    ]);
+  });
+
+  it("counts a card type it can't draw, and what's outside the cards", () => {
+    const unknown = { id: "u", type: "sticker", x: 0, y: 0, width: 1, height: 1 };
+    expect(diffCanvas({ nodes: [unknown] }, { nodes: [{ ...unknown, shine: 1 }] })).toMatchObject({
+      changes: [{ id: "u", mark: "text", name: "sticker card" }],
+      rest: false,
+    });
+    expect(diffCanvas({ nodes: [], extra: 1 }, { nodes: [], extra: 2 }).rest).toBe(true);
+  });
+
+  it("names what changed and what it said before", () => {
+    const text = (said: string) => ({ ...card, text: said });
+    const [change] = diffCanvas(
+      { nodes: [text("# Title\nOld line\nSame")] },
+      { nodes: [text("# Title\nNew line\nSame")] },
+    ).changes;
+    expect(change).toMatchObject({ name: "Title", was: "Old line" });
+    const [linked] = diffCanvas(
+      { nodes: [card, other], edges: [] },
+      { nodes: [card, other], edges: [{ ...arrow, label: "why" }] },
+    ).changes;
+    expect(linked).toMatchObject({ item: "arrow", name: "One → Two: why", was: null });
+    const [plain] = diffCanvas(
+      { nodes: [] },
+      {
+        nodes: [
+          text("**Request** a `refund` via [[Pay|payments]], [the form](x) and ~~fax~~ _now_"),
+        ],
+      },
+    ).changes;
+    expect(plain?.name).toBe("Request a refund via payments, the form and fax now");
+  });
+
+  it("uses the ids the board draws under", () => {
+    const repeated = { nodes: [card, { ...card, text: "Again" }] };
+    const data = canvasData(repeated);
+    const [change] = diffCanvas({ nodes: [card] }, repeated).changes;
+    expect(data.nodes.map((node) => node.id)).toContain(change?.id);
+  });
+});
+
+describe("reviewCanvas", () => {
+  const card = { id: "a", type: "text", text: "One", x: 0, y: 0, width: 250, height: 60 };
+  const gone = { ...card, id: "gone", text: "Gone" };
+  const kept = { ...card, id: "kept", x: 300 };
+  const before = {
+    nodes: [card, gone, kept],
+    edges: [
+      { id: "ag", fromNode: "a", toNode: "gone" },
+      { id: "ak", fromNode: "a", toNode: "kept" },
+    ],
+  };
+  const after = {
+    nodes: [{ ...card, text: "Uno" }, kept, { ...card, id: "new" }],
+    edges: [{ id: "ak", fromNode: "a", toNode: "kept", color: "1" }],
+  };
+
+  it("draws the new version with what it removed beneath, marked", () => {
+    const review = reviewCanvas(before, after);
+    expect(review.data.nodes.map((node) => node.id)).toEqual(["gone", "a", "kept", "new"]);
+    expect(review.data.edges.map((edge) => edge.id)).toEqual(["ak", "ag"]);
+    expect(review.marks).toEqual({
+      cards: { a: "text", new: "added", gone: "removed" },
+      arrows: { ak: "restyled", ag: "removed" },
+    });
+    expect(review.changes.every((change) => change.drawn)).toBe(true);
+  });
+
+  it("says when a change can't be found on the board", () => {
+    const unknown = { id: "u", type: "sticker" };
+    const review = reviewCanvas({ nodes: [] }, { nodes: [unknown] });
+    expect(review.changes).toMatchObject([{ id: "u", drawn: false }]);
+  });
+
+  it("treats a file added or deleted as all added or all removed", () => {
+    const review = (was: string | null, now: string | null) => {
+      const result = reviewCanvasFiles(was, now);
+      if ("invalid" in result) throw new Error(result.invalid);
+      return canvasChangeSummary(result.changes);
+    };
+    expect(review(null, JSON.stringify(before))).toBe("5 added");
+    expect(review(JSON.stringify(before), null)).toBe("5 removed");
+  });
+
+  it("says which version it can't read", () => {
+    expect(reviewCanvasFiles("{ nope", "{}")).toMatchObject({
+      invalid: expect.stringContaining("before this change"),
+    });
+    expect(reviewCanvasFiles("{}", "{ nope")).toMatchObject({
+      invalid: expect.stringContaining("This change's version"),
+    });
+  });
+
+  it("folds moves below what to read first", () => {
+    const changes = [{ mark: "moved" }, { mark: "text" }, { mark: "added" }] as const;
+    expect(canvasChangeSections(changes)).toEqual({
+      changed: [{ mark: "added" }, { mark: "text" }],
+      moved: [{ mark: "moved" }],
+    });
+    expect(canvasChangeSummary(changes)).toBe("1 added, 1 changed, 1 moved");
+  });
+});
+
+describe("parseCanvas", () => {
+  it("keeps what doesn't draw in the document, and writes it back", () => {
+    const parsed = parseCanvas(fixture("survive-input.canvas"));
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.data.nodes.map((node) => node.id)).toEqual([
+      "mover",
+      "fracstill",
+      "link",
+      "linkedge",
+    ]);
+    const rewritten = JSON.parse(serializeCanvas(parsed.document));
+    expect(rewritten).toEqual(JSON.parse(fixture("survive-input.canvas")));
+    expect(Object.keys(rewritten)).toEqual(["extra", "nodes", "edges", "zzz"]);
+  });
+
+  it.each([
+    ["empty text", "", 0],
+    ["whitespace", " \n", 0],
+    ["an empty object", "{}", 0],
+    ["an array", "[1,2,3]", 0],
+    ["no edges", '{"nodes":[{"id":"a","type":"text","text":"t"}]}', 1],
+    ["no nodes", '{"edges":[]}', 0],
+  ])("opens %s", (_name, source, count) => {
+    const parsed = parseCanvas(source);
+    expect(parsed.ok && parsed.data.nodes.length).toBe(count);
+  });
+
+  it("refuses only text that isn't JSON", () => {
+    expect(parseCanvas("{nope").ok).toBe(false);
+  });
+
+  it("draws a card the file left incomplete", () => {
+    const { nodes } = canvasData({
+      nodes: [{ type: "text" }, { id: "a", type: "file", x: "1" }, "junk"],
+    });
+    expect(nodes[0]).toMatchObject({ id: "node-0", text: "", x: 0, width: 100, height: 100 });
+    expect(nodes[1]).toMatchObject({ id: "a", file: "", x: 0 });
+    expect(nodes).toHaveLength(2);
+  });
+
+  it("gives repeated ids distinct keys, keeping both cards", () => {
+    const parsed = parseCanvas(fixture("bad-dup-id.afterclose.canvas"));
+    expect(parsed.ok && parsed.data.nodes.map((node) => node.id)).toEqual(["a", "a~1"]);
+  });
+
+  it("reads a pinned base view, and a code card's reference", () => {
+    const parsed = parseCanvas(fixture("base-pinned.canvas"));
+    expect(parsed.ok && parsed.data.nodes[0]).toMatchObject({ type: "file" });
+    const { nodes } = canvasData({
+      nodes: [
+        {
+          id: "c",
+          type: "link",
+          url: "https://x.test",
+          astrolabe: { code: { path: "a.ts", lines: [1, 2], commit: "abc" } },
+        },
+      ],
+    });
+    expect(nodes[0]).toMatchObject({
+      astrolabe: { code: { path: "a.ts", lines: [1, 2], commit: "abc" } },
+    });
+  });
+});
+
+describe("canvas links", () => {
+  const data = canvasData({
+    nodes: [
+      { id: "a", type: "text", text: "[[Ghost]] and ![[Alpha#Top]]" },
+      { id: "b", type: "file", file: "Beta.md", subpath: "#H" },
+      { id: "c", type: "file", file: "Board.canvas" },
+      { id: "d", type: "link", url: "https://x.test" },
+    ],
+    edges: [{ id: "e", fromNode: "b", toNode: "c" }],
+  });
+
+  it("reads text cards and file cards, and never arrows", () => {
+    expect(canvasLinks(data)).toEqual([
+      { target: "Ghost", card: "text" },
+      { target: "Alpha", card: "text" },
+      { target: "Beta", card: "file" },
+      { target: "Board.canvas", card: "file" },
+    ]);
+  });
+});
+
+describe("renameInCanvas", () => {
+  const rename = {
+    path: (file: string) => (file === "~/N1.md" ? "~/N1r.md" : null),
+    link: (target: string) => (target === "~/N1" ? "~/N1r" : null),
+  };
+
+  it("matches what Obsidian saves", () => {
+    expect(renameInCanvas(fixture("links-on-deleteNote-closed.canvas"), rename)).toBe(
+      fixture("links-on-renameNote-open.canvas"),
+    );
+  });
+
+  it("follows a group's background by its whole path", () => {
+    const source = '{"nodes":[{"id":"g","type":"group","background":"a/pic.png"}],"edges":[]}';
+    const next = renameInCanvas(source, {
+      path: (file) => (file === "a/pic.png" ? "a/new.png" : null),
+      link: () => null,
+    });
+    expect(JSON.parse(next).nodes[0].background).toBe("a/new.png");
+  });
+
+  it("leaves a file with nothing to rename in the bytes it had", () => {
+    const source = fixture("hand-before-edit.canvas");
+    expect(renameInCanvas(source, rename)).toBe(source);
+    expect(renameInCanvas("{nope", rename)).toBe("{nope");
+  });
+
+  it("keeps a card's other keys and their order", () => {
+    const next = renameInCanvas(
+      '{"nodes":[{"keep":1,"id":"a","type":"file","file":"~/N1.md","subpath":"#H","x":0}]}',
+      rename,
+    );
+    expect(Object.keys(JSON.parse(next).nodes[0])).toEqual([
+      "keep",
+      "id",
+      "type",
+      "file",
+      "subpath",
+      "x",
+    ]);
+  });
+});
+
+describe("canvasOutline", () => {
+  const data = canvasData({
+    nodes: [
+      { id: "outer", type: "group", label: "Outer", x: 0, y: 0, width: 500, height: 500 },
+      { id: "inner", type: "group", label: "Inner", x: 10, y: 10, width: 200, height: 200 },
+      { id: "a", type: "text", text: "first\nsecond", x: 20, y: 20, width: 50, height: 50 },
+      {
+        id: "b",
+        type: "file",
+        file: "Note.md",
+        subpath: "#Top",
+        x: 300,
+        y: 300,
+        width: 50,
+        height: 50,
+      },
+      { id: "c", type: "text", text: "half out", x: 480, y: 0, width: 50, height: 50 },
+    ],
+    edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses", fromEnd: "arrow" }],
+  });
+
+  it("files cards under the smallest group wholly holding them, with no coordinates", () => {
+    expect(canvasOutline("Board.canvas", data)).toBe(
+      [
+        "Board.canvas: 3 cards, 2 groups, 1 arrow.",
+        "[c] half out",
+        "",
+        "Group [outer] Outer",
+        "[b] File: Note.md#Top",
+        "",
+        "Group [inner] Inner",
+        "[a] first",
+        "  second",
+        "",
+        "Arrows",
+        "[a] <-> [b]: uses",
+      ].join("\n"),
+    );
+  });
+
+  it("says what's wrong with a file that isn't JSON, and shows it", () => {
+    expect(canvasSourceOutline("Board.canvas", "{nope")).toContain("{nope");
+  });
+});
+
+const overlap = (a: CanvasBounds, b: CanvasBounds) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+const contains = (outer: CanvasBounds, inner: CanvasBounds) =>
+  inner.x >= outer.x &&
+  inner.y >= outer.y &&
+  inner.x + inner.width <= outer.x + outer.width &&
+  inner.y + inner.height <= outer.y + outer.height;
+
+const cards = (...ids: string[]) => ids.map((id) => ({ id, text: id }));
+
+const positionOf = (drawing: CanvasDrawing, id: string) => {
+  const node = placeCanvas(drawing).nodes.find((each) => each.id === id);
+  if (node === undefined) throw new Error(`No node ${id}`);
+  return node;
+};
+
+describe("placeCanvas", () => {
+  it("draws the same board from the same drawing", () => {
+    const drawing: CanvasDrawing = {
+      cards: cards("a", "b", "c", "d"),
+      arrows: [
+        { from: "a", to: "b" },
+        { from: "b", to: "c" },
+        { from: "c", to: "a" },
+      ],
+    };
+    expect(placeCanvas(drawing)).toEqual(placeCanvas(drawing));
+  });
+
+  it("places cards downstream of what points at them, whichever way the board runs", () => {
+    const drawing: CanvasDrawing = {
+      cards: cards("end", "middle", "start"),
+      arrows: [
+        { from: "start", to: "middle" },
+        { from: "middle", to: "end" },
+      ],
+    };
+    const start = positionOf(drawing, "start");
+    const middle = positionOf(drawing, "middle");
+    const end = positionOf(drawing, "end");
+    expect(start.x + start.y).toBeLessThan(middle.x + middle.y);
+    expect(middle.x + middle.y).toBeLessThan(end.x + end.y);
+  });
+
+  it("runs on Hermes, the phone's engine, which has no toSorted or toReversed", () => {
+    const { toSorted, toReversed } = Array.prototype;
+    const prototype = Array.prototype as unknown as Record<string, unknown>;
+    delete prototype.toSorted;
+    delete prototype.toReversed;
+    try {
+      const { nodes } = placeCanvas({
+        cards: cards("a", "b", "c"),
+        arrows: [
+          { from: "a", to: "b" },
+          { from: "a", to: "c" },
+        ],
+      });
+      expect(nodes).toHaveLength(3);
+    } finally {
+      prototype.toSorted = toSorted;
+      prototype.toReversed = toReversed;
+    }
+  });
+
+  it("starts a cycle at the first card written, even when a later one is in a group", () => {
+    const drawing: CanvasDrawing = {
+      cards: [
+        { id: "client", text: "Client" },
+        { id: "service", text: "Service", group: "server" },
+        { id: "git", text: "Git" },
+      ],
+      groups: [{ id: "server" }],
+      arrows: [
+        { from: "client", to: "service" },
+        { from: "service", to: "git" },
+        { from: "git", to: "client" },
+      ],
+    };
+    const client = positionOf(drawing, "client");
+    const server = positionOf(drawing, "server");
+    const git = positionOf(drawing, "git");
+    expect(client.x + client.y).toBeLessThan(server.x + server.y);
+    expect(server.x + server.y).toBeLessThan(git.x + git.y);
+  });
+
+  it("draws an empty group rather than dropping what the agent named", () => {
+    const { nodes } = placeCanvas({ cards: cards("a"), groups: [{ id: "empty", label: "Empty" }] });
+    expect(nodes.map((node) => node.id).toSorted()).toEqual(["a", "empty"]);
+  });
+
+  it("never overlaps cards, in flows, cycles, fans and loose grids", () => {
+    const ids = Array.from({ length: 60 }, (_, index) => `c${index}`);
+    const drawing: CanvasDrawing = {
+      cards: ids.map((id, index) => ({ id, text: "word ".repeat(index + 1) })),
+      arrows: [
+        ...ids.slice(1, 30).map((id) => ({ from: "c0", to: id })),
+        { from: "c29", to: "c0" },
+        { from: "c30", to: "c31" },
+      ],
+    };
+    const { nodes } = placeCanvas(drawing);
+    expect(nodes).toHaveLength(60);
+    for (const a of nodes) {
+      for (const b of nodes) {
+        if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
+      }
+    }
+  });
+
+  it("keeps a group's cards inside it and clear of everything else", () => {
+    const drawing: CanvasDrawing = {
+      cards: [
+        { id: "in", text: "Inbound", group: "server" },
+        { id: "out", text: "Outbound", group: "server" },
+        { id: "client", text: "Client" },
+      ],
+      groups: [{ id: "server", label: "Server" }],
+      arrows: [
+        { from: "client", to: "in" },
+        { from: "in", to: "out" },
+      ],
+    };
+    const { nodes } = placeCanvas(drawing);
+    const group = nodes.find((node) => node.id === "server");
+    const client = nodes.find((node) => node.id === "client");
+    if (group === undefined || client === undefined) throw new Error("Missing node");
+    for (const id of ["in", "out"]) {
+      const card = nodes.find((node) => node.id === id);
+      if (card === undefined) throw new Error("Missing card");
+      expect(contains(group, card)).toBe(true);
+    }
+    expect(overlap(group, client)).toBe(false);
+    expect(nodes[0]?.id, "groups draw beneath their cards").toBe("server");
+  });
+
+  it("writes spec JSON: whole numbers, preset colours and arrow ends", () => {
+    const { nodes, edges } = placeCanvas({
+      cards: [
+        { id: "a", text: "A", color: "red" },
+        { id: "b", text: "B" },
+      ],
+      arrows: [
+        { from: "a", to: "b", ends: "both", label: "calls", color: "cyan" },
+        { from: "b", to: "a", ends: "none" },
+      ],
+    });
+    expect(nodes[0]?.color).toBe("1");
+    for (const node of nodes) {
+      for (const value of [node.x, node.y, node.width, node.height]) {
+        expect(Number.isInteger(value)).toBe(true);
+      }
+    }
+    expect(edges[0]).toMatchObject({ fromEnd: "arrow", label: "calls", color: "5" });
+    expect(edges[1]).toMatchObject({ toEnd: "none" });
+  });
+
+  it("keeps a code card's path and lines, and leaves its link for saving", () => {
+    const { nodes } = placeCanvas({
+      cards: [
+        { id: "a", path: "src/a.ts", line: 10, endLine: 20, text: "The merge" },
+        { id: "b", path: "src/b.ts", line: 7 },
+      ],
+    });
+    expect(nodes[0]).toMatchObject({
+      type: "link",
+      url: "",
+      astrolabe: { caption: "The merge", code: { path: "src/a.ts", lines: [10, 20] } },
+    });
+    expect(nodes[1]).toMatchObject({ astrolabe: { code: { lines: [7, 7] } } });
+  });
+
+  it("leaves out arrows to cards the drawing doesn't hold", () => {
+    const { edges } = placeCanvas({
+      cards: cards("a"),
+      arrows: [{ from: "a", to: "missing" }],
+    });
+    expect(edges).toEqual([]);
+  });
+
+  it("runs a long chain down the board, since across a chat column it would be a thin ribbon", () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `c${index}`);
+    const { width, height } = canvasBounds(
+      placeCanvas({
+        cards: cards(...ids),
+        arrows: ids.slice(1).map((id, index) => ({ from: `c${index}`, to: id })),
+      }),
+    );
+    expect(height).toBeGreaterThan(width);
+  });
+});
+
+describe("canvasDrawingProblems", () => {
+  it("accepts a drawing whose references all hold", () => {
+    expect(
+      canvasDrawingProblems({
+        cards: [
+          { id: "a", text: "A", group: "g" },
+          { id: "b", path: "src/a.ts", line: 3, endLine: 9 },
+          { id: "c", url: "https://example.com" },
+        ],
+        groups: [{ id: "g" }],
+        arrows: [{ from: "a", to: "g" }],
+      }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["a repeated id", { cards: [...cards("a"), ...cards("a")] }, "used twice"],
+    ["a group sharing a card's id", { cards: cards("a"), groups: [{ id: "a" }] }, "used twice"],
+    ["an empty card", { cards: [{ id: "a" }] }, "needs text, url or path"],
+    ["a link that is also code", { cards: [{ id: "a", url: "x", path: "y" }] }, "only be one"],
+    ["an unknown group", { cards: [{ id: "a", text: "A", group: "g" }] }, "isn't in `groups`"],
+    ["an absolute path", { cards: [{ id: "a", path: "/etc/passwd" }] }, "relative"],
+    ["a Windows path", { cards: [{ id: "a", path: "C:\\x" }] }, "relative"],
+    ["a path out of the repository", { cards: [{ id: "a", path: "src/../../x" }] }, "relative"],
+    ["endLine alone", { cards: [{ id: "a", path: "x", endLine: 3 }] }, "without line"],
+    ["a line zero", { cards: [{ id: "a", path: "x", line: 0 }] }, "before the first"],
+    [
+      "lines backwards",
+      { cards: [{ id: "a", path: "x", line: 9, endLine: 3 }] },
+      "before it starts",
+    ],
+    ["an unknown arrow end", { cards: cards("a"), arrows: [{ from: "a", to: "b" }] }, "isn't here"],
+  ] satisfies ReadonlyArray<readonly [string, CanvasDrawing, string]>)(
+    "refuses %s",
+    (_name, drawing, problem) => {
+      expect(canvasDrawingProblems(drawing).join(" ")).toContain(problem);
+    },
+  );
+
+  it("doesn't mistake a double dot in a name for leaving the repository", () => {
+    expect(canvasDrawingProblems({ cards: [{ id: "a", path: "src/a..b.ts" }] })).toEqual([]);
+  });
+});

@@ -11,7 +11,10 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  backlinks,
   baseCorpus,
+  indexFiles,
+  linkDestination,
   parseBase,
   queryBase,
   type BaseCell,
@@ -25,18 +28,20 @@ const ROOT = new URL("./fixtures/obsidian-parity/", import.meta.url).pathname;
 const VAULT = NodePath.join(ROOT, "vault");
 const NOW = Date.parse("2026-11-02T12:00:00.000Z");
 
-const walk = (folder: string): string[] =>
-  NodeFS.readdirSync(NodePath.join(VAULT, folder), { withFileTypes: true }).flatMap((entry) => {
+const walk = (root: string, folder = ""): string[] =>
+  NodeFS.readdirSync(NodePath.join(root, folder), { withFileTypes: true }).flatMap((entry) => {
     const path = folder ? `${folder}/${entry.name}` : entry.name;
-    return entry.isDirectory() ? walk(path) : [path];
+    return entry.isDirectory() ? walk(root, path) : [path];
   });
 
-const FILES: BaseFile[] = walk("").map((file) => {
-  const bytes = NodeFS.readFileSync(NodePath.join(VAULT, file));
-  const text = /\.(md|canvas|base)$/.test(file);
-  return text ? { file, source: bytes.toString("utf8") } : { file, size: bytes.length };
-});
-const CORPUS = baseCorpus(FILES);
+const filesOf = (root: string): BaseFile[] =>
+  walk(root).map((file) => {
+    const bytes = NodeFS.readFileSync(NodePath.join(root, file));
+    const text = /\.(md|canvas|base)$/.test(file);
+    return text ? { file, source: bytes.toString("utf8") } : { file, size: bytes.length };
+  });
+
+const CORPUS = baseCorpus(filesOf(VAULT));
 
 const run = (base: string, view: string): BaseResult =>
   queryBase(CORPUS, parseBase(NodeFS.readFileSync(NodePath.join(VAULT, `${base}.base`), "utf8")), {
@@ -178,5 +183,78 @@ describe("parity with Obsidian 1.14.4", () => {
       ["open", "10"],
     ]);
     expect(grouped.summaries[0]?.value).toBe("11");
+  });
+});
+
+/** The vault of duplicate names, hand-written from section A of the links report. */
+const NAMES = filesOf(new URL("./fixtures/obsidian-names/", import.meta.url).pathname);
+
+describe("links between files of one name", () => {
+  const files = Object.fromEntries(
+    NAMES.flatMap(({ file, source }) => (source === undefined ? [] : [[file, source]])),
+  );
+  const index = indexFiles(files);
+  const corpus = baseCorpus(NAMES);
+  const LINKERS = ["Linker", "a/Linker", "a/deep/Linker", "b/Linker", "c/Linker", "w/x/Linker"];
+
+  it.each([
+    // Read across the linkers, root first; null is a red link, as Obsidian drew them.
+    ["Name", ["Name", "Name", "Name", "Name", "Name", "Name"]],
+    ["NoRoot", ["a/NoRoot", "a/NoRoot", "a/deep/NoRoot", "b/NoRoot", "a/NoRoot", "a/NoRoot"]],
+    ["eep/Name", Array(6).fill("a/deep/Name")],
+    ["c/Name", Array(6).fill(null)],
+    ["./Name", ["Name", "a/Name", "a/deep/Name", "b/Name", null, null]],
+    ["../NoRoot", ["a/NoRoot", "a/NoRoot", "a/NoRoot", "a/NoRoot", "a/NoRoot", null]],
+    ["/NoRoot", Array(6).fill(null)],
+    ["Case", ["ca/Case", "ca/Case", "ca/Case", "ca/Case", "ca/Case", "ca/Case"]],
+    ["B1", ["q/B1", "q/B1", "q/B1", "q/B1", "q/B1", "w/xy/B1"]],
+    ["Guide", Array(6).fill(null)],
+    [".hidden/Guide", Array(6).fill(".hidden/Guide")],
+  ] as const)("[[%s]] lands in the index and in a base alike", (target, expected) => {
+    const landed = LINKERS.map((linker) => {
+      const from = `${linker}.md`;
+      const file = linkDestination(index, { target }, from);
+      return { file: file?.replace(/\.md$/, "") ?? null, from };
+    });
+    expect(landed.map(({ file }) => file)).toEqual(expected);
+    for (const { from, file } of landed) {
+      if (file?.startsWith(".")) continue;
+      expect(corpus.resolve(target, from)?.file.replace(/\.md$/, "") ?? null).toBe(file);
+    }
+  });
+
+  it("finds an attachment with its extension, and only so", () => {
+    const at = (target: string, from: string) => corpus.resolve(target, from)?.file ?? null;
+    expect(at("image.png", "ea/Linker.md")).toBe("image.png");
+    expect(at("image", "ea/Linker.md")).toBeNull();
+    expect(at("noroot.png", "eb/Linker.md")).toBe("eb/noroot.png");
+    expect(at("noroot.png", "ec/Linker.md")).toBe("ea/noroot.png");
+    expect(at("./image.png", "ea/deep/Linker.md")).toBe("ea/deep/image.png");
+    expect(at("../image.png", "ea/deep/Linker.md")).toBe("ea/image.png");
+    expect(at("deep/image.png", "eb/Linker.md")).toBe("ea/deep/image.png");
+  });
+
+  it("counts backlinks by where each link lands", () => {
+    expect(backlinks(index, "b/NoRoot")).toEqual(["b/Linker"]);
+    expect(backlinks(index, "a/deep/NoRoot")).toEqual(["a/deep/Linker"]);
+    expect(backlinks(index, "cb/case")).toEqual([
+      "a/deep/Linker",
+      "a/Linker",
+      "b/Linker",
+      "c/Linker",
+      "Linker",
+      "w/x/Linker",
+    ]);
+  });
+
+  it("shows two rows of one name by their own paths", () => {
+    const source = files["Names.base"] ?? "";
+    const result = queryBase(corpus, parseBase(source), { now: NOW, self: "Names.base" });
+    expect(csv(result)).toEqual([
+      "file path,file name,file base name,folder",
+      "a/deep/Name.md,Name,Name,a/deep",
+      "a/Name.md,Name,Name,a",
+      "b/Name.md,Name,Name,b",
+    ]);
   });
 });

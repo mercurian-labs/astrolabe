@@ -102,6 +102,10 @@ describe("rendered math", () => {
     const display = oneLine.contentDOM.querySelectorAll(".cm-md-math-display .katex-display");
     expect(display).toHaveLength(1);
     expect(lines(oneLine).map((element) => sourceText(element))).toEqual(["", "after"]);
+
+    const inParagraph = mount("$$x$$ then text\n\nafter");
+    expect(inParagraph.contentDOM.querySelector(".cm-md-math-display")).toBeNull();
+    expect(line(inParagraph, 3).classList.contains("cm-md-math-block")).toBe(false);
   });
 
   it("keeps an unclosed `$$` block as source", () => {

@@ -235,6 +235,12 @@ import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { resolveThreadFeedFixedItemSize } from "./thread-feed-item-size";
 import { htmlRenderFrameHeight } from "@t3tools/shared/htmlRender";
 import { htmlRenderRowHeight, ThreadHtmlRender } from "./HtmlRenderWebView";
+import {
+  canvasRowHeight,
+  ThreadCanvas,
+  ThreadWikiCanvas,
+  WIKI_CANVAS_ROW_HEIGHT,
+} from "./ThreadCanvas";
 import { ThreadMcpApp } from "./McpAppWebView";
 import { assetEnvironment, useAssetUrl, useRefreshAssetUrl } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
@@ -1681,6 +1687,22 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "canvas") {
+    return (
+      <ThreadCanvas
+        environmentId={props.environmentId}
+        threadId={entry.sourceThreadId}
+        itemId={entry.itemId}
+        view={entry.canvas}
+        frameWidth={props.contentWidth}
+      />
+    );
+  }
+
+  if (entry.type === "wiki-canvas") {
+    return <ThreadWikiCanvas environmentId={props.environmentId} canvas={entry.canvas} />;
+  }
+
   if (entry.type === "mcp-app") {
     return (
       <ThreadMcpApp
@@ -2320,6 +2342,14 @@ function UserMessageContent(props: UserMessageContentProps) {
         environmentId: String(props.environmentId),
         wikiId: String(record.wikiId),
         name: record.name,
+      });
+      return;
+    }
+    if (record?.kind === "canvas" && "itemId" in record) {
+      navigation.navigate("ThreadCanvas", {
+        environmentId: String(props.environmentId),
+        threadId: String(record.threadId),
+        itemId: String(record.itemId),
       });
       return;
     }
@@ -3458,6 +3488,8 @@ export const ThreadFeed = memo(function ThreadFeed({
     if (entry.type === "html-render") {
       return htmlRenderRowHeight(htmlRenderFrameHeight(entry.render, contentWidth));
     }
+    if (entry.type === "canvas") return canvasRowHeight(entry.canvas, contentWidth);
+    if (entry.type === "wiki-canvas") return WIKI_CANVAS_ROW_HEIGHT;
     if (workRowSizing.fixedRowHeight === undefined || entry.checkpointSummary) {
       return undefined;
     }
@@ -3495,7 +3527,9 @@ export const ThreadFeed = memo(function ThreadFeed({
   // after the commit that hands it rows at the new geometry; clearing earlier
   // re-caches old sizes.
   const { textSizeKey } = workRowSizing;
-  const hasHtmlRenders = presentedFeed.some((entry) => entry.type === "html-render");
+  const hasHtmlRenders = presentedFeed.some(
+    (entry) => entry.type === "html-render" || entry.type === "canvas",
+  );
   const previousRowGeometry = useRef({ textSizeKey, contentWidth });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears LegendList size caches and starts a reflow after the commit that brings new row geometry
   useLayoutEffect(() => {

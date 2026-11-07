@@ -9,7 +9,8 @@ const merged = (base: string, ours: string, theirs: string) => {
 
 describe("markdown merge", () => {
   it("tokens round-trip the exact text", () => {
-    const text = "# Title\n\nFirst. Second!  Third?\nNext line\n\n\n- item\n- item two\nNo newline";
+    const text =
+      "# Title\n\nFirst. Second!  Third?\nNext line\n\nSee v1.2 and a.md here. Done\n\n\n- item\n- item two\nNo newline";
     expect(paragraphs(text).join("")).toBe(text);
     for (const block of paragraphs(text)) expect(sentences(block).join("")).toBe(block);
   });
@@ -27,6 +28,14 @@ describe("markdown merge", () => {
     const theirs = "Alpha is first. Beta is second. Gamma comes last.\n";
     expect(merged(base, ours, theirs)).toBe(
       "Alpha comes first. Beta is second. Gamma comes last.\n",
+    );
+  });
+
+  it("merges neighbouring sentences, and an addition after a sentence the other side changed", () => {
+    expect(merged("One. Two.\n", "Uno. Two.\n", "One. Two. Three.\n")).toBe("Uno. Two. Three.\n");
+    expect(merged("One. Two.", "One. Dos.", "One. Two. Three.")).toBe("One. Dos. Three.");
+    expect(merged("See v1.2 here. Two.\n", "See v1.3 here. Two.\n", "See v1.2 here. Dos.\n")).toBe(
+      "See v1.3 here. Dos.\n",
     );
   });
 

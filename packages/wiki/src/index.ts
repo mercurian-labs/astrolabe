@@ -1,4 +1,6 @@
 export * from "./links.ts";
+export * from "./resolveLink.ts";
+export * from "./placement.ts";
 export * from "./skillMap.ts";
 export * from "./wikiIndex.ts";
 export * from "./amendment.ts";
@@ -9,3 +11,8 @@ export * from "./bases.ts";
 export * from "./baseCorpus.ts";
 export * from "./baseEdits.ts";
 export * from "./baseLayout.ts";
+export * from "./canvas.ts";
+export * from "./canvasEdits.ts";
+export * from "./canvasIndex.ts";
+export * from "./canvasKeep.ts";
+export * from "./canvasMerge.ts";

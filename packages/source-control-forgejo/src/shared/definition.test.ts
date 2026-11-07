@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { definition } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url))!;
 
 const identity = (
@@ -127,5 +128,17 @@ describe("Forgejo change request host", () => {
     expect(
       definition.changeRequestHost?.(identity("ssh://git@forge.example:2222/git/team/repo.git")),
     ).toBe("forge.example");
+  });
+});
+
+describe("Forgejo file URLs", () => {
+  const base = { host: "codeberg.org", repository: "acme/web" };
+  it.each([
+    [
+      { path: "src/a.ts", lines: [10, 20] },
+      `https://codeberg.org/acme/web/src/commit/${SHA}/src/a.ts#L10-L20`,
+    ],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
   });
 });

@@ -5,17 +5,21 @@ import {
   type WikiDocumentEntry,
   type WikiListEntries,
 } from "@t3tools/client-runtime/wikiList";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiId } from "@t3tools/contracts";
+
+import { buildFileTree, flattenFileTree, type VisibleFileTreeNode } from "../files/fileTree";
 
 /**
  * Astrolabe: the Wikis tab and the Change requests tab's wiki group, each one flat list laid out
- * as the thread list is. Wikis lists the documents, with a first row counting the open change
- * requests that leads to them; Change requests lists the open ones under a section label, then a
- * folded shelf of the merged and closed.
+ * as the thread list is. Wikis lists the documents, with first rows for the person's drafts and
+ * counting the open change requests that leads to them; Change requests lists drafts and the open
+ * ones under section labels, then a folded shelf of the merged and closed.
  */
 export type WikiListItem =
   | { readonly type: "section"; readonly key: string; readonly label: string }
   | { readonly type: "changes-link"; readonly key: string; readonly count: number }
+  /** A wiki's draft, apart from the change requests. */
+  | { readonly type: "draft-link"; readonly key: string; readonly entry: WikiChangeEntry }
   | {
       readonly type: "settled-shelf";
       readonly key: string;
@@ -28,12 +32,62 @@ export type WikiListItem =
       readonly entry: WikiDocumentEntry;
       readonly showTrailingDivider: boolean;
     }
+  /** A folder or a document, in a wiki's tree. */
+  | { readonly type: "tree"; readonly key: string; readonly row: WikiTreeRow }
   | {
       readonly type: "change";
       readonly key: string;
       readonly entry: WikiChangeEntry;
       readonly showTrailingDivider: boolean;
     };
+
+export interface WikiTreeRow {
+  readonly wiki: WikiListScope;
+  readonly item: VisibleFileTreeNode;
+  /** The document it opens; none for a folder. */
+  readonly entry: WikiDocumentEntry | null;
+}
+
+export interface WikiListScope {
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+}
+
+/** What folds in a wiki's tree: a folder by its wiki and path. */
+export const wikiFolderKey = (wiki: WikiListScope, path: string) =>
+  `${wiki.environmentId}:${wiki.wikiId}:${path}`;
+
+/** Every wiki's documents by folder; several wikis show one after another, each under its name. */
+function treeRows(
+  documents: ReadonlyArray<WikiDocumentEntry>,
+  expanded: ReadonlySet<string>,
+): ReadonlyArray<WikiListItem> {
+  const wikis = new Map<string, WikiDocumentEntry[]>();
+  for (const entry of documents) {
+    const key = `${entry.environmentId}:${entry.wiki.wikiId}`;
+    wikis.set(key, [...(wikis.get(key) ?? []), entry]);
+  }
+  return [...wikis.values()].flatMap((entries) => {
+    const first = entries[0];
+    if (first === undefined) return [];
+    const wiki = { environmentId: first.environmentId, wikiId: first.wiki.wikiId };
+    const byFile = new Map(entries.map((entry) => [entry.file, entry]));
+    const nodes = buildFileTree(entries.map(({ file }) => ({ path: file, kind: "file" as const })));
+    const open = new Set<string>();
+    for (const key of expanded) {
+      const prefix = wikiFolderKey(wiki, "");
+      if (key.startsWith(prefix)) open.add(key.slice(prefix.length));
+    }
+    const rows = flattenFileTree({ nodes, expanded: open }).map((item) => ({
+      type: "tree" as const,
+      key: `tree:${wikiFolderKey(wiki, item.node.path)}`,
+      row: { wiki, item, entry: byFile.get(item.node.path) ?? null },
+    }));
+    if (wikis.size < 2) return rows;
+    const label = first.wiki.name;
+    return [{ type: "section" as const, key: `tree:${wikiFolderKey(wiki, "")}`, label }, ...rows];
+  });
+}
 
 /** A hairline separates two rows; section labels, links and shelves draw their own rule. */
 function withDividers(items: WikiListItem[]): WikiListItem[] {
@@ -45,11 +99,25 @@ function withDividers(items: WikiListItem[]): WikiListItem[] {
   });
 }
 
-/** The Wikis tab: a row counting the open changes, when there are any, then the documents. */
-export function buildWikiListItems(entries: WikiListEntries): WikiListItem[] {
-  const items: WikiListItem[] = [];
+/**
+ * The Wikis tab: the drafts, a row counting the open changes, when there are any, then the
+ * documents, by folder unless `expanded` is null, as a search's are.
+ */
+export function buildWikiListItems(
+  entries: WikiListEntries,
+  expanded: ReadonlySet<string> | null = null,
+): WikiListItem[] {
+  const items: WikiListItem[] = entries.drafts.map((entry) => ({
+    type: "draft-link",
+    key: `draft:${entry.key}`,
+    entry,
+  }));
   if (entries.changes.length > 0) {
     items.push({ type: "changes-link", key: "changes-link", count: entries.changes.length });
+  }
+  if (expanded !== null) {
+    items.push(...treeRows(entries.documents, expanded));
+    return items;
   }
   for (const entry of entries.documents) {
     items.push({
@@ -76,8 +144,20 @@ export function buildWikiChangeItems(
     entry,
     showTrailingDivider: false,
   });
-  if (entries.changes.length === 0 && entries.settled.length === 0) return [];
+  if (entries.drafts.length === 0 && entries.changes.length === 0 && entries.settled.length === 0) {
+    return [];
+  }
   const items: WikiListItem[] = [
+    ...(entries.drafts.length > 0
+      ? [
+          {
+            type: "section" as const,
+            key: "section:drafts",
+            label: `Your drafts · ${entries.drafts.length}`,
+          },
+          ...entries.drafts.map(change),
+        ]
+      : []),
     { type: "section", key: "section:changes", label: `Wiki changes · ${entries.changes.length}` },
     ...entries.changes.map(change),
   ];
@@ -135,10 +215,13 @@ export function wikiDocumentFooter(entry: WikiDocumentEntry): {
       text:
         entry.changes.length > 1
           ? `In ${entry.changes.length} open changes`
-          : `In “${first.title}”`,
+          : first.draft
+            ? "In your draft"
+            : `In “${first.title}”`,
     };
   }
-  if (entry.base) return { inChange: false, text: "Base · read only" };
+  if (entry.base) return { inChange: false, text: "Base" };
+  if (entry.canvas) return { inChange: false, text: "Canvas" };
   const links = entry.links === 1 ? "1 link" : `${entry.links} links`;
   return {
     inChange: false,
@@ -157,8 +240,12 @@ export function wikiChangeFooter(entry: WikiChangeEntry): {
     changeRequest.status === "merged"
       ? "Merged"
       : changeRequest.status === "closed"
-        ? "Closed"
-        : null;
+        ? changeRequest.draft
+          ? "Discarded draft"
+          : "Closed"
+        : changeRequest.draft
+          ? "Draft"
+          : null;
   return {
     summary: [
       status,

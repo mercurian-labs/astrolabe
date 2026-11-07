@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { WikiChangeRequestId } from "@t3tools/contracts";
 
 import {
   authorColor,
-  defaultSaveTarget,
   describeIndexError,
   describeWikiFailure,
   isTurnRunning,
   latestAmendmentFor,
   mapTilesFor,
   mergeBlockedReason,
+  mergeConflictAdvice,
   parseWikiSearch,
-  queuedSaveStep,
   summarizeMirror,
 } from "./wiki.logic";
 
@@ -27,17 +25,8 @@ describe("parseWikiSearch", () => {
       }),
     ).toEqual({ environmentId: "env-1", note: "Graph theory" });
     expect(parseWikiSearch({ changeRequest: "cr-1" })).toEqual({ changeRequest: "cr-1" });
-  });
-});
-
-describe("defaultSaveTarget", () => {
-  const open = [{ changeRequestId: "cr-1" as WikiChangeRequestId }];
-  it("saves into the open change request being viewed", () => {
-    expect(defaultSaveTarget(open, "cr-1" as WikiChangeRequestId)).toBe("cr-1");
-  });
-  it("opens a new one from main or from a change request that is no longer open", () => {
-    expect(defaultSaveTarget(open, undefined)).toBeNull();
-    expect(defaultSaveTarget(open, "cr-2" as WikiChangeRequestId)).toBeNull();
+    const note = `${"folder/".repeat(100)}Plan.md`;
+    expect(parseWikiSearch({ note }).note).toBe(note);
   });
 });
 
@@ -46,21 +35,33 @@ describe("mergeBlockedReason", () => {
     expect(
       mergeBlockedReason({
         canWrite: true,
-        preview: { status: "clean", conflicts: [], errors: [] },
+        preview: { status: "clean", conflicts: [], errors: [], canvases: [] },
       }),
     ).toBeNull();
     expect(
       mergeBlockedReason({
         canWrite: true,
-        preview: { status: "conflict", conflicts: ["A.md", "B.md"], errors: [] },
+        preview: { status: "conflict", conflicts: ["A.md", "B.md"], errors: [], canvases: [] },
       }),
     ).toBe("Conflicts with main in A.md, B.md.");
     expect(
       mergeBlockedReason({
         canWrite: false,
-        preview: { status: "clean", conflicts: [], errors: [] },
+        preview: { status: "clean", conflicts: [], errors: [], canvases: [] },
       }),
     ).toMatch(/permission/);
+  });
+});
+
+describe("mergeConflictAdvice", () => {
+  it("sends a canvas to its worktree, because an amendment can't write one", () => {
+    expect(mergeConflictAdvice(["A.md"], "computer")).toContain("Amend");
+    expect(mergeConflictAdvice([], "computer")).toContain("Amend");
+    const canvas = mergeConflictAdvice(["A.md", "Board.canvas"], "computer");
+    expect(canvas).toContain("worktree");
+    expect(canvas).not.toContain("Amend");
+    expect(mergeConflictAdvice(["Board.canvas"], "phone")).toContain("from the phone");
+    expect(mergeConflictAdvice(["A.md"], "phone")).toContain("Amend");
   });
 });
 
@@ -149,13 +150,6 @@ describe("live authors and queued saves", () => {
     expect(isTurnRunning("idle")).toBe(false);
     expect(isTurnRunning("completed")).toBe(false);
     expect(isTurnRunning(undefined)).toBe(false);
-  });
-  it("waits while the turn runs and commits once it ends, once", () => {
-    const queued = { changeRequestId: "cr-1" as WikiChangeRequestId, message: "Edit" };
-    expect(queuedSaveStep({ queued, turnRunning: true, committing: false })).toBe("wait");
-    expect(queuedSaveStep({ queued, turnRunning: false, committing: false })).toBe("commit");
-    expect(queuedSaveStep({ queued, turnRunning: false, committing: true })).toBe("idle");
-    expect(queuedSaveStep({ queued: null, turnRunning: false, committing: false })).toBe("idle");
   });
 });
 

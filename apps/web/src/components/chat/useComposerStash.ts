@@ -5,7 +5,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type PreviewAnnotationPayload,
   type ThreadContextRecord,
-  type WikiNoteContextRecord,
+  type WikiContextRecord,
 } from "@t3tools/contracts";
 import {
   type ComposerFileAttachment,
@@ -85,7 +85,7 @@ export function useComposerStash(input: {
   readonly composerPreviewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly composerReviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly composerThreadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly composerWikiNotes: ReadonlyArray<WikiNoteContextRecord>;
+  readonly composerWikiContexts: ReadonlyArray<WikiContextRecord>;
   readonly attachmentTargetKey: string;
   readonly isComposerDraftTargetOpen: (targetKey: string) => boolean;
   readonly composerEditorRef: RefObject<ComposerPromptEditorHandle | null>;
@@ -116,7 +116,7 @@ export function useComposerStash(input: {
     composerPreviewAnnotations,
     composerReviewComments,
     composerThreadContexts,
-    composerWikiNotes,
+    composerWikiContexts,
     attachmentTargetKey,
     isComposerDraftTargetOpen,
     composerEditorRef,
@@ -144,7 +144,7 @@ export function useComposerStash(input: {
     (store) => store.clearComposerPromptAndImages,
   );
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
-  const setComposerDraftWikiNotes = useComposerDraftStore((store) => store.setWikiNotes);
+  const setComposerDraftWikiContexts = useComposerDraftStore((store) => store.setWikiContexts);
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
   // Each stash bumps the key; the badge replays its one-shot pulse animation per key.
   const [stashPulseKey, setStashPulseKey] = useState(0);
@@ -465,7 +465,7 @@ export function useComposerStash(input: {
     const files = [...attachmentDraft.files];
     const stashedRecords: ComposerContextRecord[] = [
       ...composerThreadContexts,
-      ...composerWikiNotes,
+      ...composerWikiContexts,
       ...readTerminalContexts().map(terminalContextRecord),
       ...composerReviewComments.map(reviewCommentContextRecord),
       ...composerPreviewAnnotations.map((annotation) =>
@@ -569,7 +569,7 @@ export function useComposerStash(input: {
       clearComposerDraftPromptAndImages(stashTarget);
       clearComposerDraftTerminalContexts(stashTarget);
       setComposerDraftThreadContexts(stashTarget, []);
-      setComposerDraftWikiNotes(stashTarget, []);
+      setComposerDraftWikiContexts(stashTarget, []);
       for (const comment of composerReviewComments) {
         removeComposerDraftReviewComment(stashTarget, comment.id);
       }

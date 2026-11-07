@@ -22,6 +22,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-request",
   "pull-requests",
   "graph",
+  "canvas",
   "lineage",
   "side-chat",
 ] as const;
@@ -79,6 +80,7 @@ export type RightPanelSurface =
     }
   | { id: "pull-requests"; kind: "pull-requests" }
   | { id: "graph"; kind: "graph" }
+  | { id: "canvas"; kind: "canvas" }
   | { id: "lineage"; kind: "lineage" }
   | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
 
@@ -227,6 +229,8 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "graph":
       return { id: "graph", kind };
+    case "canvas":
+      return { id: "canvas", kind };
     case "lineage":
       return { id: "lineage", kind };
     case "device":

@@ -15,7 +15,7 @@ import {
   type RunId,
   type ScopedThreadRef,
   type ThreadContextRecord,
-  type WikiNoteContextRecord,
+  type WikiContextRecord,
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -81,7 +81,7 @@ interface QueuedRunEditContent {
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly wikiNotes: ReadonlyArray<WikiNoteContextRecord>;
+  readonly wikiContexts: ReadonlyArray<WikiContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
 }
 
@@ -140,7 +140,7 @@ async function submitQueuedRunEdit(input: {
         reviewComments: content.reviewComments,
         previewAnnotations: content.previewAnnotations,
         threadContexts: content.threadContexts,
-        wikiNotes: content.wikiNotes,
+        wikiContexts: content.wikiContexts,
         environmentContexts: content.environmentContexts,
         attachments: newAttachments.map((attachment, index) => ({
           attachment,

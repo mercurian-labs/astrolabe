@@ -3,16 +3,18 @@ import type {
   ThreadId,
   ThreadPullRequestLink,
   WikiAmendmentSummary,
+  WikiChangeRequest,
   WikiChangeRequestId,
   WikiFileChange,
   WikiId,
+  WikiMergePreview,
 } from "@t3tools/contracts";
 import { parseDiffFromFile } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleCheckIcon, MessagesSquareIcon, TriangleAlertIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 
@@ -36,15 +38,20 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   describeIndexError,
   describeWikiFailure,
+  isCanvasName,
   mergeBlockedReason,
-  noteNameOfFile,
+  mergeConflictAdvice,
 } from "./wiki.logic";
+import { useWikiDraftActions } from "./WikiDraftPill";
 import { useWikiCommand } from "./wikiEnvironment";
 import { WikiPart } from "./WikiParts";
+
+const WikiCanvasReview = lazy(() => import("./WikiCanvasReview"));
 
 const STATUS_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
@@ -56,11 +63,14 @@ export function WikiChangeRequestView({
   onOpenNote,
   onOpenThread,
   onOpenPullRequest,
+  onOpenTab,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId;
   readonly onOpenNote: (name: string) => void;
+  /** Astrolabe: opens a tab by its key, as a canvas's code cards do. */
+  readonly onOpenTab?: (key: string) => void;
   /** Astrolabe: shows the change request's thread beside it; without it, the link goes there. */
   readonly onOpenThread?: (threadId: ThreadId) => void;
   /** Astrolabe: shows one of its thread's pull requests beside it. */
@@ -70,6 +80,10 @@ export function WikiChangeRequestView({
     wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const list = useEnvironmentQuery(
+    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
+  const changeRequests = list.data?.changeRequests ?? NO_CHANGE_REQUESTS;
   const wikiName = wikis.data?.wikis.find((wiki) => wiki.wikiId === wikiId)?.name ?? null;
   const navigate = useNavigate();
   // Astrolabe: the pull requests of the thread that wrote it (see `changeRequestPullRequests`).
@@ -151,7 +165,13 @@ export function WikiChangeRequestView({
   return frame(
     changeRequest.title,
     <>
-      <TabHeader.Status>{STATUS_LABEL[changeRequest.status]}</TabHeader.Status>
+      <TabHeader.Status>
+        {changeRequest.draft
+          ? changeRequest.status === "open"
+            ? "Draft"
+            : "Discarded draft"
+          : STATUS_LABEL[changeRequest.status]}
+      </TabHeader.Status>
       <TabHeader.Actions>
         {changeRequest.threadId ? (
           <TabHeader.Action
@@ -163,7 +183,7 @@ export function WikiChangeRequestView({
             <MessagesSquareIcon className="size-4" />
           </TabHeader.Action>
         ) : null}
-        {open ? (
+        {open && !changeRequest.draft ? (
           <TabHeader.Action
             label="Close change request"
             disabled={!canSetStatus || busy !== null}
@@ -173,14 +193,20 @@ export function WikiChangeRequestView({
           </TabHeader.Action>
         ) : changeRequest.status === "closed" ? (
           <TabHeader.Action
-            label="Reopen change request"
+            label={changeRequest.draft ? "Reopen draft" : "Reopen change request"}
             disabled={!canSetStatus || busy !== null}
             onClick={() => void runStatus("open")}
           >
             {busy === "status" ? <Spinner /> : <PullRequestGlyph.reopen className="size-4" />}
           </TabHeader.Action>
         ) : null}
-        {open ? (
+        {open && changeRequest.draft ? (
+          <DraftActions
+            environmentId={environmentId}
+            draft={changeRequest}
+            changeRequests={changeRequests}
+          />
+        ) : open ? (
           <MergeButton
             blocked={blocked}
             busy={busy === "merge"}
@@ -221,6 +247,7 @@ export function WikiChangeRequestView({
             : {})}
         />
         {open ? <MergePreviewNotice preview={mergePreview} /> : null}
+        {open ? <CanvasMergeNotes preview={mergePreview} /> : null}
         {errors.length > 0 ? (
           <Alert variant="warning">
             <TriangleAlertIcon />
@@ -259,11 +286,15 @@ export function WikiChangeRequestView({
                 <FileChange
                   key={change.file}
                   change={change}
-                  onOpen={
-                    change.after === null
-                      ? undefined
-                      : () => onOpenNote(noteNameOfFile(change.file))
-                  }
+                  onOpen={change.after === null ? undefined : () => onOpenNote(change.file)}
+                  canvas={{
+                    environmentId,
+                    wikiId,
+                    changeRequestId: open ? changeRequestId : undefined,
+                    commit: changeRequest.head,
+                    onOpenNote,
+                    onOpenTab,
+                  }}
                 />
               ))}
             </div>
@@ -274,7 +305,31 @@ export function WikiChangeRequestView({
   );
 }
 
+/** A draft's ways out, where an open change request's Close and Merge sit. */
+function DraftActions(input: {
+  readonly environmentId: EnvironmentId;
+  readonly draft: WikiChangeRequest;
+  readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
+}) {
+  const actions = useWikiDraftActions(input);
+  return (
+    <>
+      <Button variant="ghost" size="sm" disabled={!actions.canAct} onClick={actions.discard}>
+        Discard
+      </Button>
+      <Button variant="ghost" size="sm" disabled={!actions.canAct} onClick={actions.move}>
+        Move to another one
+      </Button>
+      <Button size="sm" disabled={!actions.canAct} onClick={actions.promote}>
+        Make it a change request
+      </Button>
+      {actions.dialogs}
+    </>
+  );
+}
+
 const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
+const NO_CHANGE_REQUESTS: ReadonlyArray<WikiChangeRequest> = [];
 const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
 /**
@@ -395,11 +450,7 @@ function MergeButton({
   );
 }
 
-function MergePreviewNotice({
-  preview,
-}: {
-  readonly preview: { readonly status: string; readonly conflicts: ReadonlyArray<string> };
-}) {
+function MergePreviewNotice({ preview }: { readonly preview: WikiMergePreview }) {
   switch (preview.status) {
     case "clean":
       return (
@@ -413,11 +464,7 @@ function MergePreviewNotice({
         <Alert variant="error">
           <TriangleAlertIcon />
           <AlertTitle>Conflicts with main</AlertTitle>
-          <AlertDescription>
-            {preview.conflicts.length > 0
-              ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this change request to settle them, then merge.`
-              : "Amend this change request to settle the conflict, then merge."}
-          </AlertDescription>
+          <AlertDescription>{mergeConflictAdvice(preview.conflicts, "computer")}</AlertDescription>
         </Alert>
       );
     default:
@@ -428,6 +475,31 @@ function MergePreviewNotice({
         </Alert>
       );
   }
+}
+
+/** What merging decides in a canvas by itself, or what stops it, card by card. */
+function CanvasMergeNotes({ preview }: { readonly preview: WikiMergePreview }) {
+  if (preview.canvases.length === 0) return null;
+  return (
+    <Alert variant={preview.status === "conflict" ? "warning" : "info"}>
+      <TriangleAlertIcon />
+      <AlertTitle>
+        {preview.status === "conflict" ? "What clashes in the canvases" : "Merging decides these"}
+      </AlertTitle>
+      <AlertDescription>
+        {preview.canvases.map(({ file, notes }) => (
+          <div key={file} className="flex flex-col gap-1">
+            <span className="font-mono text-xs">{file}</span>
+            <ul className="flex list-disc flex-col gap-0.5 pl-4">
+              {notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 function AmendmentRow({
@@ -464,11 +536,19 @@ function AmendmentRow({
           disabled={!canWrite || busy}
           onClick={async () => {
             setBusy(true);
-            await revert({
+            const outcome = await revert({
               environmentId,
               input: { wikiId, changeRequestId, commit: amendment.commit },
             });
             setBusy(false);
+            const notes = outcome.ok ? (outcome.value.canvases ?? []) : [];
+            if (notes.length > 0) {
+              toastManager.add({
+                type: "info",
+                title: "Reverted, and the canvas was fitted to later work",
+                description: notes.flatMap((each) => each.notes).join(" "),
+              });
+            }
           }}
         >
           {busy ? <Spinner /> : null}
@@ -479,42 +559,70 @@ function AmendmentRow({
   );
 }
 
+function RawFileDiff({ change }: { readonly change: WikiFileChange }) {
+  const { resolvedTheme } = useTheme();
+  const diff = parseDiffFromFile(
+    { name: change.movedFrom ?? change.file, contents: change.before ?? "" },
+    { name: change.file, contents: change.after ?? "" },
+  );
+  return (
+    <FileDiff
+      fileDiff={diff}
+      options={{
+        diffStyle: "unified",
+        theme: resolveDiffThemeName(resolvedTheme),
+        overflow: "wrap",
+        disableFileHeader: true,
+        preferredHighlighter: PREFERRED_HIGHLIGHTER,
+      }}
+    />
+  );
+}
+
 function FileChange({
   change,
   onOpen,
+  canvas,
 }: {
   readonly change: WikiFileChange;
   readonly onOpen: (() => void) | undefined;
+  readonly canvas: Omit<Parameters<typeof WikiCanvasReview>[0], "change">;
 }) {
-  const { resolvedTheme } = useTheme();
-  const diff = parseDiffFromFile(
-    { name: change.file, contents: change.before ?? "" },
-    { name: change.file, contents: change.after ?? "" },
-  );
-  const label = change.before === null ? "Added" : change.after === null ? "Deleted" : "Changed";
+  const [json, setJson] = useState(false);
+  const isCanvas = isCanvasName(change.file);
+  const label =
+    change.movedFrom !== undefined
+      ? `Moved from ${change.movedFrom}`
+      : change.before === null
+        ? "Added"
+        : change.after === null
+          ? "Deleted"
+          : "Changed";
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border">
       <div className="flex min-h-9 items-center gap-2 border-b border-border px-3">
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
           {change.file}
         </span>
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{label}</span>
+        {isCanvas ? (
+          <Button variant="ghost-muted" size="xs" onClick={() => setJson(!json)}>
+            {json ? "Board" : "JSON"}
+          </Button>
+        ) : null}
         {onOpen ? (
           <Button variant="ghost-muted" size="xs" onClick={onOpen}>
             Open
           </Button>
         ) : null}
       </div>
-      <FileDiff
-        fileDiff={diff}
-        options={{
-          diffStyle: "unified",
-          theme: resolveDiffThemeName(resolvedTheme),
-          overflow: "wrap",
-          disableFileHeader: true,
-          preferredHighlighter: PREFERRED_HIGHLIGHTER,
-        }}
-      />
+      {isCanvas && !json ? (
+        <Suspense fallback={null}>
+          <WikiCanvasReview {...canvas} change={change} />
+        </Suspense>
+      ) : (
+        <RawFileDiff change={change} />
+      )}
     </div>
   );
 }

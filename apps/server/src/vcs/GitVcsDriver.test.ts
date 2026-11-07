@@ -132,6 +132,46 @@ it.effect("lists the fetch and push URLs of a partial clone remote", () =>
   }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
 );
 
+it.effect("finds the nearest commit a remote has, and reads a file at a commit", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-read-at-commit-" });
+    const git = yield* GitVcsDriver.GitVcsDriver;
+    const head = () =>
+      git
+        .execute({ operation: "test", cwd, args: ["rev-parse", "HEAD"] })
+        .pipe(Effect.map(({ stdout }) => stdout.trim()));
+    yield* runGit(cwd, ["init"]);
+    yield* runGit(cwd, ["config", "user.email", "test@test.com"]);
+    yield* runGit(cwd, ["config", "user.name", "Test"]);
+    yield* fileSystem.writeFileString(path.join(cwd, "a.ts"), "one\n");
+    yield* runGit(cwd, ["add", "."]);
+    yield* runGit(cwd, ["commit", "-m", "pushed"]);
+    const pushed = yield* head();
+    yield* runGit(cwd, ["update-ref", "refs/remotes/origin/main", pushed]);
+    yield* fileSystem.writeFileString(path.join(cwd, "b.ts"), "two\n");
+    yield* runGit(cwd, ["add", "."]);
+    yield* runGit(cwd, ["commit", "-m", "local"]);
+    const local = yield* head();
+
+    const nearest = (commit: string, remoteName = "origin") =>
+      git.nearestPushedCommit({ cwd, commit, remoteName });
+    assert.equal(yield* nearest(pushed), pushed);
+    assert.equal(yield* nearest(local), pushed);
+    assert.isNull(yield* nearest(local, "upstream"));
+    assert.isNull(yield* nearest("not-a-commit"));
+    assert.isNull(yield* nearest("0".repeat(40)));
+
+    const read = (commit: string, file: string) =>
+      git.readFileAtCommit({ cwd, commit, path: file });
+    assert.equal(yield* read(pushed, "a.ts"), "one\n");
+    assert.isNull(yield* read(pushed, "b.ts"));
+    assert.equal(yield* read(local, "b.ts"), "two\n");
+    assert.isNull(yield* read("0".repeat(40), "a.ts"));
+  }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
+);
+
 const makeCheckpointFixture = Effect.fn("makeCheckpointFixture")(function* (
   driver: Effect.Success<ReturnType<typeof GitVcsDriver.makeVcsDriverShape>>,
   cwd: string,

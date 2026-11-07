@@ -4,7 +4,7 @@ import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
 import { ensureLocalApi } from "~/localApi";
@@ -25,6 +25,8 @@ import { wikiScopeKey } from "../wiki/wikiTabs";
 import { useRepositories } from "../repositories/useRepositories";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { WikiCanvasSettings } from "./WikiCanvasSettings";
+import { WikiLocationSettings } from "./WikiLocationSettings";
 import { WikiMapBackgrounds } from "./WikiMapBackgrounds";
 
 const MIRROR_BADGE: Record<MirrorTone, "outline" | "success" | "warning" | "error" | "secondary"> =
@@ -97,6 +99,7 @@ function WikiListRow({
 
 function WikiList({ overviews }: { readonly overviews: ReadonlyArray<WikiOverview> }) {
   const { environments } = useEnvironments();
+  const servers = [...new Set(overviews.map((overview) => overview.environmentId))];
   const labelOf = (environmentId: EnvironmentId) =>
     environments.length < 2
       ? null
@@ -132,6 +135,15 @@ function WikiList({ overviews }: { readonly overviews: ReadonlyArray<WikiOvervie
           ))
         )}
       </SettingsSection>
+      {servers.map((environmentId) => (
+        <Fragment key={environmentId}>
+          <WikiLocationSettings
+            environmentId={environmentId}
+            serverLabel={labelOf(environmentId)}
+          />
+          <WikiCanvasSettings environmentId={environmentId} serverLabel={labelOf(environmentId)} />
+        </Fragment>
+      ))}
     </SettingsPageContainer>
   );
 }
@@ -199,7 +211,9 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
         <FactRow title="Main line" value={wiki.mainBranch} />
         <FactRow
           title="Documents"
-          value={index === null ? "…" : index.notes.length + index.bases.length}
+          value={
+            index === null ? "…" : index.notes.length + index.bases.length + index.canvases.length
+          }
         />
         <FactRow title="Open change requests" value={wiki.openChangeRequests} />
       </SettingsSection>

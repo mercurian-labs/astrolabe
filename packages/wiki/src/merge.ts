@@ -16,11 +16,9 @@ export function paragraphs(text: string): Tokens {
   return text.match(/[\s\S]*?(?:\n[ \t]*\n+|$)/g)?.filter((token) => token.length > 0) ?? [];
 }
 
-/** Sentence tokens inside a paragraph: each sentence keeps its trailing space or line break. */
+/** Sentence tokens inside a paragraph. What separates them is a token too, so neighbours can merge. */
 export function sentences(text: string): Tokens {
-  return (
-    text.match(/[^.!?\n]*(?:[.!?]+(?=\s|$)[ \t]*|\n|$)/g)?.filter((token) => token.length > 0) ?? []
-  );
+  return text.split(/(?<=[.!?])([ \t]+)|(\n)/).filter(Boolean);
 }
 
 /** For each base token, the index of its match in `other` along a longest common subsequence. */
@@ -104,6 +102,15 @@ function diff3(base: Tokens, ours: Tokens, theirs: Tokens): Region[] {
   return regions;
 }
 
+/** One side only added after the text the other side changed: both stand. */
+function appended({ base, ours, theirs }: Extract<Region, { kind: "conflict" }>): Tokens | null {
+  const grew = (side: Tokens) =>
+    base.length > 0 && side.length > base.length && same(side.slice(0, base.length), base);
+  if (grew(theirs) && !grew(ours)) return [...ours, ...theirs.slice(base.length)];
+  if (grew(ours) && !grew(theirs)) return [...theirs, ...ours.slice(base.length)];
+  return null;
+}
+
 function mergeTokens(
   base: Tokens,
   ours: Tokens,
@@ -116,7 +123,12 @@ function mergeTokens(
       text += region.tokens.join("");
       continue;
     }
-    if (!finer) return { status: "conflict" };
+    if (!finer) {
+      const settled = appended(region);
+      if (settled === null) return { status: "conflict" };
+      text += settled.join("");
+      continue;
+    }
     const inner = mergeTokens(
       finer(region.base.join("")),
       finer(region.ours.join("")),

@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cellParts } from "./baseCells";
+import { cellParts, rowDocument } from "./baseCells";
+
+describe("rowDocument", () => {
+  it("opens a canvas by its file, at any depth, as it does a base", () => {
+    expect(rowDocument({ file: "Board.canvas" })).toBe("Board.canvas");
+    expect(rowDocument({ file: "maps/Board.canvas" })).toBe("maps/Board.canvas");
+    expect(rowDocument({ file: "Tasks.base" })).toBe("Tasks.base");
+    expect(rowDocument({ file: "Photo.png" })).toBeNull();
+  });
+});
 
 describe("cellParts", () => {
   it("opens the notes a cell links, with their aliases, and keeps the text around them", () => {

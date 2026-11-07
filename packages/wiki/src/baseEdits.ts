@@ -8,8 +8,8 @@ import { isMap, isSeq, parseDocument, type Document, type YAMLMap } from "yaml";
 
 import { BASE_VIEW_SETTING_KEYS, type BaseViewSettings } from "./baseLayout.ts";
 import { BaseError } from "./baseValues.ts";
-import { key } from "./links.ts";
-import { frontmatterEnd } from "./links.ts";
+import { frontmatterEnd, key } from "./links.ts";
+import { isWikiPath } from "./resolveLink.ts";
 import type { WikiFiles } from "./wikiIndex.ts";
 
 /** Whole new content per changed file; `null` deletes the file. */
@@ -73,22 +73,6 @@ export type BaseEdit =
       readonly file: string;
       readonly properties: Readonly<Record<string, BasePropertyValue>>;
     };
-
-const flat = (file: string, extension: ".md" | ".base") => {
-  if (
-    !file.endsWith(extension) ||
-    file.length === extension.length ||
-    /[/\\\0\r\n]/.test(file) ||
-    file.startsWith(".")
-  ) {
-    throw new BaseError(
-      extension === ".md"
-        ? `Only notes at the top of the wiki can be edited from a base, not ${file}.`
-        : `Only a .base file at the top of the wiki can be edited, not ${file}.`,
-    );
-  }
-  return file;
-};
 
 const readYaml = (source: string, file: string): Document => {
   const document = parseDocument(source, { schema: "core" });
@@ -236,21 +220,24 @@ export function setNoteProperty(
 }
 
 /**
- * Applies `edits` in order over `files` (the wiki's top-level documents), returning each file
- * they change. Throws `BaseError` naming what can't be done.
+ * Applies `edits` in order over `files`, returning each file they change. Throws `BaseError`
+ * naming what can't be done.
  */
 export function applyBaseEdits(files: WikiFiles, edits: ReadonlyArray<BaseEdit>): Changes {
   const next = new Map(Object.entries(files));
   const touched = new Set<string>();
   for (const edit of edits) {
     if (edit.kind === "property") {
-      const file = flat(edit.file, ".md");
-      const source = next.get(file);
+      const { file } = edit;
+      const source = file.endsWith(".md") ? next.get(file) : undefined;
       if (source === undefined) throw new BaseError(`No note ${file} to edit.`);
       next.set(file, setNoteProperty(source, edit.property, edit.value, file));
       touched.add(file);
     } else if (edit.kind === "create") {
-      const file = flat(edit.file, ".md");
+      const { file } = edit;
+      if (!file.endsWith(".md") || !isWikiPath(file)) {
+        throw new BaseError(`A base can't write a note at ${file}.`);
+      }
       if ([...next.keys()].some((existing) => key(existing) === key(file))) {
         throw new BaseError(`${file.replace(/\.md$/, "")} already exists.`);
       }
@@ -261,8 +248,8 @@ export function applyBaseEdits(files: WikiFiles, edits: ReadonlyArray<BaseEdit>)
       next.set(file, source);
       touched.add(file);
     } else {
-      const file = flat(edit.base, ".base");
-      const source = next.get(file);
+      const file = edit.base;
+      const source = file.endsWith(".base") ? next.get(file) : undefined;
       if (source === undefined) throw new BaseError(`No base ${file} to edit.`);
       const document = readYaml(source, file);
       editBase(document, edit);

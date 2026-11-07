@@ -26,7 +26,11 @@ import { EnvironmentContextChip } from "../EnvironmentContextChip";
 import { ThreadContextChip } from "../ThreadContextChip";
 import { WikiNoteContextChip } from "../WikiNoteContextChip";
 import { MessageCircleIcon, MousePointerClickIcon, PaintbrushIcon } from "lucide-react";
-import type { ComposerContextId, KnownComposerContextRecord } from "@t3tools/contracts";
+import type {
+  CanvasContextRecord,
+  ComposerContextId,
+  KnownComposerContextRecord,
+} from "@t3tools/contracts";
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
@@ -47,6 +51,8 @@ import {
 } from "~/lib/composerContextRecords";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
+import { showThreadCanvas } from "../canvas/threadCanvasStore";
+import { CanvasContextChip } from "./CanvasContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import {
@@ -339,6 +345,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         ),
     },
     {
+      kind: "canvas",
+      canRender: (record) => record.kind === "canvas",
+      render: (record, context) =>
+        record.kind === "canvas" ? (
+          <UserMessageCanvasChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
       kind: "environment",
       canRender: (record) => record.kind === "environment",
       render: (record, context) =>
@@ -522,6 +538,20 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
+
+function UserMessageCanvasChip(props: {
+  record: CanvasContextRecord;
+  copyMarkdown: string | undefined;
+}) {
+  const { threadRef } = use(TimelineRowCtx);
+  return (
+    <CanvasContextChip
+      record={props.record}
+      copyMarkdown={props.copyMarkdown}
+      onOpen={threadRef ? () => showThreadCanvas(threadRef, props.record.itemId) : null}
+    />
+  );
+}
 
 export function UserMessageContextReferenceChip(props: {
   reference: ChatMarkdownContextReference;

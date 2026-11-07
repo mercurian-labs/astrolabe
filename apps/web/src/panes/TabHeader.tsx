@@ -93,12 +93,15 @@ function TabHistory({
 function Title({
   label,
   parent,
+  parentControl,
   keepParentEnd = false,
   keepParent = false,
   children,
 }: {
   readonly label: string;
   readonly parent?: string | null;
+  /** Something to act on in the parent's place. */
+  readonly parentControl?: ReactNode;
   /**
    * The parent is a folder path: it keeps its last folder whole and cuts the rest from its start,
    * down to an ellipsis.
@@ -129,7 +132,12 @@ function Title({
           </WorkspaceBreadcrumbText>
         </WorkspaceBreadcrumbItem>
       ) : null}
-      {parent ? (
+      {parentControl ? (
+        <WorkspaceBreadcrumbItem className="max-w-max shrink-0">
+          {parentControl}
+          <Separator />
+        </WorkspaceBreadcrumbItem>
+      ) : parent ? (
         <WorkspaceBreadcrumbItem
           className={
             keepParent ? "max-w-1/2" : keepParentEnd ? "" : "max-w-max shrink grow basis-16"

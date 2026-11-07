@@ -1231,6 +1231,42 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+/** Astrolabe: Settings › Wikis › Canvases. Per environment, as Obsidian's are per vault. */
+export const WikiCanvasSettings = Schema.Struct({
+  wheel: Schema.Literals(["pan", "zoom"]).pipe(Schema.withDecodingDefault(Effect.succeed("pan"))),
+  cardNames: Schema.Literals(["always", "hover", "never"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("always")),
+  ),
+  snapToGrid: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  snapToObjects: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Below this zoom, cards draw in their simple form. */
+  simpleZoom: Schema.Number.check(
+    Schema.isGreaterThanOrEqualTo(0.0625),
+    Schema.isLessThanOrEqualTo(1),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(0.3))),
+});
+export type WikiCanvasSettings = typeof WikiCanvasSettings.Type;
+export const DEFAULT_WIKI_CANVAS_SETTINGS: WikiCanvasSettings = Schema.decodeSync(
+  WikiCanvasSettings,
+)({});
+
+/** Astrolabe: Settings › Wikis › New files. Where a wiki's new attachments and notes land. */
+export const WikiLocationSettings = Schema.Struct({
+  attachments: Schema.Literals(["root", "folder", "beside", "subfolder"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("root")),
+  ),
+  /** The folder from the root, or the subfolder of the document's. */
+  attachmentFolder: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed("attachments"))),
+  newNotes: Schema.Literals(["beside", "root", "folder"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("beside")),
+  ),
+  newNoteFolder: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type WikiLocationSettings = typeof WikiLocationSettings.Type;
+export const DEFAULT_WIKI_LOCATION_SETTINGS: WikiLocationSettings = Schema.decodeSync(
+  WikiLocationSettings,
+)({});
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1243,6 +1279,12 @@ export const ServerSettings = Schema.Struct({
   ),
   codeIndex: CodeIndexSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CODE_INDEX_SETTINGS)),
+  ),
+  wikiCanvas: WikiCanvasSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WIKI_CANVAS_SETTINGS)),
+  ),
+  wikiLocations: WikiLocationSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WIKI_LOCATION_SETTINGS)),
   ),
   /** Astrolabe: Settings › Change Requests › Grouping (see `changeGroups.ts`). */
   changeGroupGrouping: ChangeGroupGroupingSettings.pipe(
@@ -1629,6 +1671,8 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   codeIndex: Schema.optionalKey(CodeIndexSettings),
+  wikiCanvas: Schema.optionalKey(WikiCanvasSettings),
+  wikiLocations: Schema.optionalKey(WikiLocationSettings),
   worktreesDirectory: Schema.optionalKey(TrimmedString),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),

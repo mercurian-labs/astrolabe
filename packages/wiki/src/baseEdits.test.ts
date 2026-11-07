@@ -35,6 +35,26 @@ const FILES = {
 const NOW = Date.parse("2026-11-03T12:00:00Z");
 
 describe("applyBaseEdits", () => {
+  it("edits a base and notes in folders, and refuses a path a wiki can't hold", () => {
+    const files = { "work/Open.base": BASE, "work/notes/Alpha.md": "# Alpha\n" };
+    const changes = applyBaseEdits(files, [
+      { kind: "property", file: "work/notes/Alpha.md", property: "status", value: "open" },
+      { kind: "create", file: "work/notes/New.md", properties: { status: "open" } },
+      { kind: "formula", base: "work/Open.base", name: "x", expression: "1" },
+    ]);
+    expect(changes["work/notes/Alpha.md"]).toContain("status: open");
+    expect(changes["work/notes/New.md"]).toContain("status: open");
+    expect(changes["work/Open.base"]).toContain("x:");
+    expect(() =>
+      applyBaseEdits(files, [{ kind: "create", file: "../New.md", properties: {} }]),
+    ).toThrow(BaseError);
+    expect(() =>
+      applyBaseEdits(files, [
+        { kind: "property", file: "work/Open.base", property: "status", value: "open" },
+      ]),
+    ).toThrow(BaseError);
+  });
+
   it("changes a view's settings, keeping the rest of the base as written", () => {
     const changes = applyBaseEdits(FILES, [
       {

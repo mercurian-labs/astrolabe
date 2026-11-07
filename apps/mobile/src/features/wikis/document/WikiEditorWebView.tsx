@@ -6,8 +6,10 @@ import {
   type WikiEditorEvent,
 } from "@mercurian/wiki-editor/protocol";
 import wikiEditorPage from "@t3tools/mobile-wiki-editor";
-import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+
+import { diagramScript } from "./wikiEditorDiagrams";
 
 export interface WikiEditorHandle {
   /** Sends a command to the page; held until the page says it is ready. */
@@ -25,6 +27,8 @@ export const WikiEditorWebView = forwardRef<
     readonly onEvent: (event: WikiEditorEvent) => void;
     /** Sent before anything else once the page loads (and again after a reload). */
     readonly initialCommands: () => ReadonlyArray<WikiEditorCommand>;
+    /** The page handles its own pans and pinches: the web view itself must not scroll. */
+    readonly fixed?: boolean;
   }
 >(function WikiEditorWebView(props, ref) {
   const webView = useRef<WebView<object>>(null);
@@ -54,15 +58,28 @@ export const WikiEditorWebView = forwardRef<
     () => ({
       html: wikiEditorPage,
       // A real origin on both platforms: under iOS's `file:///` the page is opaque, so its
-      // errors arrive as a bare "Script error." and storage APIs refuse it.
-      baseUrl: "https://localhost/",
+      // errors arrive as a bare "Script error." and storage APIs refuse it. Not https: WebKit
+      // upgrades a plain-http server's files on such a page, and the upgraded request fails.
+      baseUrl: "http://localhost/",
     }),
     [],
   );
 
+  // The OS reclaimed the page's process: a new web view, resent everything once it is ready. Not
+  // `reload()`: that asks the network for the document's base URL, not this HTML.
+  const [generation, setGeneration] = useState(0);
+  const restart = () => {
+    ready.current = false;
+    setGeneration((current) => current + 1);
+  };
+
   const onMessage = (message: WebViewMessageEvent) => {
     const event = parseWikiEditorEvent(message.nativeEvent.data);
     if (!event) return;
+    if (event.type === "loadDiagram") {
+      webView.current?.injectJavaScript(diagramScript(event.diagram));
+      return;
+    }
     if (event.type === "ready") {
       ready.current = true;
       for (const command of latest.current.initialCommands()) inject(command);
@@ -73,6 +90,7 @@ export const WikiEditorWebView = forwardRef<
 
   return (
     <WebView<object>
+      key={generation}
       ref={webView}
       source={source}
       originWhitelist={["*"]}
@@ -82,12 +100,12 @@ export const WikiEditorWebView = forwardRef<
       onShouldStartLoadWithRequest={(request) =>
         request.url === "about:blank" || request.url.startsWith(source.baseUrl)
       }
-      onContentProcessDidTerminate={() => {
-        // iOS reclaimed the page's process: reload it, and resend everything once it is ready.
-        ready.current = false;
-        webView.current?.reload();
-      }}
+      onContentProcessDidTerminate={restart}
+      onRenderProcessGone={restart}
       keyboardDisplayRequiresUserAction={false}
+      allowsInlineMediaPlayback
+      scrollEnabled={props.fixed !== true}
+      bounces={props.fixed !== true}
       hideKeyboardAccessoryView
       allowsLinkPreview={false}
       // The page pads itself by `env(safe-area-inset-*)` (mobilePage.css). An automatic inset

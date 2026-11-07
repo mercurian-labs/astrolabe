@@ -1023,7 +1023,7 @@ describe("snapshotComposerSend", () => {
       previewAnnotations: [],
       reviewComments: [],
       threadContexts: [],
-      wikiNotes: [],
+      wikiContexts: [],
       environmentContexts: [],
     });
 

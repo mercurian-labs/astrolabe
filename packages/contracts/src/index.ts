@@ -27,6 +27,7 @@ export * from "./checkpointDiff.ts";
 export * from "./model.ts";
 export * from "./keybindings.ts";
 // Astrolabe
+export * from "./canvas.ts";
 export * from "./vimrc.ts";
 export * from "./server.ts";
 export * from "./settings.ts";

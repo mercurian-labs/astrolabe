@@ -127,6 +127,11 @@ vi.mock("expo-video", () => ({
   VideoView: () => null,
 }));
 vi.mock("../components/VideoThumbnailImage", () => ({ VideoThumbnailImage: () => null }));
+vi.mock("../features/threads/ThreadCanvas", () => ({
+  canvasRowHeight: () => 0,
+  ThreadCanvas: () => null,
+  ThreadWikiCanvas: () => null,
+}));
 vi.mock("../components/ui/AppActivityIndicator", () => ({ AppActivityIndicator: () => null }));
 vi.mock("../components/MediaActionsMenu", () => ({
   MediaActionsMenu: ({ children }: { children?: ReactNode }) => children,

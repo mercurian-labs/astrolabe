@@ -102,6 +102,7 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
 import * as VcsBaseText from "./vcs/VcsBaseText.ts";
+import * as CanvasKeep from "./wiki/CanvasKeep.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
@@ -561,6 +562,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ChangeGroupService.ChangeGroupService)({}),
   Layer.mock(ProjectWorktreeService.ProjectWorktreeService)({}),
   Layer.mock(WikiService.WikiService)({}),
+  Layer.mock(CanvasKeep.CanvasKeep)({}),
   Layer.mock(Documents.Documents)({}),
   Layer.mock(CodeIndex.CodeIndex)({}),
   Layer.mock(LanguageServers.LanguageServers)({}),

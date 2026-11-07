@@ -6,9 +6,12 @@ import {
 import {
   describeIndexError,
   describeWikiFailure,
+  isCanvasName,
   mergeBlockedReason,
-  noteNameOfFile,
+  mergeConflictAdvice,
+  documentPath,
 } from "@t3tools/client-runtime/wikiLogic";
+import { canvasChangeSummary, reviewCanvasFiles } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   changeRequestPullRequests,
@@ -26,7 +29,7 @@ import type {
   WikiMergePreview,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -41,6 +44,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { wikiEnvironment } from "../../state/wiki";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
+import { WikiDraftSheet } from "./document/WikiDraftBar";
 import type { WikiChangeRequestParams } from "./wikiRoutes";
 
 const STATUS_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
@@ -51,11 +55,17 @@ const newestFirst = <T,>(items: ReadonlyArray<T>): T[] =>
   items.map((_, index) => items[items.length - 1 - index]!);
 
 /** Runs a wiki command; resolves to its failure's message, or null on success. */
-function useWikiAction<W, A, E>(command: Parameters<typeof useAtomCommand<A, E, W>>[0]) {
+function useWikiAction<W, A, E>(
+  command: Parameters<typeof useAtomCommand<A, E, W>>[0],
+  onSuccess?: (value: A) => void,
+) {
   const run = useAtomCommand(command, { reportFailure: false });
   return async (value: W): Promise<string | null> => {
     const result = await run(value);
-    if (result._tag === "Success") return null;
+    if (result._tag === "Success") {
+      onSuccess?.(result.value);
+      return null;
+    }
     if (isAtomCommandInterrupted(result)) return null;
     return describeWikiFailure(squashAtomCommandFailure(result));
   };
@@ -90,6 +100,10 @@ export function WikiChangeRequestRouteScreen({
   const merge = useWikiAction(wikiEnvironment.merge);
   const setStatus = useWikiAction(wikiEnvironment.setChangeRequestStatus);
   const [busy, setBusy] = useState(false);
+  const [draftActions, setDraftActions] = useState(false);
+  const list = useEnvironmentQuery(
+    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
 
   const act = async (run: () => Promise<string | null>, failureTitle: string) => {
     setBusy(true);
@@ -137,13 +151,20 @@ export function WikiChangeRequestRouteScreen({
 
   const openDocument = (change: WikiFileChange) =>
     navigation.dispatch(
-      StackActions.push("WikiDocument", {
-        environmentId: route.params.environmentId,
-        wikiId: route.params.wikiId,
-        name: noteNameOfFile(change.file),
-        // A merged or closed change request's documents are read from main.
-        ...(open ? { changeRequestId: route.params.changeRequestId } : {}),
-      }),
+      isCanvasName(change.file)
+        ? StackActions.push("WikiCanvasReview", {
+            environmentId: route.params.environmentId,
+            wikiId: route.params.wikiId,
+            changeRequestId: route.params.changeRequestId,
+            name: change.file,
+          })
+        : StackActions.push("WikiDocument", {
+            environmentId: route.params.environmentId,
+            wikiId: route.params.wikiId,
+            name: change.file,
+            // A merged or closed change request's documents are read from main.
+            ...(open ? { changeRequestId: route.params.changeRequestId } : {}),
+          }),
     );
 
   return (
@@ -151,7 +172,14 @@ export function WikiChangeRequestRouteScreen({
       <NativeStackScreenOptions
         options={{
           title: "Change request",
-          unstable_headerSubtitle: [wikiName, STATUS_LABEL[changeRequest.status]]
+          unstable_headerSubtitle: [
+            wikiName,
+            changeRequest.draft
+              ? open
+                ? "Draft"
+                : "Discarded draft"
+              : STATUS_LABEL[changeRequest.status],
+          ]
             .filter(Boolean)
             .join(" · "),
         }}
@@ -164,7 +192,12 @@ export function WikiChangeRequestRouteScreen({
           accessibilityLabel="Change request actions"
           disabled={busy}
         >
-          {open ? (
+          {open && changeRequest.draft ? (
+            <Toolbar.MenuAction icon="square.and.pencil" onPress={() => setDraftActions(true)}>
+              <Toolbar.Label>Make it a change request, move or discard</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ) : null}
+          {open && !changeRequest.draft ? (
             <Toolbar.MenuAction
               icon={PullRequestGlyph.merged}
               disabled={blocked !== null}
@@ -174,7 +207,7 @@ export function WikiChangeRequestRouteScreen({
               <Toolbar.Label>Merge into main</Toolbar.Label>
             </Toolbar.MenuAction>
           ) : null}
-          {open ? (
+          {open && !changeRequest.draft ? (
             <Toolbar.MenuAction
               icon="xmark.circle"
               disabled={!canSetStatus}
@@ -187,7 +220,8 @@ export function WikiChangeRequestRouteScreen({
             >
               <Toolbar.Label>Close</Toolbar.Label>
             </Toolbar.MenuAction>
-          ) : changeRequest.status === "closed" ? (
+          ) : null}
+          {changeRequest.status === "closed" ? (
             <Toolbar.MenuAction
               icon="arrow.uturn.backward.circle"
               disabled={!canSetStatus}
@@ -299,26 +333,28 @@ export function WikiChangeRequestRouteScreen({
                 <Pressable
                   key={change.file}
                   accessibilityRole="button"
-                  disabled={change.after === null}
+                  disabled={change.after === null && !isCanvasName(change.file)}
                   onPress={() => openDocument(change)}
                   className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
                 >
                   <Text className="flex-1 text-base text-foreground" numberOfLines={1}>
-                    {noteNameOfFile(change.file)}
+                    {documentPath(change.file)}
                   </Text>
-                  <Text className="text-sm text-foreground-muted">
-                    {change.before === null
-                      ? "Added"
-                      : change.after === null
-                        ? "Deleted"
-                        : "Changed"}
-                  </Text>
+                  <FileChangeLabel change={change} />
                 </Pressable>
               ))}
             </View>
           )}
         </Section>
       </ScrollView>
+      {draftActions ? (
+        <WikiDraftSheet
+          environmentId={environmentId}
+          draft={changeRequest}
+          changeRequests={list.data?.changeRequests ?? []}
+          onClose={() => setDraftActions(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -421,12 +457,37 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
       </Text>
       {preview.status === "conflict" ? (
         <Text className="text-sm text-foreground-muted">
-          {preview.conflicts.length > 0
-            ? `Edited on both sides: ${preview.conflicts.join(", ")}. Amend this change request to settle them, then merge.`
-            : "Amend this change request to settle the conflict, then merge."}
+          {mergeConflictAdvice(preview.conflicts, "phone")}
         </Text>
       ) : null}
+      {preview.canvases.map(({ file, notes }) => (
+        <View key={file} className="gap-0.5 pt-1">
+          <Text className="text-sm font-t3-medium text-foreground">{documentPath(file)}</Text>
+          {notes.map((note) => (
+            <Text key={note} className="text-sm text-foreground-muted">
+              {note}
+            </Text>
+          ))}
+        </View>
+      ))}
     </Card>
+  );
+}
+
+/** How much a document changed: for a canvas, what happened to its cards. */
+function FileChangeLabel({ change }: { readonly change: WikiFileChange }) {
+  const { file, before, after, movedFrom } = change;
+  const summary = useMemo(() => {
+    if (!isCanvasName(file)) return null;
+    const review = reviewCanvasFiles(before, after);
+    return "invalid" in review ? null : canvasChangeSummary(review.changes);
+  }, [file, before, after]);
+  return (
+    <Text className="shrink text-sm text-foreground-muted" numberOfLines={1}>
+      {movedFrom !== undefined
+        ? `Moved from ${documentPath(movedFrom)}`
+        : (summary ?? (before === null ? "Added" : after === null ? "Deleted" : "Changed"))}
+    </Text>
   );
 }
 
@@ -442,7 +503,13 @@ function AmendmentRow(props: {
   const canWrite = useAtomValue(
     wikiEnvironment.revertAmendment.permissionAtom(props.environmentId),
   );
-  const revert = useWikiAction(wikiEnvironment.revertAmendment);
+  const revert = useWikiAction(wikiEnvironment.revertAmendment, ({ canvases = [] }) => {
+    if (canvases.length === 0) return;
+    Dialog.alert(
+      "Reverted, and the canvas was fitted to later work",
+      canvases.flatMap((each) => each.notes).join("\n\n"),
+    );
+  });
   const [busy, setBusy] = useState(false);
   return (
     <View
@@ -454,7 +521,7 @@ function AmendmentRow(props: {
           {amendment.subject}
         </Text>
         <Text className="text-sm text-foreground-muted">
-          {`${amendment.actor} · ${relativeTime(amendment.at)} · ${amendment.files.map(noteNameOfFile).join(", ")}`}
+          {`${amendment.actor} · ${relativeTime(amendment.at)} · ${amendment.files.map(documentPath).join(", ")}`}
         </Text>
       </View>
       {props.canRevert ? (

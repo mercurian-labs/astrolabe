@@ -36,6 +36,10 @@
       "types": "./src/codeGraphViews.ts",
       "default": "./src/codeGraphViews.ts"
     },
+    "./canvasViews": {
+      "types": "./src/canvasViews.ts",
+      "default": "./src/canvasViews.ts"
+    },
     "./handoff": {
       "types": "./src/handoff.ts",
       "default": "./src/handoff.ts"
@@ -159,6 +163,10 @@
     "./changeGroups": {
       "types": "./src/changeGroups.ts",
       "default": "./src/changeGroups.ts"
+    },
+    "./wikiAutosave": {
+      "types": "./src/wikiAutosave.ts",
+      "default": "./src/wikiAutosave.ts"
     },
     "./wikiLogic": {
       "types": "./src/wikiLogic.ts",
@@ -593,6 +601,7 @@
     "@codemirror/collab": "6.1.1",
     "@codemirror/state": "^6.7.6",
     "@electric-sql/client": "1.5.28",
+    "@mercurian/wiki": "workspace:*",
     "@pierre/diffs": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/provider-acp-registry": "workspace:*",

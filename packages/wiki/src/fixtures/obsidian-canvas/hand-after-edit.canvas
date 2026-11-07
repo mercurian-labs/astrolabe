@@ -1,0 +1,35 @@
+{
+	"extra":"top",
+	"nodes":[
+		{
+			"id":"n2",
+			"type":"link",
+			"url":"https://example.com",
+			"astrolabe":{
+				"repository":"x",
+				"commit":"y",
+				"path":"a.ts",
+				"lines":[1,2]
+			},
+			"x":300,
+			"y":0,
+			"width":300,
+			"height":200
+		},
+		{"id":"n4","type":"text","text":"unknown colour","x":300,"y":300,"width":200,"height":100,"color":"mauve"},
+		{"id":"n5","type":"text","text":"hex","x":600,"y":300,"width":200,"height":100,"color":"#ff0000"},
+		{"id":"n6","type":"text","text":"preset 3","x":900,"y":300,"width":200,"height":100,"color":"3"},
+		{"id":"n1","type":"text","text":"t","foo":1,"x":60,"y":50,"width":201,"height":100}
+	],
+	"edges":[
+		{
+			"id":"e1",
+			"meta":{"a":1},
+			"fromNode":"n1",
+			"fromSide":"right",
+			"toNode":"n2",
+			"toSide":"left"
+		}
+	],
+	"zzz":[1,2]
+}
