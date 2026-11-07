@@ -64,15 +64,17 @@ const openUrl = (href: string) => {
 };
 
 /** A wiki's file at the commit on screen, which holds what a change request adds, too. */
-function WikiAsset({
+export function WikiAsset({
   environmentId,
   wikiId,
   commit,
+  board,
   asset,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly commit: string;
+  readonly board: string;
   readonly asset: CanvasAsset;
 }) {
   const state = useAssetUrlState(environmentId, {
@@ -80,6 +82,7 @@ function WikiAsset({
     wikiId,
     commit,
     path: asset.path,
+    from: board,
   });
   // A commit that leaves an image alone doesn't blank it while its new address is found.
   const [url, setUrl] = useState<string | null>(null);
@@ -293,7 +296,13 @@ export function useWikiCanvasHost({
     readFiles,
     readCodeStatus,
     renderAsset: (asset) => (
-      <WikiAsset environmentId={environmentId} wikiId={wikiId} commit={commit} asset={asset} />
+      <WikiAsset
+        environmentId={environmentId}
+        wikiId={wikiId}
+        commit={commit}
+        board={boardFile}
+        asset={asset}
+      />
     ),
     renderMermaid: (source) => <WikiMermaid source={source} />,
     renderBase: (base, view) => (
