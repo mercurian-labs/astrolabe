@@ -27,7 +27,10 @@ import type {
   PreviewAnnotationPayload,
   ThreadContextRecord,
   EnvironmentContextRecord,
-  WikiNoteContextRecord,
+  CanvasContextRecord,
+  ComposerContextId,
+  TurnItemId,
+  WikiContextRecord,
   ProviderInteractionMode,
   ResolvedKeybindingsConfig,
   RuntimeMode,
@@ -135,6 +138,8 @@ import {
 } from "../../lib/attachmentUploadQueue";
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
+import { canvasContextRecord } from "@t3tools/shared/composerContextReferences";
+import { showThreadCanvas } from "../canvas/threadCanvasStore";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
   type TerminalContextDraft,
@@ -178,7 +183,7 @@ import {
   terminalContextRecord,
   threadContextReference,
   wikiNoteContextRecord,
-  wikiNoteContextReference,
+  wikiContextReference,
   environmentContextRecord,
   environmentContextReference,
 } from "~/lib/composerContextRecords";
@@ -308,6 +313,7 @@ export interface ChatComposerHandle {
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
   ) => boolean;
+  addCanvas: (record: CanvasContextRecord, options?: { readonly send?: boolean }) => boolean;
   openModelPicker: () => void;
   stepReasoningEffort: (direction: 1 | -1) => void;
   toggleModelPicker: () => void;
@@ -336,7 +342,7 @@ export interface ChatComposerHandle {
     previewAnnotations: PreviewAnnotationPayload[];
     reviewComments: ReviewCommentContext[];
     threadContexts: ThreadContextRecord[];
-    wikiNotes: WikiNoteContextRecord[];
+    wikiContexts: WikiContextRecord[];
     environmentContexts: EnvironmentContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelSelection: ModelSelection;
@@ -710,7 +716,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const composerReviewComments = composerDraft.reviewComments;
   const composerThreadContexts = attachmentDraft.threadContexts;
-  const composerWikiNotes = composerDraft.wikiNotes;
+  const composerWikiContexts = composerDraft.wikiContexts;
   const composerEnvironmentContexts = composerDraft.environmentContexts;
   const {
     pendingSnapShotAnimations,
@@ -756,13 +762,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     openPullRequest: (event: React.MouseEvent<HTMLElement>, url: string) => {
       openPrLink(event, url);
     },
+    openCanvas: (itemId: TurnItemId) => {
+      if (routeThreadRef) showThreadCanvas(routeThreadRef, itemId);
+    },
+    commentOnCanvas: (contextId: ComposerContextId, comment: string) => {
+      useComposerDraftStore.getState().setWikiContexts(
+        composerDraftTarget,
+        composerWikiContexts.map((record) =>
+          record.kind === "canvas" && record.contextId === contextId
+            ? canvasContextRecord({ ...record, comment })
+            : record,
+        ),
+      );
+    },
   };
   const composerContextRecords = composerContextRecordsFromDraft({
     terminalContexts: composerTerminalContexts,
     reviewComments: composerReviewComments,
     previewAnnotations: composerPreviewAnnotations,
     threadContexts: composerThreadContexts,
-    wikiNotes: composerWikiNotes,
+    wikiContexts: composerWikiContexts,
     environmentContexts: composerEnvironmentContexts,
     images: composerImages,
     files: composerFiles,
@@ -1306,8 +1325,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const addComposerDraftThreadContexts = useComposerDraftStore((store) => store.addThreadContexts);
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
-  const addComposerDraftWikiNotes = useComposerDraftStore((store) => store.addWikiNotes);
-  const setComposerDraftWikiNotes = useComposerDraftStore((store) => store.setWikiNotes);
+  const addComposerDraftWikiContexts = useComposerDraftStore((store) => store.addWikiContexts);
+  const setComposerDraftWikiContexts = useComposerDraftStore((store) => store.setWikiContexts);
   const setWikiProjectLink = useWikiCommand(
     wikiEnvironment.setProjectLink,
     "Couldn't link the wiki",
@@ -1334,7 +1353,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         .filter((c) => wanted.has(terminalContextReference(c).contextId))
         .map(terminalContextRecord),
       ...composerThreadContexts.filter((record) => wanted.has(record.contextId)),
-      ...composerWikiNotes.filter((record) => wanted.has(record.contextId)),
+      ...composerWikiContexts.filter((record) => wanted.has(record.contextId)),
       ...composerEnvironmentContexts.filter((record) => wanted.has(record.contextId)),
       ...composerReviewComments
         .filter((c) => wanted.has(reviewCommentContextId(c.id)))
@@ -1667,21 +1686,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerDraftThreadContexts(composerDraftTarget, nextThreads);
     }
 
-    const liveWikiNoteIds = new Set<string>(composerWikiNotes.map((record) => record.contextId));
-    const restoredWikiNotes = [...referenced].flatMap((contextId) => {
+    const liveWikiNoteIds = new Set<string>(composerWikiContexts.map((record) => record.contextId));
+    const restoredWikiContexts = [...referenced].flatMap((contextId) => {
       if (liveWikiNoteIds.has(contextId)) return [];
-      const record = retained.wikiNotes.get(contextId);
+      const record = retained.wikiContexts.get(contextId);
       return record ? [record] : [];
     });
-    const nextWikiNotes = [
-      ...composerWikiNotes.filter((record) => referenced.has(record.contextId)),
-      ...restoredWikiNotes,
+    const nextWikiContexts = [
+      ...composerWikiContexts.filter((record) => referenced.has(record.contextId)),
+      ...restoredWikiContexts,
     ];
-    for (const record of composerWikiNotes) {
-      if (!referenced.has(record.contextId)) retained.wikiNotes.set(record.contextId, record);
+    for (const record of composerWikiContexts) {
+      if (!referenced.has(record.contextId)) retained.wikiContexts.set(record.contextId, record);
     }
-    if (nextWikiNotes.length !== composerWikiNotes.length || restoredWikiNotes.length > 0) {
-      setComposerDraftWikiNotes(composerDraftTarget, nextWikiNotes);
+    if (
+      nextWikiContexts.length !== composerWikiContexts.length ||
+      restoredWikiContexts.length > 0
+    ) {
+      setComposerDraftWikiContexts(composerDraftTarget, nextWikiContexts);
     }
 
     const liveEnvironmentIds = new Set<string>(
@@ -2018,7 +2040,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (item.type === "wiki-note") {
       if (trigger.kind !== "wiki-note") return;
       const record = wikiNoteContextRecord(item);
-      const replacement = `${formatInlineContextReference(wikiNoteContextReference(record))} `;
+      const replacement = `${formatInlineContextReference(wikiContextReference(record))} `;
       const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
         snapshot.value,
         trigger.rangeEnd,
@@ -2028,7 +2050,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
       if (applied) {
-        addComposerDraftWikiNotes(composerDraftTarget, [record]);
+        addComposerDraftWikiContexts(composerDraftTarget, [record]);
         setComposerHighlightedItemId(null);
       }
       return;
@@ -2314,7 +2336,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerPreviewAnnotations,
     composerReviewComments,
     composerThreadContexts,
-    composerWikiNotes,
+    composerWikiContexts,
     attachmentTargetKey,
     isComposerDraftTargetOpen: (key) => composerDraftTargetKeyRef.current === key,
     composerEditorRef,
@@ -2468,6 +2490,31 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
   const insertComposerTextStable = useStableCallback(insertComposerText);
+  const addCanvas = (record: CanvasContextRecord, options?: { readonly send?: boolean }) => {
+    const placed = composerWikiContexts.some((each) => each.contextId === record.contextId);
+    let added = true;
+    // The send below reads the draft from the last render.
+    flushSync(() => {
+      if (placed) {
+        setComposerDraftWikiContexts(
+          composerDraftTarget,
+          composerWikiContexts.map((each) => (each.contextId === record.contextId ? record : each)),
+        );
+        return;
+      }
+      added = insertComposerTextStable(
+        `${formatInlineContextReference(wikiContextReference(record))} `,
+        "cursor",
+        { ensureLeadingBoundary: true },
+      );
+      if (added) addComposerDraftWikiContexts(composerDraftTarget, [record]);
+    });
+    if (!added) return false;
+    if (options?.send) submitCitationAndSendStable();
+    else composerEditorRef.current?.focusAtEnd();
+    return true;
+  };
+  const addCanvasStable = useStableCallback(addCanvas);
 
   const insertAttachmentReferences = (
     references: ReadonlyArray<ComposerContextReference>,
@@ -2886,6 +2933,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           "cursor",
           { ensureLeadingBoundary: true, citationCommentAnchor: sourceAnchor },
         ),
+      addCanvas: addCanvasStable,
       openModelPicker: openModelPickerStable,
       stepReasoningEffort: (direction) => {
         if (noProviderAvailable || pendingUserInputs.length > 0 || isEditingQueuedMessage) {
@@ -3020,7 +3068,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         previewAnnotations: composerPreviewAnnotations,
         reviewComments: composerReviewComments,
         threadContexts: composerThreadContexts,
-        wikiNotes: composerWikiNotes,
+        wikiContexts: composerWikiContexts,
         environmentContexts: composerEnvironmentContexts,
         selectedPromptEffort,
         selectedModelSelection,

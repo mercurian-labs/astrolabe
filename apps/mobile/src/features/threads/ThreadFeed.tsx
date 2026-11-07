@@ -2345,6 +2345,14 @@ function UserMessageContent(props: UserMessageContentProps) {
       });
       return;
     }
+    if (record?.kind === "canvas" && "itemId" in record) {
+      navigation.navigate("ThreadCanvas", {
+        environmentId: String(props.environmentId),
+        threadId: String(record.threadId),
+        itemId: String(record.itemId),
+      });
+      return;
+    }
     const document = composerDocumentAttachmentRecord(record);
     if (document) {
       navigation.navigate("ThreadAttachment", {

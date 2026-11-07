@@ -396,6 +396,7 @@ const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   astrolabe_code_references: tool(["Find", "Finding", "Found", "references"], "code-read"),
   astrolabe_code_graph_show: tool(["Show", "Showing", "Showed", "a code graph"], "code-graph"),
   astrolabe_canvas_show: tool(["Draw", "Drawing", "Drew", "a canvas"], "canvas"),
+  astrolabe_canvas_keep: tool(["Keep", "Keeping", "Kept", "a canvas"], "wiki-amend"),
 };
 
 // Astrolabe's wiki and change-group tools were `t3_*` until 2026-10-30; older threads still say so.

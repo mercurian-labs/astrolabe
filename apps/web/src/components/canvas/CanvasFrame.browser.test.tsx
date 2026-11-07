@@ -4,12 +4,14 @@ import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
+import { ComposerHandleContext } from "~/composerHandleContext";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { render } from "../../../test/render";
 import { canvasViewsKey } from "~/state/canvasViews";
 
 import "~/index.css";
 
+import type { ChatComposerHandle } from "../chat/ChatComposer";
 import { CanvasFrame, LazyCanvasBoard } from "./CanvasFrame";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 
@@ -69,6 +71,38 @@ describe("CanvasFrame", () => {
     await userEvent.click(screen.getByRole("button", { name: `Open ${view.title} in a panel` }));
     expect(open).toHaveBeenCalledExactlyOnceWith(threadRef, "canvas");
     expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe("item-1");
+  });
+
+  it("puts a board and its comment in the composer, or sends it from there", async () => {
+    const addCanvas = vi.fn(() => true);
+    await using screen = await render(
+      <ComposerHandleContext value={{ current: { addCanvas } as unknown as ChatComposerHandle }}>
+        <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />
+      </ComposerHandleContext>,
+      { router: false }, // The frame reads no route.
+    );
+    const keep = screen.getByRole("button", { name: `Keep ${view.title}` });
+    await userEvent.click(keep);
+    const comment = screen.getByRole("textbox", { name: "Comment on this canvas" });
+    await userEvent.fill(comment, "Save it");
+    await userEvent.keyboard("{Enter}");
+    expect(addCanvas).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "canvas",
+        threadId: source.threadId,
+        itemId: source.itemId,
+        comment: "Save it",
+      }),
+      { send: false },
+    );
+    await expect.element(comment).not.toBeInTheDocument();
+
+    await userEvent.click(keep);
+    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(addCanvas).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ comment: expect.anything() }),
+      { send: true },
+    );
   });
 
   it("opens a code card's file at its line, and a guest page leaves the card inert", async () => {

@@ -42,6 +42,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { SourceControlRepositoryService } from "../sourceControl/SourceControlRepositoryService.ts";
 import { GitVcsDriver } from "../vcs/GitVcsDriver.ts";
 import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
+import { CanvasKeep } from "../wiki/CanvasKeep.ts";
 import { WikiService } from "../wiki/WikiService.ts";
 import { buildCodexAdditionalContext } from "./CodexDeveloperInstructions.ts";
 import { DocumentText } from "./DocumentText.ts";
@@ -55,6 +56,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(CodeIndex)({}),
   Layer.mock(LanguageServers)({}),
   Layer.mock(WikiService)({}),
+  Layer.mock(CanvasKeep)({}),
   Layer.mock(DeviceService)({}),
   Layer.mock(DocumentText)({}),
   Layer.mock(GitVcsDriver)({}),

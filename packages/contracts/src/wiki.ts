@@ -765,6 +765,8 @@ export const WikiKeepCanvasInput = Schema.Struct({
   itemId: TurnItemId,
   /** Its name in the wiki, with or without `.canvas`. */
   name: TrimmedNonEmptyString,
+  /** What the person said about it, which becomes the amendment's message. */
+  comment: Schema.optional(TrimmedNonEmptyString),
 });
 export type WikiKeepCanvasInput = typeof WikiKeepCanvasInput.Type;
 

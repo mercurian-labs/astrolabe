@@ -4,13 +4,18 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { describeWikiFailure, keepCanvasName } from "@t3tools/client-runtime/wikiLogic";
-import type {
-  EnvironmentId,
-  ThreadId,
-  TurnItemId,
-  WikiKeepCanvasResult,
-  WikiSummary,
+import {
+  COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS,
+  type EnvironmentId,
+  type ThreadId,
+  type TurnItemId,
+  type WikiKeepCanvasResult,
+  type WikiSummary,
 } from "@t3tools/contracts";
+import {
+  canvasContextRecord,
+  formatComposerContextReference,
+} from "@t3tools/shared/composerContextReferences";
 import { useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 
@@ -18,7 +23,9 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { Sheet } from "../../components/ui/Sheet";
+import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { insertComposerDraftContext } from "../../state/use-composer-drafts";
 import { useEnvironmentQuery } from "../../state/query";
 import { wikiEnvironment } from "../../state/wiki";
 
@@ -28,21 +35,26 @@ interface Kept {
 }
 
 /**
- * Saves a thread's board into a wiki, as a change request. It says what happened to its code cards
- * before it goes, and the board stays in the thread whatever becomes of the change request.
+ * Keeps a thread's board: as a chip in its composer, for the person's own instruction, or in a wiki
+ * they pick here, as a change request. Placing says what happened to its code cards, and the board
+ * stays in the thread whatever becomes of the change request.
  */
 export function KeepCanvasSheet(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly itemId: TurnItemId;
   readonly title: string;
+  readonly canPlace: boolean;
   readonly onClose: () => void;
+  readonly onAdded: () => void;
 }) {
   const { environmentId } = props;
   const navigation = useNavigation();
   const list = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const wikis = list.data?.wikis ?? [];
   const keep = useAtomCommand(wikiEnvironment.keepCanvas, { reportFailure: false });
+  const [comment, setComment] = useState("");
+  const [placing, setPlacing] = useState(false);
   const [picked, setPicked] = useState<WikiSummary["wikiId"] | null>(null);
   const [name, setName] = useState(() => keepCanvasName(props.title));
   const [busy, setBusy] = useState(false);
@@ -51,13 +63,35 @@ export function KeepCanvasSheet(props: {
   const wikiId = picked ?? wikis[0]?.wikiId ?? null;
   const canSubmit = wikiId !== null && name.trim().length > 0 && !busy;
 
+  const addToChat = () => {
+    const record = canvasContextRecord({
+      threadId: props.threadId,
+      itemId: props.itemId,
+      title: props.title,
+      comment,
+    });
+    const added = insertComposerDraftContext(scopedThreadKey(environmentId, props.threadId), {
+      text: formatComposerContextReference(record),
+      context: { version: 1, records: [record] },
+    });
+    if (added) props.onAdded();
+    else setError("The composer has no room for this. Remove something from it first.");
+  };
+
   const submit = async () => {
     if (!canSubmit || wikiId === null) return;
     setBusy(true);
     setError(null);
+    const trimmed = comment.trim();
     const outcome = await keep({
       environmentId,
-      input: { wikiId, threadId: props.threadId, itemId: props.itemId, name: name.trim() },
+      input: {
+        wikiId,
+        threadId: props.threadId,
+        itemId: props.itemId,
+        name: name.trim(),
+        ...(trimmed === "" ? {} : { comment: trimmed }),
+      },
     });
     setBusy(false);
     if (outcome._tag === "Success") setKept({ wikiId, result: outcome.value });
@@ -97,6 +131,33 @@ export function KeepCanvasSheet(props: {
               });
             }}
           />
+        </>
+      );
+    }
+    if (!placing) {
+      return (
+        <>
+          <TextInput
+            accessibilityLabel="Comment on this canvas"
+            placeholder="Add an optional comment..."
+            value={comment}
+            onChangeText={setComment}
+            maxLength={COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS}
+            multiline
+            className="min-h-24 rounded-[20px] bg-grouped-card px-4 py-3 text-base text-foreground"
+          />
+          {error ? <Text className="text-sm text-danger">{error}</Text> : null}
+          <Button label="Add to chat" tone="primary" fullWidth onPress={addToChat} />
+          {props.canPlace ? (
+            <Button
+              label="Place in wiki"
+              fullWidth
+              onPress={() => {
+                setError(null);
+                setPlacing(true);
+              }}
+            />
+          ) : null}
         </>
       );
     }
@@ -143,7 +204,7 @@ export function KeepCanvasSheet(props: {
         </View>
         {error ? <Text className="text-sm text-danger">{error}</Text> : null}
         <Button
-          label={busy ? "Keeping…" : "Keep"}
+          label={busy ? "Placing…" : "Place it"}
           tone="primary"
           fullWidth
           loading={busy}

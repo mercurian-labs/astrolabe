@@ -82,11 +82,11 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   return (
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions options={{ title: view?.title ?? "Canvas" }} />
-      {view !== undefined && canKeep ? (
+      {view !== undefined ? (
         <Toolbar placement="right">
           <Toolbar.Button
             label="Keep"
-            accessibilityLabel={`Keep ${view.title} in a wiki`}
+            accessibilityLabel={`Keep ${view.title}`}
             onPress={() => setKeeping(true)}
           />
         </Toolbar>
@@ -98,7 +98,12 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
           threadId={ThreadId.make(threadId)}
           itemId={TurnItemId.make(itemId)}
           title={view.title}
+          canPlace={canKeep}
           onClose={() => setKeeping(false)}
+          onAdded={() => {
+            setKeeping(false);
+            navigation.goBack();
+          }}
         />
       ) : null}
     </View>

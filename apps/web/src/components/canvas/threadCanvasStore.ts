@@ -1,4 +1,8 @@
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
+
+import { useRightPanelStore } from "~/rightPanelStore";
+import { canvasViewsKey } from "~/state/canvasViews";
 
 /**
  * Astrolabe: which canvas a thread's Canvas tab shows, by its tool call's item id. Outside the
@@ -13,3 +17,8 @@ export const useThreadCanvasStore = create<ThreadCanvasStore>((set) => ({
   shownByThread: {},
   show: (key, id) => set((store) => ({ shownByThread: { ...store.shownByThread, [key]: id } })),
 }));
+
+export function showThreadCanvas(threadRef: ScopedThreadRef, id: string) {
+  useThreadCanvasStore.getState().show(canvasViewsKey(threadRef), id);
+  useRightPanelStore.getState().open(threadRef, "canvas");
+}

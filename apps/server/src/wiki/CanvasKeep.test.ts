@@ -46,6 +46,8 @@ interface World {
   readonly identity?: unknown;
   readonly pushed?: string | null;
   readonly files?: Readonly<Record<string, string>>;
+  readonly comment?: string;
+  readonly author?: WikiService.WikiAuthor;
 }
 
 const keep = (world: World) => {
@@ -91,7 +93,16 @@ const keep = (world: World) => {
   );
   return CanvasKeep.CanvasKeep.pipe(
     Effect.flatMap((service) =>
-      service.keep({ wikiId: WIKI, threadId: THREAD, itemId: ITEM, name: "The merge" }),
+      service.keep(
+        {
+          wikiId: WIKI,
+          threadId: THREAD,
+          itemId: ITEM,
+          name: "The merge",
+          ...(world.comment === undefined ? {} : { comment: world.comment }),
+        },
+        world.author ?? { actor: "You", threadId: THREAD },
+      ),
     ),
     Effect.provide(layer),
     Effect.map((result) => {
@@ -118,6 +129,7 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
     assert.equal(transforms[0]?.wikiId, WIKI);
     assert.isUndefined(transforms[0]?.changeRequestId);
     assert.deepEqual(authors, [{ actor: "You", threadId: THREAD }]);
+    assert.equal(transforms[0]?.message, "Keep The merge");
 
     const shown = placeCanvas(drawing);
     const { nodes, edges } = JSON.parse(source);
@@ -129,6 +141,16 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
     assert.equal(edges[0].fromNode, nodes[0].id);
     assert.equal(edges[0].toNode, nodes[1].id);
     assert.equal(edges[0].fromSide, shown.edges[0]?.fromSide);
+  }),
+);
+
+it.effect("carries the comment and lands as whoever kept it, in their thread", () =>
+  Effect.gen(function* () {
+    const author = { actor: "claude-opus-5-5", threadId: ThreadId.make("thread-agent") };
+    const { transforms, authors } = yield* keep({ comment: "For the review", author });
+    assert.equal(transforms[0]?.message, "For the review");
+    assert.equal(transforms[0]?.title, "Keep The merge");
+    assert.deepEqual(authors, [author]);
   }),
 );
 

@@ -38,7 +38,11 @@ import * as WikiService from "./WikiService.ts";
 export class CanvasKeep extends Context.Service<
   CanvasKeep,
   {
-    readonly keep: (input: WikiKeepCanvasInput) => Effect.Effect<WikiKeepCanvasResult, WikiError>;
+    /** The author decides whose change request it joins; `threadId` is only where it was drawn. */
+    readonly keep: (
+      input: WikiKeepCanvasInput,
+      author: WikiService.WikiAuthor,
+    ) => Effect.Effect<WikiKeepCanvasResult, WikiError>;
   }
 >()("t3/wiki/CanvasKeep") {}
 
@@ -138,73 +142,75 @@ const make = Effect.gen(function* () {
     };
   });
 
-  const keep: CanvasKeep["Service"]["keep"] = Effect.fn("CanvasKeep.keep")(function* (input) {
-    const item = yield* orchestrator
-      .getTurnItem({ threadId: input.threadId, itemId: input.itemId })
-      .pipe(Effect.mapError((cause) => gone(input, cause)));
-    if (
-      item?.type !== "dynamic_tool" ||
-      item.status !== "completed" ||
-      resolveT3McpToolId(item.toolName) !== CANVAS_SHOW_TOOL_NAME
-    ) {
-      return yield* gone(input);
-    }
-    const drawing = decodeInput(toolArguments(item.input));
-    if (Option.isNone(drawing)) return yield* gone(input);
-    const data = placeCanvas(drawing.value);
-    const codes = data.nodes.flatMap((node) =>
-      node.type === "link" && node.astrolabe?.code !== undefined ? [node.astrolabe.code] : [],
-    );
-
-    const pins = new Map<string, CanvasCodePin | Unlinked>();
-    const keyOf = ({ path, lines }: Pick<CanvasCodeReference, "path" | "lines">) =>
-      JSON.stringify([path, lines ?? null]);
-    const code = Option.getOrUndefined(decodeResult(toolResultData(item.output) ?? {}))?.code;
-    const commit = code?.commit ?? null;
-    const facts = codes.length === 0 ? null : yield* readFacts(input, commit);
-    if (facts !== null) {
-      for (const each of codes) {
-        if (!pins.has(keyOf(each))) pins.set(keyOf(each), yield* pinCode(each, facts));
+  const keep: CanvasKeep["Service"]["keep"] = Effect.fn("CanvasKeep.keep")(
+    function* (input, author) {
+      const item = yield* orchestrator
+        .getTurnItem({ threadId: input.threadId, itemId: input.itemId })
+        .pipe(Effect.mapError((cause) => gone(input, cause)));
+      if (
+        item?.type !== "dynamic_tool" ||
+        item.status !== "completed" ||
+        resolveT3McpToolId(item.toolName) !== CANVAS_SHOW_TOOL_NAME
+      ) {
+        return yield* gone(input);
       }
-    }
-    const answers = codes.flatMap((each) => pins.get(keyOf(each)) ?? []);
-    const source = keptCanvasSource(
-      data,
-      (each): CanvasCodePin | CanvasCodeUnpinned => {
-        const pinned = pins.get(keyOf(each));
-        return pinned === undefined || typeof pinned === "string" ? { commit } : pinned;
-      },
-      `${input.itemId}:${input.name}`,
-    );
+      const drawing = decodeInput(toolArguments(item.input));
+      if (Option.isNone(drawing)) return yield* gone(input);
+      const data = placeCanvas(drawing.value);
+      const codes = data.nodes.flatMap((node) =>
+        node.type === "link" && node.astrolabe?.code !== undefined ? [node.astrolabe.code] : [],
+      );
 
-    const file = /\.canvas$/i.test(input.name) ? input.name : `${input.name}.canvas`;
-    const title = `Keep ${drawing.value.title}`;
-    const landed = yield* wikis.transform(
-      {
-        wikiId: input.wikiId,
-        title,
-        message: title,
-        transform: { kind: "canvas-create", file, source },
-      },
-      { actor: WikiService.person.actor, threadId: input.threadId },
-    );
+      const pins = new Map<string, CanvasCodePin | Unlinked>();
+      const keyOf = ({ path, lines }: Pick<CanvasCodeReference, "path" | "lines">) =>
+        JSON.stringify([path, lines ?? null]);
+      const code = Option.getOrUndefined(decodeResult(toolResultData(item.output) ?? {}))?.code;
+      const commit = code?.commit ?? null;
+      const facts = codes.length === 0 ? null : yield* readFacts(input, commit);
+      if (facts !== null) {
+        for (const each of codes) {
+          if (!pins.has(keyOf(each))) pins.set(keyOf(each), yield* pinCode(each, facts));
+        }
+      }
+      const answers = codes.flatMap((each) => pins.get(keyOf(each)) ?? []);
+      const source = keptCanvasSource(
+        data,
+        (each): CanvasCodePin | CanvasCodeUnpinned => {
+          const pinned = pins.get(keyOf(each));
+          return pinned === undefined || typeof pinned === "string" ? { commit } : pinned;
+        },
+        `${input.itemId}:${input.name}`,
+      );
 
-    const linked = answers.filter((answer) => typeof answer !== "string");
-    const behind = linked.filter((pin) => pin.commit !== commit);
-    const unlinked = (reason: Unlinked) => answers.filter((answer) => answer === reason).length;
-    const notes = [
-      ...(behind.length === 0
-        ? []
-        : [
-            `${cards(behind.length)} ${behind.length === 1 ? "points" : "point"} at unpushed code, so ${behind.length === 1 ? "it links" : "they link"} to the nearest pushed commit, ${behind[0]?.commit.slice(0, 12)}. The code there may differ.`,
-          ]),
-      ...(["no-remote", "no-host", "not-pushed", "no-file"] as const).flatMap((reason) => {
-        const count = unlinked(reason);
-        return count === 0 ? [] : [UNLINKED_NOTES[reason](count)];
-      }),
-    ];
-    return { changeRequest: landed.changeRequest, file, notes };
-  });
+      const file = /\.canvas$/i.test(input.name) ? input.name : `${input.name}.canvas`;
+      const title = `Keep ${drawing.value.title}`;
+      const landed = yield* wikis.transform(
+        {
+          wikiId: input.wikiId,
+          title,
+          message: input.comment ?? title,
+          transform: { kind: "canvas-create", file, source },
+        },
+        author,
+      );
+
+      const linked = answers.filter((answer) => typeof answer !== "string");
+      const behind = linked.filter((pin) => pin.commit !== commit);
+      const unlinked = (reason: Unlinked) => answers.filter((answer) => answer === reason).length;
+      const notes = [
+        ...(behind.length === 0
+          ? []
+          : [
+              `${cards(behind.length)} ${behind.length === 1 ? "points" : "point"} at unpushed code, so ${behind.length === 1 ? "it links" : "they link"} to the nearest pushed commit, ${behind[0]?.commit.slice(0, 12)}. The code there may differ.`,
+            ]),
+        ...(["no-remote", "no-host", "not-pushed", "no-file"] as const).flatMap((reason) => {
+          const count = unlinked(reason);
+          return count === 0 ? [] : [UNLINKED_NOTES[reason](count)];
+        }),
+      ];
+      return { changeRequest: landed.changeRequest, file, notes };
+    },
+  );
 
   return { keep } satisfies CanvasKeep["Service"];
 });

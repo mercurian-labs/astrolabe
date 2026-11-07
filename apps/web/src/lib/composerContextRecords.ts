@@ -23,6 +23,7 @@ import type {
   ThreadContextRecord,
   ThreadId,
   WikiId,
+  WikiContextRecord,
   WikiNoteContextRecord,
 } from "@t3tools/contracts";
 import { upgradeLegacyContextMessage } from "@t3tools/shared/composerContextLegacy";
@@ -179,8 +180,8 @@ export function environmentContextRecord(
   };
 }
 
-export function wikiNoteContextReference(record: WikiNoteContextRecord): ComposerContextReference {
-  return { kind: "wiki-note", contextId: record.contextId, label: record.label };
+export function wikiContextReference(record: WikiContextRecord): ComposerContextReference {
+  return { kind: record.kind, contextId: record.contextId, label: record.label };
 }
 
 /** One record per note, so referencing it again reuses the chip. */
@@ -340,7 +341,7 @@ export function buildMessageContext(input: {
   reviewComments: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
-  wikiNotes?: ReadonlyArray<WikiNoteContextRecord>;
+  wikiContexts?: ReadonlyArray<WikiContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
@@ -353,7 +354,7 @@ export function buildMessageContext(input: {
     ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...(input.threadContexts ?? []),
-    ...(input.wikiNotes ?? []),
+    ...(input.wikiContexts ?? []),
     ...(input.environmentContexts ?? []),
     ...input.previewAnnotations.map((annotation) =>
       previewAnnotationContextRecord(annotation, {

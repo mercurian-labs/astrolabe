@@ -6,11 +6,10 @@ import { lazy, Suspense } from "react";
 
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
-import { canvasViewsKey } from "~/state/canvasViews";
 
 import { Button } from "../ui/button";
 import { KeepCanvasButton } from "./KeepCanvas";
-import { useThreadCanvasStore } from "./threadCanvasStore";
+import { showThreadCanvas } from "./threadCanvasStore";
 
 // The board brings the Markdown parser; a thread with no canvas shouldn't load it.
 export const LazyCanvasBoard = lazy(() =>
@@ -70,10 +69,7 @@ export function CanvasFrame({
               variant="ghost"
               size="icon-xs"
               aria-label={`Open ${view.title} in a panel`}
-              onClick={() => {
-                useThreadCanvasStore.getState().show(canvasViewsKey(threadRef), id);
-                useRightPanelStore.getState().open(threadRef, "canvas");
-              }}
+              onClick={() => showThreadCanvas(threadRef, id)}
             >
               <Maximize2Icon />
             </Button>

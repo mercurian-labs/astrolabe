@@ -1,4 +1,4 @@
-import type { AssistantCitation } from "@t3tools/contracts";
+import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
 import {
   assistantCitationLabel,
   serializeAssistantCitation,
@@ -26,7 +26,7 @@ import { ContextChipPopover } from "../contextChipParts";
 import { Button } from "../ui/button";
 import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
-import { AssistantCitationCommentEditor } from "./AssistantCitationCommentEditor";
+import { ComposerCommentEditor } from "./ComposerCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
@@ -210,9 +210,13 @@ export function AssistantCitationChip({
               padding="compact"
               onPointerDown={(event) => event.stopPropagation()}
             >
-              <AssistantCitationCommentEditor
+              <ComposerCommentEditor
                 key={serializeAssistantCitation(citation)}
-                citation={citation}
+                initialComment={citation.comment ?? ""}
+                maxLength={ASSISTANT_CITATION_MAX_COMMENT_LENGTH}
+                label="Comment on selected text"
+                description="Enter to save the citation comment; Command/Ctrl+Enter to save and send; Shift+Enter for a new line."
+                saveLabel="Save"
                 inputRef={commentInputRef}
                 onDraftChange={(comment) => {
                   draftCommentRef.current = comment;

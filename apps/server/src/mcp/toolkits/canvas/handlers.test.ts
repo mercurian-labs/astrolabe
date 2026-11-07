@@ -6,6 +6,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  type WikiKeepCanvasInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -15,6 +16,8 @@ import { McpSchema, McpServer } from "effect/ai";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
+import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
+import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
@@ -67,6 +70,10 @@ const project: Project = {
 
 const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noGit?: boolean }) => {
   const asked: string[] = [];
+  const kept: Array<{
+    readonly input: WikiKeepCanvasInput;
+    readonly author: WikiService.WikiAuthor;
+  }> = [];
   const layer = McpHttpServer.layerCanvasToolkit.pipe(
     Layer.provideMerge(McpServer.McpServer.layer),
     Layer.provide(
@@ -78,6 +85,14 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
               projectId,
               worktreePath: worktree,
             }),
+          getProjectThreadRecords: (input) =>
+            Effect.succeed({ thread: { id: input.threadId } } as never),
+        }),
+        Layer.mock(CanvasKeep.CanvasKeep)({
+          keep: (input, author) => {
+            kept.push({ input, author });
+            return Effect.succeed({ file: `${input.name}`, notes: [] } as never);
+          },
         }),
         Layer.mock(ProjectService.ProjectService)({
           getById: () => Effect.succeedSome(project),
@@ -97,16 +112,14 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
       ),
     ),
   );
-  const call = (args: Record<string, unknown>) =>
+  const call = (args: Record<string, unknown>, name = "astrolabe_canvas_show") =>
     McpServer.McpServer.pipe(
-      Effect.flatMap((server) =>
-        server.callTool({ name: "astrolabe_canvas_show", arguments: args }),
-      ),
+      Effect.flatMap((server) => server.callTool({ name, arguments: args })),
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provideService(McpSchema.McpServerClient, client),
       Effect.provide(layer),
     );
-  return { asked, call };
+  return { asked, kept, call };
 };
 
 const failureMessage = (result: McpSchema.CallToolResult) => {
@@ -184,6 +197,35 @@ describe("canvas toolkit handlers", () => {
         arrows: [{ from: "a", to: "nowhere" }],
       });
       expect(failureMessage(result)).toContain('"nowhere"');
+    }),
+  );
+
+  it.effect.each([
+    ["this thread", undefined, scope.thread!.threadId],
+    ["the thread that drew it", "thread-other", ThreadId.make("thread-other")],
+  ])("keeps a board from %s for the calling thread", ([, threadId, drawnIn]) =>
+    Effect.gen(function* () {
+      const { call, kept } = harness({});
+      yield* call(
+        {
+          wiki: " Team ",
+          name: "Flow.canvas",
+          itemId: "item-1",
+          comment: "For the review",
+          ...(threadId === undefined ? {} : { threadId }),
+        },
+        "astrolabe_canvas_keep",
+      );
+      expect(kept).toHaveLength(1);
+      expect(kept[0]?.input).toEqual({
+        wikiId: "Team",
+        threadId: drawnIn,
+        itemId: "item-1",
+        name: "Flow.canvas",
+        comment: "For the review",
+      });
+      expect(kept[0]?.author.threadId).toBe(scope.thread!.threadId);
+      expect(kept[0]?.author.actor).not.toBe(WikiService.person.actor);
     }),
   );
 });

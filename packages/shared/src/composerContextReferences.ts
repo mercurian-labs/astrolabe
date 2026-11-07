@@ -1,5 +1,6 @@
 import {
   COMPOSER_CONTEXT_LABEL_MAX_CHARS,
+  type CanvasContextRecord,
   type ComposerContextId,
   type ComposerContextKind,
   type ComposerContextRecord,
@@ -8,6 +9,8 @@ import {
   type KnownComposerContextRecord,
   type ScopedThreadRef,
   type ThreadContextRecord,
+  type ThreadId,
+  type TurnItemId,
 } from "@t3tools/contracts";
 
 const CONTEXT_PROTOCOL = "t3-context:";
@@ -86,6 +89,27 @@ export function threadContextRecord(ref: ScopedThreadRef, title: string): Thread
     environmentId: ref.environmentId,
     threadId: ref.threadId,
     title: label,
+  };
+}
+
+/** One record per board, so adding it again reuses the chip and keeps one comment. */
+export function canvasContextRecord(board: {
+  readonly threadId: ThreadId;
+  readonly itemId: TurnItemId;
+  readonly title: string;
+  readonly comment?: string | undefined;
+}): CanvasContextRecord {
+  const label = sanitizeComposerContextLabel(board.title, "canvas");
+  const comment = board.comment?.trim();
+  return {
+    version: 1,
+    kind: "canvas",
+    contextId: toKindScopedComposerContextId("canvas", `${board.threadId}/${board.itemId}`),
+    label,
+    threadId: board.threadId,
+    itemId: board.itemId,
+    title: label,
+    ...(comment ? { comment } : {}),
   };
 }
 
@@ -315,6 +339,14 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `wikiId: ${record.wikiId}`,
         `note: ${record.name}`,
         "Read it with astrolabe_wiki_read(wiki=wikiId, name=note).",
+      ].join("\n");
+    case "canvas":
+      return [
+        `title: ${record.title}`,
+        `threadId: ${record.threadId}`,
+        `itemId: ${record.itemId}`,
+        ...(record.comment === undefined ? [] : [`comment: ${record.comment}`]),
+        "The user means this board, drawn in that thread by astrolabe_canvas_show. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
       ].join("\n");
   }
 }

@@ -7,6 +7,8 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canvasContextRecord,
+  formatComposerContextReference,
   ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
   collectComposerContextReferences,
   formatComposerContextHref,
@@ -320,6 +322,30 @@ describe("provider projection", () => {
         "</t3_context>",
       ].join("\n"),
     );
+  });
+
+  it("projects a board as its ids and the user's comment, and how to save it", () => {
+    const record = canvasContextRecord({
+      threadId: "thread-1" as never,
+      itemId: "item-1" as never,
+      title: "Refund flow",
+      comment: "  the agreed version ",
+    });
+    expect(canvasContextRecord({ ...record, comment: "" })).toEqual({
+      version: 1,
+      kind: "canvas",
+      contextId: record.contextId,
+      label: "Refund flow",
+      threadId: "thread-1",
+      itemId: "item-1",
+      title: "Refund flow",
+    });
+    const projected = projectComposerContextForProvider({
+      text: formatComposerContextReference(record),
+      records: [record],
+    });
+    expect(projected).toContain("threadId: thread-1\nitemId: item-1\ncomment: the agreed version");
+    expect(projected).toContain("astrolabe_canvas_keep");
   });
 
   it("projects a mentioned machine as its identity and how to use it, never an address", () => {

@@ -1,5 +1,11 @@
 import { canvasDrawingProblems } from "@mercurian/wiki/canvas";
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import {
+  OrchestratorMcpFailure,
+  ThreadId,
+  TurnItemId,
+  type WikiError,
+  WikiId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -7,12 +13,18 @@ import * as Path from "effect/Path";
 
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
+import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { loadCaller, unavailable } from "../../threadAccess.ts";
+import { loadCaller, readThread, unavailable } from "../../threadAccess.ts";
 import { CanvasToolkit } from "./tools.ts";
 
 const invalid = (message: string) =>
   new OrchestratorMcpFailure({ code: "invalid_request", message });
+
+const keepFailure = (error: WikiError) =>
+  error.reason === "git-failed" || error.reason === "git-unavailable"
+    ? unavailable()
+    : invalid(error.message);
 
 /** Checks a code card's files exist, and finds what commit a kept card should pin them to. */
 const readCode = Effect.fn("CanvasTools.readCode")(function* (paths: ReadonlyArray<string>) {
@@ -68,6 +80,30 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
           "Shown to the reader above your reply. Don't describe it; reply with only what it doesn't already say.",
         ...(code === undefined ? {} : { code }),
       };
+    }),
+  ),
+  astrolabe_canvas_keep: McpToolAccess.actsAsCaller(({ wiki, name, itemId, threadId, comment }) =>
+    Effect.gen(function* () {
+      const { caller, scope, projection } = yield* readThread(
+        threadId === undefined ? undefined : ThreadId.make(threadId.trim()),
+      );
+      const keeper = yield* CanvasKeep.CanvasKeep;
+      const trimmed = comment?.trim();
+      return yield* keeper
+        .keep(
+          {
+            wikiId: WikiId.make(wiki.trim()),
+            threadId: projection.thread.id,
+            itemId: TurnItemId.make(itemId.trim()),
+            name: name.trim(),
+            ...(trimmed ? { comment: trimmed } : {}),
+          },
+          {
+            actor: caller?.modelSelection.model ?? "Agent",
+            threadId: scope.thread?.threadId ?? null,
+          },
+        )
+        .pipe(Effect.mapError(keepFailure));
     }),
   ),
 });
