@@ -53,6 +53,8 @@ export {
   sortRowsDescending,
 } from "./tableCommands.ts";
 
+export { wikilinksBetween } from "./wikilinks.ts";
+
 /**
  * The Markdown live preview: the parser with Obsidian syntax, decorations that hide
  * syntax away from the selection, the keymap, and the base theme. It installs no history;

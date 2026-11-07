@@ -1,6 +1,16 @@
 import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
-import { EditorView, hoverTooltip, showTooltip, type Tooltip } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  hoverTooltip,
+  showTooltip,
+  ViewPlugin,
+  type DecorationSet,
+  type Tooltip,
+  type ViewUpdate,
+} from "@codemirror/view";
+import { wikilinksBetween } from "@mercurian/editor/markdown";
 import { displayRuns, frontmatterEnd, key, links, typedLinks } from "@mercurian/wiki/links";
 import { resolveLink, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -34,6 +44,8 @@ export interface WikiLinkToolsHost {
   readonly linkOptions?: () => ReadonlyArray<WikiLinkOption>;
   /** Without one, two links are the same document only when they spell it alike. */
   readonly linkScope?: () => WikiLinkScope | null;
+  /** Calls back when `linkScope` answers differently; returns what stops that. */
+  readonly watchScope?: (listener: () => void) => () => void;
   /** Fills `element` with a link's preview; returns what takes it down. */
   readonly drawPreview: (link: WikiLinkPeek, element: HTMLElement) => () => void;
 }
@@ -106,7 +118,56 @@ const pressed = StateField.define<Tooltip | null>({
   provide: (field) => showTooltip.from(field),
 });
 
+const scopeMoved = StateEffect.define<null>();
+const MISSING = Decoration.mark({ class: "cm-wiki-link-missing" });
+
+/** A name with a file's extension: an attachment, which the scope's documents can't answer for. */
+const namesAttachment = (target: string) =>
+  /\.[a-z][a-z0-9]*$/i.test(target) && !/\.(md|base|canvas)$/i.test(target);
+
+function missingLinks(view: EditorView, scope: WikiLinkScope | null): DecorationSet {
+  if (scope === null) return Decoration.none;
+  const marks = view.visibleRanges.flatMap(({ from, to }) =>
+    wikilinksBetween(view.state, from, to).flatMap((link) =>
+      namesAttachment(link.target) ||
+      resolveLink(link.target, scope.from, scope.files).file !== null
+        ? []
+        : [MISSING.range(link.from, link.to)],
+    ),
+  );
+  return Decoration.set(marks, true);
+}
+
+/** Marks a link that lands nowhere, drawn red as the links under a note are. */
+const missingLinkMarks = (host: WikiLinkToolsHost) =>
+  ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      stopWatching: () => void;
+      constructor(view: EditorView) {
+        this.decorations = missingLinks(view, host.linkScope?.() ?? null);
+        this.stopWatching =
+          host.watchScope?.(() => view.dispatch({ effects: scopeMoved.of(null) })) ?? (() => {});
+      }
+      update(update: ViewUpdate) {
+        const moved = update.transactions.some((each) =>
+          each.effects.some((effect) => effect.is(scopeMoved)),
+        );
+        if (moved || update.docChanged || update.viewportChanged) {
+          this.decorations = missingLinks(update.view, host.linkScope?.() ?? null);
+        }
+      }
+      destroy() {
+        this.stopWatching();
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
+
 const previewTheme = EditorView.baseTheme({
+  ".cm-wiki-link-missing, .cm-wiki-link-missing .cm-md-wikilink": {
+    color: "var(--destructive-foreground, #dc2626)",
+  },
   ".cm-tooltip:has(.cm-wiki-link-preview)": {
     border: "1px solid var(--atlas-md-border-color)",
     borderRadius: "8px",
@@ -190,6 +251,7 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
   return [
     previewTheme,
     pressed,
+    missingLinkMarks(host),
     autocompletion({
       override: [
         (context) =>
@@ -240,11 +302,13 @@ export function useWikiLinkTools(
   const types = useRef(linkTypes);
   const options = useRef(linkOptions);
   const scope = useRef(linkScope);
+  const scopeWatchers = useRef(new Set<() => void>());
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types, options and scope for the editor's completion source
   useLayoutEffect(() => {
     types.current = linkTypes;
     options.current = linkOptions;
     scope.current = linkScope;
+    for (const watcher of scopeWatchers.current) watcher();
   }, [linkTypes, linkOptions, linkScope]);
   const [open, setOpen] = useState<
     ReadonlyArray<{ id: number; link: WikiLinkPeek; element: HTMLElement }>
@@ -255,6 +319,10 @@ export function useWikiLinkTools(
       linkTypes: () => types.current,
       linkOptions: () => options.current,
       linkScope: () => scope.current,
+      watchScope: (listener) => {
+        scopeWatchers.current.add(listener);
+        return () => scopeWatchers.current.delete(listener);
+      },
       drawPreview: (link, element) => {
         const id = next++;
         setOpen((previews) => [...previews, { id, link, element }]);
