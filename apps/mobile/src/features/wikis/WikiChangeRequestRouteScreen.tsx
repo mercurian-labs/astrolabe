@@ -476,7 +476,7 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
 
 /** How much a document changed: for a canvas, what happened to its cards. */
 function FileChangeLabel({ change }: { readonly change: WikiFileChange }) {
-  const { file, before, after } = change;
+  const { file, before, after, movedFrom } = change;
   const summary = useMemo(() => {
     if (!isCanvasName(file)) return null;
     const review = reviewCanvasFiles(before, after);
@@ -484,7 +484,9 @@ function FileChangeLabel({ change }: { readonly change: WikiFileChange }) {
   }, [file, before, after]);
   return (
     <Text className="shrink text-sm text-foreground-muted" numberOfLines={1}>
-      {summary ?? (before === null ? "Added" : after === null ? "Deleted" : "Changed")}
+      {movedFrom !== undefined
+        ? `Moved from ${documentPath(movedFrom)}`
+        : (summary ?? (before === null ? "Added" : after === null ? "Deleted" : "Changed"))}
     </Text>
   );
 }

@@ -1,7 +1,13 @@
 import type { EnvironmentId, WikiChangeRequest, WikiId, WikiSummary } from "@t3tools/contracts";
 
 import type { WikiOverview } from "./state/wiki.ts";
-import { changeRequestFiles, documentTitle, noteKey, wikiDraft } from "./wikiLogic.ts";
+import {
+  changeRequestFiles,
+  documentTitle,
+  draftDocuments,
+  noteKey,
+  wikiDraft,
+} from "./wikiLogic.ts";
 
 /**
  * Astrolabe: the Wikis list, as the thread list is one list across projects: the person's drafts,
@@ -109,7 +115,16 @@ export function wikiListEntries(
       base: false,
       canvas: true,
     }));
-    for (const note of [...notes, ...bases, ...canvases]) {
+    const listed = draftDocuments([...notes, ...bases, ...canvases], draft, (file, name) => ({
+      name,
+      file,
+      outgoing: 0,
+      incoming: 0,
+      editedAt: draft?.updatedAt,
+      base: /\.base$/i.test(file),
+      canvas: /\.canvas$/i.test(file),
+    }));
+    for (const note of listed) {
       documents.push({
         kind: "document",
         key: `document:${scopeKey}:${note.file}`,

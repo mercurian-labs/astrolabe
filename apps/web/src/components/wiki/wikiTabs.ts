@@ -11,6 +11,7 @@ import {
   changeRequestFiles,
   documentFile,
   documentPath,
+  draftDocuments,
   isCanvasName,
   noteKey,
   wikiDraft,
@@ -223,7 +224,12 @@ export function wikiSidebarItems(
       ...canvas,
       name: canvas.file,
     }));
-    for (const note of [...(overview.index?.notes ?? []), ...bases, ...canvases]) {
+    const listed = draftDocuments(
+      [...(overview.index?.notes ?? []), ...bases, ...canvases],
+      draft,
+      (file, name) => ({ name, file, outgoing: 0, incoming: 0, editedAt: draft?.updatedAt }),
+    );
+    for (const note of listed) {
       documents.push({
         key: wikiTabKey({
           kind: "note",

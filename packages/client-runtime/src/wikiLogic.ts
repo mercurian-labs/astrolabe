@@ -1,9 +1,12 @@
 import { reviewCanvasFiles, type CanvasReview } from "@mercurian/wiki/canvas";
+import { newNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
 import {
   isDocumentFile,
+  isHidden,
   linkFiles,
   resolveLink,
   unwrittenFile,
+  writtenLink,
   type ResolvedLink,
   type WikiLinkFiles,
 } from "@mercurian/wiki/resolve-link";
@@ -73,15 +76,6 @@ export const isCanvasName = (name: string): boolean => /\.canvas$/i.test(name);
 
 export { isDocumentFile };
 
-/** Everything a wiki's links can name: its notes, and its canvases and bases by file. */
-export const wikiDocumentNames = (
-  index: Pick<WikiIndexResult, "notes" | "canvases" | "bases">,
-): ReadonlyArray<string> => [
-  ...index.notes.map((note) => note.name),
-  ...index.canvases.map((canvas) => canvas.file),
-  ...index.bases.map((base) => base.file),
-];
-
 type LinkableIndex = Pick<WikiIndexResult, "notes" | "canvases" | "bases" | "maps">;
 
 /** Every file a link in `index` can land on. */
@@ -95,18 +89,37 @@ export const wikiDocumentFiles = (index: LinkableIndex): ReadonlyArray<string> =
 // Each index is searched for every link on a page, and read many times between changes.
 const indexLinks = new WeakMap<LinkableIndex, WikiLinkFiles>();
 
-/** Where a link written in `from` lands in `index`, the way the server resolves it. */
-export function resolveWikiLink(
-  index: LinkableIndex,
-  target: string,
-  from: string | null,
-): ResolvedLink {
+/** What a link in `index` can land on, made ready to search. */
+export function wikiLinkFiles(index: LinkableIndex): WikiLinkFiles {
   let links = indexLinks.get(index);
   if (links === undefined) {
     links = linkFiles(wikiDocumentFiles(index));
     indexLinks.set(index, links);
   }
-  return resolveLink(target, from, links);
+  return links;
+}
+
+/** Where a link written in `from` lands in `index`, the way the server resolves it. */
+export const resolveWikiLink = (
+  index: LinkableIndex,
+  target: string,
+  from: string | null,
+): ResolvedLink => resolveLink(target, from, wikiLinkFiles(index));
+
+/**
+ * What a `[[` can complete to: every note, canvas and base, as a new link writes it. A hidden one
+ * only while the person shows them, as a bare name never finds it.
+ */
+export function wikiLinkOptions(
+  index: LinkableIndex,
+  showHidden: boolean,
+): ReadonlyArray<{ readonly label: string; readonly apply: string }> {
+  const files = wikiLinkFiles(index);
+  return [...index.notes, ...index.canvases, ...index.bases].flatMap(({ file }) =>
+    !showHidden && isHidden(file)
+      ? []
+      : [{ label: noteNameOfFile(file), apply: writtenLink(file, files) }],
+  );
 }
 
 /** The file a link opens: the one it lands on, else where writing it would land. */
@@ -117,6 +130,26 @@ export const wikiLinkFile = (
 ): string =>
   (index === null ? null : resolveWikiLink(index, target, from).file) ??
   unwrittenFile(target, from);
+
+/**
+ * The file a click on a link opens: the one it lands on, else where a new note goes. Null for a
+ * red `./` or `../` link, which creates nothing.
+ */
+export function wikiLinkOpens(
+  index: LinkableIndex | null,
+  target: string,
+  from: string | null,
+  placement: WikiPlacement,
+): string | null {
+  const found = index === null ? null : resolveWikiLink(index, target, from).file;
+  return (
+    found ?? newNoteFile(target, from, placement, index === null ? [] : wikiDocumentFiles(index))
+  );
+}
+
+/** What to say when a link can't make a note. */
+export const NO_NOTE_FROM_RELATIVE_LINK =
+  "This link says where it is from here, so no note can be made from it. Write its folder from the top of the wiki.";
 
 /** The files a change request holds a change to. */
 export const changeRequestFiles = (
@@ -132,6 +165,33 @@ export function wikiDraft(
       ({ draft, status, amendments }) => draft && status === "open" && amendments.length > 0,
     ) ?? null
   );
+}
+
+/** Where the draft moved `file`; undefined when it didn't. */
+export const draftMovedTo = (draft: WikiChangeRequest | null, file: string): string | undefined =>
+  draft?.moves?.find(({ from }) => from === file)?.to;
+
+/**
+ * What a wiki lists, as the person's draft leaves it: a document it moved shows where it went, and
+ * one it wrote shows at all, so a folder is there from its first saved document.
+ */
+export function draftDocuments<T extends { readonly name: string; readonly file: string }>(
+  documents: ReadonlyArray<T>,
+  draft: WikiChangeRequest | null,
+  written: (file: string, name: string) => T,
+): ReadonlyArray<T> {
+  if (draft === null) return documents;
+  const moved = new Map(draft.moves?.map(({ from, to }) => [from, to]));
+  const listed = new Set(documents.map((document) => document.file));
+  for (const to of moved.values()) listed.add(to);
+  const rows = documents.map((document) => {
+    const file = moved.get(document.file);
+    return file === undefined ? document : { ...document, file, name: noteNameOfFile(file) };
+  });
+  const added = changeRequestFiles(draft).filter(
+    (file) => isDocumentFile(file) && !listed.has(file) && !moved.has(file),
+  );
+  return [...rows, ...added.map((file) => written(file, noteNameOfFile(file)))];
 }
 
 export function filesHoldDocument(files: ReadonlyArray<string>, file: string): boolean {

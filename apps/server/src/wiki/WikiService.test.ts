@@ -2439,6 +2439,7 @@ it.effect("shows a moved document as a move, with its creation time carried", ()
       assert.isFalse(detail.files.some(({ file }) => file === "Mentions.md"));
       // What travels keeps seeing both paths: a draft can hand on either.
       assert.includeMembers([...detail.changeRequest.files], ["Long.md", "shelf/deep/Long.md"]);
+      assert.deepEqual(detail.changeRequest.moves, [{ from: "Long.md", to: "shelf/deep/Long.md" }]);
       assert.equal(moved.changeRequest!.amendments.at(-1)?.subject, "Move Long to shelf/deep");
       const after = yield* wikis.query({
         wikiId,
@@ -2482,6 +2483,21 @@ it.effect("keeps a move in a draft that follows main, and merges it", () =>
       const landed = yield* git(root, ["ls-tree", "-r", "--name-only", "HEAD"]);
       assert.include(landed.split("\n"), "shelf/Long.md");
       assert.notInclude(landed.split("\n"), "Long.md");
+    }),
+  ),
+);
+
+it.effect("finds a linked file from the file linking to it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "a/shot.png": "a", "b/shot.png": "b" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Shots"]);
+      const fromA = yield* wikis.locateFile({ wikiId, path: "shot.png", from: "a/N.md" });
+      const fromB = yield* wikis.locateFile({ wikiId, path: "shot.png", from: "b/N.md" });
+      assert.equal(fromA.path, "a/shot.png");
+      assert.equal(fromB.path, "b/shot.png");
     }),
   ),
 );

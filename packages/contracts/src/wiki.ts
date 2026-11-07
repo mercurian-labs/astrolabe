@@ -553,6 +553,8 @@ export const WikiChangeRequest = Schema.Struct({
   amendments: Schema.Array(WikiAmendmentSummary),
   /** The files that differ from the base now, which a later amendment can have put back. */
   files: Schema.Array(Schema.String),
+  /** Which of `files` are one file moved, both paths listed there. */
+  moves: Schema.optional(Schema.Array(Schema.Struct({ from: Schema.String, to: Schema.String }))),
 });
 export type WikiChangeRequest = typeof WikiChangeRequest.Type;
 

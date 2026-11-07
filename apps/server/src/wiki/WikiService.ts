@@ -250,6 +250,7 @@ export class WikiService extends Context.Service<
       readonly changeRequestId?: string;
       readonly commit?: string;
       readonly path: string;
+      readonly from?: string | undefined;
     }) => Effect.Effect<
       { readonly root: string; readonly commit: string; readonly path: string },
       WikiError
@@ -377,6 +378,11 @@ interface Snapshot {
   readonly index: WikiIndex;
   /** Every file that isn't a document. */
   readonly others: ReadonlyArray<WikiBlob>;
+}
+
+interface ChangedFiles {
+  readonly files: ReadonlyArray<string>;
+  readonly moves: ReadonlyArray<{ readonly from: string; readonly to: string }>;
 }
 
 /** A blob to write at each path, or null to delete it: a file no text could carry. */
@@ -532,7 +538,7 @@ const make = Effect.gen(function* () {
   const wikiLocks = new Map<string, Semaphore.Semaphore>();
   const snapshots = lru<Snapshot>(24);
   const amendmentLogs = lru<WikiChangeRequest["amendments"]>(128);
-  const changedFiles = lru<WikiChangeRequest["files"]>(128);
+  const changedFiles = lru<ChangedFiles>(128);
   const metadataRecords = lru<ChangeRequestRecord>(512);
   const editTimes = lru<WikiFileTimes>(24);
   const corpora = lru<BaseCorpus>(8);
@@ -1194,22 +1200,32 @@ const make = Effect.gen(function* () {
     const range = `${stored.record.base}..${stored.head}`;
     const cached = changedFiles.get(range);
     if (cached !== undefined) return cached;
-    const names = yield* runGit("changedFiles", wiki.root, [
-      "diff",
-      "--no-renames",
-      "--name-only",
-      "-z",
-      stored.record.base,
-      stored.head,
-    ]);
-    const files = names.stdout.split("\0").filter(Boolean);
-    changedFiles.set(range, files);
-    return files;
+    const listed = parseChangeList(
+      (yield* runGit("changedFiles", wiki.root, [
+        "diff",
+        "--find-renames",
+        "--name-status",
+        "-z",
+        stored.record.base,
+        stored.head,
+      ])).stdout,
+    );
+    // Both paths stay in `files`: whatever travels with a change request needs each.
+    const changed: ChangedFiles = {
+      files: listed
+        .flatMap(({ file, movedFrom }) => (movedFrom === undefined ? [file] : [movedFrom, file]))
+        .toSorted(),
+      moves: listed.flatMap(({ file, movedFrom }) =>
+        movedFrom === undefined ? [] : [{ from: movedFrom, to: file }],
+      ),
+    };
+    changedFiles.set(range, changed);
+    return changed;
   });
 
   const view = (wiki: WikiRecord, stored: StoredChangeRequest) =>
     Effect.all([amendmentsOf(wiki, stored), filesOf(wiki, stored)]).pipe(
-      Effect.map(([amendments, files]): WikiChangeRequest => ({
+      Effect.map(([amendments, { files, moves }]): WikiChangeRequest => ({
         changeRequestId: stored.record.changeRequestId,
         wikiId: wiki.wikiId,
         title: stored.record.title,
@@ -1225,6 +1241,7 @@ const make = Effect.gen(function* () {
         mergedCommit: stored.record.mergedCommit,
         amendments,
         files,
+        ...(moves.length === 0 ? {} : { moves }),
       })),
     );
 
@@ -2629,7 +2646,8 @@ const make = Effect.gen(function* () {
             ? {}
             : { changeRequestId: WikiChangeRequestId.make(input.changeRequestId) }),
         });
-        const entry = listedFile(yield* fileListingAt(wiki, commit), input.path);
+        const listing = yield* fileListingAt(wiki, commit);
+        const entry = listedFile(listing, input.path, input.from ?? null);
         if (entry === undefined) {
           return yield* new WikiError({
             reason: "not-found",

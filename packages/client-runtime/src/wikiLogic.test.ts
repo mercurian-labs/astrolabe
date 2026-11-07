@@ -6,13 +6,16 @@ import {
   documentFile,
   documentPath,
   documentTitle,
+  draftDocuments,
   draftLabel,
+  draftMovedTo,
   isDocumentFile,
   keepCanvasName,
   resolveWikiLink,
   wikiDocumentScope,
   wikiDraft,
   wikiLinkFile,
+  wikiLinkOpens,
   wikiSaveFailure,
 } from "./wikiLogic.ts";
 
@@ -107,6 +110,55 @@ describe("changeRequestCanvasReview", () => {
     expect(changeRequestCanvasReview(detail("open", null), "Other.canvas", after)).toBeNull();
     expect(changeRequestCanvasReview(detail("open", null), "Board.canvas", "{nope")).toBeNull();
     expect(changeRequestCanvasReview(null, "Board.canvas", after)).toBeNull();
+  });
+});
+
+describe("what a draft does to a wiki's list", () => {
+  const row = (file: string) => ({ name: file.replace(/\.md$/, ""), file });
+  const draft = {
+    files: ["Old.md", "shelf/New.md", "fresh/First.md", "fresh/shot.png", "Edited.md"],
+    moves: [{ from: "Old.md", to: "shelf/New.md" }],
+  } as unknown as WikiChangeRequest;
+
+  it("shows a moved document where it went, and a written one at all", () => {
+    const listed = draftDocuments([row("Old.md"), row("Edited.md")], draft, (file, name) => ({
+      name,
+      file,
+    }));
+    expect(listed.map(({ file }) => file)).toEqual(["shelf/New.md", "Edited.md", "fresh/First.md"]);
+    expect(draftMovedTo(draft, "Old.md")).toBe("shelf/New.md");
+    expect(draftMovedTo(draft, "Edited.md")).toBeUndefined();
+  });
+
+  it("leaves the list alone with no draft", () => {
+    const rows = [row("Old.md")];
+    expect(draftDocuments(rows, null, () => row("x"))).toBe(rows);
+  });
+});
+
+describe("what a link opens", () => {
+  const index = {
+    notes: [{ file: "a/Note.md" }],
+    canvases: [],
+    bases: [],
+    maps: [],
+  } as unknown as Parameters<typeof wikiLinkOpens>[0];
+  const placement = {
+    attachments: "root",
+    attachmentFolder: "",
+    newNotes: "beside",
+    newNoteFolder: "",
+  } as const;
+
+  it.each([
+    ["Note", "b/L.md", "a/Note.md"],
+    ["Red", "b/L.md", "b/Red.md"],
+    ["x/Red", "b/L.md", "x/Red.md"],
+    ["./Red", "b/L.md", null],
+    ["../Red", "b/L.md", null],
+    ["./Note", "a/L.md", "a/Note.md"],
+  ])("%s from %s opens %s", (target, from, file) => {
+    expect(wikiLinkOpens(index, target, from, placement)).toBe(file);
   });
 });
 

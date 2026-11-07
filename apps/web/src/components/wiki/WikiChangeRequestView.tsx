@@ -562,7 +562,7 @@ function AmendmentRow({
 function RawFileDiff({ change }: { readonly change: WikiFileChange }) {
   const { resolvedTheme } = useTheme();
   const diff = parseDiffFromFile(
-    { name: change.file, contents: change.before ?? "" },
+    { name: change.movedFrom ?? change.file, contents: change.before ?? "" },
     { name: change.file, contents: change.after ?? "" },
   );
   return (
@@ -590,14 +590,21 @@ function FileChange({
 }) {
   const [json, setJson] = useState(false);
   const isCanvas = isCanvasName(change.file);
-  const label = change.before === null ? "Added" : change.after === null ? "Deleted" : "Changed";
+  const label =
+    change.movedFrom !== undefined
+      ? `Moved from ${change.movedFrom}`
+      : change.before === null
+        ? "Added"
+        : change.after === null
+          ? "Deleted"
+          : "Changed";
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border">
       <div className="flex min-h-9 items-center gap-2 border-b border-border px-3">
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
           {change.file}
         </span>
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{label}</span>
         {isCanvas ? (
           <Button variant="ghost-muted" size="xs" onClick={() => setJson(!json)}>
             {json ? "Board" : "JSON"}
