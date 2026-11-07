@@ -57,30 +57,52 @@ function Choice<Value extends string>({
   );
 }
 
-/** A folder's path, saved when it's left. One no wiki can hold, `..` above all, isn't saved. */
-function FolderField({
+/**
+ * A row for a folder's path, saved as it's typed, as the rest of the page saves. One no wiki can
+ * hold, `..` above all, isn't saved, and the row says so.
+ */
+function FolderRow({
+  title,
+  description,
   label,
   value,
   onCommit,
 }: {
+  readonly title: string;
+  readonly description: string;
   readonly label: string;
   readonly value: string;
   readonly onCommit: (folder: string) => void;
 }) {
   const [text, setText] = useState(value);
-  const folder = settingsFolder(text);
+  const refused = settingsFolder(text) === null;
   return (
-    <Input
-      aria-label={label}
-      aria-invalid={folder === null}
-      className="w-full sm:w-48"
-      size="sm"
-      value={text}
-      spellCheck={false}
-      onChange={(event) => setText(event.target.value)}
-      onBlur={() => {
-        if (folder !== null && folder !== value) onCommit(folder);
-      }}
+    <SettingsRow
+      title={title}
+      description={description}
+      status={
+        refused ? (
+          <span className="text-destructive">
+            A wiki can't hold this folder, so it isn't saved. Use a path inside the wiki, without
+            `..` or `.git`.
+          </span>
+        ) : null
+      }
+      control={
+        <Input
+          aria-label={label}
+          aria-invalid={refused}
+          className="w-full sm:w-48"
+          size="sm"
+          value={text}
+          spellCheck={false}
+          onChange={(event) => {
+            setText(event.target.value);
+            const folder = settingsFolder(event.target.value);
+            if (folder !== null && folder !== value) onCommit(folder);
+          }}
+        />
+      }
     />
   );
 }
@@ -112,21 +134,17 @@ export function WikiLocationSettings({
         }
       />
       {locations.attachments === "folder" || locations.attachments === "subfolder" ? (
-        <SettingsRow
+        <FolderRow
+          key={locations.attachments}
           title={locations.attachments === "folder" ? "Attachment folder" : "Attachment subfolder"}
           description={
             locations.attachments === "folder"
               ? "A path from the top of the wiki."
               : "A path from the document's own folder."
           }
-          control={
-            <FolderField
-              key={locations.attachments}
-              label="Attachment folder"
-              value={locations.attachmentFolder}
-              onCommit={(attachmentFolder) => update({ attachmentFolder })}
-            />
-          }
+          label="Attachment folder"
+          value={locations.attachmentFolder}
+          onCommit={(attachmentFolder) => update({ attachmentFolder })}
         />
       ) : null}
       <SettingsRow
@@ -142,16 +160,12 @@ export function WikiLocationSettings({
         }
       />
       {locations.newNotes === "folder" ? (
-        <SettingsRow
+        <FolderRow
           title="New note folder"
           description="A path from the top of the wiki. If it doesn't exist, notes land at the top."
-          control={
-            <FolderField
-              label="New note folder"
-              value={locations.newNoteFolder}
-              onCommit={(newNoteFolder) => update({ newNoteFolder })}
-            />
-          }
+          label="New note folder"
+          value={locations.newNoteFolder}
+          onCommit={(newNoteFolder) => update({ newNoteFolder })}
         />
       ) : null}
     </SettingsSection>
