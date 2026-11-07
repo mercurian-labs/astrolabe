@@ -9,6 +9,7 @@ import {
   freePath,
   newNoteFile,
   pastedFileName,
+  typedNoteFile,
   pastedImageName,
   settingsFolder,
   type WikiPlacement,
@@ -104,6 +105,7 @@ describe("where a new note lands (ATTACHMENTS-REPORT C, LINKS-REPORT A5, rule 12
     ["deep/S", beside, "a/deep/L.md", "deep/S.md"],
     ["/S", beside, "a/L.md", "S.md"],
     ["/x/S", root, "a/L.md", "x/S.md"],
+    ["/x/C# notes.md", root, "a/L.md", "x/C# notes.md"],
     ["Plan.canvas", root, null, "Plan.canvas"],
     ["./S", beside, "a/L.md", null],
     ["../S", beside, "a/L.md", null],
@@ -113,6 +115,12 @@ describe("where a new note lands (ATTACHMENTS-REPORT C, LINKS-REPORT A5, rule 12
     ["", beside, null, null],
   ] as const)("%s, %o, from %s lands at %j", (target, placement, from, file) => {
     expect(newNoteFile(target, from, placement, files)).toBe(file);
+  });
+
+  it("keeps a typed name whole: it's a name, not a link", () => {
+    expect(typedNoteFile("Issue #12", "a/L.md", beside, files)).toBe("a/Issue #12.md");
+    expect(typedNoteFile(" x/C|D ", null, root, files)).toBe("x/C|D.md");
+    expect(typedNoteFile("./S", "a/L.md", beside, files)).toBeNull();
   });
 
   it.each([

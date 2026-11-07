@@ -1,4 +1,4 @@
-import { canvasFile, newNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
+import { canvasFile, typedNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
 import { isHidden } from "@mercurian/wiki/resolve-link";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import type { WikiId } from "@t3tools/contracts";
@@ -289,7 +289,7 @@ export function finderGroups(input: {
   const name = query.trim().endsWith("/") ? "" : query.trim();
   const taken = documents.some((document) => noteKey(document.name) === needle);
   const placed = (overview: WikiOverview) =>
-    newNoteFile(
+    typedNoteFile(
       name,
       from?.wikiId === overview.wiki.wikiId ? from.file : null,
       placement,

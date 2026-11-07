@@ -204,6 +204,10 @@ describe("resolveLink", () => {
       "docs/c#/a|b.md",
     );
   });
+
+  it.each(["/C# notes.md", "/C|notes.md"])("finds nothing else for the exact %s", (path) => {
+    expect(resolveLink(path, null, linkFiles(["C.md"]))).toEqual({ file: null, others: [] });
+  });
 });
 
 describe("unwrittenFile", () => {
@@ -214,6 +218,7 @@ describe("unwrittenFile", () => {
     ["x/S", "c/L.md", "x/S.md"],
     ["deep/S", "a/deep/L.md", "deep/S.md"],
     ["/S", "c/L.md", "S.md"],
+    ["/C# notes.md", "c/L.md", "C# notes.md"],
     ["./S", "c/L.md", "c/S.md"],
     ["../S", "a/deep/L.md", "a/S.md"],
     ["S#Heading|shown", "c/L.md", "c/S.md"],

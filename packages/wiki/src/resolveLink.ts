@@ -83,9 +83,14 @@ export interface ResolvedLink {
 
 const UNRESOLVED: ResolvedLink = { file: null, others: [] };
 
-/** A link's path: no heading, no alias, in a Markdown table's `\|` too. */
-export const linkPath = (target: string): string =>
-  (target.split(/\\?\|/)[0] ?? "").split("#")[0]?.trim() ?? "";
+/**
+ * A link's path: no heading, no alias, in a Markdown table's `\|` too. What starts with `/` is a
+ * whole path already, as clients read a file and a parsed link comes: `#` and `|` are its own.
+ */
+export const linkPath = (target: string): string => {
+  const text = target.trim();
+  return text.startsWith("/") ? text : ((text.split(/\\?\|/)[0] ?? "").split("#")[0]?.trim() ?? "");
+};
 
 const isRelative = (path: string) => path.startsWith("./") || path.startsWith("../");
 

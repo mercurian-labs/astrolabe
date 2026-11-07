@@ -2322,6 +2322,30 @@ it.effect(
     ),
 );
 
+it.effect("reads and saves a new note named with a # as itself, not the note before the #", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Issue.md": "The issue.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Issue"]);
+      const opened = yield* wikis.readNote({ wikiId, name: "/Issue #12.md" });
+      assert.isFalse(opened.exists);
+      assert.equal(opened.file, "Issue #12.md");
+      const saved = yield* wikis.autosave(
+        {
+          wikiId,
+          document: opened.file,
+          write: { kind: "text", file: opened.file, text: "Twelve.\n" },
+        },
+        WikiService.person,
+      );
+      assert.deepEqual(saved.changeRequest!.files, ["Issue #12.md"]);
+      assert.equal(yield* git(root, ["show", `${saved.commit}:Issue.md`]), "The issue.");
+    }),
+  ),
+);
+
 it.effect("makes a draft a change request, which merges; a draft itself doesn't", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

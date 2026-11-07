@@ -40,7 +40,7 @@ import {
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { DEFAULT_WIKI_CANVAS_SETTINGS } from "@t3tools/contracts";
-import { newNoteFile } from "@mercurian/wiki/placement";
+import { typedNoteFile } from "@mercurian/wiki/placement";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 
@@ -420,7 +420,7 @@ export function WikiCanvasScreen({
       case "place-note":
         return {
           kind: "value",
-          value: newNoteFile(ask.name, file, placement, documents ?? []),
+          value: typedNoteFile(ask.name, file, placement, documents ?? []),
         };
       case "write-note": {
         const { file: note, text, readAt } = ask;

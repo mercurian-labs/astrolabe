@@ -110,17 +110,16 @@ const hasFolder = (folder: string, files: Iterable<string>) => {
 };
 
 /**
- * Where a note named by a link or a person is written. A folder in `target` is a path from the
- * root, and makes folders. Without one, the setting decides, and a named folder that's missing
- * falls back to the root. `./` and `../` create nothing: null.
+ * Where a note is written. A folder in `text` is a path from the root, and makes folders. Without
+ * one, the setting decides, and a named folder that's missing falls back to the root. `./` and
+ * `../` create nothing: null.
  */
-export function newNoteFile(
-  target: string,
+function placedNote(
+  text: string,
   from: string | null,
   placement: WikiPlacement,
   files: Iterable<string>,
 ): string | null {
-  const text = linkPath(target);
   if (isRelative(text)) return null;
   const rooted = text.replace(/^\/+/, "");
   if (rooted === "") return null;
@@ -132,3 +131,19 @@ export function newNoteFile(
   const named = settingsFolder(placement.newNoteFolder);
   return named !== null && named !== "" && hasFolder(named, files) ? joined(named, file) : file;
 }
+
+/** Where the note a link names is written. */
+export const newNoteFile = (
+  target: string,
+  from: string | null,
+  placement: WikiPlacement,
+  files: Iterable<string>,
+): string | null => placedNote(linkPath(target), from, placement, files);
+
+/** Where a note a person named is written: their `#` and `|` start no heading or alias. */
+export const typedNoteFile = (
+  name: string,
+  from: string | null,
+  placement: WikiPlacement,
+  files: Iterable<string>,
+): string | null => placedNote(name.trim(), from, placement, files);

@@ -34,7 +34,7 @@ import {
   wikiLinkFile,
   wikiLinkOpens,
 } from "./wiki.logic";
-import { newNoteFile } from "@mercurian/wiki/placement";
+import { typedNoteFile } from "@mercurian/wiki/placement";
 import { toastManager } from "../ui/toast";
 import { useWikiAttachments } from "./useWikiAttachments";
 import { WikiBase } from "./WikiBaseView";
@@ -235,7 +235,7 @@ export function useWikiCanvasHost({
     placement,
   });
   const placeNote = useStableCallback((name: string) =>
-    newNoteFile(name, boardFile, placement, index.data ? wikiDocumentFiles(index.data) : []),
+    typedNoteFile(name, boardFile, placement, index.data ? wikiDocumentFiles(index.data) : []),
   );
   const renameDocument = useStableCallback(async (file: string, to: string) => {
     const from = file.replace(/\.md$/i, "");
