@@ -46,7 +46,7 @@ function LinkPreview({
 
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
-  const { mode, base, baseEditable, canvas, theme, linkTypes } = useSyncExternalStore(
+  const { mode, base, baseEditable, canvas, theme, linkTypes, linkScope } = useSyncExternalStore(
     page.subscribe,
     page.getState,
   );
@@ -87,6 +87,7 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
       readOnly={mode === "read"}
       onOpenNote={openNote}
       linkTypes={linkTypes}
+      linkScope={linkScope}
       renderLinkPreview={(link) => <LinkPreview page={page} link={link} />}
       onOpenUrl={(href) => post({ type: "openUrl", href })}
       renderBase={(source) => (

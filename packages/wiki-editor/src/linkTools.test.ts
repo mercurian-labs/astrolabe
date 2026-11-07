@@ -1,7 +1,9 @@
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vite-plus/test";
 
-import { noteExcerpt, nameSuggestions, typeSuggestions } from "./linkTools";
+import { linkFiles } from "@mercurian/wiki/resolve-link";
+
+import { noteExcerpt, nameSuggestions, peekOf, typeSuggestions } from "./linkTools";
 
 describe("noteExcerpt", () => {
   it("quotes a note's text without its frontmatter, title, code or markup", () => {
@@ -31,17 +33,32 @@ describe("noteExcerpt", () => {
   });
 });
 
+describe("peekOf", () => {
+  const scope = { files: linkFiles(["a/Name.md", "b/Name.md"]), from: "a/L.md" };
+  const doc = "[[Name|x @one]] [[a/Name|y @two]] [[b/Name|z @three]]";
+
+  it("gathers a link's types by the file it opens, however it's spelled", () => {
+    const state = EditorState.create({ doc });
+    expect(peekOf(state, "Name", scope)?.types).toEqual(["one", "two"]);
+    expect(peekOf(state, "b/Name", scope)?.types).toEqual(["three"]);
+    expect(peekOf(state, "Name", null)?.types).toEqual(["one"]);
+  });
+});
+
 describe("nameSuggestions", () => {
   const at = (before: string, after = "") =>
     nameSuggestions({ state: EditorState.create({ doc: before + after }), pos: before.length }, [
-      "Alpha",
-      "Board.canvas",
+      { label: "Alpha", apply: "Alpha" },
+      { label: "x/Board.canvas", apply: "x/Board.canvas|Board.canvas" },
     ]);
 
   it("offers the wiki's documents on a link's name", () => {
     expect(at("See [[")).toMatchObject({ from: 6 });
     expect(at("See [[Bo", "]]")?.from).toBe(6);
-    expect(at("[[")?.options.map((option) => option.label)).toEqual(["Alpha", "Board.canvas"]);
+    expect(at("[[")?.options.map((option) => option.apply)).toEqual([
+      "Alpha",
+      "x/Board.canvas|Board.canvas",
+    ]);
   });
 
   it("stays out of a link's heading, its display text, and everything else", () => {

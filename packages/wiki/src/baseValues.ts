@@ -468,11 +468,18 @@ export type Resolve = (path: string, from?: string) => BaseDoc | undefined;
 const fileName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 const stripHeading = (path: string): string => (path.split("#")[0] ?? "").trim();
 
-/** Which file a value names, so links, files and names compare: the file, or the path written. */
-export function identity(value: BaseValue, resolve: Resolve): string | undefined {
+/**
+ * Which file a value names, so links, files and names compare: the file, or the path written.
+ * Text is a link written in `textFrom`.
+ */
+export function identity(
+  value: BaseValue,
+  resolve: Resolve,
+  textFrom?: string,
+): string | undefined {
   if (tagged(value, "file") || tagged(value, "this")) return `file:${key(value.doc.file)}`;
   let path: string | undefined;
-  let from: string | undefined;
+  let from = textFrom;
   if (tagged(value, "link")) ({ path, from } = value);
   else if (typeof value === "string") path = linkOfText(value)?.path ?? value;
   if (path === undefined) return undefined;

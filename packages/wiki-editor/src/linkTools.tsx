@@ -2,6 +2,7 @@ import { autocompletion, type CompletionContext } from "@codemirror/autocomplete
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, showTooltip, type Tooltip } from "@codemirror/view";
 import { displayRuns, frontmatterEnd, key, links, typedLinks } from "@mercurian/wiki/links";
+import { resolveLink, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -16,10 +17,23 @@ export interface WikiLinkPeek {
   readonly types: ReadonlyArray<string>;
 }
 
+/** A document a `[[` can complete to: `label` lists it, `apply` is what the link writes. */
+export interface WikiLinkOption {
+  readonly label: string;
+  readonly apply: string;
+}
+
+/** What a note's links search: its wiki's files, from the note's own place. */
+export interface WikiLinkScope {
+  readonly files: WikiLinkFiles;
+  readonly from: string | null;
+}
+
 export interface WikiLinkToolsHost {
   readonly linkTypes: () => ReadonlyArray<string>;
-  /** The documents a `[[` can complete to: a note by name, a base or canvas by its file. */
-  readonly linkNames?: () => ReadonlyArray<string>;
+  readonly linkOptions?: () => ReadonlyArray<WikiLinkOption>;
+  /** Without one, two links are the same document only when they spell it alike. */
+  readonly linkScope?: () => WikiLinkScope | null;
   /** Fills `element` with a link's preview; returns what takes it down. */
   readonly drawPreview: (link: WikiLinkPeek, element: HTMLElement) => () => void;
 }
@@ -66,11 +80,20 @@ function linkAt(view: EditorView, pos: number) {
   return null;
 }
 
-function peekOf(state: EditorState, target: string): WikiLinkPeek | null {
+export function peekOf(
+  state: EditorState,
+  target: string,
+  scope: WikiLinkScope | null,
+): WikiLinkPeek | null {
   const name = wikilinkNoteName(target);
   if (name === null) return null;
-  const typed = typedLinks(state.doc.toString()).find((link) => key(link.target) === key(name));
-  return { name, types: typed?.types ?? [] };
+  const landed = (text: string) =>
+    (scope === null ? null : resolveLink(text, scope.from, scope.files).file) ?? key(text);
+  const wanted = landed(name);
+  const types = typedLinks(state.doc.toString()).flatMap((link) =>
+    landed(link.target) === wanted ? link.types : [],
+  );
+  return { name, types: [...new Set(types)] };
 }
 
 const openPress = StateEffect.define<Tooltip | null>();
@@ -116,14 +139,14 @@ const linking = /\[\[([^\]\n|#]*)$/;
 /** The wiki's documents, where the caret is on a link's name. */
 export function nameSuggestions(
   context: Pick<CompletionContext, "state" | "pos">,
-  names: ReadonlyArray<string>,
+  options: ReadonlyArray<WikiLinkOption>,
 ) {
   const line = context.state.doc.lineAt(context.pos);
   const match = linking.exec(line.text.slice(0, context.pos - line.from));
   if (!match) return null;
   return {
     from: context.pos - (match[1]?.length ?? 0),
-    options: names.map((label) => ({ label })),
+    options: options.map((option) => ({ ...option })),
     validFor: /^[^\]\n|#]*$/,
   };
 }
@@ -149,7 +172,7 @@ export function typeSuggestions(
  */
 export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
   const tooltip = (view: EditorView, from: number, to: number, target: string) => {
-    const link = peekOf(view.state, target);
+    const link = peekOf(view.state, target, host.linkScope?.() ?? null);
     if (link === null) return null;
     return {
       pos: from,
@@ -171,7 +194,7 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
       override: [
         (context) =>
           typeSuggestions(context, host.linkTypes()) ??
-          nameSuggestions(context, host.linkNames?.() ?? []),
+          nameSuggestions(context, host.linkOptions?.() ?? []),
       ],
     }),
     hoverTooltip((view, pos) => {
@@ -211,15 +234,18 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
 export function useWikiLinkTools(
   linkTypes: ReadonlyArray<string>,
   render: (link: WikiLinkPeek) => ReactNode,
-  linkNames: ReadonlyArray<string> = [],
+  linkOptions: ReadonlyArray<WikiLinkOption> = [],
+  linkScope: WikiLinkScope | null = null,
 ) {
   const types = useRef(linkTypes);
-  const names = useRef(linkNames);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types and names for the editor's completion source
+  const options = useRef(linkOptions);
+  const scope = useRef(linkScope);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types, options and scope for the editor's completion source
   useLayoutEffect(() => {
     types.current = linkTypes;
-    names.current = linkNames;
-  }, [linkTypes, linkNames]);
+    options.current = linkOptions;
+    scope.current = linkScope;
+  }, [linkTypes, linkOptions, linkScope]);
   const [open, setOpen] = useState<
     ReadonlyArray<{ id: number; link: WikiLinkPeek; element: HTMLElement }>
   >([]);
@@ -227,7 +253,8 @@ export function useWikiLinkTools(
     let next = 0;
     return {
       linkTypes: () => types.current,
-      linkNames: () => names.current,
+      linkOptions: () => options.current,
+      linkScope: () => scope.current,
       drawPreview: (link, element) => {
         const id = next++;
         setOpen((previews) => [...previews, { id, link, element }]);

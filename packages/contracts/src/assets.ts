@@ -37,6 +37,10 @@ export const AssetResource = Schema.Union([
     changeRequestId: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
     commit: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
     path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
+    /** The file linking to it, for a path that's a link's text. */
+    from: Schema.optionalKey(
+      TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
+    ),
   }),
   Schema.TaggedStruct("attachment", {
     attachmentId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),

@@ -5,7 +5,8 @@ import { useEffect, useRef } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
-import { wikiDocumentNames } from "./wiki.logic";
+import { wikiLinkOptions } from "./wiki.logic";
+import { useWikiTreeView } from "./wikiTreeView";
 import { WikiBase } from "./WikiBaseView";
 import { WikiMermaid } from "./WikiMermaid";
 import { WikiNoteEditor } from "./WikiNoteEditor";
@@ -36,6 +37,7 @@ export default function WikiCanvasCardEditor({
       input: { wikiId, ...(changeRequestId === undefined ? {} : { changeRequestId }) },
     }),
   );
+  const { showHidden } = useWikiTreeView();
   if (session === null) return null;
   return (
     <div ref={frame}>
@@ -43,7 +45,7 @@ export default function WikiCanvasCardEditor({
         session={session}
         onOpenNote={onOpenNote}
         linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
-        linkNames={index.data === null ? [] : wikiDocumentNames(index.data)}
+        linkOptions={index.data === null ? [] : wikiLinkOptions(index.data, showHidden)}
         renderLinkPreview={() => null}
         renderBase={(source) => (
           <WikiBase

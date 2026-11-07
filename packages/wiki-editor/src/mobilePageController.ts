@@ -2,6 +2,7 @@ import type { CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
 import { linkFiles, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
 
 import type { CanvasBoardHandle, CanvasBoardSettings } from "./CanvasBoard";
+import type { WikiLinkScope } from "./linkTools";
 import { CanvasDocument } from "./canvasDocument";
 import type { CanvasCamera } from "./canvasGeometry";
 import { WikiNoteBuffer } from "./noteBuffer";
@@ -52,6 +53,7 @@ export interface WikiEditorPageState {
   readonly theme: Extract<WikiEditorCommand, { type: "theme" }>["theme"] | null;
   /** The `@` types the wiki uses, which the editor suggests. */
   readonly linkTypes: ReadonlyArray<string>;
+  readonly linkScope: WikiLinkScope | null;
 }
 
 /**
@@ -75,6 +77,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     knownDocuments: null,
     theme: null,
     linkTypes: [],
+    linkScope: null,
   };
   const listeners = new Set<() => void>();
   const setState = (next: Partial<WikiEditorPageState>) => {
@@ -290,7 +293,13 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         setState({ base: command.source, baseEditable: command.editable === true });
         return;
       case "linkTypes":
-        setState({ linkTypes: command.types });
+        setState({
+          linkTypes: command.types,
+          linkScope:
+            command.files === undefined
+              ? null
+              : { files: linkFiles(command.files), from: command.from ?? null },
+        });
         return;
       case "noteRead":
         notes.set(command.name, command.source);

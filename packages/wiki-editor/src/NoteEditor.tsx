@@ -10,7 +10,12 @@ import { createPortal } from "react-dom";
 
 import type { WikiNoteSession } from "./noteBuffer";
 import { wikilinkNoteName } from "./incoming";
-import { useWikiLinkTools, wikilinkDisplay, type WikiLinkPeek } from "./linkTools";
+import {
+  useWikiLinkTools,
+  wikilinkDisplay,
+  type WikiLinkPeek,
+  type WikiLinkScope,
+} from "./linkTools";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -61,6 +66,7 @@ export function WikiNoteEditor({
   renderCanvasEmbed,
   renderMermaid,
   linkTypes,
+  linkScope,
   renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
@@ -68,6 +74,7 @@ export function WikiNoteEditor({
   readonly onOpenNote: (name: string) => void;
   /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
   readonly linkTypes: ReadonlyArray<string>;
+  readonly linkScope?: WikiLinkScope | null;
   /** What a link's preview shows, drawn into its popover. */
   readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
   /** Opens an external link; the editor opens a new window when omitted. */
@@ -119,7 +126,7 @@ export function WikiNoteEditor({
     };
   });
   const renderers = { base: renderBase, "canvas-embed": renderCanvasEmbed, mermaid: renderMermaid };
-  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview, [], linkScope ?? null);
   // One array for the editor's life: a new one would remount it.
   const [extensions] = useState(() => [...EXTENSIONS, linkTools.extension]);
   const drawsBases = renderBase !== undefined;

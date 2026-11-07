@@ -226,6 +226,21 @@ describe("queries", () => {
     expect(names(filter('note["kind"].lower().startsWith("ind")'))).toEqual(["Index"]);
   });
 
+  it("searches a literal link from the base's own folder", () => {
+    const corpus = baseCorpus([
+      { file: "a/Name.md", source: "" },
+      { file: "b/Name.md", source: "" },
+      { file: "b/Links.md", source: "[[Name]]" },
+      { file: "a/Links.md", source: "[[Name]]" },
+    ]);
+    const rows = (source: string, self: string) =>
+      queryBase(corpus, parseBase(source), { self, now: 0 }).rows.map((row) => row.file);
+    const base = (filter: string) => `filters: '${filter}'\nviews:\n  - type: table\n`;
+    expect(rows(base('file.hasLink("Name")'), "b/Q.base")).toEqual(["b/Links.md"]);
+    expect(rows(base('file.hasLink("Name")'), "a/Q.base")).toEqual(["a/Links.md"]);
+    expect(rows(base('file.links.contains(link("Name"))'), "b/Q.base")).toEqual(["b/Links.md"]);
+  });
+
   it("follows links and backlinks, and tags with their nesting", () => {
     expect(names(filter('file.hasLink("Textbook")'))).toEqual(["Alpha"]);
     expect(names(filter('file.hasLink("Unwritten")'))).toEqual(["Gamma"]);

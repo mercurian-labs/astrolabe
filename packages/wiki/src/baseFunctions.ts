@@ -276,7 +276,7 @@ function fileOf(value: BaseValue, scope: BaseScope): BaseValue {
       ? unwrapLink(value)
       : undefined;
   if (path === undefined) return null;
-  const from = tagged(value, "link") ? value.from : undefined;
+  const from = tagged(value, "link") ? value.from : scope.self?.file;
   const doc = scope.corpus.byPath(path) ?? scope.corpus.resolve(path, from);
   return doc ? { kind: "file", doc } : null;
 }
@@ -311,7 +311,14 @@ export function callGlobal(
           ? { kind: "url", href: path }
           : { kind: "url", href: path, display: label };
       }
-      return label === undefined ? { kind: "link", path } : { kind: "link", path, display: label };
+      // A literal is written in the base, so it searches from the base's folder.
+      const from = tagged(first, "link") ? first.from : scope.self?.file;
+      return {
+        kind: "link",
+        path,
+        ...(label === undefined ? {} : { display: label }),
+        ...(from === undefined ? {} : { from }),
+      };
     }
     case "list":
       return first === null ? [] : isList(first) ? first : [first];
@@ -369,7 +376,7 @@ function fileMethod(
 ): BaseValue | undefined {
   switch (name) {
     case "hasLink": {
-      const wanted = identity(args[0] ?? null, scope.corpus.resolve);
+      const wanted = identity(args[0] ?? null, scope.corpus.resolve, scope.self?.file);
       return (
         wanted !== undefined &&
         doc.links.some((link) => identity(link, scope.corpus.resolve) === wanted)
