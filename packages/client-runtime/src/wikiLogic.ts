@@ -105,6 +105,10 @@ export function describeWikiFailure(failure: unknown): string {
   return "The wiki request failed.";
 }
 
+/** Whether a wiki command failed because both sides changed the same sentences. */
+export const isWikiConflict = (failure: unknown): boolean =>
+  isWikiError(failure) && failure.reason === "conflict";
+
 function isWikiError(
   value: unknown,
 ): value is { readonly _tag: "WikiError"; readonly reason: string; readonly message: string } {

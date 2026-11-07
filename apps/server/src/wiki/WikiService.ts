@@ -2722,7 +2722,7 @@ const make = Effect.gen(function* () {
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `This ${wikiTerms(wiki).singular} conflicts with main in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then merge again.`,
+                message: `Main and this ${wikiTerms(wiki).singular} change the same sentences in ${conflicts.join(", ") || "some files"}.`,
               });
             }
             const now = yield* DateTime.now;

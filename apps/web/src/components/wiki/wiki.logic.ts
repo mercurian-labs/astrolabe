@@ -45,6 +45,7 @@ export {
   hostedPullRequestKeys,
   hostedWikis,
   isHostedPullRequest,
+  isWikiConflict,
   wikiPullRequestHost,
   PERSON_ACTOR,
   isTurnRunning,

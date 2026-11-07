@@ -52,6 +52,20 @@ describe("markdown merge", () => {
     ).toBe("One.\n\nThree.\n\nFour, edited.\n");
   });
 
+  it("keeps a sentence added after one the other side changed, as a person merging would", () => {
+    const base = "# Onboarding\n\nFirst day notes.\n\nBack to [[Home]].\n";
+    const added = "# Onboarding\n\nFirst day notes. Bring a pen.\n\nBack to [[Home]].\n";
+    const changed =
+      "# Onboarding\n\nFirst day notes include a check. Bring a notebook.\n\nBack to [[Home]].\n";
+    const both =
+      "# Onboarding\n\nFirst day notes include a check. Bring a notebook. Bring a pen.\n\nBack to [[Home]].\n";
+    expect(merged(base, added, changed)).toBe(both);
+    expect(merged(base, changed, added)).toBe(both);
+    // A change that already took the addition takes it once.
+    expect(merged(base, added, both)).toBe(both);
+    expect(merged("One.\n", "Zero.\n\nOne.\n", "One, edited.\n")).toBe("Zero.\n\nOne, edited.\n");
+  });
+
   it("treats changes to touching paragraphs as a conflict, as diff3 and git do", () => {
     const base = "One.\n\nTwo.\n\nThree.\n";
     expect(merged(base, "One.\n\nThree.\n", "One.\n\nTwo.\n\nThree, edited.\n")).toBe("CONFLICT");

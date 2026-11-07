@@ -48,8 +48,8 @@ import {
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { type PullRequestDetailTab, useRightPanelStore } from "~/rightPanelStore";
 import { wikiEnvironment } from "~/state/wiki";
-import { wikiMergeMethod } from "../wiki/wiki.logic";
-import { useWikiCommand, useWikiOfPullRequest } from "../wiki/wikiEnvironment";
+import { describeWikiFailure, isWikiConflict, wikiMergeMethod } from "../wiki/wiki.logic";
+import { useWikiOfPullRequest } from "../wiki/wikiEnvironment";
 import { useConfirmWikiMerge, WikiPullRequestTab } from "../wiki/WikiPullRequestTab";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
@@ -369,10 +369,9 @@ export function PullRequestDetailPanel({
   // Astrolabe: a host wiki's change request is reviewed here, with the wiki's reading as a tab.
   const wikiChange = useWikiOfPullRequest(environmentId, reference);
   const confirmWikiMerge = useConfirmWikiMerge(environmentId, wikiChange);
-  const resolveWikiConflicts = useWikiCommand(
-    wikiEnvironment.resolveConflicts,
-    "Couldn't resolve the conflicts",
-  );
+  const resolveWikiConflicts = useAtomCommand(wikiEnvironment.resolveConflicts, {
+    reportFailure: false,
+  });
   const [resolvingWiki, setResolvingWiki] = useState(false);
   const [selectedTab, setTab] = useState<PullRequestDetailTab>(initialTab);
   const reviewGuidesEnabled = useEnvironmentSettings(
@@ -1253,33 +1252,45 @@ export function PullRequestDetailPanel({
       />
     ) : null;
 
-  const resolveConflictsControl =
-    wikiChange === null ? (
-      <PullRequestResolveConflictsButton
-        handoff={handoff}
-        unavailable={attachTarget === null && (checkoutRoot === null || !canPrepareWorktree)}
-        onResolve={startResolveConflicts}
-      />
-    ) : (
-      // A wiki's notes merge by markdown, which settles what the host's line merge cannot.
-      <PullRequestResolveConflictsButton
-        handoff={resolvingWiki ? "conflicts" : handoff}
-        unavailable={!canWriteSourceControl}
-        onResolve={() => {
-          setResolvingWiki(true);
-          void resolveWikiConflicts({
-            environmentId,
-            input: {
-              wikiId: wikiChange.changeRequest.wikiId,
-              changeRequestId: wikiChange.changeRequest.changeRequestId,
-            },
-          }).then(() => {
-            setResolvingWiki(false);
-            refreshDetail();
-          });
-        }}
-      />
-    );
+  const handoffUnavailable =
+    attachTarget === null && (checkoutRoot === null || !canPrepareWorktree);
+  // A wiki's notes merge by markdown first, which settles what the host's line merge cannot;
+  // sentences both sides changed go to an agent, as any pull request's conflicts do.
+  const resolveWiki = async (change: NonNullable<typeof wikiChange>) => {
+    setResolvingWiki(true);
+    const result = await resolveWikiConflicts({
+      environmentId,
+      input: {
+        wikiId: change.changeRequest.wikiId,
+        changeRequestId: change.changeRequest.changeRequestId,
+      },
+    });
+    setResolvingWiki(false);
+    refreshDetail();
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+    const failure = squashAtomCommandFailure(result);
+    if (isWikiConflict(failure) && !handoffUnavailable) {
+      toastManager.add({
+        type: "info",
+        title: "An agent is resolving the rest",
+        description: describeWikiFailure(failure),
+      });
+      startResolveConflicts();
+      return;
+    }
+    toastManager.add({
+      type: "error",
+      title: "Couldn't resolve the conflicts",
+      description: describeWikiFailure(failure),
+    });
+  };
+  const resolveConflictsControl = (
+    <PullRequestResolveConflictsButton
+      handoff={resolvingWiki ? "conflicts" : handoff}
+      unavailable={wikiChange === null ? handoffUnavailable : !canWriteSourceControl}
+      onResolve={wikiChange === null ? startResolveConflicts : () => void resolveWiki(wikiChange)}
+    />
+  );
 
   const paneHeading = inPane ? (
     <PullRequestTabHeading

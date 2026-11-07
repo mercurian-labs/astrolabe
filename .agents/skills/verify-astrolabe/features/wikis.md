@@ -191,7 +191,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Once on the host, its tab is the pull request screen (`PullRequestDetailPanel`) with a
   **Wiki** tab (amendments with Revert, notes changed with Open, Publish now while work is
   unpublished); its header's merge starts on Merge commit, not Squash; when it conflicts,
-  **Resolve conflicts** merges main in by markdown and pushes, with no agent handoff; a merge
+  **Resolve conflicts** merges main in by markdown and pushes, handing off to an agent only for sentences both sides changed; a merge
   or close there shows on the wiki at once (`subscribeMerges`, `subscribeStateChanges`). A
   wiki change not yet on the host keeps the wiki's own screen, with no Merge. On the phone,
   the wiki screen's ⋯ has `Review the pull request` in place of Merge into main. Walk it on a

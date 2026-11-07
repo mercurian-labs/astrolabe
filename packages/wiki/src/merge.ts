@@ -1,8 +1,6 @@
 /**
- * A three-way merge for markdown notes that works on paragraphs, then sentences, instead of
- * lines. Git's line merge calls two edits to one long paragraph a conflict even when they touch
- * different sentences; this resolves those, and reports a conflict only when both sides changed
- * the same sentence differently. Text round-trips exactly: tokens keep their separators.
+ * A three-way markdown merge by paragraphs, then sentences, instead of lines: it conflicts only
+ * where both sides changed the same sentence, or sentences that touch. Text round-trips exactly.
  */
 
 export type MergeOutcome =
@@ -16,10 +14,13 @@ export function paragraphs(text: string): Tokens {
   return text.match(/[\s\S]*?(?:\n[ \t]*\n+|$)/g)?.filter((token) => token.length > 0) ?? [];
 }
 
-/** Sentence tokens inside a paragraph: each sentence keeps its trailing space or line break. */
+/**
+ * Sentence tokens inside a paragraph: each sentence keeps the space before it, so a sentence
+ * added after another leaves that one's token as it was.
+ */
 export function sentences(text: string): Tokens {
   return (
-    text.match(/[^.!?\n]*(?:[.!?]+(?=\s|$)[ \t]*|\n|$)/g)?.filter((token) => token.length > 0) ?? []
+    text.match(/[ \t]*[^.!?\n]*(?:[.!?]+(?=\s|$)|\n|$)/g)?.filter((token) => token.length > 0) ?? []
   );
 }
 
@@ -55,6 +56,25 @@ function matches(base: Tokens, other: Tokens): number[] {
 
 const same = (a: Tokens, b: Tokens): boolean =>
   a.length === b.length && a.every((t, i) => t === b[i]);
+
+/**
+ * One side only added tokens before or after `base`, the other changed it: both are kept, and an
+ * addition the changed side already made is taken once. Null when that is not the case.
+ */
+function besideChange(base: Tokens, added: Tokens, changed: Tokens): Tokens | null {
+  if (base.length === 0 || changed.length === 0) return null;
+  for (let start = 0; start + base.length <= added.length; start++) {
+    if (!same(added.slice(start, start + base.length), base)) continue;
+    const before = added.slice(0, start);
+    const after = added.slice(start + base.length);
+    return [
+      ...(same(changed.slice(0, before.length), before) ? [] : before),
+      ...changed,
+      ...(same(changed.slice(changed.length - after.length), after) ? [] : after),
+    ];
+  }
+  return null;
+}
 
 type Region =
   | { readonly kind: "stable"; readonly tokens: Tokens }
@@ -116,14 +136,22 @@ function mergeTokens(
       text += region.tokens.join("");
       continue;
     }
-    if (!finer) return { status: "conflict" };
-    const inner = mergeTokens(
-      finer(region.base.join("")),
-      finer(region.ours.join("")),
-      finer(region.theirs.join("")),
-    );
-    if (inner.status === "conflict") return inner;
-    text += inner.text;
+    const inner = finer
+      ? mergeTokens(
+          finer(region.base.join("")),
+          finer(region.ours.join("")),
+          finer(region.theirs.join("")),
+        )
+      : ({ status: "conflict" } as const);
+    if (inner.status === "merged") {
+      text += inner.text;
+      continue;
+    }
+    const kept =
+      besideChange(region.base, region.ours, region.theirs) ??
+      besideChange(region.base, region.theirs, region.ours);
+    if (kept === null) return inner;
+    text += kept.join("");
   }
   return { status: "merged", text };
 }
