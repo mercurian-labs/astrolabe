@@ -788,9 +788,10 @@ export const PaneView = memo(function PaneView({
   useEffect(() => {
     const pane = section.current;
     if (!pane) return;
-    // A sidebar's document dropped on an editable board goes on the board, not in a tab.
-    const forBoard = (event: globalThis.DragEvent, item: { readonly place?: unknown }) =>
-      item.place !== undefined &&
+    // A sidebar's row dropped on an editable board goes on the board, not in a tab. A folder's
+    // has no tab to open, so only `keys` tells a row from a tab.
+    const forBoard = (event: globalThis.DragEvent, item: { readonly keys: readonly string[] }) =>
+      item.keys.length === 0 &&
       event.target instanceof Element &&
       event.target.closest("[data-takes-documents]") !== null;
     const onDragEnter = (event: globalThis.DragEvent) => {
