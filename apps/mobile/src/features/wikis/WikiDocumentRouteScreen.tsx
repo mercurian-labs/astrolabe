@@ -5,6 +5,7 @@ import type {
 } from "@mercurian/wiki-editor/protocol";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import {
   documentFile,
   documentTitle,
@@ -32,8 +33,11 @@ import { LoadingScreen } from "../../components/LoadingScreen";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Toolbar } from "../../components/ui/Toolbar";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { assetEnvironment } from "../../state/assets";
 import { useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { usePreparedConnection } from "../../state/session";
+import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { wikiEnvironment } from "../../state/wiki";
 import {
   isSkillMapFile,
@@ -57,6 +61,8 @@ import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./docume
 import { WikiBaseScreen } from "./WikiBaseScreen";
 import { WikiCanvasScreen } from "./WikiCanvasScreen";
 import type { WikiDocumentParams } from "./wikiRoutes";
+
+const QUIET_MINT = { reportFailure: false, reportDefect: false, refresh: true };
 
 /** Whether the change request's thread is mid-turn, and the run it is in. */
 function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId | null | undefined) {
@@ -248,10 +254,36 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     editor.current?.send({ type: "fileRead", path, file: read });
   }, []);
 
+  const mintUrl = useAtomQueryRunner(assetEnvironment.createUrl, QUIET_MINT);
+  const connection = usePreparedConnection(environmentId);
+  const httpBaseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
+  /** An image the note embeds: found from the note, at the commit it reads. */
+  const answerAsset = async (path: string) => {
+    const revision = data?.commit;
+    if (revision === undefined) return;
+    const result = await mintUrl({
+      environmentId,
+      input: {
+        resource: { _tag: "wiki-file", wikiId, commit: revision, path, from: file ?? requested },
+      },
+    });
+    const state = assetUrlStateFromResult(result, httpBaseUrl);
+    editor.current?.send({
+      type: "assetRead",
+      path,
+      revision,
+      url: state._tag === "Success" ? state.url : null,
+      expiresAt: state._tag === "Success" ? state.expiresAt : 0,
+    });
+  };
+
   const onEvent = (event: WikiEditorEvent) => {
     switch (event.type) {
       case "readNote":
         setPreviewNames((names) => (names.includes(event.name) ? names : [...names, event.name]));
+        return;
+      case "readAsset":
+        void answerAsset(event.path);
         return;
       case "readFile": {
         const known = embeddedFiles.current.get(event.path);

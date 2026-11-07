@@ -10,6 +10,7 @@ import { useWikiTreeView } from "./wikiTreeView";
 import { WikiBase } from "./WikiBaseView";
 import { WikiMermaid } from "./WikiMermaid";
 import { WikiNoteEditor } from "./WikiNoteEditor";
+import { useWikiEmbeds } from "./useWikiEmbeds";
 
 const NO_LINK_TYPES: ReadonlyArray<string> = [];
 
@@ -19,14 +20,24 @@ export default function WikiCanvasCardEditor({
   environmentId,
   wikiId,
   changeRequestId,
+  commit,
+  boardFile,
   onOpenNote,
 }: {
   readonly editor: CanvasCardEditor;
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly commit: string;
+  readonly boardFile: string;
   readonly onOpenNote: (name: string) => void;
 }) {
+  const { resolveEmbed } = useWikiEmbeds({
+    environmentId,
+    wikiId,
+    commit,
+    from: editor.file ?? boardFile,
+  });
   const session = useCanvasCardSession(editor);
   const frame = useRef<HTMLDivElement>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync, react/exhaustive-effect-dependencies -- the caret goes in once the session's editor exists
@@ -47,6 +58,7 @@ export default function WikiCanvasCardEditor({
         linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
         linkOptions={index.data === null ? [] : wikiLinkOptions(index.data, showHidden)}
         renderLinkPreview={() => null}
+        resolveEmbed={resolveEmbed}
         renderBase={(source) => (
           <WikiBase
             environmentId={environmentId}

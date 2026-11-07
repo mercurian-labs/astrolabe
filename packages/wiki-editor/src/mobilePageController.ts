@@ -5,6 +5,7 @@ import type { CanvasBoardHandle, CanvasBoardSettings } from "./CanvasBoard";
 import type { WikiLinkScope } from "./linkTools";
 import { CanvasDocument } from "./canvasDocument";
 import type { CanvasCamera } from "./canvasGeometry";
+import type { WikiEmbedAddress } from "./incoming";
 import { WikiNoteBuffer } from "./noteBuffer";
 import type {
   WikiEditorBaseResult,
@@ -44,7 +45,7 @@ export interface WikiEditorPageState {
   readonly settings: CanvasBoardSettings | undefined;
   /** What a review marks on the board. */
   readonly marks: CanvasMarks | null;
-  /** The commit a wiki's board reads at; null for a thread's, which reads nothing. */
+  /** The commit a wiki's note or board reads at; null for a thread's, which reads nothing. */
   readonly revision: string | null;
   /** Where the board opens; null fits it. */
   readonly camera: CanvasCamera | null;
@@ -195,6 +196,21 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     };
   };
 
+  /** Where a file is, once the app says: at the commit shown, or the last one that had it. */
+  const assetAddress = (path: string) =>
+    new Promise<WikiEmbedAddress>((resolve) => {
+      let stop = () => {};
+      const answered = () => {
+        const known = assets.get(path);
+        if (known === undefined) return;
+        if (known.url === null && known.revision !== (state.revision ?? "")) return;
+        stop();
+        resolve(known);
+      };
+      stop = watchAsset(path, answered);
+      answered();
+    });
+
   // The files a note embeds, by path: asked for once each, then kept current by the app.
   const files = new Map<string, WikiEditorEmbeddedFile>();
   const fileListeners = new Set<() => void>();
@@ -263,6 +279,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     switch (command.type) {
       case "receive":
         buffer.receive(command.source, command.author, command.commit ?? null);
+        setState({ revision: command.commit ?? null });
         // Outside a running turn a write is the whole turn: it settles at once.
         if (!command.turnRunning) buffer.endTurn();
         return;
@@ -394,6 +411,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     readFiles,
     readCodeStatus,
     watchAsset,
+    assetAddress,
     /** A file's address at the commit shown, null when it has none, undefined until told. */
     getAsset: (path: string): string | null | undefined => assets.get(path)?.url,
     watchFile,

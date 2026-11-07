@@ -3,7 +3,7 @@ import "@mercurian/editor/markdown/katex.css";
 
 import { agentChangeBar } from "@mercurian/editor/collab/agent-changes";
 import { AtlasEditor } from "@mercurian/editor/editor";
-import type { LivePreviewOptions } from "@mercurian/editor/markdown";
+import type { EmbedSource, LivePreviewOptions } from "@mercurian/editor/markdown";
 import { EditorView } from "@codemirror/view";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -65,6 +65,7 @@ export function WikiNoteEditor({
   renderBase,
   renderCanvasEmbed,
   renderMermaid,
+  resolveEmbed,
   linkTypes,
   linkScope,
   renderLinkPreview,
@@ -88,15 +89,19 @@ export function WikiNoteEditor({
   readonly renderCanvasEmbed?: (target: string) => ReactNode;
   /** A ```mermaid block's diagram, from its source; it shows until the block is edited. */
   readonly renderMermaid?: (source: string) => ReactNode;
+  /** Where an embedded image is; without it, it shows broken. */
+  readonly resolveEmbed?: (target: string) => EmbedSource;
 }) {
   // Read through refs, so the preview options stay one object and never remount the editor.
   const openNoteRef = useRef(onOpenNote);
   const openUrlRef = useRef(onOpenUrl);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest note and URL open handlers for the editor's link callbacks
+  const resolveEmbedRef = useRef(resolveEmbed);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest handlers for the editor's link and embed callbacks
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
     openUrlRef.current = onOpenUrl;
-  }, [onOpenNote, onOpenUrl]);
+    resolveEmbedRef.current = resolveEmbed;
+  }, [onOpenNote, onOpenUrl, resolveEmbed]);
   const hasOpenUrl = onOpenUrl !== undefined;
   // The blocks the editor draws, each filled through a portal, so the view keeps this tree.
   const [hostBlocks, setHostBlocks] = useState<
@@ -139,8 +144,7 @@ export function WikiNoteEditor({
       ...(hasOpenUrl ? { openUrl: (href: string) => openUrlRef.current?.(href) } : {}),
       linksOpenOnClick: true,
       wikilinkDisplay,
-      // Embeds name wiki files, which the page cannot serve as images yet.
-      resolveEmbed: () => null,
+      resolveEmbed: (target) => resolveEmbedRef.current?.(target) ?? null,
       ...(drawsBases ? { codeBlocks, embedBlocks } : {}),
     }),
     [hasOpenUrl, drawsBases, codeBlocks, embedBlocks],

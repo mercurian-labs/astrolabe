@@ -5,6 +5,45 @@ export function wikilinkNoteName(target: string): string | null {
   return name.length > 0 ? name : null;
 }
 
+/** An embedded file's address, and when to look for it again. */
+export interface WikiEmbedAddress {
+  readonly url: string | null;
+  readonly expiresAt: number;
+}
+
+const NO_ADDRESS_MS = 60_000;
+
+/**
+ * A note's embeds as an editor asks for them, on every redraw: one promise per target until its
+ * address runs out, so typing neither reloads an image nor asks again for a missing one.
+ */
+export function wikiEmbeds(
+  find: (target: string) => Promise<WikiEmbedAddress>,
+  now: () => number = Date.now,
+) {
+  const known = new Map<string, { url: Promise<string | null>; expiresAt: number }>();
+  return (target: string): Promise<string | null> => {
+    const held = known.get(target);
+    if (held !== undefined && held.expiresAt > now()) return held.url;
+    const entry = {
+      url: Promise.resolve<string | null>(null),
+      expiresAt: Number.POSITIVE_INFINITY,
+    };
+    entry.url = find(target).then(
+      ({ url, expiresAt }) => {
+        entry.expiresAt = url === null ? now() + NO_ADDRESS_MS : expiresAt;
+        return url;
+      },
+      () => {
+        entry.expiresAt = now() + NO_ADDRESS_MS;
+        return null;
+      },
+    );
+    known.set(target, entry);
+    return entry.url;
+  };
+}
+
 const OTHERS_SHOWN = 3;
 
 const pathOf = (file: string) => file.replace(/\.md$/i, "");

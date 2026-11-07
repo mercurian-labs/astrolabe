@@ -314,6 +314,8 @@ export function useWikiCanvasHost({
           environmentId={environmentId}
           wikiId={wikiId}
           changeRequestId={changeRequestId}
+          commit={commit}
+          boardFile={boardFile}
           onOpenNote={openNote}
         />
       </Suspense>

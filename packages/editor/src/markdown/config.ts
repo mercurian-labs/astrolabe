@@ -1,12 +1,19 @@
 import { Facet } from "@codemirror/state";
 import { defaultUrlPolicy, type UrlPolicy } from "./url.ts";
 
+/** Where an embedded image comes from: see `LivePreviewOptions.resolveEmbed`. */
+export type EmbedSource = string | null | Promise<string | null>;
+
 /** What a host can supply to the live preview. Every field is optional. */
 export interface LivePreviewOptions {
   /** Decides which link targets and image sources may be used. */
   urlPolicy?: UrlPolicy;
-  /** Turns an embed target such as `pic.png` into an image URL; `null` shows a broken image. */
-  resolveEmbed?: (target: string) => string | null;
+  /**
+   * Turns an embed target such as `pic.png` into an image URL; `null` shows a broken image. An
+   * address found later comes as a promise, and the same promise for as long as it holds: a new
+   * one redraws the image.
+   */
+  resolveEmbed?: (target: string) => EmbedSource;
   /** Called on Mod-click of a wikilink or embed with its raw target. */
   openWikilink?: (target: string) => void;
   /**
@@ -66,7 +73,7 @@ export type WikilinkDisplay = (
 
 export interface ResolvedConfig {
   urlPolicy: UrlPolicy;
-  resolveEmbed: (target: string) => string | null;
+  resolveEmbed: (target: string) => EmbedSource;
   openWikilink: ((target: string) => void) | null;
   wikilinkDisplay: WikilinkDisplay | null;
   openUrl: ((href: string) => void) | null;

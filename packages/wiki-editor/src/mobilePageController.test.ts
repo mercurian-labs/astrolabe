@@ -276,6 +276,30 @@ describe("the wiki editor protocol", () => {
       stop();
     });
 
+    it("gives a note's embed its address, once the app has said where it is", async () => {
+      const { page: editor, events } = page();
+      editor.handle({
+        type: "receive",
+        source: "![[a.png]]",
+        author: null,
+        turnRunning: false,
+        commit: "one",
+      });
+      const address = editor.assetAddress("a.png");
+      expect(events.filter((event) => event.type === "readAsset")).toHaveLength(1);
+      const expiresAt = Number.MAX_SAFE_INTEGER;
+      editor.handle({
+        type: "assetRead",
+        path: "a.png",
+        revision: "one",
+        url: "http://host/a",
+        expiresAt,
+      });
+      expect(await address).toMatchObject({ url: "http://host/a", expiresAt });
+      await editor.assetAddress("a.png");
+      expect(events.filter((event) => event.type === "readAsset")).toHaveLength(1);
+    });
+
     it("asks again for an address that has stopped working", () => {
       const { page: editor, events } = page();
       editor.handle({ type: "showCanvas", data: board, revision: "one" });

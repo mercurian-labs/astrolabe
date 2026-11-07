@@ -3,7 +3,7 @@ import { syntaxTree } from "@codemirror/language";
 import { Transaction } from "@codemirror/state";
 import { EditorView, WidgetType } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
-import { previewConfig, type CodeBlockRenderer } from "./config.ts";
+import { previewConfig, type CodeBlockRenderer, type EmbedSource } from "./config.ts";
 import { foldableBlockAt } from "./documentIndex.ts";
 import { lineMarkers } from "./lineMarkers.ts";
 import { fillMath } from "./math.ts";
@@ -210,7 +210,7 @@ function toggleTaskAt(view: EditorView, pos: number) {
 }
 
 interface ImageSpec {
-  src: string | null;
+  src: EmbedSource;
   alt: string;
   href: string | null;
   width: number | null;
@@ -244,29 +244,34 @@ export class ImageWidget extends WidgetType {
       wrapper.title = href;
     }
     if (embed !== null) wrapper.dataset.embed = embed;
-    if (src === null) {
-      const broken = span("cm-md-image-broken", alt);
-      broken.setAttribute("role", "img");
-      broken.setAttribute("aria-label", alt || "Blocked image");
-      wrapper.append(broken);
-    } else {
+    const show = (url: string | null) => {
+      if (url === null) {
+        const broken = span("cm-md-image-broken", alt);
+        broken.setAttribute("role", "img");
+        broken.setAttribute("aria-label", alt || "Blocked image");
+        wrapper.replaceChildren(broken);
+        view.requestMeasure();
+        return;
+      }
       const img = document.createElement("img");
-      img.src = src;
+      img.src = url;
       img.alt = alt;
       img.loading = "lazy";
       img.decoding = "async";
       if (width !== null) img.width = width;
       // A loaded image changes the line height; let CodeMirror re-measure.
       img.addEventListener("load", () => view.requestMeasure());
-      wrapper.append(img);
-    }
+      wrapper.replaceChildren(img);
+    };
+    if (src instanceof Promise) void src.then(show);
+    else show(src);
     wrapper.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       if (opensLink(view, event)) {
         if (href) openExternal(view, href);
         else if (embed !== null) view.state.facet(previewConfig).openWikilink?.(embed);
-        else if (src) openExternal(view, src);
+        else if (typeof src === "string") openExternal(view, src);
         return;
       }
       placeCaret(view, sourceStart(view, view.posAtDOM(wrapper)));

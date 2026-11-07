@@ -99,6 +99,7 @@ function filesIntoNote(
 const previewOptions = (
   keys: LivePreviewOptions["keys"],
   openNote: (name: string) => void,
+  resolveEmbed: NonNullable<LivePreviewOptions["resolveEmbed"]>,
   codeBlocks: NonNullable<LivePreviewOptions["codeBlocks"]>,
   embedBlocks: NonNullable<LivePreviewOptions["embedBlocks"]>,
 ): LivePreviewOptions => ({
@@ -106,8 +107,7 @@ const previewOptions = (
     const name = wikilinkNoteName(target);
     if (name !== null) openNote(name);
   },
-  // Embeds name wiki files, which the page cannot serve as images yet.
-  resolveEmbed: () => null,
+  resolveEmbed,
   wikilinkDisplay,
   ...(keys === undefined ? {} : { keys }),
   codeBlocks,
@@ -155,6 +155,7 @@ export function WikiNoteEditor({
   linkOptions,
   linkScope,
   onAttach,
+  resolveEmbed,
   renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
@@ -179,15 +180,19 @@ export function WikiNoteEditor({
     files: ReadonlyArray<File>,
     arrival: WikiFileArrival,
   ) => Promise<ReadonlyArray<string>>;
+  /** Where an embedded image is; without it, it shows broken. */
+  readonly resolveEmbed?: NonNullable<LivePreviewOptions["resolveEmbed"]>;
   /** What a link's preview shows, drawn into its popover. */
   readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
 }) {
-  // Read through a ref, so the preview options never change with it.
+  // Read through refs, so the preview options never change with them.
   const openNoteRef = useRef(onOpenNote);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest note-open handler for the editor's preview options
+  const resolveEmbedRef = useRef(resolveEmbed);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest handlers for the editor's preview options
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
-  }, [onOpenNote]);
+    resolveEmbedRef.current = resolveEmbed;
+  }, [onOpenNote, resolveEmbed]);
   const writeRef = useRef(onWrite);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest write handler for the editor's Vim save key
   useLayoutEffect(() => {
@@ -220,6 +225,7 @@ export function WikiNoteEditor({
     };
     return {
       openNote: (name: string) => openNoteRef.current(name),
+      resolveEmbed: (target: string) => resolveEmbedRef.current?.(target) ?? null,
       codeBlocks: { base: draw("base"), mermaid: draw("mermaid") },
       embedBlocks: { base: draw("base-embed"), canvas: draw("canvas-embed") },
     };
@@ -238,11 +244,23 @@ export function WikiNoteEditor({
   const findKeys = useEditorFindKeys();
   const [preview, setPreview] = useState(() => ({
     keys,
-    options: previewOptions(keys, stable.openNote, stable.codeBlocks, stable.embedBlocks),
+    options: previewOptions(
+      keys,
+      stable.openNote,
+      stable.resolveEmbed,
+      stable.codeBlocks,
+      stable.embedBlocks,
+    ),
   }));
   let livePreview = preview.options;
   if (preview.keys !== keys) {
-    livePreview = previewOptions(keys, stable.openNote, stable.codeBlocks, stable.embedBlocks);
+    livePreview = previewOptions(
+      keys,
+      stable.openNote,
+      stable.resolveEmbed,
+      stable.codeBlocks,
+      stable.embedBlocks,
+    );
     setPreview({ keys, options: livePreview });
   }
   return (

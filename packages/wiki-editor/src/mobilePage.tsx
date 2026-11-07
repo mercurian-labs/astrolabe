@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 
 import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
+import { wikiEmbeds } from "./incoming";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiLinkPreview, type WikiLinkPeek } from "./linkTools";
 import { MobileCanvas, MobileCanvasEmbed } from "./mobileCanvas";
@@ -102,11 +103,13 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
         <MobileCanvasEmbed page={page} target={target} onOpen={openNote} />
       )}
       renderMermaid={(source) => <MobileMermaid source={source} />}
+      resolveEmbed={resolveEmbed}
     />
   );
 }
 
 const page = createWikiEditorPage(post);
+const resolveEmbed = wikiEmbeds(page.assetAddress);
 window[WIKI_EDITOR_RECEIVE] = (raw) => {
   const command = parseWikiEditorCommand(raw);
   if (command) page.handle(command);

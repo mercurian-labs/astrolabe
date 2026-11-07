@@ -30,8 +30,10 @@ export function useWikiAttachments(input: {
   readonly savesTo: WikiChangeRequestId | undefined;
   readonly source: string | null;
   readonly placement: WikiPlacement;
+  /** The commit an attachment just landed in. */
+  readonly onLanded?: (commit: string) => void;
 }) {
-  const { environmentId, wikiId, savesTo, source, placement } = input;
+  const { environmentId, wikiId, savesTo, source, placement, onLanded } = input;
   const landing = savesTo === undefined ? {} : { changeRequestId: savesTo };
   const send = useWikiAutosaveCommand();
   const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
@@ -52,7 +54,9 @@ export function useWikiAttachments(input: {
         write: { kind: "attachment", file: path, base64 },
       },
     });
-    return outcome.ok ? path : null;
+    if (!outcome.ok) return null;
+    if (outcome.value.commit !== null) onLanded?.(outcome.value.commit);
+    return path;
   });
   /** Lands `files`, and gives the embed each one writes in a note. */
   const embed = useStableCallback(async (files: ReadonlyArray<File>, arrival: WikiFileArrival) => {

@@ -39,6 +39,7 @@ import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note
 import { WikiBase } from "./WikiBaseView";
 import { WikiMermaid } from "./WikiMermaid";
 import { WikiNoteEditor } from "./WikiNoteEditor";
+import { useWikiEmbeds } from "./useWikiEmbeds";
 import {
   holdsEdits,
   useChangeRequestTurn,
@@ -234,7 +235,20 @@ export function WikiNoteView({
   const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
   const { showHidden } = useWikiTreeView();
   const placement = useWikiPlacement(environmentId);
-  const { embed } = useWikiAttachments({ environmentId, wikiId, savesTo, source: file, placement });
+  const { resolveEmbed, landedAt } = useWikiEmbeds({
+    environmentId,
+    wikiId,
+    commit: data?.commit ?? "",
+    from: tabFile,
+  });
+  const { embed } = useWikiAttachments({
+    environmentId,
+    wikiId,
+    savesTo,
+    source: file,
+    placement,
+    onLanded: landedAt,
+  });
   const linkOptions = index.data === null ? [] : wikiLinkOptions(index.data, showHidden);
   const linkScope =
     index.data === null || file === null ? null : { files: wikiLinkFiles(index.data), from: file };
@@ -313,6 +327,7 @@ export function WikiNoteView({
               linkOptions={linkOptions}
               linkScope={linkScope}
               onAttach={embed}
+              resolveEmbed={resolveEmbed}
               renderLinkPreview={(link) => (
                 <LinkPreview
                   environmentId={environmentId}

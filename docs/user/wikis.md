@@ -24,6 +24,8 @@ In a note, ⌘-click a wikilink to follow it in the same tab. Search in the side
 
 ### Where new files land
 
+An image embedded with `![[image.png]]`, or `![[image.png|200]]` for its width, draws in the note as you read and edit it, on web, desktop and the phone. The name is found the way a link is, from the note, and needs its extension.
+
 **New files** in **Settings → Wikis** sets this per computer running the wikis. **Attachments** land at the wiki's top by default, or in a folder you name, beside the document, or in a subfolder beside it, with missing folders made. A pasted image is named `Pasted image` and the time; a dropped file keeps its name; a name that's taken gets ` 1`, ` 2`.
 
 **New notes** from a link land beside the linking file by default, or at the top, or in a folder you name, which falls back to the top if it's missing. A folder in the link always wins: `[[plans/Launch]]` makes `plans/Launch.md` from the top of the wiki. A `./` or `../` link to nothing makes no note, and says so.

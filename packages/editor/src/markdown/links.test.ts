@@ -156,6 +156,25 @@ describe("links", () => {
     expect(opened).toEqual(["Note"]);
   });
 
+  it("draws an embed whose address comes later, or shows it broken when none does", async () => {
+    let answer = (_url: string | null) => {};
+    const later = new Promise<string | null>((resolve) => {
+      answer = resolve;
+    });
+    const view = mount("![[pic.png]]\n\n![[gone.png]]", {
+      options: {
+        resolveEmbed: (target) => (target === "pic.png" ? later : Promise.resolve(null)),
+      },
+    });
+    expect(view.contentDOM.querySelector(".cm-md-image img")).toBeNull();
+    answer("/vault/pic.png");
+    await later;
+    expect(view.contentDOM.querySelector(".cm-md-image img")?.getAttribute("src")).toBe(
+      "/vault/pic.png",
+    );
+    expect(texts(view, ".cm-md-image-broken")).toEqual(["gone.png"]);
+  });
+
   it("A35. `![[Embed]]`: placeholder chip; `![[pic.png|200]]`: image with the host-resolved source", () => {
     const view = mount("![[Embed]]\n\n![[pic.png|200]]", {
       options: { resolveEmbed: (target) => `/vault/${target}` },
