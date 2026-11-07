@@ -7,7 +7,7 @@ import {
   TableIcon,
   WaypointsIcon,
 } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { ensureLocalApi } from "~/localApi";
 import type { PaneTabLabel } from "~/panes/panesHost";
@@ -21,16 +21,20 @@ import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import { Empty } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import {
   documentFile,
   documentTitle,
+  draftMovedTo,
   filesHoldDocument,
+  NO_NOTE_FROM_RELATIVE_LINK,
   wikiDocumentScope,
   wikiDraft,
-  wikiLinkFile,
+  wikiLinkOpens,
 } from "./wiki.logic";
+import { useWikiPlacement } from "./wikiEnvironment";
 import { WikiDraftPill } from "./WikiDraftPill";
 import { WikiNoteView, type WikiDraftEdits } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
@@ -121,9 +125,16 @@ function NoteTab({
   const { target, holder } = useChangeRequestWorktree(tab);
   // A change request's document is something opened in its worktree.
   useNumberWhenOpened(target, holder);
-  const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
+  const registerUnsaved = (check: () => boolean, save: () => Promise<boolean>) =>
+    registerUnsavedCheck(tabKey, check, save);
   const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
   const draft = wikiDraft(all);
+  const movedTo = tab.changeRequestId === undefined ? draftMovedTo(draft, tab.file) : undefined;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a move made on another device reaches the panes store from here
+  useEffect(() => {
+    if (movedTo !== undefined)
+      nav.replace(tabKey, wikiTabKey({ ...tab, file: movedTo }), { rekey: true });
+  }, [movedTo, nav, tab, tabKey]);
   const scope = wikiDocumentScope({
     tabChangeRequestId: tab.changeRequestId,
     draft,
@@ -141,8 +152,12 @@ function NoteTab({
     if (hasUnsavedEdits(tabKey)) nav.open(next);
     else nav.replace(tabKey, next);
   };
-  const openLink = (target: string, from?: string) =>
-    openDocument(wikiLinkFile(index.data, target, from ?? tab.file));
+  const placement = useWikiPlacement(tab.environmentId);
+  const openLink = (target: string, from?: string) => {
+    const file = wikiLinkOpens(index.data, target, from ?? tab.file, placement);
+    if (file !== null) openDocument(file);
+    else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
+  };
   const parent =
     tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request");
   const renderDraftPill = (edits?: WikiDraftEdits) => {

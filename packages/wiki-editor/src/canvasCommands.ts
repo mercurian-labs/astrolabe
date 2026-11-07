@@ -90,6 +90,8 @@ export interface CanvasEditHost {
   readonly writeNote?: (file: string, text: string, readAt?: string) => Promise<string | null>;
   /** Bytes saved beside the wiki's documents; resolves with the name it holds them by. */
   readonly attachFile?: (name: string, base64: string) => Promise<string | null>;
+  /** Where a new note named `name` goes; null when that name can't make one. */
+  readonly placeNote?: (name: string) => string | null | Promise<string | null>;
   readonly assetUrl?: (path: string) => Promise<string | null>;
   readonly renameDocument?: (file: string, to: string) => Promise<string | null>;
   readonly openInNewTab?: (file: string) => void;
@@ -202,12 +204,22 @@ export class CanvasCommands {
     });
     if (picked === null) return null;
     if (picked.kind === "existing") return picked.value;
-    const file = /\.md$/i.test(picked.name) ? picked.name : `${picked.name}.md`;
+    const file = await this.#placed(picked.name);
+    if (file === null) return null;
     const failure = await this.#board.host().writeNote?.(file, "");
     if (failure) {
       this.#board.notify(failure);
       return null;
     }
+    return file;
+  }
+
+  /** A new note's file, wherever the host puts it. A folder in `name` overrides that. */
+  async #placed(name: string) {
+    const place = this.#board.host().placeNote;
+    if (place === undefined) return /\.md$/i.test(name) ? name : `${name}.md`;
+    const file = await place(name);
+    if (file === null) this.#board.notify(`A note can't be made from ${name}.`);
     return file;
   }
 
@@ -529,7 +541,9 @@ export class CanvasCommands {
       submit: "Convert",
     });
     if (name === null || name.trim() === "") return;
-    const file = await this.#freeName(name.trim());
+    const placed = await this.#placed(name.trim());
+    if (placed === null) return;
+    const file = await this.#freeName(placed);
     const failure = await host.writeNote?.(file, String(raw.text ?? ""));
     if (failure) {
       this.#board.notify(failure);
@@ -564,11 +578,19 @@ export class CanvasCommands {
     this.#document?.commit([{ op: "set-card", card: id, keys: { file, subpath: null } }]);
   }
 
-  /** Makes the note a missing card names, which then reads as itself. */
+  /** Makes the note a missing card names, and the card follows it there. */
   async newNote(node: CanvasFileNode) {
-    const failure = await this.#board.host().writeNote?.(node.file, "");
-    if (failure) this.#board.notify(failure);
-    else this.#board.reread(node.file);
+    const file = await this.#placed(node.file);
+    if (file === null) return;
+    const failure = await this.#board.host().writeNote?.(file, "");
+    if (failure) {
+      this.#board.notify(failure);
+      return;
+    }
+    if (file !== node.file) {
+      this.#document?.commit([{ op: "set-card", card: node.id, keys: { file } }]);
+    }
+    this.#board.reread(file);
   }
 
   async #fileText(file: string) {

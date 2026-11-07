@@ -495,7 +495,7 @@ export function WikiBasePage({
   readonly parent: string;
   /** The draft's pill in the header's place for `parent`, when there's a draft. */
   readonly renderDraftPill?: (edits: WikiDraftEdits) => ReactNode;
-  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
+  readonly registerUnsaved?: (isUnsaved: () => boolean, save: () => Promise<boolean>) => () => void;
 } & RowOpeners) {
   const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
   const viewKey = `${wikiId}/${file}`;
@@ -549,7 +549,7 @@ export function WikiBasePage({
   useEffect(() => autosave.setHeld(held), [autosave, held]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are held back
   useEffect(
-    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus())),
+    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus()), autosave.flush),
     [autosave, registerUnsaved],
   );
   useBlocker({

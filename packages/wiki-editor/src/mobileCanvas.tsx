@@ -141,6 +141,7 @@ export function MobileCanvas({
       assetUrl: async (path) => valueOf(await ask({ kind: "asset-url", path })),
       writeNote: async (file, text, readAt) =>
         failureOf(await ask({ kind: "write-note", file, text, readAt })),
+      placeNote: async (name) => valueOf(await ask({ kind: "place-note", name })),
       renameDocument: async (file, to) => failureOf(await ask({ kind: "rename", file, to })),
       copyText: (text) => void navigator.clipboard?.writeText(text),
       onOpenUrl,

@@ -14,6 +14,22 @@ export interface WikiCanvasBoard {
   readonly run: (command: CanvasBoardCommand) => void;
 }
 
+/** Where a canvas's own read-only choice is kept on this device. */
+export const canvasReadOnlyKey = (wikiId: string, file: string) =>
+  `astrolabe:canvas-read-only:${wikiId}:${file}`;
+
+/** A moved canvas keeps the choice. */
+export function moveCanvasReadOnly(wikiId: string, from: string, to: string) {
+  try {
+    const stored = window.localStorage.getItem(canvasReadOnlyKey(wikiId, from));
+    if (stored === null) return;
+    window.localStorage.setItem(canvasReadOnlyKey(wikiId, to), stored);
+    window.localStorage.removeItem(canvasReadOnlyKey(wikiId, from));
+  } catch {
+    // A blocked store has nothing to carry.
+  }
+}
+
 const boards = new Map<string, WikiCanvasBoard>();
 
 /** Lets the command palette reach an open canvas, by its tab. Returns the way to stop. */

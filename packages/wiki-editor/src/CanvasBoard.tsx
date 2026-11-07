@@ -18,6 +18,7 @@ import {
   type CanvasNode,
   type CanvasSide,
 } from "@mercurian/wiki/canvas";
+import { pastedFileName } from "@mercurian/wiki/placement";
 import {
   createContext,
   memo,
@@ -1140,12 +1141,6 @@ const toBase64 = (bytes: Uint8Array) => {
   return btoa(binary);
 };
 
-const pastedImageName = (type: string) =>
-  `Pasted image ${new Date()
-    .toISOString()
-    .replace(/[-:T]/g, "")
-    .slice(0, 14)}.${type.split("/")[1]?.split("+")[0] ?? "png"}`;
-
 /** Files out of a drop, a folder's included, as `webkitGetAsEntry` reads them. */
 async function droppedFiles(transfer: DataTransfer): Promise<ReadonlyArray<File>> {
   const read = async (entry: FileSystemEntry | null): Promise<File[]> => {
@@ -1609,14 +1604,13 @@ export function CanvasBoard({
   );
 
   const attachAndPlace = useCallback(
-    async (files: ReadonlyArray<File>, at: CanvasPoint) => {
+    async (files: ReadonlyArray<File>, at: CanvasPoint, pasted: boolean) => {
       const { attachFile } = live.host;
       if (attachFile === undefined) return;
       const paths: string[] = [];
       const refused: string[] = [];
       for (const file of files) {
-        const name =
-          file.name === "" || file.name === "image.png" ? pastedImageName(file.type) : file.name;
+        const name = pasted || file.name === "" ? pastedFileName(file, new Date()) : file.name;
         const base64 = toBase64(new Uint8Array(await file.arrayBuffer()));
         const saved = await attachFile(name, base64);
         if (saved !== null) paths.push(saved);
@@ -1656,7 +1650,7 @@ export function CanvasBoard({
       if (transfer === null || !transfer.types.includes("Files")) return;
       event.preventDefault();
       event.stopPropagation();
-      void droppedFiles(transfer).then((files) => attachAndPlace(files, at));
+      void droppedFiles(transfer).then((files) => attachAndPlace(files, at, false));
     };
     board.addEventListener("dragover", onDragOver);
     board.addEventListener("drop", onDrop);
@@ -1835,7 +1829,7 @@ export function CanvasBoard({
     }
     const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
     if (images.length > 0) {
-      void attachAndPlace(images, at);
+      void attachAndPlace(images, at, true);
       return;
     }
     const text = event.clipboardData.getData("text/plain");

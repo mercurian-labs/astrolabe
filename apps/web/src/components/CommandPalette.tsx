@@ -265,6 +265,7 @@ import { wikiDraft } from "~/components/wiki/wiki.logic";
 import type { CanvasBoardCommand } from "@mercurian/wiki-editor/canvas-board";
 import { wikiCanvasBoard } from "~/components/wiki/wikiCanvasBoards";
 import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
+import { requestWikiMove, WikiMoveDialog } from "~/components/wiki/WikiMoveDialog";
 import { useFocusedWikiTab } from "~/components/wiki/wikiPanes";
 import { isCanvasTab, wikiTabKey } from "~/components/wiki/wikiTabs";
 import { appCommandsSlot } from "~/whichKey/handles";
@@ -342,6 +343,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openChildSearch={openChildSearch}
           initialContext={state.restoredSearch}
         />
+        <WikiMoveDialog />
       </CommandDialog>
     </ComposerHandleContext>
   );
@@ -1321,6 +1323,20 @@ function OpenCommandPaletteDialog(props: {
     focusedWikiTab !== null && isCanvasTab(focusedWikiTab)
       ? wikiCanvasBoard(wikiTabKey(focusedWikiTab))
       : undefined;
+  // Astrolabe: the document in front moves from here, as a tree row does by drag.
+  if (focusedWikiTab?.kind === "note") {
+    const { environmentId, wikiId, file } = focusedWikiTab;
+    actionItems.push({
+      kind: "action",
+      value: "action:wiki-move-document",
+      searchTerms: ["move document", "rename document", "folder"],
+      title: "Wiki: Move or rename this document",
+      icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        requestWikiMove({ environmentId, wikiId, from: file, folder: false, name: "the wiki" });
+      },
+    });
+  }
   // Astrolabe: the way to the draft of the wiki in front, whose tab holds its ways out.
   if (focusedWikiDraft !== null && focusedWikiTab !== null) {
     const draftTab = wikiTabKey({

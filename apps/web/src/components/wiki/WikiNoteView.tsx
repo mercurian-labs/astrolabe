@@ -30,7 +30,8 @@ import {
   latestAmendmentFor,
   PERSON_ACTOR,
   resolveWikiLink,
-  wikiDocumentNames,
+  wikiLinkFiles,
+  wikiLinkOptions,
   wikiLinkFile,
 } from "./wiki.logic";
 import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-tools";
@@ -45,7 +46,9 @@ import {
   WikiSaveFailure,
   WikiSaveStatus,
 } from "./wikiAutosave";
-import { useWikiAutosaveCommand } from "./wikiEnvironment";
+import { useWikiAttachments } from "./useWikiAttachments";
+import { useWikiAutosaveCommand, useWikiPlacement } from "./wikiEnvironment";
+import { useWikiTreeView } from "./wikiTreeView";
 import { WikiPart } from "./WikiParts";
 
 const NO_LINK_TYPES: ReadonlyArray<string> = [];
@@ -124,7 +127,7 @@ export function WikiNoteView({
   /** Follows a link; `from` is the file it's written in, when that isn't this note. */
   readonly onOpenNote: (target: string, from?: string) => void;
   /** Lets whoever shows the note ask whether its edits are unsaved, as closing its tab does. */
-  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
+  readonly registerUnsaved?: (isUnsaved: () => boolean, save: () => Promise<boolean>) => () => void;
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const note = useEnvironmentQuery(
@@ -209,7 +212,7 @@ export function WikiNoteView({
   const holding = holdsEdits(status);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this note's held-edits check with its tab until unmount
   useEffect(
-    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus())),
+    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus()), autosave.flush),
     [autosave, registerUnsaved],
   );
 
@@ -229,7 +232,12 @@ export function WikiNoteView({
   });
 
   const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
-  const documents = index.data === null ? [] : wikiDocumentNames(index.data);
+  const { showHidden } = useWikiTreeView();
+  const placement = useWikiPlacement(environmentId);
+  const { embed } = useWikiAttachments({ environmentId, wikiId, savesTo, source: file, placement });
+  const linkOptions = index.data === null ? [] : wikiLinkOptions(index.data, showHidden);
+  const linkScope =
+    index.data === null || file === null ? null : { files: wikiLinkFiles(index.data), from: file };
 
   if (data === null) {
     return note.error !== null ? (
@@ -302,7 +310,9 @@ export function WikiNoteView({
               readOnly={readOnly}
               onOpenNote={onOpenNote}
               linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
-              linkNames={documents}
+              linkOptions={linkOptions}
+              linkScope={linkScope}
+              onAttach={embed}
               renderLinkPreview={(link) => (
                 <LinkPreview
                   environmentId={environmentId}

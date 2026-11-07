@@ -26,9 +26,19 @@ import { openLeaderFrom } from "~/whichKey/doors";
 import { BrowserDocumentFrame } from "../files/BrowserDocumentFrame";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
-import { isDocumentFile, resolveWikiLink, wikiLinkFile } from "./wiki.logic";
+import {
+  isDocumentFile,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  resolveWikiLink,
+  wikiDocumentFiles,
+  wikiLinkFile,
+  wikiLinkOpens,
+} from "./wiki.logic";
+import { newNoteFile } from "@mercurian/wiki/placement";
+import { toastManager } from "../ui/toast";
+import { useWikiAttachments } from "./useWikiAttachments";
 import { WikiBase } from "./WikiBaseView";
-import { useWikiAutosaveCommand } from "./wikiEnvironment";
+import { useWikiAutosaveCommand, useWikiPlacement } from "./wikiEnvironment";
 import { WikiMermaid } from "./WikiMermaid";
 
 const WikiCanvasCardEditor = lazy(() => import("./WikiCanvasCardEditor"));
@@ -160,9 +170,12 @@ export function useWikiCanvasHost({
     );
   });
   // Follows a link; a file comes through as itself, its path being the first thing a link tries.
-  const openNote = useStableCallback((target: string, from: string = boardFile) =>
-    onOpenNote(wikiLinkFile(index.data, target, from)),
-  );
+  const placement = useWikiPlacement(environmentId);
+  const openNote = useStableCallback((target: string, from: string = boardFile) => {
+    const file = wikiLinkOpens(index.data, target, from, placement);
+    if (file !== null) onOpenNote(file);
+    else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
+  });
   const openFile = useStableCallback((path: string) => onOpenFile?.(path));
   const readFiles = useStableCallback(async (paths: ReadonlyArray<string>) => {
     const read = async (
@@ -214,18 +227,16 @@ export function useWikiCanvasHost({
     if (outcome.ok) noteDraft.set(outcome.value.changeRequest?.changeRequestId);
     return outcome.ok ? null : outcome.message;
   });
-  const attachFile = useStableCallback(async (name: string, base64: string) => {
-    const outcome = await send({
-      environmentId,
-      input: {
-        wikiId,
-        ...landing,
-        document: name,
-        write: { kind: "attachment", file: name, base64 },
-      },
-    });
-    return outcome.ok ? name : null;
+  const { attach: attachFile } = useWikiAttachments({
+    environmentId,
+    wikiId,
+    savesTo,
+    source: boardFile,
+    placement,
   });
+  const placeNote = useStableCallback((name: string) =>
+    newNoteFile(name, boardFile, placement, index.data ? wikiDocumentFiles(index.data) : []),
+  );
   const renameDocument = useStableCallback(async (file: string, to: string) => {
     const from = file.replace(/\.md$/i, "");
     const outcome = await send({
@@ -242,7 +253,7 @@ export function useWikiCanvasHost({
   const assetUrl = useStableCallback(async (path: string) => {
     const result = await mintUrl({
       environmentId,
-      input: { resource: { _tag: "wiki-file", wikiId, commit, path } },
+      input: { resource: { _tag: "wiki-file", wikiId, commit, path, from: boardFile } },
     });
     const state = assetUrlStateFromResult(result, httpBaseUrl);
     return state._tag === "Success" ? state.url : null;
@@ -310,6 +321,7 @@ export function useWikiCanvasHost({
     listFiles,
     writeNote,
     attachFile,
+    placeNote,
     renameDocument,
     assetUrl,
     readFileText,

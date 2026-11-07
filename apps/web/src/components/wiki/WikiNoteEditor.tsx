@@ -21,9 +21,13 @@ import type { WikiNoteSession } from "@mercurian/wiki-editor/note-buffer";
 import { wikilinkNoteName } from "@mercurian/wiki-editor/incoming";
 import {
   useWikiLinkTools,
+  type WikiLinkOption,
+  type WikiLinkScope,
   wikilinkDisplay,
   type WikiLinkPeek,
 } from "@mercurian/wiki-editor/link-tools";
+import type { WikiFileArrival } from "./useWikiAttachments";
+import { useStableCallback } from "~/hooks/useStableCallback";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -62,6 +66,35 @@ const WIKI_EDITOR_THEME = EditorView.theme({
 });
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
+
+/** A pasted or dropped file lands in the wiki and leaves its embed at the caret, or the drop. */
+function filesIntoNote(
+  attach: (files: ReadonlyArray<File>, arrival: WikiFileArrival) => Promise<ReadonlyArray<string>>,
+) {
+  const land = (view: EditorView, files: ReadonlyArray<File>, arrival: WikiFileArrival) => {
+    void attach(files, arrival).then((embeds) => {
+      if (embeds.length > 0) view.dispatch(view.state.replaceSelection(embeds.join("\n\n")));
+    });
+  };
+  return EditorView.domEventHandlers({
+    paste(event, view) {
+      const files = [...(event.clipboardData?.files ?? [])];
+      if (files.length === 0) return false;
+      event.preventDefault();
+      land(view, files, "paste");
+      return true;
+    },
+    drop(event, view) {
+      const files = [...(event.dataTransfer?.files ?? [])];
+      if (files.length === 0) return false;
+      event.preventDefault();
+      const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (at !== null) view.dispatch({ selection: { anchor: at } });
+      land(view, files, "drop");
+      return true;
+    },
+  });
+}
 
 const previewOptions = (
   keys: LivePreviewOptions["keys"],
@@ -119,7 +152,9 @@ export function WikiNoteEditor({
   renderCanvasEmbed,
   renderMermaid,
   linkTypes,
-  linkNames,
+  linkOptions,
+  linkScope,
+  onAttach,
   renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
@@ -137,8 +172,13 @@ export function WikiNoteEditor({
   readonly onWrite?: () => void;
   /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
   readonly linkTypes: ReadonlyArray<string>;
-  /** The documents a `[[` can complete to. */
-  readonly linkNames?: ReadonlyArray<string>;
+  readonly linkOptions?: ReadonlyArray<WikiLinkOption>;
+  readonly linkScope?: WikiLinkScope | null;
+  /** Lands files pasted or dropped on the note; gives the text each leaves behind. */
+  readonly onAttach?: (
+    files: ReadonlyArray<File>,
+    arrival: WikiFileArrival,
+  ) => Promise<ReadonlyArray<string>>;
   /** What a link's preview shows, drawn into its popover. */
   readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
 }) {
@@ -153,7 +193,11 @@ export function WikiNoteEditor({
   useLayoutEffect(() => {
     writeRef.current = onWrite;
   }, [onWrite]);
-  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview, linkNames);
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview, linkOptions, linkScope ?? null);
+  const attach = useStableCallback(
+    (files: ReadonlyArray<File>, arrival: WikiFileArrival) =>
+      onAttach?.(files, arrival) ?? Promise.resolve([]),
+  );
   // One array for the editor's life: a new one would remount it.
   const [editableExtensions] = useState(() => [
     WIKI_EDITOR_THEME,
@@ -162,6 +206,7 @@ export function WikiNoteEditor({
     agentChangeBar(),
     appVimKeys(() => ({ label: "Save now", run: () => writeRef.current?.() })),
     linkTools.extension,
+    filesIntoNote(attach),
   ]);
   const [readOnlyExtensions] = useState(() => [...READ_ONLY_EXTENSIONS, linkTools.extension]);
   // The blocks the editor draws, each filled through a portal so the view keeps the app's context.

@@ -47,7 +47,11 @@ import {
   WikiSaveFailure,
   WikiSaveStatus,
 } from "./wikiAutosave";
-import { registerWikiCanvasBoard, type WikiCanvasGroup } from "./wikiCanvasBoards";
+import {
+  canvasReadOnlyKey,
+  registerWikiCanvasBoard,
+  type WikiCanvasGroup,
+} from "./wikiCanvasBoards";
 import { useWikiAutosaveCommand, useWikiCommand } from "./wikiEnvironment";
 import { useWikiCanvasHost } from "./wikiCanvasHost";
 import type { WikiDraftEdits } from "./WikiNoteView";
@@ -205,7 +209,7 @@ export default function WikiCanvasPage({
   readonly parent: string;
   /** The draft's pill in the header's place for `parent`, when there's a draft. */
   readonly renderDraftPill?: (edits?: WikiDraftEdits) => ReactNode;
-  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
+  readonly registerUnsaved?: (isUnsaved: () => boolean, save: () => Promise<boolean>) => () => void;
   readonly onOpenNote: (name: string) => void;
   readonly onOpenFile: ((path: string) => void) | undefined;
   readonly onOpenTab: (key: string) => void;
@@ -252,7 +256,7 @@ export default function WikiCanvasPage({
   const known = savesTo === undefined || changeRequest !== undefined;
   const canEdit = canWrite && known && !isSettledChangeRequest(changeRequest);
   const [readOnly, setReadOnly] = useLocalStorage(
-    `astrolabe:canvas-read-only:${wikiId}:${file}`,
+    canvasReadOnlyKey(wikiId, file),
     false,
     ReadOnlyFlag,
   );
@@ -298,7 +302,7 @@ export default function WikiCanvasPage({
   useEffect(() => autosave.setHeld(turn.running), [autosave, turn.running]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are held back
   useEffect(
-    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus())),
+    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus()), autosave.flush),
     [autosave, registerUnsaved],
   );
   useBlocker({

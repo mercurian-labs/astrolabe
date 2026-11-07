@@ -129,7 +129,8 @@ export type WikiEditorCanvasAsk =
       readonly text: string;
       readonly readAt?: string | undefined;
     }
-  | { readonly kind: "rename"; readonly file: string; readonly to: string };
+  | { readonly kind: "rename"; readonly file: string; readonly to: string }
+  | { readonly kind: "place-note"; readonly name: string };
 
 export type WikiEditorCanvasAnswer =
   | { readonly kind: "files"; readonly files: ReadonlyArray<string> }
@@ -241,7 +242,13 @@ export type WikiEditorCommand =
   /** A file a `readFile` asked for, sent again if it changes. */
   | { readonly type: "fileRead"; readonly path: string; readonly file: WikiEditorEmbeddedFile }
   /** The `@` types the wiki's links use, which the editor suggests. */
-  | { readonly type: "linkTypes"; readonly types: ReadonlyArray<string> }
+  | {
+      readonly type: "linkTypes";
+      readonly types: ReadonlyArray<string>;
+      /** The wiki's documents and this note's own path, which its links search from. */
+      readonly files?: ReadonlyArray<string>;
+      readonly from?: string;
+    }
   /** A note a link preview asked for, sent again if it changes; null when it isn't written. */
   | {
       readonly type: "noteRead";
@@ -674,6 +681,10 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         ? {
             type: "linkTypes",
             types: value.types.filter((type): type is string => typeof type === "string"),
+            ...(Array.isArray(value.files)
+              ? { files: value.files.filter((file): file is string => typeof file === "string") }
+              : {}),
+            ...(typeof value.from === "string" ? { from: value.from } : {}),
           }
         : null;
     case "noteRead":

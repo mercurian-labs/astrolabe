@@ -1,3 +1,4 @@
+import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 
 import {
@@ -13,10 +14,11 @@ import {
   type Arrangement,
 } from "~/panes/arrangement";
 import type { Side } from "~/panes/tree";
-import { hasUnsavedEdits } from "~/panes/unsavedEdits";
+import { hasUnsavedEdits, saveEdits } from "~/panes/unsavedEdits";
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { workspace } from "~/panes/workspace";
 import { rekeyHistory, replaceInHistory, type HistoryDirection } from "~/tabNavigation.logic";
+import { moveCanvasReadOnly } from "./wikiCanvasBoards";
 import { parseWikiTabKey, sameWikiTab, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 /**
@@ -130,6 +132,43 @@ export function closeWikiTabs(match: (tab: WikiTab) => boolean) {
       return tab && match(tab) ? closeTab(next, key) : next;
     }, arrangement),
   );
+}
+
+interface MoveScope {
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId | undefined;
+}
+
+/** The open document tabs a move in `scope` takes, each with where it goes. */
+function tabsMoving(scope: MoveScope, to: (file: string) => string | null) {
+  return allTabs(current().arrangement).flatMap((key) => {
+    const tab = parseWikiTabKey(key);
+    if (
+      tab?.kind !== "note" ||
+      tab.environmentId !== scope.environmentId ||
+      tab.wikiId !== scope.wikiId ||
+      (tab.changeRequestId !== undefined && tab.changeRequestId !== scope.changeRequestId)
+    ) {
+      return [];
+    }
+    const file = to(tab.file);
+    return file === null ? [] : [{ key, tab, file }];
+  });
+}
+
+/** Lands what the tabs a move takes still hold; false when one of them couldn't. */
+export async function saveWikiTabsMoving(scope: MoveScope, to: (file: string) => string | null) {
+  const saved = await Promise.all(tabsMoving(scope, to).map(({ key }) => saveEdits(key)));
+  return saved.every(Boolean);
+}
+
+/** Tabs on what moved follow it, keeping their place and their back history. */
+export function followWikiMove(scope: MoveScope, to: (file: string) => string | null) {
+  for (const { key, tab, file } of tabsMoving(scope, to)) {
+    moveCanvasReadOnly(tab.wikiId, tab.file, file);
+    replaceWikiTab(key, { ...tab, file }, { rekey: true });
+  }
 }
 
 /** The focused pane's front tab, read outside React. */

@@ -1,4 +1,5 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { WikiPlacement } from "@mercurian/wiki/placement";
+import { EnvironmentId, type UnifiedSettings } from "@t3tools/contracts";
 import {
   type AtomCommand,
   isAtomCommandInterrupted,
@@ -8,6 +9,7 @@ import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { wikiSaveFailure } from "@t3tools/client-runtime/wikiLogic";
 import { useAtomValue } from "@effect/atom-react";
 
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
@@ -61,6 +63,13 @@ export function useWikiAutosaveCommand() {
       : wikiSaveFailure(squashAtomCommandFailure(result));
   };
 }
+
+const selectLocations = (settings: UnifiedSettings) => settings.wikiLocations;
+const NO_ENVIRONMENT = EnvironmentId.make("none");
+
+/** Where `environmentId` puts a wiki's new files; its defaults when there's none to ask. */
+export const useWikiPlacement = (environmentId: EnvironmentId | null): WikiPlacement =>
+  useEnvironmentSettings(environmentId ?? NO_ENVIRONMENT, selectLocations);
 
 export type WikiCommandOutcome<A> =
   | { readonly ok: true; readonly value: A }
