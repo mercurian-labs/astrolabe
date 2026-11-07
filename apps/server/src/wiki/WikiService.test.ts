@@ -2344,6 +2344,72 @@ it.effect("moves a draft into a change request, whole or a document at a time", 
   ),
 );
 
+const PIXEL = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe, 0x80]);
+
+const attachPixel = (wikiId: WikiId, file: string, changeRequestId?: WikiChangeRequestId) =>
+  WikiService.WikiService.pipe(
+    Effect.flatMap((wikis) =>
+      wikis.autosave(
+        {
+          wikiId,
+          ...(changeRequestId === undefined ? {} : { changeRequestId }),
+          document: "Alpha.md",
+          write: { kind: "attachment", file, base64: PIXEL.toString("base64") },
+        },
+        WikiService.person,
+      ),
+    ),
+  );
+
+it.effect("moves a draft's pasted image out whole, or goes back on it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const target = yield* wikis.amend(
+        { wikiId, title: "Target", message: "Open", changes: { "Gamma.md": "Gamma.\n" } },
+        WikiService.person,
+      );
+      const to = target.changeRequest.changeRequestId;
+      const edited = yield* wikis.autosave(
+        { wikiId, ...noteEdit("Mine, on [[Beta]].\n") },
+        WikiService.person,
+      );
+      const changeRequestId = edited.changeRequest!.changeRequestId;
+      const attached = yield* attachPixel(wikiId, "Pasted image.png", changeRequestId);
+
+      // Only the image: the draft stays open, and loses it.
+      const moved = yield* wikis.draftMove(
+        { wikiId, changeRequestId, to, files: ["Pasted image.png"] },
+        WikiService.person,
+      );
+      assert.equal(
+        yield* git(root, ["rev-parse", `${moved.head}:Pasted image.png`]),
+        yield* git(root, ["rev-parse", `${attached.commit}:Pasted image.png`]),
+      );
+      const left = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      assert.deepEqual(left.changeRequest.files, ["Alpha.md"]);
+
+      const pasted = yield* attachPixel(wikiId, "Another.png", changeRequestId);
+      const undone = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: pasted.commit! },
+        WikiService.person,
+      );
+      assert.notInclude(
+        yield* git(root, ["ls-tree", "-r", "--name-only", undone.commit]),
+        "Another.png",
+      );
+      const redone = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: undone.commit },
+        WikiService.person,
+      );
+      assert.equal(
+        yield* git(root, ["rev-parse", `${redone.commit}:Another.png`]),
+        yield* git(root, ["rev-parse", `${pasted.commit}:Another.png`]),
+      );
+    }),
+  ),
+);
+
 it.effect("refuses a move that conflicts, leaving both sides as they were", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

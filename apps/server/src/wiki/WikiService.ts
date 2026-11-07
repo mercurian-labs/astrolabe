@@ -362,6 +362,24 @@ interface Snapshot {
   readonly index: WikiIndex;
 }
 
+/** A blob to write at each path, or null to delete it: a file no text could carry. */
+type BlobChanges = Readonly<Record<string, string | null>>;
+
+interface CarriedBlobs {
+  readonly blobs?: BlobChanges;
+}
+
+/** Files on their way between commits. Bytes that aren't a document only travel as blobs. */
+interface CarriedFiles {
+  readonly changes: WikiChanges;
+  readonly blobs: BlobChanges;
+}
+
+const carriedNames = ({ changes, blobs }: CarriedFiles) => [
+  ...Object.keys(changes),
+  ...Object.keys(blobs),
+];
+
 interface FileListing {
   readonly entries: ReturnType<typeof parseFileListing>;
   readonly byFile: ReadonlyMap<string, ReturnType<typeof parseFileListing>[number]>;
@@ -678,6 +696,7 @@ const make = Effect.gen(function* () {
     base: string,
     changes: WikiChanges,
     attachment?: WikiAttachment,
+    blobs: BlobChanges = {},
   ) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -727,12 +746,16 @@ const make = Effect.gen(function* () {
               },
             )).split("\n")
           : [];
-        const blobs = new Map(written.map(([file], position) => [file, oids[position] ?? ""]));
+        const hashed = new Map(written.map(([file], position) => [file, oids[position] ?? ""]));
         const zero = "0".repeat(base.length);
-        const info = entries
-          .map(([file, content]) =>
-            content === null ? `0 ${zero}\t${file}` : `100644 ${blobs.get(file)}\t${file}`,
-          )
+        const info = [
+          ...entries.map(([file, content]): readonly [string, string | null | undefined] => [
+            file,
+            content === null ? null : hashed.get(file),
+          ]),
+          ...Object.entries(blobs),
+        ]
+          .map(([file, oid]) => (oid === null ? `0 ${zero}\t${file}` : `100644 ${oid}\t${file}`))
           .join("\n");
         yield* runGit("updateIndex", cwd, ["update-index", "--index-info"], {
           stdin: `${info}\n`,
@@ -1386,7 +1409,7 @@ const make = Effect.gen(function* () {
     target: Target,
     author: WikiAuthor,
     message: string,
-    plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment,
+    plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment & CarriedBlobs,
     options: {
       readonly reverts?: string;
       readonly follow?: boolean;
@@ -1418,7 +1441,13 @@ const make = Effect.gen(function* () {
       try: () => plan(snapshot.files, stamp),
       catch: planningError,
     });
-    const tree = yield* buildTree(wiki.root, from, planned.changes, planned.attachment);
+    const tree = yield* buildTree(
+      wiki.root,
+      from,
+      planned.changes,
+      planned.attachment,
+      planned.blobs,
+    );
     const treeOf = (commit: string) =>
       gitOut("parentTree", wiki.root, ["rev-parse", `${commit}^{tree}`]);
     if (tree === (yield* treeOf(parent))) {
@@ -1773,7 +1802,35 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  /** What `to` changes from `from`, by file, each file's new text or null. */
+  /** `names` as they stand at `commit`: documents by their text, the rest by their blobs. */
+  const filesAt = Effect.fn("WikiService.filesAt")(function* (
+    wiki: WikiRecord,
+    commit: string,
+    names: ReadonlyArray<string>,
+  ) {
+    const documents = names.filter(isWikiDocument);
+    const others = names.filter((name) => !isWikiDocument(name));
+    const contents = yield* readObjects(
+      wiki.root,
+      documents.map((name) => `${commit}:${name}`),
+    );
+    const oids =
+      others.length === 0
+        ? []
+        : yield* blobIds(
+            wiki.root,
+            others.map((name) => `${commit}:${name}`),
+          );
+    const carried: CarriedFiles = {
+      changes: Object.fromEntries(
+        documents.map((name, position) => [name, contents[position] ?? null]),
+      ),
+      blobs: Object.fromEntries(others.map((name, position) => [name, oids[position] ?? null])),
+    };
+    return carried;
+  });
+
+  /** What `to` changes from `from`, by file. */
   const changesBetween = Effect.fn("WikiService.changesBetween")(function* (
     wiki: WikiRecord,
     from: string,
@@ -1789,16 +1846,21 @@ const make = Effect.gen(function* () {
     ])).stdout
       .split("\0")
       .filter(Boolean);
-    const contents = yield* readObjects(
-      wiki.root,
-      names.map((name) => `${to}:${name}`),
-    );
-    const changes: Record<string, string | null> = {};
-    names.forEach((name, position) => {
-      changes[name] = contents[position] ?? null;
-    });
-    return changes;
+    return yield* filesAt(wiki, to, names);
   });
+
+  /** Lands files already carried from elsewhere; a warning they drop from a map stays on it. */
+  const planCarried =
+    ({ changes, blobs }: CarriedFiles) =>
+    (files: WikiFiles, stamp: AmendmentStamp) => {
+      const planned =
+        Object.keys(changes).length === 0
+          ? { changes, errors: [] }
+          : planAmendment(files, keepWarningHistory(files, changes), stamp, {
+              allowUnstamped: true,
+            });
+      return { ...planned, blobs };
+    };
 
   const draftMove: WikiService["Service"]["draftMove"] = (input, author) =>
     withWiki(
@@ -1818,12 +1880,10 @@ const make = Effect.gen(function* () {
             }
             const { base } = draft.record;
             const held = yield* changesBetween(wiki, base, draft.head);
-            const moving = Object.fromEntries(
-              Object.entries(held).filter(
-                ([file]) => input.files === undefined || input.files.includes(file),
-              ),
+            const inDraft = carriedNames(held);
+            const files = inDraft.filter(
+              (file) => input.files === undefined || input.files.includes(file),
             );
-            const files = Object.keys(moving);
             if (files.length === 0) {
               return yield* new WikiError({
                 reason: "invalid",
@@ -1838,9 +1898,10 @@ const make = Effect.gen(function* () {
               (yield* runGit("mergeBase", wiki.root, ["merge-base", base, target.head], {
                 allowExitCodes: [1],
               })).stdout.trim() || base;
+            const moving = yield* filesAt(wiki, draft.head, files);
             const carrier = yield* commitTree(
               wiki.root,
-              yield* buildTree(wiki.root, shared, moving),
+              yield* buildTree(wiki.root, shared, moving.changes, undefined, moving.blobs),
               [shared],
               "Temporary draft carrier",
               env,
@@ -1857,7 +1918,7 @@ const make = Effect.gen(function* () {
             const merged = yield* changesBetween(wiki, target.head, tree);
             const first = documentSubject(files[0] ?? "");
             const moved =
-              Object.keys(merged).length === 0
+              carriedNames(merged).length === 0
                 ? yield* view(wiki, target)
                 : (yield* land(
                     wiki,
@@ -1866,12 +1927,9 @@ const make = Effect.gen(function* () {
                     files.length === 1
                       ? `Move ${first} from a draft`
                       : `Move ${files.length} documents from a draft`,
-                    (current, stamp) =>
-                      planAmendment(current, keepWarningHistory(current, merged), stamp, {
-                        allowUnstamped: true,
-                      }),
+                    planCarried(merged),
                   )).changeRequest;
-            if (files.length === Object.keys(held).length) {
+            if (files.length === inDraft.length) {
               yield* recordChangeRequest(
                 wiki,
                 draft,
@@ -1882,22 +1940,12 @@ const make = Effect.gen(function* () {
               yield* publish("status", wiki.wikiId, input.changeRequestId);
               return moved;
             }
-            const before = yield* readObjects(
-              wiki.root,
-              files.map((file) => `${base}:${file}`),
-            );
-            const restored = Object.fromEntries(
-              files.map((file, position) => [file, before[position] ?? null]),
-            );
             yield* land(
               wiki,
               { kind: "existing", stored: draft },
               author,
               `Move ${files.length === 1 ? first : `${files.length} documents`} to ${target.record.title}`,
-              (current, stamp) =>
-                planAmendment(current, keepWarningHistory(current, restored), stamp, {
-                  allowUnstamped: true,
-                }),
+              planCarried(yield* filesAt(wiki, base, files)),
             );
             return moved;
           }),
@@ -1960,24 +2008,7 @@ const make = Effect.gen(function* () {
               });
             }
             const { tree, canvases } = merged;
-            const names = (yield* runGit("revertDiff", wiki.root, [
-              "diff",
-              "--no-renames",
-              "--name-only",
-              "-z",
-              stored.head,
-              tree,
-            ])).stdout
-              .split("\0")
-              .filter(Boolean);
-            const contents = yield* readObjects(
-              wiki.root,
-              names.map((name) => `${tree}:${name}`),
-            );
-            const inverseChanges: Record<string, string | null> = {};
-            names.forEach((name, position) => {
-              inverseChanges[name] = contents[position] ?? null;
-            });
+            const inverseChanges = yield* changesBetween(wiki, stored.head, tree);
             const subject = (yield* amendmentsOf(wiki, stored)).find(
               (amendment) => amendment.commit === commit,
             )?.subject;
@@ -1987,10 +2018,7 @@ const make = Effect.gen(function* () {
               author,
               `Revert "${subject ?? commit.slice(0, 12)}"`,
               // Warning history survives the inverse; resolving a warning is its own amendment.
-              (files, stamp) =>
-                planAmendment(files, keepWarningHistory(files, inverseChanges), stamp, {
-                  allowUnstamped: true,
-                }),
+              planCarried(inverseChanges),
               { reverts: commit },
             );
             return canvases.length > 0 ? { ...landed, canvases } : landed;
