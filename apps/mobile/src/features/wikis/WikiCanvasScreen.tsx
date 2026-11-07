@@ -602,6 +602,7 @@ export function WikiCanvasScreen({
   const subtitle = [
     wikiDocumentSubtitle({
       wikiName: wiki?.name ?? null,
+      file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
       agentWorking: false,

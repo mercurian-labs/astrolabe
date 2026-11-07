@@ -6,6 +6,7 @@ import {
   documentFile,
   documentPath,
   documentTitle,
+  documentTitleAmong,
   draftDocuments,
   draftLabel,
   draftMovedTo,
@@ -110,6 +111,26 @@ describe("changeRequestCanvasReview", () => {
     expect(changeRequestCanvasReview(detail("open", null), "Other.canvas", after)).toBeNull();
     expect(changeRequestCanvasReview(detail("open", null), "Board.canvas", "{nope")).toBeNull();
     expect(changeRequestCanvasReview(null, "Board.canvas", after)).toBeNull();
+  });
+});
+
+describe("documentTitleAmong", () => {
+  const WALK = ["a/Plan.md", "b/Plan.md", "a/deep/Plan.md", "Plan.md"];
+
+  it.each([
+    ["a/Plan.md", WALK, "a/Plan"],
+    ["b/Plan.md", WALK, "b/Plan"],
+    ["a/deep/Plan.md", WALK, "deep/Plan"],
+    ["Plan.md", WALK, "Plan"],
+    ["a/Plan.md", ["a/Plan.md", "b/Other.md"], "Plan"],
+    ["a/Plan.md", ["a/Plan.md", "a/Plan.md"], "Plan"],
+    ["x/deep/Plan.md", ["x/deep/Plan.md", "y/deep/Plan.md"], "x/deep/Plan"],
+    ["a/Plan.md", ["a/Plan.md", "x/a/Plan.md"], "a/Plan"],
+    ["x/a/Plan.md", ["a/Plan.md", "x/a/Plan.md"], "x/a/Plan"],
+    ["a/Plan.md", ["a/Plan.md", "adeep/plan.canvas"], "a/Plan"],
+    ["deep/Plan.md", ["deep/Plan.md", "adeep/Plan.md"], "deep/Plan"],
+  ])("%s among %j reads %s", (file, open, title) => {
+    expect(documentTitleAmong(file, open)).toBe(title);
   });
 });
 

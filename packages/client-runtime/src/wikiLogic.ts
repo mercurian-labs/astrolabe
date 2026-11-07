@@ -39,6 +39,29 @@ export const documentTitle = (file: string): string => {
   return path.slice(path.lastIndexOf("/") + 1);
 };
 
+/**
+ * A document's title among the `open` ones: with as many of its folders, from the nearest, as tell
+ * it from the others of that title. Alone, its title.
+ */
+export function documentTitleAmong(file: string, open: Iterable<string>): string {
+  const path = documentPath(file);
+  const title = noteKey(documentTitle(file));
+  const rivals: string[] = [];
+  for (const other of open) {
+    const rival = noteKey(documentPath(other));
+    if (rival !== noteKey(path) && noteKey(documentTitle(other)) === title) {
+      rivals.push(`/${rival}`);
+    }
+  }
+  const parts = path.split("/");
+  for (let taken = 1; taken < parts.length; taken++) {
+    const suffix = parts.slice(-taken).join("/");
+    const end = `/${noteKey(suffix)}`;
+    if (!rivals.some((rival) => rival.endsWith(end))) return suffix;
+  }
+  return path;
+}
+
 /** A document's file, from a name a saved tab or an old link holds: a note's had no extension. */
 export const documentFile = (name: string): string =>
   /\.(md|base|canvas)$/i.test(name) ? name : `${name}.md`;

@@ -1,10 +1,13 @@
 import type { WikiChangeRequest } from "@t3tools/contracts";
 import type { WikiEditorAuthor } from "@mercurian/wiki-editor/protocol";
+import { folderOf } from "@mercurian/wiki/resolve-link";
 import { authorColor, latestAmendmentFor, PERSON_ACTOR } from "@t3tools/client-runtime/wikiLogic";
 
 /** Where the document is read from, for the header's subtitle. */
 export function wikiDocumentSubtitle(input: {
   readonly wikiName: string | null;
+  /** What's read: the title alone can't tell one folder's Plan from another's. */
+  readonly file: string;
   /** The change request the document is read inside; null reads main. */
   readonly changeRequest: (Pick<WikiChangeRequest, "title"> & { readonly draft?: boolean }) | null;
   readonly readsChangeRequest: boolean;
@@ -19,7 +22,13 @@ export function wikiDocumentSubtitle(input: {
       : input.changeRequest
         ? `In “${input.changeRequest.title}”`
         : "In a change request";
-  return [input.wikiName, scope, input.agentWorking ? "agent working" : null, input.saving ?? null]
+  return [
+    input.wikiName,
+    folderOf(input.file),
+    scope,
+    input.agentWorking ? "agent working" : null,
+    input.saving ?? null,
+  ]
     .filter((part): part is string => part !== null && part.length > 0)
     .join(" · ");
 }

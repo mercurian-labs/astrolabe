@@ -7,10 +7,12 @@ import {
   TableIcon,
   WaypointsIcon,
 } from "lucide-react";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { ensureLocalApi } from "~/localApi";
+import { allTabs, type Arrangement } from "~/panes/arrangement";
 import type { PaneTabLabel } from "~/panes/panesHost";
+import { workspace } from "~/panes/workspace";
 import { useListedProjectWorktrees } from "~/state/worktrees";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -27,6 +29,7 @@ import { WikiChangeRequestView } from "./WikiChangeRequestView";
 import {
   documentFile,
   documentTitle,
+  documentTitleAmong,
   draftMovedTo,
   filesHoldDocument,
   NO_NOTE_FROM_RELATIVE_LINK,
@@ -306,12 +309,32 @@ function ChangeRequestTab({
   );
 }
 
+const noteFilesOpen = new WeakMap<Arrangement, ReadonlyArray<string>>();
+
+/** The documents open in tabs, read once per arrangement however many tabs ask. */
+function openNoteFiles() {
+  const arrangement = workspace.arrangement();
+  let files = noteFilesOpen.get(arrangement);
+  if (files === undefined) {
+    files = allTabs(arrangement).flatMap((key) => {
+      const tab = parseWikiTabKey(key);
+      return tab?.kind === "note" ? [tab.file] : [];
+    });
+    noteFilesOpen.set(arrangement, files);
+  }
+  return files;
+}
+
 /**
  * A tab's title and icon, a note's name or a change request's title, with the number of the
- * worktree holding its change request.
+ * worktree holding its change request. Tabs of one name read apart by their folders.
  */
 export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const tab = parseWikiTabKey(tabKey);
+  const noteFile = tab?.kind === "note" ? tab.file : null;
+  const noteTitle = useSyncExternalStore(workspace.store.subscribe, () =>
+    noteFile === null ? "" : documentTitleAmong(noteFile, openNoteFiles()),
+  );
   const { holder } = useChangeRequestWorktree(tab);
   const trailing = holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {};
   const changeRequests = useEnvironmentQuery(
@@ -326,20 +349,23 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   if (tab.kind === "note") {
     if (isCanvasTab(tab)) {
       return {
-        title: documentTitle(tab.file),
+        title: noteTitle,
+        tooltip: tab.file,
         icon: <WaypointsIcon className="size-3.5 shrink-0" />,
         ...trailing,
       };
     }
     if (isBaseTab(tab)) {
       return {
-        title: documentTitle(tab.file),
+        title: noteTitle,
+        tooltip: tab.file,
         icon: <TableIcon className="size-3.5 shrink-0" />,
         ...trailing,
       };
     }
     return {
-      title: documentTitle(tab.file),
+      title: noteTitle,
+      tooltip: tab.file,
       icon:
         tab.changeRequestId === undefined ? (
           <FileTextIcon className="size-3.5 shrink-0" />

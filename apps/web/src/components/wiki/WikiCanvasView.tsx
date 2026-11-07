@@ -36,6 +36,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import {
   describeWikiFailure,
+  documentPath,
   documentTitle,
   exactWikiPath,
   isSettledChangeRequest,
@@ -419,7 +420,7 @@ export default function WikiCanvasPage({
             },
           })}
         >
-          {title}
+          {documentPath(file)}
         </TabHeader.Title>
         {!canEdit || readOnly ? <TabHeader.Status>Read only</TabHeader.Status> : null}
         <WikiSaveStatus status={status} />

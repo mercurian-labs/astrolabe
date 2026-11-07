@@ -206,6 +206,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const subtitle = [
     wikiDocumentSubtitle({
       wikiName: wiki?.name ?? null,
+      file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
       agentWorking: false,

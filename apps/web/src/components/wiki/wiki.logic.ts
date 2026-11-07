@@ -39,6 +39,7 @@ export {
   documentFile,
   documentPath,
   documentTitle,
+  documentTitleAmong,
   draftDocuments,
   draftLabel,
   draftMovedTo,

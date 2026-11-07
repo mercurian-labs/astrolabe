@@ -24,6 +24,7 @@ import {
   authorColor,
   describeWikiFailure,
   documentFile,
+  documentPath,
   documentTitle,
   exactWikiPath,
   isSettledChangeRequest,
@@ -283,7 +284,7 @@ export function WikiNoteView({
             },
           })}
         >
-          {title}
+          {documentPath(tabFile)}
         </TabHeader.Title>
         {skillMap ? <TabHeader.Status>Skill map · read only</TabHeader.Status> : null}
         {settled ? (

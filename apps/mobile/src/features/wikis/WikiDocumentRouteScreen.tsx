@@ -378,6 +378,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
 
   const subtitle = wikiDocumentSubtitle({
     wikiName: wiki?.name ?? null,
+    file: requested,
     changeRequest: viewing ?? null,
     readsChangeRequest: changeRequestId !== undefined,
     agentWorking: viewingTurn.running,

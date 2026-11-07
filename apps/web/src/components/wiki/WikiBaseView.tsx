@@ -43,6 +43,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import {
   describeWikiFailure,
+  documentPath,
   documentTitle,
   isDocumentFile,
   isSettledChangeRequest,
@@ -603,7 +604,7 @@ export function WikiBasePage({
             },
           })}
         >
-          {documentTitle(file)}
+          {documentPath(file)}
         </TabHeader.Title>
         {!editable ? <TabHeader.Status>Base · read only</TabHeader.Status> : null}
         <WikiSaveStatus

@@ -16,6 +16,7 @@ describe("wikiDocumentSubtitle", () => {
     expect(
       wikiDocumentSubtitle({
         wikiName: "almagest",
+        file: "Plan.md",
         changeRequest: null,
         readsChangeRequest: false,
         agentWorking: false,
@@ -24,6 +25,16 @@ describe("wikiDocumentSubtitle", () => {
     expect(
       wikiDocumentSubtitle({
         wikiName: "almagest",
+        file: "a/deep/Plan.md",
+        changeRequest: null,
+        readsChangeRequest: false,
+        agentWorking: false,
+      }),
+    ).toBe("almagest · a/deep · Main");
+    expect(
+      wikiDocumentSubtitle({
+        wikiName: "almagest",
+        file: "Plan.md",
         changeRequest: { title: "Grow Atlas" },
         readsChangeRequest: true,
         agentWorking: true,
@@ -32,6 +43,7 @@ describe("wikiDocumentSubtitle", () => {
     expect(
       wikiDocumentSubtitle({
         wikiName: "almagest",
+        file: "Plan.md",
         changeRequest: { title: "Edit Atlas", draft: true },
         readsChangeRequest: true,
         agentWorking: false,
@@ -41,6 +53,7 @@ describe("wikiDocumentSubtitle", () => {
     expect(
       wikiDocumentSubtitle({
         wikiName: null,
+        file: "Plan.md",
         changeRequest: null,
         readsChangeRequest: true,
         agentWorking: false,
