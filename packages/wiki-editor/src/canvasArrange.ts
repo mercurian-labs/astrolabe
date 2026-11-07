@@ -1,5 +1,7 @@
 import type { CanvasBounds, CanvasEdge, CanvasNode, CanvasSide } from "@mercurian/wiki/canvas";
 
+import { overlaps } from "./canvasGeometry";
+
 /**
  * Where hands put things on a board, as pure geometry: snapping, resizing, group membership and the
  * arrange commands. The numbers are Obsidian's, as measured on 1.15; a board works in its own units.
@@ -383,6 +385,47 @@ export function cardAtConnectionDrop(
     case "top":
       return { x: drop.x - size.width / 2, y: drop.y - size.height };
   }
+}
+
+/** How far from where it'd go, in its own size, a new card looks for room. */
+const ROOM_RINGS = 6;
+
+/**
+ * `rect`, or the nearest place of a grid of its size that's clear of every one of `taken`: in
+ * `view` if there's such a place there. With no room left it stays, as a drop would.
+ */
+export function roomNear(
+  rect: CanvasBounds,
+  taken: ReadonlyArray<CanvasBounds>,
+  view: CanvasBounds,
+): CanvasPoint {
+  const spots: CanvasBounds[] = [];
+  for (let across = -ROOM_RINGS; across <= ROOM_RINGS; across++) {
+    for (let down = -ROOM_RINGS; down <= ROOM_RINGS; down++) {
+      spots.push({
+        ...rect,
+        x: rect.x + across * (rect.width + CANVAS_GAP),
+        y: rect.y + down * (rect.height + CANVAS_GAP),
+      });
+    }
+  }
+  const away = ({ x, y }: CanvasPoint) => Math.hypot(x - rect.x, y - rect.y);
+  spots.sort((a, b) => away(a) - away(b));
+  const clear = (spot: CanvasBounds) => {
+    const around = {
+      x: spot.x - CANVAS_GAP,
+      y: spot.y - CANVAS_GAP,
+      width: spot.width + CANVAS_GAP * 2,
+      height: spot.height + CANVAS_GAP * 2,
+    };
+    return !taken.some((card) => overlaps(around, card));
+  };
+  const inView = ({ x, y, width, height }: CanvasBounds) =>
+    x >= view.x &&
+    y >= view.y &&
+    x + width <= view.x + view.width &&
+    y + height <= view.y + view.height;
+  return spots.find((spot) => clear(spot) && inView(spot)) ?? spots.find(clear) ?? rect;
 }
 
 export const centeredOn = (

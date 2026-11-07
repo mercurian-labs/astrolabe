@@ -1701,19 +1701,19 @@ export function CanvasBoard({
           live.canvasDocument?.redo();
           return;
         case "add-card":
-          commands.addTextAt(commands.centre);
+          commands.addTextAt(null);
           return;
         case "add-note":
-          void commands.addFile("note", commands.centre);
+          void commands.addFile("note", null);
           return;
         case "add-media":
-          void commands.addFile("media", commands.centre);
+          void commands.addFile("media", null);
           return;
         case "add-web-page":
-          void commands.addWebPage(commands.centre);
+          void commands.addWebPage(null);
           return;
         case "create-group":
-          commands.createGroup(commands.centre);
+          commands.createGroup(null);
           return;
         case "help":
           setDialog({ kind: "help" });
@@ -2005,8 +2005,8 @@ export function CanvasBoard({
               return inside ? view.toWorld(clientX, clientY) : null;
             }}
             onAdd={(kind, at) => {
-              if (kind === "text") commands.addTextAt(at ?? commands.centre);
-              else void commands.addFile(kind, at ?? commands.centre);
+              if (kind === "text") commands.addTextAt(at);
+              else void commands.addFile(kind, at);
             }}
           >
             {host.touch === true ? (

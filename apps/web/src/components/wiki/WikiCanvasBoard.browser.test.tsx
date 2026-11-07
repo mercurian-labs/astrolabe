@@ -3,7 +3,7 @@ import {
   type CanvasBoardHandle,
   type CanvasBoardHost,
 } from "@mercurian/wiki-editor/canvas-board";
-import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
+import { overlaps, type CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
 import {
   canvasData,
   reviewCanvas,
@@ -645,6 +645,17 @@ describe("editing a board", () => {
     });
     drag(dot("a", "top"), { x: 100, y: 0 }, { x: 110, y: 40 }, { x: 100, y: 50 });
     expect(canvas.getState().data.edges).toHaveLength(1);
+  });
+
+  it("finds room for a card added without a point", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", -1000, -1000, { width: 2000, height: 2000 })]);
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    await userEvent.click(screen.getByLabelText("Drag to add a card"));
+    await vi.waitFor(() => expect(canvas.getState().data.nodes).toHaveLength(2));
+    const [first, added] = canvas.getState().data.nodes;
+    expect(overlaps(first!, added!)).toBe(false);
   });
 
   it("asks what a line dropped in space ends on, and Escape leaves nothing", async () => {

@@ -44,6 +44,7 @@ import {
   movedWith,
   OPPOSITE_SIDE,
   ratioHeight,
+  roomNear,
   TEXT_CARD_SIZE,
   type CanvasArrangement,
   type CanvasHandle,
@@ -170,11 +171,23 @@ export class CanvasCommands {
     this.#board.select({ cards: new Set([id]), arrow: null });
   }
 
-  addTextAt(point: CanvasPoint) {
+  /** Where a card asked for without a point goes: the view's middle, or room near it. */
+  #room(size: { readonly width: number; readonly height: number }): CanvasPoint {
+    const cards = this.#board.data().nodes.filter((node) => node.type !== "group");
+    return roomNear(
+      { ...centeredOn(this.centre, size), ...size },
+      cards,
+      this.#board.view.window(),
+    );
+  }
+
+  /** On `point`, or with none, wherever there's room. */
+  addTextAt(point: CanvasPoint | null) {
     const document = this.#document;
     if (document === null) return;
     const id = document.mint();
-    document.commit([{ op: "put-card", node: textCard(id, centeredOn(point, TEXT_CARD_SIZE)) }]);
+    const at = point === null ? this.#room(TEXT_CARD_SIZE) : centeredOn(point, TEXT_CARD_SIZE);
+    document.commit([{ op: "put-card", node: textCard(id, at) }]);
     this.#selectOne(id);
     this.editCard(id);
   }
@@ -237,7 +250,7 @@ export class CanvasCommands {
         };
   }
 
-  async addFile(kind: "note" | "media", at: CanvasPoint) {
+  async addFile(kind: "note" | "media", at: CanvasPoint | null) {
     const file = await this.pickFile(kind);
     if (file === null) return;
     await this.placeFile(file, at);
@@ -253,10 +266,11 @@ export class CanvasCommands {
         );
   }
 
-  async placeFile(file: string, at: CanvasPoint) {
+  async placeFile(file: string, point: CanvasPoint | null) {
     const document = this.#document;
     if (document === null) return;
     const size = await this.#sizeFor(file);
+    const at = point ?? this.#room(size);
     const id = document.mint();
     document.commit([
       {
@@ -292,7 +306,7 @@ export class CanvasCommands {
     this.#board.select({ cards: new Set(cards.map((card) => card.id as string)), arrow: null });
   }
 
-  async addWebPage(at: CanvasPoint) {
+  async addWebPage(point: CanvasPoint | null) {
     const document = this.#document;
     if (document === null) return;
     const url = await this.#board.prompt({
@@ -301,6 +315,7 @@ export class CanvasCommands {
       submit: "Add",
     });
     if (url === null || url.trim() === "") return;
+    const at = point ?? this.#room(FILE_CARD_SIZE);
     const id = document.mint();
     document.commit([
       {
@@ -312,10 +327,11 @@ export class CanvasCommands {
   }
 
   /** Around what's selected, or an empty one at `at`; its label is ready to edit either way. */
-  createGroup(at: CanvasPoint) {
+  createGroup(point: CanvasPoint | null) {
     const document = this.#document;
     if (document === null) return;
     const { selected } = this;
+    const at = point ?? this.#room(FILE_CARD_SIZE);
     const rect =
       selected.length > 0
         ? groupAround(selected)
