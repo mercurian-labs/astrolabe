@@ -57,7 +57,7 @@ export interface WikiListScope {
 export const wikiFolderKey = (wiki: WikiListScope, path: string) =>
   `${wiki.environmentId}:${wiki.wikiId}:${path}`;
 
-/** Every wiki's documents by folder; several wikis show one after another, each its own tree. */
+/** Every wiki's documents by folder; several wikis show one after another, each under its name. */
 function treeRows(
   documents: ReadonlyArray<WikiDocumentEntry>,
   expanded: ReadonlySet<string>,
@@ -78,11 +78,14 @@ function treeRows(
       const prefix = wikiFolderKey(wiki, "");
       if (key.startsWith(prefix)) open.add(key.slice(prefix.length));
     }
-    return flattenFileTree({ nodes, expanded: open }).map((item) => ({
+    const rows = flattenFileTree({ nodes, expanded: open }).map((item) => ({
       type: "tree" as const,
       key: `tree:${wikiFolderKey(wiki, item.node.path)}`,
       row: { wiki, item, entry: byFile.get(item.node.path) ?? null },
     }));
+    if (wikis.size < 2) return rows;
+    const label = first.wiki.name;
+    return [{ type: "section" as const, key: `tree:${wikiFolderKey(wiki, "")}`, label }, ...rows];
   });
 }
 

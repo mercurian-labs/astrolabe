@@ -174,6 +174,15 @@ describe("the Wikis tree", () => {
     expect(open[0]?.entry).toBeNull();
     expect(open[2]?.entry?.file).toBe("a/One.md");
   });
+
+  it("names each wiki above its tree only when several show", () => {
+    const headers = (shown: WikiOverview[]) =>
+      buildWikiListItems(wikiListEntries(shown, null), new Set()).flatMap((item) =>
+        item.type === "section" ? [item.label] : [],
+      );
+    expect(headers(overviews)).toEqual(["Almagest", "Notes"]);
+    expect(headers(overviews.slice(0, 1))).toEqual([]);
+  });
 });
 
 describe("the Changes tab's wiki group", () => {

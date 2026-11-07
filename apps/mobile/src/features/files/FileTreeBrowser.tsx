@@ -42,6 +42,8 @@ export const FileTreeRow = function FileTreeRow(props: {
   readonly onPressFile: (path: string) => void;
   /** Astrolabe: what a long press offers a row, such as moving it. */
   readonly onLongPress?: ((node: FileTreeNode) => void) | undefined;
+  /** Astrolabe: a short note at the row's end, such as when it last changed. */
+  readonly trailing?: string | null | undefined;
 }) {
   const { node, depth } = props.item;
 
@@ -93,6 +95,9 @@ export const FileTreeRow = function FileTreeRow(props: {
       >
         {node.name}
       </Text>
+      {props.trailing ? (
+        <Text className="text-xs tabular-nums text-foreground-tertiary">{props.trailing}</Text>
+      ) : null}
       {node.kind === "directory" && props.expanded && props.loading ? (
         <AppActivityIndicator size="small" accessibilityLabel={`Loading ${node.name}`} />
       ) : null}

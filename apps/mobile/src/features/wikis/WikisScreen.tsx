@@ -36,9 +36,11 @@ import {
   changeRequestWikiScopeAtom,
   wikiEnvironment,
 } from "../../state/wiki";
+import { relativeTime } from "../../lib/time";
 import { useAtomCommand } from "../../state/use-atom-command";
 import * as Dialog from "../../components/ui/Dialog";
 import { FileTreeRow } from "../files/FileTreeBrowser";
+import { ThreadListV2SectionDivider } from "../threads/thread-list-v2-items";
 import type { FileTreeNode } from "../files/fileTree";
 import { setWikiShowHidden, useWikiShowHidden } from "./wikiPreferences";
 import { useWorkspaceState } from "../../state/workspace";
@@ -235,8 +237,9 @@ export function WikisScreen() {
               <SymbolView name="chevron.right" size={13} tintColorClassName="accent-icon" />
             </Pressable>
           );
-        case "settled-shelf":
         case "section":
+          return <ThreadListV2SectionDivider label={item.label} />;
+        case "settled-shelf":
         case "change":
           return null;
         case "tree": {
@@ -259,6 +262,7 @@ export function WikisScreen() {
                 if (entry !== null) openDocument(entry);
               }}
               onLongPress={(node) => askToMove(wiki, node)}
+              trailing={entry?.editedAt ? relativeTime(entry.editedAt) : null}
             />
           );
         }
