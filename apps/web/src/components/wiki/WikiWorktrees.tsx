@@ -87,12 +87,15 @@ export function WikiWorktreeSections({
   overview,
   focused,
   hidden,
+  showHidden,
   renderRows,
 }: {
   readonly overview: WikiOverview;
   readonly focused: WikiTab | null;
   /** Worktree keys the filter hides; the focused tab's shows anyway, marked. */
   readonly hidden: ReadonlyArray<string>;
+  /** Whether files and folders starting with a dot show, here as in the document tree. */
+  readonly showHidden: boolean;
   /** A worktree's documents: the main line's notes, or those its change request touches. */
   readonly renderRows: (
     worktree: ProjectWorktree,
@@ -261,6 +264,7 @@ export function WikiWorktreeSections({
             projectName={`${wiki.name} · ${label}`}
             selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
             onOpenFile={(file) => openFile(worktree, file)}
+            hideDotFiles={!showHidden}
           />
         ) : null}
       </Fragment>

@@ -51,6 +51,12 @@ export function startDrag(
   setTimeout(changed);
 }
 
+/** Holds `item` for a drag something else started and draws, as a file tree does its rows. */
+export function carryDrag(item: DragItem) {
+  current = item;
+  setTimeout(changed);
+}
+
 export function endDrag() {
   stopTabDragPreview();
   if (current === null) return;

@@ -39,6 +39,22 @@ const T3_FILE_ICON_SPRITE = `
     <path fill="#f9ad00" d="M30 10.75h-8.749V2H30Zm-9.626 0h-8.75V2h8.75Zm-9.625 0H2V2h8.749ZM30 20.375h-8.749v-8.75H30Z" />
     <path fill="currentColor" d="M20.374 20.375h-8.75v-8.75h8.75Zm0 9.625h-8.75v-8.75h8.75ZM30 30h-8.749v-8.75H30Zm-19.251 0H2v-8.75h8.749Z" />
   </symbol>
+  <!-- Lucide Table icon, ISC license. -->
+  <symbol id="t3-file-icon-wiki-base" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M3 9h18M3 15h18M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+  </symbol>
+  <!-- Lucide Waypoints icon, ISC license. -->
+  <symbol id="t3-file-icon-wiki-canvas" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="4.5" r="2.5" />
+      <path d="m10.2 6.3-3.9 3.9" />
+      <circle cx="4.5" cy="12" r="2.5" />
+      <path d="M7 12h10" />
+      <circle cx="19.5" cy="12" r="2.5" />
+      <path d="m13.8 17.7 3.9-3.9" />
+      <circle cx="12" cy="19.5" r="2.5" />
+    </g>
+  </symbol>
   <!-- Lucide Loader Circle icon, ISC license. -->
   <symbol id="t3-tree-icon-loading" viewBox="0 0 24 24">
     <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M21 12a9 9 0 1 1-6.219-8.56" />

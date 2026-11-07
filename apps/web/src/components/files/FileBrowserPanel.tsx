@@ -1,3 +1,4 @@
+import { isHidden } from "@mercurian/wiki/resolve-link";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import type {
   ContextMenuItem as TreeContextMenuItem,
@@ -52,6 +53,8 @@ interface FileBrowserPanelProps {
   sidebar?: { readonly maxRows: number };
   /** Astrolabe: more entries for a file's context menu, after the built-in ones. */
   fileMenuActions?: ReadonlyArray<FileMenuAction>;
+  /** Astrolabe: leaves out anything starting with a dot, as a wiki's document tree does. */
+  hideDotFiles?: boolean;
 }
 
 // Rows line up with the sidebar's own: its colours, its text size, and its inset.
@@ -170,6 +173,7 @@ export default function FileBrowserPanel({
   hostFolder = false,
   sidebar,
   fileMenuActions = NO_FILE_MENU_ACTIONS,
+  hideDotFiles = false,
 }: FileBrowserPanelProps) {
   const panelPath = (relativePath: string) =>
     hostFolder ? joinHostPath(cwd, relativePath) : relativePath;
@@ -185,6 +189,9 @@ export default function FileBrowserPanel({
     isPending,
     loadingDirectories,
   } = useDirectoryEntries(environmentId, cwd);
+  const listedEntries = hideDotFiles
+    ? directoryEntries.filter((entry) => !isHidden(entry.path))
+    : directoryEntries;
   const [query, setQuery] = useState("");
   const [expandAll, setExpandAll] = useState(false);
   const pathSearch = useProjectPathSearch(
@@ -192,7 +199,7 @@ export default function FileBrowserPanel({
     200,
   );
   const { entries, entryKinds, treePaths, directoryPaths, expandableDirectoryPaths } =
-    buildTreeEntries(directoryEntries, pathSearch.entries, pathSearch.isPending, query);
+    buildTreeEntries(listedEntries, pathSearch.entries, pathSearch.isPending, query);
   const entryKindsRef = useRef(entryKinds);
   const previousTreePathsRef = useRef<readonly string[] | null>(null);
   const syncingSelectionRef = useRef(false);
