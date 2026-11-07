@@ -229,7 +229,7 @@ export function WikiNoteView({
   });
 
   const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
-  const documents = index.data === null ? NO_LINK_TYPES : wikiDocumentNames(index.data);
+  const documents = index.data === null ? [] : wikiDocumentNames(index.data);
 
   if (data === null) {
     return note.error !== null ? (
