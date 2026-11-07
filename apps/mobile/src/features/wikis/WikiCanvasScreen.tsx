@@ -34,11 +34,13 @@ import {
   wikiDocumentFiles,
   wikiDocumentScope,
   wikiDraft,
-  wikiLinkFile,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiLinkOpens,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { DEFAULT_WIKI_CANVAS_SETTINGS } from "@t3tools/contracts";
+import { newNoteFile } from "@mercurian/wiki/placement";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 
@@ -53,6 +55,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { assetEnvironment } from "../../state/assets";
 import { useProjects } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
+import { useWikiPlacement } from "./wikiPreferences";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { usePreparedConnection } from "../../state/session";
@@ -197,6 +200,7 @@ export function WikiCanvasScreen({
   const settings =
     environments.find((each) => each.environmentId === environmentId)?.serverConfig?.settings
       .wikiCanvas ?? DEFAULT_WIKI_CANVAS_SETTINGS;
+  const placement = useWikiPlacement(environmentId);
   const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
     label: "canvas settings update",
     reportFailure: true,
@@ -329,7 +333,7 @@ export function WikiCanvasScreen({
     if (revision === null) return;
     const result = await mintUrl({
       environmentId,
-      input: { resource: { _tag: "wiki-file", wikiId, commit: revision, path } },
+      input: { resource: { _tag: "wiki-file", wikiId, commit: revision, path, from: file } },
     });
     const state = assetUrlStateFromResult(result, httpBaseUrl);
     editor.current?.send({
@@ -406,11 +410,18 @@ export function WikiCanvasScreen({
         if (revision === null) return { kind: "value", value: null };
         const result = await mintUrl({
           environmentId,
-          input: { resource: { _tag: "wiki-file", wikiId, commit: revision, path: ask.path } },
+          input: {
+            resource: { _tag: "wiki-file", wikiId, commit: revision, path: ask.path, from: file },
+          },
         });
         const state = assetUrlStateFromResult(result, httpBaseUrl);
         return { kind: "value", value: state._tag === "Success" ? state.url : null };
       }
+      case "place-note":
+        return {
+          kind: "value",
+          value: newNoteFile(ask.name, file, placement, documents ?? []),
+        };
       case "write-note": {
         const { file: note, text, readAt } = ask;
         const outcome = await send({
@@ -473,14 +484,18 @@ export function WikiCanvasScreen({
       kind,
       ...(mimeType === null ? {} : { mimeType }),
       environmentId,
-      resource: { _tag: "wiki-file", wikiId, commit: revision, path },
+      resource: { _tag: "wiki-file", wikiId, commit: revision, path, from: file },
       name: cardFileName(path),
     });
   };
   const openLink = (name: string, from: string = file) => {
     // A bare name is a note's. Anything with a file's extension that's no document opens as a file.
     const media = !["other", "note", "canvas", "base"].includes(canvasFileKind(name));
-    const document = wikiLinkFile(index.data, name, from);
+    const document = wikiLinkOpens(index.data, name, from, placement);
+    if (document === null) {
+      Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
+      return;
+    }
     if (media || !isDocumentFile(document)) {
       openFile(name);
       return;

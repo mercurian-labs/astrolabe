@@ -13,6 +13,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildWikiChangeItems,
   buildWikiListItems,
+  wikiFolderKey,
   resolveWikiScope,
   wikiChangeFooter,
   wikiDocumentFooter,
@@ -134,6 +135,44 @@ describe("the Wikis list", () => {
     const items = buildWikiListItems(wikiListEntries(overviews, scope));
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ type: "document" });
+  });
+});
+
+describe("the Wikis tree", () => {
+  const tree = (expanded: ReadonlySet<string>) => {
+    const entries = wikiListEntries(
+      [
+        {
+          ...overviews[0]!,
+          index: {
+            ...overviews[0]!.index!,
+            notes: ["a/deep/Plan.md", "a/One.md", "Top.md"].map((file) => ({
+              ...overviews[0]!.index!.notes[0]!,
+              file,
+              name: file.replace(/\.md$/, ""),
+            })),
+          },
+        },
+      ],
+      null,
+    );
+    return buildWikiListItems(entries, expanded).flatMap((item) =>
+      item.type === "tree" ? [item.row] : [],
+    );
+  };
+
+  it("lists folders first, folded until opened", () => {
+    expect(tree(new Set()).map((row) => row.item.node.path)).toEqual(["a", "Top.md"]);
+    const opened = tree(new Set()).find((row) => row.item.node.path === "a")!;
+    const open = tree(new Set([wikiFolderKey(opened.wiki, "a")]));
+    expect(open.map((row) => [row.item.node.path, row.item.depth])).toEqual([
+      ["a", 0],
+      ["a/deep", 1],
+      ["a/One.md", 1],
+      ["Top.md", 0],
+    ]);
+    expect(open[0]?.entry).toBeNull();
+    expect(open[2]?.entry?.file).toBe("a/One.md");
   });
 });
 

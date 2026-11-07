@@ -11,15 +11,21 @@ import {
   exactWikiPath,
   filesHoldDocument,
   isCanvasName,
+  draftMovedTo,
   isSettledChangeRequest,
   isTurnRunning,
   wikiDocumentScope,
   wikiDraft,
-  wikiLinkFile,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiDocumentFiles,
+  wikiLinkOpens,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import * as Dialog from "../../components/ui/Dialog";
+import { useWikiPlacement } from "./wikiPreferences";
 import { Linking, View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -93,6 +99,12 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   );
   const all = changeRequests.data?.changeRequests;
   const draft = wikiDraft(all);
+  const placement = useWikiPlacement(environmentId);
+  const movedTo = routeChangeRequestId === undefined ? draftMovedTo(draft, requested) : undefined;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a move landed elsewhere reaches the native route from here
+  useEffect(() => {
+    if (movedTo !== undefined) navigation.setParams({ name: movedTo });
+  }, [movedTo, navigation]);
   const changeRequestId = wikiDocumentScope({
     tabChangeRequestId: routeChangeRequestId,
     draft,
@@ -206,10 +218,21 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   }, []);
 
   const linkTypes = index.data?.linkTypes;
+  const documents = useMemo(
+    () => (index.data ? wikiDocumentFiles(index.data) : null),
+    [index.data],
+  );
+  const linkingFile = data?.file ?? null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's types cross into the editor's web view, outside React
   useEffect(() => {
-    if (linkTypes) editor.current?.send({ type: "linkTypes", types: linkTypes });
-  }, [linkTypes]);
+    if (!linkTypes || documents === null) return;
+    editor.current?.send({
+      type: "linkTypes",
+      types: linkTypes,
+      files: documents,
+      ...(linkingFile === null ? {} : { from: linkingFile }),
+    });
+  }, [linkTypes, documents, linkingFile]);
 
   // The notes the page's link previews show, read here, as the blocks are.
   const [previewNames, setPreviewNames] = useState<ReadonlyArray<string>>([]);
@@ -250,18 +273,29 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
       case "edited":
         autosave.edited();
         return;
-      case "openNote":
+      case "openNote": {
+        const name = wikiLinkOpens(
+          index.data,
+          event.name,
+          event.from ?? file ?? requested,
+          placement,
+        );
+        if (name === null) {
+          Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
+          return;
+        }
         navigation.dispatch(
           StackActions.push("WikiDocument", {
             environmentId: params.environmentId,
             wikiId: params.wikiId,
-            name: wikiLinkFile(index.data, event.name, event.from ?? file ?? requested),
+            name,
             ...(routeChangeRequestId === undefined
               ? {}
               : { changeRequestId: routeChangeRequestId }),
           }),
         );
         return;
+      }
       case "openUrl":
         void Linking.openURL(event.href).catch(() => undefined);
         return;

@@ -8,11 +8,15 @@ import {
   isSettledChangeRequest,
   wikiDocumentScope,
   wikiDraft,
-  wikiLinkFile,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiLinkOpens,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiBaseEdit, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import * as Dialog from "../../components/ui/Dialog";
+import { useWikiPlacement } from "./wikiPreferences";
 import { Linking, View } from "react-native";
 
 import { Toolbar } from "../../components/ui/Toolbar";
@@ -40,6 +44,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
   const file = params.name;
+  const placement = useWikiPlacement(environmentId);
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const changeRequests = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
@@ -158,16 +163,22 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
           editor.current?.send({ type: "baseResult", source: file, ...shown.current.answer });
         }
         return;
-      case "openNote":
+      case "openNote": {
+        const name = wikiLinkOpens(index.data, event.name, event.from ?? file, placement);
+        if (name === null) {
+          Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
+          return;
+        }
         navigation.dispatch(
           StackActions.push("WikiDocument", {
             environmentId: params.environmentId,
             wikiId: params.wikiId,
-            name: wikiLinkFile(index.data, event.name, event.from ?? file),
+            name,
             ...scope,
           }),
         );
         return;
+      }
       case "openUrl":
         void Linking.openURL(event.href).catch(() => undefined);
         return;

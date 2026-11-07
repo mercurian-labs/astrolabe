@@ -8,7 +8,12 @@ import {
   type WikiChangeEntry,
   type WikiDocumentEntry,
 } from "@t3tools/client-runtime/wikiList";
-import { draftLabel } from "@t3tools/client-runtime/wikiLogic";
+import { describeWikiFailure, draftLabel } from "@t3tools/client-runtime/wikiLogic";
+import { isHidden } from "@mercurian/wiki/resolve-link";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Keyboard,
@@ -26,7 +31,16 @@ import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
-import { changeRequestProjectKindAtom, changeRequestWikiScopeAtom } from "../../state/wiki";
+import {
+  changeRequestProjectKindAtom,
+  changeRequestWikiScopeAtom,
+  wikiEnvironment,
+} from "../../state/wiki";
+import { useAtomCommand } from "../../state/use-atom-command";
+import * as Dialog from "../../components/ui/Dialog";
+import { FileTreeRow } from "../files/FileTreeBrowser";
+import type { FileTreeNode } from "../files/fileTree";
+import { setWikiShowHidden, useWikiShowHidden } from "./wikiPreferences";
 import { useWorkspaceState } from "../../state/workspace";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -36,8 +50,10 @@ import { WikiDocumentRow } from "./WikiListRow";
 import {
   buildWikiListItems,
   resolveWikiScope,
+  wikiFolderKey,
   wikiScopeChoices,
   type WikiListItem,
+  type WikiListScope,
 } from "./wikisList";
 
 function WikiScrollView(props: ScrollViewProps) {
@@ -95,9 +111,51 @@ export function WikisScreen() {
       ),
     [overviews, connected],
   );
-  const items = useMemo(
-    () => buildWikiListItems(searchWikiListEntries(wikiListEntries(overviews, scope), query)),
-    [overviews, scope, query],
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const showHidden = useWikiShowHidden();
+  const items = useMemo(() => {
+    const entries = wikiListEntries(overviews, scope);
+    const listed = showHidden
+      ? entries
+      : { ...entries, documents: entries.documents.filter(({ file }) => !isHidden(file)) };
+    return buildWikiListItems(
+      searchWikiListEntries(listed, query),
+      query.trim() === "" ? expanded : null,
+    );
+  }, [overviews, scope, query, expanded, showHidden]);
+  const send = useAtomCommand(wikiEnvironment.move, { reportFailure: false });
+  /** Moves a row by the path typed for it. A tab here holds no document, so nothing follows. */
+  const askToMove = useCallback(
+    (wiki: WikiListScope, node: FileTreeNode) => {
+      Dialog.prompt({
+        title: node.kind === "directory" ? "Move folder" : "Move document",
+        message: "The path from the top of the wiki. Links to it follow.",
+        initialValue: node.path,
+        confirmText: "Move",
+        onConfirm: (path) => {
+          const to = path.trim().replace(/^\/+|\/+$/g, "");
+          if (to === "" || to === node.path) return;
+          void send({
+            environmentId: wiki.environmentId,
+            input: {
+              wikiId: wiki.wikiId,
+              from: node.path,
+              to,
+              ...(node.kind === "directory" ? { folder: true } : {}),
+            },
+          }).then((result) => {
+            if (result._tag === "Success") return;
+            Dialog.alert(
+              "Couldn't move it",
+              isAtomCommandInterrupted(result)
+                ? "The move was cancelled."
+                : describeWikiFailure(squashAtomCommandFailure(result)),
+            );
+          });
+        },
+      });
+    },
+    [send],
   );
 
   const openDocument = useCallback(
@@ -181,6 +239,29 @@ export function WikisScreen() {
         case "section":
         case "change":
           return null;
+        case "tree": {
+          const { entry, wiki } = item.row;
+          return (
+            <FileTreeRow
+              item={item.row.item}
+              selected={false}
+              expanded={expanded.has(wikiFolderKey(wiki, item.row.item.node.path))}
+              loading={false}
+              onPressDirectory={(path) =>
+                setExpanded((current) => {
+                  const next = new Set(current);
+                  const key = wikiFolderKey(wiki, path);
+                  if (!next.delete(key)) next.add(key);
+                  return next;
+                })
+              }
+              onPressFile={() => {
+                if (entry !== null) openDocument(entry);
+              }}
+              onLongPress={(node) => askToMove(wiki, node)}
+            />
+          );
+        }
         case "document":
           return (
             <WikiDocumentRow
@@ -191,7 +272,7 @@ export function WikisScreen() {
           );
       }
     },
-    [openDocument, openDraft, openChanges],
+    [askToMove, expanded, openDocument, openDraft, openChanges],
   );
 
   const previousSearchMode = useRef(tab.searchMode);
@@ -246,8 +327,8 @@ export function WikisScreen() {
         keyExtractor={(item) => item.key}
         getItemType={(item) => item.type}
         renderItem={renderItem}
-        // A row with a one-line title measures about 82pt.
-        estimatedItemSize={82}
+        // A tree row measures about 42pt.
+        estimatedItemSize={42}
         drawDistance={1_000}
         recycleItems
         refreshControl={
@@ -293,6 +374,8 @@ export function WikisScreen() {
                     animated: false,
                   });
                 }}
+                showHidden={showHidden}
+                onShowHiddenChange={setWikiShowHidden}
               />
             ) : null}
             {failures.length > 0 && overviews.length > 0 ? (
