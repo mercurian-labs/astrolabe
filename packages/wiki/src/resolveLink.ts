@@ -40,7 +40,11 @@ export const isWikiDocument = (file: string): boolean =>
 export const isDocumentFile = (file: string): boolean =>
   isWikiDocument(file) && !file.endsWith(".skillmap.md");
 
-const folderOf = (file: string): string => file.slice(0, Math.max(file.lastIndexOf("/"), 0));
+/** The folder `file` is in, with `end` after it unless that's the root. */
+export const folderOf = (file: string, end = ""): string => {
+  const folder = file.slice(0, Math.max(file.lastIndexOf("/"), 0));
+  return folder === "" ? "" : `${folder}${end}`;
+};
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -167,6 +171,17 @@ export function resolveLink(
     if (found !== null) return found;
   }
   return UNRESOLVED;
+}
+
+/**
+ * What a link writes for `file`, by Obsidian's `shortest`: the bare name when no other file has it
+ * or the file is at the root, else the whole path, never a shorter piece of it.
+ */
+export function shortestLink(file: string, files: WikiLinkFiles): string {
+  const whole = noteName(file);
+  const sharing = files.byName.get(nameOf(key(file))) ?? [];
+  const alone = !isHidden(file) && sharing.every((entry) => entry.file === file);
+  return alone ? noteName(nameOf(file)) : whole;
 }
 
 /**

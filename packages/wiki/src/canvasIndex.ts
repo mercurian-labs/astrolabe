@@ -10,7 +10,7 @@ import {
   type CanvasGroupNode,
   type CanvasNode,
 } from "./canvas.ts";
-import { key, links, noteName, renameLinks } from "./links.ts";
+import { links, noteName, renameLinks } from "./links.ts";
 
 export interface CanvasLink {
   /** A link's target, as a note's would read: a file card's path without its `.md`. */
@@ -32,11 +32,10 @@ export function canvasLinks(data: CanvasData): ReadonlyArray<CanvasLink> {
 }
 
 export interface CanvasRename {
-  /** The file's whole path, as file cards and group backgrounds hold it. */
-  readonly fromFile: string;
-  readonly toFile: string;
-  /** What a text card's link becomes; null for a link that leads elsewhere. */
-  readonly link: (target: string) => string | null;
+  /** Where a file card's or group background's path went; null for one that stayed. */
+  readonly path: (file: string) => string | null;
+  /** What a text card's link becomes; null for a link to leave. */
+  readonly link: (target: string, embed: boolean) => string | null;
 }
 
 /**
@@ -50,16 +49,16 @@ export function renameInCanvas(source: string, rename: CanvasRename): string {
   if (typeof document !== "object" || document === null || Array.isArray(document)) return source;
   const { nodes } = document as { readonly nodes?: unknown };
   if (!Array.isArray(nodes)) return source;
-  const renamed = (path: unknown) => typeof path === "string" && key(path) === key(rename.fromFile);
+  const moved = (path: unknown) => (typeof path === "string" ? rename.path(path) : null);
   let changed = false;
   const next = nodes.map((raw: unknown) => {
     if (typeof raw !== "object" || raw === null) return raw;
     const node = raw as Record<string, unknown>;
     let replaced: Record<string, unknown> | undefined;
-    if (node.type === "file" && renamed(node.file)) replaced = { ...node, file: rename.toFile };
-    if (node.type === "group" && renamed(node.background)) {
-      replaced = { ...node, background: rename.toFile };
-    }
+    const file = node.type === "file" ? moved(node.file) : null;
+    if (file !== null) replaced = { ...node, file };
+    const background = node.type === "group" ? moved(node.background) : null;
+    if (background !== null) replaced = { ...node, background };
     if (node.type === "text" && typeof node.text === "string") {
       const text = renameLinks(node.text, rename.link);
       if (text !== node.text) replaced = { ...node, text };

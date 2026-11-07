@@ -58,23 +58,66 @@ export function links(source: string): ReadonlyArray<WikiLink> {
   return found;
 }
 
+/** `[text](path)` and `![](path)`, with the path in `<>` when it holds spaces. */
+const MARKDOWN_LINK =
+  /(?<!\\)!?\[[^\]\n]*\]\((<[^<>\n]+>|[^()\s]+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'))?)\)/g;
+
+const decoded = (path: string): string => {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
+
+const encoded = (path: string): string =>
+  encodeURI(path).replace(/[#?()]/g, (mark) => `%${mark.charCodeAt(0).toString(16).toUpperCase()}`);
+
+interface LinkEdit {
+  readonly at: number;
+  readonly length: number;
+  readonly text: string;
+}
+
+/** The edits that move Markdown links, which keep their `.md` and their encoding. */
+function markdownEdits(
+  source: string,
+  rename: (target: string, embed: boolean) => string | null,
+): ReadonlyArray<LinkEdit> {
+  return [...prose(source).matchAll(MARKDOWN_LINK)].flatMap((match): LinkEdit[] => {
+    const written = match[1] ?? "";
+    const angled = written.startsWith("<");
+    const [path = "", ...heading] = (angled ? written.slice(1, -1) : written).split("#");
+    if (path === "" || /^[a-z][a-z0-9+.-]*:|^\/\//i.test(path)) return [];
+    const plain = angled ? path : decoded(path);
+    const to = rename(noteName(plain), match[0].startsWith("!"));
+    if (to === null) return [];
+    const extension = /\.md$/i.test(plain) ? ".md" : "";
+    const next = [`${angled ? to : encoded(to)}${extension}`, ...heading].join("#");
+    const at = (match.index ?? 0) + match[0].lastIndexOf(`(${written}`) + 1;
+    return [{ at, length: written.length, text: angled ? `<${next}>` : next }];
+  });
+}
+
 /**
- * Rewrites every real link `rename` gives a new target to, keeping aliases, headings and `.md`.
- * `rename` takes a link's target and returns null for one to leave.
+ * Rewrites every real link `rename` gives a new target to, keeping its alias, heading, embed mark
+ * and Markdown style. `rename` takes a link's target and returns null for one to leave.
  */
-export function renameLinks(source: string, rename: (target: string) => string | null): string {
-  let output = source;
-  for (const link of links(source).toReversed()) {
-    const to = rename(link.target);
+export function renameLinks(
+  source: string,
+  rename: (target: string, embed: boolean) => string | null,
+): string {
+  const edits = [...markdownEdits(source, rename)];
+  for (const link of links(source)) {
+    const to = rename(link.target, source[link.index - 1] === "!");
     if (to === null) continue;
     const boundary = link.inner.search(/#|\\?\|/);
     const suffix = boundary < 0 ? "" : link.inner.slice(boundary);
-    const oldTarget = (boundary < 0 ? link.inner : link.inner.slice(0, boundary)).trim();
-    const extension = /\.md$/i.test(oldTarget) ? ".md" : "";
-    output =
-      output.slice(0, link.index) +
-      `[[${to}${extension}${suffix}]]` +
-      output.slice(link.index + link.raw.length);
+    edits.push({ at: link.index, length: link.raw.length, text: `[[${to}${suffix}]]` });
+  }
+  let output = source;
+  for (const { at, length, text } of edits.sort((a, b) => b.at - a.at)) {
+    output = output.slice(0, at) + text + output.slice(at + length);
   }
   return output;
 }

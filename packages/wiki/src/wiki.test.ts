@@ -95,7 +95,7 @@ describe("links", () => {
       "[[A#Part|Label]] [[A.md]] [[Missing]] \\[[A]]\n`[[A]]`\n``[[A]]``\n~~~md\n[[A]]\n~~~\n```\n[[A]]\n```\n<!-- [[A]] -->\n";
     expect(links(source).map((link) => link.target)).toEqual(["A", "A", "Missing"]);
     const renamed = renameLinks(source, (target) => (target.toLowerCase() === "a" ? "New" : null));
-    expect(renamed.startsWith("[[New#Part|Label]] [[New.md]]")).toBe(true);
+    expect(renamed.startsWith("[[New#Part|Label]] [[New]]")).toBe(true);
     expect(renamed).toContain("`[[A]]`");
     expect(renamed).toContain("\\[[A]]");
   });
@@ -511,16 +511,16 @@ describe("amendments", () => {
     const changes = planTransform(files, { kind: "rename", from: "a/Old", to: "New" }, stamp());
     expect(changes["a/Old.md"]).toBeNull();
     expect(changes["a/New.md"]).toBe("[[New]] [[Other]]");
-    expect(changes["a/Other.md"]).toBe("[[New|shown]] [[a/New#Part]] [[./New.md]]");
-    expect(changes["b/Keeps.md"]).toBe("[[Old]] [[a/New]]");
+    expect(changes["a/Other.md"]).toBe("[[New|shown]] [[New#Part]] [[New]]");
+    expect(changes["b/Keeps.md"]).toBe("[[Old]] [[New]]");
     expect(changes["c/Open.base"]).toContain('link("a/New")');
     expect(changes["b/Old.md"]).toBeUndefined();
     const board = JSON.parse(changes["Board.canvas"] ?? "");
     expect(board.nodes[0].file).toBe("a/New.md");
-    expect(board.nodes[1].text).toBe("[[a/New]]");
+    expect(board.nodes[1].text).toBe("[[New]]");
   });
 
-  it("renames a canvas in its folder, and takes no path as a new name", () => {
+  it("renames a canvas in its folder, and moves it by a path", () => {
     const files = { "a/Board.canvas": '{"nodes":[],"edges":[]}', "Note.md": "[[a/Board.canvas]]" };
     const changes = planTransform(
       files,
@@ -528,10 +528,13 @@ describe("amendments", () => {
       stamp(),
     );
     expect(changes["a/Plan.canvas"]).toBeDefined();
-    expect(changes["Note.md"]).toBe("[[a/Plan.canvas]]");
-    expect(() =>
-      planTransform(files, { kind: "rename", from: "a/Board.canvas", to: "b/Plan" }, stamp()),
-    ).toThrow(/name, not a path/);
+    expect(changes["Note.md"]).toBe("[[Plan.canvas]]");
+    const moved = planTransform(
+      files,
+      { kind: "rename", from: "a/Board.canvas", to: "b/Plan" },
+      stamp(),
+    );
+    expect(moved["b/Plan.canvas"]).toBeDefined();
   });
 
   it("restores warning history that a revert's inverse would drop", () => {
