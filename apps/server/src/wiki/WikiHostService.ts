@@ -151,6 +151,9 @@ const make = Effect.gen(function* () {
   const sweepQueued = yield* Ref.make(false);
   // Listing then creating is what stops one change request opening two pull requests.
   const opening = yield* Semaphore.make(1);
+  // Two pushes of one branch at once, such as a save's and Resolve conflicts', make the host
+  // refuse one; one at a time, the second finds nothing left to push.
+  const publishing = yield* Semaphore.make(1);
 
   const hostOf = (wiki: WikiSummary) =>
     wiki.host == null
@@ -286,6 +289,7 @@ const make = Effect.gen(function* () {
         }),
       );
     },
+    publishing.withPermits(1),
   );
 
   /**
