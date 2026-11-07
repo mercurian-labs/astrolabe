@@ -33,7 +33,7 @@ describe("drafts", () => {
   const scope = (file: string, tabChangeRequestId?: WikiChangeRequestId) =>
     wikiDocumentScope({
       tabChangeRequestId,
-      draft: draft(["Alpha.md", "Tasks.base", "plans/Beta.md", "plans/README.md"]),
+      draft: draft(["Alpha.md", "Tasks.base", "plans/Beta.md"]),
       file,
     });
 
@@ -54,7 +54,6 @@ describe("drafts", () => {
     expect(scope("alpha.md")).toBe("draft-1");
     expect(scope("plans/Beta.md")).toBe("draft-1");
     expect(scope("other/Beta.md")).toBeUndefined();
-    expect(scope("plans/README.md")).toBeUndefined();
     expect(scope("Tasks.base")).toBe("draft-1");
     expect(scope("Other.base")).toBe("draft-1");
     expect(scope("Beta.md")).toBeUndefined();
@@ -216,7 +215,7 @@ describe("documents by path", () => {
     expect(isDocumentFile("plans/Note.md")).toBe(true);
     expect(isDocumentFile("plans/Board.canvas")).toBe(true);
     expect(isDocumentFile("plans/Open.base")).toBe(true);
-    expect(isDocumentFile("plans/README.md")).toBe(false);
+    expect(isDocumentFile("plans/README.md")).toBe(true);
     expect(isDocumentFile("Map.skillmap.md")).toBe(false);
     expect(isDocumentFile("pic.png")).toBe(false);
   });

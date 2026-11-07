@@ -67,10 +67,10 @@ describe("newNoteProperties", () => {
   });
 });
 
-it("edits only notes at the top of the wiki", () => {
+it("edits notes in any folder, but not skill maps or bases", () => {
   expect(isEditableNote("Alpha.md")).toBe(true);
   expect(isEditableNote("projects/Delta.md")).toBe(true);
-  expect(isEditableNote("projects/README.md")).toBe(false);
+  expect(isEditableNote("projects/README.md")).toBe(true);
   expect(isEditableNote("Product.skillmap.md")).toBe(false);
   expect(isEditableNote("Open.base")).toBe(false);
 });
