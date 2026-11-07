@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { finderGroups } from "./WikiFinder";
-import type { WikiOverview } from "./wikiTabs";
+import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 
 const overview = (wikiId: string, notes: ReadonlyArray<string>) =>
   ({
