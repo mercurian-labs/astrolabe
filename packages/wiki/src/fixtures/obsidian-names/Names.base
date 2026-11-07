@@ -1,0 +1,10 @@
+filters: file.folder != "/"
+views:
+  - type: table
+    name: Copies
+    filters: file.name == "Name"
+    order:
+      - file.path
+      - file.name
+      - file.basename
+      - file.folder
