@@ -174,7 +174,7 @@ function WikiHostSection({ overview }: { readonly overview: WikiOverview }) {
   const input = { wikiId: wiki.wikiId };
   const disconnectWiki = async () => {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      `Disconnect “${wiki.name}” from its git host? It becomes a local wiki. The repository and its pull requests stay on the host, and this folder keeps its history.`,
+      `Disconnect “${wiki.name}” from its git host? It becomes a local wiki. The repository and its ${terms.plural} stay on the host, and this folder keeps its history.`,
     );
     if (confirmed) await run(() => disconnect({ environmentId, input }));
   };

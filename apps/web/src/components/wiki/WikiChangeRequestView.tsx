@@ -221,6 +221,7 @@ export function WikiChangeRequestView({
             projectId={wiki.host.projectId}
             environmentId={environmentId}
             changeRequest={changeRequest}
+            noun={terms.singular}
             busy={busy !== null}
             canPublish={canPublish}
             onPublish={() => void runPublish()}
@@ -402,6 +403,7 @@ function HostPullRequest({
   environmentId,
   projectId,
   changeRequest,
+  noun,
   busy,
   canPublish,
   onPublish,
@@ -410,6 +412,7 @@ function HostPullRequest({
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
   readonly changeRequest: WikiChangeRequest;
+  readonly noun: string;
   readonly busy: boolean;
   readonly canPublish: boolean;
   readonly onPublish: () => void;
@@ -451,7 +454,7 @@ function HostPullRequest({
             })
           }
         >
-          Open pull request
+          {`Open ${noun}`}
         </Button>
       ) : null}
     </div>

@@ -172,7 +172,7 @@ const make = Effect.gen(function* () {
     if (repository === null) {
       return yield* new WikiError({
         reason: "invalid",
-        message: "The pull request could not be matched to a repository.",
+        message: "The wiki's repository could not be identified.",
       });
     }
     return repository;
@@ -218,7 +218,7 @@ const make = Effect.gen(function* () {
     if (opened === undefined) {
       return yield* new WikiError({
         reason: "git-failed",
-        message: "The host accepted the pull request but does not list it yet.",
+        message: `The host accepted the ${wikiTerms(wiki).singular} but does not list it yet.`,
       });
     }
     const link: WikiPullRequestLink = {
