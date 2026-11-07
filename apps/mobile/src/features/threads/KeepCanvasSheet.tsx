@@ -18,7 +18,14 @@ import {
   formatComposerContextReference,
 } from "@t3tools/shared/composerContextReferences";
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, Platform, Pressable, ScrollView, View } from "react-native";
+import {
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  type ScrollViewInstance,
+  View,
+} from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
@@ -64,7 +71,7 @@ export function KeepCanvasSheet(props: {
   const wikiId = picked ?? wikis[0]?.wikiId ?? null;
   const placeable = canvasFile(name) !== null;
   const canSubmit = wikiId !== null && placeable && !busy;
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the keyboard is the system's, and what it covers is the button the field is filled in for
   useEffect(() => {
