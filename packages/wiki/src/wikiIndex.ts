@@ -3,6 +3,7 @@ import { isCanvasFile, parseCanvas, type CanvasData } from "./canvas.ts";
 import { canvasLinks, type CanvasLink } from "./canvasIndex.ts";
 import { key, links, noteName, typedLinks, type WikiLink } from "./links.ts";
 import {
+  isHidden,
   isWikiDocument,
   linkFiles,
   resolveLink,
@@ -238,7 +239,8 @@ export function typesTo(
 export function findMap(index: WikiIndex, name: string): readonly [string, SkillMap] | undefined {
   const { file } = resolveLink(name, null, linkFiles(index.maps.keys()));
   for (const entry of index.maps) {
-    if (entry[0] === file || key(entry[1].name) === key(name)) return entry;
+    if (entry[0] === file) return entry;
+    if (key(entry[1].name) === key(name) && !isHidden(entry[0])) return entry;
   }
   return undefined;
 }

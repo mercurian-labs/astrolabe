@@ -60,7 +60,7 @@ Bases support Obsidian's whole language: filters, formulas, every function, regu
 
 A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file, so the same file opens in Obsidian. You can edit one by hand on web, desktop and the phone, and agents change them through change requests.
 
-To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then choose **Create canvas**. It starts in your draft. You can also [keep a canvas from a thread](html-renders.md#canvases).
+To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then choose **Create canvas**. It starts in your draft, at the top of the wiki unless you type a folder before its name. You can also [keep a canvas from a thread](html-renders.md#canvases).
 
 An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a group can grow to fit a new card. Its changes land on a change request, never on main. A canvas open in that change request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the change request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
 

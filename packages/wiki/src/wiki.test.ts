@@ -215,6 +215,9 @@ describe("the index", () => {
     expect(held.maps.get("maps/Deep.skillmap.md")?.edges[0]?.from).toBe("A");
     expect(findMap(held, "maps/Deep.skillmap")?.[1].name).toBe("Deep");
     expect(findMap(held, "Deep")?.[0]).toBe("maps/Deep.skillmap.md");
+    const hidden = indexFiles({ ".maps/Deep.skillmap.md": serializeMap(map) });
+    expect(findMap(hidden, "Deep")).toBeUndefined();
+    expect(findMap(hidden, ".maps/Deep.skillmap")?.[1].name).toBe("Deep");
     expect(walk(held.maps.get("maps/Deep.skillmap.md")!, held, "maps/Deep.skillmap.md")).toBe(
       "A\n  b/B",
     );
