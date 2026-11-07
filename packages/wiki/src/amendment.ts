@@ -4,7 +4,7 @@ import { isCanvasFile, parseCanvas, serializeCanvas } from "./canvas.ts";
 import { applyCanvasEdits, CanvasEditError, type CanvasEdit } from "./canvasEdits.ts";
 import { renameInCanvas } from "./canvasIndex.ts";
 import { key, renameLinks } from "./links.ts";
-import { isWikiPath } from "./resolveLink.ts";
+import { isWikiDocument, isWikiPath } from "./resolveLink.ts";
 import {
   isMapFile,
   sameEdge,
@@ -17,7 +17,6 @@ import {
 import {
   findMap,
   indexFiles,
-  isWikiDocument,
   linkedDocument,
   support,
   unresolved,

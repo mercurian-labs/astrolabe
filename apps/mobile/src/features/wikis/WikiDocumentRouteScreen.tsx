@@ -6,12 +6,16 @@ import type {
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  documentFile,
+  documentTitle,
+  exactWikiPath,
   filesHoldDocument,
   isCanvasName,
   isSettledChangeRequest,
   isTurnRunning,
   wikiDocumentScope,
   wikiDraft,
+  wikiLinkFile,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -37,6 +41,7 @@ import {
   WikiFileReads,
   WikiNoteReads,
   type WikiBaseAnswer,
+  type WikiNoteReadsProps,
 } from "./document/WikiBaseQueries";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
@@ -76,7 +81,8 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const name = params.name;
+  const requested = documentFile(params.name);
+  const title = documentTitle(requested);
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
 
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
@@ -88,14 +94,19 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   const changeRequestId = wikiDocumentScope({
     tabChangeRequestId: routeChangeRequestId,
     draft,
-    name,
+    file: requested,
   });
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   // Waits for the list to say whether a draft holds this, or a draft's document would first draw
   // from main and then seem to change.
   const located = changeRequests.data !== null || changeRequests.error !== null;
   const note = useEnvironmentQuery(
-    located ? wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }) : null,
+    located
+      ? wikiEnvironment.note({
+          environmentId,
+          input: { wikiId, name: exactWikiPath(requested), ...scope },
+        })
+      : null,
   );
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
@@ -200,8 +211,8 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
 
   // The notes the page's link previews show, read here, as the blocks are.
   const [previewNames, setPreviewNames] = useState<ReadonlyArray<string>>([]);
-  const onNoteRead = useCallback((name: string, source: string | null) => {
-    editor.current?.send({ type: "noteRead", name, source });
+  const onNoteRead = useCallback<WikiNoteReadsProps["onRead"]>((name, source, link) => {
+    editor.current?.send({ type: "noteRead", name, source, link });
   }, []);
 
   // The canvases the note embeds, read here, and kept so a reloaded page gets them at once.
@@ -242,7 +253,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
           StackActions.push("WikiDocument", {
             environmentId: params.environmentId,
             wikiId: params.wikiId,
-            name: event.name,
+            name: wikiLinkFile(index.data, event.name, event.from ?? file ?? requested),
             ...(routeChangeRequestId === undefined
               ? {}
               : { changeRequestId: routeChangeRequestId }),
@@ -267,7 +278,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
 
   const send = useWikiAutosaveCommand();
   const { autosave, status } = useWikiAutosave({
-    subject: name,
+    subject: title,
     save: async () => {
       if (file === null) return { ok: true };
       const { text, commit } = await requestText();
@@ -307,7 +318,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
 
   const header = (
     <NativeStackScreenOptions
-      options={{ title: name, unstable_headerSubtitle: subtitle }}
+      options={{ title, unstable_headerSubtitle: subtitle }}
       optionsVersion={`${subtitle}|${mode}|${readOnly}`}
     />
   );
@@ -332,7 +343,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
       <View className="flex-1 bg-screen">
         {header}
         {note.error !== null ? (
-          <EmptyState title={`Couldn't open ${name}`} detail={note.error} />
+          <EmptyState title={`Couldn't open ${title}`} detail={note.error} />
         ) : (
           <LoadingScreen message="Opening the document…" />
         )}
@@ -355,7 +366,9 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
               drop={autosave.cancel}
               onLanded={(id, files) => {
                 // The document on screen follows where its edits went.
-                if (filesHoldDocument(files, name)) navigation.setParams({ changeRequestId: id });
+                if (filesHoldDocument(files, requested)) {
+                  navigation.setParams({ changeRequestId: id });
+                }
               }}
             />
           ) : null
@@ -378,7 +391,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
           />
         ) : !data.exists ? (
           <WikiNotice
-            text={`No document is called ${name} yet. Write it, and it saves by itself.`}
+            text={`No document is called ${title} yet. Write it, and it saves by itself.`}
           />
         ) : null}
       </WikiBelowHeader>
@@ -396,6 +409,8 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        index={index.data}
+        from={data.file}
         onRead={onNoteRead}
       />
       <WikiFileReads
@@ -403,6 +418,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        from={data.file}
         onRead={onFileRead}
       />
     </View>

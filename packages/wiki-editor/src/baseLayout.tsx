@@ -22,7 +22,8 @@ export interface BaseLayoutHost {
   readonly canOpenRow: (row: Row) => boolean;
   readonly openRow: (row: Row) => void;
   /** A `[[Name]]` in a cell. */
-  readonly openLink: (name: string) => void;
+  /** Follows a link in a cell, which is written in `from`, the row's file, when it's known. */
+  readonly openLink: (name: string, from?: string) => void;
   readonly openUrl?: (href: string) => void;
   /** A repository file as an image; web addresses and colours draw without help. */
   readonly renderImage?: (image: WikiEditorBaseImage, className: string) => ReactNode;
@@ -112,7 +113,15 @@ function Image({
   return <DefaultImage image={image} className={className} />;
 }
 
-function Scalar({ value, host }: { value: BaseScalar; host: BaseLayoutHost }) {
+function Scalar({
+  value,
+  from,
+  host,
+}: {
+  value: BaseScalar;
+  from: string | undefined;
+  host: BaseLayoutHost;
+}) {
   if (typeof value === "boolean") {
     return <input type="checkbox" className="bl-check" checked={value} disabled readOnly />;
   }
@@ -129,7 +138,12 @@ function Scalar({ value, host }: { value: BaseScalar; host: BaseLayoutHost }) {
     return part.kind === "text" ? (
       <Fragment key={key}>{part.text}</Fragment>
     ) : (
-      <button key={key} type="button" className="bl-link" onClick={() => host.openLink(part.name)}>
+      <button
+        key={key}
+        type="button"
+        className="bl-link"
+        onClick={() => host.openLink(part.name, from)}
+      >
         {part.text}
       </button>
     );
@@ -141,10 +155,13 @@ export function BaseCell({
   value,
   display,
   tags = false,
+  from,
   host,
 }: {
   readonly value: BaseCellValue | undefined;
   readonly display?: WikiEditorBaseDisplay | undefined;
+  /** The file the cell's links are written in: its row's. */
+  readonly from?: string | undefined;
   /** File tags show as pills, without their `#`. */
   readonly tags?: boolean;
   readonly host: BaseLayoutHost;
@@ -182,7 +199,7 @@ export function BaseCell({
     }
   }
   if (value === undefined || value === null) return null;
-  if (typeof value !== "object") return <Scalar value={value} host={host} />;
+  if (typeof value !== "object") return <Scalar value={value} from={from} host={host} />;
   return (
     <span className="bl-items">
       {value.map((item, position) =>
@@ -194,7 +211,7 @@ export function BaseCell({
         ) : (
           // oxlint-disable-next-line react/no-array-index-key -- a list's items can repeat
           <span key={position}>
-            <Scalar value={item} host={host} />
+            <Scalar value={item} from={from} host={host} />
           </span>
         ),
       )}
@@ -220,6 +237,7 @@ function EditableCell({
       value={value}
       display={row.display?.[column]}
       tags={column === "file.tags"}
+      from={row.file}
       host={host}
     />
   );
@@ -565,6 +583,7 @@ function ListView({ result, host }: { result: WikiEditorBaseResult; host: BaseLa
                             <BaseCell
                               value={row.values[column.id]}
                               display={row.display?.[column.id]}
+                              from={row.file}
                               host={host}
                             />
                           </li>
@@ -578,6 +597,7 @@ function ListView({ result, host }: { result: WikiEditorBaseResult; host: BaseLa
                         <BaseCell
                           value={row.values[column.id]}
                           display={row.display?.[column.id]}
+                          from={row.file}
                           host={host}
                         />
                       </Fragment>

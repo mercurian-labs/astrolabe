@@ -1,9 +1,8 @@
 import {
   changeRequestFiles,
-  documentTitle,
+  documentPath,
   draftLabel,
   draftMoveTargets,
-  noteNameOfFile,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequest, WikiChangeRequestId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -365,7 +364,7 @@ function MoveDraftDialog({
                         })
                       }
                     />
-                    <span className="min-w-0 truncate">{documentTitle(noteNameOfFile(file))}</span>
+                    <span className="min-w-0 truncate">{documentPath(file)}</span>
                   </label>
                 ))}
               </div>

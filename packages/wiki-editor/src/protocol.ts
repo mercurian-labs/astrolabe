@@ -138,6 +138,12 @@ export type WikiEditorCanvasAnswer =
   /** Why a write failed, null when it didn't. */
   | { readonly kind: "failure"; readonly message: string | null };
 
+/** Where a link landed, as `resolveLink` says. */
+export interface WikiEditorResolvedLink {
+  readonly file: string | null;
+  readonly others: ReadonlyArray<string>;
+}
+
 export type WikiEditorCommand =
   /** A read of the note. With `author`, a changed version lands live as theirs. */
   | {
@@ -203,8 +209,12 @@ export type WikiEditorCommand =
     }
   /** Brings a card or group into view, as Jump to group does; a review's list selects it too. */
   | { readonly type: "focusCard"; readonly id: string; readonly select?: boolean | undefined }
-  /** The documents the wiki holds; a link to anything else reads as unwritten. */
-  | { readonly type: "knownDocuments"; readonly names: ReadonlyArray<string> }
+  /** The documents the wiki holds, and the file on the page that links to them. */
+  | {
+      readonly type: "knownDocuments";
+      readonly files: ReadonlyArray<string>;
+      readonly from: string;
+    }
   /** Part of the answer to `readFiles`: `files[0]` answers `paths[start]` of `total`. */
   | {
       readonly type: "filesRead";
@@ -233,7 +243,13 @@ export type WikiEditorCommand =
   /** The `@` types the wiki's links use, which the editor suggests. */
   | { readonly type: "linkTypes"; readonly types: ReadonlyArray<string> }
   /** A note a link preview asked for, sent again if it changes; null when it isn't written. */
-  | { readonly type: "noteRead"; readonly name: string; readonly source: string | null }
+  | {
+      readonly type: "noteRead";
+      readonly name: string;
+      readonly source: string | null;
+      /** Where the link landed, for its preview to say when other files fit it too. */
+      readonly link?: WikiEditorResolvedLink;
+    }
   /** A ```base block's view, sent again whenever it changes; `error` says why it can't show. */
   | {
       readonly type: "baseResult";
@@ -258,7 +274,8 @@ export type WikiEditorEvent =
       /** The note changed underneath unsaved edits. */
       readonly changedUnderneath: boolean;
     }
-  | { readonly type: "openNote"; readonly name: string }
+  /** Follows a link, or opens a file. `from` is the file it's written in, if not the page's. */
+  | { readonly type: "openNote"; readonly name: string; readonly from?: string }
   | { readonly type: "openUrl"; readonly href: string }
   /** A code card, with the link a saved one carries for where its project isn't here. */
   | { readonly type: "openCode"; readonly code: CanvasCodeReference; readonly url: string }
@@ -385,6 +402,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isStringArray = (value: unknown): value is ReadonlyArray<string> =>
   Array.isArray(value) && value.every((each) => typeof each === "string");
 
+const isResolvedLink = (value: unknown): value is WikiEditorResolvedLink =>
+  typeof value === "object" &&
+  value !== null &&
+  "file" in value &&
+  (typeof value.file === "string" || value.file === null) &&
+  "others" in value &&
+  isStringArray(value.others);
+
 const isFile = (value: unknown): value is WikiEditorFile =>
   isRecord(value) &&
   typeof value.exists === "boolean" &&
@@ -422,7 +447,11 @@ export function parseWikiEditorEvent(raw: string): WikiEditorEvent | null {
         : null;
     case "openNote":
       return typeof value.name === "string" && value.name.length > 0
-        ? { type: "openNote", name: value.name }
+        ? {
+            type: "openNote",
+            name: value.name,
+            ...(typeof value.from === "string" ? { from: value.from } : {}),
+          }
         : null;
     case "openUrl":
       return typeof value.href === "string" ? { type: "openUrl", href: value.href } : null;
@@ -596,7 +625,9 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
         ? { type: "focusCard", id: value.id, select: value.select === true }
         : null;
     case "knownDocuments":
-      return isStringArray(value.names) ? { type: "knownDocuments", names: value.names } : null;
+      return isStringArray(value.files) && typeof value.from === "string"
+        ? { type: "knownDocuments", files: value.files, from: value.from }
+        : null;
     case "filesRead":
       return typeof value.requestId === "number" &&
         typeof value.start === "number" &&
@@ -648,7 +679,12 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
     case "noteRead":
       return typeof value.name === "string" &&
         (typeof value.source === "string" || value.source === null)
-        ? { type: "noteRead", name: value.name, source: value.source }
+        ? {
+            type: "noteRead",
+            name: value.name,
+            source: value.source,
+            ...(isResolvedLink(value.link) ? { link: value.link } : {}),
+          }
         : null;
     case "baseResult": {
       if (typeof value.source !== "string") return null;

@@ -7,6 +7,7 @@ import {
 import { EditorView } from "@codemirror/view";
 import { vimAtRest, vimInsertMode } from "@mercurian/editor/vim";
 import { canvasFileKind } from "@mercurian/wiki-editor/canvas-geometry";
+import { ambiguousLink } from "@mercurian/wiki-editor/incoming";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { lazy, Suspense, useState } from "react";
@@ -23,8 +24,9 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { wikiEnvironment } from "~/state/wiki";
 import { openLeaderFrom } from "~/whichKey/doors";
 import { BrowserDocumentFrame } from "../files/BrowserDocumentFrame";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
-import { noteKey, wikiDocumentName, wikiDocumentNames } from "./wiki.logic";
+import { isDocumentFile, resolveWikiLink, wikiLinkFile } from "./wiki.logic";
 import { WikiBase } from "./WikiBaseView";
 import { useWikiAutosaveCommand } from "./wikiEnvironment";
 import { WikiMermaid } from "./WikiMermaid";
@@ -100,6 +102,7 @@ function lastDraft() {
 export function useWikiCanvasHost({
   environmentId,
   wikiId,
+  file: boardFile,
   changeRequestId,
   draftId,
   commit,
@@ -111,11 +114,13 @@ export function useWikiCanvasHost({
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
+  /** The board's own file, which its text cards' links are written in. */
+  readonly file: string;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** Where a card looks for a file the board's commit doesn't have. */
   readonly draftId?: WikiChangeRequestId | undefined;
   readonly commit: string;
-  readonly onOpenNote: (name: string) => void;
+  readonly onOpenNote: (file: string) => void;
   readonly onOpenFile?: ((path: string) => void) | undefined;
   /** Without it, a code card opens its saved link. */
   readonly onOpenTab?: ((key: string) => void) | undefined;
@@ -127,7 +132,6 @@ export function useWikiCanvasHost({
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
-  const known = index.data === null ? null : new Set(wikiDocumentNames(index.data).map(noteKey));
   // The first note of a new draft reads back before the list of change requests has it.
   const [noteDraft] = useState(lastDraft);
   const projects = useProjects();
@@ -155,7 +159,10 @@ export function useWikiCanvasHost({
       }),
     );
   });
-  const openNote = useStableCallback(onOpenNote);
+  // Follows a link; a file comes through as itself, its path being the first thing a link tries.
+  const openNote = useStableCallback((target: string, from: string = boardFile) =>
+    onOpenNote(wikiLinkFile(index.data, target, from)),
+  );
   const openFile = useStableCallback((path: string) => onOpenFile?.(path));
   const readFiles = useStableCallback(async (paths: ReadonlyArray<string>) => {
     const read = async (
@@ -164,7 +171,7 @@ export function useWikiCanvasHost({
     ) => {
       const result = await runFiles({
         environmentId,
-        input: { wikiId, ...from, paths: [...wanted] },
+        input: { wikiId, ...from, from: boardFile, paths: [...wanted] },
       });
       return result._tag === "Success" ? result.value.files : [];
     };
@@ -252,11 +259,26 @@ export function useWikiCanvasHost({
     onOpenCode: openCode,
     // A bare name is a note's. Anything with a file's extension that's no document opens as a file.
     onOpenLink: (name) => {
-      const document = canvasFileKind(name) === "other" ? name : wikiDocumentName(name);
-      if (document === null) openFile(name);
-      else openNote(document);
+      const media = !["other", "note", "canvas", "base"].includes(canvasFileKind(name));
+      if (!media && isDocumentFile(wikiLinkFile(index.data, name, boardFile))) openNote(name);
+      else void readFiles([name]).then(([read]) => openFile(read?.file ?? name));
     },
-    isResolved: (name) => known === null || known.has(noteKey(name)),
+    isResolved: (name) =>
+      index.data === null || resolveWikiLink(index.data, name, boardFile).file !== null,
+    linkHover: (name, link) => {
+      const said =
+        index.data === null
+          ? undefined
+          : ambiguousLink(resolveWikiLink(index.data, name, boardFile));
+      return said === undefined ? (
+        link
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={link} />
+          <TooltipPopup>{said}</TooltipPopup>
+        </Tooltip>
+      );
+    },
     readFiles,
     readCodeStatus,
     renderAsset: (asset) => (
@@ -268,7 +290,7 @@ export function useWikiCanvasHost({
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
-        from={{ base }}
+        from={{ base, note: boardFile }}
         view={view}
         onOpenNote={openNote}
         onOpenFile={openFile}

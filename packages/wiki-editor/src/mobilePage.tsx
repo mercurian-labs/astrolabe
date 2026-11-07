@@ -27,7 +27,8 @@ declare global {
 
 const post = (event: WikiEditorEvent) =>
   window.ReactNativeWebView?.postMessage(JSON.stringify(event));
-const openNote = (name: string) => post({ type: "openNote", name });
+const openNote = (name: string, from?: string) =>
+  post({ type: "openNote", name, ...(from === undefined ? {} : { from }) });
 
 function LinkPreview({
   page,
@@ -40,7 +41,7 @@ function LinkPreview({
     (listener) => page.watchNote(link.name, listener),
     () => page.getNote(link.name),
   );
-  return <WikiLinkPreview link={link} source={source} />;
+  return <WikiLinkPreview link={link} source={source} resolved={page.getNoteLink(link.name)} />;
 }
 
 function Page({ page }: { readonly page: WikiEditorPage }) {

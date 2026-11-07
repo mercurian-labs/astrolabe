@@ -1,4 +1,12 @@
 import { reviewCanvasFiles, type CanvasReview } from "@mercurian/wiki/canvas";
+import {
+  isDocumentFile,
+  linkFiles,
+  resolveLink,
+  unwrittenFile,
+  type ResolvedLink,
+  type WikiLinkFiles,
+} from "@mercurian/wiki/resolve-link";
 import type {
   WikiChangeRequest,
   WikiChangeRequestDetail,
@@ -19,8 +27,21 @@ export const noteKey = (name: string): string => name.normalize("NFC").toLowerCa
 
 export const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
 
-/** A document's name as a person reads it: without a `.base` or `.canvas`, which its icon shows. */
-export const documentTitle = (name: string): string => name.replace(/\.(base|canvas)$/i, "");
+/** A document's path as a person reads it, for lists that hold both of two equal names. */
+export const documentPath = (file: string): string => file.replace(/\.(md|base|canvas)$/i, "");
+
+/** A document's name as a person reads it: no folders, and no extension, which its icon shows. */
+export const documentTitle = (file: string): string => {
+  const path = documentPath(file);
+  return path.slice(path.lastIndexOf("/") + 1);
+};
+
+/** A document's file, from a name a saved tab or an old link holds: a note's had no extension. */
+export const documentFile = (name: string): string =>
+  /\.(md|base|canvas)$/i.test(name) ? name : `${name}.md`;
+
+/** What a read names a file by: exactly that path, which no search can land beside. */
+export const exactWikiPath = (file: string): string => `/${file}`;
 
 /**
  * A canvas read in an open change request, marked with what that changes: `text` over its version
@@ -50,21 +71,7 @@ export const keepCanvasName = (title: string): string =>
 /** A document named by its file: a base and a canvas are, as a link to either has to be. */
 export const isCanvasName = (name: string): boolean => /\.canvas$/i.test(name);
 
-const NOT_NOTES = new Set(["readme.md", "agents.md", "claude.md"]);
-
-/**
- * The name a wiki tab opens a repository file by: a top-level note's, or the file name of a base
- * or canvas, at any depth for a canvas. Null for any other file (one in a folder, a skill map, an
- * attachment), which opens as a file.
- */
-export function wikiDocumentName(file: string): string | null {
-  if (/^[^/]+\.base$/i.test(file) || isCanvasName(file)) return file;
-  return /^[^/]+\.md$/i.test(file) &&
-    !NOT_NOTES.has(file.toLowerCase()) &&
-    !/\.skillmap\.md$/i.test(file)
-    ? noteNameOfFile(file)
-    : null;
-}
+export { isDocumentFile };
 
 /** Everything a wiki's links can name: its notes, and its canvases and bases by file. */
 export const wikiDocumentNames = (
@@ -74,6 +81,42 @@ export const wikiDocumentNames = (
   ...index.canvases.map((canvas) => canvas.file),
   ...index.bases.map((base) => base.file),
 ];
+
+type LinkableIndex = Pick<WikiIndexResult, "notes" | "canvases" | "bases" | "maps">;
+
+/** Every file a link in `index` can land on. */
+export const wikiDocumentFiles = (index: LinkableIndex): ReadonlyArray<string> => [
+  ...index.notes.map((note) => note.file),
+  ...index.canvases.map((canvas) => canvas.file),
+  ...index.bases.map((base) => base.file),
+  ...index.maps.map((map) => map.file),
+];
+
+// Each index is searched for every link on a page, and read many times between changes.
+const indexLinks = new WeakMap<LinkableIndex, WikiLinkFiles>();
+
+/** Where a link written in `from` lands in `index`, the way the server resolves it. */
+export function resolveWikiLink(
+  index: LinkableIndex,
+  target: string,
+  from: string | null,
+): ResolvedLink {
+  let links = indexLinks.get(index);
+  if (links === undefined) {
+    links = linkFiles(wikiDocumentFiles(index));
+    indexLinks.set(index, links);
+  }
+  return resolveLink(target, from, links);
+}
+
+/** The file a link opens: the one it lands on, else where writing it would land. */
+export const wikiLinkFile = (
+  index: LinkableIndex | null,
+  target: string,
+  from: string | null,
+): string =>
+  (index === null ? null : resolveWikiLink(index, target, from).file) ??
+  unwrittenFile(target, from);
 
 /** The files a change request holds a change to. */
 export const changeRequestFiles = (
@@ -91,13 +134,9 @@ export function wikiDraft(
   );
 }
 
-/** Whether `files` hold a document, by the name a tab opens it under. */
-export function filesHoldDocument(files: ReadonlyArray<string>, name: string): boolean {
-  const wanted = noteKey(name);
-  return files.some((file) => {
-    const document = wikiDocumentName(file);
-    return document !== null && noteKey(document) === wanted;
-  });
+export function filesHoldDocument(files: ReadonlyArray<string>, file: string): boolean {
+  const wanted = noteKey(file);
+  return files.some((each) => isDocumentFile(each) && noteKey(each) === wanted);
 }
 
 /**
@@ -108,13 +147,13 @@ export function filesHoldDocument(files: ReadonlyArray<string>, name: string): b
 export function wikiDocumentScope(input: {
   readonly tabChangeRequestId: WikiChangeRequestId | undefined;
   readonly draft: WikiChangeRequest | null;
-  readonly name: string;
+  readonly file: string;
 }): WikiChangeRequestId | undefined {
   if (input.tabChangeRequestId !== undefined) return input.tabChangeRequestId;
   if (input.draft === null) return undefined;
   // A base's rows are notes, so the draft can hold its edits and not the base itself.
-  if (/\.base$/i.test(input.name)) return input.draft.changeRequestId;
-  return filesHoldDocument(changeRequestFiles(input.draft), input.name)
+  if (/\.base$/i.test(input.file)) return input.draft.changeRequestId;
+  return filesHoldDocument(changeRequestFiles(input.draft), input.file)
     ? input.draft.changeRequestId
     : undefined;
 }

@@ -34,7 +34,12 @@ import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
-import { describeWikiFailure, documentTitle, isSettledChangeRequest } from "./wiki.logic";
+import {
+  describeWikiFailure,
+  documentTitle,
+  exactWikiPath,
+  isSettledChangeRequest,
+} from "./wiki.logic";
 import {
   holdsEdits,
   useChangeRequestTurn,
@@ -92,6 +97,7 @@ function CanvasBoardPane({
   const host = useWikiCanvasHost({
     environmentId,
     wikiId,
+    file,
     changeRequestId,
     draftId: cardsFrom,
     commit,
@@ -207,7 +213,10 @@ export default function WikiCanvasPage({
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const query = useEnvironmentQuery(
-    wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, paths: [file] } }),
+    wikiEnvironment.files({
+      environmentId,
+      input: { wikiId, ...scope, paths: [exactWikiPath(file)] },
+    }),
   );
   // The first edit moves the tab onto the draft: a new read, which mustn't take the board down.
   const [files, setFiles] = useState(query.data);
@@ -240,10 +249,8 @@ export default function WikiCanvasPage({
     setCreating(false);
   };
 
-  // Writes follow `checkFileName`, flat until wikis have folders: one deeper can only be read.
-  const reachable = /^[^/]+\.canvas$/i.test(file);
   const known = savesTo === undefined || changeRequest !== undefined;
-  const canEdit = canWrite && reachable && known && !isSettledChangeRequest(changeRequest);
+  const canEdit = canWrite && known && !isSettledChangeRequest(changeRequest);
   const [readOnly, setReadOnly] = useLocalStorage(
     `astrolabe:canvas-read-only:${wikiId}:${file}`,
     false,

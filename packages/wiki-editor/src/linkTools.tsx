@@ -6,7 +6,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { linkText } from "./baseCells";
-import { wikilinkNoteName } from "./incoming";
+import { ambiguousLink, wikilinkNoteName } from "./incoming";
 
 export { displayRuns as wikilinkDisplay };
 
@@ -246,12 +246,18 @@ export function useWikiLinkTools(
 export function WikiLinkPreview({
   link,
   source,
+  resolved,
 }: {
   readonly link: WikiLinkPeek;
   /** The note's text; null when it isn't written, undefined while it loads. */
   readonly source: string | null | undefined;
+  /** Where the link went, which says so when other files fit it too. */
+  readonly resolved?:
+    | { readonly file: string | null; readonly others: ReadonlyArray<string> }
+    | undefined;
 }) {
   const excerpt = typeof source === "string" ? noteExcerpt(source) : "";
+  const ambiguous = resolved === undefined ? undefined : ambiguousLink(resolved);
   return (
     <div className="cm-wiki-link-preview">
       <div className="cm-wiki-link-preview-name">{link.name}</div>
@@ -269,6 +275,7 @@ export function WikiLinkPreview({
           {source === null ? "Not written yet." : excerpt || "This note is empty."}
         </p>
       )}
+      {ambiguous === undefined ? null : <p className="cm-wiki-link-preview-text">{ambiguous}</p>}
     </div>
   );
 }

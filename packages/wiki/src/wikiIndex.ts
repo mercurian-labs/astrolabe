@@ -3,22 +3,13 @@ import { isCanvasFile, parseCanvas, type CanvasData } from "./canvas.ts";
 import { canvasLinks, type CanvasLink } from "./canvasIndex.ts";
 import { key, links, noteName, typedLinks, type WikiLink } from "./links.ts";
 import {
-  isWikiPath,
+  isWikiDocument,
   linkFiles,
   resolveLink,
   unwrittenFile,
   type WikiLinkFiles,
 } from "./resolveLink.ts";
 import { isMapFile, parseMap, type MapEdgeRef, type SkillMap } from "./skillMap.ts";
-
-/** Operational files beside the notes; never knowledge. */
-const RESERVED = new Set(["agents.md", "claude.md", "readme.md"]);
-
-/** A note, a skill map, a base or a canvas, in any folder. */
-export const isWikiDocument = (file: string): boolean =>
-  (file.endsWith(".md") || file.endsWith(".base") || file.endsWith(".canvas")) &&
-  isWikiPath(file) &&
-  !RESERVED.has(key(file.slice(file.lastIndexOf("/") + 1)));
 
 export interface WikiNote {
   readonly name: string;

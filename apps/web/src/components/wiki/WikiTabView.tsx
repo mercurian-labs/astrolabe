@@ -23,7 +23,14 @@ import { Empty } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
-import { documentTitle, filesHoldDocument, wikiDocumentScope, wikiDraft } from "./wiki.logic";
+import {
+  documentFile,
+  documentTitle,
+  filesHoldDocument,
+  wikiDocumentScope,
+  wikiDraft,
+  wikiLinkFile,
+} from "./wiki.logic";
 import { WikiDraftPill } from "./WikiDraftPill";
 import { WikiNoteView, type WikiDraftEdits } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
@@ -120,8 +127,22 @@ function NoteTab({
   const scope = wikiDocumentScope({
     tabChangeRequestId: tab.changeRequestId,
     draft,
-    name: tab.name,
+    file: tab.file,
   });
+  const index = useEnvironmentQuery(
+    wikiEnvironment.index({
+      environmentId: tab.environmentId,
+      input: { wikiId: tab.wikiId, ...(scope === undefined ? {} : { changeRequestId: scope }) },
+    }),
+  );
+  // A link opens in place, as in Obsidian, unless that would drop unsaved edits.
+  const openDocument = (file: string) => {
+    const next = wikiTabKey({ ...tab, file });
+    if (hasUnsavedEdits(tabKey)) nav.open(next);
+    else nav.replace(tabKey, next);
+  };
+  const openLink = (target: string, from = tab.file) =>
+    openDocument(wikiLinkFile(index.data, target, from));
   const parent =
     tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request");
   const renderDraftPill = (edits?: WikiDraftEdits) => {
@@ -146,7 +167,7 @@ function NoteTab({
         }
         onLanded={(changeRequestId, files) => {
           // The document on screen follows where its edits went.
-          if (!filesHoldDocument(files, tab.name)) return;
+          if (!filesHoldDocument(files, tab.file)) return;
           nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId }), { rekey: true });
         }}
       />
@@ -187,21 +208,17 @@ function NoteTab({
           tabKey={tabKey}
           environmentId={tab.environmentId}
           wikiId={tab.wikiId}
-          file={tab.name}
+          file={tab.file}
           changeRequestId={scope}
           cardsFrom={draft?.changeRequestId}
           savesTo={tab.changeRequestId}
           parent={parent}
           renderDraftPill={renderDraftPill}
           registerUnsaved={registerUnsaved}
-          onOpenNote={(name) => {
-            const next = wikiTabKey({ ...tab, name });
-            if (hasUnsavedEdits(tabKey)) nav.open(next);
-            else nav.replace(tabKey, next);
-          }}
+          onOpenNote={openDocument}
           onOpenFile={openFile}
           onOpenTab={nav.open}
-          onOpenInNewTab={(name) => nav.open(wikiTabKey({ ...tab, name }))}
+          onOpenInNewTab={(file) => nav.open(wikiTabKey({ ...tab, file }))}
         />
       </Suspense>
     );
@@ -211,18 +228,14 @@ function NoteTab({
       <WikiBasePage
         environmentId={tab.environmentId}
         wikiId={tab.wikiId}
-        file={tab.name}
+        file={tab.file}
         changeRequestId={scope}
         savesTo={tab.changeRequestId}
         changeRequests={all ?? NO_CHANGE_REQUESTS}
         parent={parent}
         renderDraftPill={renderDraftPill}
         registerUnsaved={registerUnsaved}
-        onOpenNote={(name) => {
-          const next = wikiTabKey({ ...tab, name });
-          if (hasUnsavedEdits(tabKey)) nav.open(next);
-          else nav.replace(tabKey, next);
-        }}
+        onOpenNote={openLink}
         onOpenFile={openFile}
       />
     );
@@ -231,18 +244,13 @@ function NoteTab({
     <WikiNoteView
       environmentId={tab.environmentId}
       wikiId={tab.wikiId}
-      name={tab.name}
+      file={tab.file}
       changeRequestId={scope}
       savesTo={tab.changeRequestId}
       changeRequests={all ?? NO_CHANGE_REQUESTS}
       location={parent}
       renderDraftPill={renderDraftPill}
-      onOpenNote={(name) => {
-        const next = wikiTabKey({ ...tab, name });
-        // A link opens in place, as in Obsidian, unless that would drop unsaved edits.
-        if (hasUnsavedEdits(tabKey)) nav.open(next);
-        else nav.replace(tabKey, next);
-      }}
+      onOpenNote={openLink}
       registerUnsaved={registerUnsaved}
     />
   );
@@ -261,13 +269,13 @@ function ChangeRequestTab({
       environmentId={tab.environmentId}
       wikiId={tab.wikiId}
       changeRequestId={tab.changeRequestId}
-      onOpenNote={(name) =>
+      onOpenNote={(file) =>
         nav.open(
           wikiTabKey({
             kind: "note",
             environmentId: tab.environmentId,
             wikiId: tab.wikiId,
-            name,
+            file: documentFile(file),
             changeRequestId: tab.changeRequestId,
           }),
         )
@@ -303,20 +311,20 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   if (tab.kind === "note") {
     if (isCanvasTab(tab)) {
       return {
-        title: documentTitle(tab.name),
+        title: documentTitle(tab.file),
         icon: <WaypointsIcon className="size-3.5 shrink-0" />,
         ...trailing,
       };
     }
     if (isBaseTab(tab)) {
       return {
-        title: tab.name.replace(/\.base$/, ""),
+        title: documentTitle(tab.file),
         icon: <TableIcon className="size-3.5 shrink-0" />,
         ...trailing,
       };
     }
     return {
-      title: tab.name,
+      title: documentTitle(tab.file),
       icon:
         tab.changeRequestId === undefined ? (
           <FileTextIcon className="size-3.5 shrink-0" />
@@ -346,7 +354,7 @@ export function closeAskingFirst(tabKey: string, close: () => void) {
   const tab = parseWikiTabKey(tabKey);
   void ensureLocalApi()
     .dialogs.confirm(
-      `Close ${tab?.kind === "note" ? tab.name : "this tab"}? Your unsaved edits will be lost.`,
+      `Close ${tab?.kind === "note" ? documentTitle(tab.file) : "this tab"}? Your unsaved edits will be lost.`,
       { variant: "destructive" },
     )
     .then((confirmed) => {

@@ -1,11 +1,10 @@
 import {
   changeRequestFiles,
   describeWikiFailure,
-  documentTitle,
+  documentPath,
   draftLabel,
   draftMoveTargets,
   mergeBlockedReason,
-  noteNameOfFile,
 } from "@t3tools/client-runtime/wikiLogic";
 import {
   type AtomCommandResult,
@@ -179,7 +178,7 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
                   className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
                 >
                   <Text className="flex-1 text-base text-foreground" numberOfLines={1}>
-                    {documentTitle(noteNameOfFile(file))}
+                    {documentPath(file)}
                   </Text>
                   {picked.has(file) ? (
                     <SymbolView name="checkmark" size={16} tintColorClassName="accent-primary" />

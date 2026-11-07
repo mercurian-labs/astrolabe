@@ -6,10 +6,9 @@ import type { WikiEditorPage } from "./mobilePageController";
 
 const isNoteProperty = (column: string) =>
   !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
-const isEditableNote = (file: string) =>
-  /^[^/]+\.md$/i.test(file) && !/\.skillmap\.md$/i.test(file);
+const isEditableNote = (file: string) => /\.md$/i.test(file) && rowDocument({ file }) !== null;
 
-/** Cells of notes at the top of the wiki edit in place; a board's cards move between groups. */
+/** Cells of notes edit in place; a board's cards move between groups. */
 function editingHost(
   groupProperty: string | undefined,
   onEdit: (file: string, property: string, value: BaseCellValue) => void,
@@ -42,7 +41,8 @@ export function BaseBlock({
 }: {
   readonly page: WikiEditorPage;
   readonly source: string;
-  readonly onOpenNote: (name: string) => void;
+  /** Follows a link, or opens a file; `from` is the file a cell's link is written in. */
+  readonly onOpenNote: (name: string, from?: string) => void;
   readonly onOpenUrl?: (href: string) => void;
   /** Sets a note's property, where the base shown alone edits in place. */
   readonly onEdit?: (file: string, property: string, value: BaseCellValue) => void;

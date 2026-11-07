@@ -106,7 +106,7 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import {
-  documentTitle,
+  documentPath,
   draftLabel,
   isCanvasName,
   isTurnRunning,
@@ -148,7 +148,6 @@ import {
   wikiScopeKey,
   wikiSidebarEntryTab,
   wikiSidebarItems,
-  wikiTabFile,
   wikiTabKey,
   type WikiChangeItem,
   type WikiDocumentItem,
@@ -236,7 +235,7 @@ export function WikiSidebar() {
           tabShowsDocument(focused, {
             environmentId: document.environmentId,
             wikiId: document.wiki.wikiId,
-            name: document.name,
+            file: document.file,
           }),
         )
       : undefined;
@@ -301,9 +300,7 @@ export function WikiSidebar() {
           key: wikiTabKey(tab),
           keys: [],
           place: (paneId, drop) => placeWikiTabs(carried, tab, paneId, drop),
-          wikiFiles: carried.flatMap((each) =>
-            each.kind === "note" ? [wikiTabFile(each.name)] : [],
-          ),
+          wikiFiles: carried.flatMap((each) => (each.kind === "note" ? [each.file] : [])),
         },
         event.currentTarget.getAttribute("aria-label") ?? "",
         carried.length > 1 ? carried.length : 0,
@@ -389,7 +386,7 @@ export function WikiSidebar() {
       ? tabShowsDocument(focused, {
           environmentId: entry.item.environmentId,
           wikiId: entry.item.wiki.wikiId,
-          name: entry.item.name,
+          file: entry.item.file,
         })
       : focused?.kind === "change-request" &&
         focused.environmentId === entry.item.environmentId &&
@@ -496,7 +493,7 @@ export function WikiSidebar() {
         environmentId: overview.environmentId,
         wiki: overview.wiki,
         name,
-        title: documentTitle(name),
+        title: documentPath(name),
         base: file.endsWith(".base"),
         canvas: isCanvasName(file),
         file,
@@ -509,7 +506,7 @@ export function WikiSidebar() {
         kind: "note",
         environmentId: overview.environmentId,
         wikiId: overview.wiki.wikiId,
-        name: item.name,
+        file,
         changeRequestId,
       };
       return (
@@ -523,7 +520,7 @@ export function WikiSidebar() {
             tabShowsDocument(focused, {
               environmentId: overview.environmentId,
               wikiId: overview.wiki.wikiId,
-              name: item.name,
+              file,
             })
           }
           selected={selectedKeys.includes(wikiTabKey(tab))}
@@ -1577,7 +1574,7 @@ function WikiChangeDetails({
                   )
                 }
               >
-                {documentTitle(noteNameOfFile(file))}
+                {documentPath(file)}
               </DetailLine>
             ))}
             {more > 0 ? <div className="pl-5">{`${more} more`}</div> : null}

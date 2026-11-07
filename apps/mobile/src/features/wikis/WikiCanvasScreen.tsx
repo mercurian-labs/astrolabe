@@ -26,13 +26,16 @@ import { StackActions, useNavigation } from "@react-navigation/native";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import {
   changeRequestCanvasReview,
+  documentFile,
   documentTitle,
+  exactWikiPath,
   filesHoldDocument,
+  isDocumentFile,
   isSettledChangeRequest,
-  wikiDocumentName,
-  wikiDocumentNames,
+  wikiDocumentFiles,
   wikiDocumentScope,
   wikiDraft,
+  wikiLinkFile,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
@@ -134,7 +137,7 @@ export function WikiCanvasScreen({
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const file = params.name;
+  const file = documentFile(params.name);
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const changeRequests = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
@@ -144,13 +147,16 @@ export function WikiCanvasScreen({
   const changeRequestId = wikiDocumentScope({
     tabChangeRequestId: routeChangeRequestId,
     draft,
-    name: file,
+    file,
   });
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
-  const title = documentTitle(cardFileName(file));
+  const title = documentTitle(file);
 
   const query = useEnvironmentQuery(
-    wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, paths: [file] } }),
+    wikiEnvironment.files({
+      environmentId,
+      input: { wikiId, ...scope, paths: [exactWikiPath(file)] },
+    }),
   );
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
@@ -180,11 +186,9 @@ export function WikiCanvasScreen({
   // Your own draft's cards all read as changed, which says nothing a person doesn't know.
   const marks = changes?.changeRequest.draft === true ? undefined : board?.marks;
   const canWrite = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
-  // Writes follow `checkFileName`, flat until wikis have folders: one deeper can only be read.
   const editable =
     review === undefined &&
     canWrite &&
-    /^[^/]+\.canvas$/i.test(file) &&
     (routeChangeRequestId === undefined || changes !== null) &&
     !isSettledChangeRequest(changes?.changeRequest);
   const document = editable && parsed?.ok === true ? parsed.document : undefined;
@@ -199,8 +203,8 @@ export function WikiCanvasScreen({
     reportFailure: true,
   });
   const groups = useMemo(() => (data === null ? [] : canvasGroups(data)), [data]);
-  const names = useMemo(
-    () => (index.data === null ? null : wikiDocumentNames(index.data)),
+  const documents = useMemo(
+    () => (index.data === null ? null : wikiDocumentFiles(index.data)),
     [index.data],
   );
 
@@ -210,19 +214,29 @@ export function WikiCanvasScreen({
   // Until the page first asks, what it would be sent is in `initialCommands`: a board is one
   // large message, so it isn't sent twice.
   const pageAsked = useRef(false);
-  const shown = useRef({ theme, data, commit, names, marks, document, readOnly, settings });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a reloaded web view reads the latest board, commit and names
+  const shown = useRef({
+    theme,
+    file,
+    data,
+    commit,
+    documents,
+    marks,
+    document,
+    readOnly,
+    settings,
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a reloaded web view reads the latest board, commit and documents
   useLayoutEffect(() => {
-    shown.current = { theme, data, commit, names, marks, document, readOnly, settings };
+    shown.current = { theme, file, data, commit, documents, marks, document, readOnly, settings };
   });
   const initialCommands = useCallback((): WikiEditorCommand[] => {
     pageAsked.current = true;
     const current = shown.current;
     return [
       { type: "theme", theme: current.theme },
-      ...(current.names === null
+      ...(current.documents === null
         ? []
-        : [{ type: "knownDocuments" as const, names: current.names }]),
+        : [{ type: "knownDocuments" as const, files: current.documents, from: current.file }]),
       ...(current.data === null || current.commit === null
         ? []
         : [
@@ -240,10 +254,10 @@ export function WikiCanvasScreen({
   }, [theme]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's documents cross into the web view, outside React
   useEffect(() => {
-    if (names !== null && pageAsked.current) {
-      editor.current?.send({ type: "knownDocuments", names });
+    if (documents !== null && pageAsked.current) {
+      editor.current?.send({ type: "knownDocuments", files: documents, from: file });
     }
-  }, [names]);
+  }, [documents, file]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a new version of the board crosses into the web view, outside React
   useEffect(() => {
     const { commit, marks } = shown.current;
@@ -272,7 +286,12 @@ export function WikiCanvasScreen({
     const revision = shown.current.commit;
     const result = await runFiles({
       environmentId,
-      input: { wikiId, ...(revision === null ? scope : { commit: revision }), paths: [...paths] },
+      input: {
+        wikiId,
+        ...(revision === null ? scope : { commit: revision }),
+        from: file,
+        paths: [...paths],
+      },
     });
     // A note made from a missing card sits in the draft, not at the board's commit.
     const missing =
@@ -284,7 +303,7 @@ export function WikiCanvasScreen({
         ? null
         : await runFiles({
             environmentId,
-            input: { wikiId, changeRequestId: cardsFrom, paths: missing },
+            input: { wikiId, changeRequestId: cardsFrom, from: file, paths: missing },
           });
     const inDraft = new Map(
       drafted?._tag === "Success" ? drafted.value.files.map((each) => [each.file, each]) : [],
@@ -459,10 +478,11 @@ export function WikiCanvasScreen({
       name: cardFileName(path),
     });
   };
-  const openLink = (name: string) => {
+  const openLink = (name: string, from: string = file) => {
     // A bare name is a note's. Anything with a file's extension that's no document opens as a file.
-    const document = canvasFileKind(name) === "other" ? name : wikiDocumentName(name);
-    if (document === null) {
+    const media = !["other", "note", "canvas", "base"].includes(canvasFileKind(name));
+    const document = wikiLinkFile(index.data, name, from);
+    if (media || !isDocumentFile(document)) {
       openFile(name);
       return;
     }
@@ -523,7 +543,7 @@ export function WikiCanvasScreen({
         setReadOnly(event.on);
         return;
       case "openNote":
-        openLink(event.name);
+        openLink(event.name, event.from);
         return;
       case "openFile":
         openFile(event.path);

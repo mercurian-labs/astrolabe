@@ -4,10 +4,10 @@ import { cellParts, rowDocument } from "./baseCells";
 
 describe("rowDocument", () => {
   it("opens a canvas by its file, at any depth, as it does a base", () => {
-    expect(rowDocument({ name: "Board", file: "Board.canvas" })).toBe("Board.canvas");
-    expect(rowDocument({ name: "Board", file: "maps/Board.canvas" })).toBe("maps/Board.canvas");
-    expect(rowDocument({ name: "Tasks", file: "Tasks.base" })).toBe("Tasks.base");
-    expect(rowDocument({ name: "Photo", file: "Photo.png" })).toBeNull();
+    expect(rowDocument({ file: "Board.canvas" })).toBe("Board.canvas");
+    expect(rowDocument({ file: "maps/Board.canvas" })).toBe("maps/Board.canvas");
+    expect(rowDocument({ file: "Tasks.base" })).toBe("Tasks.base");
+    expect(rowDocument({ file: "Photo.png" })).toBeNull();
   });
 });
 

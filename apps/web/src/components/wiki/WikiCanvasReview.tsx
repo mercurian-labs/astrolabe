@@ -129,6 +129,7 @@ export default function WikiCanvasReview({
   const host = useWikiCanvasHost({
     environmentId,
     wikiId,
+    file,
     changeRequestId,
     commit,
     onOpenNote,

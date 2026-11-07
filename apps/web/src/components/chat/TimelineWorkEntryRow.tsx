@@ -490,7 +490,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                   kind: "note",
                   environmentId: ctx.activeThreadEnvironmentId,
                   wikiId: WikiId.make(changedCanvas.wikiId),
-                  name: changedCanvas.file,
+                  file: changedCanvas.file,
                   changeRequestId: WikiChangeRequestId.make(changedCanvas.changeRequestId),
                 });
               }}

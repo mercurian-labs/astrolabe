@@ -1,4 +1,5 @@
 import type { CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
+import { linkFiles, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
 
 import type { CanvasBoardHandle, CanvasBoardSettings } from "./CanvasBoard";
 import { CanvasDocument } from "./canvasDocument";
@@ -14,15 +15,13 @@ import type {
   WikiEditorEmbeddedFile,
   WikiEditorEvent,
   WikiEditorFile,
+  WikiEditorResolvedLink,
 } from "./protocol";
 
 /** How long a board's camera rests before the app hears where it is. */
 const CAMERA_REPORT_MS = 250;
 /** How often the app hears that the person is typing. */
 const EDIT_REPORT_MS = 500;
-
-/** Compared as a wiki compares names. */
-export const documentKey = (name: string) => name.normalize("NFC").toLowerCase();
 
 /** A ```base block's view as the page holds it: nothing yet, a view, or why it can't show. */
 export interface WikiEditorBase {
@@ -48,8 +47,8 @@ export interface WikiEditorPageState {
   readonly revision: string | null;
   /** Where the board opens; null fits it. */
   readonly camera: CanvasCamera | null;
-  /** What the wiki holds, by `documentKey`; null until the app says, which dims no link. */
-  readonly knownDocuments: ReadonlySet<string> | null;
+  /** What the wiki holds, and the file linking to it; null until the app says, dimming no link. */
+  readonly knownDocuments: { readonly files: WikiLinkFiles; readonly from: string } | null;
   readonly theme: Extract<WikiEditorCommand, { type: "theme" }>["theme"] | null;
   /** The `@` types the wiki uses, which the editor suggests. */
   readonly linkTypes: ReadonlyArray<string>;
@@ -132,6 +131,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
 
   // The notes link previews show, by name: asked for once each, then kept current by the app.
   const notes = new Map<string, string | null>();
+  const noteLinks = new Map<string, WikiEditorResolvedLink>();
   const noteListeners = new Set<() => void>();
   const asked = new Set<string>();
   const watchNote = (name: string, listener: () => void) => {
@@ -294,6 +294,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         return;
       case "noteRead":
         notes.set(command.name, command.source);
+        if (command.link !== undefined) noteLinks.set(command.name, command.link);
         for (const listener of noteListeners) listener();
         return;
       case "showCanvas":
@@ -333,7 +334,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
         else board?.focusCard(command.id);
         return;
       case "knownDocuments":
-        setState({ knownDocuments: new Set(command.names.map(documentKey)) });
+        setState({ knownDocuments: { files: linkFiles(command.files), from: command.from } });
         return;
       case "filesRead": {
         const read = fileReads.get(command.requestId);
@@ -380,6 +381,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     watchNote,
     /** A note's text, null when it isn't written, undefined until the app answers. */
     getNote: (name: string): string | null | undefined => notes.get(name),
+    getNoteLink: (name: string): WikiEditorResolvedLink | undefined => noteLinks.get(name),
     readFiles,
     readCodeStatus,
     watchAsset,

@@ -3,10 +3,13 @@ import { StackActions, useNavigation } from "@react-navigation/native";
 import { WIKI_BASE_AUTOSAVE_DELAY_MS } from "@t3tools/client-runtime/wikiAutosave";
 import { withUnsentEdit } from "@t3tools/client-runtime/wikiBaseEdits";
 import {
+  documentFile,
+  documentTitle,
   filesHoldDocument,
   isSettledChangeRequest,
   wikiDocumentScope,
   wikiDraft,
+  wikiLinkFile,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiBaseEdit, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -18,7 +21,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironmentQuery } from "../../state/query";
 import { wikiEnvironment } from "../../state/wiki";
 import { useEditorTheme } from "./document/useEditorTheme";
-import { wikiBaseTitle, wikiDocumentSubtitle } from "./document/wikiDocument.logic";
+import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
 import type { WikiBaseAnswer } from "./document/WikiBaseQueries";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
@@ -37,7 +40,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const file = params.name;
+  const file = documentFile(params.name);
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const changeRequests = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
@@ -47,17 +50,19 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const changeRequestId = wikiDocumentScope({
     tabChangeRequestId: routeChangeRequestId,
     draft,
-    name: file,
+    file,
   });
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
 
+  const index = useEnvironmentQuery(
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
+  );
   const [view, setView] = useState<string | null>(null);
   const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
   const [savedCommit, setSavedCommit] = useState<string | null>(null);
   const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
   const viewing = all?.find((entry) => entry.changeRequestId === changeRequestId) ?? null;
-  const editable =
-    canEdit && !isSettledChangeRequest(viewing ?? undefined) && /^[^/]+\.base$/.test(file);
+  const editable = canEdit && !isSettledChangeRequest(viewing ?? undefined);
   const query = useEnvironmentQuery(
     wikiEnvironment.query({
       environmentId,
@@ -88,7 +93,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   // How many edits are on their way; those can't merge with a new one any more.
   const sent = useRef(0);
   const { autosave, status } = useWikiAutosave({
-    subject: wikiBaseTitle(file),
+    subject: documentTitle(file),
     delayMs: WIKI_BASE_AUTOSAVE_DELAY_MS,
     save: async () => {
       const batch = edits;
@@ -159,7 +164,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
           StackActions.push("WikiDocument", {
             environmentId: params.environmentId,
             wikiId: params.wikiId,
-            name: event.name,
+            name: wikiLinkFile(index.data, event.name, event.from ?? file),
             ...scope,
           }),
         );
@@ -204,7 +209,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   return (
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions
-        options={{ title: wikiBaseTitle(file), unstable_headerSubtitle: subtitle }}
+        options={{ title: documentTitle(file), unstable_headerSubtitle: subtitle }}
         optionsVersion={`${subtitle}|${views.join("\n")}|${shownView}`}
       />
       {views.length > 1 ? (

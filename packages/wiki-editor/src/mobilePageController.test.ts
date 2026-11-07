@@ -1,6 +1,7 @@
+import { resolveLink } from "@mercurian/wiki/resolve-link";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { createWikiEditorPage, documentKey, type WikiEditorPage } from "./mobilePageController";
+import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import {
   parseWikiEditorCommand,
   parseWikiEditorEvent,
@@ -370,13 +371,19 @@ describe("the wiki editor protocol", () => {
       expect(selectCard.mock.calls).toEqual([["changed"]]);
     });
 
-    it("compares known documents as the wiki compares names", () => {
+    it("searches known documents as the wiki does, from the file on the page", () => {
       const { page: editor } = page();
-      editor.handle({ type: "knownDocuments", names: ["Board.canvas", "Café"] });
-      const known = editor.getState().knownDocuments;
-      expect(known?.has(documentKey("board.CANVAS"))).toBe(true);
-      expect(known?.has(documentKey("Cafe\u0301"))).toBe(true);
-      expect(known?.has(documentKey("Missing"))).toBe(false);
+      editor.handle({
+        type: "knownDocuments",
+        files: ["Board.canvas", "Café.md", "a/Near.md", "b/Near.md"],
+        from: "b/Page.canvas",
+      });
+      const known = editor.getState().knownDocuments!;
+      const target = (name: string) => resolveLink(name, known.from, known.files).file;
+      expect(target("board.CANVAS")).toBe("Board.canvas");
+      expect(target("Cafe\u0301")).toBe("Café.md");
+      expect(target("Near")).toBe("b/Near.md");
+      expect(target("Missing")).toBeNull();
     });
   });
 });

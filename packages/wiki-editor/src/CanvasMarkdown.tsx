@@ -1,5 +1,5 @@
 import { markdownParser } from "@mercurian/editor/markdown/syntax";
-import { memo, Suspense, use, type ReactNode } from "react";
+import { memo, Suspense, use, type ReactElement, type ReactNode } from "react";
 
 import { isOpenableUrl } from "./canvasGeometry";
 import { wikilinkNoteName } from "./incoming";
@@ -19,6 +19,8 @@ export interface CanvasMarkdownHost {
   readonly onOpenLink?: ((name: string) => void) | undefined;
   /** Whether a link's name is written, which dims one that isn't. */
   readonly isResolved?: ((name: string) => boolean) | undefined;
+  /** Puts what a link's hover says around it, when it has something to say. */
+  readonly linkHover?: ((name: string, link: ReactElement) => ReactNode) | undefined;
   readonly renderMermaid?: ((source: string) => ReactNode) | undefined;
   /** An `![[embed]]`, by what's between its brackets. */
   readonly renderEmbed?: ((target: string) => ReactNode) | undefined;
@@ -115,7 +117,7 @@ function Link({
 function WikiLink({ inner, scope }: { readonly inner: string; readonly scope: Scope }) {
   const name = wikilinkNoteName(inner);
   const text = inner.split(/\\?\|/).at(-1) ?? inner;
-  const { onOpenLink, isResolved } = scope.host;
+  const { onOpenLink, isResolved, linkHover } = scope.host;
   const missing = name !== null && isResolved?.(name) === false;
   if (name === null || onOpenLink === undefined) {
     return (
@@ -124,7 +126,7 @@ function WikiLink({ inner, scope }: { readonly inner: string; readonly scope: Sc
       </span>
     );
   }
-  return (
+  const link = (
     <button
       type="button"
       className="cv-wikilink"
@@ -134,6 +136,7 @@ function WikiLink({ inner, scope }: { readonly inner: string; readonly scope: Sc
       {text}
     </button>
   );
+  return linkHover === undefined ? link : linkHover(name, link);
 }
 
 function inline(node: SyntaxNode, scope: Scope): ReactNode[] {

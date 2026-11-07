@@ -177,7 +177,7 @@ function PlaceInWiki({
                 kind: "note",
                 environmentId,
                 wikiId: kept.wikiId,
-                name: file,
+                file,
                 changeRequestId: changeRequest.changeRequestId,
               });
               onClose();

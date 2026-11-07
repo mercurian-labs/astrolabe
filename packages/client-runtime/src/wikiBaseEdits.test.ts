@@ -69,7 +69,8 @@ describe("newNoteProperties", () => {
 
 it("edits only notes at the top of the wiki", () => {
   expect(isEditableNote("Alpha.md")).toBe(true);
-  expect(isEditableNote("projects/Delta.md")).toBe(false);
+  expect(isEditableNote("projects/Delta.md")).toBe(true);
+  expect(isEditableNote("projects/README.md")).toBe(false);
   expect(isEditableNote("Product.skillmap.md")).toBe(false);
   expect(isEditableNote("Open.base")).toBe(false);
 });

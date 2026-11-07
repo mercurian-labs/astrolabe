@@ -7,7 +7,14 @@ import type {
 } from "@t3tools/contracts";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 
-import { changeRequestFiles, documentTitle, isCanvasName, noteKey, wikiDraft } from "./wiki.logic";
+import {
+  changeRequestFiles,
+  documentFile,
+  documentPath,
+  isCanvasName,
+  noteKey,
+  wikiDraft,
+} from "./wiki.logic";
 
 /**
  * What a tab in the Wikis area shows: a note, read from main or inside a change request, or a
@@ -19,7 +26,8 @@ export type WikiTab =
       readonly kind: "note";
       readonly environmentId: EnvironmentId;
       readonly wikiId: WikiId;
-      readonly name: string;
+      /** Its path from the wiki's root: what it is, as a title is only the last part. */
+      readonly file: string;
       readonly changeRequestId: WikiChangeRequestId | undefined;
     }
   | {
@@ -37,7 +45,7 @@ const part = (value: string) => encodeURIComponent(value);
 /** A tab's key: every part URI-encoded, so `:` only ever separates them. */
 export function wikiTabKey(tab: WikiTab): string {
   return tab.kind === "note"
-    ? `${NOTE_PREFIX}${part(tab.environmentId)}:${part(tab.wikiId)}:${part(tab.changeRequestId ?? "")}:${part(tab.name)}`
+    ? `${NOTE_PREFIX}${part(tab.environmentId)}:${part(tab.wikiId)}:${part(tab.changeRequestId ?? "")}:${part(tab.file)}`
     : `${CHANGE_REQUEST_PREFIX}${part(tab.environmentId)}:${part(tab.wikiId)}:${part(tab.changeRequestId)}`;
 }
 
@@ -61,7 +69,8 @@ export function parseWikiTabKey(key: string): WikiTab | null {
       kind: "note",
       environmentId: environmentId as EnvironmentId,
       wikiId: wikiId as WikiId,
-      name,
+      // A layout saved before wikis had folders holds a note's bare name.
+      file: documentFile(name),
       changeRequestId: changeRequestId ? (changeRequestId as WikiChangeRequestId) : undefined,
     };
   }
@@ -79,22 +88,18 @@ export function parseWikiTabKey(key: string): WikiTab | null {
   return null;
 }
 
-/** Whether a document tab shows a base: a `.base` file, opened by its file name. */
+/** Whether a document tab shows a base. */
 export const isBaseTab = (tab: WikiTab): boolean =>
-  tab.kind === "note" && tab.name.endsWith(".base");
+  tab.kind === "note" && tab.file.endsWith(".base");
 
-/** Whether a document tab shows a canvas: a `.canvas` file, opened by its file name. */
-/** The file a document's tab shows: a note's name has no extension. */
-export const wikiTabFile = (name: string): string =>
-  /\.(base|canvas)$/i.test(name) ? name : `${name}.md`;
+/** Whether a document tab shows a canvas. */
+export const isCanvasTab = (tab: WikiTab): boolean => tab.kind === "note" && isCanvasName(tab.file);
 
-export const isCanvasTab = (tab: WikiTab): boolean => tab.kind === "note" && isCanvasName(tab.name);
-
-/** Whether two tabs show the same thing; note names compare as the wiki compares them. */
+/** Whether two tabs show the same thing; paths compare as the wiki compares them. */
 export function sameWikiTab(a: WikiTab, b: WikiTab): boolean {
   if (a.environmentId !== b.environmentId || a.wikiId !== b.wikiId) return false;
   if (a.kind === "note" && b.kind === "note") {
-    return a.changeRequestId === b.changeRequestId && noteKey(a.name) === noteKey(b.name);
+    return a.changeRequestId === b.changeRequestId && noteKey(a.file) === noteKey(b.file);
   }
   return a.kind === b.kind && a.changeRequestId === b.changeRequestId;
 }
@@ -105,14 +110,14 @@ export function tabShowsDocument(
   document: {
     readonly environmentId: EnvironmentId;
     readonly wikiId: WikiId;
-    readonly name: string;
+    readonly file: string;
   },
 ): boolean {
   return (
     tab?.kind === "note" &&
     tab.environmentId === document.environmentId &&
     tab.wikiId === document.wikiId &&
-    noteKey(tab.name) === noteKey(document.name)
+    noteKey(tab.file) === noteKey(document.file)
   );
 }
 
@@ -121,9 +126,11 @@ export interface WikiDocumentItem {
   readonly key: string;
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
+  /** What a search looks through: the path, without a note's `.md`. */
   readonly name: string;
-  /** What lists show: the name, without a base's `.base` or a canvas's `.canvas`. */
+  /** What lists show: the whole path, until they group by folder. */
   readonly title: string;
+  /** What it opens by. */
   readonly file: string;
   /** A `.base` file, which lists mark with a table icon. */
   readonly base: boolean;
@@ -222,13 +229,13 @@ export function wikiSidebarItems(
           kind: "note",
           environmentId,
           wikiId: wiki.wikiId,
-          name: note.name,
+          file: note.file,
           changeRequestId: undefined,
         }),
         environmentId,
         wiki,
         name: note.name,
-        title: documentTitle(note.name),
+        title: documentPath(note.name),
         file: note.file,
         base: note.file.endsWith(".base"),
         canvas: isCanvasName(note.file),
@@ -282,7 +289,7 @@ export function wikiSidebarEntryTab(entry: WikiSidebarEntry): WikiTab {
         kind: "note",
         environmentId: entry.item.environmentId,
         wikiId: entry.item.wiki.wikiId,
-        name: entry.item.name,
+        file: entry.item.file,
         changeRequestId: undefined,
       }
     : {

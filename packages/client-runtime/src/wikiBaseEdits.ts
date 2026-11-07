@@ -1,3 +1,4 @@
+import { isDocumentFile } from "@mercurian/wiki/resolve-link";
 import type { WikiBaseCell, WikiBaseEdit, WikiBaseFilter } from "@t3tools/contracts";
 
 /**
@@ -52,9 +53,9 @@ const noteKey = (property: string) =>
 export const isNoteProperty = (column: string): boolean =>
   !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
 
-/** Whether a base's view may edit a row's file: a note at the top of the wiki, not a skill map. */
+/** Whether a base's view may edit a row's file: a note, not a skill map. */
 export const isEditableNote = (file: string): boolean =>
-  /^[^/]+\.md$/i.test(file) && !/\.skillmap\.md$/i.test(file);
+  /\.md$/i.test(file) && isDocumentFile(file);
 
 /** A property id as a view's `order` keeps a note's: bare, as Obsidian writes it. */
 export const orderId = (property: string): string => noteKey(property);

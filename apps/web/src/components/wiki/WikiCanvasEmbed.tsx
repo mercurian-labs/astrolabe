@@ -12,17 +12,21 @@ export default function WikiCanvasEmbed({
   wikiId,
   changeRequestId,
   file,
+  from,
   onOpen,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** The canvas as the embed writes it. */
   readonly file: string;
-  readonly onOpen: (name: string) => void;
+  /** The note the embed is in. */
+  readonly from: string;
+  readonly onOpen: (file: string) => void;
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const { data } = useEnvironmentQuery(
-    wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, paths: [file] } }),
+    wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, from, paths: [file] } }),
   );
   const read = data?.files[0];
   const parsed = parseCanvas(read?.text ?? "");

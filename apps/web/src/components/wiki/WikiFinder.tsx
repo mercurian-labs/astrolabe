@@ -19,7 +19,7 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
 import { isWikisPath } from "../sidebar/mainAppLocation";
-import { documentTitle, isCanvasName, noteKey } from "./wiki.logic";
+import { documentFile, documentTitle, isCanvasName, noteKey } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { openWikiTab, showWikiTab } from "./wikiPanes";
 import { wikiScopeKey, wikiSidebarItems, type WikiDocumentItem, type WikiTab } from "./wikiTabs";
@@ -165,7 +165,7 @@ function documentRow(
         kind: "note",
         environmentId: document.environmentId,
         wikiId: document.wiki.wikiId,
-        name: document.name,
+        file: document.file,
         changeRequestId: undefined,
       }),
   };
@@ -262,7 +262,7 @@ export function finderGroups(input: {
               kind: "note",
               environmentId: overview.environmentId,
               wikiId: overview.wiki.wikiId,
-              name,
+              file: documentFile(name),
               changeRequestId: undefined,
             }),
         }));
@@ -284,7 +284,7 @@ export function finderGroups(input: {
               kind: "note",
               environmentId: overview.environmentId,
               wikiId: overview.wiki.wikiId,
-              name: canvasName,
+              file: canvasName,
               changeRequestId: undefined,
             }),
         }));

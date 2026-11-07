@@ -106,7 +106,7 @@ export function WikisScreen() {
       navigation.navigate("WikiDocument", {
         environmentId: String(entry.environmentId),
         wikiId: String(entry.wiki.wikiId),
-        name: entry.name,
+        name: entry.file,
       });
     },
     [navigation],

@@ -16,10 +16,11 @@ export interface WikiDocumentEntry {
   readonly key: string;
   readonly environmentId: EnvironmentId;
   readonly wiki: WikiSummary;
-  /** A base or canvas is named, and opened, by its file name (`Projects.base`), as on web. */
+  /** What a search looks through: the path, without a note's `.md`. */
   readonly name: string;
-  /** What the list shows: the name, without a base's `.base` or a canvas's `.canvas`. */
+  /** What the list shows: the last part of the path. */
   readonly title: string;
+  /** What it opens by. */
   readonly file: string;
   /** A `.base` file: read only, with no links of its own. */
   readonly base: boolean;
@@ -111,7 +112,7 @@ export function wikiListEntries(
     for (const note of [...notes, ...bases, ...canvases]) {
       documents.push({
         kind: "document",
-        key: `document:${scopeKey}:${noteKey(note.name)}`,
+        key: `document:${scopeKey}:${note.file}`,
         environmentId,
         wiki,
         name: note.name,

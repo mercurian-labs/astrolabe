@@ -41,7 +41,12 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { describeWikiFailure, isSettledChangeRequest, wikiDocumentName } from "./wiki.logic";
+import {
+  describeWikiFailure,
+  documentTitle,
+  isDocumentFile,
+  isSettledChangeRequest,
+} from "./wiki.logic";
 import {
   isEditableNote,
   isNoteProperty,
@@ -61,16 +66,20 @@ import type { WikiDraftEdits } from "./WikiNoteView";
 
 const WikiBaseMap = lazy(() => import("./WikiBaseMap"));
 
-/** A base by name (a `.base` file, or a note's first block), or a block's source in `note`. */
+/**
+ * A base by name (a `.base` file, or a note's first block), as `note` writes it when one embeds
+ * it, or a block's source in `note`.
+ */
 export type WikiBaseSource =
-  | { readonly base: string }
+  | { readonly base: string; readonly note?: string }
   | { readonly source: string; readonly note: string };
 
 type Row = WikiQueryResult["rows"][number];
 
-/** How a row's own name opens: a wiki document by name, any other file as a file. */
+/** How a row's own name opens: a wiki document as one, any other file as a file. */
 interface RowOpeners {
-  readonly onOpenNote: (name: string) => void;
+  /** Follows a link, or opens a file; `from` is the file a cell's link is written in. */
+  readonly onOpenNote: (target: string, from?: string) => void;
   /** Absent where files can't open; such rows show their name as text. */
   readonly onOpenFile?: ((file: string) => void) | undefined;
 }
@@ -164,13 +173,13 @@ function webHost({
   readonly result: WikiQueryResult;
   readonly dark: boolean;
   readonly openRow: (row: Row) => void;
-  readonly onOpenNote: (name: string) => void;
+  readonly onOpenNote: RowOpeners["onOpenNote"];
   readonly canOpenFiles: boolean;
   readonly editing: BaseEditing | undefined;
 }): BaseLayoutHost {
   const groupProperty = result.settings?.groupBy?.property ?? result.groupBy?.id;
   return {
-    canOpenRow: (row) => wikiDocumentName(row.file) !== null || canOpenFiles,
+    canOpenRow: (row) => isDocumentFile(row.file) || canOpenFiles,
     openRow,
     openLink: onOpenNote,
     renderImage: (image, className) =>
@@ -238,7 +247,7 @@ function webHost({
 
 /**
  * A base's view, drawn as Obsidian draws its layout. Every row opens its file; with `editing`,
- * cells of notes at the top of the wiki edit in place, a board's cards move between groups, and
+ * cells of notes edit in place, a board's cards move between groups, and
  * column headings sort, summarize, rename and hide.
  */
 export function WikiBaseResults({
@@ -258,8 +267,7 @@ export function WikiBaseResults({
   const wiki = overviews?.find((overview) => overview.wiki.wikiId === wikiId)?.wiki;
   const { resolvedTheme } = useTheme();
   const openRow = (row: Row) => {
-    const document = wikiDocumentName(row.file);
-    if (document !== null) onOpenNote(document);
+    if (isDocumentFile(row.file)) onOpenNote(row.file);
     else onOpenFile?.(row.file);
   };
   const host = webHost({
@@ -512,7 +520,7 @@ export function WikiBasePage({
   // How many edits are on their way; those can't merge with a new one any more.
   const sent = useRef(0);
   const { autosave, status } = useWikiAutosave({
-    subject: file.replace(/\.base$/, ""),
+    subject: documentTitle(file),
     delayMs: WIKI_BASE_AUTOSAVE_DELAY_MS,
     save: async () => {
       const batch = edits;
@@ -535,7 +543,7 @@ export function WikiBasePage({
     },
   });
   const [runs, setRuns] = useState(true);
-  const editable = canEdit && !settled && /^[^/]+\.base$/.test(file);
+  const editable = canEdit && !settled;
   const held = turn.running || !runs;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a running turn, or edits that can't run, hold the autosave store, which lives outside React
   useEffect(() => autosave.setHeld(held), [autosave, held]);
@@ -550,7 +558,7 @@ export function WikiBasePage({
     shouldBlockFn: async () => {
       if (!holdsEdits(autosave.getStatus())) return false;
       const leave = await ensureLocalApi().dialogs.confirm(
-        `Leave ${file.replace(/\.base$/, "")}? Your unsaved changes will be lost.`,
+        `Leave ${documentTitle(file)}? Your unsaved changes will be lost.`,
         { variant: "destructive" },
       );
       if (leave) autosave.cancel();
@@ -595,7 +603,7 @@ export function WikiBasePage({
             },
           })}
         >
-          {file.replace(/\.base$/, "")}
+          {documentTitle(file)}
         </TabHeader.Title>
         {!editable ? <TabHeader.Status>Base · read only</TabHeader.Status> : null}
         <WikiSaveStatus
@@ -622,7 +630,8 @@ export function WikiBasePage({
           onClose={() => setCreating(null)}
           onCreate={(name) => {
             setCreating(null);
-            addEdit({ kind: "create", file: `${name}.md`, properties: creating });
+            const folder = file.slice(0, file.lastIndexOf("/") + 1);
+            addEdit({ kind: "create", file: `${folder}${name}.md`, properties: creating });
           }}
         />
       ) : null}

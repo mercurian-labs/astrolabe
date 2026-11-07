@@ -4,7 +4,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   isSkillMapFile,
   isWikiBaseFile,
-  wikiBaseTitle,
   wikiDocumentAuthor,
   wikiDocumentSubtitle,
 } from "./wikiDocument.logic";
@@ -86,11 +85,9 @@ describe("isSkillMapFile", () => {
 });
 
 describe("wiki base files", () => {
-  it("opens a .base file as its view, titled without the extension", () => {
+  it("opens a .base file as its view", () => {
     expect(isWikiBaseFile("Projects.base")).toBe(true);
     expect(isWikiBaseFile("Projects")).toBe(false);
     expect(isWikiBaseFile("Database notes")).toBe(false);
-    expect(wikiBaseTitle("Projects.base")).toBe("Projects");
-    expect(wikiBaseTitle("plans/Open work.base")).toBe("plans/Open work");
   });
 });

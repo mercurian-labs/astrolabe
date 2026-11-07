@@ -3,10 +3,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   changeRequestCanvasReview,
+  documentFile,
+  documentPath,
+  documentTitle,
   draftLabel,
+  isDocumentFile,
   keepCanvasName,
+  resolveWikiLink,
   wikiDocumentScope,
   wikiDraft,
+  wikiLinkFile,
   wikiSaveFailure,
 } from "./wikiLogic.ts";
 
@@ -19,8 +25,12 @@ describe("drafts", () => {
       amendments: files.length === 0 ? [] : [{ files }],
       files,
     }) as unknown as WikiChangeRequest;
-  const scope = (name: string, tabChangeRequestId?: WikiChangeRequestId) =>
-    wikiDocumentScope({ tabChangeRequestId, draft: draft(["Alpha.md", "Tasks.base"]), name });
+  const scope = (file: string, tabChangeRequestId?: WikiChangeRequestId) =>
+    wikiDocumentScope({
+      tabChangeRequestId,
+      draft: draft(["Alpha.md", "Tasks.base", "plans/Beta.md", "plans/README.md"]),
+      file,
+    });
 
   it("finds a wiki's draft, passing over an empty, closed or ordinary one", () => {
     const ordinary = {
@@ -36,11 +46,14 @@ describe("drafts", () => {
   });
 
   it("reads a document from its tab's change request, else the draft if it holds it, else main", () => {
-    expect(scope("alpha")).toBe("draft-1");
+    expect(scope("alpha.md")).toBe("draft-1");
+    expect(scope("plans/Beta.md")).toBe("draft-1");
+    expect(scope("other/Beta.md")).toBeUndefined();
+    expect(scope("plans/README.md")).toBeUndefined();
     expect(scope("Tasks.base")).toBe("draft-1");
     expect(scope("Other.base")).toBe("draft-1");
-    expect(scope("Beta")).toBeUndefined();
-    expect(scope("Alpha", "cr-1" as WikiChangeRequestId)).toBe("cr-1");
+    expect(scope("Beta.md")).toBeUndefined();
+    expect(scope("Alpha.md", "cr-1" as WikiChangeRequestId)).toBe("cr-1");
   });
 
   it("counts the documents a draft holds", () => {
@@ -94,5 +107,49 @@ describe("changeRequestCanvasReview", () => {
     expect(changeRequestCanvasReview(detail("open", null), "Other.canvas", after)).toBeNull();
     expect(changeRequestCanvasReview(detail("open", null), "Board.canvas", "{nope")).toBeNull();
     expect(changeRequestCanvasReview(null, "Board.canvas", after)).toBeNull();
+  });
+});
+
+describe("documents by path", () => {
+  it("reads a path as its title, and a saved name as its file", () => {
+    expect(documentTitle("a/deep/Plan.md")).toBe("Plan");
+    expect(documentTitle("a/Board.canvas")).toBe("Board");
+    expect(documentTitle("a/Open.base")).toBe("Open");
+    expect(documentTitle("Release 1.2")).toBe("Release 1.2");
+    expect(documentPath("a/Plan.md")).toBe("a/Plan");
+    expect(documentFile("Plan")).toBe("Plan.md");
+    expect(documentFile("a/Plan")).toBe("a/Plan.md");
+    expect(documentFile("Plan.md")).toBe("Plan.md");
+    expect(documentFile("Board.canvas")).toBe("Board.canvas");
+  });
+
+  it("opens wiki documents in any folder, and anything else as a file", () => {
+    expect(isDocumentFile("plans/Note.md")).toBe(true);
+    expect(isDocumentFile("plans/Board.canvas")).toBe(true);
+    expect(isDocumentFile("plans/Open.base")).toBe(true);
+    expect(isDocumentFile("plans/README.md")).toBe(false);
+    expect(isDocumentFile("Map.skillmap.md")).toBe(false);
+    expect(isDocumentFile("pic.png")).toBe(false);
+  });
+
+  it("follows a link as the server does, beside the linker when it finds nothing", () => {
+    const index = {
+      notes: [
+        { name: "a/Plan", file: "a/Plan.md", outgoing: 0, incoming: 0 },
+        { name: "b/Plan", file: "b/Plan.md", outgoing: 0, incoming: 0 },
+      ],
+      canvases: [{ file: "a/Board.canvas", outgoing: 0, incoming: 0 }],
+      bases: [],
+      maps: [],
+    };
+    expect(wikiLinkFile(index, "Plan", "b/Note.md")).toBe("b/Plan.md");
+    expect(wikiLinkFile(index, "Board.canvas", null)).toBe("a/Board.canvas");
+    expect(wikiLinkFile(index, "New", "b/Note.md")).toBe("b/New.md");
+    expect(wikiLinkFile(index, "c/New", "b/Note.md")).toBe("c/New.md");
+    expect(wikiLinkFile(null, "/a/Plan.md", "b/Note.md")).toBe("a/Plan.md");
+    expect(resolveWikiLink(index, "Plan", "c/Note.md")).toEqual({
+      file: "a/Plan.md",
+      others: ["b/Plan.md"],
+    });
   });
 });

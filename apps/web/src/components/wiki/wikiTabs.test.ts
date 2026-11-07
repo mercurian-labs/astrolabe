@@ -29,7 +29,7 @@ const note = (name: string, changeRequestId?: string): WikiTab => ({
   kind: "note",
   environmentId,
   wikiId,
-  name,
+  file: `${name}.md`,
   changeRequestId: changeRequestId as WikiChangeRequestId | undefined,
 });
 
@@ -52,6 +52,17 @@ describe("wiki tab keys", () => {
     expect(parseWikiTabKey("empty/0")).toBeNull();
     expect(parseWikiTabKey("wiki-note:env:wiki")).toBeNull();
     expect(parseWikiTabKey("wiki-note:env:wiki::%E0%A4%A")).toBeNull();
+  });
+
+  it("reads a layout saved with a note's bare name as that note's file", () => {
+    const saved = `wiki-note:${environmentId}:${wikiId}::Plan`;
+    expect(parseWikiTabKey(saved)).toEqual(note("Plan"));
+    expect(sameWikiTab(parseWikiTabKey(saved)!, note("Plan"))).toBe(true);
+    const board = `wiki-note:${environmentId}:${wikiId}::Board.canvas`;
+    expect(parseWikiTabKey(board)).toMatchObject({ file: "Board.canvas" });
+    const nested = wikiTabKey(note("a/deep/Plan"));
+    expect(parseWikiTabKey(nested)).toEqual(note("a/deep/Plan"));
+    expect(sameWikiTab(note("a/Plan"), note("b/Plan"))).toBe(false);
   });
 
   it("name one document whatever the case of its name, but not across change requests", () => {

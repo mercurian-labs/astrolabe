@@ -18,9 +18,12 @@ export interface WikiSearch {
 const searchString = (value: unknown, max = 300): string | undefined =>
   typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
 
+/** A document's whole path, which can run far past a name. */
+const NOTE_PATH_LENGTH = 4096;
+
 export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
   const environmentId = searchString(raw.environmentId);
-  const note = searchString(raw.note);
+  const note = searchString(raw.note, NOTE_PATH_LENGTH);
   const changeRequest = searchString(raw.changeRequest);
   return {
     ...(environmentId ? { environmentId: environmentId as EnvironmentId } : {}),
@@ -33,15 +36,20 @@ export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
 export {
   changeRequestFiles,
   filesHoldDocument,
+  documentFile,
+  documentPath,
   documentTitle,
   draftLabel,
+  exactWikiPath,
   isCanvasName,
+  isDocumentFile,
   isSettledChangeRequest,
+  resolveWikiLink,
   wikiDocumentScope,
   wikiDraft,
-  wikiDocumentName,
   noteKey,
   wikiDocumentNames,
+  wikiLinkFile,
   noteNameOfFile,
   mergeBlockedReason,
   mergeConflictAdvice,

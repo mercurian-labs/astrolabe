@@ -1,4 +1,5 @@
 import { parseCanvas, type CanvasData } from "@mercurian/wiki/canvas";
+import { resolveLink } from "@mercurian/wiki/resolve-link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { BaseBlock } from "./BaseBlock";
@@ -13,7 +14,7 @@ import { focusCardEditor, useCanvasCardSession } from "./canvasCardSession";
 import { cardFileName } from "./canvasGeometry";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { MobileMermaid } from "./MobileMermaid";
-import { documentKey, type WikiEditorPage } from "./mobilePageController";
+import type { WikiEditorPage } from "./mobilePageController";
 import { WikiNoteEditor } from "./NoteEditor";
 import type { WikiEditorCanvasAsk, WikiEditorEvent } from "./protocol";
 
@@ -126,7 +127,8 @@ export function MobileCanvas({
     const onOpenCode: CanvasBoardHost["onOpenCode"] = (code, url) =>
       post({ type: "openCode", code, url });
     if (revision === null) return { onOpenUrl, onOpenCode };
-    const onOpenNote = (name: string) => post({ type: "openNote", name });
+    const onOpenNote = (name: string, from?: string) =>
+      post({ type: "openNote", name, ...(from === undefined ? {} : { from }) });
     const ask = (question: WikiEditorCanvasAsk) => page.askApp(question);
     return {
       touch: true,
@@ -144,7 +146,9 @@ export function MobileCanvas({
       onOpenUrl,
       onOpenCode,
       onOpenLink: onOpenNote,
-      isResolved: (name) => knownDocuments === null || knownDocuments.has(documentKey(name)),
+      isResolved: (name) =>
+        knownDocuments === null ||
+        resolveLink(name, knownDocuments.from, knownDocuments.files).file !== null,
       readFiles: page.readFiles,
       readCodeStatus: page.readCodeStatus,
       renderAsset: (asset): ReactNode =>

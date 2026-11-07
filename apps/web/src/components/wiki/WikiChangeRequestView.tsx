@@ -46,7 +46,6 @@ import {
   isCanvasName,
   mergeBlockedReason,
   mergeConflictAdvice,
-  noteNameOfFile,
 } from "./wiki.logic";
 import { useWikiDraftActions } from "./WikiDraftPill";
 import { useWikiCommand } from "./wikiEnvironment";
@@ -287,11 +286,7 @@ export function WikiChangeRequestView({
                 <FileChange
                   key={change.file}
                   change={change}
-                  onOpen={
-                    change.after === null
-                      ? undefined
-                      : () => onOpenNote(noteNameOfFile(change.file))
-                  }
+                  onOpen={change.after === null ? undefined : () => onOpenNote(change.file)}
                   canvas={{
                     environmentId,
                     wikiId,

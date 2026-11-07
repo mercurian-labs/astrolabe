@@ -45,7 +45,7 @@ import {
   ComboboxTrigger,
 } from "../ui/combobox";
 import { MenuItem } from "../ui/menu";
-import { isCanvasName, wikiDocumentName } from "./wiki.logic";
+import { isCanvasName, isDocumentFile } from "./wiki.logic";
 import { showWikiTab, wikiPanes } from "./wikiPanes";
 import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 
@@ -147,23 +147,17 @@ export function WikiWorktreeSections({
   }
   const expanded = (worktree: ProjectWorktree) =>
     chosen.get(worktree.path) ?? (worktree.isMain || worktree.path === active?.path);
-  const selectedPath =
-    focusedHere?.kind === "note"
-      ? isCanvasName(focusedHere.name)
-        ? focusedHere.name
-        : (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??
-          `${focusedHere.name}.md`)
-      : null;
+  const selectedPath = focusedHere?.kind === "note" ? focusedHere.file : null;
   const openFile = (worktree: ProjectWorktree, file: string) => {
     const changeRequestId = changeRequestOf(worktree.branch) ?? undefined;
     const onMainLine = worktree.isMain || worktree.branch === wiki.mainBranch;
-    const name = /\.md$/i.test(file) || isCanvasName(file) ? wikiDocumentName(file) : null;
-    if (name !== null && (onMainLine || changeRequestId !== undefined)) {
+    const opens = (/\.md$/i.test(file) || isCanvasName(file)) && isDocumentFile(file);
+    if (opens && (onMainLine || changeRequestId !== undefined)) {
       showWikiTab({
         kind: "note",
         environmentId: overview.environmentId,
         wikiId: wiki.wikiId,
-        name,
+        file,
         changeRequestId,
       });
       return;

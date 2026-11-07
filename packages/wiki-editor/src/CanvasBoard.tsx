@@ -528,11 +528,11 @@ function MissingFile({
       ? () => void commands.newNote(node)
       : host.onOpenLink === undefined
         ? undefined
-        : () => host.onOpenLink?.(cardFileName(file));
+        : () => host.onOpenLink?.(file);
   return (
     <div className="cv-card-body cv-missing">
       <p>"{file}" could not be found.</p>
-      {note && !file.includes("/") && newNote !== undefined ? (
+      {note && newNote !== undefined ? (
         <button type="button" className="cv-button" onClick={newNote}>
           New note
         </button>

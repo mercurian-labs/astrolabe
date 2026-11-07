@@ -9,8 +9,7 @@ import {
   isCanvasName,
   mergeBlockedReason,
   mergeConflictAdvice,
-  documentTitle,
-  noteNameOfFile,
+  documentPath,
 } from "@t3tools/client-runtime/wikiLogic";
 import { canvasChangeSummary, reviewCanvasFiles } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -162,7 +161,7 @@ export function WikiChangeRequestRouteScreen({
         : StackActions.push("WikiDocument", {
             environmentId: route.params.environmentId,
             wikiId: route.params.wikiId,
-            name: noteNameOfFile(change.file),
+            name: change.file,
             // A merged or closed change request's documents are read from main.
             ...(open ? { changeRequestId: route.params.changeRequestId } : {}),
           }),
@@ -339,7 +338,7 @@ export function WikiChangeRequestRouteScreen({
                   className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
                 >
                   <Text className="flex-1 text-base text-foreground" numberOfLines={1}>
-                    {documentTitle(noteNameOfFile(change.file))}
+                    {documentPath(change.file)}
                   </Text>
                   <FileChangeLabel change={change} />
                 </Pressable>
@@ -463,7 +462,7 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
       ) : null}
       {preview.canvases.map(({ file, notes }) => (
         <View key={file} className="gap-0.5 pt-1">
-          <Text className="text-sm font-t3-medium text-foreground">{documentTitle(file)}</Text>
+          <Text className="text-sm font-t3-medium text-foreground">{documentPath(file)}</Text>
           {notes.map((note) => (
             <Text key={note} className="text-sm text-foreground-muted">
               {note}
@@ -520,7 +519,7 @@ function AmendmentRow(props: {
           {amendment.subject}
         </Text>
         <Text className="text-sm text-foreground-muted">
-          {`${amendment.actor} · ${relativeTime(amendment.at)} · ${amendment.files.map((file) => documentTitle(noteNameOfFile(file))).join(", ")}`}
+          {`${amendment.actor} · ${relativeTime(amendment.at)} · ${amendment.files.map(documentPath).join(", ")}`}
         </Text>
       </View>
       {props.canRevert ? (

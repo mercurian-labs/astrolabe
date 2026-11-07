@@ -23,10 +23,15 @@ import { toastManager } from "../ui/toast";
 import {
   authorColor,
   describeWikiFailure,
+  documentFile,
+  documentTitle,
+  exactWikiPath,
   isSettledChangeRequest,
   latestAmendmentFor,
-  noteKey,
   PERSON_ACTOR,
+  resolveWikiLink,
+  wikiDocumentNames,
+  wikiLinkFile,
 } from "./wiki.logic";
 import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-tools";
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
@@ -53,32 +58,35 @@ export interface WikiDraftEdits {
 
 const WikiCanvasEmbed = lazy(() => import("./WikiCanvasEmbed"));
 
-/** What a `[[` can complete to: notes by name, bases and canvases by file. */
-const wikiLinkNames = (index: WikiIndexResult | null): ReadonlyArray<string> => [
-  ...(index?.notes ?? []).map((note) => note.name),
-  ...(index?.canvases ?? []).map((canvas) => canvas.file),
-  ...(index?.bases ?? []).map((base) => base.file),
-];
-
 function LinkPreview({
   environmentId,
   wikiId,
   changeRequestId,
+  index,
+  from,
   link,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly index: WikiIndexResult | null;
+  /** The file the link is written in. */
+  readonly from: string;
   readonly link: WikiLinkPeek;
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const file = wikiLinkFile(index, link.name, from);
   const { data } = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name: link.name, ...scope } }),
+    wikiEnvironment.note({
+      environmentId,
+      input: { wikiId, name: exactWikiPath(file), ...scope },
+    }),
   );
   return (
     <WikiLinkPreview
       link={link}
       source={data === null ? undefined : data.exists ? data.source : null}
+      resolved={index === null ? undefined : resolveWikiLink(index, link.name, from)}
     />
   );
 }
@@ -92,7 +100,7 @@ function LinkPreview({
 export function WikiNoteView({
   environmentId,
   wikiId,
-  name,
+  file: tabFile,
   changeRequestId,
   savesTo,
   changeRequests,
@@ -103,7 +111,7 @@ export function WikiNoteView({
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
-  readonly name: string;
+  readonly file: string;
   /** The change request the note reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** The change request the tab is in; none saves to the draft. */
@@ -113,13 +121,17 @@ export function WikiNoteView({
   readonly location: string;
   /** The draft's pill in the header's place for `location`, when there's a draft. */
   readonly renderDraftPill?: (edits: WikiDraftEdits) => ReactNode;
-  readonly onOpenNote: (name: string) => void;
+  /** Follows a link; `from` is the file it's written in, when that isn't this note. */
+  readonly onOpenNote: (target: string, from?: string) => void;
   /** Lets whoever shows the note ask whether its edits are unsaved, as closing its tab does. */
   readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const note = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
+    wikiEnvironment.note({
+      environmentId,
+      input: { wikiId, name: exactWikiPath(tabFile), ...scope },
+    }),
   );
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
@@ -177,8 +189,9 @@ export function WikiNoteView({
     buffer.markSaved(text, outcome.value.commit ?? undefined);
     return { ok: true };
   };
+  const title = documentTitle(tabFile);
   const { autosave, status } = useWikiAutosave({
-    subject: name,
+    subject: title,
     save: async () =>
       buffer.getSnapshot().dirty ? land(buffer.current(), buffer.version()) : { ok: true },
     freeze: () => {
@@ -207,7 +220,7 @@ export function WikiNoteView({
     shouldBlockFn: async () => {
       if (!holdsEdits(autosave.getStatus())) return false;
       const leave = await ensureLocalApi().dialogs.confirm(
-        `Leave ${name}? Your unsaved edits will be lost.`,
+        `Leave ${title}? Your unsaved edits will be lost.`,
         { variant: "destructive" },
       );
       if (leave) autosave.cancel();
@@ -216,14 +229,13 @@ export function WikiNoteView({
   });
 
   const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
-  const documents = wikiLinkNames(index.data);
-  const known = new Set(documents.map(noteKey));
+  const documents = index.data === null ? NO_LINK_TYPES : wikiDocumentNames(index.data);
 
   if (data === null) {
     return note.error !== null ? (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>Couldn't open {name}</EmptyTitle>
+          <EmptyTitle>Couldn't open {title}</EmptyTitle>
           <EmptyDescription>{describeWikiFailure(note.failure ?? note.error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -249,7 +261,7 @@ export function WikiNoteView({
             },
           })}
         >
-          {data.name}
+          {title}
         </TabHeader.Title>
         {skillMap ? <TabHeader.Status>Skill map · read only</TabHeader.Status> : null}
         {settled ? (
@@ -280,7 +292,7 @@ export function WikiNoteView({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 pt-6 pb-12">
           {data.exists ? null : (
             <WikiPart.Muted>
-              {`No note is called ${data.name} yet. Write it here, and it saves to your draft.`}
+              {`No note is called ${title} yet. Write it here, and it saves to your draft.`}
             </WikiPart.Muted>
           )}
           {snapshot.session ? (
@@ -296,6 +308,8 @@ export function WikiNoteView({
                   environmentId={environmentId}
                   wikiId={wikiId}
                   changeRequestId={changeRequestId}
+                  index={index.data}
+                  from={data.file}
                   link={link}
                 />
               )}
@@ -315,7 +329,7 @@ export function WikiNoteView({
                     environmentId={environmentId}
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
-                    from={{ base: base.trim() }}
+                    from={{ base: base.trim(), note: data.name }}
                     view={view?.trim() || undefined}
                     onOpenNote={onOpenNote}
                   />
@@ -328,6 +342,7 @@ export function WikiNoteView({
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
                     file={target.split("#")[0]?.trim() ?? target}
+                    from={data.file}
                     onOpen={onOpenNote}
                   />
                 </Suspense>
@@ -345,7 +360,11 @@ export function WikiNoteView({
                 <WikiPart.Muted>No note links here yet.</WikiPart.Muted>
               ) : (
                 data.incoming.map((source) => (
-                  <WikiPart.Row key={source} title={source} onClick={() => onOpenNote(source)} />
+                  <WikiPart.Row
+                    key={source}
+                    title={source}
+                    onClick={() => onOpenNote(documentFile(source))}
+                  />
                 ))
               )}
             </WikiPart.Section>
@@ -357,7 +376,12 @@ export function WikiNoteView({
                   <WikiPart.Row
                     key={target}
                     title={target}
-                    tone={index.data === null || known.has(noteKey(target)) ? "default" : "missing"}
+                    tone={
+                      index.data === null ||
+                      resolveWikiLink(index.data, target, data.file).file !== null
+                        ? "default"
+                        : "missing"
+                    }
                     onClick={() => onOpenNote(target)}
                   />
                 ))

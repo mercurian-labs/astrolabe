@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveIncomingNote, wikilinkNoteName } from "./incoming";
+import { ambiguousLink, resolveIncomingNote, wikilinkNoteName } from "./incoming";
+
+describe("ambiguousLink", () => {
+  it("says which file it chose and which others fit, only when others do", () => {
+    expect(ambiguousLink({ file: "a/Plan.md", others: [] })).toBeUndefined();
+    expect(ambiguousLink({ file: null, others: [] })).toBeUndefined();
+    expect(ambiguousLink({ file: "a/Plan.md", others: ["b/Plan.md"] })).toBe(
+      "Goes to a/Plan. Also fits b/Plan.",
+    );
+    expect(ambiguousLink({ file: "a.md", others: ["b.md", "c.md", "d.md", "e.md", "f.md"] })).toBe(
+      "Goes to a. Also fits b, c, d and 2 more.",
+    );
+  });
+});
 
 describe("wikilinkNoteName", () => {
   it("opens the note a link names, whatever heading or alias it carries", () => {
