@@ -59,7 +59,7 @@ const readCode = Effect.fn("CanvasTools.readCode")(function* (paths: ReadonlyArr
     })
     .pipe(Effect.option);
   if (Option.isNone(head)) return undefined;
-  const identity = project.value.repositoryIdentity;
+  const identity = yield* projects.readRepositoryIdentity(project.value);
   return {
     commit: head.value.stdout.trim(),
     ...(identity ? { repository: identity.canonicalKey } : {}),

@@ -96,6 +96,8 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
         }),
         Layer.mock(ProjectService.ProjectService)({
           getById: () => Effect.succeedSome(project),
+          readRepositoryIdentity: ({ repositoryIdentity }) =>
+            Effect.succeed(repositoryIdentity ?? null),
         }),
         Layer.mock(GitVcsDriver.GitVcsDriver)({
           execute: (input) => {

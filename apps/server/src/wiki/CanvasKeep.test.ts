@@ -53,6 +53,7 @@ interface World {
 const keep = (world: World) => {
   const transforms: WikiTransformInput[] = [];
   const authors: WikiService.WikiAuthor[] = [];
+  const remotes: string[] = [];
   const { commit = LOCAL, identity = GITHUB, pushed = LOCAL, files } = world;
   const item = world.item ?? {
     type: "dynamic_tool",
@@ -71,11 +72,16 @@ const keep = (world: World) => {
           getThreadShell: () => Effect.succeed({ projectId: "project-a" } as never),
         }),
         Layer.mock(ProjectService.ProjectService)({
+          // A project's identity fills in behind reads, so a read can miss it.
           getById: () =>
-            Effect.succeedSome({ workspaceRoot: "/repo", repositoryIdentity: identity } as never),
+            Effect.succeedSome({ workspaceRoot: "/repo", repositoryIdentity: null } as never),
+          readRepositoryIdentity: () => Effect.succeed(identity as never),
         }),
         Layer.mock(GitVcsDriver.GitVcsDriver)({
-          nearestPushedCommit: () => Effect.succeed(pushed),
+          nearestPushedCommit: ({ remoteName }) => {
+            remotes.push(remoteName);
+            return Effect.succeed(pushed);
+          },
           readFileAtCommit: ({ path }) =>
             Effect.succeed((files ?? { "src/a.ts": "one\ntwo\nthree\n" })[path] ?? null),
         }),
@@ -108,7 +114,7 @@ const keep = (world: World) => {
     Effect.map((result) => {
       const transform = transforms[0]?.transform;
       const source = transform?.kind === "canvas-create" ? (transform.source ?? "") : "";
-      return { result, source, transforms, authors };
+      return { result, source, transforms, authors, remotes };
     }),
   );
 };
@@ -177,6 +183,31 @@ it.effect("writes a code card as a link pinned to the commit, read back as a cod
       commit: LOCAL,
     });
     assert.deepEqual(nodeWith(source, "example.com").astrolabe, { caption: "Docs" });
+  }),
+);
+
+it.effect("links a fork's code to the fork, where its commits are, not the project it forked", () =>
+  Effect.gen(function* () {
+    const { source, remotes } = yield* keep({
+      identity: {
+        canonicalKey: "github.com/upstream/app",
+        provider: "github",
+        locator: {
+          source: "git-remote",
+          remoteName: "upstream",
+          remoteUrl: "https://github.com/upstream/app.git",
+        },
+        origin: {
+          canonicalKey: "github.com/acme/app",
+          remoteUrl: "git@github.com:acme/app.git",
+        },
+      },
+    });
+    const card = nodeWith(source, "src/a.ts");
+    assert.equal(card.url, `https://github.com/acme/app/blob/${LOCAL}/src/a.ts#L2-L3`);
+    assert.deepEqual(remotes, ["origin"]);
+    // Astrolabe still opens it in the project, which goes by the upstream's key.
+    assert.equal((card.astrolabe as { repository: string }).repository, "github.com/upstream/app");
   }),
 );
 

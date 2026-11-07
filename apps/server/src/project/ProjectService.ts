@@ -7,6 +7,7 @@ import {
   type ProjectUpdatePayload,
   type ProjectSnapshot,
   type ThreadId,
+  type RepositoryIdentity,
 } from "@t3tools/contracts";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
@@ -143,6 +144,13 @@ export class ProjectService extends Context.Service<
       { readonly projects: ReadonlyArray<Project>; readonly nextCursor: number | null },
       ProjectOperationError
     >;
+    /**
+     * A project's identity, waiting for it. Reads such as `getById` return what's cached and fill
+     * it behind them, so a caller that acts on the answer can't take a missing one as no remote.
+     */
+    readonly readRepositoryIdentity: (
+      project: Pick<Project, "workspaceRoot" | "repositoryIdentity">,
+    ) => Effect.Effect<RepositoryIdentity | null>;
     readonly getShell: (
       projectId: ProjectId,
     ) => Effect.Effect<Option.Option<OrchestrationProjectShell>, ProjectOperationError>;
@@ -570,17 +578,20 @@ export const make = Effect.gen(function* () {
     } satisfies ProjectSnapshot;
   });
 
+  const readRepositoryIdentity: ProjectService["Service"]["readRepositoryIdentity"] = (project) =>
+    project.repositoryIdentity
+      ? Effect.succeed(project.repositoryIdentity)
+      : projectEnrichment.readRepositoryIdentity(project.workspaceRoot);
+
   const listPage: ProjectService["Service"]["listPage"] = Effect.fn("ProjectService.listPage")(
     function* ({ cursor, limit }) {
       const rows = (yield* snapshot).projects.filter((project) => project.deletedAt === null);
       const projects = yield* Effect.forEach(
         rows.slice(cursor, cursor + limit),
         (project) =>
-          project.repositoryIdentity !== null
-            ? Effect.succeed(project)
-            : projectEnrichment
-                .readRepositoryIdentity(project.workspaceRoot)
-                .pipe(Effect.map((repositoryIdentity) => ({ ...project, repositoryIdentity }))),
+          readRepositoryIdentity(project).pipe(
+            Effect.map((repositoryIdentity) => ({ ...project, repositoryIdentity })),
+          ),
         { concurrency: 8 },
       );
       return { projects, nextCursor: cursor + limit < rows.length ? cursor + limit : null };
@@ -593,6 +604,7 @@ export const make = Effect.gen(function* () {
     update,
     delete: deleteProject,
     getById,
+    readRepositoryIdentity,
     getByWorkspaceRoot,
     snapshot,
     listPage,

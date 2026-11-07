@@ -61,11 +61,41 @@ type Unlinked = "no-remote" | "no-host" | "not-pushed" | "no-file";
 
 interface CodeFacts {
   readonly identity: RepositoryIdentity | undefined;
+  readonly remote: LinkedRemote | undefined;
   readonly root: string | undefined;
   /** What the card was read at, when the thread was in a repository. */
   readonly commit: string | null;
   readonly pushed: string | null;
 }
+
+interface LinkedRemote {
+  readonly key: string;
+  readonly name: string;
+  readonly url: string;
+  readonly provider: RepositoryIdentity["provider"];
+  readonly webUrl: string | undefined;
+}
+
+/**
+ * Where a link can reach the code. A fork's identity is the project it forked, but its commits are
+ * on origin, and a link to the upstream would miss them.
+ */
+const linkedRemote = ({
+  canonicalKey,
+  locator,
+  origin,
+  provider,
+  webUrl,
+}: RepositoryIdentity): LinkedRemote =>
+  origin?.remoteUrl === undefined
+    ? { key: canonicalKey, name: locator.remoteName, url: locator.remoteUrl, provider, webUrl }
+    : {
+        key: origin.canonicalKey,
+        name: "origin",
+        url: origin.remoteUrl,
+        provider: sourceControlDefinitions.recognizeRemote(origin.remoteUrl)?.kind,
+        webUrl: undefined,
+      };
 
 const cards = (count: number) => (count === 1 ? "1 code card" : `${count} code cards`);
 
@@ -94,28 +124,27 @@ const make = Effect.gen(function* () {
     const project = yield* projects
       .getById(shell.projectId)
       .pipe(Effect.orElseSucceed(Option.none));
-    const identity = Option.isSome(project) ? project.value.repositoryIdentity : undefined;
+    const identity = Option.isSome(project)
+      ? yield* projects.readRepositoryIdentity(project.value)
+      : null;
     const root = Option.isSome(project) ? project.value.workspaceRoot : undefined;
+    const remote = identity === null ? undefined : linkedRemote(identity);
     const pushed =
-      commit === null || root === undefined || !identity
+      commit === null || root === undefined || remote === undefined
         ? null
         : yield* git
-            .nearestPushedCommit({
-              cwd: root,
-              commit,
-              remoteName: identity.locator.remoteName,
-            })
+            .nearestPushedCommit({ cwd: root, commit, remoteName: remote.name })
             .pipe(Effect.orElseSucceed(() => null));
-    return { identity: identity ?? undefined, root, commit, pushed } satisfies CodeFacts;
+    return { identity: identity ?? undefined, remote, root, commit, pushed } satisfies CodeFacts;
   });
 
   const pinCode = Effect.fn("CanvasKeep.pinCode")(function* (
     code: CanvasCodeReference,
-    { identity, root, commit, pushed }: CodeFacts,
+    { identity, remote, root, commit, pushed }: CodeFacts,
   ): Effect.fn.Return<CanvasCodePin | Unlinked> {
-    if (!identity || root === undefined) return "no-remote";
-    const host = identity.provider && sourceControlDefinitions.find(identity.provider);
-    const [hostName, ...path] = identity.canonicalKey.split("/");
+    if (!identity || !remote || root === undefined) return "no-remote";
+    const host = remote.provider && sourceControlDefinitions.find(remote.provider);
+    const [hostName, ...path] = remote.key.split("/");
     if (host === undefined || !hostName) return "no-host";
     if (commit === null || pushed === null) return "not-pushed";
     const text = yield* git
@@ -128,8 +157,8 @@ const make = Effect.gen(function* () {
       host: hostName,
       repository: path.join("/"),
       sha: pushed,
-      remoteUrl: identity.locator.remoteUrl,
-      ...(identity.webUrl === undefined ? {} : { webUrl: identity.webUrl }),
+      remoteUrl: remote.url,
+      ...(remote.webUrl === undefined ? {} : { webUrl: remote.webUrl }),
       path: code.path,
       lines,
     });
