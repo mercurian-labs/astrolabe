@@ -197,7 +197,7 @@ export function WikiChangeRequestView({
             {busy === "status" ? <Spinner /> : <PullRequestGlyph.reopen className="size-4" />}
           </TabHeader.Action>
         ) : null}
-        {open ? (
+        {open && wiki?.host == null ? (
           <MergeButton
             blocked={blocked}
             busy={busy === "merge"}
@@ -235,7 +235,7 @@ export function WikiChangeRequestView({
           busy={busy !== null}
           canMerge={blocked === null}
           canClose={canSetStatus}
-          onMerge={() => void runMerge()}
+          {...(wiki?.host == null ? { onMerge: () => void runMerge() } : {})}
           onClose={() => void runStatus("closed")}
           {...(onOpenPullRequest && thread
             ? {
@@ -250,7 +250,9 @@ export function WikiChangeRequestView({
               }
             : {})}
         />
-        {open ? <MergePreviewNotice preview={mergePreview} noun={terms.singular} /> : null}
+        {open && wiki?.host == null ? (
+          <MergePreviewNotice preview={mergePreview} noun={terms.singular} />
+        ) : null}
         {errors.length > 0 ? (
           <Alert variant="warning">
             <TriangleAlertIcon />
@@ -304,7 +306,7 @@ export function WikiChangeRequestView({
   );
 }
 
-const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
+export const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
 const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
 /**
@@ -312,7 +314,7 @@ const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Clos
  * once they settle, the change request's offer to follow: merge when one merged, close when
  * every one closed without merging. Nothing happens on its own.
  */
-function LinkedPullRequests({
+export function LinkedPullRequests({
   links,
   status,
   noun,
@@ -329,7 +331,8 @@ function LinkedPullRequests({
   readonly busy: boolean;
   readonly canMerge: boolean;
   readonly canClose: boolean;
-  readonly onMerge: () => void;
+  /** Without it, a merge is offered in words: a host wiki merges from its pull request's header. */
+  readonly onMerge?: () => void;
   readonly onClose: () => void;
   readonly onOpen?: (link: ThreadPullRequestLink) => void;
 }) {
@@ -382,15 +385,17 @@ function LinkedPullRequests({
                 ? "Merge these docs too, so the wiki matches the code on main?"
                 : `Close this ${noun} too?`}
             </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-1 w-fit"
-              disabled={busy || (nudge.kind === "merge" ? !canMerge : !canClose)}
-              onClick={nudge.kind === "merge" ? onMerge : onClose}
-            >
-              {nudge.kind === "merge" ? "Merge docs" : `Close ${noun}`}
-            </Button>
+            {nudge.kind === "merge" && onMerge === undefined ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-1 w-fit"
+                disabled={busy || (nudge.kind === "merge" ? !canMerge : !canClose)}
+                onClick={nudge.kind === "merge" ? onMerge : onClose}
+              >
+                {nudge.kind === "merge" ? "Merge docs" : `Close ${noun}`}
+              </Button>
+            )}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -527,7 +532,7 @@ function MergePreviewNotice({
   }
 }
 
-function AmendmentRow({
+export function AmendmentRow({
   environmentId,
   wikiId,
   changeRequestId,

@@ -685,6 +685,7 @@ export const WS_METHODS = {
   wikiDisconnectHost: "wiki.disconnectHost",
   wikiSyncHost: "wiki.syncHost",
   wikiPublishChangeRequest: "wiki.publishChangeRequest",
+  wikiResolveConflicts: "wiki.resolveConflicts",
 
   // Astrolabe: open repository files, with the environment as their authority.
   documentsSubscribe: "documents.subscribe",
@@ -2307,6 +2308,12 @@ const WsWikiPublishChangeRequestRpc = Rpc.make(WS_METHODS.wikiPublishChangeReque
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiResolveConflictsRpc = Rpc.make(WS_METHODS.wikiResolveConflicts, {
+  payload: WikiChangeRequestTarget,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 // Astrolabe: subscribing holds the document open; leaving the stream is closing it.
 const WsDocumentsSubscribeRpc = Rpc.make(WS_METHODS.documentsSubscribe, {
   payload: DocumentSubscribeInput,
@@ -2791,6 +2798,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiDisconnectHostRpc,
   WsWikiSyncHostRpc,
   WsWikiPublishChangeRequestRpc,
+  WsWikiResolveConflictsRpc,
   WsDocumentsSubscribeRpc,
   WsDocumentsPushRpc,
   WsDocumentsSaveRpc,

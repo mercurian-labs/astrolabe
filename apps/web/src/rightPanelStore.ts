@@ -27,7 +27,8 @@ const RIGHT_PANEL_KINDS = [
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
-export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code";
+/** Astrolabe: `wiki` is a host wiki's reading of its own pull request. */
+export type PullRequestDetailTab = "summary" | "wiki" | "guide" | "timeline" | "code";
 
 export interface DeviceTabTarget {
   hostId: string;

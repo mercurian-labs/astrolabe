@@ -91,6 +91,8 @@ interface FakeHost {
   mergeCapabilities: PullRequestMergeCapabilities;
   /** Whether the host's own line merge conflicts, for a head that lacks main. */
   lineMergeConflicts: boolean;
+  /** What the pull request service tells its subscribers, as a merge made on its screen does. */
+  readonly merges: Queue.Queue<PullRequestService.PullRequestMergeEvent>;
 }
 
 const pullUrl = (number: number) => `https://github.com/${REPOSITORY}/pull/${number}`;
@@ -112,6 +114,8 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
     });
   const layerPullRequests = Layer.mock(PullRequestService.PullRequestService)({
     refreshAfterTurn: () => Effect.void,
+    subscribeMerges: Effect.succeed(Stream.fromQueue(host.merges)),
+    subscribeStateChanges: Effect.succeed(Stream.never),
     // Like the real service, this answers from its cache unless a mutation went through it.
     summary: (input) =>
       Effect.sync(() => {
@@ -245,6 +249,7 @@ const withFixture = <A, E>(
       supported: ["merge", "draft", "close", "reopen"],
       mergeCapabilities: { merge: true, squash: true, rebase: true },
       lineMergeConflicts: false,
+      merges: yield* Queue.unbounded<PullRequestService.PullRequestMergeEvent>(),
     };
 
     const write = (file: string, content: string) =>
@@ -478,6 +483,76 @@ it.effect("the markdown merge settles what the host's line merge cannot", () =>
       const note = yield* wikis.readNote({ wikiId, name: "Home" });
       assert.include(note.source, "First, edited here.");
       assert.include(note.source, "Second, edited on the host.");
+    }),
+  ),
+);
+
+it.effect("resolving conflicts merges main in by markdown and pushes, without merging", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { bare, host, hosts, wikis, wikiId, commitOnHost } = fixture;
+      host.lineMergeConflicts = true;
+      const amended = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Edit the first sentence",
+          changes: { "Home.md": "# Home\n\nFirst, edited here.\n\nSecond.\n" },
+        },
+        agent("thread-a"),
+      );
+      const target = { wikiId, changeRequestId: amended.changeRequest.changeRequestId };
+      yield* hosts.publish(target);
+      yield* commitOnHost("Home.md", "# Home\n\nFirst.\n\nSecond, edited on the host.\n");
+
+      const resolved = yield* hosts.resolveConflicts(target);
+      assert.equal(resolved.status, "open");
+      assert.equal(resolved.pushedHead, resolved.head);
+      assert.equal(yield* git(bare, ["rev-parse", `cr/${target.changeRequestId}`]), resolved.head);
+      assert.lengthOf(resolved.amendments, 1);
+      assert.notInclude(
+        host.actions.map((entry) => entry.action),
+        "merge",
+      );
+      const note = yield* wikis.readNote({ ...target, name: "Home" });
+      assert.include(note.source, "First, edited here.");
+      assert.include(note.source, "Second, edited on the host.");
+    }),
+  ),
+);
+
+it.effect("a merge made on the pull request's own screen is recorded at once", () =>
+  withFixture((fixture) =>
+    Effect.gen(function* () {
+      const { bare, host, hosts, root, wikis, wikiId } = fixture;
+      const changeRequest = yield* amendment(fixture, "One.md");
+      const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+      const published = yield* hosts.publish(target);
+      const recorded = yield* wikis.subscribe.pipe(
+        Stream.filter((event) => event.kind === "merged"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      const summary = yield* wikis.get(wikiId);
+      const pull = host.pulls[0]!;
+      // What the pull request screen's Merge does: the service merges, then says so.
+      yield* git(fixture.clone, ["fetch", "--quiet", "origin"]);
+      yield* git(fixture.clone, ["reset", "--quiet", "--hard", "origin/main"]);
+      yield* git(fixture.clone, ["merge", "--quiet", "--no-ff", "-m", "M", `origin/${pull.head}`]);
+      yield* git(fixture.clone, ["push", "--quiet", "origin", "HEAD:main"]);
+      pull.state = "merged";
+      yield* Queue.offer(host.merges, {
+        projectId: summary.host!.projectId,
+        repository: published.pullRequest!.repository,
+        number: pull.number,
+        mergedAt: "2026-11-07T00:00:00.000Z",
+      });
+      yield* Fiber.join(recorded);
+      const settled = yield* wikis.changeRequest(target);
+      assert.equal(settled.status, "merged");
+      assert.equal(
+        yield* git(root, ["rev-parse", "main"]),
+        yield* git(bare, ["rev-parse", "main"]),
+      );
     }),
   ),
 );

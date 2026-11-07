@@ -79,8 +79,15 @@ export class WikiHostService extends Context.Service<
     readonly publish: (
       input: WikiChangeRequestTarget,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
-    /** Merges locally, or through the host for a host wiki. */
+    /**
+     * Merges locally, or through the host in one go for a host wiki. A person merges a host wiki's
+     * pull request on its own screen; this one-press path is for a change group they armed.
+     */
     readonly merge: (input: WikiChangeRequestTarget) => Effect.Effect<WikiMergeResult, WikiError>;
+    /** Merges main into a host wiki's change request with the markdown merge, then pushes it. */
+    readonly resolveConflicts: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
     readonly setChangeRequestStatus: (
       input: WikiSetChangeRequestStatusInput,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
@@ -117,6 +124,8 @@ type Job =
       readonly wikiId: WikiId;
       readonly changeRequestId: WikiChangeRequestId;
     }
+  /** One of the wiki's pull requests changed on its own screen: follow it now, not next sweep. */
+  | { readonly kind: "follow"; readonly wikiId: WikiId }
   | { readonly kind: "sweep" };
 
 const isWikiError = Schema.is(WikiError);
@@ -500,6 +509,17 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const resolveConflicts: WikiHostService["Service"]["resolveConflicts"] = Effect.fn(
+    "WikiHostService.resolveConflicts",
+  )(function* (input) {
+    yield* hostOf(yield* wikis.get(input.wikiId));
+    yield* wikis.syncFromHost(input.wikiId);
+    // Publishing first takes in what reviewers pushed to the branch on the host.
+    yield* publish(input);
+    yield* wikis.reconcileChangeRequest(input);
+    return yield* publish(input);
+  });
+
   const setChangeRequestStatus: WikiHostService["Service"]["setChangeRequestStatus"] = Effect.fn(
     "WikiHostService.setChangeRequestStatus",
   )(function* (input) {
@@ -614,8 +634,57 @@ const make = Effect.gen(function* () {
         );
       case "edited":
         return quietly(job.wikiId, publishIfPerson(job.wikiId, job.changeRequestId));
+      case "follow":
+        return quietly(job.wikiId, syncWiki(job.wikiId, true));
     }
   };
+
+  /** The host wikis a pull request belongs to, by its project or by its address. */
+  const wikisOfPullRequest = (
+    matches: (wiki: WikiSummary) => Effect.Effect<boolean, WikiError>,
+  ): Effect.Effect<ReadonlyArray<WikiId>> =>
+    wikis.hosted.pipe(
+      Effect.flatMap((hosted) =>
+        Effect.filter(hosted, (wikiId) => wikis.get(wikiId).pipe(Effect.flatMap(matches))),
+      ),
+      Effect.orElseSucceed((): ReadonlyArray<WikiId> => []),
+    );
+  const follow = (found: Effect.Effect<ReadonlyArray<WikiId>>) =>
+    found.pipe(
+      Effect.flatMap((wikiIds) =>
+        Effect.forEach(wikiIds, (wikiId) => Queue.offer(jobs, { kind: "follow", wikiId }), {
+          discard: true,
+        }),
+      ),
+    );
+  const mergedPullRequests = yield* pullRequests.subscribeMerges;
+  const changedPullRequests = yield* pullRequests.subscribeStateChanges;
+  yield* forkParked(
+    Stream.runForEach(mergedPullRequests, (event) =>
+      follow(
+        wikisOfPullRequest((wiki) => Effect.succeed(wiki.host?.projectId === event.projectId)),
+      ),
+    ),
+  );
+  yield* forkParked(
+    Stream.runForEach(changedPullRequests, (event) =>
+      follow(
+        wikisOfPullRequest((wiki) =>
+          wikis
+            .changeRequestsList({ wikiId: wiki.wikiId })
+            .pipe(
+              Effect.map(({ changeRequests }) =>
+                changeRequests.some(
+                  (entry) =>
+                    entry.pullRequest?.number === event.number &&
+                    entry.pullRequest.repository.toLowerCase() === event.repository.toLowerCase(),
+                ),
+              ),
+            ),
+        ),
+      ),
+    ),
+  );
 
   // One worker keeps pushes and sweeps from racing each other for no gain.
   yield* forkParked(Queue.take(jobs).pipe(Effect.flatMap(run), Effect.forever));
@@ -648,6 +717,7 @@ const make = Effect.gen(function* () {
     sync,
     publish,
     merge,
+    resolveConflicts,
     setChangeRequestStatus,
     publishThread,
     sweep,

@@ -194,5 +194,9 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:change-request:publish",
       tag: WS_METHODS.wikiPublishChangeRequest,
     }),
+    resolveConflicts: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:change-request:resolve-conflicts",
+      tag: WS_METHODS.wikiResolveConflicts,
+    }),
   };
 }

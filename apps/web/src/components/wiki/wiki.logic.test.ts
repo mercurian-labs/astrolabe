@@ -8,6 +8,7 @@ import {
   describeWikiFailure,
   hasUnpublishedWork,
   hostedPullRequestKeys,
+  wikiMergeMethod,
   wikiTerms,
   isHostedPullRequest,
   isTurnRunning,
@@ -154,6 +155,13 @@ describe("host wiki change requests", () => {
     expect(hasUnpublishedWork(changeRequest("b", "a"))).toBe(true);
     expect(hasUnpublishedWork(changeRequest("a", "a"))).toBe(false);
     expect(hasUnpublishedWork(changeRequest("a", null, 0))).toBe(false);
+  });
+
+  it("merges keeping each amendment its own commit, and squashes only as a last resort", () => {
+    expect(wikiMergeMethod(["squash", "rebase", "merge"])).toBe("merge");
+    expect(wikiMergeMethod(["squash", "rebase"])).toBe("rebase");
+    expect(wikiMergeMethod(["squash"])).toBe("squash");
+    expect(wikiMergeMethod([])).toBeUndefined();
   });
 
   it("matches a row by its project or its address, however the host spells either", () => {

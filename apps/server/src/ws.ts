@@ -1292,7 +1292,8 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
       [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
-      [WS_METHODS.wikiMerge]: (input) => wikiHosts.merge(input),
+      // A host wiki merges on its pull request's own screen, like any repository's.
+      [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikiHosts.setChangeRequestStatus(input),
       [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
       [WS_METHODS.wikiSetMapBackgrounds]: (input) => wikis.setMapBackgrounds(input),
@@ -1302,6 +1303,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiDisconnectHost]: (input) => wikiHosts.disconnect(input),
       [WS_METHODS.wikiSyncHost]: (input) => wikiHosts.sync(input),
       [WS_METHODS.wikiPublishChangeRequest]: (input) => wikiHosts.publish(input),
+      [WS_METHODS.wikiResolveConflicts]: (input) => wikiHosts.resolveConflicts(input),
       [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),
       [WS_METHODS.documentsPush]: (input) => documents.push(input),
       // Astrolabe: saving goes through the language servers, which format first when asked.

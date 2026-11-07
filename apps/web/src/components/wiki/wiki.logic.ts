@@ -53,6 +53,7 @@ export {
   queuedSaveStep,
   type MirrorTone,
   type QueuedWikiSave,
+  wikiMergeMethod,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 

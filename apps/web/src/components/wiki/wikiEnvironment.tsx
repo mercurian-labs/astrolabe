@@ -1,4 +1,9 @@
-import type { EnvironmentId, WikiId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  PullRequestRef,
+  WikiChangeRequestId,
+  WikiId,
+} from "@t3tools/contracts";
 import {
   type AtomCommand,
   isAtomCommandInterrupted,
@@ -12,7 +17,14 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
 import { toastManager } from "../ui/toast";
-import { describeWikiFailure, hostedPullRequestKeys, hostedWikis, wikiTerms } from "./wiki.logic";
+import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
+import {
+  describeWikiFailure,
+  hostedPullRequestKeys,
+  hostedWikis,
+  wikiPullRequestHost,
+  wikiTerms,
+} from "./wiki.logic";
 
 /**
  * The server whose wikis the page shows: the one the URL names while this workspace knows it,
@@ -54,6 +66,61 @@ export function useWikiOverviews(enabled = true): {
 export function useHostedPullRequestKeys(enabled: boolean): ReadonlySet<string> {
   const { overviews } = useWikiOverviews(enabled);
   return hostedPullRequestKeys(hostedWikis(overviews));
+}
+
+/**
+ * The host wiki change request a pull request is, read by the project the wiki was given when
+ * it connected; null for every other pull request.
+ */
+export function useWikiOfPullRequest(
+  environmentId: EnvironmentId,
+  reference: Pick<PullRequestRef, "projectId" | "repository" | "number">,
+) {
+  const list = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const wiki =
+    list.data?.wikis.find((entry) => entry.host?.projectId === reference.projectId) ?? null;
+  const changeRequests = useEnvironmentQuery(
+    wiki === null
+      ? null
+      : wikiEnvironment.changeRequests({ environmentId, input: { wikiId: wiki.wikiId } }),
+  );
+  const changeRequest =
+    changeRequests.data?.changeRequests.find(
+      (entry) =>
+        entry.pullRequest?.number === reference.number &&
+        entry.pullRequest.repository.toLowerCase() === reference.repository.toLowerCase(),
+    ) ?? null;
+  return wiki === null || changeRequest === null ? null : { wiki, changeRequest };
+}
+
+/**
+ * The pull request a host wiki's change request is, once the host has it: a host wiki is
+ * reviewed and merged on the same screen as a repository's pull requests.
+ */
+export function useWikiChangeRequestPullRequest(
+  environmentId: EnvironmentId,
+  wikiId: WikiId,
+  changeRequestId: WikiChangeRequestId | null,
+): FullPullRequestTarget | null {
+  const list = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const host = list.data?.wikis.find((entry) => entry.wikiId === wikiId)?.host ?? null;
+  const changeRequests = useEnvironmentQuery(
+    host === null || changeRequestId === null
+      ? null
+      : wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
+  const pullRequest =
+    changeRequests.data?.changeRequests.find((entry) => entry.changeRequestId === changeRequestId)
+      ?.pullRequest ?? null;
+  const pullRequestHost = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);
+  if (host === null || pullRequest === null || pullRequestHost === null) return null;
+  return {
+    environmentId,
+    projectId: host.projectId,
+    host: pullRequestHost,
+    repository: pullRequest.repository,
+    number: pullRequest.number,
+  };
 }
 
 /** What a wiki calls its reviews, by its host. */

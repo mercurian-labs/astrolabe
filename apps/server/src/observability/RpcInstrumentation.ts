@@ -276,6 +276,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiDisconnectHost]: "wiki",
   [WS_METHODS.wikiSyncHost]: "wiki",
   [WS_METHODS.wikiPublishChangeRequest]: "wiki",
+  [WS_METHODS.wikiResolveConflicts]: "wiki",
   [WS_METHODS.documentsSubscribe]: "workspace",
   [WS_METHODS.documentsPush]: "workspace",
   [WS_METHODS.documentsSave]: "workspace",

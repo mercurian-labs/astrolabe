@@ -197,6 +197,15 @@ export function hostedPullRequestKeys(
   );
 }
 
+/**
+ * The merge a wiki's pull request starts on: the methods that keep its amendments one commit
+ * each, best first; squashing joins them, so it comes only when nothing else is allowed.
+ */
+export const wikiMergeMethod = <M extends string>(allowed: ReadonlyArray<M>): M | undefined =>
+  allowed.find((method) => method === "merge") ??
+  allowed.find((method) => method === "rebase") ??
+  allowed.find((method) => method === "squash");
+
 export const isHostedPullRequest = (
   keys: ReadonlySet<string>,
   entry: {
