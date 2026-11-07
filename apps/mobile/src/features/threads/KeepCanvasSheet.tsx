@@ -17,8 +17,8 @@ import {
   canvasContextRecord,
   formatComposerContextReference,
 } from "@t3tools/shared/composerContextReferences";
-import { useState } from "react";
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Keyboard, Platform, Pressable, ScrollView, View } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
@@ -64,6 +64,13 @@ export function KeepCanvasSheet(props: {
   const wikiId = picked ?? wikis[0]?.wikiId ?? null;
   const placeable = canvasFile(name) !== null;
   const canSubmit = wikiId !== null && placeable && !busy;
+  const scroll = useRef<ScrollView>(null);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the keyboard is the system's, and what it covers is the button the field is filled in for
+  useEffect(() => {
+    const shown = Keyboard.addListener("keyboardDidShow", () => scroll.current?.scrollToEnd());
+    return () => shown.remove();
+  }, []);
 
   const addToChat = () => {
     const record = canvasContextRecord({
@@ -226,6 +233,8 @@ export function KeepCanvasSheet(props: {
   return (
     <Sheet title={kept === null ? "Keep this canvas" : "Kept"} onClose={props.onClose}>
       <ScrollView
+        ref={scroll}
+        automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
         // Below the sheet's translucent header, as the other app sheets lay out.
         contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
         contentContainerClassName="gap-4 px-4 pt-4 pb-10"
