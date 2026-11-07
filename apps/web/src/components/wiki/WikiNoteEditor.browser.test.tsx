@@ -73,4 +73,33 @@ describe("WikiNoteEditor", () => {
     expect([...types].map((type) => type.textContent)).toEqual(["depends_on", "blocks"]);
     buffer.release();
   });
+
+  it.each([
+    ["reading", true],
+    ["editing", false],
+  ])("hovering an ambiguous link while %s says which it took", async (_mode, readOnly) => {
+    const buffer = new WikiNoteBuffer();
+    buffer.receive("Intro line.\n\nSee [[Name]] here.\n");
+    await using screen = await render(
+      <WikiNoteEditor
+        session={buffer.getSnapshot().session!}
+        readOnly={readOnly}
+        onOpenNote={vi.fn()}
+        linkTypes={[]}
+        renderLinkPreview={(link) => (
+          <WikiLinkPreview
+            link={link}
+            source="The chosen one."
+            resolved={{ file: "a/Name.md", others: ["b/Name.md"] }}
+          />
+        )}
+        renderBase={() => null}
+      />,
+    );
+    const word = screen.getByText("Name");
+    await expect.element(word).toBeVisible();
+    await userEvent.hover(word);
+    await expect.element(screen.getByText("Goes to a/Name. Also fits b/Name.")).toBeVisible();
+    buffer.release();
+  });
 });
