@@ -468,7 +468,7 @@ export type Resolve = (path: string, from?: string) => BaseDoc | undefined;
 const fileName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 const stripHeading = (path: string): string => (path.split("#")[0] ?? "").trim();
 
-/** Which file a value names, so links, files and names compare: the file, or the bare name. */
+/** Which file a value names, so links, files and names compare: the file, or the path written. */
 export function identity(value: BaseValue, resolve: Resolve): string | undefined {
   if (tagged(value, "file") || tagged(value, "this")) return `file:${key(value.doc.file)}`;
   let path: string | undefined;
@@ -478,7 +478,7 @@ export function identity(value: BaseValue, resolve: Resolve): string | undefined
   if (path === undefined) return undefined;
   const target = stripHeading(path);
   const doc = resolve(target, from);
-  return doc ? `file:${key(doc.file)}` : `name:${key(fileName(target).replace(/\.md$/i, ""))}`;
+  return doc ? `file:${key(doc.file)}` : `name:${key(target.replace(/\.md$/i, ""))}`;
 }
 
 const isFileLike = (value: BaseValue): boolean =>

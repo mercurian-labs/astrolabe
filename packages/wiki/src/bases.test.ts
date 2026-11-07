@@ -48,7 +48,7 @@ const FILES: Readonly<Record<string, string>> = {
     "",
   ].join("\n"),
   "Beta.md": "---\nstatus: done\npriority: 1\ndue: 2026-01-15\n---\nBeta sits in #area/sub.\n",
-  "Gamma.md": "Gamma is #area too, and links [[Alpha]].\n",
+  "Gamma.md": "Gamma is #area too, and links [[Alpha]] and [[Unwritten]].\n",
   "Delta.md": "---\ntags: book\npriority: 3\n---\nNo textbook here.\n",
   "Textbook.md": "# Textbook\n",
   "Code.md": "```\n#notatag [[Alpha]]\n```\n\n## Heading, not a tag\n",
@@ -228,6 +228,8 @@ describe("queries", () => {
 
   it("follows links and backlinks, and tags with their nesting", () => {
     expect(names(filter('file.hasLink("Textbook")'))).toEqual(["Alpha"]);
+    expect(names(filter('file.hasLink("Unwritten")'))).toEqual(["Gamma"]);
+    expect(names(filter('file.hasLink("folder/Unwritten")'))).toEqual([]);
     expect(names(filter('file.links.contains(link("Beta"))'))).toEqual(["Alpha", "Index"]);
     expect(names(filter('file.backlinks.contains("Gamma")'))).toEqual(["Alpha"]);
     expect(names(filter("file.backlinks.isEmpty()"))).toEqual([
