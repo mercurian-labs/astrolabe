@@ -297,8 +297,18 @@ function EditableCell({
   );
 }
 
-function RowName({ row, host, className }: { row: Row; host: BaseLayoutHost; className?: string }) {
-  const text = row.name;
+function RowName({
+  row,
+  host,
+  className,
+  column,
+}: {
+  row: Row;
+  host: BaseLayoutHost;
+  className?: string;
+  column?: string;
+}) {
+  const text = column === "file.path" ? row.file : row.name;
   if (!host.canOpenRow(row)) return <span className={className}>{text}</span>;
   return (
     <button
@@ -453,7 +463,7 @@ function TableView({ result, host }: { result: WikiEditorBaseResult; host: BaseL
                   {columns.map((column) => (
                     <td key={column.id} className={numeric(column) ? "bl-number" : undefined}>
                       {isNameColumn(column.id) ? (
-                        <RowName row={row} host={host} />
+                        <RowName row={row} host={host} column={column.id} />
                       ) : (
                         <EditableCell row={row} column={column.id} host={host} />
                       )}

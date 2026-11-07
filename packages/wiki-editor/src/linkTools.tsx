@@ -122,7 +122,7 @@ const scopeMoved = StateEffect.define<null>();
 const MISSING = Decoration.mark({ class: "cm-wiki-link-missing" });
 
 /** A name with a file's extension: an attachment, which the scope's documents can't answer for. */
-const namesAttachment = (target: string) =>
+export const namesAttachment = (target: string) =>
   /\.[a-z][a-z0-9]*$/i.test(target) && !/\.(md|base|canvas)$/i.test(target);
 
 function missingLinks(view: EditorView, scope: WikiLinkScope | null): DecorationSet {

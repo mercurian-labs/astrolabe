@@ -38,6 +38,7 @@ import {
   wikiLinkFile,
 } from "./wiki.logic";
 import {
+  namesAttachment,
   WikiLinkPreview,
   type WikiLinkPeek,
   type WikiLinkScope,
@@ -429,6 +430,7 @@ export function WikiNoteView({
                     title={target}
                     tone={
                       linkScope === null ||
+                      namesAttachment(target) ||
                       resolveLink(target, data.file, linkScope.files).file !== null
                         ? "default"
                         : "missing"

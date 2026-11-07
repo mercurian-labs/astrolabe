@@ -73,11 +73,12 @@ export function KeepCanvasSheet(props: {
   const canSubmit = wikiId !== null && placeable && !busy;
   const scroll = useRef<ScrollViewInstance>(null);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the keyboard is the system's, and what it covers is the button the field is filled in for
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the keyboard is the system's, and what it covers is the button the name is filled in for; the comment box sits at the top and stays put
   useEffect(() => {
+    if (!placing) return;
     const shown = Keyboard.addListener("keyboardDidShow", () => scroll.current?.scrollToEnd());
     return () => shown.remove();
-  }, []);
+  }, [placing]);
 
   const addToChat = () => {
     const record = canvasContextRecord({
