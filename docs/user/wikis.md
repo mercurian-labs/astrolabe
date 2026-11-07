@@ -86,11 +86,11 @@ When an agent amends a note you have open in that pull request, its changes appe
 
 A wiki can live in a repository on GitHub, GitLab, Bitbucket, Forgejo, GitCafe or Azure DevOps, so everyone with access to the repository works in it. On a wiki's page in **Settings → Wikis**, choose **Connect** under **Git host**. Astrolabe uses the folder's `origin` remote and pushes the wiki's history if the repository doesn't have it yet.
 
-On a connected wiki, these are the repository's own pull requests, or merge requests on GitLab, and the app calls them what the host does. An agent's work goes up when its turn ends, as a draft where the host has drafts, and your own edits go up as you save them. **Merge** merges the pull request on the host, under the repository's own rules. Comments and approvals happen in the pull request, in Astrolabe or on the host. What each host offers depends on the host.
+On a connected wiki, these are the repository's own pull requests, or merge requests on GitLab, and the app calls them what the host does. An agent's work goes up when its turn ends, as a draft where the host has drafts, and your own edits go up as you save them. Once one is on the host, it opens on the same screen as a repository's pull request, with its checks, reviews, comments and merge choices, and a **Wiki** tab showing its amendments, the notes it changes and what stands after the merge. Work not on the host yet is left out of a merge; **Publish now** on the Wiki tab sends it. When it conflicts with main, **Resolve conflicts** merges main in note by note and pushes the result, so the host can merge it. What each host offers depends on the host.
 
 Astrolabe picks up what happens on the host about once a minute, or when you choose **Sync now**. If you have unsaved edits overlapping a change on the main line, your wiki's page says so and the wiki catches up once they're dealt with.
 
-Merging keeps each amendment on the main line. A repository that only allows squash merges joins them into one commit, so they can't be reverted one at a time afterwards. A pull request merged on the host's own site uses the host's plain line merge, so conflicts Astrolabe could have settled stop it there.
+Merging starts on a method that keeps each amendment on the main line. Squashing, where you pick it or the repository allows nothing else, joins them into one commit, so they can't be reverted one at a time afterwards. A pull request merged on the host's own site uses the host's plain line merge, so conflicts Astrolabe could have settled stop it there.
 
 **Disconnect** makes it a local wiki again. The repository and its pull requests stay on the host.
 

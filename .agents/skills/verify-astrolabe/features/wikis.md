@@ -186,9 +186,16 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   **Disconnect** (`WikisSettings.tsx`, server `wiki/WikiHostService.ts`). Connecting uses the
   folder's `origin`, gives the wiki a backing project (what pull requests are read through) and
   replaces the mirror. A person's edit publishes on its own; an agent's waits for its turn to
-  end and opens as a draft where the host has drafts. Merging goes through the host. Changes
-  shows such a change once, under Wiki changes, while the filter is All, and as a pull request
-  row with one project picked. Walk it on a throwaway repository, never on a wiki we use.
+  end and opens as a draft where the host has drafts. Changes shows such a change once, under
+  Wiki changes, while the filter is All, and as a pull request row with one project picked.
+  Once on the host, its tab is the pull request screen (`PullRequestDetailPanel`) with a
+  **Wiki** tab (amendments with Revert, notes changed with Open, Publish now while work is
+  unpublished); its header's merge starts on Merge commit, not Squash; when it conflicts,
+  **Resolve conflicts** merges main in by markdown and pushes, with no agent handoff; a merge
+  or close there shows on the wiki at once (`subscribeMerges`, `subscribeStateChanges`). A
+  wiki change not yet on the host keeps the wiki's own screen, with no Merge. On the phone,
+  the wiki screen's ⋯ has `Review the pull request` in place of Merge into main. Walk it on a
+  throwaway repository, never on a wiki we use.
 
 ## How to get to it (user POV)
 

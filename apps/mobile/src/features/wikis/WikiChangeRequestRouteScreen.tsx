@@ -150,6 +150,21 @@ export function WikiChangeRequestRouteScreen({
       onConfirm: () => void act(() => merge({ environmentId, input: target }), "Couldn't merge"),
     });
 
+  // A host wiki is reviewed and merged on its pull request's screen, like a repository's.
+  const openPullRequest =
+    hostProjectId !== null && pullRequest !== null && pullRequestHost !== null
+      ? () =>
+          navigation.dispatch(
+            StackActions.push("PullRequest", {
+              environmentId: route.params.environmentId,
+              projectId: String(hostProjectId),
+              repository: pullRequest.repository,
+              number: pullRequest.number,
+              host: pullRequestHost,
+            }),
+          )
+      : null;
+
   const openDocument = (change: WikiFileChange) =>
     navigation.dispatch(
       StackActions.push("WikiDocument", {
@@ -179,7 +194,7 @@ export function WikiChangeRequestRouteScreen({
           accessibilityLabel={`${terms.Singular} actions`}
           disabled={busy}
         >
-          {open ? (
+          {open && hostProjectId === null ? (
             <Toolbar.MenuAction
               icon={PullRequestGlyph.merged}
               disabled={blocked !== null}
@@ -187,6 +202,11 @@ export function WikiChangeRequestRouteScreen({
               onPress={confirmMerge}
             >
               <Toolbar.Label>Merge into main</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ) : null}
+          {openPullRequest !== null ? (
+            <Toolbar.MenuAction icon={PullRequestGlyph.pullRequest} onPress={openPullRequest}>
+              <Toolbar.Label>{`Review the ${terms.singular}`}</Toolbar.Label>
             </Toolbar.MenuAction>
           ) : null}
           {unpublished ? (
@@ -256,24 +276,14 @@ export function WikiChangeRequestRouteScreen({
               .join(" · ")}
           </Text>
         </View>
-        {hostProjectId !== null && pullRequest !== null && pullRequestHost !== null ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              navigation.dispatch(
-                StackActions.push("PullRequest", {
-                  environmentId: route.params.environmentId,
-                  projectId: String(hostProjectId),
-                  repository: pullRequest.repository,
-                  number: pullRequest.number,
-                  host: pullRequestHost,
-                }),
-              )
-            }
-          >
+        {openPullRequest !== null && pullRequest !== null ? (
+          <Pressable accessibilityRole="button" onPress={openPullRequest}>
             <Card>
               <Text className="text-sm text-foreground">
                 {`${pullRequest.repository} #${pullRequest.number}`}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                {`Checks, reviews and the merge are on the ${terms.singular}.`}
               </Text>
               {unpublished ? (
                 <Text className="text-sm text-foreground-muted">
@@ -289,9 +299,9 @@ export function WikiChangeRequestRouteScreen({
             links={pullRequestLinks}
             nudge={nudge}
             busy={busy}
-            canMerge={blocked === null}
+            canMerge={hostProjectId === null ? blocked === null : openPullRequest !== null}
             canClose={canSetStatus}
-            onMerge={confirmMerge}
+            onMerge={openPullRequest ?? confirmMerge}
             onClose={() =>
               void act(
                 () => setStatus({ environmentId, input: { ...target, status: "closed" } }),
@@ -311,7 +321,9 @@ export function WikiChangeRequestRouteScreen({
             }
           />
         ) : null}
-        {open ? <MergePreview preview={mergePreview} noun={terms.singular} /> : null}
+        {open && hostProjectId === null ? (
+          <MergePreview preview={mergePreview} noun={terms.singular} />
+        ) : null}
         {errors.length > 0 ? (
           <Card>
             <Text className="text-sm font-t3-medium text-foreground">
