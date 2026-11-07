@@ -4,7 +4,7 @@ import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
 import { ensureLocalApi } from "~/localApi";
@@ -26,6 +26,7 @@ import { useRepositories } from "../repositories/useRepositories";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { WikiCanvasSettings } from "./WikiCanvasSettings";
+import { WikiLocationSettings } from "./WikiLocationSettings";
 import { WikiMapBackgrounds } from "./WikiMapBackgrounds";
 
 const MIRROR_BADGE: Record<MirrorTone, "outline" | "success" | "warning" | "error" | "secondary"> =
@@ -135,11 +136,13 @@ function WikiList({ overviews }: { readonly overviews: ReadonlyArray<WikiOvervie
         )}
       </SettingsSection>
       {servers.map((environmentId) => (
-        <WikiCanvasSettings
-          key={environmentId}
-          environmentId={environmentId}
-          serverLabel={labelOf(environmentId)}
-        />
+        <Fragment key={environmentId}>
+          <WikiLocationSettings
+            environmentId={environmentId}
+            serverLabel={labelOf(environmentId)}
+          />
+          <WikiCanvasSettings environmentId={environmentId} serverLabel={labelOf(environmentId)} />
+        </Fragment>
       ))}
     </SettingsPageContainer>
   );

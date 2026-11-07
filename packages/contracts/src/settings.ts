@@ -1250,6 +1250,23 @@ export const DEFAULT_WIKI_CANVAS_SETTINGS: WikiCanvasSettings = Schema.decodeSyn
   WikiCanvasSettings,
 )({});
 
+/** Astrolabe: Settings › Wikis › New files. Where a wiki's new attachments and notes land. */
+export const WikiLocationSettings = Schema.Struct({
+  attachments: Schema.Literals(["root", "folder", "beside", "subfolder"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("root")),
+  ),
+  /** The folder from the root, or the subfolder of the document's. */
+  attachmentFolder: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed("attachments"))),
+  newNotes: Schema.Literals(["beside", "root", "folder"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("beside")),
+  ),
+  newNoteFolder: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type WikiLocationSettings = typeof WikiLocationSettings.Type;
+export const DEFAULT_WIKI_LOCATION_SETTINGS: WikiLocationSettings = Schema.decodeSync(
+  WikiLocationSettings,
+)({});
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1265,6 +1282,9 @@ export const ServerSettings = Schema.Struct({
   ),
   wikiCanvas: WikiCanvasSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_WIKI_CANVAS_SETTINGS)),
+  ),
+  wikiLocations: WikiLocationSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WIKI_LOCATION_SETTINGS)),
   ),
   /** Astrolabe: Settings › Change Requests › Grouping (see `changeGroups.ts`). */
   changeGroupGrouping: ChangeGroupGroupingSettings.pipe(
@@ -1652,6 +1672,7 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   codeIndex: Schema.optionalKey(CodeIndexSettings),
   wikiCanvas: Schema.optionalKey(WikiCanvasSettings),
+  wikiLocations: Schema.optionalKey(WikiLocationSettings),
   worktreesDirectory: Schema.optionalKey(TrimmedString),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),

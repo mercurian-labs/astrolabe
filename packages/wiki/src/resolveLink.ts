@@ -84,7 +84,7 @@ export interface ResolvedLink {
 const UNRESOLVED: ResolvedLink = { file: null, others: [] };
 
 /** A link's path: no heading, no alias, in a Markdown table's `\|` too. */
-const linkPath = (target: string): string =>
+export const linkPath = (target: string): string =>
   (target.split(/\\?\|/)[0] ?? "").split("#")[0]?.trim() ?? "";
 
 const isRelative = (path: string) => path.startsWith("./") || path.startsWith("../");
@@ -182,6 +182,13 @@ export function shortestLink(file: string, files: WikiLinkFiles): string {
   const sharing = files.byName.get(nameOf(key(file))) ?? [];
   const alone = !isHidden(file) && sharing.every((entry) => entry.file === file);
   return alone ? noteName(nameOf(file)) : whole;
+}
+
+/** A link's inside as a new one writes it: `|title` when the path says more than the title. */
+export function writtenLink(file: string, files: WikiLinkFiles): string {
+  const text = shortestLink(file, files);
+  const title = noteName(nameOf(file));
+  return text === title ? text : `${text}|${title}`;
 }
 
 /**

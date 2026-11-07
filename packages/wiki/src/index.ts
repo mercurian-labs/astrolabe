@@ -1,5 +1,6 @@
 export * from "./links.ts";
 export * from "./resolveLink.ts";
+export * from "./placement.ts";
 export * from "./skillMap.ts";
 export * from "./wikiIndex.ts";
 export * from "./amendment.ts";

@@ -16,6 +16,10 @@
       "types": "./src/resolveLink.ts",
       "import": "./src/resolveLink.ts"
     },
+    "./placement": {
+      "types": "./src/placement.ts",
+      "import": "./src/placement.ts"
+    },
     "./canvas": {
       "types": "./src/canvas.ts",
       "import": "./src/canvas.ts"
