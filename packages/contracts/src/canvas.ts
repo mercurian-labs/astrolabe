@@ -84,7 +84,7 @@ const ref = said("Names a new card or group for this call; the result maps it to
 const content = {
   text: Schema.optional(said("A text card's Markdown.")),
   url: Schema.optional(said("A link card's address.")),
-  file: Schema.optional(said("A file card's file in this wiki, by its full name.")),
+  file: Schema.optional(said("A file card's file, by its path from the wiki's root.")),
   subpath: Schema.optional(
     said("A note's #Heading or #^block, or a base's #View, on a file card."),
   ),
@@ -191,7 +191,7 @@ export type CanvasEdit = typeof CanvasEdit.Type;
 const canvasTransform = <Edit extends Schema.Top>(edit: Edit, maxEdits: number) =>
   Schema.Struct({
     kind: Schema.Literal("canvas"),
-    file: said("The canvas's file name, with .canvas."),
+    file: said("The canvas's path from the root, with .canvas."),
     edits: Schema.Array(edit).check(Schema.isMinLength(1), Schema.isMaxLength(maxEdits)).annotate({
       description:
         "In order, all or none. create: first, for a new canvas. delete: alone. add: ref, and one of text, url or file. edit: card, and what it now says. remove: card; its arrows go, a group's cards stay. connect, disconnect: from, to. label: a group as card, or an arrow as from and to; no label clears it. group: ref, label, around. color: as label.",

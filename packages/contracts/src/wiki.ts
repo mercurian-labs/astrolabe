@@ -196,6 +196,7 @@ export type WikiIndexResult = typeof WikiIndexResult.Type;
 
 export const WikiNoteInput = Schema.Struct({
   wikiId: WikiId,
+  /** A path from the root; a bare name searches as a link does. */
   name: TrimmedNonEmptyString,
   changeRequestId: Schema.optional(WikiChangeRequestId),
 });
@@ -211,6 +212,16 @@ export const WikiNoteResult = Schema.Struct({
   source: Schema.String,
   outgoing: Schema.Array(Schema.String),
   incoming: Schema.Array(Schema.String),
+  /** Names here that matched several documents; absent when none did. */
+  ambiguous: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        target: Schema.String,
+        file: Schema.String,
+        others: Schema.Array(Schema.String),
+      }),
+    ),
+  ),
 });
 export type WikiNoteResult = typeof WikiNoteResult.Type;
 
@@ -403,7 +414,6 @@ export type WikiBaseDisplay = typeof WikiBaseDisplay.Type;
 /**
  * An edit made from a base's view, applied by the server over whatever it reads or saves to: a
  * `.base` file's views, formulas and display names, a note's frontmatter property, or a new note.
- * Only files at the top of the wiki can be edited.
  */
 export const WikiBaseEdit = Schema.Union([
   Schema.Struct({
@@ -632,11 +642,18 @@ export const WikiAmendInput = Schema.Struct({
 });
 export type WikiAmendInput = typeof WikiAmendInput.Type;
 
+// Plain strings where a description must reach an agent; the planner trims them.
 const WikiMechanicalTransforms = [
   Schema.Struct({
     kind: Schema.Literal("rename"),
-    from: TrimmedNonEmptyString,
-    to: TrimmedNonEmptyString,
+    from: Schema.NonEmptyString.annotate({ description: "The document's or folder's path." }),
+    to: Schema.NonEmptyString.annotate({
+      description:
+        "Where it goes: area/Name is a path from the root, /Name the root, a bare Name stays in its folder.",
+    }),
+    folder: Schema.optional(
+      Schema.Boolean.annotate({ description: "true: from is a folder, moved with all it holds." }),
+    ),
   }),
   Schema.Struct({
     kind: Schema.Literal("edge-add"),
@@ -652,6 +669,7 @@ const WikiMechanicalTransforms = [
   Schema.Struct({
     kind: Schema.Literal("fill"),
     map: TrimmedNonEmptyString,
+    /** The red link as written, which is the new note's path from the root. */
     name: TrimmedNonEmptyString,
     content: Schema.String,
     edge: WikiEdge,
@@ -781,7 +799,7 @@ export const WikiKeepCanvasInput = Schema.Struct({
   threadId: ThreadId,
   /** The `astrolabe_canvas_show` call that drew it. */
   itemId: TurnItemId,
-  /** Its name in the wiki, with or without `.canvas`. */
+  /** Its path from the wiki's root, with or without `.canvas`. */
   name: TrimmedNonEmptyString,
   /** What the person said about it, which becomes the amendment's message. */
   comment: Schema.optional(TrimmedNonEmptyString),

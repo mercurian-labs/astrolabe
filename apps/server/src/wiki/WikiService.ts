@@ -14,8 +14,7 @@ import {
   keepWarningHistory,
   folderOf,
   planAmendment,
-  planFolderRename,
-  planRename,
+  planMove,
   planCanvasEdits,
   planTransform,
   WikiFormatError,
@@ -142,12 +141,14 @@ import {
   WikiRegistryJson,
 } from "./wikiStorage.ts";
 import {
+  folderListing,
   indexResult,
   linksResult,
   locateBase,
   noteResult,
   orientResult,
   searchNotes,
+  type WikiFolderListing,
   type WikiLinksResult,
   type WikiOrientResult,
   type WikiSearchResult,
@@ -241,6 +242,10 @@ export class WikiService extends Context.Service<
     readonly readFiles: (
       input: WikiReadTarget & Omit<WikiReadFilesInput, "wikiId" | "changeRequestId">,
     ) => Effect.Effect<WikiReadFilesResult, WikiError>;
+    /** One folder's contents for an agent, hidden ones left out; `""` is the root. */
+    readonly listFolder: (
+      input: WikiReadTarget & { readonly folder: string },
+    ) => Effect.Effect<WikiFolderListing & { readonly commit: string }, WikiError>;
     readonly listFiles: (
       input: WikiListFilesInput,
     ) => Effect.Effect<WikiListFilesResult, WikiError>;
@@ -1610,7 +1615,7 @@ const make = Effect.gen(function* () {
       others: ReadonlyArray<WikiBlob>,
     ): PlannedAmendment & CarriedBlobs => {
       if (change.kind === "rename") {
-        return planMoved(files, stamp, planRename(files, others, change.from, change.to));
+        return planMoved(files, stamp, planMove(files, others, change));
       }
       if (change.kind !== "canvas") {
         return planAmendment(files, planTransform(files, change, stamp), stamp);
@@ -1849,14 +1854,7 @@ const make = Effect.gen(function* () {
               target,
               author,
               moveSubject(from, to),
-              (files, stamp, others) =>
-                planMoved(
-                  files,
-                  stamp,
-                  folder === true
-                    ? planFolderRename(files, others, from, to)
-                    : planRename(files, others, `/${from}`, `/${to}`),
-                ),
+              planWikiTransform({ kind: "rename", from: `/${from}`, to: `/${to}`, folder }),
             );
             return { changeRequest, commit } satisfies WikiAutosaveResult;
           }),
@@ -2658,6 +2656,29 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const listFolder: WikiService["Service"]["listFolder"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const commit = yield* readCommit(wiki, input);
+          const { entries } = yield* fileListingAt(wiki, commit);
+          const listing = folderListing(
+            entries.map((entry) => entry.file),
+            input.folder,
+          );
+          if (listing === null) {
+            return yield* new WikiError({
+              reason: "not-found",
+              message: `No folder named ${input.folder}.`,
+              wikiId: wiki.wikiId,
+            });
+          }
+          return { commit, ...listing };
+        }),
+      input.changeRequestId,
+    );
+
   /** Each active project, by the repository it checks out. */
   const projectRoots = Effect.gen(function* () {
     const roots = new Map<string, string>();
@@ -3220,6 +3241,7 @@ const make = Effect.gen(function* () {
     search,
     query,
     readFiles,
+    listFolder,
     locateFile,
     codeStatus,
     orient,

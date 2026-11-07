@@ -167,7 +167,12 @@ export function planAmendment(
 
 /** Mechanical transforms: each computes a complete set of changes, reviewed like any other. */
 export type WikiTransform =
-  | { readonly kind: "rename"; readonly from: string; readonly to: string }
+  | {
+      readonly kind: "rename";
+      readonly from: string;
+      readonly to: string;
+      readonly folder?: boolean | undefined;
+    }
   | { readonly kind: "map-put"; readonly file: string; readonly map: SkillMap }
   | {
       readonly kind: "edge-add";
@@ -358,8 +363,13 @@ export function planRename(
   to: string,
 ): PlannedMove {
   const index = indexFiles(files);
-  const fromFile = linkedDocument(index, from, null);
+  const { file: fromFile, others: rivals } = resolveLink(from, null, index.documents);
   if (fromFile === null) throw new AmendmentError(`No document named ${from}`);
+  if (rivals.length > 0) {
+    throw new AmendmentError(
+      `${from} could be ${[fromFile, ...rivals].join(" or ")}: name its path`,
+    );
+  }
   const target = checkFileName(movedPath(fromFile, to));
   if (!isWikiDocument(target)) throw new AmendmentError(`${target} is not a document's name`);
   if (taken(files, others, target, fromFile)) {
@@ -409,6 +419,14 @@ export function planFolderRename(
   return applyMoves(files, others, moves);
 }
 
+/** A rename, of a document or of a folder, however it was asked for. */
+export const planMove = (
+  files: WikiFiles,
+  others: ReadonlyArray<WikiBlob>,
+  { from, to, folder }: Extract<WikiTransform, { readonly kind: "rename" }>,
+): PlannedMove =>
+  (folder === true ? planFolderRename : planRename)(files, others, from.trim(), to.trim());
+
 export function planTransform(
   files: WikiFiles,
   transform: WikiTransform,
@@ -440,7 +458,7 @@ export function planTransform(
     return changes;
   }
   if (transform.kind === "rename") {
-    return planRename(files, [], transform.from, transform.to).changes;
+    return planMove(files, [], transform).changes;
   }
   if (transform.kind === "map-put") {
     if (!transform.file.endsWith(".skillmap.md")) {

@@ -512,10 +512,36 @@ it.effect("reads, links and edits documents in folders, two of them sharing a na
       assert.equal(beside.file, "a/Plan.md");
       assert.equal(beside.source, "# One\n\n[[Plan]] [[Note]] [[a/Plan]]\n");
       assert.deepEqual(beside.incoming, ["a/Plan", "b/deep/Board.canvas"]);
-      assert.equal((yield* wikis.readNote({ wikiId, name: "Plan" })).file, "a/Plan.md");
+      const bare = yield* wikis.readNote({ wikiId, name: "Plan" });
+      assert.equal(bare.file, "a/Plan.md");
+      assert.deepEqual(bare.ambiguous, [
+        { target: "Plan", file: "a/Plan.md", others: ["b/Plan.md"] },
+      ]);
       assert.equal((yield* wikis.readNote({ wikiId, name: "/Plan" })).exists, false);
       assert.equal((yield* wikis.readNote({ wikiId, name: "Guide" })).exists, false);
       assert.equal((yield* wikis.readNote({ wikiId, name: ".github/Guide" })).exists, true);
+      assert.deepEqual((yield* wikis.search({ wikiId, query: "Hidden." })).matches, []);
+
+      const { commit: _, ...top } = yield* wikis.listFolder({ wikiId, folder: "" });
+      assert.deepEqual(top, {
+        folder: "",
+        folders: [
+          { path: "a", documents: 2 },
+          { path: "b", documents: 2 },
+          { path: "docs", documents: 0 },
+        ],
+        documents: ["Alpha.md", "Beta.md", "Product.skillmap.md"],
+        files: [],
+        truncated: false,
+      });
+      const deep = yield* wikis.listFolder({ wikiId, folder: "/B/" });
+      assert.equal(deep.folder, "b");
+      assert.deepEqual(deep.folders, [{ path: "b/deep", documents: 1 }]);
+      assert.deepEqual(deep.documents, ["b/Plan.md"]);
+      assert.equal(
+        (yield* failure(wikis.listFolder({ wikiId, folder: ".github" }))).reason,
+        "not-found",
+      );
 
       const saved = yield* wikis.autosave(
         {
@@ -2542,6 +2568,38 @@ it.effect("reverts a move, keeping what was edited after it", () =>
       assert.notInclude(files, "shelf/Long.md");
       assert.include(yield* git(root, ["show", `${reverted.commit}:Long.md`]), "Later.");
       assert.equal(yield* git(root, ["show", `${reverted.commit}:Mentions.md`]), "See [[Long]].");
+    }),
+  ),
+);
+
+it.effect("moves an agent's note and folder on its change request, refusing a bare twin", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "a/Plan.md": "[[Beta]]\n", "b/Plan.md": "Two.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Twins"]);
+      const author = agent("thread-move");
+      const moved = (from: string, to: string, folder?: boolean) =>
+        wikis.transform(
+          {
+            wikiId,
+            message: `Move ${from}`,
+            transform: { kind: "rename", from, to, ...(folder ? { folder } : {}) },
+          },
+          author,
+        );
+
+      const refused = yield* failure(moved("Plan", "c/Plan"));
+      assert.equal(refused.message, "Plan could be a/Plan.md or b/Plan.md: name its path");
+
+      yield* moved("Beta", "/ops/Beta");
+      const { commit } = yield* moved("a", "z/a", true);
+      assert.equal(yield* git(root, ["show", `${commit}:z/a/Plan.md`]), "[[Beta]]");
+      assert.equal(
+        yield* git(root, ["show", `${commit}:ops/Beta.md`]),
+        "# Beta\n\nBeta stands alone.",
+      );
     }),
   ),
 );

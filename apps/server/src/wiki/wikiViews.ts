@@ -12,11 +12,14 @@ import {
   documentFile,
   findMap,
   isCanvasFile,
+  isHidden,
+  isWikiDocument,
   key,
   linkDestination,
   linkedDocument,
   noteName,
   parseCanvas,
+  resolveLink,
   support,
   typedLinks,
   typesTo,
@@ -120,6 +123,28 @@ export const indexResult = (
   };
 };
 
+/** Names that searched and found more than one document: the one taken, and the rest. */
+const ambiguousLinks = (
+  index: WikiIndex,
+  file: string,
+  requested: string,
+): NonNullable<WikiNoteResult["ambiguous"]> => {
+  const written = (index.notes.get(file) ?? index.canvases.get(file))?.links ?? [];
+  const named = [
+    { target: requested, from: null },
+    ...written.flatMap((link) =>
+      "card" in link && link.card === "file" ? [] : [{ target: link.target, from: file }],
+    ),
+  ];
+  const seen = new Set<string>();
+  return named.flatMap(({ target, from }) => {
+    const { file: chosen, others } = resolveLink(target, from, index.documents);
+    if (chosen === null || others.length === 0 || seen.has(key(target))) return [];
+    seen.add(key(target));
+    return [{ target, file: chosen, others }];
+  });
+};
+
 /**
  * A note, or any other wiki document such as a skill map, by what a link from the root would
  * find; a client names a file with a leading `/`. A canvas reads as its outline.
@@ -132,6 +157,8 @@ export const noteResult = (
   requested: string,
 ): WikiNoteResult => {
   const file = documentFile(index, requested);
+  const ambiguous = ambiguousLinks(index, file, requested);
+  const ambiguity = ambiguous.length === 0 ? {} : { ambiguous };
   const canvas = index.canvases.get(file);
   if (canvas !== undefined) {
     return {
@@ -143,6 +170,7 @@ export const noteResult = (
       source: canvasSourceOutline(canvas.file, canvas.source),
       outgoing: outgoingTargets(index, canvas.file),
       incoming: backlinks(index, `/${canvas.file}`),
+      ...ambiguity,
     };
   }
   const source = files[file];
@@ -155,6 +183,58 @@ export const noteResult = (
     source: source ?? "",
     outgoing: outgoingTargets(index, file),
     incoming: backlinks(index, `/${file}`),
+    ...ambiguity,
+  };
+};
+
+const MAX_LISTED_ENTRIES = 200;
+
+/** What's directly in one folder, by path from the root. A subfolder counts all it holds. */
+export interface WikiFolderListing {
+  readonly folder: string;
+  readonly folders: ReadonlyArray<{ readonly path: string; readonly documents: number }>;
+  readonly documents: ReadonlyArray<string>;
+  /** Anything else, such as images a note can embed. */
+  readonly files: ReadonlyArray<string>;
+  /** True when the folder holds more than the listing carries. */
+  readonly truncated: boolean;
+}
+
+/** `folder`'s contents among `files`, the root for `""`; null when nothing is there. */
+export const folderListing = (
+  files: ReadonlyArray<string>,
+  folder: string,
+): WikiFolderListing | null => {
+  const path = folder.trim().replace(/^\/+|\/+$/g, "");
+  const prefix = path === "" ? "" : `${key(path)}/`;
+  const subfolders = new Map<string, number>();
+  const documents: string[] = [];
+  const others: string[] = [];
+  let found: string | undefined;
+  for (const file of files) {
+    if (isHidden(file) || !key(file).startsWith(prefix)) continue;
+    found ??= file.slice(0, prefix.length);
+    const rest = file.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    if (slash >= 0) {
+      const subfolder = file.slice(0, prefix.length + slash);
+      const held = subfolders.get(subfolder) ?? 0;
+      subfolders.set(subfolder, held + (isWikiDocument(file) ? 1 : 0));
+    } else {
+      (isWikiDocument(file) ? documents : others).push(file);
+    }
+  }
+  if (found === undefined && path !== "") return null;
+  const folders = [...subfolders].map(([subfolder, count]) => ({
+    path: subfolder,
+    documents: count,
+  }));
+  return {
+    folder: (found ?? "").replace(/\/$/, ""),
+    folders: folders.slice(0, MAX_LISTED_ENTRIES),
+    documents: documents.slice(0, MAX_LISTED_ENTRIES),
+    files: others.slice(0, MAX_LISTED_ENTRIES),
+    truncated: Math.max(folders.length, documents.length, others.length) > MAX_LISTED_ENTRIES,
   };
 };
 
@@ -320,10 +400,11 @@ export const searchNotes = (index: WikiIndex, query: string): WikiSearchResult =
   const needle = query.toLowerCase();
   const matches: Array<WikiSearchResult["matches"][number]> = [];
   let truncated = false;
+  // A hidden document is read only by its exact path, which search never offers.
   const documents: ReadonlyArray<{ readonly name: string; readonly source: string }> = [
     ...index.notes.values(),
     ...[...index.canvases.values()].map(({ file, source }) => ({ name: file, source })),
-  ];
+  ].filter(({ name }) => !isHidden(name));
   for (const { name, source } of documents) {
     const board = isCanvasFile(name) ? parseCanvas(source) : null;
     if (board?.ok === true) {

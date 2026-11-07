@@ -10,7 +10,7 @@ import { withCanvasOutlines } from "../../../wiki/wikiViews.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
-import { WikiToolkit } from "./tools.ts";
+import { WikiToolkit, type WikiListed } from "./tools.ts";
 
 // Wiki errors carry fixed or validation messages written for the author, so they pass through.
 const wikiFailure = (error: WikiError) =>
@@ -80,15 +80,21 @@ const written = <I extends { readonly message: string; readonly title?: string |
 });
 
 export const layer = McpToolAccess.toLayer(WikiToolkit, {
-  astrolabe_wiki_list: McpToolAccess.reads(() =>
-    read((wikis) =>
-      wikis.list.pipe(
-        // Tile addresses can hold access tokens, and agents have no use for them.
-        Effect.map(({ wikis }) => ({
-          wikis: wikis.map(({ mapBackgrounds: _, ...wiki }) => wiki),
-        })),
-      ),
-    ),
+  astrolabe_wiki_list: McpToolAccess.reads(({ wiki, folder = "", changeRequestId }) =>
+    wiki === undefined
+      ? read<WikiListed>((wikis) =>
+          wikis.list.pipe(
+            // Tile addresses can hold access tokens, and agents have no use for them.
+            Effect.map(({ wikis }) => ({
+              wikis: wikis.map(({ mapBackgrounds: _, ...each }) => each),
+            })),
+          ),
+        )
+      : read<WikiListed>((wikis, threadId) =>
+          wikis
+            .listFolder({ ...target({ wiki, changeRequestId }), folder, threadId })
+            .pipe(Effect.map((contents) => ({ contents }))),
+        ),
   ),
   astrolabe_wiki_read: McpToolAccess.reads((input) =>
     read((wikis, threadId) =>
