@@ -15,7 +15,6 @@ import {
   planAmendment,
   planCanvasEdits,
   planTransform,
-  WikiCollisionError,
   WikiFormatError,
   type AmendmentStamp,
   type PlannedAmendment,
@@ -34,6 +33,7 @@ import {
   corpusWithChanges,
   isCanvasFile,
   isHidden,
+  isWikiPath,
   linkFiles,
   resolveLink,
   type BaseCorpus,
@@ -434,12 +434,13 @@ const oneLine = (text: string) => text.replace(/[\r\n<>]+/g, " ").trim();
 
 const actorName = (author: WikiAuthor) => oneLine(author.actor) || "Agent";
 
-/** A document as an amendment names it: without the extension a person never reads. */
-/** Flat and visible like a document, and never one: those go through a skill map's checks. */
+/** A visible path, and never a document: those go through a skill map's checks. */
 const isAttachmentName = (file: string) =>
-  !/[/\\\0\r\n]/.test(file) && !file.startsWith(".") && !isWikiDocument(file);
+  isWikiPath(file) && !isHidden(file) && !isWikiDocument(file);
 
-const documentSubject = (document: string) => document.replace(/\.(md|base|canvas)$/i, "");
+/** A document as an amendment names it: its name, without the extension a person never reads. */
+const documentSubject = (document: string) =>
+  document.slice(document.lastIndexOf("/") + 1).replace(/\.(md|base|canvas)$/i, "");
 
 const isCommitId = (value: string) => /^[0-9a-f]{4,64}$/i.test(value);
 
@@ -453,9 +454,7 @@ const planningError = (cause: unknown) =>
   new WikiError({
     reason: "invalid",
     message:
-      cause instanceof AmendmentError ||
-      cause instanceof WikiFormatError ||
-      cause instanceof WikiCollisionError
+      cause instanceof AmendmentError || cause instanceof WikiFormatError
         ? cause.message
         : "The amendment could not be planned.",
     cause,
@@ -657,7 +656,7 @@ const make = Effect.gen(function* () {
     const cached = snapshots.get(treeish);
     if (cached !== undefined) return cached;
     const listing = parseDocumentListing(
-      (yield* runGit("lsTree", wiki.root, ["ls-tree", "-z", treeish])).stdout,
+      (yield* runGit("lsTree", wiki.root, ["ls-tree", "-r", "-z", treeish])).stdout,
     );
     const contents = yield* readObjects(
       wiki.root,
@@ -2454,7 +2453,7 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const commit = yield* fileCommit(wiki, input);
           const listing = yield* fileListingAt(wiki, commit);
-          const found = input.paths.map((path) => listedFile(listing, path));
+          const found = input.paths.map((path) => listedFile(listing, path, input.from ?? null));
           // A media file's existence is all a card needs here: its bytes come as an asset.
           const readable = found.flatMap((entry) =>
             entry !== undefined && entry.size <= READ_TEXT_BYTES && !isMediaFile(entry.file)
@@ -2474,7 +2473,7 @@ const make = Effect.gen(function* () {
               return {
                 path,
                 exists: entry !== undefined,
-                file: entry?.file ?? path,
+                file: entry?.file ?? path.replace(/^\/+/, ""),
                 size: entry?.size ?? 0,
                 // Bytes that aren't text decode to something, but never without a NUL or a U+FFFD.
                 text: text == null || /[\0\uFFFD]/.test(text) ? null : text,

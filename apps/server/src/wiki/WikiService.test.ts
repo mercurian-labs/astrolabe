@@ -465,10 +465,104 @@ it.effect("lands an agent's amendments on its thread's one change request", () =
         ),
       );
       assert.equal(unchanged.reason, "invalid");
-      const nested = yield* failure(
-        wikis.amend({ wikiId, message: "Nested", changes: { "dir/X.md": "x" } }, agent("thread-a")),
+      const outside = yield* failure(
+        wikis.amend({ wikiId, message: "Out", changes: { "../X.md": "x" } }, agent("thread-a")),
       );
-      assert.equal(nested.reason, "invalid");
+      assert.equal(outside.reason, "invalid");
+    }),
+  ),
+);
+
+it.effect("reads, links and edits documents in folders, two of them sharing a name", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "a/Plan.md": "# One\n\n[[Plan]] [[Note]] [[a/Plan]]\n",
+        "a/Note.md": "Beside it.\n",
+        "b/Plan.md": "# Two\n\n[[Plan]]\n",
+        "b/deep/Board.canvas": '{"nodes":[{"id":"c","type":"file","file":"a/Plan.md"}],"edges":[]}',
+        "docs/README.md": "Operational, in any folder.\n",
+        ".github/Guide.md": "Hidden.\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Folders"]);
+
+      const index = yield* wikis.index({ wikiId });
+      const notes = new Map(index.notes.map((note) => [note.file, note]));
+      assert.deepEqual([...notes.keys()].toSorted(), [
+        ".github/Guide.md",
+        "Alpha.md",
+        "Beta.md",
+        "a/Note.md",
+        "a/Plan.md",
+        "b/Plan.md",
+      ]);
+      assert.equal(notes.get("a/Plan.md")?.name, "a/Plan");
+      // Itself twice over, and the board's file card.
+      assert.equal(notes.get("a/Plan.md")?.outgoing, 2);
+      assert.equal(notes.get("a/Plan.md")?.incoming, 2);
+      assert.deepEqual(
+        index.canvases.map(({ file }) => file),
+        ["b/deep/Board.canvas"],
+      );
+      assert.deepEqual(index.unresolved, []);
+
+      const beside = yield* wikis.readNote({ wikiId, name: "a/Plan" });
+      assert.equal(beside.file, "a/Plan.md");
+      assert.equal(beside.source, "# One\n\n[[Plan]] [[Note]] [[a/Plan]]\n");
+      assert.deepEqual(beside.incoming, ["a/Plan", "b/deep/Board.canvas"]);
+      assert.equal((yield* wikis.readNote({ wikiId, name: "Plan" })).file, "a/Plan.md");
+      assert.equal((yield* wikis.readNote({ wikiId, name: "/Plan" })).exists, false);
+      assert.equal((yield* wikis.readNote({ wikiId, name: "Guide" })).exists, false);
+      assert.equal((yield* wikis.readNote({ wikiId, name: ".github/Guide" })).exists, true);
+
+      const saved = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "b/Plan.md",
+          write: { kind: "text", file: "b/Plan.md", text: "# Two, edited.\n" },
+        },
+        WikiService.person,
+      );
+      const { changeRequestId } = saved.changeRequest!;
+      assert.equal(saved.changeRequest?.title, "Edit Plan");
+      assert.equal(saved.changeRequest?.amendments[0]?.subject, "Edit Plan");
+      assert.equal(
+        (yield* wikis.readNote({ wikiId, changeRequestId, name: "b/Plan" })).source,
+        "# Two, edited.\n",
+      );
+      assert.equal(
+        (yield* wikis.readNote({ wikiId, name: "b/Plan" })).source,
+        "# Two\n\n[[Plan]]\n",
+      );
+
+      const unwritten = yield* wikis.readNote({ wikiId, name: "/c/New.md" });
+      assert.deepInclude(unwritten, { name: "c/New", file: "c/New.md", exists: false });
+      const made = yield* wikis.autosave(
+        {
+          wikiId,
+          changeRequestId,
+          document: unwritten.file,
+          write: { kind: "text", file: unwritten.file, text: "New, in a new folder.\n" },
+        },
+        WikiService.person,
+      );
+      assert.equal(yield* git(root, ["show", `${made.commit}:c/New.md`]), "New, in a new folder.");
+
+      const { files } = yield* wikis.readFiles({
+        wikiId,
+        from: "b/L.md",
+        paths: ["Plan", "/a/Plan.md", "Missing.md"],
+      });
+      assert.deepEqual(
+        files.map(({ file, exists }) => [file, exists]),
+        [
+          ["b/Plan.md", true],
+          ["a/Plan.md", true],
+          ["Missing.md", false],
+        ],
+      );
     }),
   ),
 );
@@ -1639,6 +1733,32 @@ it.effect("saves a worktree's unsaved document edits as one amendment and leaves
         )).message,
         "No document in this worktree has unsaved changes.",
       );
+    }),
+  ),
+);
+
+it.effect("saves a worktree's documents in folders, and nothing git ignores", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, changeRequestId, worktree } =
+        yield* changeRequestWorktree(harness);
+      yield* write(worktree, {
+        ".gitignore": "build/\nsecret.md\n",
+        "notes/deep/Gamma.md": "In a folder.\n",
+        "build/Generated.md": "Ignored by its folder.\n",
+        "notes/secret.md": "Ignored by its name.\n",
+      });
+      const saved = yield* wikis.saveWorktree(
+        { wikiId, changeRequestId, message: "Hand edits" },
+        WikiService.person,
+      );
+      assert.equal(
+        yield* git(root, ["show", `${saved.commit}:notes/deep/Gamma.md`]),
+        "In a folder.",
+      );
+      const tree = yield* git(root, ["ls-tree", "-r", "--name-only", saved.commit]);
+      assert.notInclude(tree, "Generated.md");
+      assert.notInclude(tree, "secret.md");
     }),
   ),
 );

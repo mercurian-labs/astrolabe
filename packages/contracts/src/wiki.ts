@@ -222,6 +222,8 @@ export const WikiReadFilesInput = Schema.Struct({
   changeRequestId: Schema.optional(WikiChangeRequestId),
   commit: Schema.optional(TrimmedNonEmptyString),
   paths: Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(WIKI_READ_FILES_MAX)),
+  /** The file these paths are written in, which a bare name is searched from. */
+  from: Schema.optional(TrimmedNonEmptyString),
 });
 export type WikiReadFilesInput = typeof WikiReadFilesInput.Type;
 

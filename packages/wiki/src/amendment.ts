@@ -2,8 +2,9 @@ import { applyBaseEdits, type BaseEdit } from "./baseEdits.ts";
 import { renameInBase, renameInBaseBlocks } from "./bases.ts";
 import { isCanvasFile, parseCanvas, serializeCanvas } from "./canvas.ts";
 import { applyCanvasEdits, CanvasEditError, type CanvasEdit } from "./canvasEdits.ts";
-import { renameInCanvas, type CanvasRename } from "./canvasIndex.ts";
+import { renameInCanvas } from "./canvasIndex.ts";
 import { key, renameLinks } from "./links.ts";
+import { isWikiPath } from "./resolveLink.ts";
 import {
   isMapFile,
   sameEdge,
@@ -17,6 +18,7 @@ import {
   findMap,
   indexFiles,
   isWikiDocument,
+  linkedDocument,
   support,
   unresolved,
   type WikiFiles,
@@ -31,17 +33,13 @@ export class AmendmentError extends Error {
   override readonly name = "AmendmentError";
 }
 
-/** A flat document filename: no directories, no hidden files, no control characters. */
+/** A document's path: every segment is one a wiki can hold, and it ends in a document's type. */
 export function checkFileName(file: string): string {
   if (
-    !file ||
-    file.includes("/") ||
-    file.includes("\\") ||
-    /[\0\r\n]/.test(file) ||
-    file.startsWith(".") ||
+    !isWikiPath(file) ||
     !(file.endsWith(".md") || file.endsWith(".base") || file.endsWith(".canvas"))
   ) {
-    throw new AmendmentError(`Expected a flat .md, .base or .canvas filename: ${file}`);
+    throw new AmendmentError(`Expected a path to a .md, .base or .canvas file: ${file}`);
   }
   return file;
 }
@@ -132,12 +130,12 @@ export function planAmendment(
     }
     let stamped = false;
     for (const edge of map.edges) {
-      if (support(nextIndex, edge).length) continue;
+      if (support(nextIndex, edge, mapFile).length) continue;
       const existing = previous?.edges.find((candidate) => sameEdge(candidate, edge));
       if (!existing && !options.allowUnstamped) {
         throw new AmendmentError(`New map edge lacks prose support: ${edge.from} ↔ ${edge.to}`);
       }
-      const brokenNow = existing !== undefined && support(oldIndex, existing).length > 0;
+      const brokenNow = existing !== undefined && support(oldIndex, existing, mapFile).length > 0;
       const alreadyStanding = warnings.some((w) => sameEdge(w.edge, edge) && !w.resolution);
       if (brokenNow || !alreadyStanding) {
         warnings.push({
@@ -220,16 +218,24 @@ export function planCanvasEdits(
   }
 }
 
-/** What a rename touches: a note goes by its name, a canvas by its file name. */
-function renameOf(index: WikiIndex, from: string, to: string): CanvasRename {
-  const canvas = index.canvases.get(key(from));
-  if (canvas !== undefined) {
-    const toFile = isCanvasFile(to) ? to : `${to}.canvas`;
-    return { fromFile: canvas.file, toFile, fromName: canvas.file, toName: toFile };
+/** What a rename touches. A document stays in its folder until moves exist. */
+function renameOf(index: WikiIndex, from: string, to: string) {
+  if (/[/\\]/.test(to)) throw new AmendmentError(`A rename takes a name, not a path: ${to}`);
+  const fromFile = linkedDocument(index, from, null) ?? "";
+  const toName = index.canvases.has(fromFile) && !isCanvasFile(to) ? `${to}.canvas` : to;
+  if (!index.canvases.has(fromFile) && !index.notes.has(fromFile)) {
+    throw new AmendmentError(`No note named ${from}`);
   }
-  const note = index.notes.get(key(from));
-  if (!note) throw new AmendmentError(`No note named ${from}`);
-  return { fromFile: note.file, toFile: `${to}.md`, fromName: note.name, toName: to };
+  const folder = fromFile.slice(0, fromFile.lastIndexOf("/") + 1);
+  return {
+    fromFile,
+    toFile: `${folder}${toName}${index.canvases.has(fromFile) ? "" : ".md"}`,
+    /** A link's new text, written in `linker`: the name changes, any folder it spells stays. */
+    linkIn: (linker: string | null) => (target: string) =>
+      linkedDocument(index, target, linker) === fromFile
+        ? `${target.slice(0, target.lastIndexOf("/") + 1)}${toName}`
+        : null,
+  };
 }
 
 export function planTransform(
@@ -265,18 +271,14 @@ export function planTransform(
     return changes;
   }
   if (transform.kind === "rename") {
-    const rename = renameOf(index, transform.from, transform.to);
-    const { fromFile, toFile, fromName, toName } = rename;
+    const { fromFile, toFile, linkIn } = renameOf(index, transform.from, transform.to);
     const target = checkFileName(toFile);
-    if (index.notes.has(key(toName)) || Object.keys(files).some((f) => key(f) === key(target))) {
+    if (Object.keys(files).some((f) => key(f) === key(target))) {
       throw new AmendmentError(`Rename target exists: ${transform.to}`);
     }
     for (const note of index.notes.values()) {
-      const source = renameInBaseBlocks(
-        renameLinks(note.source, fromName, toName),
-        fromName,
-        toName,
-      );
+      const rename = linkIn(note.file);
+      const source = renameInBaseBlocks(renameLinks(note.source, rename), rename);
       if (note.file === fromFile) {
         changes[note.file] = null;
         changes[target] = source;
@@ -285,7 +287,11 @@ export function planTransform(
       }
     }
     for (const canvas of index.canvases.values()) {
-      const source = renameInCanvas(canvas.source, rename);
+      const source = renameInCanvas(canvas.source, {
+        fromFile,
+        toFile,
+        link: linkIn(canvas.file),
+      });
       if (canvas.file === fromFile) {
         changes[canvas.file] = null;
         changes[target] = source;
@@ -294,18 +300,19 @@ export function planTransform(
       }
     }
     for (const [baseFile, source] of index.bases) {
-      const next = renameInBase(source, fromName, toName);
+      const next = renameInBase(source, linkIn(baseFile));
       if (next !== source) changes[baseFile] = next;
     }
     for (const [mapFile, map] of index.maps) {
+      const rename = linkIn(mapFile);
       const renamed: SkillMap = {
         ...map,
         edges: map.edges.map((edge) => ({
           ...edge,
-          from: key(edge.from) === key(fromName) ? toName : edge.from,
-          to: key(edge.to) === key(fromName) ? toName : edge.to,
+          from: rename(edge.from) ?? edge.from,
+          to: rename(edge.to) ?? edge.to,
         })),
-        body: renameLinks(map.body ?? "", fromName, toName),
+        body: renameLinks(map.body ?? "", rename),
       };
       const next = serializeMap(renamed);
       if (next !== serializeMap(map)) changes[mapFile] = next;
@@ -355,7 +362,7 @@ export function planTransform(
       throw new AmendmentError("No unresolved warning with this id");
     if (
       edges.some((edge) => sameEdge(edge, warning.edge)) &&
-      !support(index, warning.edge).length
+      !support(index, warning.edge, mapFile).length
     ) {
       throw new AmendmentError("Repair the prose relationship or remove the edge before resolving");
     }

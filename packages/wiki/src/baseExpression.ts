@@ -16,7 +16,7 @@ import {
   type BaseScope,
 } from "./baseFunctions.ts";
 import { BaseError, equals, order, tagged, truthy, isList, type BaseValue } from "./baseValues.ts";
-import { key, noteName } from "./links.ts";
+import { noteName } from "./links.ts";
 
 export { BaseError } from "./baseValues.ts";
 
@@ -479,10 +479,13 @@ const quoted = (text: string, quote: string): string =>
   quote;
 
 /**
- * The expression with every literal that names the note `from` naming `to` instead. An
- * expression that doesn't parse comes back unchanged.
+ * The expression with every literal `rename` gives a new name to; it takes a note's name and
+ * returns null for one to leave. An expression that doesn't parse comes back unchanged.
  */
-export function renameInExpression(source: string, from: string, to: string): string {
+export function renameInExpression(
+  source: string,
+  rename: (name: string) => string | null,
+): string {
   let expression: Expr;
   try {
     expression = parseExpression(source, "a renamed base");
@@ -491,7 +494,8 @@ export function renameInExpression(source: string, from: string, to: string): st
   }
   let output = source;
   for (const reference of noteReferences(expression).toReversed()) {
-    if (key(reference.name) !== key(from)) continue;
+    const to = rename(reference.name);
+    if (to === null) continue;
     output =
       output.slice(0, reference.from) +
       quoted(renamedText(reference.text, to), source[reference.from] ?? '"') +

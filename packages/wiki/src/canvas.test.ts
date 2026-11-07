@@ -266,8 +266,7 @@ describe("renameInCanvas", () => {
   const rename = {
     fromFile: "~/N1.md",
     toFile: "~/N1r.md",
-    fromName: "~/N1",
-    toName: "~/N1r",
+    link: (target: string) => (target === "~/N1" ? "~/N1r" : null),
   };
 
   it("matches what Obsidian saves, but for Markdown-style links, which notes don't rename either", () => {
@@ -281,8 +280,7 @@ describe("renameInCanvas", () => {
     const next = renameInCanvas(source, {
       fromFile: "a/pic.png",
       toFile: "a/new.png",
-      fromName: "a/pic.png",
-      toName: "a/new.png",
+      link: () => null,
     });
     expect(JSON.parse(next).nodes[0].background).toBe("a/new.png");
   });

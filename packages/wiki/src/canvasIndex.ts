@@ -35,9 +35,8 @@ export interface CanvasRename {
   /** The file's whole path, as file cards and group backgrounds hold it. */
   readonly fromFile: string;
   readonly toFile: string;
-  /** Its name, as `[[links]]` hold it. */
-  readonly fromName: string;
-  readonly toName: string;
+  /** What a text card's link becomes; null for a link that leads elsewhere. */
+  readonly link: (target: string) => string | null;
 }
 
 /**
@@ -62,7 +61,7 @@ export function renameInCanvas(source: string, rename: CanvasRename): string {
       replaced = { ...node, background: rename.toFile };
     }
     if (node.type === "text" && typeof node.text === "string") {
-      const text = renameLinks(node.text, rename.fromName, rename.toName);
+      const text = renameLinks(node.text, rename.link);
       if (text !== node.text) replaced = { ...node, text };
     }
     if (replaced === undefined) return raw;

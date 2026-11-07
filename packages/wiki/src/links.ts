@@ -58,11 +58,15 @@ export function links(source: string): ReadonlyArray<WikiLink> {
   return found;
 }
 
-/** Rewrites every real link to `from` so it points at `to`, keeping aliases, headings and `.md`. */
-export function renameLinks(source: string, from: string, to: string): string {
+/**
+ * Rewrites every real link `rename` gives a new target to, keeping aliases, headings and `.md`.
+ * `rename` takes a link's target and returns null for one to leave.
+ */
+export function renameLinks(source: string, rename: (target: string) => string | null): string {
   let output = source;
   for (const link of links(source).toReversed()) {
-    if (key(link.target) !== key(from)) continue;
+    const to = rename(link.target);
+    if (to === null) continue;
     const boundary = link.inner.search(/#|\\?\|/);
     const suffix = boundary < 0 ? "" : link.inner.slice(boundary);
     const oldTarget = (boundary < 0 ? link.inner : link.inner.slice(0, boundary)).trim();

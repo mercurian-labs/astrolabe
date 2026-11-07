@@ -9,15 +9,18 @@ import {
   baseBlocks,
   canvasMatches,
   canvasSourceOutline,
+  documentFile,
   findMap,
   isCanvasFile,
-  isDocumentLink,
   key,
+  linkDestination,
+  linkedDocument,
   noteName,
   parseCanvas,
   support,
-  unresolved,
   typedLinks,
+  typesTo,
+  unresolved,
   walk,
   type CanvasMatch,
   type WikiFiles,
@@ -31,12 +34,14 @@ import type {
   WikiQueryInput,
 } from "@t3tools/contracts";
 
-/** Each distinct link target of a note or canvas, as first written, compared case-insensitively. */
-const outgoingTargets = (index: WikiIndex, name: string): ReadonlyArray<string> => {
-  const links = (index.notes.get(key(name)) ?? index.canvases.get(key(name)))?.links ?? [];
+/** Each distinct document a note or canvas links to, as first written. */
+const outgoingTargets = (index: WikiIndex, file: string): ReadonlyArray<string> => {
+  const links = (index.notes.get(file) ?? index.canvases.get(file))?.links ?? [];
   const seen = new Map<string, string>();
-  for (const link of links)
-    if (!seen.has(key(link.target))) seen.set(key(link.target), link.target);
+  for (const link of links) {
+    const id = linkDestination(index, link, file) ?? key(link.target);
+    if (!seen.has(id)) seen.set(id, link.target);
+  }
   return [...seen.values()];
 };
 
@@ -49,18 +54,27 @@ export const indexResult = (
   const incoming = new Map<string, Set<string>>();
   const links: Array<{ from: string; to: string }> = [];
   const linkTypes = new Set<string>();
-  const follow = (name: string) => {
-    const targets = outgoingTargets(index, name);
-    for (const target of targets) {
-      links.push({ from: name, to: target });
-      const sources = incoming.get(key(target)) ?? new Set<string>();
-      sources.add(key(name));
-      incoming.set(key(target), sources);
+  /** Records a document's links, returning how many documents they reach. */
+  const follow = (
+    name: string,
+    file: string,
+    outgoing: ReadonlyArray<{ readonly target: string; readonly card?: "text" | "file" }>,
+  ) => {
+    const reached = new Set<string>();
+    for (const link of outgoing) {
+      const landed = linkDestination(index, link, file);
+      const id = landed ?? key(link.target);
+      if (reached.has(id)) continue;
+      reached.add(id);
+      links.push({ from: name, to: landed === null ? link.target : noteName(landed) });
+      const sources = incoming.get(id) ?? new Set<string>();
+      sources.add(file);
+      incoming.set(id, sources);
     }
-    return targets;
+    return reached.size;
   };
   const notes = [...index.notes.values()].map((note) => {
-    const targets = follow(note.name);
+    const outgoing = follow(note.name, note.file, note.links);
     for (const link of typedLinks(note.source, note.links)) {
       for (const type of link.types) linkTypes.add(type);
     }
@@ -68,22 +82,22 @@ export const indexResult = (
     return {
       name: note.name,
       file: note.file,
-      outgoing: targets.length,
+      outgoing,
       ...(editedAt === undefined ? {} : { editedAt }),
     };
   });
-  const canvases = [...index.canvases.values()].map(({ file }) => {
+  const canvases = [...index.canvases.values()].map(({ file, links: outgoing }) => {
     const editedAt = editTimes.get(file);
     return {
       file,
-      outgoing: follow(file).length,
+      outgoing: follow(file, file, outgoing),
       ...(editedAt === undefined ? {} : { editedAt }),
     };
   });
   return {
     wikiId,
     commit,
-    notes: notes.map((note) => ({ ...note, incoming: incoming.get(key(note.name))?.size ?? 0 })),
+    notes: notes.map((note) => ({ ...note, incoming: incoming.get(note.file)?.size ?? 0 })),
     links,
     linkTypes: [...linkTypes].toSorted((a, b) => a.localeCompare(b)),
     bases: [...index.bases.keys()].map((file) => {
@@ -92,7 +106,7 @@ export const indexResult = (
     }),
     canvases: canvases.map((canvas) => ({
       ...canvas,
-      incoming: incoming.get(key(canvas.file))?.size ?? 0,
+      incoming: incoming.get(canvas.file)?.size ?? 0,
     })),
     maps: [...index.maps].map(([file, map]) => ({
       file,
@@ -106,7 +120,10 @@ export const indexResult = (
   };
 };
 
-/** A note, or any other wiki document such as a skill map, read by name. A canvas reads as its outline. */
+/**
+ * A note, or any other wiki document such as a skill map, by what a link from the root would
+ * find; a client names a file with a leading `/`. A canvas reads as its outline.
+ */
 export const noteResult = (
   wikiId: WikiId,
   commit: string,
@@ -114,7 +131,8 @@ export const noteResult = (
   files: WikiFiles,
   requested: string,
 ): WikiNoteResult => {
-  const canvas = index.canvases.get(key(requested));
+  const file = documentFile(index, requested);
+  const canvas = index.canvases.get(file);
   if (canvas !== undefined) {
     return {
       wikiId,
@@ -124,24 +142,19 @@ export const noteResult = (
       exists: true,
       source: canvasSourceOutline(canvas.file, canvas.source),
       outgoing: outgoingTargets(index, canvas.file),
-      incoming: backlinks(index, canvas.file),
+      incoming: backlinks(index, `/${canvas.file}`),
     };
   }
-  const name = noteName(requested);
-  const note = index.notes.get(key(name));
-  const document =
-    note === undefined
-      ? Object.keys(files).find((file) => key(file) === key(`${name}.md`))
-      : undefined;
+  const source = files[file];
   return {
     wikiId,
     commit,
-    name: note?.name ?? (document === undefined ? name : noteName(document)),
-    file: note?.file ?? document ?? `${name}.md`,
-    exists: note !== undefined || document !== undefined,
-    source: note?.source ?? (document === undefined ? "" : (files[document] ?? "")),
-    outgoing: outgoingTargets(index, name),
-    incoming: backlinks(index, name),
+    name: noteName(file),
+    file,
+    exists: source !== undefined,
+    source: source ?? "",
+    outgoing: outgoingTargets(index, file),
+    incoming: backlinks(index, `/${file}`),
   };
 };
 
@@ -161,19 +174,17 @@ export const locateBase = (
   if ((input.base === undefined) === (input.source === undefined)) {
     return { problem: "invalid", message: "Name a base, or give a base's source; not both." };
   }
+  const self = input.note === undefined ? null : documentFile(index, input.note);
   if (input.source !== undefined) {
-    if (input.note === undefined) return { source: input.source, self: undefined };
-    const note = index.notes.get(key(noteName(input.note)));
-    return { source: input.source, self: note?.file ?? `${noteName(input.note)}.md` };
+    return { source: input.source, self: self ?? undefined };
   }
   const name = input.base ?? "";
-  const wanted = [key(name), key(`${name}.base`)];
-  for (const candidate of wanted) {
-    for (const [file, source] of index.bases) {
-      if (key(file) === candidate) return { source, self: file };
-    }
+  for (const candidate of [name, `${name}.base`]) {
+    const file = linkedDocument(index, candidate, self);
+    const source = file === null ? undefined : index.bases.get(file);
+    if (file !== null && source !== undefined) return { source, self: file };
   }
-  const note = index.notes.get(key(noteName(name)));
+  const note = index.notes.get(linkedDocument(index, name, self) ?? "");
   if (note === undefined) {
     return { problem: "not-found", message: `No base or note is named ${name}.` };
   }
@@ -205,25 +216,21 @@ export interface WikiLinksResult {
 }
 
 export const linksResult = (index: WikiIndex, requested: string): WikiLinksResult => {
-  const canvas = index.canvases.get(key(requested));
-  const name = canvas?.file ?? noteName(requested);
-  const note = index.notes.get(key(name));
-  const typed = note ? typedLinks(note.source, note.links) : [];
+  const file = documentFile(index, requested);
+  const note = index.notes.get(file);
   const typedBacklinks = [...index.notes.values()].flatMap((source) => {
-    const types = typedLinks(source.source, source.links).find(
-      (link) => key(link.target) === key(name),
-    )?.types;
+    const types = typesTo(index, source, file);
     return types ? [{ source: source.name, types }] : [];
   });
   return {
-    name: note?.name ?? name,
-    exists: note !== undefined || canvas !== undefined,
-    outgoing: outgoingTargets(index, name).map((target) => ({
+    name: index.canvases.has(file) ? file : noteName(file),
+    exists: note !== undefined || index.canvases.has(file),
+    outgoing: outgoingTargets(index, file).map((target) => ({
       target,
-      unresolved: !isDocumentLink(index, target),
-      types: typed.find((link) => key(link.target) === key(target))?.types ?? [],
+      unresolved: linkedDocument(index, target, file) === null,
+      types: (note && typesTo(index, note, documentFile(index, target, file))) ?? [],
     })),
-    backlinks: backlinks(index, name),
+    backlinks: backlinks(index, `/${file}`),
     typedBacklinks,
     unresolved: unresolved(index),
   };
@@ -268,9 +275,9 @@ export const orientResult = (index: WikiIndex, mapName: string): WikiOrientResul
     name: map.name,
     purpose: map.purpose,
     teaching: map.body ?? "",
-    walk: walk(map, index),
+    walk: walk(map, index, file),
     edges: map.edges.map((edge) => {
-      const evidence = support(index, edge);
+      const evidence = support(index, edge, file);
       return {
         from: edge.from,
         type: edge.type,

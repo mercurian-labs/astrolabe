@@ -73,7 +73,7 @@ export const changeRequestMetadataRef = (id: string) => `refs/wiki/change-reques
 export const CHANGE_REQUEST_BRANCH_PREFIX = "refs/heads/cr/";
 export const CHANGE_REQUEST_METADATA_PREFIX = "refs/wiki/change-requests/";
 
-/** The wiki documents of a `git ls-tree -z` listing, with their blob ids. */
+/** The wiki documents of a `git ls-tree -r -z` listing, with their blob ids. */
 export const parseDocumentListing = (
   output: string,
 ): ReadonlyArray<{ readonly file: string; readonly oid: string }> =>

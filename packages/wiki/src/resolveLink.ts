@@ -133,8 +133,10 @@ export function resolveLink(
   const text = linkPath(target);
   if (text !== target.trim()) {
     // A path can hold what would otherwise start a heading or an alias.
-    const whole = atPath(fromRoot(target.trim()), files);
-    if (whole !== null) return { file: whole, others: [] };
+    for (const path of spellings(fromRoot(target.trim()))) {
+      const whole = atPath(path, files);
+      if (whole !== null) return { file: whole, others: [] };
+    }
   }
   if (fromRoot(text) === "") return UNRESOLVED;
   if (text.startsWith("/")) {
