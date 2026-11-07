@@ -264,22 +264,20 @@ describe("canvas links", () => {
 
 describe("renameInCanvas", () => {
   const rename = {
-    fromFile: "~/N1.md",
-    toFile: "~/N1r.md",
+    path: (file: string) => (file === "~/N1.md" ? "~/N1r.md" : null),
     link: (target: string) => (target === "~/N1" ? "~/N1r" : null),
   };
 
-  it("matches what Obsidian saves, but for Markdown-style links, which notes don't rename either", () => {
+  it("matches what Obsidian saves", () => {
     expect(renameInCanvas(fixture("links-on-deleteNote-closed.canvas"), rename)).toBe(
-      fixture("links-on-renameNote-open.canvas").replace("[md](~/N1r.md)", "[md](~/N1.md)"),
+      fixture("links-on-renameNote-open.canvas"),
     );
   });
 
   it("follows a group's background by its whole path", () => {
     const source = '{"nodes":[{"id":"g","type":"group","background":"a/pic.png"}],"edges":[]}';
     const next = renameInCanvas(source, {
-      fromFile: "a/pic.png",
-      toFile: "a/new.png",
+      path: (file) => (file === "a/pic.png" ? "a/new.png" : null),
       link: () => null,
     });
     expect(JSON.parse(next).nodes[0].background).toBe("a/new.png");

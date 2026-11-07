@@ -580,6 +580,8 @@ export const WikiFileChange = Schema.Struct({
   before: Schema.NullOr(Schema.String),
   /** The file at the change request's head; null when the change request deletes it. */
   after: Schema.NullOr(Schema.String),
+  /** The path it had on the base, when it moved. */
+  movedFrom: Schema.optional(Schema.String),
 });
 export type WikiFileChange = typeof WikiFileChange.Type;
 
@@ -742,6 +744,18 @@ export const WikiAutosaveResult = Schema.Struct({
   commit: Schema.NullOr(Schema.String),
 });
 export type WikiAutosaveResult = typeof WikiAutosaveResult.Type;
+
+export const WikiMoveInput = Schema.Struct({
+  wikiId: WikiId,
+  /** The change request being edited; without one, the move lands in the person's draft. */
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  /** A document's path, or a folder's when `folder`. */
+  from: TrimmedNonEmptyString,
+  /** The path from the root. A document's may leave off its extension. */
+  to: TrimmedNonEmptyString,
+  folder: Schema.optional(Schema.Boolean),
+});
+export type WikiMoveInput = typeof WikiMoveInput.Type;
 
 export const WikiDraftPromoteInput = Schema.Struct({
   wikiId: WikiId,

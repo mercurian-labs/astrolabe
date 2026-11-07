@@ -175,6 +175,10 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:draft:move",
       tag: WS_METHODS.wikiDraftMove,
     }),
+    move: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:move",
+      tag: WS_METHODS.wikiMove,
+    }),
     keepCanvas: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:keep-canvas",
       tag: WS_METHODS.wikiKeepCanvas,

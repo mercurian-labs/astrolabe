@@ -447,6 +447,7 @@ import {
   WikiSummary,
   WikiTarget,
   WikiDraftMoveInput,
+  WikiMoveInput,
   WikiDraftPromoteInput,
   WikiTransformInput,
   WikiKeepCanvasInput,
@@ -692,6 +693,7 @@ export const WS_METHODS = {
   wikiAutosave: "wiki.autosave",
   wikiDraftPromote: "wiki.draftPromote",
   wikiDraftMove: "wiki.draftMove",
+  wikiMove: "wiki.move",
   wikiRevertAmendment: "wiki.revertAmendment",
   wikiSaveWorktree: "wiki.saveWorktree",
   wikiMerge: "wiki.merge",
@@ -2286,6 +2288,12 @@ const WsWikiDraftMoveRpc = Rpc.make(WS_METHODS.wikiDraftMove, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiMoveRpc = Rpc.make(WS_METHODS.wikiMove, {
+  payload: WikiMoveInput,
+  success: WikiAutosaveResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiKeepCanvasRpc = Rpc.make(WS_METHODS.wikiKeepCanvas, {
   payload: WikiKeepCanvasInput,
   success: WikiKeepCanvasResult,
@@ -2818,6 +2826,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiAutosaveRpc,
   WsWikiDraftPromoteRpc,
   WsWikiDraftMoveRpc,
+  WsWikiMoveRpc,
   WsWikiKeepCanvasRpc,
   WsWikiRevertAmendmentRpc,
   WsWikiSaveWorktreeRpc,

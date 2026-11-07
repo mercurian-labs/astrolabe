@@ -271,6 +271,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.wikiAutosave]: "wiki",
   [WS_METHODS.wikiDraftPromote]: "wiki",
   [WS_METHODS.wikiDraftMove]: "wiki",
+  [WS_METHODS.wikiMove]: "wiki",
   [WS_METHODS.wikiRevertAmendment]: "wiki",
   [WS_METHODS.wikiSaveWorktree]: "wiki",
   [WS_METHODS.wikiMerge]: "wiki",

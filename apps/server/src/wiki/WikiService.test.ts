@@ -2410,6 +2410,160 @@ it.effect("moves a draft's pasted image out whole, or goes back on it", () =>
   ),
 );
 
+const LONG_NOTE = `${"A line the note keeps through its move.\n".repeat(8)}Links to [[Beta]].\n`;
+
+it.effect("shows a moved document as a move, with its creation time carried", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Long.md": LONG_NOTE, "Mentions.md": "See [[Long]].\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Long"]);
+      const before = yield* wikis.query({
+        wikiId,
+        source: "views:\n  - type: table\n    order: [file.path, file.ctime]\n",
+      });
+      const created = before.rows.find((row) => row.file === "Long.md")?.values["file.ctime"];
+      yield* TestClock.adjust("1 hour");
+      const moved = yield* wikis.move(
+        { wikiId, from: "Long.md", to: "shelf/deep/Long.md" },
+        WikiService.person,
+      );
+      const changeRequestId = moved.changeRequest!.changeRequestId;
+      const detail = yield* wikis.changeRequestsGet({ wikiId, changeRequestId });
+      const change = detail.files.find(({ file }) => file === "shelf/deep/Long.md");
+      assert.equal(change?.movedFrom, "Long.md");
+      assert.equal(change?.before, LONG_NOTE);
+      assert.equal(change?.after, LONG_NOTE);
+      assert.isFalse(detail.files.some(({ file }) => file === "Long.md"));
+      assert.isFalse(detail.files.some(({ file }) => file === "Mentions.md"));
+      // What travels keeps seeing both paths: a draft can hand on either.
+      assert.includeMembers([...detail.changeRequest.files], ["Long.md", "shelf/deep/Long.md"]);
+      assert.equal(moved.changeRequest!.amendments.at(-1)?.subject, "Move Long to shelf/deep");
+      const after = yield* wikis.query({
+        wikiId,
+        changeRequestId,
+        source: "views:\n  - type: table\n    order: [file.path, file.ctime]\n",
+      });
+      const carried = after.rows.find((row) => row.file === "shelf/deep/Long.md");
+      assert.deepEqual(carried?.values["file.ctime"], created);
+    }),
+  ),
+);
+
+it.effect("keeps a move in a draft that follows main, and merges it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Long.md": LONG_NOTE });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Long"]);
+      const moved = yield* wikis.move(
+        { wikiId, from: "Long.md", to: "shelf/Long.md" },
+        WikiService.person,
+      );
+      const changeRequestId = moved.changeRequest!.changeRequestId;
+      yield* write(root, { "Long.md": `${LONG_NOTE}Added on main.\n`, "Late.md": "Late.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "On main"]);
+
+      const saved = yield* wikis.autosave(
+        { wikiId, ...noteEdit("Edited in the draft.\n") },
+        WikiService.person,
+      );
+      assert.equal(saved.changeRequest?.changeRequestId, changeRequestId);
+      const tree = yield* git(root, ["ls-tree", "-r", "--name-only", saved.commit!]);
+      assert.notInclude(tree.split("\n"), "Long.md");
+      assert.include(tree.split("\n"), "Late.md");
+      assert.include(yield* git(root, ["show", `${saved.commit}:shelf/Long.md`]), "Added on main.");
+
+      yield* wikis.draftPromote({ wikiId, changeRequestId, title: "Moved" }, WikiService.person);
+      yield* wikis.merge({ wikiId, changeRequestId });
+      const landed = yield* git(root, ["ls-tree", "-r", "--name-only", "HEAD"]);
+      assert.include(landed.split("\n"), "shelf/Long.md");
+      assert.notInclude(landed.split("\n"), "Long.md");
+    }),
+  ),
+);
+
+it.effect("reverts a move, keeping what was edited after it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, { "Long.md": LONG_NOTE, "Mentions.md": "See [[Long]].\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Long"]);
+      yield* wikis.autosave({ wikiId, ...noteEdit("Mine.\n") }, WikiService.person);
+      yield* write(root, { "other/Long.md": "Another of the same name.\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Copy"]);
+      const moved = yield* wikis.move(
+        { wikiId, from: "Long.md", to: "shelf/Long.md" },
+        WikiService.person,
+      );
+      const changeRequestId = moved.changeRequest!.changeRequestId;
+      assert.equal(
+        yield* git(root, ["show", `${moved.commit}:Mentions.md`]),
+        "See [[shelf/Long]].",
+      );
+      yield* wikis.autosave(
+        {
+          wikiId,
+          changeRequestId,
+          document: "shelf/Long.md",
+          write: { kind: "text", file: "shelf/Long.md", text: `${LONG_NOTE}Later.\n` },
+        },
+        WikiService.person,
+      );
+      const reverted = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: moved.commit! },
+        WikiService.person,
+      );
+      const files = (yield* git(root, ["ls-tree", "-r", "--name-only", reverted.commit])).split(
+        "\n",
+      );
+      assert.include(files, "Long.md");
+      assert.notInclude(files, "shelf/Long.md");
+      assert.include(yield* git(root, ["show", `${reverted.commit}:Long.md`]), "Later.");
+      assert.equal(yield* git(root, ["show", `${reverted.commit}:Mentions.md`]), "See [[Long]].");
+    }),
+  ),
+);
+
+it.effect("renames a folder as one amendment, carrying what it holds, and takes it back", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      yield* write(root, {
+        "a/Long.md": LONG_NOTE,
+        "a/sub/shot.txt": "A picture of sorts.\n",
+        "Mentions.md": "See [[a/Long]] and ![[a/sub/shot.txt]].\n",
+      });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Folder"]);
+      const moved = yield* wikis.move(
+        { wikiId, from: "a", to: "z/y", folder: true },
+        WikiService.person,
+      );
+      assert.equal(moved.changeRequest!.amendments.length, 1);
+      const files = (yield* git(root, ["ls-tree", "-r", "--name-only", moved.commit!])).split("\n");
+      assert.includeMembers(files, ["z/y/Long.md", "z/y/sub/shot.txt"]);
+      assert.isFalse(files.some((file) => file.startsWith("a/")));
+      assert.equal(
+        yield* git(root, ["show", `${moved.commit}:Mentions.md`]),
+        "See [[Long]] and ![[shot.txt]].",
+      );
+      const changeRequestId = moved.changeRequest!.changeRequestId;
+      const undone = yield* wikis.revertAmendment(
+        { wikiId, changeRequestId, commit: moved.commit! },
+        WikiService.person,
+      );
+      const restored = yield* git(root, ["ls-tree", "-r", "--name-only", undone.commit]);
+      assert.includeMembers(restored.split("\n"), ["a/Long.md", "a/sub/shot.txt"]);
+    }),
+  ),
+);
+
 it.effect("refuses a move that conflicts, leaving both sides as they were", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

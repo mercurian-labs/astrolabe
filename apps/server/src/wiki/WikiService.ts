@@ -12,14 +12,19 @@ import {
   indexFiles,
   isWikiDocument,
   keepWarningHistory,
+  folderOf,
   planAmendment,
+  planFolderRename,
+  planRename,
   planCanvasEdits,
   planTransform,
   WikiFormatError,
   type AmendmentStamp,
   type PlannedAmendment,
+  type PlannedMove,
   type WikiAttachment,
   type WikiChanges,
+  type WikiBlob,
   type WikiFiles,
   type WikiIndex,
   canvasMerge,
@@ -59,6 +64,7 @@ import {
   type WikiCodeStatusResult,
   type WikiCreateInput,
   type WikiDraftMoveInput,
+  type WikiMoveInput,
   type WikiDraftPromoteInput,
   WikiError,
   type WikiEvent,
@@ -123,7 +129,8 @@ import {
   parseAmendmentLog,
   parseBatchOutput,
   parseBusyPaths,
-  parseDocumentListing,
+  parseChangeList,
+  parseTreeListing,
   EDIT_TIMES_DEPTH,
   EDIT_TIMES_FORMAT,
   parseFileListing,
@@ -297,6 +304,14 @@ export class WikiService extends Context.Service<
       input: WikiDraftMoveInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /**
+     * Moves a document or a folder as one amendment, in the person's draft or the change request
+     * named, with every link that led to what moved following it.
+     */
+    readonly move: (
+      input: WikiMoveInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiAutosaveResult, WikiError>;
     /** Undoes one amendment with a new one, keeping later independent work. */
     readonly revertAmendment: (
       input: WikiRevertInput,
@@ -360,6 +375,8 @@ interface GitRunOptions {
 interface Snapshot {
   readonly files: WikiFiles;
   readonly index: WikiIndex;
+  /** Every file that isn't a document. */
+  readonly others: ReadonlyArray<WikiBlob>;
 }
 
 /** A blob to write at each path, or null to delete it: a file no text could carry. */
@@ -459,6 +476,13 @@ const isAttachmentName = (file: string) =>
 /** A document as an amendment names it: its name, without the extension a person never reads. */
 const documentSubject = (document: string) =>
   document.slice(document.lastIndexOf("/") + 1).replace(/\.(md|base|canvas)$/i, "");
+
+const moveSubject = (from: string, to: string) => {
+  if (folderOf(from) === folderOf(to)) {
+    return `Rename ${documentSubject(from)} to ${documentSubject(to)}`;
+  }
+  return `Move ${documentSubject(from)} to ${folderOf(to) || "the root"}`;
+};
 
 const isCommitId = (value: string) => /^[0-9a-f]{4,64}$/i.test(value);
 
@@ -673,9 +697,11 @@ const make = Effect.gen(function* () {
   ) {
     const cached = snapshots.get(treeish);
     if (cached !== undefined) return cached;
-    const listing = parseDocumentListing(
+    const tree = parseTreeListing(
       (yield* runGit("lsTree", wiki.root, ["ls-tree", "-r", "-z", treeish])).stdout,
     );
+    const listing = tree.filter((entry) => isWikiDocument(entry.file));
+    const others = tree.filter((entry) => !isWikiDocument(entry.file));
     const contents = yield* readObjects(
       wiki.root,
       listing.map((entry) => entry.oid),
@@ -685,7 +711,7 @@ const make = Effect.gen(function* () {
       files[entry.file] = contents[position] ?? "";
     });
     const index = yield* Effect.try({ try: () => indexFiles(files), catch: planningError });
-    const snapshot: Snapshot = { files, index };
+    const snapshot: Snapshot = { files, index, others };
     snapshots.set(treeish, snapshot);
     return snapshot;
   });
@@ -1409,7 +1435,11 @@ const make = Effect.gen(function* () {
     target: Target,
     author: WikiAuthor,
     message: string,
-    plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment & CarriedBlobs,
+    plan: (
+      files: WikiFiles,
+      stamp: AmendmentStamp,
+      others: ReadonlyArray<WikiBlob>,
+    ) => PlannedAmendment & CarriedBlobs,
     options: {
       readonly reverts?: string;
       readonly follow?: boolean;
@@ -1438,7 +1468,7 @@ const make = Effect.gen(function* () {
       newId: () => `${amendment}-${++warnings}`,
     };
     const planned = yield* Effect.try({
-      try: () => plan(snapshot.files, stamp),
+      try: () => plan(snapshot.files, stamp, snapshot.others),
       catch: planningError,
     });
     const tree = yield* buildTree(
@@ -1514,7 +1544,11 @@ const make = Effect.gen(function* () {
   const amendWith = (
     input: WikiAmendInput | WikiTransformInput,
     author: WikiAuthor,
-    plan: (files: WikiFiles, stamp: AmendmentStamp) => PlannedAmendment,
+    plan: (
+      files: WikiFiles,
+      stamp: AmendmentStamp,
+      others: ReadonlyArray<WikiBlob>,
+    ) => PlannedAmendment & CarriedBlobs,
   ) =>
     withWiki(
       input.wikiId,
@@ -1543,9 +1577,24 @@ const make = Effect.gen(function* () {
     return amendWith(input, author, (files, stamp) => planAmendment(files, input.changes, stamp));
   };
 
+  /** A move adds no edge, so an edge that stood unsupported before only comes along. */
+  const planMoved = (files: WikiFiles, stamp: AmendmentStamp, { changes, blobs }: PlannedMove) => ({
+    ...(Object.keys(changes).length === 0
+      ? { changes, errors: [] }
+      : planAmendment(files, changes, stamp, { allowUnstamped: true })),
+    blobs,
+  });
+
   const planWikiTransform =
     (change: WikiTransform) =>
-    (files: WikiFiles, stamp: AmendmentStamp): PlannedAmendment => {
+    (
+      files: WikiFiles,
+      stamp: AmendmentStamp,
+      others: ReadonlyArray<WikiBlob>,
+    ): PlannedAmendment & CarriedBlobs => {
+      if (change.kind === "rename") {
+        return planMoved(files, stamp, planRename(files, others, change.from, change.to));
+      }
       if (change.kind !== "canvas") {
         return planAmendment(files, planTransform(files, change, stamp), stamp);
       }
@@ -1681,6 +1730,18 @@ const make = Effect.gen(function* () {
     return yield* revParse(wiki.root, `${stored.head}^`);
   });
 
+  /** The change request a person's edit lands on: their draft, caught up with main. */
+  const draftTarget = Effect.fn("WikiService.draftTarget")(function* (
+    wiki: WikiRecord,
+    input: WikiAutosaveInput,
+    author: WikiAuthor,
+  ) {
+    const found = yield* autosaveTarget(wiki, input, author);
+    return found.kind === "existing" && found.stored.record.draft
+      ? { ...found, stored: yield* followMain(wiki, found.stored, input.document, author) }
+      : found;
+  });
+
   const autosave: WikiService["Service"]["autosave"] = (input, author) =>
     withWiki(
       input.wikiId,
@@ -1688,14 +1749,7 @@ const make = Effect.gen(function* () {
         locked(
           wiki,
           Effect.gen(function* () {
-            const found = yield* autosaveTarget(wiki, input, author);
-            const target: typeof found =
-              found.kind === "existing" && found.stored.record.draft
-                ? {
-                    ...found,
-                    stored: yield* followMain(wiki, found.stored, input.document, author),
-                  }
-                : found;
+            const target = yield* draftTarget(wiki, input, author);
             const { write } = input;
             const nothing =
               target.kind === "new"
@@ -1752,6 +1806,42 @@ const make = Effect.gen(function* () {
                 () => nothing,
               ),
             );
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  const move: WikiService["Service"]["move"] = ({ folder, from, to, ...input }, author) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const target = yield* draftTarget(
+              wiki,
+              {
+                ...input,
+                document: from,
+                write: { kind: "transform", transform: { kind: "rename", from, to } },
+              },
+              author,
+            );
+            const { changeRequest, commit } = yield* land(
+              wiki,
+              target,
+              author,
+              moveSubject(from, to),
+              (files, stamp, others) =>
+                planMoved(
+                  files,
+                  stamp,
+                  folder === true
+                    ? planFolderRename(files, others, from, to)
+                    : planRename(files, others, `/${from}`, `/${to}`),
+                ),
+            );
+            return { changeRequest, commit } satisfies WikiAutosaveResult;
           }),
         ),
       input.changeRequestId,
@@ -2326,10 +2416,10 @@ const make = Effect.gen(function* () {
     if (cached !== undefined) return cached;
     const log = yield* runGit("editTimes", wiki.root, [
       "log",
-      "--no-renames",
+      "--find-renames",
       `--max-count=${EDIT_TIMES_DEPTH}`,
       `--format=${EDIT_TIMES_FORMAT}`,
-      "--name-only",
+      "--name-status",
       "-z",
       commit,
       "--",
@@ -2708,26 +2798,27 @@ const make = Effect.gen(function* () {
                   allowExitCodes: [1],
                 })).stdout.trim() || stored.record.base
               : stored.record.base;
-          const names = (yield* runGit("diffNames", wiki.root, [
-            "diff",
-            "--no-renames",
-            "--name-only",
-            "-z",
-            from,
-            stored.head,
-          ])).stdout
-            .split("\0")
-            .filter((file) => file.length > 0 && isWikiDocument(file));
+          const listed = parseChangeList(
+            (yield* runGit("changeList", wiki.root, [
+              "diff",
+              "--find-renames",
+              "--name-status",
+              "-z",
+              from,
+              stored.head,
+            ])).stdout,
+          ).filter(({ file }) => isWikiDocument(file));
           const contents = yield* readObjects(wiki.root, [
-            ...names.map((file) => `${from}:${file}`),
-            ...names.map((file) => `${stored.head}:${file}`),
+            ...listed.map(({ file, movedFrom }) => `${from}:${movedFrom ?? file}`),
+            ...listed.map(({ file }) => `${stored.head}:${file}`),
           ]);
           return {
             changeRequest: yield* view(wiki, stored),
-            files: names.map((file, position) => ({
+            files: listed.map(({ file, movedFrom }, position) => ({
               file,
               before: contents[position] ?? null,
-              after: contents[names.length + position] ?? null,
+              after: contents[listed.length + position] ?? null,
+              ...(movedFrom === undefined ? {} : { movedFrom }),
             })),
             mergePreview:
               stored.record.status === "merged"
@@ -3124,6 +3215,7 @@ const make = Effect.gen(function* () {
     listFiles,
     draftPromote,
     draftMove,
+    move,
     revertAmendment,
     saveWorktree,
     merge,

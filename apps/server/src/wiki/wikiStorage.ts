@@ -5,7 +5,7 @@
  *
  * @module wikiStorage
  */
-import { isWikiDocument, parseAmendmentTrailers } from "@mercurian/wiki";
+import { parseAmendmentTrailers } from "@mercurian/wiki";
 import {
   IsoDateTime,
   ProjectId,
@@ -73,8 +73,8 @@ export const changeRequestMetadataRef = (id: string) => `refs/wiki/change-reques
 export const CHANGE_REQUEST_BRANCH_PREFIX = "refs/heads/cr/";
 export const CHANGE_REQUEST_METADATA_PREFIX = "refs/wiki/change-requests/";
 
-/** The wiki documents of a `git ls-tree -r -z` listing, with their blob ids. */
-export const parseDocumentListing = (
+/** The files of a `git ls-tree -r -z` listing, with their blob ids. */
+export const parseTreeListing = (
   output: string,
 ): ReadonlyArray<{ readonly file: string; readonly oid: string }> =>
   output.split("\0").flatMap((entry) => {
@@ -85,11 +85,38 @@ export const parseDocumentListing = (
     return type === "blob" &&
       oid !== undefined &&
       (mode === "100644" || mode === "100755") &&
-      !file.includes("\n") &&
-      isWikiDocument(file)
+      !file.includes("\n")
       ? [{ file, oid }]
       : [];
   });
+
+interface NameStatus {
+  readonly file: string;
+  /** The path it had, when git took the change for a move. */
+  readonly movedFrom?: string;
+}
+
+/** The fields `--name-status -z` writes: a status, then a path, or two for a rename. */
+function nameStatuses(fields: ReadonlyArray<string>): ReadonlyArray<NameStatus> {
+  const found: NameStatus[] = [];
+  for (let at = 0; at < fields.length;) {
+    const status = fields[at]?.trim() ?? "";
+    if (status === "") {
+      at += 1;
+    } else if (status.startsWith("R")) {
+      found.push({ file: fields[at + 2] ?? "", movedFrom: fields[at + 1] ?? "" });
+      at += 3;
+    } else {
+      found.push({ file: fields[at + 1] ?? "" });
+      at += 2;
+    }
+  }
+  return found;
+}
+
+/** `git diff --find-renames --name-status -z`: what changed, with what moved as one file. */
+export const parseChangeList = (output: string): ReadonlyArray<NameStatus> =>
+  nameStatuses(output.split("\0"));
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -168,21 +195,22 @@ export interface WikiFileTimes {
 }
 
 /**
- * When each file was last and first changed, from `git log --no-renames --name-only -z` (newest
+ * When each file was last and first changed, from `git log --find-renames --name-status -z` (newest
  * first) with {@link EDIT_TIMES_FORMAT}: the first commit naming a file is its latest, the last
- * its first within {@link EDIT_TIMES_DEPTH}.
+ * its first within {@link EDIT_TIMES_DEPTH}. Commits before a move count for the file it became.
  */
 export const parseFileTimes = (output: string): WikiFileTimes => {
   const modified = new Map<string, string>();
   const created = new Map<string, string>();
+  const becameFile = new Map<string, string>();
   for (const record of output.split("\x1e").slice(1)) {
-    const [header = "", ...files] = record.split("\0");
-    const [at, first] = header.split("\n");
+    const [at, ...fields] = record.split("\0");
     if (!at) continue;
-    for (const file of [first ?? "", ...files.map((name) => name.replace(/^\n/, ""))]) {
-      if (!file) continue;
-      if (!modified.has(file)) modified.set(file, at);
-      created.set(file, at);
+    for (const { file, movedFrom } of nameStatuses(fields)) {
+      const current = becameFile.get(file) ?? file;
+      if (!modified.has(current)) modified.set(current, at);
+      created.set(current, at);
+      if (movedFrom !== undefined) becameFile.set(movedFrom, current);
     }
   }
   return { modified, created };
