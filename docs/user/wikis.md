@@ -149,7 +149,7 @@ A note opened from a change request's worktree reads from that change request. W
 
 ## Agents in wikis
 
-Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own change request on the wiki, one per thread, which you review and merge like any other.
+Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own change request on the wiki, one per thread, which you review and merge like any other. They can list a folder, name a note by its path, and move a note or a whole folder as one amendment, with links following. A hidden file stays out of what they list and search, and they read one only by its exact path.
 
 To point an agent at a note, type `[[` in a thread's message and pick the note; the agent reads it. Notes from the project's linked wikis come first. While the project has no linked wiki, the list also offers to link one.
 

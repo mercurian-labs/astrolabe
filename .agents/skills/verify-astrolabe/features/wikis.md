@@ -58,10 +58,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   sidebar (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
   worktree staying, marked. A note or change request tab in a change request with a worktree
   shows its number before its ✕; opening such a note numbers the worktree
-  (`useNumberWhenOpened`). A top-level `.md`
-  clicked in a tree, on the main line or a `cr/` branch, opens as
-  `wiki-note:<env>:<wiki>:<change request id or empty>:<name>`; README, AGENTS, CLAUDE,
-  `*.skillmap.md`, nested `.md`, any `.md` on another branch, and every other file open as
+  (`useNumberWhenOpened`). A `.md` or `.canvas`
+  clicked in a tree, at any depth, on the main line or a `cr/` branch, opens as
+  `wiki-note:<env>:<wiki>:<change request id or empty>:<file>`; README, AGENTS, CLAUDE,
+  `*.skillmap.md`, any `.md` on another branch, and every other file open as
   `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
   or modifiers). A change request worktree's menu adds **Save edits to the change
   request** while it has uncommitted files (`wiki.saveWorktree`, one amendment, worktree left
@@ -257,7 +257,7 @@ from Search. ("Open wikis" is an action: in the Command Palette, or `>open wikis
 in Search.) A wiki
 must be registered first (the filter's **Add a wiki**, or the palette's **Add wiki**). A
 clean or seeded home may have none: before walking, add one with the palette's **Add wiki** →
-**Local folder** and the path to a git repository with top-level `*.md` files (Gotchas).
+**Local folder** and the path to a git repository with `*.md` files (Gotchas).
 
 ## Driving it with the Browser panel
 
@@ -316,8 +316,8 @@ a screenshot of the section.
 ## Gotchas
 
 - A fixture wiki needs a git repository at its top level, with a branch checked
-  out and at least one commit; only top-level `*.md` files count (never README,
-  AGENTS, CLAUDE). Clone one (for example the almagest vault) anywhere the server
+  out and at least one commit; `*.md` files count at any depth (never README,
+  AGENTS, CLAUDE, in any folder), and a dot-folder's show only under **Hidden files**. Clone one (for example the almagest vault) anywhere the server
   can read, such as `<home>/wiki-fixtures/`, and register it: the palette's **Add wiki** (or
   the filter's **Add a wiki**) → **Local folder** → type the absolute path, Enter. No project
   is made; the palette then offers the link step (pick a project or **Not now**). **New wiki**
