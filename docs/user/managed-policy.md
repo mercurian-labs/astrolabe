@@ -46,11 +46,11 @@ Every user on the machine can read the policy, so do not put credentials in it.
 
 Use one of these per machine:
 
-| OS      | Native policy                                                                                        | Policy file                                       |
-| ------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| macOS   | Configuration profile for `com.t3tools.t3code`                                                       | `/Library/Application Support/T3Code/policy.json` |
-| Windows | Group Policy template, or a `Policy` JSON value (both under `HKLM\SOFTWARE\Policies\T3Tools\T3Code`) | `C:\Program Files\T3Code\policy.json`             |
-| Linux   |                                                                                                      | `/etc/t3code/policy.json`                         |
+| OS      | Native policy                                                                                             | Policy file                                          |
+| ------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| macOS   | Configuration profile for `com.mercurian.astrolabe`                                                       | `/Library/Application Support/Astrolabe/policy.json` |
+| Windows | Group Policy template, or a `Policy` JSON value (both under `HKLM\SOFTWARE\Policies\Mercurian\Astrolabe`) | `C:\Program Files\Astrolabe\policy.json`             |
+| Linux   |                                                                                                           | `/etc/astrolabe/policy.json`                         |
 
 Astrolabe does not merge sources. If a machine has both a native policy and a policy file, Astrolabe
 refuses to start until you remove one.
@@ -59,24 +59,24 @@ refuses to start until you remove one.
 administrators.
 
 **macOS configuration profile.** Add a custom settings payload for the preference domain
-`com.t3tools.t3code`. The payload's keys are the policy's top-level keys (`schemaVersion`,
+`com.mercurian.astrolabe`. The payload's keys are the policy's top-level keys (`schemaVersion`,
 `organization`, `supportUrl`, `settings`, `limits`); JSON objects become dictionaries and lists
 become arrays. To make the payload from a policy file you checked, run
-`plutil -convert xml1 -o com.t3tools.t3code.plist policy.json` and upload the result, or run
+`plutil -convert xml1 -o com.mercurian.astrolabe.plist policy.json` and upload the result, or run
 `astrolabe policy templates <directory> --policy policy.json` to write a complete
 `macos/t3code.mobileconfig`. Install it as
 a device profile, since Astrolabe ignores user profiles, and deploy only one profile for this domain.
 A profile cannot hold `null`, so use a policy file if a setting's value must be `null`.
 
 **Windows Group Policy.** Run `astrolabe policy templates <directory>` and copy
-`windows/t3code.admx` and `windows/en-US/t3code.adml` into your `PolicyDefinitions` folder or
+`windows/astrolabe.admx` and `windows/en-US/astrolabe.adml` into your `PolicyDefinitions` folder or
 central store, or import them into Intune. The policies appear under Computer Configuration >
-Administrative Templates > T3 Code. Set **Organization** whenever you set any other T3 Code policy.
+Administrative Templates > Astrolabe. Set **Organization** whenever you set any other Astrolabe policy.
 Locks and provider fields go in the two JSON policies, as the same objects a policy file would hold.
 Machines pick up a change at the next Group Policy refresh; run `gpupdate /target:computer /force`
 to apply it now, then restart Astrolabe.
-Setting **Allow T3 Connect**, **Allow webhook tasks**, **Allow importing browser cookies**, or
-**Allow usage data** to **Disabled** turns that feature off. Setting any other T3 Code policy to
+Setting **Allow remote access**, **Allow webhook tasks**, **Allow importing browser cookies**, or
+**Allow usage data** to **Disabled** turns that feature off. Setting any other Astrolabe policy to
 **Disabled** restricts nothing, the same as **Not Configured**.
 
 **Windows registry value.** Instead of the template, set the `Policy` value (`REG_SZ`) to the whole policy as one line of JSON,
@@ -87,8 +87,8 @@ PowerShell, as an administrator:
 
 ```powershell
 $json = (Get-Content -Raw -Encoding UTF8 policy.json) -replace '\r?\n\s*', ''
-New-Item -Path HKLM:\SOFTWARE\Policies\T3Tools\T3Code -Force | Out-Null
-Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\T3Tools\T3Code -Name Policy -Value $json -Type String
+New-Item -Path HKLM:\SOFTWARE\Policies\Mercurian\Astrolabe -Force | Out-Null
+Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Mercurian\Astrolabe -Name Policy -Value $json -Type String
 ```
 
 ## Check what the server loaded
@@ -288,7 +288,7 @@ own configuration, such as `~/.claude`, and which a user can also run outside As
 those CLIs, use their own managed configuration, such as Claude Code's managed settings.
 
 On a managed Windows machine, the desktop app does not run a WSL environment. An Astrolabe server a
-user starts inside WSL reads `/etc/t3code/policy.json` in that distro, not the Windows policy.
+user starts inside WSL reads `/etc/astrolabe/policy.json` in that distro, not the Windows policy.
 Deploy the policy file there too if your users run Astrolabe in WSL.
 
 Without `remote`, Astrolabe does not expose the server, but a user can still forward its local port

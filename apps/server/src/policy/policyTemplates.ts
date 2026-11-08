@@ -103,7 +103,7 @@ const policies = (): ReadonlyArray<Policy> => [
   },
   {
     id: "Connect",
-    title: "Allow Remote access",
+    title: "Allow remote access",
     help: "Disabled turns Remote access off and unlinks this machine. Other ways in still follow Allowed clients.\n\nEnabled or Not Configured leaves Remote access available.",
     toggle: "Connect",
   },
@@ -237,7 +237,7 @@ export function windowsAdmx(): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
   <policyNamespaces>
-    <target prefix="t3code" namespace="T3Tools.Policies.T3Code" />
+    <target prefix="astrolabe" namespace="Mercurian.Policies.Astrolabe" />
   </policyNamespaces>
   <resources minRequiredRevision="1.0" />
   <supportedOn>
@@ -337,7 +337,7 @@ const nullPath = (
   return undefined;
 };
 
-/** A device configuration profile that installs `document` for `com.t3tools.t3code`. */
+/** A device configuration profile that installs `document` for `com.mercurian.astrolabe`. */
 export function macosProfile(
   document: ManagedPolicyDocument,
   uuids: { readonly profile: string; readonly payload: string },
@@ -358,8 +358,8 @@ export function macosProfile(
     PayloadContent: [
       {
         PayloadDisplayName: "Astrolabe policy",
-        PayloadIdentifier: `com.t3tools.t3code.policy.${uuids.payload}`,
-        PayloadType: "com.t3tools.t3code",
+        PayloadIdentifier: `com.mercurian.astrolabe.policy.${uuids.payload}`,
+        PayloadType: "com.mercurian.astrolabe",
         PayloadUUID: uuids.payload,
         PayloadVersion: 1,
         ...document,
@@ -367,7 +367,7 @@ export function macosProfile(
     ],
     PayloadDescription: "Configures Astrolabe for every user on this Mac.",
     PayloadDisplayName: `Astrolabe policy for ${document.organization}`,
-    PayloadIdentifier: `com.t3tools.t3code.policy`,
+    PayloadIdentifier: `com.mercurian.astrolabe.policy`,
     PayloadOrganization: document.organization,
     PayloadScope: "System",
     PayloadType: "Configuration",

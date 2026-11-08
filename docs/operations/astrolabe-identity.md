@@ -28,24 +28,26 @@ Environment variables get both treatments: people set `ASTROLABE_*`, and the cod
 
 ## Names
 
-| Thing                                | T3 Code                                        | Astrolabe                                              |
-| ------------------------------------ | ---------------------------------------------- | ------------------------------------------------------ |
-| Product name                         | T3 Code                                        | Astrolabe                                              |
-| Mobile app ids                       | `com.t3tools.t3code{,.dev,.preview}`           | `com.mercurian.astrolabe{,.dev,.preview}`              |
-| Mobile link schemes                  | `t3code{,-dev,-preview}://`                    | `astrolabe{,-dev,-preview}://`                         |
-| Desktop app id                       | `com.t3tools.t3code{,.dev}`                    | `com.mercurian.astrolabe{,.dev}`                       |
-| Desktop schemes                      | `t3code://app`, `t3code-dev://app`             | `astrolabe://app`, `astrolabe-dev://app`               |
-| Linux desktop entry                  | `com.t3tools.T3Code{,.Development}`            | `com.mercurian.Astrolabe{,.Development}`               |
-| Linux executable, WM class           | `t3code`                                       | `astrolabe`                                            |
-| Electron profile folder              | `t3code-v2`, `t3code-dev`                      | `astrolabe`, `astrolabe-dev`                           |
-| macOS keychain item                  | `t3code Safe Storage`                          | `astrolabe Safe Storage`                               |
-| Background service                   | `t3code.service`, `com.t3tools.t3code.service` | `astrolabe.service`, `com.mercurian.astrolabe.service` |
-| systemd protect drop-in              | `90-t3code-protect.conf`                       | `90-astrolabe-protect.conf`                            |
-| Home folder                          | `~/.t3`                                        | `~/.astrolabe`                                         |
-| CLI command                          | `t3`                                           | `astrolabe`                                            |
-| npm launcher                         | `t3`                                           | `@mercurian/astrolabe`                                 |
-| Environment variables                | `T3CODE_*`                                     | `ASTROLABE_*` (mapped onto `T3CODE_*`)                 |
-| Remote access service (visible name) | T3 Connect                                     | Remote access                                          |
+| Thing                                | T3 Code                                                                                               | Astrolabe                                                                                   |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Product name                         | T3 Code                                                                                               | Astrolabe                                                                                   |
+| Mobile app ids                       | `com.t3tools.t3code{,.dev,.preview}`                                                                  | `com.mercurian.astrolabe{,.dev,.preview}`                                                   |
+| Mobile link schemes                  | `t3code{,-dev,-preview}://`                                                                           | `astrolabe{,-dev,-preview}://`                                                              |
+| Desktop app id                       | `com.t3tools.t3code{,.dev}`                                                                           | `com.mercurian.astrolabe{,.dev}`                                                            |
+| Desktop schemes                      | `t3code://app`, `t3code-dev://app`                                                                    | `astrolabe://app`, `astrolabe-dev://app`                                                    |
+| Linux desktop entry                  | `com.t3tools.T3Code{,.Development}`                                                                   | `com.mercurian.Astrolabe{,.Development}`                                                    |
+| Linux executable, WM class           | `t3code`                                                                                              | `astrolabe`                                                                                 |
+| Electron profile folder              | `t3code-v2`, `t3code-dev`                                                                             | `astrolabe`, `astrolabe-dev`                                                                |
+| macOS keychain item                  | `t3code Safe Storage`                                                                                 | `astrolabe Safe Storage`                                                                    |
+| Background service                   | `t3code.service`, `com.t3tools.t3code.service`                                                        | `astrolabe.service`, `com.mercurian.astrolabe.service`                                      |
+| systemd protect drop-in              | `90-t3code-protect.conf`                                                                              | `90-astrolabe-protect.conf`                                                                 |
+| Home folder                          | `~/.t3`                                                                                               | `~/.astrolabe`                                                                              |
+| CLI command                          | `t3`                                                                                                  | `astrolabe`                                                                                 |
+| npm launcher                         | `t3`                                                                                                  | `@mercurian/astrolabe`                                                                      |
+| Environment variables                | `T3CODE_*`                                                                                            | `ASTROLABE_*` (mapped onto `T3CODE_*`)                                                      |
+| Remote access service (visible name) | T3 Connect                                                                                            | Remote access                                                                               |
+| Managed policy file                  | `/Library/Application Support/T3Code`, `C:\Program Files\T3Code`, `/etc/t3code`                       | `…/Astrolabe`, `C:\Program Files\Astrolabe`, `/etc/astrolabe`                               |
+| Managed policy native ids            | `com.t3tools.t3code` profile, `HKLM\SOFTWARE\Policies\T3Tools\T3Code`, ADMX `T3Tools.Policies.T3Code` | `com.mercurian.astrolabe`, `…\Policies\Mercurian\Astrolabe`, `Mercurian.Policies.Astrolabe` |
 
 ## Conflict sites
 
@@ -133,6 +135,19 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   dev start's seed in `scripts/dev-runner.ts` still read `~/.t3`, where the developer's real
   threads live. The worktree-local `.t3` dev folder (`packages/shared/src/devHome.ts`), the setup
   markers in `scripts/setup-worktree.ts` and AGENTS.md's `~/.t3/userdata` warning also stay.
+
+### Managed policy
+
+An organization that deploys T3 Code's policy must not also lock Astrolabe, so every place a policy
+is read from or written for carries Astrolabe's name.
+
+- `packages/shared/src/managedPolicyFile.ts`: `managedPolicyPath`, the macOS managed preferences
+  plist and the Windows registry subkey.
+- `apps/server/src/policy/policyTemplates.ts`: the ADMX namespace and prefix, the configuration
+  profile's payload ids, and the ADMX/ADML display strings. The ADMX category ids (`T3Code`,
+  `SUPPORTED_T3Code`) are internal and keep upstream's spelling.
+- `apps/server/src/cli/policy.ts`: the `astrolabe.admx` and `astrolabe.adml` file names.
+- `docs/user/managed-policy.md` and the policy tests quote all of these.
 
 ### CLI and npm packages
 
