@@ -9,7 +9,7 @@ import {
   FileDiagnostics,
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -64,7 +64,7 @@ const CodeFindTool = Tool.make("astrolabe_code_find", {
 
 const CodeChangesTool = Tool.make("astrolabe_code_changes", {
   ...shared,
-  dependencies: [...shared.dependencies, GitVcsDriver.GitVcsDriver, Crypto.Crypto],
+  dependencies: [...shared.dependencies, GitVcsDriver.GitVcsDriver, Digest.Digest],
   description: `What changed in the code's structure: files, definitions added, changed, or removed, and uses made or broken. By default it covers your last finished turn and any edits since; in a first turn, everything since the thread began. Use it to review or explain a turn's or a branch's changes instead of reading the whole diff. ${SCOPE}`,
   parameters: Schema.Struct({
     since: Schema.optional(

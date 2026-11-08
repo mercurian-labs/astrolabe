@@ -1,6 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
+import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entities";
+import {
+  threadFamilyRead,
+  visibilityParentKey,
+  type ThreadFamilyRead,
+} from "@t3tools/client-runtime/state/threads";
 import type { OrchestrationV2ThreadFamily, ScopedThreadRef } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { MessagesSquare } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
@@ -11,11 +17,17 @@ import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { sortProviderInstanceEntries } from "~/providerInstances";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
-import { readThreadShell, useThreadShell } from "~/state/entities";
+import {
+  readThreadShell,
+  useAnyEnvironmentHiding,
+  useHiddenThreadKeys,
+  useQuietThreadShell,
+  useThreadShell,
+} from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { providerEntriesByEnvironmentAtom } from "~/state/server";
-import { environmentShell } from "~/state/shell";
-import { threadFamilies } from "~/state/threads";
+import { environmentShell, useEnvironmentShellStatus } from "~/state/shell";
+import { threadFamilies, useEnvironmentThread } from "~/state/threads";
 import { isThreadRouteSnapshotAuthoritative } from "~/threadRoutes";
 
 /** Where a chat's tab leads: its server thread, or its draft while it is one. */
@@ -85,17 +97,56 @@ function useUnlistedThreadFamilyRead(
 }
 
 /**
+ * Whether the tag filter hides a chat: `hidden` closes its tab, and its chat never mounts until
+ * `visible`. While any environment hides tags, a thread the shell leaves out opens only as the
+ * child of a loaded, visible parent, since cached detail can predate a tag or an archive.
+ */
+export function useChatTagFilter(ref: ScopedThreadRef | null): "visible" | "pending" | "hidden" {
+  const hiddenKeys = useHiddenThreadKeys();
+  const hidingAnywhere = useAnyEnvironmentHiding();
+  const shell = useQuietThreadShell(hidingAnywhere ? ref : null);
+  const hasDraft = useComposerDraftStore((store) =>
+    hidingAnywhere && ref !== null && shell === null ? store.getDraftIdByRef(ref) !== null : false,
+  );
+  const unlisted = hidingAnywhere && ref !== null && shell === null && !hasDraft ? ref : null;
+  const detail = useEnvironmentThread(unlisted?.environmentId ?? null, unlisted?.threadId ?? null);
+  const thread = Option.getOrNull(Option.map(detail.data, (projection) => projection.thread));
+  const parentKey =
+    unlisted === null || thread === null
+      ? null
+      : visibilityParentKey(unlisted.environmentId, thread);
+  const parentShell = useQuietThreadShell(parentKey === null ? null : parseThreadKey(parentKey));
+  const live = isThreadRouteSnapshotAuthoritative(
+    useEnvironmentShellStatus(unlisted?.environmentId ?? null),
+  );
+  if (ref === null) return "visible";
+  if (hiddenKeys.has(threadKey(ref))) return "hidden";
+  if (unlisted === null) return "visible";
+  if (parentKey !== null && parentShell !== null && !hiddenKeys.has(parentKey)) return "visible";
+  // Before the shell bootstraps, a listed visible thread can still look off-shell.
+  return live && thread !== null ? "hidden" : "pending";
+}
+
+/**
  * Closes a chat's tab once its chat is gone (deleted, or a draft discarded), as soon as its
- * environment's threads are known. Renders nothing; one per open chat.
+ * environment's threads are known, or once the tag filter hides it. Renders nothing; one per open
+ * chat.
  */
 export const ChatTabWatch = memo(function ChatTabWatch({
   chatKey,
   onGone,
+  onHidden,
 }: {
   readonly chatKey: string;
   readonly onGone: (chatKey: string) => void;
+  readonly onHidden: (chatKey: string) => void;
 }) {
   const ref = parseChatTabKey(chatKey);
+  const hidden = useChatTagFilter(ref) === "hidden";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the tab once the tag filter hides its chat
+  useEffect(() => {
+    if (hidden) onHidden(chatKey);
+  }, [chatKey, hidden, onHidden]);
   const shell = useThreadShell(ref);
   const hasDraft = useComposerDraftStore((store) =>
     shell || !ref ? false : store.getDraftIdByRef(ref) !== null,

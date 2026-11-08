@@ -10,5 +10,12 @@ export const config: VercelConfig = {
   },
   installCommand:
     "npm install -g vite-plus && vp install --ignore-scripts --filter '@t3tools/scripts...' --filter '@t3tools/web...'",
-  rewrites: [routes.rewrite("/(.*)", "/index.html")],
+  rewrites: [
+    // Apple fetches it without an extension; the .json file is served as application/json.
+    routes.rewrite(
+      "/.well-known/apple-app-site-association",
+      "/.well-known/apple-app-site-association.json",
+    ),
+    routes.rewrite("/(.*)", "/index.html"),
+  ],
 };

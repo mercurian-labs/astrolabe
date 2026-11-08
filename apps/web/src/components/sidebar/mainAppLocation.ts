@@ -4,6 +4,7 @@ import { chatRouteOf } from "~/chatTabs/chatTabLabel";
 import { agentsRoute } from "~/panes/agentsRoute";
 import { workspace } from "~/panes/workspace";
 import { GUEST_PAGE_PATH } from "../../guestPage";
+import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
 
 /** Settings and Usage open as modals over the last main-app view. */
 export function isAppModalPage(pathname: string) {
@@ -41,8 +42,9 @@ let appModalReturnPathname = "/";
 /** Remembers where Settings and Usage lead back to. */
 export function startMainAppLocationTracking(router: AnyRouter): () => void {
   const record = () => {
-    const { pathname, href } = router.state.location;
+    const { pathname } = router.state.location;
     if (isAppModalPage(pathname) || SHELL_LESS_PATHS.has(pathname)) return;
+    const href = withoutAssistantCitationHash(router.state.location.href);
     appModalReturnHref = href;
     appModalReturnPathname = pathname;
   };

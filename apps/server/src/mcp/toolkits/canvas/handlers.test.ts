@@ -75,7 +75,7 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
     readonly author: WikiService.WikiAuthor;
   }> = [];
   const layer = McpHttpServer.layerCanvasToolkit.pipe(
-    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ThreadManagement.ThreadManagementService)({

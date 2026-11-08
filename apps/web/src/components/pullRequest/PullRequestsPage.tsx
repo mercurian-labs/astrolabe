@@ -49,6 +49,7 @@ import {
   pullRequestOverrideAfterAction,
   reusePullRequestEntries,
   settlePullRequestOverrides,
+  comparePullRequestsByRecency,
   largestPullRequestReadCount,
 } from "./pullRequestList.logic";
 import {
@@ -551,7 +552,7 @@ export function PullRequestsPage() {
       const held = new Set(ordered.entries.map(pullRequestEntryKey));
       const arrived = answered.entries.filter((entry) => !held.has(pullRequestEntryKey(entry)));
       const appended = rankPullRequestMatches(
-        arrived.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+        arrived.toSorted(comparePullRequestsByRecency),
         sentParsed.text,
       );
       setOrdered({ key: filterKey, source: answered, entries: [...ordered.entries, ...appended] });

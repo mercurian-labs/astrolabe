@@ -153,7 +153,7 @@ const harness = (fakes: Fakes = {}) => {
           );
     };
   const layer = McpHttpServer.layerCodeToolkit.pipe(
-    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ThreadManagement.ThreadManagementService)({

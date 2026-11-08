@@ -105,7 +105,7 @@ import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { newProjectFolderName } from "@t3tools/shared/path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -593,7 +593,7 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const git = yield* GitVcsDriver.GitVcsDriver;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const projects = yield* ProjectService.ProjectService;
 
   const events = yield* PubSub.sliding<WikiEvent>(256);
@@ -612,10 +612,7 @@ const make = Effect.gen(function* () {
   // A change request's every read asks for its preview, and a canvas's merge reads three blobs.
   const mergePreviews = lru<WikiTreeMerge>(64);
 
-  const newId = crypto.randomUUIDv4().pipe(
-    Effect.orDie,
-    Effect.map((uuid) => uuid.replaceAll("-", "").slice(0, 12)),
-  );
+  const newId = random.uuidV4().pipe(Effect.map((uuid) => uuid.replaceAll("-", "").slice(0, 12)));
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
   const publish = (kind: WikiEvent["kind"], wikiId: WikiId, changeRequestId: string | null) =>

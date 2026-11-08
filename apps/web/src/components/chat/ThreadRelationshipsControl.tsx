@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -65,8 +66,15 @@ import {
   useQuietThreadShell,
   useThreadProjection,
   useThreadRelationshipShells,
+  useHiddenThreadKeys,
+  useAnyEnvironmentHiding,
 } from "../../state/entities";
 import { useEnvironment, useEnvironmentProviders } from "../../state/environments";
+import { serverEnvironment } from "../../state/server";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+} from "../../providerInstances";
 import { threadEnvironment } from "../../state/threads";
 import { orchestrationEnvironment } from "../../state/orchestration";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -193,6 +201,16 @@ function relationshipThreadTitle(input: {
   return formatSubagentDisplayTitle(input.title);
 }
 
+/** The full title, since the row truncates it, with what a click does. */
+function LineageTooltipContent(props: { readonly title: string; readonly hint: string }) {
+  return (
+    <>
+      <span className="block font-medium">{props.title}</span>
+      <span className="block text-muted-foreground">{props.hint}</span>
+    </>
+  );
+}
+
 function currentSubagent<Agent extends RuntimeSubagent>(
   agent: Agent | undefined,
   childThread: OrchestrationV2ThreadShell | null | undefined,
@@ -253,15 +271,16 @@ function RemoteSubagentRow(props: {
               size="sm"
               variant="ghost"
               part="row"
-              disabled={environment === null}
-              onClick={() =>
+              aria-disabled={environment === null || undefined}
+              onClick={() => {
+                if (environment === null) return;
                 void navigate({
                   to: "/$environmentId/$threadId",
                   params: buildThreadRouteParams(
                     scopeThreadRef(remoteChild.environmentId, remoteChild.threadId),
                   ),
-                })
-              }
+                });
+              }}
             />
           }
         >
@@ -284,9 +303,14 @@ function RemoteSubagentRow(props: {
           </span>
         </TooltipTrigger>
         <TooltipPopup side="left">
-          {environment === null
-            ? `Runs on ${remoteChild.label}. Connect to it to open the thread there.`
-            : `Open on ${remoteChild.label}`}
+          <LineageTooltipContent
+            title={title}
+            hint={
+              environment === null
+                ? `Runs on ${remoteChild.label}. Connect to it to open the thread there.`
+                : `Open on ${remoteChild.label}`
+            }
+          />
         </TooltipPopup>
       </Tooltip>
     </li>
@@ -319,13 +343,14 @@ function DelegatedFromRow(props: {
               size="sm"
               variant="ghost"
               part="row"
-              disabled={environment === null}
-              onClick={() =>
+              aria-disabled={environment === null || undefined}
+              onClick={() => {
+                if (environment === null) return;
                 void navigate({
                   to: "/$environmentId/$threadId",
                   params: buildThreadRouteParams(parentRef),
-                })
-              }
+                });
+              }}
             />
           }
         >
@@ -340,9 +365,14 @@ function DelegatedFromRow(props: {
           ) : null}
         </TooltipTrigger>
         <TooltipPopup side="left">
-          {environment === null
-            ? `Delegated from ${label ?? "a linked environment"}. Connect to it to open the parent thread.`
-            : "Open parent agent"}
+          <LineageTooltipContent
+            title={title}
+            hint={
+              environment === null
+                ? `Delegated from ${label ?? "a linked environment"}. Connect to it to open the parent thread.`
+                : "Open parent agent"
+            }
+          />
         </TooltipPopup>
       </Tooltip>
     </li>
@@ -358,7 +388,10 @@ export function ThreadRelationshipsPanel(props: {
   const ref = scopeThreadRef(props.environmentId, props.threadId);
   const projection = useThreadProjection(ref)?.projection ?? null;
   const providersByEnvironment = useEnvironmentProviders();
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
   const relationshipShells = useThreadRelationshipShells(ref);
+  const hiddenKeys = useHiddenThreadKeys();
+  const hidingAnywhere = useAnyEnvironmentHiding();
   const allProjects = useProjects();
   const archived = useArchivedThreadSnapshots([props.environmentId]);
   const archivedShells = archived.snapshots.find(
@@ -395,6 +428,14 @@ export function ThreadRelationshipsPanel(props: {
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   // Derive graphs after hooks to preserve their compiler cache.
   const providers = providersByEnvironment.get(props.environmentId);
+  const derivedProviderEntries = deriveProviderInstanceEntries(providers ?? []);
+  const providerEntries = settings
+    ? applyProviderInstanceSettings(
+        derivedProviderEntries,
+        settings,
+        currentThread?.projectId ?? null,
+      )
+    : derivedProviderEntries;
   const projects = allProjects.filter((project) => project.environmentId === props.environmentId);
   const parentNativeStatus = parentProjection
     ? deriveProviderSubagentStatus(parentProjection)?.status
@@ -429,6 +470,14 @@ export function ThreadRelationshipsPanel(props: {
     ...(archivedShells ?? []),
   ];
   const graph = deriveThreadRelationshipGraph({ threads: shells, projection });
+  const isHiddenRelation = (threadId: ThreadId) =>
+    hiddenKeys.has(threadKey({ environmentId: props.environmentId, threadId }));
+  // While hiding, an unloaded parent, fork or transfer may be hidden; unloaded subagent
+  // children (idle, left out of the shell) follow this visible thread, so they stay.
+  const isHiddenUnloadedRelation = (row: { threadId: ThreadId; edge: ThreadRelationshipEdge }) =>
+    hidingAnywhere &&
+    graph.nodes.get(row.threadId)?.missing === true &&
+    (row.edge.kind !== "subagent" || isParentThreadRelationship(row.edge, props.threadId));
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
   const latestMergeBackRun = projection === null ? null : resolveLatestMergeBackRun(projection);
   const mergeTargetThreadId = resolveMergeBackTargetThreadId(projection);
@@ -437,16 +486,19 @@ export function ThreadRelationshipsPanel(props: {
     rows: immediateThreadRelationships(graph, props.threadId),
     currentThreadId: props.threadId,
     mergeTargetThreadId,
-  }).map((row) => {
-    const agent =
-      row.edge.kind === "subagent" && !isParentThreadRelationship(row.edge, props.threadId)
-        ? subagentsByThreadId.get(row.threadId)
-        : undefined;
-    const workflowGroup = agent === undefined ? undefined : workflowGroupsById.get(agent.id);
-    return workflowGroup === undefined
-      ? row
-      : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
-  });
+  })
+    // The graph rebuilds missing parents from lineage, so filter the rows it returns.
+    .filter((row) => !isHiddenRelation(row.threadId) && !isHiddenUnloadedRelation(row))
+    .map((row) => {
+      const agent =
+        row.edge.kind === "subagent" && !isParentThreadRelationship(row.edge, props.threadId)
+          ? subagentsByThreadId.get(row.threadId)
+          : undefined;
+      const workflowGroup = agent === undefined ? undefined : workflowGroupsById.get(agent.id);
+      return workflowGroup === undefined
+        ? row
+        : { ...row, edge: { ...row.edge, status: workflowGroup.workflow.status } };
+    });
   const canMerge = mergeTargetThreadId !== null && latestMergeBackRun !== null;
   const canDetach = projection ? canDetachThreadProviderSession(projection) : false;
 
@@ -503,6 +555,7 @@ export function ThreadRelationshipsPanel(props: {
     return null;
   }
 
+  // Idle children can be omitted from the shell; opening one loads its own detail.
   const openThread = (threadId: ThreadId) => {
     if (openSideChatTab(ref, graph.nodes.get(threadId)?.thread ?? null)) return;
     void navigate({
@@ -589,7 +642,9 @@ export function ThreadRelationshipsPanel(props: {
   const parentTitle =
     mergeTargetThreadId === null
       ? null
-      : (graph.nodes.get(mergeTargetThreadId)?.thread?.title ?? null);
+      : isHiddenRelation(mergeTargetThreadId)
+        ? null
+        : (graph.nodes.get(mergeTargetThreadId)?.thread?.title ?? null);
 
   const renderRelationshipRow = ({ threadId, edge }: ThreadRelationshipWalkRow) => {
     const node = graph.nodes.get(threadId);
@@ -646,9 +701,7 @@ export function ThreadRelationshipsPanel(props: {
       ? "group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0 [@media(hover:none)]:opacity-0"
       : "";
     const project = projects.find((project) => project.id === node?.thread?.projectId);
-    const relationshipHint = node?.missing
-      ? "This related thread is unavailable"
-      : `Open ${relationship.toLowerCase()} in this chat`;
+    const relationshipHint = `Open ${relationship.toLowerCase()} in this chat`;
     const RelationshipPopup = agent ? ThreadHoverCardPopup : TooltipPopup;
     const relationshipTooltip = agent ? (
       <SubagentTooltipContent
@@ -670,13 +723,14 @@ export function ThreadRelationshipsPanel(props: {
         childProject={project}
       />
     ) : (
-      relationshipHint
+      <LineageTooltipContent title={threadTitle} hint={relationshipHint} />
     );
     const relationshipContent = (
       <>
         <ThreadRelationshipIcon
           driver={isSubagent && !isParent ? providerDriver : undefined}
           provider={provider}
+          providerEntries={providerEntries}
           fallbackIcon={RelationshipIcon}
           status={rowStatus}
         />
@@ -716,7 +770,6 @@ export function ThreadRelationshipsPanel(props: {
               size="sm"
               variant="ghost"
               part={workflowGroup ? "primary" : "row"}
-              disabled={node?.missing === true}
               onClick={() => openThread(threadId)}
             />
           }
@@ -734,11 +787,9 @@ export function ThreadRelationshipsPanel(props: {
           providerInstanceId={agent.providerInstanceId}
           provider={provider}
           providers={providers}
+          providerEntries={providerEntries}
           driver={providerDriver}
           onOpenThread={(memberThreadId) => openThread(memberThreadId as ThreadId)}
-          isThreadAvailable={(memberThreadId) =>
-            graph.nodes.get(memberThreadId as ThreadId)?.missing === false
-          }
           onStop={canStopWorkflow ? () => void stopWorkflow(agent.id) : undefined}
           stopping={stoppingId === agent.id}
           stopDisabled={stoppingId !== null}
@@ -759,7 +810,6 @@ export function ThreadRelationshipsPanel(props: {
                     variant="ghost"
                     part="primary"
                     aria-label={`${threadTitle} ${threadRelationshipStatusLabel(rowStatus)}`}
-                    disabled={node?.missing === true}
                     onClick={() => openThread(threadId)}
                   />
                 }

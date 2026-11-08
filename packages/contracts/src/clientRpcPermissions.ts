@@ -27,6 +27,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.serverUpsertVimMapping]: AuthSettingsWriteScope,
   [WS_METHODS.serverRemoveVimMapping]: AuthSettingsWriteScope,
   [WS_METHODS.serverSetVimOption]: AuthSettingsWriteScope,
+  [WS_METHODS.serverRefreshProviders]: AuthOrchestrationReadScope,
   [WS_METHODS.pullRequestsRunAction]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsUpdate]: AuthSourceControlWriteScope,
   [WS_METHODS.pullRequestsComment]: AuthSourceControlWriteScope,
@@ -85,6 +86,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Astrolabe: undoing a rename writes the files it changed.
   [WS_METHODS.languageServersUndoEdit]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
+  [WS_METHODS.sourceControlStar]: AuthSourceControlWriteScope,
   // Signing in replaces the server's GitHub credential, as saving a token in Settings does.
   [WS_METHODS.sourceControlSignInStart]: AuthSettingsWriteScope,
   [WS_METHODS.sourceControlSignInWait]: AuthSettingsWriteScope,

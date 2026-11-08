@@ -1,8 +1,10 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import { describe, expect, it } from "@effect/vitest";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as ZeroTrust from "@distilled.cloud/cloudflare/zero-trust";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -33,8 +35,23 @@ const config = RelayConfiguration.RelayConfiguration.of({
 });
 
 interface TunnelCall {
-  readonly operation: "get" | "list" | "create" | "putConfiguration" | "getToken" | "delete";
+  readonly operation:
+    | "get"
+    | "list"
+    | "create"
+    | "putConfiguration"
+    | "getConfiguration"
+    | "getToken"
+    | "delete";
   readonly input: unknown;
+}
+
+interface TunnelConfiguration {
+  readonly ingress: ReadonlyArray<{
+    readonly hostname?: string;
+    readonly path?: string;
+    readonly service: string;
+  }>;
 }
 
 interface DnsCall {
@@ -85,6 +102,11 @@ function makeTunnelClient(calls: TunnelCall[] = []) {
       Effect.sync(() => {
         calls.push({ operation: "putConfiguration", input: { tunnelId, tunnelConfig } });
       }),
+    getConfiguration: (tunnelId) =>
+      Effect.sync(() => {
+        calls.push({ operation: "getConfiguration", input: tunnelId });
+        return { ingress: [] };
+      }),
     getToken: (tunnelId) =>
       Effect.sync(() => {
         calls.push({ operation: "getToken", input: tunnelId });
@@ -97,7 +119,10 @@ function makeTunnelClient(calls: TunnelCall[] = []) {
   });
 }
 
-function makePersistentTunnelClient(calls: TunnelCall[] = []) {
+function makePersistentTunnelClient(
+  calls: TunnelCall[] = [],
+  configuration: { current: TunnelConfiguration | null } = { current: null },
+) {
   let tunnel: { readonly id: string; readonly name: string } | null = null;
   return ManagedEndpointProvider.ManagedEndpointTunnelClient.of({
     get: (tunnelId) =>
@@ -131,6 +156,12 @@ function makePersistentTunnelClient(calls: TunnelCall[] = []) {
     putConfiguration: (tunnelId, tunnelConfig) =>
       Effect.sync(() => {
         calls.push({ operation: "putConfiguration", input: { tunnelId, tunnelConfig } });
+        configuration.current = tunnelConfig;
+      }),
+    getConfiguration: (tunnelId: string) =>
+      Effect.sync(() => {
+        calls.push({ operation: "getConfiguration", input: tunnelId });
+        return configuration.current ?? { ingress: [] };
       }),
     getToken: (tunnelId) =>
       Effect.sync(() => {
@@ -363,7 +394,7 @@ function layerProvider(
   tunnelLimits = makeTunnelLimits(),
 ) {
   return ManagedEndpointProvider.layer.pipe(
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provide(RelayConfiguration.layer(config)),
     Layer.provide(ManagedEndpointProvider.layerTunnelClient(tunnelClient)),
     Layer.provide(ManagedEndpointProvider.layerDnsClient(dnsClient)),
@@ -749,7 +780,7 @@ describe("ManagedEndpointProvider", () => {
         {} as Cloudflare.DNS.ReadWriteDnsClient,
         {} as Alchemy.BaseRuntimeContext,
       ).pipe(
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         Layer.provide(RelayConfiguration.layer(config)),
         Layer.provide(
           Layer.succeed(ManagedEndpointAllocations.ManagedEndpointAllocations, makeAllocations()),
@@ -782,6 +813,44 @@ describe("ManagedEndpointProvider", () => {
         expect(listCalls).toBe(1);
       }).pipe(Effect.provide(layer));
     });
+  });
+
+  it.effect("reads a tunnel without remote configuration as having no ingress", () => {
+    const tunnelClient = {
+      getConfiguration: () =>
+        Effect.fail(
+          new ZeroTrust.TunnelConfigurationNotFound({
+            code: 1055,
+            message: "Tunnel configuration not found",
+          }),
+        ),
+    } as unknown as Cloudflare.Tunnel.ReadWriteTunnelClient;
+    const layer = ManagedEndpointProvider.layerCloudflareBindings(
+      tunnelClient,
+      {} as Cloudflare.DNS.ReadWriteDnsClient,
+      {} as Alchemy.BaseRuntimeContext,
+    ).pipe(
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      Layer.provide(RelayConfiguration.layer(config)),
+      Layer.provide(
+        Layer.succeed(ManagedEndpointAllocations.ManagedEndpointAllocations, makeAllocations()),
+      ),
+      Layer.provide(Layer.succeed(ManagedTunnelLimits.ManagedTunnelLimits, makeTunnelLimits())),
+      Layer.provide(
+        Layer.succeed(
+          CloudflareApiPause.CloudflareApiPause,
+          CloudflareApiPause.CloudflareApiPause.of({
+            pausedUntilMillis: Effect.succeed(0),
+            pauseUntil: () => Effect.void,
+          }),
+        ),
+      ),
+    );
+
+    return Effect.gen(function* () {
+      const tunnels = yield* ManagedEndpointProvider.ManagedEndpointTunnelClient;
+      expect(yield* tunnels.getConfiguration("tunnel-id")).toEqual({ ingress: [] });
+    }).pipe(Effect.provide(layer));
   });
 
   it.effect("does not hide non-not-found checkpoint update failures", () => {
@@ -1133,6 +1202,72 @@ describe("ManagedEndpointProvider", () => {
           },
         },
       ]);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("restores Cloudflare ingress that drifted from the recorded origin", () => {
+    const tunnelCalls: TunnelCall[] = [];
+    const configuration: { current: TunnelConfiguration | null } = { current: null };
+    const layer = layerProvider(makePersistentTunnelClient(tunnelCalls, configuration));
+
+    return Effect.gen(function* () {
+      const provider = yield* ManagedEndpointProvider.ManagedEndpointProvider;
+      const key = { userId: "user_ABC", environmentId: "env_ABC" } as const;
+      const origin = { localHttpHost: "127.0.0.1", localHttpPort: 3773 } as const;
+      const provisioned = yield* provider.provision({ ...key, origin });
+      const reconcile = provider.reconcileOrigin({
+        ...key,
+        tunnelId: provisioned.runtime.tunnelId!,
+        origin,
+        endpoint: provisioned.endpoint,
+      });
+      tunnelCalls.length = 0;
+
+      expect(yield* reconcile).toBe("ready");
+      expect(tunnelCalls.map((call) => call.operation)).toEqual(["get", "getConfiguration"]);
+
+      configuration.current = {
+        ingress: [
+          { hostname: expectedManagedHostname("env_ABC"), service: "http://127.0.0.1:4711" },
+          { service: "http_status:404" },
+        ],
+      };
+      expect(yield* reconcile).toBe("ready");
+      expect(configuration.current).toEqual({
+        ingress: [
+          { hostname: expectedManagedHostname("env_ABC"), service: "http://127.0.0.1:3773" },
+          { service: "http_status:404" },
+        ],
+      });
+
+      configuration.current = {
+        ingress: [
+          { hostname: "*.t3code.test", service: "http://127.0.0.1:4711" },
+          { hostname: expectedManagedHostname("env_ABC"), service: "http://127.0.0.1:3773" },
+          { service: "http_status:404" },
+        ],
+      };
+      expect(yield* reconcile).toBe("ready");
+      expect(configuration.current.ingress[0]).toEqual({
+        hostname: expectedManagedHostname("env_ABC"),
+        service: "http://127.0.0.1:3773",
+      });
+
+      configuration.current = {
+        ingress: [
+          {
+            hostname: expectedManagedHostname("env_ABC"),
+            path: "/api",
+            service: "http://127.0.0.1:3773",
+          },
+          { service: "http_status:404" },
+        ],
+      };
+      expect(yield* reconcile).toBe("ready");
+      expect(configuration.current.ingress[0]).toEqual({
+        hostname: expectedManagedHostname("env_ABC"),
+        service: "http://127.0.0.1:3773",
+      });
     }).pipe(Effect.provide(layer));
   });
 

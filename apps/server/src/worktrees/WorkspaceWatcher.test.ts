@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import type { ProjectWorktreeChange } from "@t3tools/contracts";
@@ -17,7 +18,7 @@ import { changedDirectories, type RawChange, WorkspaceWatcher, layer } from "./W
 
 const layerBase = GitVcsDriver.layer.pipe(
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "workspace-watcher-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const fixture = Effect.gen(function* () {
@@ -68,7 +69,7 @@ describe("changedDirectories", () => {
       expect(changedDirectories(path, "/repo", changes, 1)).toBeNull();
       expect(changedDirectories(path, "/repo", [...changes, { type: "overflow" }])).toBeNull();
       expect(changedDirectories(path, "/repo", [{ type: "git" }])).toEqual([]);
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });
 

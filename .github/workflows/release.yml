@@ -396,8 +396,12 @@ jobs:
       (github.event_name != 'schedule' || needs.resolve_commit.outputs.has_changes == 'true')
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 5
+    # Previews build any branch, but production admits only main and v* tags.
+    # The empty name runs previews with no environment, so their sign-in and relay
+    # URLs come from .env.example. Everything else matches nightly: the tracing
+    # read below needs only repository-level Cloudflare credentials.
     environment:
-      name: production
+      name: ${{ inputs.channel != 'preview' && 'production' || '' }}
     outputs:
       # Astrolabe deploys no relay or sign-in service yet. With neither
       # RELAY_DOMAIN (or RELAY_API_ZONE_NAME) nor AUTH_URL set, every output is
@@ -414,11 +418,28 @@ jobs:
       RELAY_API_ZONE_NAME: ${{ vars.RELAY_API_ZONE_NAME }}
       AUTH_URL: ${{ vars.AUTH_URL }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve_commit.outputs.ref }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
       - id: public_config
         name: Resolve production relay public config
         shell: bash
+        env:
+          PREVIEW: ${{ inputs.channel == 'preview' }}
         run: |
           set -euo pipefail
+
+          if [[ "$PREVIEW" == "true" ]]; then
+            AUTH_URL="$(sed -n 's|^T3CODE_AUTH_URL=||p' .env.example)"
+            RELAY_DOMAIN="$(sed -n 's|^T3CODE_RELAY_URL=https://||p' .env.example)"
+            RELAY_API_ZONE_NAME=""
+          fi
 
           relay_domain="${RELAY_DOMAIN:-}"
           if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
@@ -450,16 +471,6 @@ jobs:
             echo "auth_url=$AUTH_URL"
             echo "relay_url=https://$relay_domain"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
-        if: steps.public_config.outputs.configured == 'true'
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.resolve_commit.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
 
       - name: Setup dependencies
         if: steps.public_config.outputs.configured == 'true'

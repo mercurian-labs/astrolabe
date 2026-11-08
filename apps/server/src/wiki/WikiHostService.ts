@@ -23,7 +23,7 @@ import {
   type WikiTarget,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -147,7 +147,7 @@ const make = Effect.gen(function* () {
   const projects = yield* ProjectService.ProjectService;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
 
   const jobs = yield* Queue.unbounded<Job>();
   const sweeps = yield* Ref.make(0);
@@ -390,7 +390,7 @@ const make = Effect.gen(function* () {
 
   /** Leaves a project with threads in it: it is someone's work now. */
   const deleteBackingProject = (projectId: ProjectId) =>
-    crypto.randomUUIDv4().pipe(
+    random.uuidV4().pipe(
       Effect.flatMap((uuid) =>
         projects.delete({ commandId: CommandId.make(`wiki-host-remove:${uuid}`), projectId }),
       ),
@@ -411,7 +411,7 @@ const make = Effect.gen(function* () {
             hostError("This wiki's folder is not connected to a git host we can reach."),
           ),
         );
-      const uuid = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const uuid = yield* random.uuidV4();
       const { project, created } = yield* projects
         .bootstrap({
           commandId: CommandId.make(`wiki-host-connect:${uuid}`),
