@@ -1843,6 +1843,8 @@ const make = Effect.gen(function* () {
     const head = (yield* amendmentsOf(wiki, stored)).at(-1);
     if (head?.autosave !== document || head.actor !== actorName(author)) return undefined;
     if (head.commit !== stored.head) return undefined;
+    // Rewriting a commit the host has would fork the branch from its copy there.
+    if (stored.record.pushedHead === head.commit) return undefined;
     const now = yield* Clock.currentTimeMillis;
     if (now - Date.parse(head.at) >= AUTOSAVE_RUN_MS) return undefined;
     return yield* revParse(wiki.root, `${stored.head}^`);
