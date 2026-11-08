@@ -42,7 +42,14 @@ function LinkPreview({
     (listener) => page.watchNote(link.name, listener),
     () => page.getNote(link.name),
   );
-  return <WikiLinkPreview link={link} source={source} resolved={page.getNoteLink(link.name)} />;
+  return (
+    <WikiLinkPreview
+      link={link}
+      source={source}
+      resolved={page.getNoteLink(link.name)}
+      onOpen={() => openNote(link.name)}
+    />
+  );
 }
 
 function Page({ page }: { readonly page: WikiEditorPage }) {
