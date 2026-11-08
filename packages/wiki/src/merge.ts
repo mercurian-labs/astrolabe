@@ -52,6 +52,9 @@ function matches(base: Tokens, other: Tokens): number[] {
 const same = (a: Tokens, b: Tokens): boolean =>
   a.length === b.length && a.every((t, i) => t === b[i]);
 
+/** The words of some tokens, however they are spaced. */
+const words = (tokens: Tokens): string => tokens.join("").replace(/\s+/g, " ").trim();
+
 /**
  * One side only added tokens before or after `base`, the other changed it: both are kept, and an
  * addition the changed side already made is taken once. Null when that is not the case.
@@ -143,6 +146,7 @@ function mergeTokens(
       continue;
     }
     const kept =
+      (words(region.ours) === words(region.theirs) ? region.ours : null) ??
       besideChange(region.base, region.ours, region.theirs) ??
       besideChange(region.base, region.theirs, region.ours);
     if (kept === null) return inner;
@@ -159,5 +163,16 @@ export function mergeMarkdown(base: string, ours: string, theirs: string): Merge
   if (ours === theirs) return { status: "merged", text: ours };
   if (ours === base) return { status: "merged", text: theirs };
   if (theirs === base) return { status: "merged", text: ours };
-  return mergeTokens(paragraphs(base), paragraphs(ours), paragraphs(theirs), sentences);
+  // The file's last newlines merge apart, so an editor that drops them changes no sentence.
+  const [b, o, t] = [base, ours, theirs].map(
+    (text) => /^([\s\S]*?)(\n*)$/.exec(text) ?? ["", text, ""],
+  );
+  const body = mergeTokens(
+    paragraphs(b[1] ?? ""),
+    paragraphs(o[1] ?? ""),
+    paragraphs(t[1] ?? ""),
+    sentences,
+  );
+  if (body.status === "conflict") return body;
+  return { status: "merged", text: body.text + (o[2] === b[2] ? t[2] : o[2]) };
 }

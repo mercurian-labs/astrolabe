@@ -75,6 +75,20 @@ describe("markdown merge", () => {
     expect(merged("One.\n", "Zero.\n\nOne.\n", "One, edited.\n")).toBe("Zero.\n\nOne, edited.\n");
   });
 
+  it("adds to a paragraph whose file lost its last newline, and takes one addition spaced two ways once", () => {
+    const head = "# Home\n\nOne. Middle stays. Last.";
+    // An editor dropped the newline main keeps; main changed two sentences.
+    expect(
+      merged(
+        `${head}\n`,
+        `${head} Added. More.`,
+        "# Home\n\nOne. Middle, on main. Last, on main.\n",
+      ),
+    ).toBe("# Home\n\nOne. Middle, on main. Last, on main. Added. More.");
+    // The same sentence added on both sides, after a newline on one of them.
+    expect(merged(`${head}\n`, `${head} Added.`, `${head}\n Added.`)).toBe(`${head} Added.`);
+  });
+
   it("treats changes to touching paragraphs as a conflict, as diff3 and git do", () => {
     const base = "One.\n\nTwo.\n\nThree.\n";
     expect(merged(base, "One.\n\nThree.\n", "One.\n\nTwo.\n\nThree, edited.\n")).toBe("CONFLICT");
