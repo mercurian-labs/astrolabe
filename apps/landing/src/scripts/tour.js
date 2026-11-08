@@ -5,8 +5,8 @@
 
 import { scenarios } from "./tour-scenes.js";
 
-const ATTRIBUTES = new Set(["section", "thread", "cpane", "edits", "merge"]);
-const SECTIONS = ["agents", "wikis", "changes"];
+const ATTRIBUTES = new Set(["section", "wiki", "thread", "cpane", "edits", "merge"]);
+const SECTIONS = ["agents", "wikis", "changes", "wikis"];
 
 const tour = document.querySelector("[data-tour]");
 const app = document.querySelector("[data-tour-app]");
@@ -240,10 +240,11 @@ function run(tour, app) {
     explore();
   }
 
-  // Phase i's section, as the scenario left it.
+  // Phase i's section, as the scenario left it; a wikis phase names the note it shows.
   function turnTo(i) {
     phase = i;
     setAttribute("section", SECTIONS[phasesOf(scenario)[i].segment]);
+    setAttribute("wiki", phasesOf(scenario)[i].wiki ?? "doc");
     showPhase();
     settleFills();
   }

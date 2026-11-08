@@ -1,7 +1,7 @@
-// The hero tour's script: three scenarios over one drawn window (HeroWindow.astro); the main one plays
-// on arrival, each example when its prompt chip is clicked. A phase is { at, type, payload } events
-// (`at` ms from phase start). Types: show/hide (data-k keys), swap { from, to }, press (data-p),
-// section, thread, cpane ("group" | "pr"), edits ("live" | "settled" | "accepted"), merge ("off" | "on").
+// The hero tour's script: three scenarios over one drawn window (HeroWindow.astro). A phase is
+// { at, type, payload } events (`at` ms from phase start). Types: show/hide (data-k keys), swap
+// { from, to }, press (data-p), section, wiki ("doc" | "skill"), thread, cpane ("group" | "pr"),
+// edits ("live" | "settled" | "accepted"), merge ("off" | "on").
 
 const send = (draft) => [
   { at: 0, type: "show", payload: "placeholder" },
@@ -69,6 +69,7 @@ export const scenarios = [
           "The planner brings the wiki’s Payments page up to date. Its words arrive tinted under its cursor, the sentence they replace is ghosted, and you accept the change.",
         events: [
           { at: 0, type: "section", payload: "wikis" },
+          { at: 0, type: "wiki", payload: "doc" },
           { at: 0, type: "edits", payload: "live" },
           show(0, ["doc-working", "old"]),
           show(700, "cursor"),
@@ -120,6 +121,39 @@ export const scenarios = [
           swap(8600, "grp-sync", "grp-merged"),
           // A merged group leaves the sidebar; its tab stays open.
           { at: 10000, type: "hide", payload: "grp-groups" },
+        ],
+      },
+      {
+        segment: 3,
+        wiki: "skill",
+        duration: 13000,
+        caption:
+          "Claude writes a Verify checkout skill from the create-verification-skill template, with three test cases, into the wiki. Once you merge it, Claude uses it on the Apple Pay button, and all three cases pass.",
+        events: [
+          { at: 0, type: "section", payload: "wikis" },
+          { at: 0, type: "wiki", payload: "skill" },
+          { at: 0, type: "edits", payload: "live" },
+          show(0, ["sk-working", "sk-open"]),
+          show(800, "sk-c1"),
+          show(1500, "sk-c2"),
+          show(2200, "sk-c3"),
+          { at: 3000, type: "edits", payload: "settled" },
+          { at: 3000, type: "hide", payload: "sk-working" },
+          press(4200, "sk-merge"),
+          { at: 4500, type: "edits", payload: "accepted" },
+          swap(4500, "sk-open", "sk-merged"),
+          // Back in the planner's thread, the merged skill is one $ away.
+          { at: 5600, type: "section", payload: "agents" },
+          thread(5600, "plan"),
+          swap(6000, "placeholder", "draft-skill"),
+          press(6700, "send"),
+          swap(6850, "draft-skill", "placeholder"),
+          show(6850, "plan-skill-ask"),
+          swap(6850, "plan-st-now", "plan-st-work"),
+          show(7600, "plan-skill-load"),
+          show(8500, "plan-skill-run"),
+          show(9800, "plan-skill-reply"),
+          swap(9800, "plan-st-work", "plan-st-now"),
         ],
       },
     ],

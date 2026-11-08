@@ -66,7 +66,7 @@ const tabs = [
 ];
 ---
 
-<div class="app app--poster app--tour" data-tour-app data-section="agents" data-thread="plan" data-cpane="group" data-edits="accepted" data-merge="on" aria-hidden="true">
+<div class="app app--poster app--tour" data-tour-app data-section="agents" data-wiki="doc" data-thread="plan" data-cpane="group" data-edits="accepted" data-merge="on" aria-hidden="true">
   <div class="tb">
     <div class="tb__cap">
       <span class="lights"><i></i><i></i><i></i></span>
@@ -95,8 +95,10 @@ const tabs = [
     <!-- Wikis and Changes: one pane of tabs across the main area. -->
     <div class="tb__strip tb__strip--pane tb__strip--main" data-in="wikis">
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
-      <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-      <span class="tab"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab is-front is-focus" data-wv="doc"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab" data-wv="skill"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab is-front is-focus" data-wv="skill"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Verify checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab" data-wv="doc"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
       <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
       <svg class="ico ico--muted"><use href="#i-plus" /></svg>
       <span class="spacer"></span>
@@ -233,6 +235,14 @@ const tabs = [
           <div class="msg msg--agent" data-k="plan-reply-3">
             <p>The Payments page now covers Apple Pay. The edit waits in the change request Add Apple Pay to checkout.</p>
           </div>
+          <div class="msg msg--user" data-k="plan-skill-ask" data-gone>Use <span class="skill__chip">$verify-checkout</span> on the Apple Pay button in #513.</div>
+          <ul class="worklog" data-k="plan-skill-load" data-gone>
+            <li><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Skill <code>verify-checkout</code> from the engineering wiki</span></li>
+            <li data-k="plan-skill-run" data-gone><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Drove 3 test cases in Safari</span></li>
+          </ul>
+          <div class="msg msg--agent" data-k="plan-skill-reply" data-gone>
+            <p>All 3 test cases pass. The button hides in Firefox, and a declined payment returns to the card form.</p>
+          </div>
         </div>
 
         <!-- The subagents and the reviewer: each opens on its parent, then the task it was sent. -->
@@ -342,6 +352,7 @@ const tabs = [
           <span data-k="draft-apple" data-gone>Add Apple Pay to checkout. Plan it, then hand the API and the button to two agents, each in a worktree of its own.</span>
           <span data-k="draft-flaky" data-gone>Fix the flaky login test, then have Claude review the fix.</span>
           <span data-k="draft-s3" data-gone>Move uploads to S3. Copy the old files over a batch a night.</span>
+          <span data-k="draft-skill" data-gone>Use $verify-checkout on the Apple Pay button in #513.</span>
         </div>
         <div class="composer__row">
           {
@@ -375,7 +386,9 @@ const tabs = [
       </div>
       <div class="opens"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span>Open changes · 1</span><svg class="ico ico--xs"><use href="#i-right" /></svg></div>
       <ul class="side__list side__list--slim">
-        <li class="slim is-active"><span class="tile">EN</span><span>Payments</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
+        <li class="slim is-active" data-wv="skill"><span class="tile">EN</span><span>Verify checkout</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
+        <li class="slim is-active" data-wv="doc"><span class="tile">EN</span><span>Payments</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
+        <li class="slim" data-wv="skill"><span class="tile tile--dim">EN</span><span>Payments</span><em>now</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Checkout</span><em>2d</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Refunds</span><em>5d</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Webhooks</span><em>1w</em></li>
@@ -385,7 +398,31 @@ const tabs = [
       </ul>
     </aside>
 
-    <div class="pane pane--doc" data-in="wikis">
+    <!-- A skill the planner writes from a template, with its test cases, then merges and uses. -->
+    <div class="pane pane--doc" data-in="wikis" data-wv="skill">
+      <div class="note__head">
+        <b>Verify checkout</b>
+        <span>In “Verify checkout skill”<span data-k="sk-working" data-gone> · agent working</span></span>
+        <span class="spacer"></span>
+        <span class="mini mini--solid" data-p="sk-merge" data-k="sk-open" data-gone>Merge</span>
+        <span class="state state--done" data-k="sk-merged">Merged</span>
+      </div>
+      <article class="doc">
+        <p class="skill__from">Skill · from <code>create-verification-skill</code></p>
+        <h4>Verify checkout</h4>
+        <p>Drives checkout in a real browser the way a shopper does, and saves a screenshot of each result as proof.</p>
+        <h5>Launch</h5>
+        <p>Run <code>pnpm dev --filter checkout</code>. It is ready when port 5173 answers.</p>
+        <h5>Test cases</h5>
+        <ol class="skill__cases">
+          <li class="doc__typed" data-k="sk-c1">Apple Pay shows in Safari with a card in Wallet.</li>
+          <li class="doc__typed" data-k="sk-c2">The button hides where Apple Pay can’t pay.</li>
+          <li class="doc__typed" data-k="sk-c3">A declined payment returns to the card form.</li>
+        </ol>
+      </article>
+    </div>
+
+    <div class="pane pane--doc" data-in="wikis" data-wv="doc">
       <div class="note__head">
         <b>Payments</b>
         <span>In “Add Apple Pay to checkout”<span data-k="doc-working" data-gone> · agent working</span></span>
