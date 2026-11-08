@@ -3696,7 +3696,112 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [08] Automations: one weekday, three ways an agent starts
+/* ───────────────────────────────────────── [08] Understanding: a canvas kept in the wiki, as the
+   app's canvas tab draws one: a dotted board, groups labelled above, cards, arrows, changed cards
+   tinted. Drawn wide, and stacked for a phone-width window. */
+
+.app--canvas .pb {
+  height: auto;
+}
+.board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.2em 1.4em;
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--app-text) 16%, transparent) 1px,
+    transparent 1.2px
+  );
+  background-size: 1.6em 1.6em;
+}
+.cv {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.cv--tall {
+  display: none;
+}
+.cv text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, var(--sans);
+}
+.cv-group rect {
+  fill: color-mix(in srgb, var(--app-text) 3%, var(--app-canvas));
+  stroke: var(--app-border);
+  stroke-width: 1.25;
+}
+.cv-group text {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--app-muted);
+}
+.cv-edge path {
+  fill: none;
+  stroke: var(--app-muted);
+  stroke-width: 1.5;
+}
+.cv-head {
+  fill: var(--app-muted);
+}
+.cv-label text {
+  font-size: 12px;
+  fill: var(--app-muted);
+}
+.cv-type rect {
+  fill: var(--app-canvas);
+  stroke: var(--app-border);
+}
+.cv-type text {
+  font: 500 11.5px var(--mono);
+  fill: var(--app-agent);
+}
+.cv-card rect {
+  fill: var(--app-surface);
+  stroke: var(--app-border);
+  stroke-width: 1.25;
+}
+.cv-card.is-changed rect {
+  fill: color-mix(in srgb, var(--app-agent) 9%, var(--app-surface));
+  stroke: color-mix(in srgb, var(--app-agent) 55%, transparent);
+}
+.cv-card.is-note rect {
+  stroke-dasharray: 4 3;
+}
+.cv .cv-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--app-text);
+}
+.cv .cv-card__sub {
+  font: 400 11px var(--mono);
+  fill: var(--app-muted);
+}
+.cv .cv-card__mark {
+  font: 500 11px var(--mono);
+  fill: var(--app-agent);
+}
+.cv .cv-card__body {
+  font-size: 13px;
+  fill: var(--app-text);
+}
+@container (max-width: 560px) {
+  .app--canvas .doc__bar .mini,
+  .app--canvas .doc__scope {
+    display: none;
+  }
+  .cv--wide {
+    display: none;
+  }
+  .cv--tall {
+    display: block;
+  }
+  .board {
+    padding: 1em 0.8em;
+  }
+}
+
+/* ───────────────────────────────────────── [09] Automations: one weekday, three ways an agent starts
    Each row is a trigger beside its lane on one shared day. A lane places its marks by time, as
    fractions of the day: --x where it starts, --w where the pull request wakes it, --y where it ends.
    Each mark draws in as the playhead (--p) passes, through the same windows as [04]. Static (no JS,
@@ -3979,7 +4084,7 @@ hidden, leaves the sticky stage working). */
     border-top: 1px solid var(--rule);
   }
 }
-/* ───────────────────────────────────────── [09] Anywhere */
+/* ───────────────────────────────────────── [10] Anywhere */
 
 .anywhere {
   display: grid;
@@ -4001,7 +4106,7 @@ hidden, leaves the sticky stage working). */
   border-left: 1px solid var(--rule);
   container-type: inline-size;
 }
-/* The reach figure ([09] Anywhere) is drawn in the [03] cards' figure language: the devices are
+/* The reach figure ([10] Anywhere) is drawn in the [03] cards' figure language: the devices are
    <g> parts in .reach__defs, placed by two compositions, wide beside the copy and tall when the
    column is narrow. It is complete at rest; rust marks the phone reaching the machine. */
 .reach__defs {
@@ -4336,7 +4441,7 @@ hidden, leaves the sticky stage working). */
   visibility: visible;
 }
 
-/* ───────────────────────────────────────── [10] Who it's for: a section head beside its list */
+/* ───────────────────────────────────────── [11] Who it's for: a section head beside its list */
 
 .who {
   display: grid;
