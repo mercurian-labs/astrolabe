@@ -300,7 +300,12 @@ export function resolveWorktreeSetupProgress(input: {
   held: WorktreeSetupSnapshot | null;
 }) {
   const latest = input.latest?.threadId === input.threadId ? input.latest : null;
-  const held = input.held?.threadId === input.threadId ? input.held : null;
+  // The server answers null only after a setup ends, so a held running snapshot missed its finish.
+  const held =
+    input.held?.threadId === input.threadId &&
+    !(input.latest === null && input.held.phase === "running")
+      ? input.held
+      : null;
   const snapshot = latest && (!held || latest.sequence >= held.sequence) ? latest : held;
   return {
     snapshot,
