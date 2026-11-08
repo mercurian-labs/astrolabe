@@ -45,7 +45,7 @@ export function ChangeGroupRouteScreen(props: Props) {
     return (
       <View className="flex-1 items-center justify-center bg-screen px-8">
         <Text className="text-center text-sm text-foreground-muted">
-          This group has fewer than two change requests now.
+          This group has fewer than two pull requests now.
         </Text>
       </View>
     );

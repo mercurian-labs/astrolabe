@@ -20,6 +20,7 @@ import {
   NO_NOTE_FROM_RELATIVE_LINK,
   wikiDocumentFilesWithDraft,
   wikiLinkOpens,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import { linkFiles } from "@mercurian/wiki/resolve-link";
 import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
@@ -384,6 +385,7 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     file: requested,
     changeRequest: viewing ?? null,
     readsChangeRequest: changeRequestId !== undefined,
+    noun: wikiTerms(wiki).singular,
     agentWorking: viewingTurn.running,
     saving: wikiSaveLabel(status),
   });

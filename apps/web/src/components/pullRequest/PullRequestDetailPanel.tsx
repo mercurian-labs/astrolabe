@@ -47,6 +47,10 @@ import {
 
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { type PullRequestDetailTab, useRightPanelStore } from "~/rightPanelStore";
+import { wikiEnvironment } from "~/state/wiki";
+import { describeWikiFailure, isWikiConflict, wikiMergeMethod } from "../wiki/wiki.logic";
+import { useWikiOfPullRequest } from "../wiki/wikiEnvironment";
+import { useConfirmWikiMerge, WikiPullRequestTab } from "../wiki/WikiPullRequestTab";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -201,6 +205,7 @@ const UPDATE_BRANCH_REBASE_FAILURE_HINT =
 
 const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
   { value: "summary", label: "Summary" },
+  { value: "wiki", label: "Wiki" },
   { value: "guide", label: "Guide" },
   { value: "timeline", label: "Timeline" },
   { value: "code", label: "Code" },
@@ -361,6 +366,13 @@ export function PullRequestDetailPanel({
     coreDetail,
     detail,
   } = usePullRequestDetail(environmentId, reference, matchingListEntry);
+  // Astrolabe: a host wiki's change request is reviewed here, with the wiki's reading as a tab.
+  const wikiChange = useWikiOfPullRequest(environmentId, reference);
+  const confirmWikiMerge = useConfirmWikiMerge(environmentId, wikiChange);
+  const resolveWikiConflicts = useAtomCommand(wikiEnvironment.resolveConflicts, {
+    reportFailure: false,
+  });
+  const [resolvingWiki, setResolvingWiki] = useState(false);
   const [selectedTab, setTab] = useState<PullRequestDetailTab>(initialTab);
   const reviewGuidesEnabled = useEnvironmentSettings(
     environmentId,
@@ -373,7 +385,8 @@ export function PullRequestDetailPanel({
   const requestedTab = tabOnPage ? (pageTab ?? initialTab) : selectedTab;
   const isTabAvailable = (value: PullRequestDetailTab) =>
     (value !== "code" || detail === null || detail.capabilities.diff) &&
-    (value !== "guide" || reviewGuidesEnabled);
+    (value !== "guide" || reviewGuidesEnabled) &&
+    (value !== "wiki" || wikiChange !== null);
   // An unavailable tab falls back without overwriting the saved selection.
   const tab = isTabAvailable(requestedTab) ? requestedTab : "summary";
   const selectTab = (next: PullRequestDetailTab) => {
@@ -434,6 +447,9 @@ export function PullRequestDetailPanel({
     },
     code: (node: HTMLElement | null) => {
       scrollerByTab.current.code = node;
+    },
+    wiki: (node: HTMLElement | null) => {
+      scrollerByTab.current.wiki = node;
     },
   }));
   const foldRef = useRef<HTMLDivElement | null>(null);
@@ -708,6 +724,9 @@ export function PullRequestDetailPanel({
     updateMethod?: PullRequestUpdateMethod,
   ) => {
     if (!canWriteSourceControl || pendingAction !== null) return false;
+    if ((action === "merge" || action === "enable-auto-merge") && !(await confirmWikiMerge())) {
+      return false;
+    }
     setPendingAction(action);
     return finishAction(action, method, updateMethod);
   };
@@ -1113,7 +1132,8 @@ export function PullRequestDetailPanel({
   const selectedMergeMethod = resolvePullRequestMergeMethod(
     allowedMergeMethods,
     currentMergeMethod,
-    projectDefaultMergeMethod,
+    // A wiki keeps its amendments one commit each unless the repository allows only squashing.
+    wikiChange === null ? projectDefaultMergeMethod : wikiMergeMethod(allowedMergeMethods),
     lastSelectedMergeMethod,
   );
   const selectedMergeMethodLabel = PULL_REQUEST_MERGE_METHOD_LABELS[selectedMergeMethod];
@@ -1232,11 +1252,43 @@ export function PullRequestDetailPanel({
       />
     ) : null;
 
+  const handoffUnavailable =
+    attachTarget === null && (checkoutRoot === null || !canPrepareWorktree);
+  // A wiki's notes merge by markdown first, which settles what the host's line merge cannot;
+  // sentences both sides changed go to an agent, as any pull request's conflicts do.
+  const resolveWiki = async (change: NonNullable<typeof wikiChange>) => {
+    setResolvingWiki(true);
+    const result = await resolveWikiConflicts({
+      environmentId,
+      input: {
+        wikiId: change.changeRequest.wikiId,
+        changeRequestId: change.changeRequest.changeRequestId,
+      },
+    });
+    setResolvingWiki(false);
+    refreshDetail();
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
+    const failure = squashAtomCommandFailure(result);
+    if (isWikiConflict(failure) && !handoffUnavailable) {
+      toastManager.add({
+        type: "info",
+        title: "An agent is resolving the rest",
+        description: describeWikiFailure(failure),
+      });
+      startResolveConflicts();
+      return;
+    }
+    toastManager.add({
+      type: "error",
+      title: "Couldn't resolve the conflicts",
+      description: describeWikiFailure(failure),
+    });
+  };
   const resolveConflictsControl = (
     <PullRequestResolveConflictsButton
-      handoff={handoff}
-      unavailable={attachTarget === null && (checkoutRoot === null || !canPrepareWorktree)}
-      onResolve={startResolveConflicts}
+      handoff={resolvingWiki ? "conflicts" : handoff}
+      unavailable={wikiChange === null ? handoffUnavailable : !canWriteSourceControl}
+      onResolve={wikiChange === null ? startResolveConflicts : () => void resolveWiki(wikiChange)}
     />
   );
 
@@ -1780,6 +1832,15 @@ export function PullRequestDetailPanel({
                   {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
                   onRefresh={refreshDetail}
                   onRefreshChecks={refreshFromHost}
+                />
+              </div>
+            ) : null}
+            {mountedTabs.has("wiki") && wikiChange !== null ? (
+              <div className={cn("absolute inset-0", tab !== "wiki" && "invisible")}>
+                <WikiPullRequestTab
+                  environmentId={environmentId}
+                  change={wikiChange}
+                  scrollerRef={scrollerRefs.wiki}
                 />
               </div>
             ) : null}

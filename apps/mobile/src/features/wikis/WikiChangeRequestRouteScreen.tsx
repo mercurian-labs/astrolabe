@@ -6,10 +6,13 @@ import {
 import {
   describeIndexError,
   describeWikiFailure,
+  documentPath,
+  hasUnpublishedWork,
   isCanvasName,
   mergeBlockedReason,
   mergeConflictAdvice,
-  documentPath,
+  wikiPullRequestHost,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import { canvasChangeSummary, reviewCanvasFiles } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -88,16 +91,23 @@ export function WikiChangeRequestRouteScreen({
     wikiEnvironment.changeRequest({ environmentId, input: target }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const wikiName = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId)?.name ?? null;
+  const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
+  const wikiName = wiki?.name ?? null;
+  const terms = wikiTerms(wiki);
+  const hostProjectId = wiki?.host?.projectId ?? null;
   const canMerge = useAtomValue(wikiEnvironment.merge.permissionAtom(environmentId));
   const canSetStatus = useAtomValue(
     wikiEnvironment.setChangeRequestStatus.permissionAtom(environmentId),
+  );
+  const canPublish = useAtomValue(
+    wikiEnvironment.publishChangeRequest.permissionAtom(environmentId),
   );
   // Astrolabe: the pull requests of the thread that wrote it (see `wikiPullRequests`).
   const writer = detail.data?.changeRequest.threadId ?? null;
   const thread = useThreadShell(writer === null ? null : scopeThreadRef(environmentId, writer));
   const pullRequestLinks = thread?.pullRequests ?? NO_LINKS;
   const merge = useWikiAction(wikiEnvironment.merge);
+  const publish = useWikiAction(wikiEnvironment.publishChangeRequest);
   const setStatus = useWikiAction(wikiEnvironment.setChangeRequestStatus);
   const [busy, setBusy] = useState(false);
   const [draftActions, setDraftActions] = useState(false);
@@ -115,11 +125,11 @@ export function WikiChangeRequestRouteScreen({
   if (detail.data === null) {
     return (
       <View className="flex-1 bg-screen">
-        <NativeStackScreenOptions options={{ title: "Change request" }} />
+        <NativeStackScreenOptions options={{ title: terms.Singular }} />
         {detail.error !== null ? (
-          <EmptyState title="Couldn't open this change request" detail={detail.error} />
+          <EmptyState title={`Couldn't open this ${terms.singular}`} detail={detail.error} />
         ) : (
-          <LoadingScreen message="Opening the change request…" />
+          <LoadingScreen message={`Opening the ${terms.singular}…`} />
         )}
       </View>
     );
@@ -130,6 +140,9 @@ export function WikiChangeRequestRouteScreen({
   const blocked = mergeBlockedReason({ canWrite: canMerge, preview: mergePreview });
   const errors = (open ? mergePreview.errors : detail.data.errors).map(describeIndexError);
   const threadId = changeRequest.threadId;
+  const pullRequest = changeRequest.pullRequest ?? null;
+  const pullRequestHost = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);
+  const unpublished = hostProjectId !== null && hasUnpublishedWork(changeRequest);
 
   // Merging the docs before the code is allowed, after saying so.
   const waiting = unmergedPullRequests(pullRequestLinks);
@@ -138,7 +151,9 @@ export function WikiChangeRequestRouteScreen({
     Dialog.confirm({
       title: "Merge into main?",
       message: [
-        `“${changeRequest.title}” is written into ${wikiName ?? "the wiki"}'s folder and pushed to its mirror.`,
+        hostProjectId !== null
+          ? `“${changeRequest.title}” is merged on the host, under the repository's rules.`
+          : `“${changeRequest.title}” is written into ${wikiName ?? "the wiki"}'s folder and pushed to its mirror.`,
         waiting.length > 0
           ? `${waiting.length === 1 ? "Pull request" : "Pull requests"} ${waiting.map((link) => `#${link.number}`).join(", ")} ${waiting.length === 1 ? "hasn't" : "haven't"} merged yet, so these docs would describe code that isn't on main.`
           : null,
@@ -148,6 +163,21 @@ export function WikiChangeRequestRouteScreen({
       confirmText: "Merge",
       onConfirm: () => void act(() => merge({ environmentId, input: target }), "Couldn't merge"),
     });
+
+  // A host wiki is reviewed and merged on its pull request's screen, like a repository's.
+  const openPullRequest =
+    hostProjectId !== null && pullRequest !== null && pullRequestHost !== null
+      ? () =>
+          navigation.dispatch(
+            StackActions.push("PullRequest", {
+              environmentId: route.params.environmentId,
+              projectId: String(hostProjectId),
+              repository: pullRequest.repository,
+              number: pullRequest.number,
+              host: pullRequestHost,
+            }),
+          )
+      : null;
 
   const openDocument = (change: WikiFileChange) =>
     navigation.dispatch(
@@ -171,7 +201,7 @@ export function WikiChangeRequestRouteScreen({
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions
         options={{
-          title: "Change request",
+          title: changeRequest.draft ? "Draft" : terms.Singular,
           unstable_headerSubtitle: [
             wikiName,
             changeRequest.draft
@@ -189,15 +219,15 @@ export function WikiChangeRequestRouteScreen({
         <Toolbar.Menu
           icon="ellipsis"
           title={changeRequest.title}
-          accessibilityLabel="Change request actions"
+          accessibilityLabel={`${terms.Singular} actions`}
           disabled={busy}
         >
           {open && changeRequest.draft ? (
             <Toolbar.MenuAction icon="square.and.pencil" onPress={() => setDraftActions(true)}>
-              <Toolbar.Label>Make it a change request, move or discard</Toolbar.Label>
+              <Toolbar.Label>{`Make it a ${terms.singular}, move or discard`}</Toolbar.Label>
             </Toolbar.MenuAction>
           ) : null}
-          {open && !changeRequest.draft ? (
+          {open && !changeRequest.draft && hostProjectId === null ? (
             <Toolbar.MenuAction
               icon={PullRequestGlyph.merged}
               disabled={blocked !== null}
@@ -205,6 +235,22 @@ export function WikiChangeRequestRouteScreen({
               onPress={confirmMerge}
             >
               <Toolbar.Label>Merge into main</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ) : null}
+          {openPullRequest !== null ? (
+            <Toolbar.MenuAction icon={PullRequestGlyph.pullRequest} onPress={openPullRequest}>
+              <Toolbar.Label>{`Review the ${terms.singular}`}</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ) : null}
+          {unpublished ? (
+            <Toolbar.MenuAction
+              icon="arrow.up.circle"
+              disabled={!canPublish}
+              onPress={() =>
+                void act(() => publish({ environmentId, input: target }), "Couldn't publish")
+              }
+            >
+              <Toolbar.Label>Publish now</Toolbar.Label>
             </Toolbar.MenuAction>
           ) : null}
           {open && !changeRequest.draft ? (
@@ -264,14 +310,32 @@ export function WikiChangeRequestRouteScreen({
               .join(" · ")}
           </Text>
         </View>
+        {openPullRequest !== null && pullRequest !== null ? (
+          <Pressable accessibilityRole="button" onPress={openPullRequest}>
+            <Card>
+              <Text className="text-sm text-foreground">
+                {`${pullRequest.repository} #${pullRequest.number}`}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                {`Checks, reviews and the merge are on the ${terms.singular}.`}
+              </Text>
+              {unpublished ? (
+                <Text className="text-sm text-foreground-muted">
+                  Some of this isn't on the host yet.
+                </Text>
+              ) : null}
+            </Card>
+          </Pressable>
+        ) : null}
         {thread ? (
           <LinkedPullRequests
+            noun={terms.singular}
             links={pullRequestLinks}
             nudge={nudge}
             busy={busy}
-            canMerge={blocked === null}
+            canMerge={hostProjectId === null ? blocked === null : openPullRequest !== null}
             canClose={canSetStatus}
-            onMerge={confirmMerge}
+            onMerge={openPullRequest ?? confirmMerge}
             onClose={() =>
               void act(
                 () => setStatus({ environmentId, input: { ...target, status: "closed" } }),
@@ -291,7 +355,9 @@ export function WikiChangeRequestRouteScreen({
             }
           />
         ) : null}
-        {open ? <MergePreview preview={mergePreview} /> : null}
+        {open && hostProjectId === null ? (
+          <MergePreview preview={mergePreview} noun={terms.singular} />
+        ) : null}
         {errors.length > 0 ? (
           <Card>
             <Text className="text-sm font-t3-medium text-foreground">
@@ -325,7 +391,7 @@ export function WikiChangeRequestRouteScreen({
         <Section title={`Documents changed (${files.length})`}>
           {files.length === 0 ? (
             <Text className="px-4 text-sm text-foreground-muted">
-              This change request changes no documents.
+              {`This ${terms.singular} changes no documents.`}
             </Text>
           ) : (
             <View className="overflow-hidden rounded-[20px] bg-grouped-card">
@@ -368,6 +434,7 @@ const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Clos
  * without merging. Nothing happens on its own.
  */
 function LinkedPullRequests(props: {
+  readonly noun: string;
   readonly links: ReadonlyArray<ThreadPullRequestLink>;
   readonly nudge: PullRequestNudge | null;
   readonly busy: boolean;
@@ -414,7 +481,7 @@ function LinkedPullRequests(props: {
           <Text className="text-sm text-foreground-muted">
             {nudge.kind === "merge"
               ? "Merge these docs too, so the wiki matches the code on main?"
-              : "Close this change request too?"}
+              : `Close this ${props.noun} too?`}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -423,7 +490,7 @@ function LinkedPullRequests(props: {
             className="self-start pt-1 active:opacity-60 disabled:opacity-40"
           >
             <Text className="text-sm font-t3-medium text-link">
-              {nudge.kind === "merge" ? "Merge docs" : "Close change request"}
+              {nudge.kind === "merge" ? "Merge docs" : `Close ${props.noun}`}
             </Text>
           </Pressable>
         </Card>
@@ -445,7 +512,13 @@ function Card(props: { readonly children: ReactNode }) {
   return <View className="gap-1.5 rounded-[20px] bg-grouped-card px-4 py-3">{props.children}</View>;
 }
 
-function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
+function MergePreview({
+  preview,
+  noun,
+}: {
+  readonly preview: WikiMergePreview;
+  readonly noun: string;
+}) {
   return (
     <Card>
       <Text className="text-sm font-t3-medium text-foreground">
@@ -457,7 +530,7 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
       </Text>
       {preview.status === "conflict" ? (
         <Text className="text-sm text-foreground-muted">
-          {mergeConflictAdvice(preview.conflicts, "phone")}
+          {mergeConflictAdvice(preview.conflicts, "phone", noun)}
         </Text>
       ) : null}
       {preview.canvases.map(({ file, notes }) => (

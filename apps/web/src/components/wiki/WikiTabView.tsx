@@ -36,8 +36,9 @@ import {
   wikiDocumentScope,
   wikiDraft,
   wikiLinkOpens,
+  wikiTerms,
 } from "./wiki.logic";
-import { useWikiPlacement } from "./wikiEnvironment";
+import { useWikiPlacement, useWikiTerms } from "./wikiEnvironment";
 import { WikiDraftPill } from "./WikiDraftPill";
 import { WikiNoteView, type WikiDraftEdits } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
@@ -125,6 +126,7 @@ function NoteTab({
 }) {
   const { changeRequests: all, failed } = useChangeRequests(tab.environmentId, tab.wikiId);
   const overviews = useAtomValue(wikiEnvironment.overview(tab.environmentId));
+  const wiki = overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki;
   const { target, holder } = useChangeRequestWorktree(tab);
   // A change request's document is something opened in its worktree.
   useNumberWhenOpened(target, holder);
@@ -162,7 +164,9 @@ function NoteTab({
     else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
   };
   const parent =
-    tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request");
+    tab.changeRequestId === undefined
+      ? "Main"
+      : (changeRequest?.title ?? `A ${wikiTerms(wiki).singular}`);
   const renderDraftPill = (edits?: WikiDraftEdits) => {
     // A tab inside a change request stays there; only main, or the draft itself, is its pill's.
     const shown = tab.changeRequestId === undefined ? draft : changeRequest?.draft ? draft : null;
@@ -336,6 +340,7 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
     noteFile === null ? "" : documentTitleAmong(noteFile, openNoteFiles()),
   );
   const { holder } = useChangeRequestWorktree(tab);
+  const terms = useWikiTerms(tab?.environmentId, tab?.wikiId);
   const trailing = holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {};
   const changeRequests = useEnvironmentQuery(
     tab?.kind === "change-request"
@@ -378,7 +383,7 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const title =
     changeRequests.data?.changeRequests.find(
       (entry) => entry.changeRequestId === tab.changeRequestId,
-    )?.title ?? "Change request";
+    )?.title ?? terms.Singular;
   return {
     title,
     icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" />,

@@ -1,8 +1,6 @@
 /**
- * A three-way merge for markdown notes that works on paragraphs, then sentences, instead of
- * lines. Git's line merge calls two edits to one long paragraph a conflict even when they touch
- * different sentences; this resolves those, and reports a conflict only when both sides changed
- * the same sentence differently. Text round-trips exactly: tokens keep their separators.
+ * A three-way markdown merge by paragraphs, then sentences, instead of lines: it conflicts only
+ * where both sides changed the same sentence differently. Text round-trips exactly.
  */
 
 export type MergeOutcome =
@@ -54,6 +52,28 @@ function matches(base: Tokens, other: Tokens): number[] {
 const same = (a: Tokens, b: Tokens): boolean =>
   a.length === b.length && a.every((t, i) => t === b[i]);
 
+/** The words of some tokens, however they are spaced. */
+const words = (tokens: Tokens): string => tokens.join("").replace(/\s+/g, " ").trim();
+
+/**
+ * One side only added tokens before or after `base`, the other changed it: both are kept, and an
+ * addition the changed side already made is taken once. Null when that is not the case.
+ */
+function besideChange(base: Tokens, added: Tokens, changed: Tokens): Tokens | null {
+  if (base.length === 0 || changed.length === 0) return null;
+  for (let start = 0; start + base.length <= added.length; start++) {
+    if (!same(added.slice(start, start + base.length), base)) continue;
+    const before = added.slice(0, start);
+    const after = added.slice(start + base.length);
+    return [
+      ...(same(changed.slice(0, before.length), before) ? [] : before),
+      ...changed,
+      ...(same(changed.slice(changed.length - after.length), after) ? [] : after),
+    ];
+  }
+  return null;
+}
+
 type Region =
   | { readonly kind: "stable"; readonly tokens: Tokens }
   | {
@@ -102,15 +122,6 @@ function diff3(base: Tokens, ours: Tokens, theirs: Tokens): Region[] {
   return regions;
 }
 
-/** One side only added after the text the other side changed: both stand. */
-function appended({ base, ours, theirs }: Extract<Region, { kind: "conflict" }>): Tokens | null {
-  const grew = (side: Tokens) =>
-    base.length > 0 && side.length > base.length && same(side.slice(0, base.length), base);
-  if (grew(theirs) && !grew(ours)) return [...ours, ...theirs.slice(base.length)];
-  if (grew(ours) && !grew(theirs)) return [...theirs, ...ours.slice(base.length)];
-  return null;
-}
-
 function mergeTokens(
   base: Tokens,
   ours: Tokens,
@@ -123,19 +134,23 @@ function mergeTokens(
       text += region.tokens.join("");
       continue;
     }
-    if (!finer) {
-      const settled = appended(region);
-      if (settled === null) return { status: "conflict" };
-      text += settled.join("");
+    const inner = finer
+      ? mergeTokens(
+          finer(region.base.join("")),
+          finer(region.ours.join("")),
+          finer(region.theirs.join("")),
+        )
+      : ({ status: "conflict" } as const);
+    if (inner.status === "merged") {
+      text += inner.text;
       continue;
     }
-    const inner = mergeTokens(
-      finer(region.base.join("")),
-      finer(region.ours.join("")),
-      finer(region.theirs.join("")),
-    );
-    if (inner.status === "conflict") return inner;
-    text += inner.text;
+    const kept =
+      (words(region.ours) === words(region.theirs) ? region.ours : null) ??
+      besideChange(region.base, region.ours, region.theirs) ??
+      besideChange(region.base, region.theirs, region.ours);
+    if (kept === null) return inner;
+    text += kept.join("");
   }
   return { status: "merged", text };
 }
@@ -148,5 +163,18 @@ export function mergeMarkdown(base: string, ours: string, theirs: string): Merge
   if (ours === theirs) return { status: "merged", text: ours };
   if (ours === base) return { status: "merged", text: theirs };
   if (theirs === base) return { status: "merged", text: ours };
-  return mergeTokens(paragraphs(base), paragraphs(ours), paragraphs(theirs), sentences);
+  // The file's last newlines merge apart, so an editor that drops them changes no sentence.
+  const b = splitEnd(base);
+  const o = splitEnd(ours);
+  const t = splitEnd(theirs);
+  const body = mergeTokens(paragraphs(b.body), paragraphs(o.body), paragraphs(t.body), sentences);
+  if (body.status === "conflict") return body;
+  return { status: "merged", text: body.text + (o.end === b.end ? t.end : o.end) };
+}
+
+type Ends = { readonly body: string; readonly end: string };
+
+function splitEnd(text: string): Ends {
+  const body = text.replace(/\n+$/, "");
+  return { body, end: text.slice(body.length) };
 }

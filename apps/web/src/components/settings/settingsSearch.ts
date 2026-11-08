@@ -1081,7 +1081,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "follow-change-request-templates",
-    title: "Follow change request templates",
+    title: "Follow pull request templates",
     to: "/settings/source-control",
     searchTerms: ["repository pr pull request description structure"],
     environmentOnly: true,
@@ -1091,7 +1091,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Source control writer model",
     to: "/settings/source-control",
     searchTerms: [
-      "override generated commit change request pr titles descriptions branch bookmark",
+      "override generated commit pull request merge request change request pr mr titles descriptions branch bookmark",
     ],
     environmentOnly: true,
     scope: "project-defaults",

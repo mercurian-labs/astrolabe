@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -163,6 +164,14 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly number: number;
     }) => Effect.Effect<ReadonlyArray<PullRequestComment>, AzureDevOpsPullRequestCliError>;
 
+    /** Adds a pull request comment: on Azure, a thread of one with no file position. */
+    readonly addComment: (input: {
+      readonly cwd: string;
+      readonly location: AzureDevOpsRepositoryLocation;
+      readonly number: number;
+      readonly body: string;
+    }) => Effect.Effect<void, AzureDevOpsPullRequestCliError>;
+
     readonly listIterations: (input: {
       readonly cwd: string;
       readonly location: AzureDevOpsRepositoryLocation;
@@ -273,9 +282,26 @@ function isReviewerName(value: string): boolean {
   return name.length > 0 && !name.startsWith("-");
 }
 
+/** `commentType` 1 is a text comment and `status` 1 an active thread, in Azure's REST numbering. */
+const encodeCommentThread = Schema.encodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      comments: Schema.Array(
+        Schema.Struct({
+          parentCommentId: Schema.Number,
+          content: Schema.String,
+          commentType: Schema.Number,
+        }),
+      ),
+      status: Schema.Number,
+    }),
+  ),
+);
+
 /** @public */
 export const make = Effect.gen(function* () {
   const azure = yield* AzureDevOpsCli.AzureDevOpsCli;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   // Let `az` parse all three remote formats.
   const detectArgs = ["--detect", "true"] as const;
@@ -554,6 +580,51 @@ export const make = Effect.gen(function* () {
         maxOutputBytes: REVIEW_HISTORY_MAX_OUTPUT_BYTES,
         decode: decodeThreadsJson,
       });
+    }),
+
+    addComment: Effect.fn("AzureDevOpsPullRequestCli.addComment")(function (input) {
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const payload = yield* fileSystem.makeTempFileScoped({ prefix: "t3-azure-comment-" });
+          yield* fileSystem.writeFileString(
+            payload,
+            yield* encodeCommentThread({
+              comments: [{ parentCommentId: 0, content: input.body, commentType: 1 }],
+              status: 1,
+            }),
+          );
+          yield* executeJson({
+            cwd: input.cwd,
+            args: [
+              "devops",
+              "invoke",
+              ...detectArgs,
+              "--area",
+              "git",
+              "--resource",
+              "pullRequestThreads",
+              "--api-version",
+              REST_API_VERSION,
+              "--http-method",
+              "POST",
+              "--in-file",
+              payload,
+              "--route-parameters",
+              ...pullRequestRoute(input),
+            ],
+          });
+        }),
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new AzureDevOpsPullRequestReadError({
+              command: "az",
+              cwd: input.cwd,
+              operation: "addComment",
+              cause,
+            }),
+        ),
+      );
     }),
 
     listIterations: Effect.fn("AzureDevOpsPullRequestCli.listIterations")(function (input) {

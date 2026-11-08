@@ -114,6 +114,7 @@ import {
   isCanvasName,
   isTurnRunning,
   noteNameOfFile,
+  wikiTerms,
 } from "./wiki.logic";
 import { useWikiOverviews } from "./wikiEnvironment";
 import { WikiDocumentTree, type WikiTreeActions } from "./WikiDocumentTree";
@@ -1598,7 +1599,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
     const StatusGlyph = merged ? PullRequestGlyph.merged : PullRequestGlyph.closed;
     return (
       <CardRow
-        label={`${changeRequest.title}, ${changeRequest.draft ? "discarded draft" : `${merged ? "merged" : "closed"} change request`} in ${item.wiki.name}`}
+        label={`${changeRequest.title}, ${changeRequest.draft ? "discarded draft" : `${merged ? "merged" : "closed"} ${wikiTerms(item.wiki).singular}`} in ${item.wiki.name}`}
         active={active}
         selected={selected}
         tab={tab}
@@ -1617,7 +1618,7 @@ export const WikiChangeRow = memo(function WikiChangeRow({
   }
   return (
     <CardRow
-      label={`${changeRequest.title}, ${changeRequest.draft ? "your draft" : "change request"} in ${item.wiki.name}`}
+      label={`${changeRequest.title}, ${changeRequest.draft ? "your draft" : wikiTerms(item.wiki).singular} in ${item.wiki.name}`}
       active={active}
       selected={selected}
       tab={tab}

@@ -2,6 +2,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import { wikiMergeMethod } from "@t3tools/client-runtime/wikiLogic";
 import type { PullRequestDetail, PullRequestMergeMethod } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
@@ -11,6 +12,8 @@ import { Button } from "../../components/ui/Button";
 import { SplitButton } from "../../components/ui/SplitButton";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { composerPullRequests } from "../../state/pull-requests";
+import { useEnvironmentQuery } from "../../state/query";
+import { wikiEnvironment } from "../../state/wiki";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   allowedMergeMethods,
@@ -44,8 +47,14 @@ export function PullRequestMergeControls(props: {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const methods = allowedMergeMethods(pr);
+  // Astrolabe: a host wiki's pull request keeps each amendment its own commit where it can.
+  const wikis = useEnvironmentQuery(
+    wikiEnvironment.list({ environmentId: target.environmentId, input: {} }),
+  );
+  const isWiki = wikis.data?.wikis.some((wiki) => wiki.host?.projectId === target.input.projectId);
   const preferred =
     selectedMethod ??
+    (isWiki ? wikiMergeMethod(methods) : undefined) ??
     (AsyncResult.isSuccess(preferences) ? preferences.value.pullRequestMergeMethod : undefined) ??
     "squash";
   const method = methods.includes(preferred)

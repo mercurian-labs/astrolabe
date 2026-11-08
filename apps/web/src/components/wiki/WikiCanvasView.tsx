@@ -53,7 +53,7 @@ import {
   registerWikiCanvasBoard,
   type WikiCanvasGroup,
 } from "./wikiCanvasBoards";
-import { useWikiAutosaveCommand, useWikiCommand } from "./wikiEnvironment";
+import { useWikiAutosaveCommand, useWikiCommand, useWikiTerms } from "./wikiEnvironment";
 import { useWikiCanvasHost } from "./wikiCanvasHost";
 import type { WikiDraftEdits } from "./WikiNoteView";
 
@@ -237,6 +237,7 @@ export default function WikiCanvasPage({
   const changeRequest = detail.data?.changeRequest;
   const review = changeRequestCanvasReview(detail.data, file, text);
   const title = documentTitle(file);
+  const terms = useWikiTerms(environmentId, wikiId);
   const [creating, setCreating] = useState(false);
   const canWrite = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
   const autosaveCommand = useWikiCommand(wikiEnvironment.autosave, "Couldn't start the canvas");
@@ -346,7 +347,7 @@ export default function WikiCanvasPage({
             <EmptyDescription>
               {savesTo === undefined
                 ? "It starts in your draft."
-                : "It starts in this change request."}
+                : `It starts in this ${terms.singular}.`}
             </EmptyDescription>
           </EmptyHeader>
           {canWrite ? (

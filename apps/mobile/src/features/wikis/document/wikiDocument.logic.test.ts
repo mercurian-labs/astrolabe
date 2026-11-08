@@ -19,6 +19,7 @@ describe("wikiDocumentSubtitle", () => {
         file: "Plan.md",
         changeRequest: null,
         readsChangeRequest: false,
+        noun: "pull request",
         agentWorking: false,
       }),
     ).toBe("almagest · Main");
@@ -28,6 +29,7 @@ describe("wikiDocumentSubtitle", () => {
         file: "a/deep/Plan.md",
         changeRequest: null,
         readsChangeRequest: false,
+        noun: "pull request",
         agentWorking: false,
       }),
     ).toBe("almagest · a/deep · Main");
@@ -37,6 +39,7 @@ describe("wikiDocumentSubtitle", () => {
         file: "Plan.md",
         changeRequest: { title: "Grow Atlas" },
         readsChangeRequest: true,
+        noun: "pull request",
         agentWorking: true,
       }),
     ).toBe("almagest · In “Grow Atlas” · agent working");
@@ -46,6 +49,7 @@ describe("wikiDocumentSubtitle", () => {
         file: "Plan.md",
         changeRequest: { title: "Edit Atlas", draft: true },
         readsChangeRequest: true,
+        noun: "pull request",
         agentWorking: false,
         saving: "Saving…",
       }),
@@ -56,9 +60,10 @@ describe("wikiDocumentSubtitle", () => {
         file: "Plan.md",
         changeRequest: null,
         readsChangeRequest: true,
+        noun: "merge request",
         agentWorking: false,
       }),
-    ).toBe("In a change request");
+    ).toBe("In a merge request");
   });
 });
 

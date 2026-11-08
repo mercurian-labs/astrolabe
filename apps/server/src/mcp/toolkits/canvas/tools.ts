@@ -39,7 +39,7 @@ const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
 
 const CanvasKeepTool = Tool.make(CANVAS_KEEP_TOOL_NAME, {
   description:
-    "Save a board from `astrolabe_canvas_show` into a wiki. It joins your thread's open change request and fixes where its cards sit. Call it when the user asks to keep a board.",
+    "Save a board from `astrolabe_canvas_show` into a wiki. It joins your thread's open pull request and fixes where its cards sit. Call it when the user asks to keep a board.",
   parameters: Schema.Struct({
     wiki: Schema.NonEmptyString.annotate({
       description: "The wiki's id or name, as astrolabe_wiki_list shows it.",

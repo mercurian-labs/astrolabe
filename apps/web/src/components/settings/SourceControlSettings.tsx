@@ -190,7 +190,7 @@ function itemSummary({
         <span>
           {item.label} is not authenticated on this server. Sign in or configure credentials using
           the <code className="rounded bg-muted px-1 py-px text-2xs">{item.executable}</code> tool
-          on the server host to enable change request features.
+          on the server host to enable pull request features.
         </span>
       );
     }

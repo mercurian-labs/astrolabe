@@ -14,16 +14,37 @@ import type {
   WikiChangeRequest,
   WikiChangeRequestDetail,
   WikiChangeRequestId,
+  WikiHostStatus,
   WikiIndexError,
   WikiIndexResult,
   WikiMergePreview,
   WikiMirrorStatus,
 } from "@t3tools/contracts";
 
+import { sourceControlClients } from "./sourceControlClients.ts";
+
 /**
  * Astrolabe: how wiki state reads to a person, shared by the web and mobile clients: note
  * names, save targets, merge readiness, failures, the mirror, and live agent turns.
  */
+
+/** What a wiki's reviews are called: its host's name for them, else "pull request". */
+export function wikiTerms(
+  wiki:
+    | {
+        readonly host?: Pick<WikiHostStatus, "kind"> | null | undefined;
+      }
+    | null
+    | undefined,
+) {
+  const { singular, plural } = sourceControlClients.get(wiki?.host?.kind).changeRequest;
+  return {
+    singular,
+    plural,
+    Singular: `${singular.charAt(0).toUpperCase()}${singular.slice(1)}`,
+    Plural: `${plural.charAt(0).toUpperCase()}${plural.slice(1)}`,
+  };
+}
 
 /** The comparison key the wiki uses for note names. */
 export const noteKey = (name: string): string => name.normalize("NFC").toLowerCase();
@@ -320,16 +341,16 @@ export function mergeBlockedReason(input: {
 export function mergeConflictAdvice(
   conflicts: ReadonlyArray<string>,
   from: "computer" | "phone",
+  noun: string,
 ): string {
-  if (conflicts.length === 0)
-    return "Amend this change request to settle the conflict, then merge.";
+  if (conflicts.length === 0) return `Amend this ${noun} to settle the conflict, then merge.`;
   const both = `Edited on both sides: ${conflicts.join(", ")}.`;
   if (!conflicts.some(isCanvasName)) {
-    return `${both} Amend this change request to settle them, then merge.`;
+    return `${both} Amend this ${noun} to settle them, then merge.`;
   }
   return from === "phone"
-    ? `${both} A canvas can't be settled from the phone. On a computer, edit it in this change request's worktree so the clashing cards agree with main, and save the edits to the change request.`
-    : `${both} A canvas is settled in this change request's worktree: edit it there, in Obsidian or any editor, so the clashing cards agree with main, then use Save edits to the change request and merge.`;
+    ? `${both} A canvas can't be settled from the phone. On a computer, edit it in this ${noun}'s worktree so the clashing cards agree with main, and save the edits to the ${noun}.`
+    : `${both} A canvas is settled in this ${noun}'s worktree: edit it there, in Obsidian or any editor, so the clashing cards agree with main, then use Save edits to the ${noun} and merge.`;
 }
 
 /** A standing index error in plain words. */
@@ -349,6 +370,10 @@ export function describeWikiFailure(failure: unknown): string {
   if (failure instanceof Error && failure.message.trim()) return failure.message;
   return "The wiki request failed.";
 }
+
+/** Whether a wiki command failed because both sides changed the same sentences. */
+export const isWikiConflict = (failure: unknown): boolean =>
+  isWikiError(failure) && failure.reason === "conflict";
 
 function isWikiError(
   value: unknown,
@@ -381,6 +406,103 @@ export function summarizeMirror(
   }
   return { tone: "pending", label: "Mirror not pushed yet" };
 }
+
+/** A host wiki's state in one short phrase and tone, for its settings. */
+export function summarizeHost(
+  host: WikiHostStatus | null | undefined,
+  formatAgo: (iso: string) => string,
+): { readonly tone: MirrorTone; readonly label: string } {
+  if (host == null) return { tone: "none", label: "Not connected" };
+  // Being held behind is the sync working as designed; its `lastError` says why.
+  if (host.relation === "behind") return { tone: "warning", label: "Main is behind the host" };
+  if (host.lastError) return { tone: "error", label: "Sync failed" };
+  if (host.relation === "diverged") return { tone: "error", label: "Main has diverged" };
+  if (host.relation === "ahead") return { tone: "warning", label: "Main is ahead of the host" };
+  if (host.lastSyncedAt) return { tone: "ok", label: `Synced ${formatAgo(host.lastSyncedAt)}` };
+  return { tone: "pending", label: "Not synced yet" };
+}
+
+/** Whether a change request holds work the host has not received. */
+export const hasUnpublishedWork = (changeRequest: WikiChangeRequest): boolean =>
+  changeRequest.status === "open" &&
+  !changeRequest.draft &&
+  changeRequest.amendments.length > 0 &&
+  changeRequest.pushedHead !== changeRequest.head;
+
+/** The host a pull request's link names; Hermes has no `URL.canParse`, so this reads the text. */
+export function wikiPullRequestHost(url: string): string | null {
+  return /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.toLowerCase() ?? null;
+}
+
+const hostedProjectKey = (projectId: string, number: number) => `project:${projectId}#${number}`;
+
+const hostedAddressKey = (host: string, repository: string, number: number) =>
+  `${host.toLowerCase()}/${repository.toLowerCase()}#${number}`;
+
+/**
+ * The pull requests that are host wikis' own change requests, so a list showing those change
+ * requests leaves their pull requests out and shows each change once. Each goes in twice, since
+ * a list row from another checkout has another project and a host can spell its name two ways.
+ */
+export function hostedPullRequestKeys(
+  wikis: ReadonlyArray<{
+    readonly projectId: string;
+    readonly changeRequests: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">>;
+  }>,
+): ReadonlySet<string> {
+  return new Set(
+    wikis.flatMap(({ projectId, changeRequests }) =>
+      changeRequests.flatMap(({ pullRequest }) =>
+        pullRequest == null
+          ? []
+          : [
+              hostedProjectKey(projectId, pullRequest.number),
+              hostedAddressKey(
+                wikiPullRequestHost(pullRequest.url) ?? "",
+                pullRequest.repository,
+                pullRequest.number,
+              ),
+            ],
+      ),
+    ),
+  );
+}
+
+/**
+ * The merge a wiki's pull request starts on: the methods that keep its amendments one commit
+ * each, best first; squashing joins them, so it comes only when nothing else is allowed.
+ */
+export const wikiMergeMethod = <M extends string>(allowed: ReadonlyArray<M>): M | undefined =>
+  allowed.find((method) => method === "merge") ??
+  allowed.find((method) => method === "rebase") ??
+  allowed.find((method) => method === "squash");
+
+export const isHostedPullRequest = (
+  keys: ReadonlySet<string>,
+  entry: {
+    readonly projectId: string;
+    readonly host: string;
+    readonly repository: string;
+    readonly number: number;
+  },
+): boolean =>
+  keys.has(hostedProjectKey(entry.projectId, entry.number)) ||
+  keys.has(hostedAddressKey(entry.host, entry.repository, entry.number));
+
+/** The wikis on a host, as `hostedPullRequestKeys` reads them. */
+export const hostedWikis = <
+  T extends {
+    readonly wiki: { readonly host?: WikiHostStatus | null };
+    readonly changeRequests?: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">> | null;
+  },
+>(
+  overviews: ReadonlyArray<T>,
+) =>
+  overviews.flatMap(({ wiki, changeRequests }) =>
+    wiki.host == null
+      ? []
+      : [{ projectId: wiki.host.projectId as string, changeRequests: changeRequests ?? [] }],
+  );
 
 /** The actor the server records for edits made from the app, as opposed to an agent's model. */
 export const PERSON_ACTOR = "You";

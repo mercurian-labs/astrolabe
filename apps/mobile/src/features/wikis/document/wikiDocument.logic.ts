@@ -11,6 +11,7 @@ export function wikiDocumentSubtitle(input: {
   /** The change request the document is read inside; null reads main. */
   readonly changeRequest: (Pick<WikiChangeRequest, "title"> & { readonly draft?: boolean }) | null;
   readonly readsChangeRequest: boolean;
+  readonly noun: string;
   readonly agentWorking: boolean;
   /** How the edits stand, when they stand anywhere worth saying. */
   readonly saving?: string | null;
@@ -21,7 +22,7 @@ export function wikiDocumentSubtitle(input: {
       ? "In your draft"
       : input.changeRequest
         ? `In “${input.changeRequest.title}”`
-        : "In a change request";
+        : `In a ${input.noun}`;
   return [
     input.wikiName,
     folderOf(input.file),

@@ -24,7 +24,8 @@ import {
   type FullPullRequestTarget,
 } from "~/components/pullRequest/pullRequestTabs";
 import { useWikiTabLabel, WikiTabView, type WikiTabNav } from "~/components/wiki/WikiTabView";
-import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
+import { useWikiChangeRequestPullRequest } from "~/components/wiki/wikiEnvironment";
+import { parseWikiTabKey, type WikiTab } from "~/components/wiki/wikiTabs";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import {
@@ -168,7 +169,15 @@ export function SectionTabContent({
   }
   const wiki = parseWikiTabKey(tabKey);
   if (wiki !== null) {
-    return <WikiTabView tabKey={tabKey} tab={wiki} nav={paneTabNav(store, openPullRequest)} />;
+    return (
+      <PaneWiki
+        tabKey={tabKey}
+        tab={wiki}
+        store={store}
+        active={active}
+        {...(openPullRequest ? { openPullRequest } : {})}
+      />
+    );
   }
   const pullRequest = pullRequestTargetOfKey(tabKey);
   if (pullRequest !== null) {
@@ -242,6 +251,31 @@ function shortcutContext() {
     isWeb: !isElectron,
     isDesktop: isElectron,
   };
+}
+
+/** A wiki tab; a host wiki's change request on the host reads as the pull request it is. */
+function PaneWiki({
+  tabKey,
+  tab,
+  store,
+  active,
+  openPullRequest,
+}: {
+  readonly tabKey: string;
+  readonly tab: WikiTab;
+  readonly store: PaneArrangementStore;
+  readonly active: boolean;
+  readonly openPullRequest?: (target: FullPullRequestTarget) => void;
+}) {
+  const pullRequest = useWikiChangeRequestPullRequest(
+    tab.environmentId,
+    tab.wikiId,
+    tab.kind === "change-request" ? tab.changeRequestId : null,
+  );
+  if (pullRequest !== null) {
+    return <PanePullRequest tabKey={tabKey} target={pullRequest} store={store} active={active} />;
+  }
+  return <WikiTabView tabKey={tabKey} tab={tab} nav={paneTabNav(store, openPullRequest)} />;
 }
 
 /**

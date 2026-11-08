@@ -1,5 +1,6 @@
 import type {
   EnvironmentId,
+  ProjectId,
   ThreadId,
   ThreadPullRequestLink,
   WikiAmendmentSummary,
@@ -43,9 +44,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   describeIndexError,
   describeWikiFailure,
+  hasUnpublishedWork,
   isCanvasName,
   mergeBlockedReason,
   mergeConflictAdvice,
+  wikiPullRequestHost,
+  wikiTerms,
 } from "./wiki.logic";
 import { useWikiDraftActions } from "./WikiDraftPill";
 import { useWikiCommand } from "./wikiEnvironment";
@@ -80,11 +84,13 @@ export function WikiChangeRequestView({
     wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
+  const wikiName = wiki?.name ?? null;
+  const terms = wikiTerms(wiki);
   const list = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
   );
   const changeRequests = list.data?.changeRequests ?? NO_CHANGE_REQUESTS;
-  const wikiName = wikis.data?.wikis.find((wiki) => wiki.wikiId === wikiId)?.name ?? null;
   const navigate = useNavigate();
   // Astrolabe: the pull requests of the thread that wrote it (see `changeRequestPullRequests`).
   const threadId = detail.data?.changeRequest.threadId ?? null;
@@ -94,14 +100,18 @@ export function WikiChangeRequestView({
   const canSetStatus = useAtomValue(
     wikiEnvironment.setChangeRequestStatus.permissionAtom(environmentId),
   );
+  const canPublish = useAtomValue(
+    wikiEnvironment.publishChangeRequest.permissionAtom(environmentId),
+  );
   const merge = useWikiCommand(wikiEnvironment.merge, "Couldn't merge");
+  const publish = useWikiCommand(wikiEnvironment.publishChangeRequest, "Couldn't publish");
   const setStatus = useWikiCommand(wikiEnvironment.setChangeRequestStatus, "Couldn't update");
-  const [busy, setBusy] = useState<"merge" | "status" | null>(null);
+  const [busy, setBusy] = useState<"merge" | "status" | "publish" | null>(null);
 
   const frame = (title: string, header: ReactNode, body: ReactNode) => (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
-        <TabHeader.Title label="Change request" parent={wikiName}>
+        <TabHeader.Title label={terms.Singular} parent={wikiName}>
           {title}
         </TabHeader.Title>
         {header}
@@ -112,12 +122,12 @@ export function WikiChangeRequestView({
 
   if (detail.data === null) {
     return frame(
-      "Change request",
+      terms.Singular,
       null,
       detail.error !== null ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Couldn't open this change request</EmptyTitle>
+            <EmptyTitle>{`Couldn't open this ${terms.singular}`}</EmptyTitle>
             <EmptyDescription>
               {describeWikiFailure(detail.failure ?? detail.error)}
             </EmptyDescription>
@@ -151,6 +161,12 @@ export function WikiChangeRequestView({
     await merge({ environmentId, input: target });
     setBusy(null);
   };
+  const runPublish = async () => {
+    setBusy("publish");
+    await publish({ environmentId, input: target });
+    setBusy(null);
+  };
+
   const runStatus = async (status: "open" | "closed") => {
     setBusy("status");
     await setStatus({ environmentId, input: { ...target, status } });
@@ -185,7 +201,7 @@ export function WikiChangeRequestView({
         ) : null}
         {open && !changeRequest.draft ? (
           <TabHeader.Action
-            label="Close change request"
+            label={`Close ${terms.singular}`}
             disabled={!canSetStatus || busy !== null}
             onClick={() => void runStatus("closed")}
           >
@@ -193,7 +209,7 @@ export function WikiChangeRequestView({
           </TabHeader.Action>
         ) : changeRequest.status === "closed" ? (
           <TabHeader.Action
-            label={changeRequest.draft ? "Reopen draft" : "Reopen change request"}
+            label={changeRequest.draft ? "Reopen draft" : `Reopen ${terms.singular}`}
             disabled={!canSetStatus || busy !== null}
             onClick={() => void runStatus("open")}
           >
@@ -205,8 +221,9 @@ export function WikiChangeRequestView({
             environmentId={environmentId}
             draft={changeRequest}
             changeRequests={changeRequests}
+            noun={terms.singular}
           />
-        ) : open ? (
+        ) : open && wiki?.host == null ? (
           <MergeButton
             blocked={blocked}
             busy={busy === "merge"}
@@ -225,13 +242,26 @@ export function WikiChangeRequestView({
             : null}
         </p>
 
+        {wiki?.host != null ? (
+          <HostPullRequest
+            projectId={wiki.host.projectId}
+            environmentId={environmentId}
+            changeRequest={changeRequest}
+            noun={terms.singular}
+            busy={busy !== null}
+            canPublish={canPublish}
+            onPublish={() => void runPublish()}
+            {...(onOpenPullRequest ? { onOpen: onOpenPullRequest } : {})}
+          />
+        ) : null}
         <LinkedPullRequests
           links={pullRequestLinks}
           status={changeRequest.status}
+          noun={terms.singular}
           busy={busy !== null}
           canMerge={blocked === null}
           canClose={canSetStatus}
-          onMerge={() => void runMerge()}
+          {...(wiki?.host == null ? { onMerge: () => void runMerge() } : {})}
           onClose={() => void runStatus("closed")}
           {...(onOpenPullRequest && thread
             ? {
@@ -246,8 +276,10 @@ export function WikiChangeRequestView({
               }
             : {})}
         />
-        {open ? <MergePreviewNotice preview={mergePreview} /> : null}
-        {open ? <CanvasMergeNotes preview={mergePreview} /> : null}
+        {open && wiki?.host == null ? (
+          <MergePreviewNotice preview={mergePreview} noun={terms.singular} />
+        ) : null}
+        {open && wiki?.host == null ? <CanvasMergeNotes preview={mergePreview} /> : null}
         {errors.length > 0 ? (
           <Alert variant="warning">
             <TriangleAlertIcon />
@@ -279,7 +311,7 @@ export function WikiChangeRequestView({
 
         <WikiPart.Section title={`Files changed (${files.length})`}>
           {files.length === 0 ? (
-            <WikiPart.Muted>This change request changes no files.</WikiPart.Muted>
+            <WikiPart.Muted>{`This ${terms.singular} changes no files.`}</WikiPart.Muted>
           ) : (
             <div className="flex flex-col gap-4">
               {files.map((change) => (
@@ -310,6 +342,7 @@ function DraftActions(input: {
   readonly environmentId: EnvironmentId;
   readonly draft: WikiChangeRequest;
   readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
+  readonly noun: string;
 }) {
   const actions = useWikiDraftActions(input);
   return (
@@ -321,14 +354,14 @@ function DraftActions(input: {
         Move to another one
       </Button>
       <Button size="sm" disabled={!actions.canAct} onClick={actions.promote}>
-        Make it a change request
+        {`Make it a ${input.noun}`}
       </Button>
       {actions.dialogs}
     </>
   );
 }
 
-const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
+export const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
 const NO_CHANGE_REQUESTS: ReadonlyArray<WikiChangeRequest> = [];
 const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
@@ -337,9 +370,10 @@ const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Clos
  * once they settle, the change request's offer to follow: merge when one merged, close when
  * every one closed without merging. Nothing happens on its own.
  */
-function LinkedPullRequests({
+export function LinkedPullRequests({
   links,
   status,
+  noun,
   busy,
   canMerge,
   canClose,
@@ -349,10 +383,12 @@ function LinkedPullRequests({
 }: {
   readonly links: ReadonlyArray<ThreadPullRequestLink>;
   readonly status: "open" | "merged" | "closed";
+  readonly noun: string;
   readonly busy: boolean;
   readonly canMerge: boolean;
   readonly canClose: boolean;
-  readonly onMerge: () => void;
+  /** Without it, a merge is offered in words: a host wiki merges from its pull request's header. */
+  readonly onMerge?: () => void;
   readonly onClose: () => void;
   readonly onOpen?: (link: ThreadPullRequestLink) => void;
 }) {
@@ -403,19 +439,84 @@ function LinkedPullRequests({
             <span>
               {nudge.kind === "merge"
                 ? "Merge these docs too, so the wiki matches the code on main?"
-                : "Close this change request too?"}
+                : `Close this ${noun} too?`}
             </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-1 w-fit"
-              disabled={busy || (nudge.kind === "merge" ? !canMerge : !canClose)}
-              onClick={nudge.kind === "merge" ? onMerge : onClose}
-            >
-              {nudge.kind === "merge" ? "Merge docs" : "Close change request"}
-            </Button>
+            {nudge.kind === "merge" && onMerge === undefined ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-1 w-fit"
+                disabled={busy || (nudge.kind === "merge" ? !canMerge : !canClose)}
+                onClick={nudge.kind === "merge" ? onMerge : onClose}
+              >
+                {nudge.kind === "merge" ? "Merge docs" : `Close ${noun}`}
+              </Button>
+            )}
           </AlertDescription>
         </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+/** On a host wiki: the pull request this is, and any work the host hasn't received yet. */
+function HostPullRequest({
+  environmentId,
+  projectId,
+  changeRequest,
+  noun,
+  busy,
+  canPublish,
+  onPublish,
+  onOpen,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly changeRequest: WikiChangeRequest;
+  readonly noun: string;
+  readonly busy: boolean;
+  readonly canPublish: boolean;
+  readonly onPublish: () => void;
+  readonly onOpen?: (target: FullPullRequestTarget) => void;
+}) {
+  const pullRequest = changeRequest.pullRequest ?? null;
+  const host = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);
+  const unpublished = hasUnpublishedWork(changeRequest);
+  if (pullRequest === null && !unpublished) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+      <PullRequestGlyph.pullRequest className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        {pullRequest === null ? (
+          <p>Not on the host yet</p>
+        ) : (
+          <p className="truncate">{`${pullRequest.repository} #${pullRequest.number}`}</p>
+        )}
+        {unpublished ? (
+          <p className="text-muted-foreground">Some of this isn't on the host yet.</p>
+        ) : null}
+      </div>
+      {unpublished ? (
+        <Button size="xs" variant="outline" disabled={!canPublish || busy} onClick={onPublish}>
+          Publish now
+        </Button>
+      ) : null}
+      {pullRequest !== null && host !== null && onOpen ? (
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() =>
+            onOpen({
+              environmentId,
+              projectId,
+              host,
+              repository: pullRequest.repository,
+              number: pullRequest.number,
+            })
+          }
+        >
+          {`Open ${noun}`}
+        </Button>
       ) : null}
     </div>
   );
@@ -450,7 +551,13 @@ function MergeButton({
   );
 }
 
-function MergePreviewNotice({ preview }: { readonly preview: WikiMergePreview }) {
+function MergePreviewNotice({
+  preview,
+  noun,
+}: {
+  readonly preview: WikiMergePreview;
+  readonly noun: string;
+}) {
   switch (preview.status) {
     case "clean":
       return (
@@ -464,7 +571,9 @@ function MergePreviewNotice({ preview }: { readonly preview: WikiMergePreview })
         <Alert variant="error">
           <TriangleAlertIcon />
           <AlertTitle>Conflicts with main</AlertTitle>
-          <AlertDescription>{mergeConflictAdvice(preview.conflicts, "computer")}</AlertDescription>
+          <AlertDescription>
+            {mergeConflictAdvice(preview.conflicts, "computer", noun)}
+          </AlertDescription>
         </Alert>
       );
     default:
@@ -502,7 +611,7 @@ function CanvasMergeNotes({ preview }: { readonly preview: WikiMergePreview }) {
   );
 }
 
-function AmendmentRow({
+export function AmendmentRow({
   environmentId,
   wikiId,
   changeRequestId,

@@ -64,11 +64,20 @@ export {
   describeIndexError,
   describeWikiFailure,
   summarizeMirror,
+  summarizeHost,
+  hasUnpublishedWork,
+  hostedPullRequestKeys,
+  hostedWikis,
+  isHostedPullRequest,
+  isWikiConflict,
+  wikiPullRequestHost,
   PERSON_ACTOR,
   isTurnRunning,
   latestAmendmentFor,
   authorColor,
   type MirrorTone,
+  wikiMergeMethod,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 
 /** A map's tiles, picked as Obsidian does: the view's own, else a background, else the default. */

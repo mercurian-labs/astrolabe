@@ -39,6 +39,13 @@ import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
 import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
 import { ChangeGroupsSection } from "../changeGroups/ChangeGroupsSection";
+import {
+  hostedPullRequestKeys,
+  hostedWikis,
+  isHostedPullRequest,
+} from "@t3tools/client-runtime/wikiLogic";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { useWikiOverviews } from "../wikis/useWikiOverviews";
 import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
@@ -205,18 +212,27 @@ export function PullRequestsScreen(
   // Astrolabe: the project filter's kind: the wikis picked list only the wikis' change requests,
   // the repositories only the pull requests.
   const wikiSource = useChangeRequestProjectFilter();
-  const entries = useMemo(
-    () =>
-      filterPullRequestList(
-        result.entries,
-        controls,
-        result.data?.viewers ?? {},
-        query,
-        result.data.localSearchHosts,
-        new Set(connectedKey.split("\n")),
-      ),
-    [result.entries, controls, query, result.data, connectedKey],
+  // Astrolabe: where the wiki changes list above these, a host wiki's change shows once, there.
+  const wikiEnvironmentIds = useMemo(
+    () => (connectedKey === "" ? [] : (connectedKey.split("\n") as EnvironmentId[])),
+    [connectedKey],
   );
+  const { overviews: wikiOverviews } = useWikiOverviews(wikiEnvironmentIds);
+  const hostedSignature =
+    wikiSource.kind === "all" && !controls.projectId
+      ? [...hostedPullRequestKeys(hostedWikis(wikiOverviews))].join("\n")
+      : "";
+  const entries = useMemo(() => {
+    const hosted = new Set(hostedSignature.split("\n").filter(Boolean));
+    return filterPullRequestList(
+      result.entries,
+      controls,
+      result.data?.viewers ?? {},
+      query,
+      result.data.localSearchHosts,
+      new Set(connectedKey.split("\n")),
+    ).filter((entry) => !isHostedPullRequest(hosted, entry));
+  }, [result.entries, controls, query, result.data, connectedKey, hostedSignature]);
   const facets = pullRequestListFacets(result.entries);
   const [knownFacets, setKnownFacets] = useState({ environmentId, source: facets, ...facets });
   if (knownFacets.environmentId !== environmentId || knownFacets.source !== facets) {

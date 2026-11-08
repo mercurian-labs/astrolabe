@@ -296,15 +296,12 @@ const VERDICT_LABELS: Record<PullRequestReviewVerdict, string> = {
 const ACTION_ACCESS_REFUSALS: Record<PullRequestAction, string> = {
   merge: "You need write access on this repository to merge.",
   ready:
-    "You need write access on this repository, or to have opened this change request, to mark it ready for review.",
-  draft:
-    "You need write access on this repository, or to have opened this change request, to return it to a draft.",
-  close:
-    "You need write access on this repository, or to have opened this change request, to close it.",
+    "You need write access on this repository, or to have opened it, to mark it ready for review.",
+  draft: "You need write access on this repository, or to have opened it, to return it to a draft.",
+  close: "You need write access on this repository, or to have opened it, to close it.",
   "update-branch":
-    "You need write access on this repository, or to have opened this change request, to update its branch.",
-  reopen:
-    "You need write access on this repository, or to have opened this change request, to reopen it.",
+    "You need write access on this repository, or to have opened it, to update its branch.",
+  reopen: "You need write access on this repository, or to have opened it, to reopen it.",
   "enable-auto-merge":
     "Auto-merge needs write access on this repository, and the repository has to allow it.",
   "disable-auto-merge":
@@ -980,7 +977,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "resolveRepository",
-              detail: "The change request does not belong to the selected project.",
+              detail: "This does not belong to the selected project.",
             }),
           );
         }
@@ -1915,7 +1912,7 @@ export const make = Effect.gen(function* () {
           : Effect.fail(
               new PullRequestOperationError({
                 operation: "diff",
-                detail: "This host cannot provide a diff for a change request.",
+                detail: "This host cannot provide this diff.",
               }),
             ),
       ),
@@ -1982,7 +1979,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "runAction",
-              detail: "This host cannot delete a change request's source branch.",
+              detail: "This host cannot delete the source branch.",
             }),
           );
         }
@@ -2004,7 +2001,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "runAction",
-              detail: `This host cannot ${input.action} a change request.`,
+              detail: `This host cannot ${input.action} here.`,
             }),
           );
         }
@@ -2147,7 +2144,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "comment",
-              detail: "This host cannot post a comment on a change request.",
+              detail: "This host cannot post a comment here.",
             }),
           );
         }
@@ -2157,8 +2154,7 @@ export const make = Effect.gen(function* () {
               return Effect.fail(
                 new PullRequestOperationError({
                   operation: "comment",
-                  detail:
-                    "You need write access on this repository to comment on a change request.",
+                  detail: "You need write access on this repository to comment.",
                 }),
               );
             }
@@ -2185,7 +2181,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "update",
-              detail: "This host cannot rewrite a change request.",
+              detail: "This host cannot rewrite this.",
             }),
           );
         }
@@ -2265,10 +2261,10 @@ export const make = Effect.gen(function* () {
         const refuse = (detail: string) =>
           Effect.fail(new PullRequestOperationError({ operation: "submitReview", detail }));
         if (!review.verdicts.includes(input.verdict)) {
-          return refuse(`This host cannot ${VERDICT_LABELS[input.verdict]} a change request.`);
+          return refuse(`This host cannot ${VERDICT_LABELS[input.verdict]} here.`);
         }
         if (input.comments.length > 0 && !review.inlineComment) {
-          return refuse("This host cannot comment on a line of a change request.");
+          return refuse("This host cannot comment on a line.");
         }
         if (
           input.verdict !== "approve" &&
@@ -2281,15 +2277,11 @@ export const make = Effect.gen(function* () {
           Effect.flatMap((viewer): Effect.Effect<void, PullRequestError> => {
             if (!viewer.verdicts.includes(input.verdict)) {
               return refuse(
-                `You need write access on this repository to ${
-                  VERDICT_LABELS[input.verdict]
-                } a change request.`,
+                `You need write access on this repository to ${VERDICT_LABELS[input.verdict]}.`,
               );
             }
             if (input.comments.length > 0 && !viewer.comment) {
-              return refuse(
-                "You need write access on this repository to comment on a line of a change request.",
-              );
+              return refuse("You need write access on this repository to comment on a line.");
             }
             return project.api
               .submitReview({
@@ -2370,7 +2362,7 @@ export const make = Effect.gen(function* () {
                 new PullRequestOperationError({
                   operation: "setThreadResolution",
                   detail:
-                    "You need write access on this repository, or to have opened this change request, to resolve a review conversation.",
+                    "You need write access on this repository, or to have opened it, to resolve a review conversation.",
                 }),
               );
             }
@@ -2423,7 +2415,7 @@ export const make = Effect.gen(function* () {
             return Effect.fail(
               new PullRequestOperationError({
                 operation: "reviewerCandidates",
-                detail: "This host cannot say who may review a change request.",
+                detail: "This host cannot say who may review this.",
               }),
             );
           }
@@ -2550,7 +2542,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "labelCandidates",
-              detail: "This host cannot change the labels on a change request.",
+              detail: "This host cannot change labels here.",
             }),
           );
         }
@@ -2583,7 +2575,7 @@ export const make = Effect.gen(function* () {
           return Effect.fail(
             new PullRequestOperationError({
               operation: "setLabels",
-              detail: "This host cannot change the labels on a change request.",
+              detail: "This host cannot change labels here.",
             }),
           );
         }
@@ -3692,7 +3684,7 @@ export const make = Effect.gen(function* () {
           : Effect.fail(
               new PullRequestOperationError({
                 operation: "diffFileContents",
-                detail: "This file is not part of the change request.",
+                detail: "This file is not part of this review.",
                 reason: "not-found",
               }),
             ),

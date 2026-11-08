@@ -67,7 +67,7 @@ export const make = Effect.gen(function* () {
                   reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                     input.headSelector,
                   ),
-                  detail: "Failed to list change requests.",
+                  detail: "Failed to list pull requests.",
                   cause: error,
                 }),
             ),
@@ -87,7 +87,7 @@ export const make = Effect.gen(function* () {
                 reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                   input.reference,
                 ),
-                detail: "Failed to get change request.",
+                detail: "Failed to get pull request.",
                 cause: error,
               }),
           ),
@@ -118,7 +118,7 @@ export const make = Effect.gen(function* () {
                   reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                     input.headSelector,
                   ),
-                  detail: "Failed to create change request.",
+                  detail: "Failed to create pull request.",
                   cause: error,
                 }),
             ),
@@ -203,7 +203,7 @@ export const make = Effect.gen(function* () {
                   reference: SourceControlProvider.transportSafeSourceControlErrorValue(
                     input.reference,
                   ),
-                  detail: "Failed to check out change request.",
+                  detail: "Failed to check out pull request.",
                   cause: error,
                 }),
             ),

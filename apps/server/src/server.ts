@@ -40,6 +40,8 @@ import * as NodePtyAdapter from "./terminal/NodePtyAdapter.ts";
 import * as PullRequestHttp from "./pullRequest/http.ts";
 import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as WikiHostService from "./wiki/WikiHostService.ts";
+import * as WikiService from "./wiki/WikiService.ts";
 import * as SqlitePersistence from "./persistence/Sqlite.ts";
 import * as PullRequestFilesViewed from "./persistence/PullRequestFilesViewed.ts";
 import * as PullRequestReviewGuides from "./persistence/PullRequestReviewGuides.ts";
@@ -382,6 +384,13 @@ const layerPullRequestService = PullRequestService.layer.pipe(
   Layer.provide(SourceControlRateLimit.layer),
 );
 
+const layerWikiHost = WikiHostService.layer.pipe(
+  Layer.provide(layerPullRequestService),
+  Layer.provide(layerSourceControlProviderRegistry),
+  Layer.provide(WikiService.layer),
+  Layer.provide(RuntimeLayer.layerProjectService),
+);
+
 const layerGitManager = GitManager.layer.pipe(
   Layer.provide(Layer.merge(ProjectionStoreV2.layer, ProjectStore.layer)),
   Layer.provideMerge(RuntimeLayer.layerProjectSetupScriptRunner),
@@ -551,6 +560,7 @@ const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
       Layer.provide(RuntimeLayer.layerProjectService),
     ),
   ),
+  Layer.provide(WikiHostService.layerBridge.pipe(Layer.provide(layerWikiHost))),
 );
 
 const layerOrchestrationApplication = CheckpointDiffQuery.layer.pipe(
@@ -760,7 +770,7 @@ const layerMakeRoutes = Layer.mergeAll(
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
     ServerHttp.layerStaticAndDevRoute,
-    Ws.layer,
+    Ws.layer.pipe(Layer.provide(layerWikiHost)),
   ),
   McpHttpServer.layer.pipe(
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),

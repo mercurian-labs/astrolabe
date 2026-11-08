@@ -36,6 +36,7 @@ import {
   wikiDraft,
   NO_NOTE_FROM_RELATIVE_LINK,
   wikiLinkOpens,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
@@ -605,6 +606,7 @@ export function WikiCanvasScreen({
       file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
+      noun: wikiTerms(wiki).singular,
       agentWorking: false,
     }),
     review !== undefined
@@ -650,7 +652,7 @@ export function WikiCanvasScreen({
       return (
         <EmptyState
           title={`No canvas is called ${title} yet`}
-          detail="Start one in a change request on a computer."
+          detail={`Start one in a ${wikiTerms(wiki).singular} on a computer.`}
         />
       );
     }

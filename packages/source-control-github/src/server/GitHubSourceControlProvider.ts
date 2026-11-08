@@ -553,7 +553,7 @@ export const make = Effect.gen(function* () {
         // 50 default-branch lookups can each match 100 fork PRs and exceed the usual cap.
         maxResponseBytes: HEAD_LOOKUP_MAX_RESPONSE_BYTES,
       },
-      "GitHub returned an invalid change request list.",
+      "GitHub returned an invalid pull request list.",
       GraphQLResolver.request(
         {
           owner: locator.owner,

@@ -10,6 +10,7 @@ import {
   wikiDraft,
   NO_NOTE_FROM_RELATIVE_LINK,
   wikiLinkOpens,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiBaseEdit, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -209,6 +210,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
+      noun: wikiTerms(wiki).singular,
       agentWorking: false,
       saving: wikiSaveLabel(status),
     }),

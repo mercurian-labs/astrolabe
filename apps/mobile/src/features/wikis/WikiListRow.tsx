@@ -1,6 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { WikiChangeEntry, WikiDocumentEntry } from "@t3tools/client-runtime/wikiList";
-import { isTurnRunning } from "@t3tools/client-runtime/wikiLogic";
+import { isTurnRunning, wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, ThreadId, WikiSummary } from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
 import { View } from "react-native";
@@ -183,6 +183,7 @@ export const WikiChangeRow = memo(function WikiChangeRow(props: {
   const { changeRequest } = entry;
   const working = useAgentWorking(entry.environmentId, changeRequest.threadId);
   const footer = wikiChangeFooter(entry);
+  const noun = wikiTerms(entry.wiki).singular;
   return (
     <WikiRowFrame
       environmentId={entry.environmentId}
@@ -190,8 +191,8 @@ export const WikiChangeRow = memo(function WikiChangeRow(props: {
       timestamp={changeRequest.updatedAt}
       working={working}
       title={changeRequest.title}
-      accessibilityLabel={`${changeRequest.title}, change request in ${entry.wiki.name}`}
-      accessibilityHint="Opens the change request"
+      accessibilityLabel={`${changeRequest.title}, ${noun} in ${entry.wiki.name}`}
+      accessibilityHint={`Opens the ${noun}`}
       showTrailingDivider={props.showTrailingDivider}
       onPress={() => onSelect(entry)}
       footer={

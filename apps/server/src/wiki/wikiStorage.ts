@@ -5,6 +5,7 @@
  *
  * @module wikiStorage
  */
+import { builtInSourceControlDefinitions } from "@t3tools/source-control-definitions/registry";
 import { parseAmendmentTrailers, type WikiMove } from "@mercurian/wiki";
 import {
   IsoDateTime,
@@ -16,7 +17,9 @@ import {
   WikiChangeRequestStatus,
   WikiId,
   WikiMapBackground,
+  WikiHostStatus,
   WikiMirrorStatus,
+  WikiPullRequestLink,
 } from "@t3tools/contracts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Effect from "effect/Effect";
@@ -33,6 +36,7 @@ export const WikiRecord = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   mirror: Schema.NullOr(WikiMirrorStatus),
+  host: Schema.NullOr(WikiHostStatus).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   mapBackgrounds: Schema.Array(WikiMapBackground).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
@@ -62,10 +66,18 @@ export const ChangeRequestRecord = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   mergedCommit: Schema.NullOr(Schema.String),
+  pullRequest: Schema.NullOr(WikiPullRequestLink).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  pushedHead: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
 });
 export type ChangeRequestRecord = typeof ChangeRequestRecord.Type;
 
 export const ChangeRequestRecordJson = fromJsonStringPretty(ChangeRequestRecord);
+
+/** What a wiki's reviews are called: its host's name for them, else "pull request". */
+export const wikiTerms = (wiki: { readonly host?: { readonly kind?: string } | null }) =>
+  builtInSourceControlDefinitions.get(wiki.host?.kind).changeRequest;
 
 export const CHANGE_REQUEST_FILE = "change-request.json";
 export const changeRequestBranch = (id: string) => `refs/heads/cr/${id}`;

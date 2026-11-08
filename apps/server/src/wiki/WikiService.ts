@@ -1,7 +1,7 @@
 /**
- * Local wikis: git repositories of linked markdown notes whose registered folder is main's
- * hand-editable checkout. Changes reach main only via change requests built on a private index;
- * merges use git's two-tree checkout, which refuses to overwrite local edits. One writer per wiki.
+ * Wikis: git repositories of linked markdown notes whose folder is main's hand-editable checkout.
+ * Changes reach main via change requests; merges use git's two-tree checkout, which refuses to
+ * overwrite local edits. One writer per wiki here; `WikiHostService` owns the git host's side.
  *
  * @module WikiService
  */
@@ -71,6 +71,8 @@ import {
   type WikiDraftPromoteInput,
   WikiError,
   type WikiEvent,
+  type WikiHostRelation,
+  type WikiHostStatus,
   WikiId,
   type WikiIndexResult,
   type WikiListFilesInput,
@@ -79,6 +81,7 @@ import {
   type WikiMergePreview,
   type WikiMergeResult,
   type WikiNoteResult,
+  type WikiPullRequestLink,
   type WikiQueryInput,
   type WikiQueryResult,
   type WikiReadFilesInput,
@@ -95,6 +98,7 @@ import {
   type WikiTransform,
   type WikiTransformInput,
   wikiAgentGuidance,
+  type SourceControlProviderKind,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
@@ -144,6 +148,7 @@ import {
   type WikiRecord,
   type WikiRegistry,
   WikiRegistryJson,
+  wikiTerms,
 } from "./wikiStorage.ts";
 import {
   folderListing,
@@ -341,6 +346,56 @@ export class WikiService extends Context.Service<
     readonly setChangeRequestStatus: (
       input: WikiSetChangeRequestStatusInput,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    readonly get: (wikiId: WikiId) => Effect.Effect<WikiSummary, WikiError>;
+    /** The wikis on a host, read from the registry alone. */
+    readonly hosted: Effect.Effect<ReadonlyArray<WikiId>, WikiError>;
+    /** Makes `remote` the wiki's main line, or with null makes it local again; drops a mirror. */
+    readonly setHost: (
+      wikiId: WikiId,
+      host: {
+        readonly projectId: ProjectId;
+        readonly remote: string;
+        readonly kind: SourceControlProviderKind;
+        readonly createdProject: boolean;
+      } | null,
+    ) => Effect.Effect<WikiSummary, WikiError>;
+    /** Fetches the host, fast-forwards main and the open change requests, and records how it went. */
+    readonly syncFromHost: (wikiId: WikiId) => Effect.Effect<WikiHostRelation, WikiError>;
+    /** Records what stopped a change request following the host, or clears it with null. */
+    readonly recordChangeRequestIssue: (
+      wikiId: WikiId,
+      message: string | null,
+    ) => Effect.Effect<void, WikiError>;
+    /** Records a sync or publish that failed, or clears one with null. */
+    readonly recordHostError: (
+      wikiId: WikiId,
+      message: string | null,
+    ) => Effect.Effect<void, WikiError>;
+    /** Pushes main without force, for a wiki moving onto a host. */
+    readonly pushMainToHost: (wikiId: WikiId) => Effect.Effect<void, WikiError>;
+    /** Pushes a change request's branch without force; a host that moved refuses it. */
+    readonly pushChangeRequest: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** Merges the host's copy of a change request into this one, when both have moved. */
+    readonly adoptHostBranch: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** Merges main into a change request with the markdown merge, so the host merges it cleanly. */
+    readonly reconcileChangeRequest: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** One change request, without reading the rest of the wiki's. */
+    readonly changeRequest: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    readonly recordPullRequest: (
+      input: WikiChangeRequestTarget & { readonly pullRequest: WikiPullRequestLink },
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** Records that the host merged a change request; main has already been synced. */
+    readonly recordHostMerge: (
+      input: WikiChangeRequestTarget,
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
   }
 >()("t3/wiki/WikiService") {}
 
@@ -432,8 +487,8 @@ interface StoredChangeRequest {
 }
 
 /** A person's way out of a canvas conflict. An agent changes the clashing cards with a transform. */
-const SETTLE_IN_WORKTREE =
-  "A canvas is settled in the change request's worktree: edit it there so the clashing cards agree with main, save the edits to the change request, then merge again.";
+const settleInWorktree = (noun: string) =>
+  `A canvas is settled in the ${noun}'s worktree: edit it there so the clashing cards agree with main, save the edits to the ${noun}, then merge again.`;
 
 /** Two commits merged as a tree, or what stopped them, with what a canvas's merge had to say. */
 type WikiTreeMerge =
@@ -546,6 +601,7 @@ const make = Effect.gen(function* () {
   const registryLock = yield* Semaphore.make(1);
   const registryCache = yield* Ref.make<WikiRegistry | undefined>(undefined);
   const wikiLocks = new Map<string, Semaphore.Semaphore>();
+  const fetchLocks = new Map<string, Semaphore.Semaphore>();
   const snapshots = lru<Snapshot>(24);
   const amendmentLogs = lru<WikiChangeRequest["amendments"]>(128);
   const changedFiles = lru<ChangedFiles>(128);
@@ -991,7 +1047,7 @@ const make = Effect.gen(function* () {
           : Effect.fail(
               new WikiError({
                 reason: "stale",
-                message: "The change request moved while this ran. Read it again and retry.",
+                message: "The wiki moved while this ran. Read it again and retry.",
                 cause: new WikiGitExitError({
                   operation: "updateRefs",
                   exitCode: result.exitCode,
@@ -1162,7 +1218,7 @@ const make = Effect.gen(function* () {
           ? Effect.fail(
               new WikiError({
                 reason: "not-found",
-                message: "No change request has this id in this wiki.",
+                message: `No ${wikiTerms(wiki).singular} has this id in this wiki.`,
                 changeRequestId,
               }),
             )
@@ -1191,6 +1247,7 @@ const make = Effect.gen(function* () {
     const log = yield* runGit("log", wiki.root, [
       "log",
       "--reverse",
+      // Merging main in, here or on the host, is no amendment.
       "--no-merges",
       "--no-renames",
       `--format=${AMENDMENT_LOG_FORMAT}`,
@@ -1274,6 +1331,8 @@ const make = Effect.gen(function* () {
         updatedAt: stored.record.updatedAt,
         mergedCommit: stored.record.mergedCommit,
         amendments,
+        pullRequest: stored.record.pullRequest,
+        pushedHead: stored.record.pushedHead,
         files,
         ...(moves.length === 0 ? {} : { moves }),
       })),
@@ -1291,7 +1350,7 @@ const make = Effect.gen(function* () {
         (cause) =>
           new WikiError({
             reason: "invalid",
-            message: "The change request could not be recorded.",
+            message: `The ${wikiTerms(wiki).singular} could not be recorded.`,
             cause,
           }),
       ),
@@ -1343,16 +1402,15 @@ const make = Effect.gen(function* () {
         ),
         {
           busy: (paths) =>
-            `Unsaved edits in this change request's worktree overlap the amendment${
+            `Unsaved edits in this ${wikiTerms(wiki).singular}'s worktree overlap the amendment${
               paths.length ? `: ${paths.join(", ")}` : ""
-            }. Save them to the change request or set them aside, then try again.`,
+            }. Save them to the ${wikiTerms(wiki).singular} or set them aside, then try again.`,
           stale: (rolledBack, cause) =>
             rolledBack && isWikiError(cause)
               ? cause
               : new WikiError({
                   reason: "stale",
-                  message:
-                    "The change request moved while this ran and its worktree could not be put back; check its files.",
+                  message: `The ${wikiTerms(wiki).singular} moved while this ran and its worktree could not be put back; check its files.`,
                   cause,
                 }),
         },
@@ -1405,7 +1463,7 @@ const make = Effect.gen(function* () {
       : Effect.fail(
           new WikiError({
             reason: "invalid",
-            message: `This change request is ${stored.record.status}; reopen it or open a new one.`,
+            message: `This is ${stored.record.status}; reopen it or open a new one.`,
             changeRequestId: stored.record.changeRequestId,
           }),
         );
@@ -1579,6 +1637,8 @@ const make = Effect.gen(function* () {
               createdAt: at,
               updatedAt: at,
               mergedCommit: null,
+              pullRequest: null,
+              pushedHead: null,
             },
             commit,
             env,
@@ -1718,7 +1778,7 @@ const make = Effect.gen(function* () {
       if (typeof held === "string" || typeof onMain !== "string") return stored;
       return yield* new WikiError({
         reason: "conflict",
-        message: `Your draft clashes with main in ${conflicts.join(", ")}, so ${documentSubject(document)} can't join it yet. Make the draft a change request and settle that first.`,
+        message: `Your draft clashes with main in ${conflicts.join(", ")}, so ${documentSubject(document)} can't join it yet. Make the draft a ${wikiTerms(wiki).singular} and settle that first.`,
       });
     }
     const now = yield* DateTime.now;
@@ -1783,6 +1843,8 @@ const make = Effect.gen(function* () {
     const head = (yield* amendmentsOf(wiki, stored)).at(-1);
     if (head?.autosave !== document || head.actor !== actorName(author)) return undefined;
     if (head.commit !== stored.head) return undefined;
+    // Rewriting a commit the host has would fork the branch from its copy there.
+    if (stored.record.pushedHead === head.commit) return undefined;
     const now = yield* Clock.currentTimeMillis;
     if (now - Date.parse(head.at) >= AUTOSAVE_RUN_MS) return undefined;
     return yield* revParse(wiki.root, `${stored.head}^`);
@@ -1918,7 +1980,7 @@ const make = Effect.gen(function* () {
     if (stored.record.draft) return stored;
     return yield* new WikiError({
       reason: "invalid",
-      message: "This change request isn't a draft.",
+      message: `This ${wikiTerms(wiki).singular} isn't a draft.`,
       changeRequestId,
     });
   });
@@ -2024,7 +2086,7 @@ const make = Effect.gen(function* () {
             if (target.record.draft) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A draft moves into a change request, not another draft.",
+                message: `A draft moves into a ${wikiTerms(wiki).singular}, not another draft.`,
               });
             }
             const { base } = draft.record;
@@ -2061,7 +2123,7 @@ const make = Effect.gen(function* () {
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `This draft conflicts with that change request in ${conflicts.join(", ") || "some files"}. Nothing was moved.`,
+                message: `This draft conflicts with that ${wikiTerms(wiki).singular} in ${conflicts.join(", ") || "some files"}. Nothing was moved.`,
               });
             }
             const merged = yield* changesBetween(wiki, target.head, tree);
@@ -2117,7 +2179,7 @@ const make = Effect.gen(function* () {
             yield* refuseOthersDraft(stored, author);
             const notAmendment = new WikiError({
               reason: "invalid",
-              message: "That commit is not an amendment on this change request.",
+              message: `That commit is not an amendment on this ${wikiTerms(wiki).singular}.`,
             });
             if (!/^[0-9a-f]{4,64}$/i.test(input.commit)) return yield* notAmendment;
             const commit = yield* revParse(wiki.root, input.commit);
@@ -2155,8 +2217,8 @@ const make = Effect.gen(function* () {
               return yield* new WikiError({
                 reason: "conflict",
                 message: merged.conflicts.some(isCanvasFile)
-                  ? `This amendment overlaps later work in the change request, in ${merged.conflicts.join(", ")}. ${SETTLE_IN_WORKTREE}`
-                  : "This amendment overlaps later work in the change request; reconcile it with a new amendment instead.",
+                  ? `This amendment overlaps later work in the ${wikiTerms(wiki).singular}, in ${merged.conflicts.join(", ")}. ${settleInWorktree(wikiTerms(wiki).singular)}`
+                  : `This amendment overlaps later work in the ${wikiTerms(wiki).singular}; reconcile it with a new amendment instead.`,
               });
             }
             const { tree, canvases } = merged;
@@ -2191,7 +2253,7 @@ const make = Effect.gen(function* () {
     );
 
   /** Moves main from `from` to `to`, and the folder that has main checked out with it. */
-  const moveMain = (wiki: WikiRecord, from: string, to: string) =>
+  const moveMain = (wiki: WikiRecord, from: string, to: string, what: "merge" | "sync" = "merge") =>
     moveWithCheckout(
       wiki,
       mainRef(wiki),
@@ -2210,10 +2272,12 @@ const make = Effect.gen(function* () {
         ),
       ),
       {
-        busy: (paths) =>
-          paths.length
-            ? `Local edits in the wiki folder overlap this merge: ${paths.join(", ")}. Commit or set them aside, then merge again.`
-            : "Local edits in the wiki folder overlap this merge. Commit or set them aside, then merge again.",
+        busy: (paths) => {
+          const where = paths.length ? `: ${paths.join(", ")}` : "";
+          return what === "merge"
+            ? `Local edits in the wiki folder overlap this merge${where}. Commit or set them aside, then merge again.`
+            : `Local edits in the wiki folder overlap what's new on the host${where}. Commit or set them aside, and the wiki catches up.`;
+        },
         stale: (rolledBack, cause) =>
           new WikiError({
             reason: "stale",
@@ -2305,7 +2369,7 @@ const make = Effect.gen(function* () {
             if (at === null) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "This change request is not checked out in a worktree.",
+                message: `This ${wikiTerms(wiki).singular} is not checked out in a worktree.`,
               });
             }
             return yield* withWorkspaceLease(
@@ -2314,7 +2378,7 @@ const make = Effect.gen(function* () {
                 if ((yield* gitOut("worktreeHead", at, ["rev-parse", "HEAD"])) !== stored.head) {
                   return yield* new WikiError({
                     reason: "stale",
-                    message: "The change request moved while this ran. Read it again and retry.",
+                    message: `The ${wikiTerms(wiki).singular} moved while this ran. Read it again and retry.`,
                   });
                 }
                 const status = yield* runGit("worktreeStatus", at, [
@@ -2398,20 +2462,25 @@ const make = Effect.gen(function* () {
         locked(
           wiki,
           Effect.gen(function* () {
+            if (wiki.host !== null) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: `This merges on the host, through its ${wikiTerms(wiki).singular}.`,
+              });
+            }
             const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
             yield* requireOpen(stored);
             if (stored.record.draft) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A draft doesn't merge. Make it a change request first.",
+                message: `A draft doesn't merge. Make it a ${wikiTerms(wiki).singular} first.`,
               });
             }
             const main = yield* mainTip(wiki);
             if (yield* isAncestor(wiki.root, stored.head, main)) {
               return yield* new WikiError({
                 reason: "invalid",
-                message:
-                  "Nothing to merge: main already has every amendment in this change request.",
+                message: `Nothing to merge: main already has every amendment in this ${wikiTerms(wiki).singular}.`,
               });
             }
             const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
@@ -2420,8 +2489,8 @@ const make = Effect.gen(function* () {
                 reason: "conflict",
                 message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. ${
                   conflicts.some(isCanvasFile)
-                    ? SETTLE_IN_WORKTREE
-                    : "Amend the change request to reconcile, then merge again."
+                    ? settleInWorktree(wikiTerms(wiki).singular)
+                    : `Amend the ${wikiTerms(wiki).singular} to reconcile, then merge again.`
                 }`,
               });
             }
@@ -2431,7 +2500,7 @@ const make = Effect.gen(function* () {
               wiki.root,
               tree,
               [main, stored.head],
-              `Merge change request: ${oneLine(stored.record.title)}\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
+              `Merge ${wikiTerms(wiki).singular}: ${oneLine(stored.record.title)}\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
               env,
             );
             yield* moveMain(wiki, main, commit);
@@ -2469,6 +2538,7 @@ const make = Effect.gen(function* () {
         mainBranch: wiki.mainBranch,
         projectIds: wiki.projectIds,
         mirror: wiki.mirror,
+        host: wiki.host,
         mapBackgrounds: wiki.mapBackgrounds,
         openChangeRequests,
         createdAt: wiki.createdAt,
@@ -2884,7 +2954,7 @@ const make = Effect.gen(function* () {
           if (stored === undefined) {
             return yield* new WikiError({
               reason: "not-found",
-              message: "This thread has no open change request on this wiki.",
+              message: `This thread has no open ${wikiTerms(wiki).singular} on this wiki.`,
             });
           }
           const main = yield* mainTip(wiki);
@@ -2944,6 +3014,8 @@ const make = Effect.gen(function* () {
               createdAt: at,
               updatedAt: at,
               mergedCommit: null,
+              pullRequest: null,
+              pushedHead: null,
             },
             base,
             identity(author.actor, now),
@@ -2965,7 +3037,7 @@ const make = Effect.gen(function* () {
             if (stored.record.status === "merged") {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A merged change request stays merged.",
+                message: `A merged ${wikiTerms(wiki).singular} stays merged.`,
               });
             }
             if (stored.record.status === input.status) return yield* view(wiki, stored);
@@ -2976,8 +3048,7 @@ const make = Effect.gen(function* () {
             ) {
               return yield* new WikiError({
                 reason: "invalid",
-                message:
-                  "You have another draft on this wiki. Make it a change request or discard it, then reopen this one.",
+                message: `You have another draft on this wiki. Make it a ${wikiTerms(wiki).singular} or discard it, then reopen this one.`,
               });
             }
             const now = yield* DateTime.now;
@@ -3010,6 +3081,7 @@ const make = Effect.gen(function* () {
       projectIds: [],
       projectLinkedAt: {},
       mirror: null,
+      host: null,
       mapBackgrounds: [],
       createdAt,
     };
@@ -3159,6 +3231,12 @@ const make = Effect.gen(function* () {
   const setMirror: WikiService["Service"]["setMirror"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       Effect.gen(function* () {
+        if (wiki.host !== null && input.url !== null) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: "A host wiki has no mirror: the host already holds its main line.",
+          });
+        }
         // A URL that reads as an option would reach git as one.
         if (input.url !== null && input.url.startsWith("-")) {
           return yield* new WikiError({
@@ -3275,9 +3353,506 @@ const make = Effect.gen(function* () {
     return (yield* lookup(wikiId)).root;
   });
 
+  const get: WikiService["Service"]["get"] = (wikiId) => withWiki(wikiId, summary);
+
+  const hosted: WikiService["Service"]["hosted"] = Effect.map(loadRegistry, (registry) =>
+    registry.wikis.filter((wiki) => wiki.host !== null).map((wiki) => wiki.wikiId),
+  );
+
+  const requireHost = (wiki: WikiRecord) =>
+    wiki.host === null
+      ? Effect.fail(
+          new WikiError({ reason: "invalid", message: "This wiki is not connected to a host." }),
+        )
+      : Effect.succeed(wiki.host);
+
+  /** Re-reads the wiki inside its lock, since a sync may have waited behind a disconnect. */
+  const replaceHost = (wiki: WikiRecord, update: (host: WikiHostStatus) => WikiHostStatus) =>
+    updateRegistry((registry) => {
+      const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId);
+      if (current === undefined || current.host === null) {
+        return Effect.succeed([registry, undefined] as const);
+      }
+      const next = { ...current, host: update(current.host) };
+      return Effect.succeed([
+        {
+          ...registry,
+          wikis: registry.wikis.map((entry) => (entry.wikiId === next.wikiId ? next : entry)),
+        },
+        undefined,
+      ] as const);
+    }).pipe(Effect.andThen(publish("mirror", wiki.wikiId, null)));
+
+  const setHost: WikiService["Service"]["setHost"] = (wikiId, host) =>
+    withWiki(wikiId, (wiki) =>
+      Effect.gen(function* () {
+        if (host !== null) {
+          // A name that reads as an option would reach git as one.
+          const known =
+            !host.remote.startsWith("-") &&
+            (yield* runGit("remoteUrl", wiki.root, ["remote", "get-url", host.remote], {
+              allowExitCodes: [2, 128],
+            })).exitCode === 0;
+          if (!known) {
+            return yield* new WikiError({
+              reason: "invalid",
+              message: `The wiki's folder has no git remote named ${host.remote}.`,
+            });
+          }
+        }
+        const next = yield* locked(
+          wiki,
+          Effect.gen(function* () {
+            // Links name pull requests on this host; a later host would read them as its own.
+            if (host === null) {
+              const now = yield* DateTime.now;
+              for (const stored of yield* readChangeRequests(wiki)) {
+                if (stored.record.pullRequest === null || stored.record.status === "merged") {
+                  continue;
+                }
+                yield* recordChangeRequest(
+                  wiki,
+                  stored,
+                  { ...stored.record, pullRequest: null, pushedHead: null },
+                  "Disconnect from the host",
+                  identity(person.actor, now),
+                );
+              }
+            }
+            return yield* replaceWiki({
+              ...wiki,
+              mirror: host === null ? wiki.mirror : null,
+              host:
+                host === null
+                  ? null
+                  : {
+                      ...host,
+                      lastSyncedAt: null,
+                      lastSyncedCommit: null,
+                      relation: null,
+                      lastError: null,
+                    },
+            });
+          }),
+        );
+        yield* publish("mirror", wiki.wikiId, null);
+        return yield* summary(next);
+      }),
+    );
+
+  const recordHostError: WikiService["Service"]["recordHostError"] = (wikiId, message) =>
+    withWiki(wikiId, (wiki) =>
+      wiki.host === null || wiki.host.lastError === message
+        ? Effect.void
+        : replaceHost(wiki, (host) => ({ ...host, lastError: message })),
+    );
+
+  const recordChangeRequestIssue: WikiService["Service"]["recordChangeRequestIssue"] = (
+    wikiId,
+    message,
+  ) =>
+    withWiki(wikiId, (wiki) =>
+      wiki.host === null || (wiki.host.changeRequestIssue ?? null) === message
+        ? Effect.void
+        : replaceHost(wiki, (host) => ({ ...host, changeRequestIssue: message })),
+    );
+
+  const trackedHostRoot = (remote: string) => `refs/wiki/host/${remote}/`;
+
+  /** What the host holds under main and `cr/`, read without fetching. */
+  const hostRefs = Effect.fn("WikiService.hostRefs")(function* (wiki: WikiRecord, remote: string) {
+    const listed = yield* gitOut(
+      "lsRemoteHost",
+      wiki.root,
+      ["ls-remote", "--heads", remote, mainRef(wiki), `${CHANGE_REQUEST_BRANCH_PREFIX}*`],
+      { timeoutMs: REMOTE_TIMEOUT_MS },
+    );
+    const refs = new Map<string, string>();
+    for (const line of listed.split("\n")) {
+      const [oid, ref] = line.split("\t");
+      if (oid && ref) refs.set(ref.trim(), oid.trim());
+    }
+    return refs;
+  });
+
+  /** Moves an open change request onto what the host holds, if that only adds to it. */
+  const followHostBranch = Effect.fn("WikiService.followHostBranch")(function* (
+    wiki: WikiRecord,
+    stored: StoredChangeRequest,
+    remoteHead: string,
+    main: string,
+  ) {
+    if (remoteHead === stored.head) return;
+    if (!(yield* isAncestor(wiki.root, stored.head, remoteHead))) return;
+    const now = yield* DateTime.now;
+    // The host may have merged main in, which would otherwise read as this request's own work.
+    const base = (yield* gitOut("followBase", wiki.root, ["merge-base", main, remoteHead])) || null;
+    yield* recordChangeRequest(
+      wiki,
+      stored,
+      {
+        ...stored.record,
+        base: base ?? stored.record.base,
+        pushedHead: remoteHead,
+        updatedAt: DateTime.formatIso(now),
+      },
+      "Follow the host",
+      identity(person.actor, now),
+      remoteHead,
+    );
+    yield* publish("amended", wiki.wikiId, stored.record.changeRequestId);
+  });
+
+  /** Holds no lock while it talks to the host, so a slow fetch never blocks an amendment. */
+  const fetchHost = Effect.fn("WikiService.fetchHost")(function* (
+    wiki: WikiRecord,
+    remote: string,
+  ) {
+    const trackingRoot = trackedHostRoot(remote);
+    const tracking = (ref: string) => `${trackingRoot}${ref.slice("refs/heads/".length)}`;
+    let lock = fetchLocks.get(wiki.wikiId);
+    if (lock === undefined) {
+      lock = Semaphore.makeUnsafe(1);
+      fetchLocks.set(wiki.wikiId, lock);
+    }
+    // Two fetches into one tracking ref would fail each other on git's ref lock.
+    return yield* lock.withPermits(1)(
+      Effect.gen(function* () {
+        const refs = yield* hostRefs(wiki, remote);
+        const known = yield* gitOut("forEachTracked", wiki.root, [
+          "for-each-ref",
+          "--format=%(refname) %(objectname)",
+          trackingRoot,
+        ]);
+        const tracked = new Map(
+          known.split("\n").map((line) => line.split(" ") as [string, string]),
+        );
+        if ([...refs].some(([ref, oid]) => tracked.get(tracking(ref)) !== oid)) {
+          yield* runGit(
+            "fetchHost",
+            wiki.root,
+            [
+              "fetch",
+              "--no-tags",
+              "--no-write-fetch-head",
+              remote,
+              ...[...refs.keys()].map((ref) => `+${ref}:${tracking(ref)}`),
+            ],
+            { timeoutMs: REMOTE_TIMEOUT_MS },
+          );
+        }
+        return refs;
+      }),
+    );
+  });
+
+  const syncFromHost: WikiService["Service"]["syncFromHost"] = (wikiId) =>
+    withWiki(wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const host = yield* requireHost(wiki);
+        const remote = yield* fetchHost(wiki, host.remote);
+        return yield* locked(
+          wiki,
+          Effect.gen(function* () {
+            const local = yield* mainTip(wiki);
+            const remoteMain = remote.get(mainRef(wiki));
+            let main = local;
+            let relation: WikiHostRelation = "ahead";
+            let busy: string | null = null;
+            if (remoteMain === local) {
+              relation = "up-to-date";
+            } else if (remoteMain !== undefined) {
+              if (yield* isAncestor(wiki.root, local, remoteMain)) {
+                // The folder's unsaved edits hold main back until they are dealt with.
+                busy = yield* moveMain(wiki, local, remoteMain, "sync").pipe(
+                  Effect.as(null),
+                  Effect.catchIf(
+                    (error) => error.reason === "checkout-busy",
+                    (error) => Effect.succeed(error.message),
+                  ),
+                );
+                if (busy === null) {
+                  main = remoteMain;
+                  relation = "up-to-date";
+                  yield* publish("main-moved", wiki.wikiId, null);
+                } else {
+                  relation = "behind";
+                }
+              } else if (!(yield* isAncestor(wiki.root, remoteMain, local))) {
+                relation = "diverged";
+              }
+            }
+            for (const stored of yield* readChangeRequests(wiki)) {
+              const remoteHead = remote.get(changeRequestBranch(stored.record.changeRequestId));
+              if (stored.record.status === "open" && remoteHead !== undefined) {
+                // One held-up change request is no reason to stop the others following.
+                yield* followHostBranch(wiki, stored, remoteHead, main).pipe(
+                  Effect.catch((error) =>
+                    Effect.logInfo("A wiki change request could not follow the host").pipe(
+                      Effect.annotateLogs({ wikiId: wiki.wikiId, cause: error.message }),
+                    ),
+                  ),
+                );
+              }
+            }
+            const at = yield* nowIso;
+            yield* replaceHost(wiki, (current) => ({
+              ...current,
+              lastSyncedAt: at,
+              lastSyncedCommit: remoteMain ?? null,
+              relation,
+              lastError: busy,
+            }));
+            return relation;
+          }),
+        );
+      }),
+    );
+
+  const pushMainToHost: WikiService["Service"]["pushMainToHost"] = (wikiId) =>
+    withWiki(wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const host = yield* requireHost(wiki);
+        yield* runGit(
+          "pushMainToHost",
+          wiki.root,
+          ["push", "--no-verify", host.remote, `${mainRef(wiki)}:${mainRef(wiki)}`],
+          { timeoutMs: REMOTE_TIMEOUT_MS },
+        );
+      }),
+    );
+
+  const pushChangeRequest: WikiService["Service"]["pushChangeRequest"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const host = yield* requireHost(wiki);
+          const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+          yield* requireOpen(stored);
+          if (stored.record.pushedHead === stored.head) return yield* view(wiki, stored);
+          // Pushes the commit, not the ref: an amendment landing meanwhile stays unpublished.
+          const pushed = yield* runGit(
+            "pushChangeRequest",
+            wiki.root,
+            [
+              "push",
+              "--no-verify",
+              host.remote,
+              `${stored.head}:${changeRequestBranch(input.changeRequestId)}`,
+            ],
+            { timeoutMs: REMOTE_TIMEOUT_MS, allowExitCodes: [1], env: { LC_ALL: "C" } },
+          );
+          if (pushed.exitCode !== 0) {
+            const cause = new WikiGitExitError({
+              operation: "pushChangeRequest",
+              exitCode: pushed.exitCode,
+              stderr: pushed.stderr,
+            });
+            return yield* /non-fast-forward|fetch first/.test(pushed.stderr)
+              ? new WikiError({
+                  reason: "stale",
+                  message: `The host's copy of this ${wikiTerms(wiki).singular} has work this one lacks. Sync the wiki and try again.`,
+                  cause,
+                })
+              : new WikiError({
+                  reason: "git-failed",
+                  message:
+                    "The host refused this push. A branch rule or hook on the repository may be blocking it.",
+                  cause,
+                });
+          }
+          return yield* locked(
+            wiki,
+            Effect.gen(function* () {
+              const current = yield* loadChangeRequest(wiki, input.changeRequestId);
+              const now = yield* DateTime.now;
+              const next = yield* recordChangeRequest(
+                wiki,
+                current,
+                { ...current.record, pushedHead: stored.head },
+                "Publish change request",
+                identity(person.actor, now),
+              );
+              yield* publish("status", wiki.wikiId, input.changeRequestId);
+              return yield* view(wiki, next);
+            }),
+          );
+        }),
+      input.changeRequestId,
+    );
+
+  const adoptHostBranch: WikiService["Service"]["adoptHostBranch"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const host = yield* requireHost(wiki);
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            yield* requireOpen(stored);
+            const hostHead = yield* revParse(
+              wiki.root,
+              `${trackedHostRoot(host.remote)}cr/${input.changeRequestId}`,
+            );
+            if (hostHead === undefined || (yield* isAncestor(wiki.root, hostHead, stored.head))) {
+              return yield* view(wiki, stored);
+            }
+            const { tree, conflicts } = yield* mergeIntoMain(wiki, hostHead, stored.head);
+            if (tree === null) {
+              return yield* new WikiError({
+                reason: "conflict",
+                message: `This ${wikiTerms(wiki).singular} and its copy on the host conflict in ${conflicts.join(", ") || "some files"}. Amend it to reconcile, then publish again.`,
+              });
+            }
+            const now = yield* DateTime.now;
+            const env = identity(person.actor, now);
+            const commit = yield* commitTree(
+              wiki.root,
+              tree,
+              [stored.head, hostHead],
+              `Reconcile with the host's copy\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
+              env,
+            );
+            const main = yield* mainTip(wiki);
+            const base = yield* gitOut("adoptBase", wiki.root, ["merge-base", main, commit]);
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              { ...stored.record, base, updatedAt: DateTime.formatIso(now) },
+              "Reconcile change request",
+              env,
+              commit,
+            );
+            yield* publish("amended", wiki.wikiId, stored.record.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  const changeRequest: WikiService["Service"]["changeRequest"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        loadChangeRequest(wiki, input.changeRequestId).pipe(
+          Effect.flatMap((stored) => view(wiki, stored)),
+        ),
+      input.changeRequestId,
+    );
+
+  const reconcileChangeRequest: WikiService["Service"]["reconcileChangeRequest"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            yield* requireOpen(stored);
+            const main = yield* mainTip(wiki);
+            if (yield* isAncestor(wiki.root, main, stored.head)) return yield* view(wiki, stored);
+            const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
+            if (tree === null) {
+              return yield* new WikiError({
+                reason: "conflict",
+                message: `Main and this ${wikiTerms(wiki).singular} change the same sentences in ${conflicts.join(", ") || "some files"}.`,
+              });
+            }
+            const now = yield* DateTime.now;
+            const env = identity(person.actor, now);
+            const commit = yield* commitTree(
+              wiki.root,
+              tree,
+              [stored.head, main],
+              `Reconcile with main\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
+              env,
+            );
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              { ...stored.record, base: main, updatedAt: DateTime.formatIso(now) },
+              "Reconcile change request",
+              env,
+              commit,
+            );
+            yield* publish("amended", wiki.wikiId, stored.record.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  const recordPullRequest: WikiService["Service"]["recordPullRequest"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            const now = yield* DateTime.now;
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              { ...stored.record, pullRequest: input.pullRequest },
+              "Link pull request",
+              identity(person.actor, now),
+            );
+            yield* publish("status", wiki.wikiId, input.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
+  const recordHostMerge: WikiService["Service"]["recordHostMerge"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            if (stored.record.status === "merged") return yield* view(wiki, stored);
+            const now = yield* DateTime.now;
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              {
+                ...stored.record,
+                status: "merged",
+                // The host's main: unsaved edits here can hold this folder's back.
+                mergedCommit: wiki.host?.lastSyncedCommit ?? (yield* mainTip(wiki)),
+                updatedAt: DateTime.formatIso(now),
+              },
+              "Merge change request",
+              identity(person.actor, now),
+            );
+            yield* publish("merged", wiki.wikiId, stored.record.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
   return WikiService.of({
     list,
     root,
+    get,
+    hosted,
+    setHost,
+    syncFromHost,
+    recordHostError,
+    recordChangeRequestIssue,
+    pushMainToHost,
+    pushChangeRequest,
+    adoptHostBranch,
+    changeRequest,
+    reconcileChangeRequest,
+    recordPullRequest,
+    recordHostMerge,
     subscribe: Stream.fromPubSub(events),
     register,
     create,

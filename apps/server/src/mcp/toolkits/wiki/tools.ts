@@ -40,7 +40,7 @@ const documentName = Schema.NonEmptyString.annotate({
 const readFrom = Schema.optional(
   Schema.NonEmptyString.annotate({
     description:
-      "Read a change request's head. Omit to read your thread's own open change request on this wiki, or main when it has none.",
+      "Read a wiki pull request's head. Omit to read your thread's own open pull request on this wiki, or main when it has none.",
   }),
 );
 
@@ -61,7 +61,7 @@ export type WikiListed = typeof WikiListed.Type;
 
 const WikiListTool = Tool.make("astrolabe_wiki_list", {
   ...shared,
-  description: `List this environment's wikis with their ids, checkouts, and open change request counts. With wiki, list one of its folders instead: its documents, other files and subfolders, by path. Hidden ones aren't listed. ${RULES}`,
+  description: `List this environment's wikis with their ids, checkouts, and open pull request counts. With wiki, list one of its folders instead: its documents, other files and subfolders, by path. Hidden ones aren't listed. ${RULES}`,
   parameters: Schema.Struct({
     wiki: Schema.optional(wiki),
     folder: Schema.optional(
@@ -204,7 +204,7 @@ const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
     changeRequestId: Schema.optional(
       Schema.NonEmptyString.annotate({
         description:
-          "Read a change request's head. Omit to read your thread's own open change request on this wiki, or main when it has none.",
+          "Read a wiki pull request's head. Omit to read your thread's own open pull request on this wiki, or main when it has none.",
       }),
     ),
   }),
@@ -222,23 +222,23 @@ const writeTarget = {
   changeRequestId: Schema.optional(
     Schema.NonEmptyString.annotate({
       description:
-        "An open change request to amend. Omit to amend your thread's open change request on this wiki, opening one when it has none.",
+        "An open wiki pull request to amend. Omit to amend your thread's open pull request on this wiki, opening one when it has none.",
     }),
   ),
   title: Schema.optional(
     Schema.NonEmptyString.annotate({
       description:
-        "Title for a change request this call opens. Defaults to the message's first line.",
+        "Title for a wiki pull request this call opens. Defaults to the message's first line.",
     }),
   ),
 };
 
 const MERGE_RULE =
-  "Changes land on your thread's change request, never on main: merging is a person's act in the app, so do not ask for it and do not edit the wiki's files directly.";
+  "Changes land on your thread's pull request on the wiki, never on main: merging is a person's act in the app, so do not ask for it and do not edit the wiki's files directly.";
 
 const WikiAmendTool = Tool.make("astrolabe_wiki_amend", {
   ...shared,
-  description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed file is its complete new content: a note's markdown, or a base's YAML in Obsidian's Bases format (a saved question astrolabe_wiki_query runs); null deletes it. A canvas is never written here, and a move is never a delete and a write: use astrolabe_wiki_transform. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the change request, the commit, and the index errors standing after the amendment.`,
+  description: `Amend a wiki: write whole notes, one coherent amendment per call. ${RULES} Each changed file is its complete new content: a note's markdown, or a base's YAML in Obsidian's Bases format (a saved question astrolabe_wiki_query runs); null deletes it. A canvas is never written here, and a move is never a delete and a write: use astrolabe_wiki_transform. A change that breaks the prose link a map edge stands on records a warning in that map; a new map edge needs prose that links its notes. ${MERGE_RULE} Returns the wiki pull request, the commit, and the index errors standing after the amendment.`,
   parameters: Schema.Struct({
     ...writeTarget,
     changes: Schema.Record(Schema.String, Schema.NullOr(Schema.String)).annotate({
@@ -259,12 +259,12 @@ const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
 const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
   ...shared,
   description:
-    "Review your thread's change request on a wiki (or a named one): its amendments, every changed note before and after (a canvas as its outline), whether it merges cleanly into main, and the index errors it leaves.",
+    "Review your thread's pull request on a wiki (or a named one): its amendments, every changed note before and after (a canvas as its outline), whether it merges cleanly into main, and the index errors it leaves.",
   parameters: Schema.Struct({
     wiki,
     changeRequestId: Schema.optional(
       Schema.NonEmptyString.annotate({
-        description: "The change request to read. Omit for your thread's open one on this wiki.",
+        description: "The wiki pull request to read. Omit for your thread's open one on this wiki.",
       }),
     ),
   }),
