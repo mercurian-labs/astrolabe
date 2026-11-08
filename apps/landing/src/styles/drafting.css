@@ -3460,6 +3460,126 @@ hidden, leaves the sticky stage working). */
   }
 }
 
+/* A base in the wiki, as WikiBaseView draws a table view: its toolbar, then rows of notes with their
+   properties; a link's preview floats over the table. */
+.app--base .pb {
+  height: auto;
+}
+.pane--base {
+  padding-bottom: 1.2em;
+}
+.bt__tools {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.9em 1.5em 0.6em;
+}
+.bt__count {
+  font-size: 0.8em;
+  color: var(--app-muted);
+}
+.bt__tools .mini--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--app-muted);
+}
+.bt {
+  margin: 0 1.5em;
+  width: calc(100% - 3em);
+  border-collapse: collapse;
+  font-size: 0.86em;
+}
+.bt th {
+  padding: 0.55em 0.7em;
+  border-bottom: 1px solid var(--app-border);
+  text-align: left;
+  font-weight: 500;
+  color: var(--app-muted);
+  white-space: nowrap;
+}
+.bt td {
+  padding: 0.6em 0.7em;
+  border-bottom: 1px solid var(--app-border);
+  white-space: nowrap;
+}
+.bt tr.is-hover td {
+  background: var(--app-row-hover);
+}
+.bt .bt__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bt .bt__via,
+.bt .bt__when {
+  color: var(--app-muted);
+}
+.bt__link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 0.18em;
+}
+.bt__type,
+.peek__type {
+  padding: 0.05em 0.4em;
+  border-radius: 0.3em;
+  background: var(--app-agent-tint);
+  color: var(--app-agent);
+  font: 500 0.9em var(--mono);
+}
+.peek {
+  width: 25em;
+  max-width: calc(100% - 3em);
+  margin: 1.1em 1.5em 0;
+  padding: 0.8em 0.95em 0.9em;
+  border: 1px solid var(--app-border);
+  border-radius: 0.6em;
+  background: var(--app-surface);
+  box-shadow: 0 0.5em 1.4em -0.5em oklch(0 0 0 / 0.3);
+  font-size: 0.82em;
+  line-height: 1.5;
+}
+.peek p + p {
+  margin-top: 0.4em;
+}
+.peek__name {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  font-weight: 600;
+}
+.peek a {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.peek code {
+  display: block;
+  margin-top: 0.6em;
+  padding: 0.35em 0.5em;
+  border-radius: 0.35em;
+  background: var(--app-code);
+  font-size: 0.92em;
+  white-space: nowrap;
+  color: var(--app-muted);
+}
+.surface__code {
+  display: block;
+  margin-top: 0.4em;
+  font-family: var(--mono);
+  font-size: 0.86em;
+  color: var(--ink);
+}
+@container (max-width: 900px) {
+  .bt .bt__via {
+    display: none;
+  }
+}
+@container (max-width: 560px) {
+  .bt__filter,
+  .bt .bt__when {
+    display: none;
+  }
+}
+
 /* ───────────────────────────────────────── [06] Repositories: a thread's checkout, as
    RepositorySidebar and RepositoryFileView draw it. The sidebar's rows are the app's 32 px rows;
    the file's header is its 32 px bar, and its code the editor's code mode, Alabaster's colours. */
